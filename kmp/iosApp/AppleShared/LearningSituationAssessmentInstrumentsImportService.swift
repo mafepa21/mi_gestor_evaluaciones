@@ -191,19 +191,27 @@ struct LearningSituationAssessmentInstrumentsImportService {
         var pendingTables: [[[String]]] = []
         var pendingParagraphs: [String] = []
         var gradingFormula: String?
+        // A4: una vez alcanzada la sección "Nota para quien importe" (metainstrucciones para
+        // quien procese el documento, no para docentes/alumnado) se ignora el resto del
+        // documento: sin esta bandera, párrafos posteriores como una explicación de la
+        // fórmula seguían evaluándose y podían machacar `gradingFormula` con una nota interna.
+        var reachedImporterNotes = false
 
         func flushCurrent() {
             guard let heading = currentHeading else { return }
-            if let instrument = makeInstrument(from: heading, tables: pendingTables, paragraphs: pendingParagraphs) {
+            let (instrument, extraWarnings) = makeInstrument(from: heading, tables: pendingTables, paragraphs: pendingParagraphs)
+            if let instrument {
                 instruments.append(instrument)
             } else {
                 warnings.append("No se ha podido interpretar \(heading.title).")
             }
+            warnings.append(contentsOf: extraWarnings)
             pendingTables = []
             pendingParagraphs = []
         }
 
         for block in blocks {
+            if reachedImporterNotes { continue }
             switch block {
             case .paragraph(let text):
                 let cleanText = clean(text)
@@ -213,6 +221,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 } else if isImporterNoteSection(cleanText) {
                     flushCurrent()
                     currentHeading = nil
+                    reachedImporterNotes = true
                 } else if isGradingLine(cleanText) {
                     gradingFormula = cleanText
                 } else if let heading = parseHeading(cleanText) {
@@ -236,9 +245,17 @@ struct LearningSituationAssessmentInstrumentsImportService {
         if instruments.isEmpty {
             warnings.append("No se han detectado instrumentos evaluativos en tablas DOCX.")
         }
+        // A8(a): antes, este aviso solo se emitía si no había fórmula de calificación, pero
+        // todos los documentos reales la llevan, así que nunca saltaba. Ahora se emite siempre
+        // que la suma se desvíe de 100, tenga o no fórmula.
         let weightedTotal = instruments.compactMap(\.weightPercent).reduce(0, +)
-        if weightedTotal > 0, abs(weightedTotal - 100) > 0.5, gradingFormula == nil {
+        if weightedTotal > 0, abs(weightedTotal - 100) > 0.5 {
             warnings.append("La suma de ponderaciones detectada es \(formatPercent(weightedTotal)); revisa el reparto antes de crear columnas.")
+        }
+        // A8(b): verificación cruzada entre los términos "Texto (NN%)" de la fórmula de
+        // calificación y los instrumentos realmente detectados.
+        if let gradingFormula {
+            warnings.append(contentsOf: unmatchedGradingFormulaWarnings(gradingFormula, instruments: instruments))
         }
 
         return LearningSituationAssessmentImportDraft(
@@ -253,39 +270,89 @@ struct LearningSituationAssessmentInstrumentsImportService {
     }
 
     private func readBlocks(from data: Data) throws -> [WordDocumentBlock] {
-        let archive = try Archive(data: data, accessMode: .read, pathEncoding: nil)
-        guard let entry = archive["word/document.xml"] else {
-            throw LearningSituationImportError.unreadableDocument
-        }
-        var xmlData = Data()
-        _ = try archive.extract(entry) { xmlData.append($0) }
-        let reader = WordDocumentTableReader()
-        guard reader.parse(data: xmlData) else { throw LearningSituationImportError.unreadableDocument }
-        return reader.blocks
+        try wordDocumentBlocks(from: data)
     }
 
-    private func makeInstrument(from heading: ParsedInstrumentHeading, tables: [[[String]]], paragraphs: [String]) -> AssessmentInstrumentDraft? {
+    private func makeInstrument(from heading: ParsedInstrumentHeading, tables: [[[String]]], paragraphs: [String]) -> (AssessmentInstrumentDraft?, [String]) {
         let normalizedTitle = normalized(heading.title)
         let nonEmptyTables = tables
             .map { $0.map { row in row.map(clean) }.filter { row in row.contains { !$0.isEmpty } } }
             .filter { !$0.isEmpty }
         let kind = inferKind(title: normalizedTitle, tables: nonEmptyTables)
         let rubric = makeRubric(kind: kind, tables: nonEmptyTables)
-        let checklistItems = makeChecklistItems(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
+        let (checklistItems, consumedParagraphs1) = makeChecklistItemsCollectingConsumption(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
         let observationFields = makeObservationFields(kind: kind, tables: nonEmptyTables)
-        let quizQuestions = makeQuizQuestions(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
+        let (quizQuestions, consumedParagraphs2) = makeQuizQuestionsCollectingConsumption(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
+
+        // A7: si la rejilla tiene peso y ninguna de sus columnas trae ya una escala explícita
+        // "1-4", pero la última cabecera es claramente una columna de nota (nota/note/mark/
+        // score), se asume escala 1-4 y se avisa para que el docente lo revise.
+        var extraWarnings: [String] = []
+        var effectiveObservationFields = observationFields
+        if kind == .observationGrid, (heading.weightPercent ?? 0) > 0, !hasObservationScale1To4(observationFields) {
+            if lastHeaderLooksLikeNoteColumn(nonEmptyTables) {
+                effectiveObservationFields = observationFields.map { field in
+                    var copy = field
+                    if copy.scaleLabel == nil || !normalized(copy.scaleLabel!).contains("1") {
+                        copy.scaleLabel = "1-4"
+                    }
+                    return copy
+                }
+                extraWarnings.append("Se asume escala 1-4 en «\(heading.title)»; revísalo si el documento usa otra escala.")
+            }
+        }
+
         let selectedByDefault = (heading.weightPercent ?? 0) > 0
         let scoreStrategy = defaultScoreStrategy(
             kind: kind,
             weightPercent: heading.weightPercent,
-            observationFields: observationFields
+            checklistItems: checklistItems,
+            observationFields: effectiveObservationFields
         )
-        let countsTowardAverage = scoreStrategy != .none && (heading.weightPercent ?? 0) > 0
-
-        if rubric == nil, checklistItems.isEmpty, observationFields.isEmpty, quizQuestions.isEmpty {
-            return nil
+        // A6 (matiz importante): `.checklistProportional` refleja correctamente que el
+        // documento SÍ pondera la checklist (deja de etiquetarse como "Auxiliar" sin más), pero
+        // la app todavía no calcula ni persiste una nota derivada de "ítems marcados / total"
+        // para ese caso (`NotebookInstrumentsRepositorySqlDelight.saveResponses`, en `kmp/data`,
+        // archivo protegido, solo deriva nota automática para rejillas de observación). Por eso
+        // `countsTowardAverage` se mantiene alineado con lo que la materialización real puede
+        // sumar a la media hoy (mismo criterio que `canMaterializeAverage` en KmpBridge.swift),
+        // para no prometer en la vista previa algo que la columna materializada no cumple.
+        let materializesAverageAutomatically: Bool
+        switch scoreStrategy {
+        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4, .quizPercentCorrect:
+            materializesAverageAutomatically = true
+        case .checklistProportional, .none:
+            materializesAverageAutomatically = false
         }
-        return AssessmentInstrumentDraft(
+        let countsTowardAverage = materializesAverageAutomatically && (heading.weightPercent ?? 0) > 0
+
+        if rubric == nil, checklistItems.isEmpty, effectiveObservationFields.isEmpty, quizQuestions.isEmpty {
+            return (nil, extraWarnings)
+        }
+
+        // A5: los párrafos que no se han consumido como ítems de checklist ni como preguntas de
+        // quiz llevan a menudo información real (momento de recogida, escala, criterio de
+        // agregación...) que la guía de autoría promete conservar como nota del instrumento.
+        let consumed = consumedParagraphs1.union(consumedParagraphs2)
+        let narrativeNotes = paragraphs.enumerated()
+            .filter { !consumed.contains($0.offset) }
+            .map(\.element)
+        var noteText: String?
+        if countsTowardAverage {
+            noteText = narrativeNotes.isEmpty ? nil : narrativeNotes.joined(separator: "\n")
+        } else {
+            var parts: [String]
+            if scoreStrategy == .checklistProportional {
+                let weightText = heading.weightPercent.map(formatPercent) ?? "peso detectado"
+                parts = ["Checklist con ponderación (\(weightText)) detectada; la app aún no calcula su nota proporcional automáticamente — revísala y decide cómo puntuarla."]
+            } else {
+                parts = ["Auxiliar o sin puntuación computable detectada"]
+            }
+            parts.append(contentsOf: narrativeNotes)
+            noteText = parts.joined(separator: "\n")
+        }
+
+        return (AssessmentInstrumentDraft(
             title: heading.title,
             kind: kind,
             criterionLabel: heading.criterionLabel,
@@ -295,15 +362,24 @@ struct LearningSituationAssessmentInstrumentsImportService {
             scoreStrategy: scoreStrategy,
             rubric: rubric,
             checklistItems: checklistItems,
-            observationFields: observationFields,
+            observationFields: effectiveObservationFields,
             quizQuestions: quizQuestions,
-            note: countsTowardAverage ? nil : "Auxiliar o sin puntuación computable detectada"
-        )
+            note: noteText
+        ), extraWarnings)
+    }
+
+    private func lastHeaderLooksLikeNoteColumn(_ tables: [[[String]]]) -> Bool {
+        tables.contains { table in
+            guard let header = table.first, let last = header.last, !last.isEmpty else { return false }
+            let value = normalized(last)
+            return value.contains("nota") || value.contains("note") || value.contains("mark") || value.contains("score")
+        }
     }
 
     private func defaultScoreStrategy(
         kind: AssessmentInstrumentKind,
         weightPercent: Double?,
+        checklistItems: [ChecklistItemDraft],
         observationFields: [ObservationFieldDraft]
     ) -> AssessmentInstrumentScoreStrategy {
         guard (weightPercent ?? 0) > 0 else { return .none }
@@ -312,7 +388,13 @@ struct LearningSituationAssessmentInstrumentsImportService {
             return .rubric
         case .observationGrid:
             return hasObservationScale1To4(observationFields) ? .observationScale1To4 : .none
-        case .checklist, .submissionChecklist:
+        case .checklist:
+            // A6: si la checklist tiene ítems y el documento le asigna peso, es computable de
+            // forma proporcional (número de ítems marcados / total). `submissionChecklist` y
+            // `teacherObservation` siguen sin puntuar: son requisito de entrega y registro de
+            // apoyo, y en los documentos reales nunca llevan "%".
+            return checklistItems.isEmpty ? .none : .checklistProportional
+        case .submissionChecklist:
             return .none
         case .teacherObservation:
             return .none
@@ -390,8 +472,11 @@ struct LearningSituationAssessmentInstrumentsImportService {
             .trimmingCharacters(in: CharacterSet(charactersIn: " -–—\t\n\r"))
     }
 
-    private func makeChecklistItems(kind: AssessmentInstrumentKind, tables: [[[String]]], paragraphs: [String]) -> [ChecklistItemDraft] {
-        guard kind == .checklist || kind == .submissionChecklist else { return [] }
+    /// A5: además de los ítems, devuelve los índices de `paragraphs` que se han consumido
+    /// (los que sí aportaron algún ítem de checklist), para que el resto pueda conservarse
+    /// como nota narrativa del instrumento.
+    private func makeChecklistItemsCollectingConsumption(kind: AssessmentInstrumentKind, tables: [[[String]]], paragraphs: [String]) -> ([ChecklistItemDraft], Set<Int>) {
+        guard kind == .checklist || kind == .submissionChecklist else { return ([], []) }
         let tableItems = tables.flatMap { table in
             let rows = table.dropFirst().isEmpty ? table : Array(table.dropFirst())
             return rows.compactMap { row -> ChecklistItemDraft? in
@@ -399,12 +484,20 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 return ChecklistItemDraft(title: title, required: true)
             }
         }
-        let paragraphItems = paragraphs.flatMap(checklistItems(from:))
-        return tableItems + paragraphItems
+        var items = tableItems
+        var consumed: Set<Int> = []
+        for (index, paragraph) in paragraphs.enumerated() {
+            let extracted = checklistItems(from: paragraph)
+            guard !extracted.isEmpty else { continue }
+            items.append(contentsOf: extracted)
+            consumed.insert(index)
+        }
+        return (items, consumed)
     }
 
-    private func makeQuizQuestions(kind: AssessmentInstrumentKind, tables: [[[String]]], paragraphs: [String]) -> [QuizQuestionDraft] {
-        guard kind == .quizQuestions else { return [] }
+    /// A5: variante de `makeQuizQuestions` que además informa qué párrafos se han consumido.
+    private func makeQuizQuestionsCollectingConsumption(kind: AssessmentInstrumentKind, tables: [[[String]]], paragraphs: [String]) -> ([QuizQuestionDraft], Set<Int>) {
+        guard kind == .quizQuestions else { return ([], []) }
         let tableQuestions = tables.flatMap { table -> [QuizQuestionDraft] in
             let rows = table.dropFirst().isEmpty ? table : Array(table.dropFirst())
             return rows.compactMap { row -> QuizQuestionDraft? in
@@ -413,8 +506,14 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 return QuizQuestionDraft(questionText: text, options: options)
             }
         }
-        let paragraphQuestions = paragraphs.compactMap(quizQuestion(from:))
-        return tableQuestions + paragraphQuestions
+        var questions = tableQuestions
+        var consumed: Set<Int> = []
+        for (index, paragraph) in paragraphs.enumerated() {
+            guard let question = quizQuestion(from: paragraph) else { continue }
+            questions.append(question)
+            consumed.insert(index)
+        }
+        return (questions, consumed)
     }
 
     private func quizQuestion(from paragraph: String) -> QuizQuestionDraft? {
@@ -431,17 +530,27 @@ struct LearningSituationAssessmentInstrumentsImportService {
         if isTrueFalse {
             options = ["Verdadero", "Falso"]
         } else if let slashOptions = optionsFromSlashList(text) {
-            options = slashOptions
-            if let questionMarkRange = text.range(of: "?") {
-                text = String(text[..<questionMarkRange.upperBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
+            options = slashOptions.options
+            text = slashOptions.questionText
         }
         return QuizQuestionDraft(questionText: text, options: options)
     }
 
-    private func optionsFromSlashList(_ text: String) -> [String]? {
-        guard let questionMarkRange = text.range(of: "?", options: .backwards) else { return nil }
-        let tail = String(text[questionMarkRange.upperBound...])
+    /// A9: la pregunta y sus opciones separadas por " / " no siempre van precedidas de "?"
+    /// (p.ej. "Una bebida con mucha cafeína... puede afectar a: sueño / FC / hidratación /
+    /// todas."). Si hay "?", se corta ahí como antes; si no, se usa el último ":" del texto
+    /// como punto de corte entre pregunta y opciones.
+    private func optionsFromSlashList(_ text: String) -> (questionText: String, options: [String])? {
+        let cutRange: Range<String.Index>?
+        if let questionMarkRange = text.range(of: "?", options: .backwards) {
+            cutRange = questionMarkRange
+        } else if let colonRange = text.range(of: ":", options: .backwards) {
+            cutRange = colonRange
+        } else {
+            cutRange = nil
+        }
+        guard let cutRange else { return nil }
+        let tail = String(text[cutRange.upperBound...])
         guard tail.contains(" / ") else { return nil }
         let parts = tail
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -449,7 +558,9 @@ struct LearningSituationAssessmentInstrumentsImportService {
             .components(separatedBy: " / ")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        return parts.count > 1 ? parts : nil
+        guard parts.count > 1 else { return nil }
+        let questionText = String(text[..<cutRange.upperBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (questionText, parts)
     }
 
     private func makeObservationFields(kind: AssessmentInstrumentKind, tables: [[[String]]]) -> [ObservationFieldDraft] {
@@ -565,15 +676,74 @@ struct LearningSituationAssessmentInstrumentsImportService {
         guard isNumberedInstrumentHeading(cleanText) || isExplicitUnnumberedHeading else {
             return nil
         }
-        let weight = firstDouble(in: cleanText, pattern: #"([0-9]+(?:[.,][0-9]+)?)\s*%"#)
-        let criterion = firstString(in: cleanText, pattern: #"(CE\s*\d+(?:\.\d+)?)"#)
-        var title = cleanText
+        let withoutNumber = cleanText
             .replacingOccurrences(of: #"^\s*\d+[\.\)]\s*"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"\s*[-–—]\s*CE\s*\d+(?:\.\d+)?"#, with: "", options: [.regularExpression, .caseInsensitive])
-            .replacingOccurrences(of: #"\s*[-–—]\s*[0-9]+(?:[.,][0-9]+)?\s*%"#, with: "", options: .regularExpression)
-            .trimmingCharacters(in: CharacterSet(charactersIn: " -–—\t\n\r"))
-        if title.isEmpty { title = cleanText }
-        return ParsedInstrumentHeading(title: title, criterionLabel: criterion, weightPercent: weight)
+        let weight = firstDouble(in: withoutNumber, pattern: #"([0-9]+(?:[.,][0-9]+)?)\s*%"#)
+
+        // A3: antes solo se recortaba UN "- CE X.X" y UN "- NN%", así que un encabezado con
+        // varios criterios ("- CE 1.2 y 1.4 (proceso) - 35%") dejaba el título contaminado
+        // ("...y 1.4 (proceso)") y perdía todos los códigos menos el primero. Ahora se corta en
+        // el primer separador que introduce metadatos y se extraen todos los códigos de la cola.
+        let metadataBoundary = withoutNumber.range(
+            of: #"\s[-–—]\s*(?:CE\s*\d|Criteri[oa]?\s*\d|\d+(?:[.,]\d+)?\s*%)"#,
+            options: [.regularExpression, .caseInsensitive]
+        )
+        let title: String
+        let criterion: String?
+        if let boundary = metadataBoundary {
+            title = String(withoutNumber[..<boundary.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let tail = String(withoutNumber[boundary.lowerBound...])
+            let tailWithoutWeight = tail.replacingOccurrences(
+                of: #"[-–—]?\s*[0-9]+(?:[.,][0-9]+)?\s*%"#,
+                with: "",
+                options: .regularExpression
+            )
+            let codes = allCriterionCodes(in: tailWithoutWeight)
+            criterion = codes.isEmpty ? nil : codes.joined(separator: " · ")
+        } else {
+            title = withoutNumber.trimmingCharacters(in: CharacterSet(charactersIn: " -–—\t\n\r"))
+            let codes = allCriterionCodes(in: withoutNumber)
+            criterion = codes.isEmpty ? nil : codes.joined(separator: " · ")
+        }
+        let finalTitle = title.isEmpty ? cleanText : title
+        return ParsedInstrumentHeading(title: finalTitle, criterionLabel: criterion, weightPercent: weight)
+    }
+
+    /// Extrae todos los códigos de criterio de un fragmento de texto (con o sin prefijo
+    /// "CE"/"Criterio"/"Criteri") y los normaliza siempre a la forma "CE X.X", sin duplicados.
+    private func allCriterionCodes(in text: String) -> [String] {
+        criterionCodesInText(text)
+    }
+
+    /// A8(b): compara los términos "Texto (NN%)" de la fórmula de calificación final con los
+    /// títulos de los instrumentos detectados y avisa de los que no encuentran pareja.
+    private func unmatchedGradingFormulaWarnings(_ gradingFormula: String, instruments: [AssessmentInstrumentDraft]) -> [String] {
+        let rhs: Substring
+        if let equalsRange = gradingFormula.range(of: "=") {
+            rhs = gradingFormula[equalsRange.upperBound...]
+        } else {
+            rhs = Substring(gradingFormula)
+        }
+        let termPattern = try? NSRegularExpression(pattern: #"^(.*?)\s*\(\s*[0-9]+(?:[.,][0-9]+)?\s*%\s*\)\s*$"#)
+        let normalizedInstrumentTitles = instruments.map { normalized($0.title) }
+        var warnings: [String] = []
+        for rawTerm in rhs.components(separatedBy: "+") {
+            let term = rawTerm.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !term.isEmpty else { continue }
+            let nsTerm = term as NSString
+            guard let match = termPattern?.firstMatch(in: term, range: NSRange(location: 0, length: nsTerm.length)),
+                  let titleRange = Range(match.range(at: 1), in: term) else { continue }
+            let termTitle = String(term[titleRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !termTitle.isEmpty else { continue }
+            let normalizedTermTitle = normalized(termTitle)
+            let matches = normalizedInstrumentTitles.contains { instrumentTitle in
+                instrumentTitle.contains(normalizedTermTitle) || normalizedTermTitle.contains(instrumentTitle)
+            }
+            if !matches {
+                warnings.append("La fórmula menciona «\(termTitle)» pero no se ha detectado ningún instrumento con ese nombre.")
+            }
+        }
+        return warnings
     }
 
     private func checklistItems(from paragraph: String) -> [ChecklistItemDraft] {
@@ -637,14 +807,28 @@ struct LearningSituationAssessmentInstrumentsImportService {
     /// (p.ej. "Absorbe la antigua checklist de seguridad..." no es un heading).
     private func looksLikeHeadingProse(_ text: String) -> Bool {
         guard text.split(separator: " ").count <= 10 else { return false }
-        let interior = text.hasSuffix(".") || text.hasSuffix(":") ? String(text.dropLast()) : text
+        // A1: los puntos decimales ("CE 2.1") y los porcentajes ("40%") no son puntuación de
+        // prosa; sin neutralizarlos antes, cualquier encabezado sin numerar con un criterio
+        // decimal ("Rúbrica... - CE 2.1 - 40%") se descartaba por el "." de "2.1".
+        let neutralized = text
+            .replacingOccurrences(of: #"\d+[.,]\d+"#, with: "0", options: .regularExpression)
+            .replacingOccurrences(of: #"\d+\s*%"#, with: "0", options: .regularExpression)
+        let interior = neutralized.hasSuffix(".") || neutralized.hasSuffix(":") ? String(neutralized.dropLast()) : neutralized
         return !interior.contains(where: { ".!?".contains($0) })
     }
 
     private func isNumberedInstrumentHeading(_ text: String) -> Bool {
         guard text.range(of: #"^\s*\d+[\.\)]\s+"#, options: .regularExpression) != nil else { return false }
         let value = normalized(text)
-        return instrumentHeadingKeywords.contains { value.contains($0) }
+        if instrumentHeadingKeywords.contains(where: { value.contains($0) }) {
+            return true
+        }
+        // A2: un párrafo numerado que además lleve "NN%" y/o "CE X.X" es un encabezado de
+        // instrumento aunque su título no use ninguna palabra clave conocida (p.ej.
+        // "4. Mini-portafolio de datos y reflexión - CE 3.3 - 15%").
+        let hasWeight = text.range(of: #"[0-9]+(?:[.,][0-9]+)?\s*%"#, options: .regularExpression) != nil
+        let hasCriterion = text.range(of: #"CE\s*\d+(?:\.\d+)?"#, options: [.regularExpression, .caseInsensitive]) != nil
+        return hasWeight || hasCriterion
     }
 
     private func tableHeaders(_ tables: [[[String]]]) -> [String] {
@@ -685,9 +869,46 @@ struct LearningSituationAssessmentInstrumentsImportService {
             "submission", "entrega", "lista de cotejo", "lista de control",
             "rubrica analitica", "escala de valoracion", "diana de evaluacion",
             "registro anecdotico", "observacion sistematica", "autoevaluacion",
-            "coevaluacion", "producto final", "tarea competencial"
+            "coevaluacion", "producto final", "tarea competencial",
+            "cuestionario", "test", "portafolio", "mini-portafolio", "informe",
+            "proyecto", "diario", "registro"
         ].map(normalized)
     }
+}
+
+/// Compartido entre los tres importadores de documentos de Situaciones de Aprendizaje: extrae
+/// todos los códigos de criterio de un texto ("CE 1.2", "Criteri 1.1", "Criterio 3.2 (CE3)",
+/// "2.1" a secas...) y los normaliza siempre a la forma "CE X.X", sin duplicados y descartando
+/// el resto del texto (incluido el contenido entre paréntesis).
+func criterionCodesInText(_ text: String) -> [String] {
+    guard let regex = try? NSRegularExpression(
+        pattern: #"(?:CE|Criteri[oa]?|Criterion)?\s*([0-9]+\.[0-9]+)"#,
+        options: [.caseInsensitive]
+    ) else { return [] }
+    let nsText = text as NSString
+    var seen = Set<String>()
+    var results: [String] = []
+    regex.enumerateMatches(in: text, range: NSRange(location: 0, length: nsText.length)) { match, _, _ in
+        guard let match, let range = Range(match.range(at: 1), in: text) else { return }
+        let code = "CE \(text[range])"
+        if seen.insert(code).inserted { results.append(code) }
+    }
+    return results
+}
+
+/// Compartido entre los tres importadores de documentos de Situaciones de Aprendizaje
+/// (instrumentos, programación y secuencia de sesiones): descomprime `word/document.xml`
+/// y lo vuelca en bloques de párrafo/tabla en orden de aparición.
+func wordDocumentBlocks(from data: Data) throws -> [WordDocumentBlock] {
+    let archive = try Archive(data: data, accessMode: .read, pathEncoding: nil)
+    guard let entry = archive["word/document.xml"] else {
+        throw LearningSituationImportError.unreadableDocument
+    }
+    var xmlData = Data()
+    _ = try archive.extract(entry) { xmlData.append($0) }
+    let reader = WordDocumentTableReader()
+    guard reader.parse(data: xmlData) else { throw LearningSituationImportError.unreadableDocument }
+    return reader.blocks
 }
 
 private struct ParsedInstrumentHeading {
@@ -696,12 +917,12 @@ private struct ParsedInstrumentHeading {
     let weightPercent: Double?
 }
 
-private enum WordDocumentBlock {
+enum WordDocumentBlock {
     case paragraph(String)
     case table([[String]])
 }
 
-private final class WordDocumentTableReader: NSObject, XMLParserDelegate {
+final class WordDocumentTableReader: NSObject, XMLParserDelegate {
     private(set) var blocks: [WordDocumentBlock] = []
     private var inParagraph = false
     private var inTable = false

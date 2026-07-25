@@ -214,6 +214,14 @@ struct LearningSituationDocumentImportService {
         let data = try Data(contentsOf: url)
         let paragraphs = try readParagraphs(from: data).filter { !$0.isEmpty }
         guard !paragraphs.isEmpty else { throw LearningSituationImportError.missingDocumentBody }
+        // C1/C3: algunas SA (p.ej. SA 3, SA 5) ponen la ficha técnica y los criterios de
+        // evaluación en tablas ("Campo | Dato", "Criterio | Enunciado oficial | Rol en la SA")
+        // en vez de párrafos "Etiqueta: valor". `readParagraphs` ya aplana el texto de las
+        // celdas dentro de `paragraphs` (sin colon, así que `metadataValue`/`criterionDrafts`
+        // no los reconocían); se leen también como bloques para poder emparejar fila a fila.
+        let tables: [[[String]]] = (try? wordDocumentBlocks(from: data))?.compactMap { block in
+            if case .table(let rows) = block { return rows } else { return nil }
+        } ?? []
 
         var title = url.deletingPathExtension().lastPathComponent
         if let found = paragraphs.first(where: {
@@ -228,29 +236,61 @@ struct LearningSituationDocumentImportService {
             title = cleanBulletPrefix(first)
         }
 
-        let challenge = textFollowingHeading(["Pregunta Motriz", "Driving question"], paragraphs: paragraphs)
+        // C2: "Pregunta guía:" (SA 5) y "Reto inicial" (SA 4b, SA 6) son sinónimos reales de
+        // "Pregunta Motriz"/"Driving question" que no estaban en la lista.
+        let challenge = textFollowingHeading(["Pregunta Motriz", "Driving question", "Pregunta guía", "Pregunta guia", "Reto inicial"], paragraphs: paragraphs)
         let finalProduct = textFollowingHeading(["Producto Final", "Final product"], paragraphs: paragraphs)
-        let criteria = criterionDrafts(from: paragraphs)
-        
-        let evaluationItems = paragraphs
-            .filter { paragraph in
+        let criteriaFromParagraphs = criterionDrafts(from: paragraphs)
+        let criteriaFromTables = criterionDraftsFromTables(tables)
+        let criteria = criteriaFromParagraphs.isEmpty ? criteriaFromTables : criteriaFromParagraphs
+
+        // C4: la forma valenciana "Criteri 1.1 Diseño del plan - 40%: …" (SA 1) no contenía
+        // ninguna de las palabras del filtro ("criterio"/"criterion"/"total"/"ce "/"ce.") y
+        // ninguna ponderación se detectaba. Se añade "criteri" y se aceptan también los
+        // párrafos con "%" que caen bajo un encabezado de "Sistema de evaluación"/"Evaluación
+        // (resumen)", aunque no lleven ninguna de esas palabras clave.
+        let evaluationHeadingIndexes = paragraphs.indices.filter {
+            let value = normalized(paragraphs[$0])
+            return value.contains("sistema de evaluacion") || value.contains("evaluacion (resumen)") || value.contains("evaluacion resumen")
+        }
+        let evaluationSectionIndexes: Set<Int> = Set(evaluationHeadingIndexes.flatMap { start -> [Int] in
+            Array((start + 1)..<min(start + 15, paragraphs.count))
+        })
+        let evaluationItems = paragraphs.indices
+            .filter { index in
+                let paragraph = paragraphs[index]
                 let clean = paragraph.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
                 guard clean.contains("%") else { return false }
-                return clean.contains("criterio") ||
-                       clean.contains("criterion") ||
-                       clean.contains("total") ||
-                       clean.contains("ce ") ||
-                       clean.contains("ce.") ||
-                       clean.range(of: "\\bce\\s*\\d", options: .regularExpression) != nil
+                if clean.contains("criterio") ||
+                    clean.contains("criteri ") ||
+                    clean.contains("criterion") ||
+                    clean.contains("total") ||
+                    clean.contains("ce ") ||
+                    clean.contains("ce.") ||
+                    clean.range(of: "\\bce\\s*\\d", options: .regularExpression) != nil {
+                    return true
+                }
+                return evaluationSectionIndexes.contains(index)
             }
-            .map { evaluationDraft(from: $0) }
+            .map { evaluationDraft(from: paragraphs[$0]) }
 
-        let stage = metadataValue(forPatterns: ["etapa", "stage"], in: paragraphs)
-        let course = metadataValue(forPatterns: ["curso", "grade"], in: paragraphs)
-        let subject = metadataValue(forPatterns: ["materia", "subject"], in: paragraphs)
-        let term = metadataValue(forPatterns: ["trimestre", "term"], in: paragraphs)
-        let center = metadataValue(forPatterns: ["centro de referencia", "centro", "center", "context", "contexto"], in: paragraphs)
-        let duration = metadataValue(forPatterns: ["temporalizacion", "temporalización", "time allocation", "duration", "duracion", "duración"], in: paragraphs)
+        // C1: la ficha técnica en tabla ("Campo | Dato") no lleva ":" en cada celda, así que
+        // `metadataValue` (que exige un ":" en el párrafo) se quedaba siempre vacío para SA 3.
+        // Se intenta primero el párrafo con ":" y, si no hay nada, se busca fila a fila en las
+        // tablas por coincidencia de la etiqueta de la primera celda.
+        func metadata(_ patterns: [String]) -> String {
+            let fromParagraphs = metadataValue(forPatterns: patterns, in: paragraphs)
+            if !fromParagraphs.isEmpty { return fromParagraphs }
+            return metadataValueFromTables(patterns, tables: tables)
+        }
+        let stage = metadata(["etapa", "stage"])
+        let course = metadata(["curso", "grade"])
+        let subject = metadata(["materia", "subject"])
+        // C2: "Evaluación: 2ª evaluación" (SA 4b) es el trimestre en la práctica; se añade
+        // "evaluacion" a los sinónimos de trimestre.
+        let term = metadata(["trimestre", "term", "evaluacion"])
+        let center = metadata(["centro de referencia", "centro", "center", "context", "contexto"])
+        let duration = metadata(["temporalizacion", "temporalización", "time allocation", "duration", "duracion", "duración"])
 
         var warnings: [String] = []
         if criteria.isEmpty { warnings.append("No se han reconocido criterios de evaluación.") }
@@ -267,12 +307,20 @@ struct LearningSituationDocumentImportService {
             sessionCount: sessionCount(in: duration),
             challenge: challenge,
             finalProduct: finalProduct,
-            justification: sectionText(afterHeadings: ["JUSTIFICACIÓN Y RETO", "CLIL justification and driving question", "justification"], untilHeadings: ["Pregunta Motriz", "Driving question", "CLIL 4Cs", "4Cs"], paragraphs: paragraphs).first ?? "",
+            // C2: "2. Justificación y pregunta guía" (SA 5) no matcheaba con ningún sinónimo — la
+            // lista solo tenía la forma inglesa "justification".
+            justification: sectionText(afterHeadings: ["JUSTIFICACIÓN Y RETO", "CLIL justification and driving question", "justification", "Justificación"], untilHeadings: ["Pregunta Motriz", "Driving question", "CLIL 4Cs", "4Cs"], paragraphs: paragraphs).first ?? "",
             competencies: paragraphs.filter {
                 let clean = cleanBulletPrefix($0)
-                return clean.hasPrefix("CE.") || 
-                       clean.range(of: "^ce[.\\s\\d]", options: [.regularExpression, .caseInsensitive]) != nil ||
-                       clean.localizedCaseInsensitiveContains("competencia")
+                if clean.hasPrefix("CE.") ||
+                    clean.range(of: "^ce[.\\s\\d]", options: [.regularExpression, .caseInsensitive]) != nil {
+                    return true
+                }
+                // C3: excluye el encabezado de sección "Competencias específicas" (sin código ni
+                // contenido propio), que antes se colaba solo por contener la palabra
+                // "competencia".
+                guard clean.localizedCaseInsensitiveContains("competencia") else { return false }
+                return clean.contains(":") || !criterionCodesInText(clean).isEmpty
             },
             criteria: criteria,
             knowledge: sectionText(afterHeadings: ["Saberes Básicos Implicados", "Saberes Básicos", "Curricular alignment", "Specific competencies"], untilHeadings: ["METODOLOGÍA", "Methodology"], paragraphs: paragraphs),
@@ -324,6 +372,44 @@ struct LearningSituationDocumentImportService {
         return ""
     }
 
+    /// C1: variante de `metadataValue` para la ficha técnica en tabla ("Campo | Dato"), donde el
+    /// texto de cada celda no lleva ":" y `metadataValue` (que lo exige) nunca encuentra nada.
+    private func metadataValueFromTables(_ patterns: [String], tables: [[[String]]]) -> String {
+        let normalizedPatterns = patterns.map { normalized($0) }
+        for table in tables {
+            for row in table {
+                guard row.count >= 2, let first = row.first, !first.isEmpty else { continue }
+                let normalizedLabel = normalized(first)
+                guard normalizedPatterns.contains(where: { normalizedLabel.contains($0) }) else { continue }
+                let value = row.dropFirst().joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty { return value }
+            }
+        }
+        return ""
+    }
+
+    /// C3: criterios de evaluación en tabla ("Criterio | Enunciado oficial... | Rol en la SA",
+    /// SA 3 y SA 5). Se detecta por la cabecera de la primera columna y se normaliza el código a
+    /// "CE X.X" igual que en el resto de importadores.
+    private func criterionDraftsFromTables(_ tables: [[[String]]]) -> [LearningSituationCriterionDraft] {
+        var results: [LearningSituationCriterionDraft] = []
+        for table in tables {
+            guard let header = table.first, let firstHeader = header.first else { continue }
+            let normalizedHeader = normalized(firstHeader)
+            guard normalizedHeader.contains("criterio") || normalizedHeader.contains("criteri") else { continue }
+            for row in table.dropFirst() {
+                guard let firstCell = row.first else { continue }
+                let codes = criterionCodesInText(firstCell)
+                guard !codes.isEmpty else { continue }
+                let evidence = row.count > 1 ? row[1] : ""
+                for code in codes {
+                    results.append(LearningSituationCriterionDraft(criterion: code, evidence: evidence))
+                }
+            }
+        }
+        return results
+    }
+
     private func textFollowingHeading(_ headings: [String], paragraphs: [String]) -> String {
         for heading in headings {
             let normHeading = normalized(heading)
@@ -367,7 +453,16 @@ struct LearningSituationDocumentImportService {
         for (index, paragraph) in paragraphs.enumerated() {
             let cleanPara = cleanBulletPrefix(paragraph)
             guard cleanPara.localizedCaseInsensitiveContains("criterio") || cleanPara.localizedCaseInsensitiveContains("criterion") else { continue }
-            
+            // C3: `criterionDrafts` metía como criterio el propio encabezado de sección
+            // ("Criterios de evaluación y evidencias") porque solo miraba si el párrafo
+            // contenía la palabra "criterio". Se descarta cuando no hay ni código de criterio
+            // (p.ej. "1.2") ni contenido tras ":" — un encabezado no trae ninguna de las dos.
+            let hasCriterionCode = !criterionCodesInText(cleanPara).isEmpty
+            let hasColonContent = cleanPara.firstIndex(of: ":").map { colon in
+                !String(cleanPara[cleanPara.index(after: colon)...]).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            } ?? false
+            guard hasCriterionCode || hasColonContent else { continue }
+
             if index + 1 < paragraphs.count {
                 let nextPara = cleanBulletPrefix(paragraphs[index + 1])
                 if nextPara.localizedCaseInsensitiveContains("evidencia:") || nextPara.localizedCaseInsensitiveContains("evidence:") {
@@ -449,41 +544,98 @@ struct LearningSituationDocumentImportService {
     }
 }
 
+/// Resultado intermedio compartido por los dos parsers de sesión (formato A de párrafos y
+/// formato B de tablas), antes de expandirlo a `LearningSituationSessionPlanDraft` por cada
+/// número de sesión que declare el encabezado (p.ej. "Sesiones 3 y 5").
+private struct ParsedSessionPlan {
+    let title: String
+    let sessionType: String
+    let effectiveMinutes: Int
+    let objective: String
+    let criteria: [String]
+    let material: String
+    let development: [LearningSituationSessionSectionDraft]
+    let adaptations: [String]
+}
+
 struct LearningSituationSessionSequenceDocumentImportService {
+    /// B2/B3: el número de sesión debe ir seguido de un separador explícito (".", "-", "—",
+    /// "–", ":", opcionalmente detrás de una anotación entre paréntesis como "(NEW)") o no
+    /// llevar nada más. Sin este requisito, un párrafo de prosa como "Session 3 finishes the
+    /// panel and starts planning the final event." (00d - Cierre de Curso) matcheaba igual que
+    /// un encabezado real y generaba una sesión 3 fantasma duplicada.
+    private static let headerPattern = try! NSRegularExpression(
+        pattern: #"^(?:SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+([0-9]+)(?:\s+(?:y|and|\&)\s+([0-9]+))?(?:\s*\([^)]*\))?(?:\s*[.:\-–—]\s*(.*))?$"#,
+        options: [.caseInsensitive]
+    )
+
     func preview(from url: URL) throws -> LearningSituationSessionSequenceImportDraft {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf: url)
-        let paragraphs = try readParagraphs(from: data).filter { !$0.isEmpty }
-        guard !paragraphs.isEmpty else { throw LearningSituationImportError.missingDocumentBody }
+        let blocks = try wordDocumentBlocks(from: data)
+        guard !blocks.isEmpty else { throw LearningSituationImportError.missingDocumentBody }
 
-        let defaultMinutes = defaultMinutesByType(in: paragraphs)
-        let headerPattern = try NSRegularExpression(
-            pattern: #"^(?:SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+([0-9]+)(?:\s+(?:y|and|\&)\s+([0-9]+))?(?:\s*[-:–—]\s*|\s+)?(.*)?$"#,
-            options: [.caseInsensitive]
-        )
-        let headerIndexes = paragraphs.indices.filter {
-            headerPattern.firstMatch(in: paragraphs[$0], range: NSRange(paragraphs[$0].startIndex..., in: paragraphs[$0])) != nil
+        // `defaultMinutesByType` (B6) sigue operando sobre el texto plano de todo el documento
+        // (incluido el de dentro de tablas), que es donde suele ir la frase introductoria
+        // "Simple sessions are designed for 30 effective minutes.".
+        let allParagraphTexts = blocks.flatMap { block -> [String] in
+            switch block {
+            case .paragraph(let text): return [text]
+            case .table(let rows): return rows.flatMap { $0 }
+            }
         }
-        var plans: [LearningSituationSessionPlanDraft] = []
-        for (position, start) in headerIndexes.enumerated() {
-            let end = position + 1 < headerIndexes.count ? headerIndexes[position + 1] : paragraphs.count
-            let header = paragraphs[start]
-            guard let match = headerPattern.firstMatch(in: header, range: NSRange(header.startIndex..., in: header)),
-                  let firstRange = Range(match.range(at: 1), in: header),
-                  let firstNumber = Int(header[firstRange]) else { continue }
+        let defaultMinutes = defaultMinutesByType(in: allParagraphTexts)
+
+        struct HeaderMatch {
+            let blockIndex: Int
+            let header: String
+            let numbers: [Int]
+            let restAfterSeparator: String?
+        }
+        var headerMatches: [HeaderMatch] = []
+        for (index, block) in blocks.enumerated() {
+            guard case .paragraph(let text) = block else { continue }
+            guard let match = Self.headerPattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let firstRange = Range(match.range(at: 1), in: text),
+                  let firstNumber = Int(text[firstRange]) else { continue }
             var numbers = [firstNumber]
             if match.range(at: 2).location != NSNotFound,
-               let secondRange = Range(match.range(at: 2), in: header),
-               let secondNumber = Int(header[secondRange]) {
+               let secondRange = Range(match.range(at: 2), in: text),
+               let secondNumber = Int(text[secondRange]) {
                 numbers.append(secondNumber)
             }
-            let body = Array(paragraphs[(start + 1)..<end])
-            let parsed = parsePlan(header: header, body: body, defaultMinutes: defaultMinutes)
-            plans.append(contentsOf: numbers.map {
+            let rest: String?
+            if match.range(at: 3).location != NSNotFound, let restRange = Range(match.range(at: 3), in: text) {
+                rest = String(text[restRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                rest = nil
+            }
+            headerMatches.append(HeaderMatch(blockIndex: index, header: text, numbers: numbers, restAfterSeparator: rest))
+        }
+
+        var plans: [LearningSituationSessionPlanDraft] = []
+        for (position, match) in headerMatches.enumerated() {
+            let endBlockIndex = position + 1 < headerMatches.count ? headerMatches[position + 1].blockIndex : blocks.count
+            let bodyBlocks = Array(blocks[(match.blockIndex + 1)..<endBlockIndex])
+            let containsTable = bodyBlocks.contains { if case .table = $0 { return true } else { return false } }
+            let parsed: ParsedSessionPlan
+            if containsTable {
+                // B1: formato de tabla (todas las carpetas salvo SA 1).
+                parsed = parsePlanFromBlocks(header: match.header, restAfterSeparator: match.restAfterSeparator, body: bodyBlocks, defaultMinutes: defaultMinutes)
+            } else {
+                // Formato A (SA 1): párrafos con etiquetas ("Objetivo:", "Criterios:"...). No se
+                // toca la lógica existente para no degradarlo.
+                let bodyParagraphs = bodyBlocks.compactMap { block -> String? in
+                    if case .paragraph(let text) = block { return text.isEmpty ? nil : text }
+                    return nil
+                }
+                parsed = parsePlanLegacy(header: match.header, body: bodyParagraphs, defaultMinutes: defaultMinutes)
+            }
+            plans.append(contentsOf: match.numbers.map {
                 LearningSituationSessionPlanDraft(
                     sessionNumber: $0,
-                    sourceLabel: header,
+                    sourceLabel: match.header,
                     title: parsed.title,
                     sessionType: parsed.sessionType,
                     effectiveMinutes: parsed.effectiveMinutes,
@@ -519,6 +671,11 @@ struct LearningSituationSessionSequenceDocumentImportService {
         if inferredMinutesCount > 0 {
             warnings.append("\(inferredMinutesCount) sesiones usan minutos inferidos por tipo o desarrollo.")
         }
+        // B5: aviso explícito por sesión con versión simple y doble, ya que se toma la duración
+        // de la versión simple como referencia en vez de sumar los tramos de ambas.
+        for plan in plans where plan.sessionType == "Simple y Doble" {
+            warnings.append("La sesión \(plan.sessionNumber) define versión simple y doble; se han tomado \(plan.effectiveMinutes)′. Ajusta el tipo si este grupo tiene sesión doble.")
+        }
         return LearningSituationSessionSequenceImportDraft(
             plans: plans,
             warnings: warnings,
@@ -529,27 +686,21 @@ struct LearningSituationSessionSequenceDocumentImportService {
         )
     }
 
-    private func parsePlan(header: String, body: [String]) -> (
-        title: String, sessionType: String, effectiveMinutes: Int, objective: String,
-        criteria: [String], material: String, development: [LearningSituationSessionSectionDraft], adaptations: [String]
-    ) {
-        parsePlan(header: header, body: body, defaultMinutes: [:])
-    }
-
-    private func parsePlan(header: String, body: [String], defaultMinutes: [String: Int]) -> (
-        title: String, sessionType: String, effectiveMinutes: Int, objective: String,
-        criteria: [String], material: String, development: [LearningSituationSessionSectionDraft], adaptations: [String]
-    ) {
+    /// Formato A (solo SA 1, párrafos con etiquetas "Objetivo:", "Criterios:", "Material:",
+    /// "Evidencia:", "Bloque N (45'):"). Sin cambios de comportamiento respecto al parser
+    /// original: el soporte de tablas del bloque B no debe degradarlo.
+    private func parsePlanLegacy(header: String, body: [String], defaultMinutes: [String: Int]) -> ParsedSessionPlan {
         let headerParts = sessionTypeAndTitle(from: header)
         let titleFromBody = value(afterLabels: ["Título", "Title"], in: body)
             .trimmingCharacters(in: CharacterSet(charactersIn: "“”\""))
         let title = titleFromBody.isEmpty ? headerParts.title : titleFromBody
         let objective = value(afterLabels: ["Objetivo", "Objetivos", "Objective", "Objectives"], in: body)
-        let criteria = value(afterLabels: ["Criterio de evaluación", "Criterios de evaluación", "Criterio", "Criterios", "Criterion", "Criteria"], in: body)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
-            .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        // B4: "Criterios: Criteri 1.1, Criteri 1.2, Criteri 3.2 (se trabajan, no se corrigen
+        // todavía)." (SA 1) se partía por comas y producía criterios falsos ("Criteri 3.2 (se
+        // trabajan", "no se corrigen todavía)"). Se extraen los códigos con una expresión
+        // regular y se descarta el texto entre paréntesis y cualquier separador.
+        let criteriaRawValue = value(afterLabels: ["Criterio de evaluación", "Criterios de evaluación", "Criterio", "Criterios", "Criterion", "Criteria"], in: body)
+        let criteria = criterionCodes(in: criteriaRawValue)
         let material = value(afterLabels: ["Material", "Materials", "Materiales"], in: body)
         let evidence = value(afterLabels: ["Evidencia", "Evidencias", "Evidence"], in: body)
         let type = headerParts.type
@@ -579,17 +730,359 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let minutes = integerMatch(in: header, pattern: #"([0-9]+)\s*(?:minutos|minutes|min|')"#)
             ?? defaultMinutes[normalized(type)]
             ?? inferredMinutes(from: development)
-        return (title, type, minutes, objective, criteria, material, development, adaptations)
+        return ParsedSessionPlan(
+            title: title, sessionType: type, effectiveMinutes: minutes, objective: objective,
+            criteria: criteria, material: material, development: development, adaptations: adaptations
+        )
     }
 
-    private func readParagraphs(from data: Data) throws -> [String] {
-        let archive = try Archive(data: data, accessMode: .read, pathEncoding: nil)
-        guard let entry = archive["word/document.xml"] else { throw LearningSituationImportError.unreadableDocument }
-        var xmlData = Data()
-        _ = try archive.extract(entry) { xmlData.append($0) }
-        let reader = WordParagraphReader()
-        guard reader.parse(data: xmlData) else { throw LearningSituationImportError.unreadableDocument }
-        return reader.paragraphs
+    // MARK: - B1/B5/B6: formato de tabla (resto de carpetas)
+
+    /// Etiquetas reconocidas en la "ficha" de sesión, tanto si vienen como fila de una tabla
+    /// `etiqueta | valor` (p.ej. "Item | Detail") como si vienen como dos párrafos consecutivos
+    /// (etiqueta sola, seguida del contenido en el párrafo siguiente — SA 3, SA 4 y SA 6).
+    private enum FichaField {
+        case title, objective, criteria, material, saberes, organisation, evidence, date
+    }
+
+    private func fichaField(forLabel rawLabel: String) -> FichaField? {
+        let label = normalized(rawLabel.trimmingCharacters(in: CharacterSet(charactersIn: " :\t")))
+        switch label {
+        case "titulo", "title":
+            return .title
+        case "objetivo", "objetivos", "objetivo especifico", "objetivo principal",
+             "objective", "objectives", "specific objective", "main objective":
+            return .objective
+        case "criterio", "criterios", "criterio de evaluacion", "criterios de evaluacion",
+             "criterios de evaluacion trabajados", "criterios de evaluacion abordados",
+             "criterion", "criteria", "criteria worked", "evaluation criteria addressed",
+             "assessment focus":
+            return .criteria
+        case "material", "materiales", "material necesario", "materials", "materials needed",
+             "required materials":
+            return .material
+        case "saberes basicos", "saberes basicos trabajados", "saberes basicos worked",
+             "basic knowledge addressed", "core knowledge addressed":
+            return .saberes
+        case "organizacion del grupo", "group organisation", "student grouping":
+            return .organisation
+        case "evidencia", "evidencias", "evidence":
+            return .evidence
+        case "fecha", "date":
+            return .date
+        default:
+            return nil
+        }
+    }
+
+    /// Detecta un párrafo que ES una etiqueta de ficha (nada más: "Specific objective",
+    /// "Objetivo específico"...), para esperar el contenido en el párrafo siguiente.
+    private func fichaLabelOnly(_ paragraph: String) -> FichaField? {
+        guard paragraph.split(separator: " ").count <= 6 else { return nil }
+        return fichaField(forLabel: paragraph)
+    }
+
+    /// Detecta el patrón "Etiqueta: valor" en un único párrafo (formato A y también presente en
+    /// algunos documentos de formato B).
+    private func fichaColonPair(_ paragraph: String) -> (FichaField, String)? {
+        guard let colonIndex = paragraph.firstIndex(of: ":") else { return nil }
+        let label = String(paragraph[..<colonIndex])
+        guard label.split(separator: " ").count <= 6, let field = fichaField(forLabel: label) else { return nil }
+        let value = String(paragraph[paragraph.index(after: colonIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (field, value)
+    }
+
+    /// B5: marcador de que arranca una versión "Simple"/"Doble" de la sesión ("SIMPLE version
+    /// (30' effective)...", "Timed development — 90' version (Double session...)"). No se
+    /// duplica la sesión: cada versión se vuelca como una sección de desarrollo separada.
+    private func isVersionHeading(_ paragraph: String) -> Bool {
+        guard paragraph.count < 200 else { return false }
+        let value = normalized(paragraph)
+        // "Simple session adaptation (30' useful)" (SA 6) marca el cierre de cada sesión con el
+        // encaje a sesión simple, no una adaptación de inclusión/NEAE: se reconoce como versión
+        // antes que como sección de "Adaptaciones" (ver `finalSectionHeading`, comprobado
+        // después en el orden de bloques).
+        let hasVersionWord = value.contains("version") || value.contains("session adaptation") || value.contains("adaptacion de la sesion")
+        guard hasVersionWord else { return false }
+        return value.contains("simple") || value.contains("doble") || value.contains("double")
+    }
+
+    private func versionSectionTitle(isDouble: Bool, raw: String) -> String {
+        isDouble ? "Versión doble (90′)" : "Versión simple (30′)"
+    }
+
+    /// Encabezados intermedios sin contenido propio (p.ej. "Time development"/"Desarrollo
+    /// temporal" justo antes de la tabla horaria o de los marcadores de versión): se ignoran en
+    /// vez de abrir una sección de desarrollo ruidosa con una sola línea.
+    private func isIgnorableSectionIntro(_ paragraph: String) -> Bool {
+        guard paragraph.split(separator: " ").count <= 6 else { return false }
+        let value = normalized(paragraph)
+        return value == "time development" || value == "timed development" ||
+            value == "desarrollo temporal" || value == "desarrollo de la sesion" ||
+            value == "desarrollo de la sesión" || value == "session development"
+    }
+
+    private enum FinalSection {
+        case development(title: String)
+        case adaptations
+    }
+
+    /// Secciones finales del formato B que se conservan (B1): como sección de desarrollo con
+    /// su propio título, o como adaptaciones cuando corresponde.
+    private func finalSectionHeading(_ paragraph: String) -> FinalSection? {
+        guard paragraph.split(separator: " ").count <= 6 else { return nil }
+        let value = normalized(paragraph)
+        // Los documentos alternan singular/plural ("Preguntas guía" vs "Guiding question"), así
+        // que se comprueban las dos palabras clave por separado en vez de la frase completa.
+        if value.contains("adaptation") || value.contains("adaptacion") {
+            return .adaptations
+        }
+        if value.contains("guiding question") || (value.contains("pregunta") && value.contains("guia")) || value.contains("pregunta orientativa") {
+            return .development(title: "Preguntas orientativas")
+        }
+        if value.contains("difficulty variant") || (value.contains("variante") && value.contains("dificultad")) {
+            return .development(title: "Variantes de dificultad")
+        }
+        if (value.contains("evidence") && value.contains("collect")) || (value.contains("evidencia") && value.contains("recogid")) {
+            return .development(title: "Evidencia recogida")
+        }
+        if (value.contains("assessment") && value.contains("instrument")) || (value.contains("instrumento") && value.contains("evaluacion")) {
+            return .development(title: "Instrumento de evaluación")
+        }
+        if value.contains("closure") || value.contains("cierre") {
+            return .development(title: "Cierre")
+        }
+        return nil
+    }
+
+    private func isTimeTable(_ rows: [[String]]) -> Bool {
+        guard let header = rows.first, let first = header.first else { return false }
+        let value = normalized(first)
+        return value == "time" || value == "hora" || value == "horario" || value == "tiempo"
+    }
+
+    /// B1: convierte una tabla horaria (Time | Phase | Activity | Teacher role | Student role |
+    /// Evidence, con sinónimos en español) en líneas legibles de desarrollo.
+    private func timeTableLines(_ rows: [[String]]) -> [String] {
+        guard let header = rows.first else { return [] }
+        let normalizedHeader = header.map(normalized)
+        func columnIndex(_ candidates: [String]) -> Int? {
+            normalizedHeader.firstIndex { column in candidates.contains { column.contains($0) } }
+        }
+        let timeIndex = columnIndex(["time", "hora", "tiempo"])
+        let phaseIndex = columnIndex(["phase", "fase"])
+        let activityIndex = columnIndex(["activity", "actividad"])
+        let teacherIndex = columnIndex(["teacher", "profesor", "docente"])
+        let studentIndex = columnIndex(["student", "alumno"])
+        let evidenceIndex = columnIndex(["evidence", "evidencia"])
+        func cell(_ row: [String], _ index: Int?) -> String? {
+            guard let index, index < row.count else { return nil }
+            let value = row[index].trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty || value == "—" || value == "-" ? nil : value
+        }
+        return rows.dropFirst().compactMap { row -> String? in
+            guard row.contains(where: { !$0.isEmpty }) else { return nil }
+            let time = cell(row, timeIndex)
+            let phase = cell(row, phaseIndex)
+            let activity = cell(row, activityIndex)
+            let teacher = cell(row, teacherIndex)
+            let student = cell(row, studentIndex)
+            let evidence = cell(row, evidenceIndex)
+            var head = [time, phase, activity].compactMap { $0 }.joined(separator: " · ")
+            if head.isEmpty { head = row.joined(separator: " · ") }
+            var extras: [String] = []
+            if let teacher { extras.append("Profesorado: \(teacher)") }
+            if let student { extras.append("Alumnado: \(student)") }
+            if let evidence { extras.append("Evidencia: \(evidence)") }
+            return extras.isEmpty ? head : "\(head) (\(extras.joined(separator: "; ")))"
+        }
+    }
+
+    /// B4: extrae todos los códigos de criterio de un texto ("Criteri 1.1, Criteri 1.2, Criteri
+    /// 3.2 (se trabajan, no se corrigen todavía).", "2.1", "Criterion 3.2 (CE3)"...) y los
+    /// normaliza siempre a "CE X.X", sin duplicados. Antes se troceaba por comas, lo que partía
+    /// el texto entre paréntesis en criterios falsos.
+    private func criterionCodes(in text: String) -> [String] {
+        criterionCodesInText(text)
+    }
+
+    private func parsePlanFromBlocks(
+        header: String,
+        restAfterSeparator: String?,
+        body: [WordDocumentBlock],
+        defaultMinutes: [String: Int]
+    ) -> ParsedSessionPlan {
+        var titleFromFicha = ""
+        var objective = ""
+        var material = ""
+        var saberes = ""
+        var criteriaRaw = ""
+        var evidenceFromFicha = ""
+
+        var development: [LearningSituationSessionSectionDraft] = []
+        var adaptations: [String] = []
+        var currentSectionTitle: String?
+        var currentLines: [String] = []
+        var currentIsAdaptations = false
+        var pendingLabel: FichaField?
+        var sawSimple = false
+        var sawDouble = false
+
+        func assign(_ field: FichaField, _ value: String) {
+            let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { return }
+            switch field {
+            case .title: if titleFromFicha.isEmpty { titleFromFicha = value }
+            case .objective: if objective.isEmpty { objective = value }
+            case .criteria: criteriaRaw = criteriaRaw.isEmpty ? value : "\(criteriaRaw), \(value)"
+            case .material: if material.isEmpty { material = value }
+            case .saberes: if saberes.isEmpty { saberes = value }
+            case .organisation: break // informativo, no tiene campo propio en el modelo actual
+            case .evidence: if evidenceFromFicha.isEmpty { evidenceFromFicha = value }
+            case .date: break
+            }
+        }
+
+        func flushSection() {
+            defer {
+                currentSectionTitle = nil
+                currentLines = []
+                currentIsAdaptations = false
+            }
+            guard let title = currentSectionTitle else { return }
+            if currentIsAdaptations {
+                adaptations.append(contentsOf: currentLines)
+            } else {
+                development.append(.init(title: title, lines: currentLines))
+            }
+        }
+
+        func appendLine(_ line: String) {
+            if currentSectionTitle == nil {
+                currentSectionTitle = "Desarrollo"
+                currentLines = []
+            }
+            currentLines.append(line)
+        }
+
+        for block in body {
+            switch block {
+            case .paragraph(let rawText):
+                let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                if let labelWaitingForValue = pendingLabel {
+                    assign(labelWaitingForValue, text)
+                    pendingLabel = nil
+                    continue
+                }
+                if let field = fichaLabelOnly(text) {
+                    pendingLabel = field
+                    continue
+                }
+                if let (field, value) = fichaColonPair(text) {
+                    assign(field, value)
+                    continue
+                }
+                if isIgnorableSectionIntro(text) {
+                    continue
+                }
+                if isVersionHeading(text) {
+                    flushSection()
+                    let isDouble = normalized(text).contains("doble") || normalized(text).contains("double")
+                    sawDouble = sawDouble || isDouble
+                    sawSimple = sawSimple || !isDouble
+                    currentSectionTitle = versionSectionTitle(isDouble: isDouble, raw: text)
+                    currentLines = []
+                    continue
+                }
+                if let final = finalSectionHeading(text) {
+                    flushSection()
+                    switch final {
+                    case .development(let sectionTitle):
+                        currentSectionTitle = sectionTitle
+                        currentIsAdaptations = false
+                    case .adaptations:
+                        currentSectionTitle = "Adaptaciones"
+                        currentIsAdaptations = true
+                    }
+                    currentLines = []
+                    continue
+                }
+                appendLine(text)
+            case .table(let rawRows):
+                let rows = rawRows.map { row in row.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } }
+                    .filter { row in row.contains { !$0.isEmpty } }
+                guard !rows.isEmpty else { continue }
+                if isTimeTable(rows) {
+                    for line in timeTableLines(rows) { appendLine(line) }
+                } else if let header = rows.first, header.count >= 2 {
+                    // Tabla "ficha" etiqueta|valor (p.ej. "Item | Detail" + filas "Specific
+                    // objective | ..."). Si la primera columna no trae etiquetas reconocidas,
+                    // se trata como tabla genérica y se vuelca como líneas de desarrollo.
+                    let dataRows = header.first.flatMap(fichaField(forLabel:)) != nil ? rows : Array(rows.dropFirst())
+                    var matchedAny = false
+                    for row in dataRows {
+                        guard row.count >= 2, let field = fichaField(forLabel: row[0]) else { continue }
+                        assign(field, row.dropFirst().joined(separator: " "))
+                        matchedAny = true
+                    }
+                    if !matchedAny {
+                        for row in rows.dropFirst() { appendLine(row.joined(separator: " · ")) }
+                    }
+                } else {
+                    for row in rows.dropFirst() { appendLine(row.joined(separator: " · ")) }
+                }
+            }
+        }
+        flushSection()
+
+        if !evidenceFromFicha.isEmpty {
+            development.insert(.init(title: "Evidencia", lines: [evidenceFromFicha]), at: 0)
+        }
+        if !saberes.isEmpty {
+            material = material.isEmpty ? saberes : "\(material) — Saberes básicos: \(saberes)"
+        }
+
+        let headerParts = sessionTypeAndTitle(from: header)
+        let restTitle = restAfterSeparator.map(cleanRestTitle) ?? ""
+        let title = !titleFromFicha.isEmpty ? titleFromFicha : (!restTitle.isEmpty ? restTitle : headerParts.title)
+
+        // B5: `sessionType` refleja las versiones realmente presentes en el documento.
+        let sessionType: String
+        if sawSimple && sawDouble {
+            sessionType = "Simple y Doble"
+        } else if sawDouble {
+            sessionType = "Doble"
+        } else if sawSimple {
+            sessionType = "Simple"
+        } else {
+            sessionType = headerParts.type
+        }
+
+        // B5: si hay versión simple y doble, se toma la duración de la simple como referencia
+        // (con aviso explícito) en vez de sumar los minutos de ambas.
+        let minutesKey = sawSimple ? "Simple" : (sawDouble ? "Doble" : sessionType)
+        var minutes = integerMatch(in: header, pattern: #"([0-9]+)\s*(?:minutos|minutes|min|')"#)
+            ?? defaultMinutes[normalized(minutesKey)]
+            ?? 0
+        if minutes == 0 {
+            minutes = inferredMinutes(from: development)
+        }
+
+        let criteria = criterionCodes(in: criteriaRaw)
+        return ParsedSessionPlan(
+            title: title, sessionType: sessionType, effectiveMinutes: minutes, objective: objective,
+            criteria: criteria, material: material, development: development, adaptations: adaptations
+        )
+    }
+
+    /// B2: recorta el prefijo de tipo ("Simple:"/"Double:"/"Doble:", con plural opcional) y las
+    /// anotaciones tipo "(NEW)"/"(nueva)" del texto que sigue al separador del encabezado.
+    private func cleanRestTitle(_ rest: String) -> String {
+        rest
+            .replacingOccurrences(of: #"^\s*\([^)]*\)\s*"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"^(Simples?|Doubles?|Dobles?)\s*[:\-–—]?\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func value(afterLabels labels: [String], in paragraphs: [String]) -> String {
@@ -636,28 +1129,39 @@ struct LearningSituationSessionSequenceDocumentImportService {
         } else {
             type = "Simple"
         }
-        let pattern = #"^(?:SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+[0-9]+(?:\s+(?:y|and|\&)\s+[0-9]+)?\s*(?:[-:–—]\s*)?(?:(?:Simple|Double|Doble)\s*[:\-–—]\s*)?(.*)$"#
+        // B2: el separador tras el número también puede ser "." (no solo "-:–—"), el tipo puede
+        // ir en plural ("Sesiones 3 y 5 - Dobles: ..."), y puede haber una anotación entre
+        // paréntesis tipo "(NEW)"/"(nueva)" que no debe colarse en el título.
+        let pattern = #"^(?:SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+[0-9]+(?:\s+(?:y|and|\&)\s+[0-9]+)?\s*(?:\([^)]*\)\s*)?(?:[.:\-–—]\s*)?(?:(?:Simples?|Doubles?|Dobles?)\s*[.:\-–—]?\s*)?(?:\([^)]*\)\s*)?(.*)$"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
               let match = regex.firstMatch(in: header, range: NSRange(header.startIndex..., in: header)),
               let titleRange = Range(match.range(at: 1), in: header) else {
             return (type, "")
         }
         let title = String(header[titleRange])
-            .replacingOccurrences(of: #"^(Simple|Double|Doble)\s*[:\-–—]\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"^(Simples?|Doubles?|Dobles?)\s*[.:\-–—]?\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"^\([^)]*\)\s*[-–—:]?\s*"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return (type, title)
     }
+
+    // B6: los documentos reales dicen "30 effective minutes", "30' effective", "(30’ útiles)" o
+    // "90' useful" — no siempre llevan la palabra "minutos/minutes/min" pegada al número, y
+    // usan comilla tipográfica ('’'/'′') en vez de la palabra. Se acepta cualquiera de las dos
+    // marcas: un apóstrofo (con la palabra effective/useful/efectivos/útiles opcional detrás) o
+    // la palabra "efectivos/útiles" seguida de "minutos/minutes/min".
+    private static let minutesMarkerFragment = #"(?:['’′](?:\s*(?:effective|useful|efectivos?|útiles?))?|(?:effective|useful|efectivos?|útiles?)?\s*(?:minutos?|minutes?|min))"#
 
     private func defaultMinutesByType(in paragraphs: [String]) -> [String: Int] {
         var result: [String: Int] = [:]
         for paragraph in paragraphs {
             let normalizedParagraph = normalized(paragraph)
             if normalizedParagraph.contains("simple"),
-               let minutes = integerMatch(in: paragraph, pattern: #"Simple[^0-9]{0,80}([0-9]+)\s*(?:effective|useful)?\s*(?:minutos|minutes|min)"#) {
+               let minutes = integerMatch(in: paragraph, pattern: #"Simple[^0-9]{0,80}([0-9]+)\s*"# + Self.minutesMarkerFragment) {
                 result[normalized("Simple")] = minutes
             }
             if (normalizedParagraph.contains("double") || normalizedParagraph.contains("doble")),
-               let minutes = integerMatch(in: paragraph, pattern: #"(?:Double|Doble)[^0-9]{0,80}([0-9]+)\s*(?:effective|useful)?\s*(?:minutos|minutes|min)"#) {
+               let minutes = integerMatch(in: paragraph, pattern: #"(?:Double|Doble)[^0-9]{0,80}([0-9]+)\s*"# + Self.minutesMarkerFragment) {
                 result[normalized("Doble")] = minutes
             }
         }

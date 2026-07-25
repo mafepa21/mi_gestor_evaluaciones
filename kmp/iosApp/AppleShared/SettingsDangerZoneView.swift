@@ -169,6 +169,22 @@ struct SettingsDangerZoneView: View {
 
         remove(backupService.backupsDirectoryURL, "copias de seguridad")
         remove(backupService.attachmentsURL, "adjuntos del cuaderno")
+        // Los documentos de situaciones de aprendizaje se quedaban sin borrar pese a que
+        // el diálogo promete eliminar "toda tu información".
+        remove(backupService.learningSituationsURL, "documentos de situaciones de aprendizaje")
+
+        // Bases apartadas por un arranque fallido (`<db>.backup_<epoch>`): son copias
+        // completas de los datos de la docente y sobrevivían enteras al borrado total.
+        backupService.scanQuarantinedDatabases()
+        for quarantined in backupService.quarantinedDatabases {
+            remove(quarantined.url, "bases apartadas")
+            for suffix in ["-wal", "-shm"] {
+                remove(URL(fileURLWithPath: quarantined.url.path + suffix), "bases apartadas")
+            }
+        }
+        // Y el marcador que, si sobrevive, hace saltar la alerta de rescate en el
+        // siguiente arranque ofreciendo restaurar una base que ya no existe.
+        remove(URL(fileURLWithPath: backupService.databaseURL.path + ".rescue_marker"), "marcador de rescate")
 
         await backupService.scanBackups()
 

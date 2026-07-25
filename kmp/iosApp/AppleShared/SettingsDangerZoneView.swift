@@ -94,15 +94,34 @@ struct SettingsDangerZoneView: View {
         feedbackMessage = action.successMessage
     }
 
+    /// Limpia solo la caché de MiGestor.
+    ///
+    /// En iOS `.cachesDirectory` es el contenedor de la app, así que borrar todo su
+    /// contenido es correcto. En macOS la app **no está en sandbox** (la base vive en
+    /// `~/Library/Application Support/MiGestor`, no en un contenedor), así que
+    /// `.cachesDirectory` es `~/Library/Caches` del usuario entero: la versión anterior
+    /// borraba ahí dentro todo lo que encontraba — cachés de Safari, Xcode y de
+    /// cualquier otra app instalada — bajo un botón que dice "No afecta a tus datos".
+    /// En macOS se acota al subdirectorio propio, identificado por el bundle id.
     private func clearAppCache() {
         let fileManager = FileManager.default
-        let cacheDirs = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
-        for dir in cacheDirs {
-            if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil, options: []) {
-                for file in contents {
-                    try? fileManager.removeItem(at: file)
-                }
-            }
+        guard let cachesRoot = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+
+        #if os(macOS)
+        let bundleId = Bundle.main.bundleIdentifier ?? "com.migestor.mac"
+        let appCacheDir = cachesRoot.appendingPathComponent(bundleId, isDirectory: true)
+        #else
+        let appCacheDir = cachesRoot
+        #endif
+
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: appCacheDir,
+            includingPropertiesForKeys: nil,
+            options: []
+        ) else { return }
+
+        for file in contents {
+            try? fileManager.removeItem(at: file)
         }
     }
 

@@ -41,6 +41,12 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Fixed
 
+- Ajustes (macOS): "Limpiar caché de la app" borraba la caché **del usuario entera**, no la de MiGestor. `clearAppCache()` recorría `FileManager.urls(for: .cachesDirectory, in: .userDomainMask)` y eliminaba todo su contenido; en iOS eso es el contenedor de la app y es correcto, pero la app de macOS no está en sandbox (la base vive en `~/Library/Application Support/MiGestor`, no en un contenedor), así que ese directorio es `~/Library/Caches` completo: se borraban las cachés de Safari, Xcode, y de cualquier otra app instalada, desde un botón cuyo texto de confirmación dice literalmente "Se eliminarán los archivos temporales de la app. No afecta a tus datos". En macOS la limpieza se acota ahora al subdirectorio propio (`~/Library/Caches/<bundle id>`); iOS mantiene el comportamiento anterior, donde ya estaba aislado por el sandbox.
+
+### Verification
+
+- `xcodebuild -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS,arch=arm64'`: `BUILD SUCCEEDED`.
+
 - Ajustes: "Borrar todos los datos" prometía eliminar "toda tu información" pero dejaba tres cosas atrás, en silencio. (1) Los **documentos de situaciones de aprendizaje** (`~/Documents/LearningSituations`, expuesto como `AppleBackupService.learningSituationsURL` y contemplado por las copias de seguridad desde hace meses) nunca se borraban: solo se borraba `NotebookEvidence`. (2) Las **bases apartadas en cuarentena** (`<db>.backup_<epoch>` y sus `-wal`/`-shm`, que deja `createAppleDriver` cuando no puede abrir la base al arrancar) sobrevivían intactas — son copias **completas** de los datos de la docente, con sus grupos, alumnado y notas, y la propia app las lista en Ajustes como recuperables. Un borrado total que deja en disco una copia íntegra de todo lo que decía haber borrado es un problema de privacidad, no solo de limpieza. (3) El **marcador de rescate** (`<db>.rescue_marker`), que si sobrevive hace saltar en el siguiente arranque la alerta "No se pudo abrir la base de datos" ofreciendo restaurar una base que ya no existe. Los tres se borran ahora, reutilizando `AppleBackupService.quarantinedDatabases` como fuente de las cuarentenas en vez de reimplementar el patrón de búsqueda.
 
 ### Verification

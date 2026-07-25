@@ -21,6 +21,7 @@ extension SettingsSectionDescriptor {
         .init(id: "appearance",  title: "Apariencia",        subtitle: "Tema de color y accesibilidad",            systemImage: "paintpalette.fill",            tint: .orange),
         .init(id: "evaluation",  title: "Evaluación",        subtitle: "Escalas, redondeos y cuaderno",            systemImage: "chart.bar.doc.horizontal.fill", tint: .indigo),
         .init(id: "datasec",     title: "Datos y seguridad", subtitle: "Copias de seguridad, restaurar, borrar",   systemImage: "lock.shield.fill",             tint: .green),
+        .init(id: "datamgmt",    title: "Gestión de datos",  subtitle: "Borrado rápido de cursos, asignaturas, rúbricas y SA", systemImage: "trash.fill",       tint: .pink),
         .init(id: "synclan",     title: "Sync LAN",          subtitle: "Enlazar con Mac y sincronización local",   systemImage: "arrow.triangle.2.circlepath",  tint: .cyan),
         .init(id: "ai",          title: "IA Apple",          subtitle: "Informes y radar inteligente",             systemImage: "sparkles",                     tint: .purple),
         .init(id: "diagnostics", title: "Diagnóstico",       subtitle: "Esquema, logs SQLite y uso de disco",      systemImage: "waveform.path.ecg",            tint: .red),
@@ -125,6 +126,9 @@ struct SettingsWorkspaceView: View {
             EvaluationSettingsView(settings: settings)
         case "datasec":
             DataSecuritySettingsView(settings: settings)
+                .environmentObject(bridge)
+        case "datamgmt":
+            DataManagementSettingsView()
                 .environmentObject(bridge)
         case "synclan":
             SyncSettingsView(settings: settings)

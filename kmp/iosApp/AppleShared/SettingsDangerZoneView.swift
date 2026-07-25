@@ -5,6 +5,7 @@ import AppKit
 
 struct SettingsDangerZoneView: View {
     @ObservedObject var settings: AppSettingsStore
+    @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
 
     @State private var showingWipeConfirmation = false
@@ -106,6 +107,14 @@ struct SettingsDangerZoneView: View {
     }
 
     private func wipeAllData() {
+        // Para primero el trabajo en segundo plano (bucle de auto-sync,
+        // debounces de guardado, listener de sync): sin esto, una tarea en
+        // curso puede intentar tocar la base de datos justo cuando sus
+        // ficheros ya no existen y lanzar una excepción Kotlin no
+        // capturable en Swift, que el runtime trata como fatal (crash real
+        // reportado por el usuario).
+        bridge.stopBackgroundSyncWork()
+
         let fileManager = FileManager.default
         let dbPath = AppleBridgeBootstrap.current().databasePath
         let dbURL = URL(fileURLWithPath: dbPath)

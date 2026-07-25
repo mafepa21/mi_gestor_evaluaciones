@@ -90,6 +90,7 @@ struct MacSettingsView: View {
             NotebookSettingsView(settings: settings)
         case .dataSecurity:
             DataSecuritySettingsView(settings: settings)
+                .environmentObject(session.bridge)
         case .sync:
             SyncSettingsView(settings: settings)
                 .environmentObject(session.bridge)

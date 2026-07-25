@@ -11321,6 +11321,35 @@ final class KmpBridge: ObservableObject {
         #endif
     }
 
+    /// Detiene todo el trabajo en segundo plano que pueda tocar la base de
+    /// datos: el bucle de auto-sync, los debounces de guardado (cambios
+    /// locales, notas del cuaderno, snapshot de calificaciones) y el
+    /// listener de eventos de sync. Se llama antes de cualquier operación
+    /// que borre o sustituya los ficheros de la base de datos en disco
+    /// (p.ej. el borrado nuclear de Ajustes → Zona de Riesgo): sin esto,
+    /// una tarea en curso puede intentar leer/escribir un fichero que
+    /// acaba de desaparecer y lanzar una excepción Kotlin que no está
+    /// declarada `@Throws` en el contrato, y el runtime de Kotlin/Native
+    /// la trata como fatal (aborta el proceso) en vez de propagarla como
+    /// error de Swift capturable.
+    func stopBackgroundSyncWork() {
+        autoSyncLoopTask?.cancel()
+        autoSyncLoopTask = nil
+        autoSyncDebounceTask?.cancel()
+        autoSyncDebounceTask = nil
+        localChangesNotifyTask?.cancel()
+        localChangesNotifyTask = nil
+        pendingChangesPersistenceTask?.cancel()
+        pendingChangesPersistenceTask = nil
+        notebookSnapshotDebounceTask?.cancel()
+        notebookSnapshotDebounceTask = nil
+        pendingGradeSnapshotTask?.cancel()
+        pendingGradeSnapshotTask = nil
+        postSyncRefreshTask?.cancel()
+        postSyncRefreshTask = nil
+        syncEventListener.stop()
+    }
+
     /// Ruta de la base de datos activa. Se pide al bootstrap, que a su vez la pide al
     /// módulo que abre el driver: es la única fuente de verdad. Reconstruirla a mano aquí
     /// ya produjo dos rutas divergentes (macOS apuntaba a un fichero fantasma, e iOS a

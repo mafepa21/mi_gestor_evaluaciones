@@ -10,12 +10,14 @@ struct MacSettingsView: View {
 
     @StateObject private var settings = AppSettingsStore()
     @State private var selectedRoute: SettingsRoute = .general
+    @State private var scheduleSelectedClassId: Int64?
 
     var body: some View {
         HStack(spacing: 0) {
             List(selection: $selectedRoute) {
                 Section("Ajustes") {
                     settingsRow("General", systemImage: "slider.horizontal.3", route: .general)
+                    settingsRow("Horario docente", systemImage: "calendar.badge.clock", route: .schedule)
                     settingsRow("Evaluación", systemImage: "chart.bar.doc.horizontal", route: .evaluation)
                     settingsRow("Cuaderno", systemImage: "text.book.closed", route: .notebook)
                     settingsRow("Datos y Seguridad", systemImage: "lock.shield", route: .dataSecurity)
@@ -30,14 +32,25 @@ struct MacSettingsView: View {
 
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    detailViewForRoute(selectedRoute)
+            // "Horario docente" gestiona su propio scroll y su cabecera/pie
+            // fijos (es el asistente progresivo); envolverlo en el ScrollView
+            // genérico de Ajustes anidaría dos scrolls y perdería el pie fijo.
+            if selectedRoute == .schedule {
+                TeacherScheduleWizard(
+                    bridge: session.bridge,
+                    selectedClassId: $scheduleSelectedClassId
+                )
+                .background(Color(NSColor.windowBackgroundColor))
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        detailViewForRoute(selectedRoute)
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .padding(24)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .background(Color(NSColor.windowBackgroundColor))
             }
-            .background(Color(NSColor.windowBackgroundColor))
         }
     }
 
@@ -56,6 +69,8 @@ struct MacSettingsView: View {
         switch route {
         case .general:
             GeneralSettingsView(settings: settings)
+        case .schedule:
+            EmptyView()
         case .evaluation:
             EvaluationSettingsView(settings: settings)
         case .notebook:

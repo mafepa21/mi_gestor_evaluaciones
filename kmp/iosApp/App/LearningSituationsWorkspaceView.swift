@@ -97,6 +97,9 @@ struct LearningSituationsWorkspaceView: View {
         }
         .background(appPageBackground(for: colorScheme))
         .task { await reload() }
+        .appOnChange(of: selectedSituationId) { _ in
+            Task { await reloadDetail() }
+        }
         .fileImporter(isPresented: $isImporterPresented, allowedContentTypes: [.docx], allowsMultipleSelection: false) { result in
             do {
                 guard let url = try result.get().first else { return }
@@ -270,10 +273,14 @@ struct LearningSituationsWorkspaceView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(situation.subjectLabel.uppercased())
-                            .font(.caption.bold())
-                            .tracking(0.8)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            Text(situation.subjectLabel.uppercased())
+                                .font(.caption.bold())
+                                .tracking(0.8)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            situationStatusBadge(situation.status)
+                        }
                         Text(situation.title)
                             .font(.system(.largeTitle, design: .rounded, weight: .bold))
                         Text([situation.courseLabel, situation.termLabel].filter { !$0.isEmpty }.joined(separator: " · "))
@@ -302,8 +309,13 @@ struct LearningSituationsWorkspaceView: View {
         } else {
             WorkspaceEmptyState(
                 title: "Situaciones de aprendizaje",
-                subtitle: "Importa un documento Word y asócialo a tus grupos para programar sesiones y preparar evaluación."
-            )
+                subtitle: "Importa un documento Word y asócialo a tus grupos para programar sesiones y preparar evaluación.",
+                systemImage: "doc.text.magnifyingglass",
+                actionTitle: "Importar situación"
+            ) {
+                importTargetId = nil
+                isImporterPresented = true
+            }
         }
     }
 
@@ -334,6 +346,21 @@ struct LearningSituationsWorkspaceView: View {
                 }
                 Button("Duplicar y reasignar") {
                     duplicateSituation = situation
+                }
+                Divider()
+                Menu("Estado") {
+                    ForEach(LearningSituationStatus.entries, id: \.self) { status in
+                        Button {
+                            Task { await updateStatus(situation, to: status) }
+                        } label: {
+                            HStack {
+                                Text(situationStatusLabel(status))
+                                if situation.status == status {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
                 }
                 Divider()
                 Button(role: .destructive) {
@@ -370,26 +397,48 @@ struct LearningSituationsWorkspaceView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Documento fuente").font(.headline)
             ForEach(versions, id: \.id) { version in
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Versión \(version.versionNumber) · \(version.originalFileName)")
-                            .font(.subheadline.weight(.semibold))
-                        Text(String(version.sha256.prefix(12)) + " · \(ByteCountFormatter.string(fromByteCount: version.sizeBytes, countStyle: .file))")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if let path = version.localPath {
-                        ShareLink(item: URL(fileURLWithPath: path)) {
-                            Label("Abrir", systemImage: "square.and.arrow.up")
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Versión \(version.versionNumber) · \(version.originalFileName)")
+                                .font(.subheadline.weight(.semibold))
+                            Text(String(version.sha256.prefix(12)) + " · \(ByteCountFormatter.string(fromByteCount: version.sizeBytes, countStyle: .file))")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
                         }
-                        .labelStyle(.iconOnly)
+                        Spacer()
+                        if let path = version.localPath {
+                            ShareLink(item: URL(fileURLWithPath: path)) {
+                                Label("Abrir", systemImage: "square.and.arrow.up")
+                            }
+                            .labelStyle(.iconOnly)
+                        }
+                    }
+                    let warnings = decodeVersionWarnings(version.warningsJson)
+                    if !warnings.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(warnings, id: \.self) { warning in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                    Text(warning)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .padding(.top, 2)
                     }
                 }
                 .padding(12)
                 .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
         }
+    }
+
+    private func decodeVersionWarnings(_ json: String) -> [String] {
+        (try? JSONDecoder().decode([String].self, from: Data(json.utf8))) ?? []
     }
 
     private var linkedSection: some View {
@@ -401,10 +450,33 @@ struct LearningSituationsWorkspaceView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(resources, id: \.id) { resource in
-                    Label(resource.label.isEmpty ? resource.resourceId : resource.label, systemImage: icon(for: resource.kind))
-                        .font(.subheadline)
+                    Button {
+                        onOpenModule(destination(for: resource.kind), resource.classId?.int64Value, nil)
+                    } label: {
+                        HStack {
+                            Label(resource.label.isEmpty ? resource.resourceId : resource.label, systemImage: icon(for: resource.kind))
+                                .font(.subheadline)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 4)
                 }
             }
+        }
+    }
+
+    private func destination(for kind: LearningSituationResourceKind) -> AppWorkspaceModule {
+        switch kind {
+        case .teachingUnit, .planningSession: return .planner
+        case .evaluation: return .evaluationHub
+        case .rubric: return .rubrics
+        case .notebookColumn: return .notebook
+        default: return .notebook
         }
     }
 
@@ -520,7 +592,11 @@ struct LearningSituationsWorkspaceView: View {
 
     private func situationRow(for situation: LearningSituation) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(situation.title).font(.headline).lineLimit(2)
+            HStack(alignment: .top, spacing: 8) {
+                Text(situation.title).font(.headline).lineLimit(2)
+                Spacer(minLength: 8)
+                situationStatusBadge(situation.status)
+            }
             Text([situation.courseLabel, situation.subjectLabel, situation.termLabel].filter { !$0.isEmpty }.joined(separator: " · "))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -563,6 +639,44 @@ struct LearningSituationsWorkspaceView: View {
         }
     }
 
+
+    @MainActor
+    private func updateStatus(_ situation: LearningSituation, to status: LearningSituationStatus) async {
+        do {
+            try await bridge.updateLearningSituationStatus(id: situation.id, status: status)
+            await reload()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func situationStatusLabel(_ status: LearningSituationStatus) -> String {
+        switch status {
+        case .draft: return "Borrador"
+        case .active: return "Activa"
+        case .archived: return "Archivada"
+        default: return "Sin estado"
+        }
+    }
+
+    private func situationStatusTint(_ status: LearningSituationStatus) -> Color {
+        switch status {
+        case .draft: return .secondary
+        case .active: return EvaluationDesign.success
+        case .archived: return .orange
+        default: return .secondary
+        }
+    }
+
+    private func situationStatusBadge(_ status: LearningSituationStatus) -> some View {
+        Text(situationStatusLabel(status).uppercased())
+            .font(.caption2.weight(.bold))
+            .tracking(0.4)
+            .foregroundStyle(situationStatusTint(status))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(situationStatusTint(status).opacity(0.12), in: Capsule())
+    }
 
     private func icon(for kind: LearningSituationResourceKind) -> String {
         switch kind {

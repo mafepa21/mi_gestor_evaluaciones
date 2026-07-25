@@ -990,7 +990,8 @@ struct IOSWorkspaceContent: View {
             DashboardView(
                 bridge: bridge,
                 dashboardStore: dashboardStore,
-                selectedClassId: $selectionStore.selectedClassId
+                selectedClassId: $selectionStore.selectedClassId,
+                onOpenModule: onOpenModule
             )
         case .courses:
             CoursesWorkspaceView(
@@ -1014,7 +1015,8 @@ struct IOSWorkspaceContent: View {
             DashboardView(
                 bridge: bridge,
                 dashboardStore: dashboardStore,
-                selectedClassId: $selectionStore.selectedClassId
+                selectedClassId: $selectionStore.selectedClassId,
+                onOpenModule: onOpenModule
             )
         case .notebook:
             NotebookModuleView(
@@ -1037,7 +1039,6 @@ struct IOSWorkspaceContent: View {
             PlannerWorkspaceIOS(
                 context: resolvedPlannerContext,
                 onOpenDiary: { ctx in onOpenModule(.diary, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
-                onOpenSettings: { onOpenModule(.settings, selectionStore.selectedClassId, nil) },
                 onNavigationContextChange: onUpdatePlannerContext
             )
             .environmentObject(bridge)

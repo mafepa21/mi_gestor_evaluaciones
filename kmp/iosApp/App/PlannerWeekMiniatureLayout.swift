@@ -9,6 +9,11 @@ struct PlannerWeekMiniatureLayout: View {
     let onOpenSession: (PlanningSession) -> Void
     var onOpenDiary: ((PlanningSession) -> Void)? = nil
     var onDropSession: ((Int64, Int, Int) -> Void)? = nil
+    /// "Semana" es la pestaña por defecto del Planner: si el profesor no ha
+    /// configurado nunca su horario, esta es la primera pantalla que ve. Un
+    /// estado vacío accionable aquí evita depender de que descubra la
+    /// pestaña "Resumen" para encontrar el configurador.
+    var onOpenSettings: (() -> Void)? = nil
 
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -72,16 +77,51 @@ struct PlannerWeekMiniatureLayout: View {
         }
     }
 
+    @ViewBuilder
     private var grid: some View {
-        PlannerWeekMiniatureGrid(
-            weekBoard: weekBoard,
-            vm: vm,
-            selectedCell: $selectedCell,
-            selectedDay: $selectedDay,
-            onOpenSession: onOpenSession,
-            onOpenDiary: onOpenDiary,
-            onDropSession: onDropSession
-        )
+        if vm.effectiveScheduleSlots.isEmpty {
+            emptyScheduleState
+        } else {
+            PlannerWeekMiniatureGrid(
+                weekBoard: weekBoard,
+                vm: vm,
+                selectedCell: $selectedCell,
+                selectedDay: $selectedDay,
+                onOpenSession: onOpenSession,
+                onOpenDiary: onOpenDiary,
+                onDropSession: onDropSession
+            )
+        }
+    }
+
+    /// Sin horario configurado, un grid vacío no dice nada útil. Una única
+    /// tarea obvia ("Configurar mi horario") en vez de una rejilla en blanco.
+    private var emptyScheduleState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "calendar.badge.plus")
+                .font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(EvaluationDesign.accent)
+
+            VStack(spacing: 6) {
+                Text("Aún no has configurado tu horario semanal")
+                    .font(.title3.weight(.semibold))
+                Text("Define tus franjas lectivas para planificar sesiones y ver la cobertura del curso.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+            }
+
+            if let onOpenSettings {
+                Button("Configurar mi horario") {
+                    onOpenSettings()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
+        .padding(32)
     }
 
     private var detailPane: some View {
@@ -95,6 +135,7 @@ struct PlannerWeekMiniatureLayout: View {
     }
 
     private var gridHeight: CGFloat {
+        guard !vm.effectiveScheduleSlots.isEmpty else { return 280 }
         let slotsCount = weekBoard.weekRenderModel.visibleSlots.count
         guard slotsCount > 0 else { return 40 }
         let rowHeight: CGFloat = 36

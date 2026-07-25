@@ -528,18 +528,41 @@ private struct PlannerCoveragePanel: View {
 
     var body: some View {
         PlannerSummaryPanel(title: "Cobertura horaria", systemImage: "chart.bar.xaxis") {
-            if rows.isEmpty {
-                PlannerCompactEmptyState(
-                    title: "Sin franjas",
-                    message: "Configura la agenda docente para ver cobertura."
-                )
-            } else {
-                VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
+                if let remainingWeeks {
+                    Label(
+                        "Quedan \(remainingWeeks) semana\(remainingWeeks == 1 ? "" : "s") lectiva\(remainingWeeks == 1 ? "" : "s")",
+                        systemImage: "calendar"
+                    )
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(EvaluationDesign.accent)
+                }
+
+                if rows.isEmpty {
+                    PlannerCompactEmptyState(
+                        title: "Sin franjas",
+                        message: "Configura la agenda docente para ver cobertura."
+                    )
+                } else {
                     ForEach(rows) { row in
                         PlannerCoverageRowView(row: row)
                     }
+                }
 
-                    if let onOpenSettings {
+                // Antes este botón vivía dentro del `else` de `rows.isEmpty`:
+                // justo el profesor sin agenda configurada —el único que de
+                // verdad la necesita— era el único que no lo veía.
+                if let onOpenSettings {
+                    if rows.isEmpty {
+                        Button {
+                            onOpenSettings()
+                        } label: {
+                            Label("Configurar mi horario", systemImage: "slider.horizontal.3")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .padding(.top, 4)
+                    } else {
                         Button {
                             onOpenSettings()
                         } label: {
@@ -552,6 +575,20 @@ private struct PlannerCoveragePanel: View {
                 }
             }
         }
+    }
+
+    /// Semanas restantes hasta el final de curso configurado (`vm.scheduleEndDate`),
+    /// para dar contexto a un porcentaje de cobertura que si no queda sin referencia.
+    private var remainingWeeks: Int? {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let endDate = formatter.date(from: vm.scheduleEndDate) else { return nil }
+        let days = Calendar(identifier: .iso8601).dateComponents([.day], from: Date(), to: endDate).day ?? 0
+        guard days > 0 else { return nil }
+        return Int((Double(days) / 7.0).rounded(.up))
     }
 }
 

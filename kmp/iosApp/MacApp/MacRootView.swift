@@ -405,7 +405,8 @@ struct MacRootView: View {
                 backupStore: backupStore,
                 bootstrap: session.bootstrap,
                 onNavigate: navigateFromDashboard,
-                onToolbarActionsChange: setDashboardToolbarActions
+                onToolbarActionsChange: setDashboardToolbarActions,
+                onOpenModule: open(module:classId:studentId:)
             )
         case .teacherRadar:
             MacDashboardView(
@@ -414,7 +415,8 @@ struct MacRootView: View {
                 backupStore: backupStore,
                 bootstrap: session.bootstrap,
                 onNavigate: navigateFromDashboard,
-                onToolbarActionsChange: setDashboardToolbarActions
+                onToolbarActionsChange: setDashboardToolbarActions,
+                onOpenModule: open(module:classId:studentId:)
             )
         case .courses:
             CoursesWorkspaceView(

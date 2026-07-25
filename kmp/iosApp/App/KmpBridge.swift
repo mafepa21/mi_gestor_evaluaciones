@@ -11364,6 +11364,16 @@ final class KmpBridge: ObservableObject {
         syncEventListener.stop()
     }
 
+    /// Vacía todas las tablas de la base con la conexión que ya está abierta.
+    ///
+    /// Existe para que el borrado total (`SettingsDangerZoneView`) deje de eliminar el
+    /// fichero SQLite del disco por debajo del driver: eso invalidaba los descriptores
+    /// del pool y abortaba el proceso. El contenedor es privado, así que la vista no
+    /// puede llegar a él sin abrir un driver nuevo por su cuenta.
+    func wipeAllDatabaseData() throws {
+        try container.wipeAllData()
+    }
+
     /// Ruta de la base de datos activa. Se pide al bootstrap, que a su vez la pide al
     /// módulo que abre el driver: es la única fuente de verdad. Reconstruirla a mano aquí
     /// ya produjo dos rutas divergentes (macOS apuntaba a un fichero fantasma, e iOS a

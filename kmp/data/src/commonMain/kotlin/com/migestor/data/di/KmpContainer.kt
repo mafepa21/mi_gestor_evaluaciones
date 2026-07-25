@@ -2,6 +2,7 @@ package com.migestor.data.di
 
 import app.cash.sqldelight.db.SqlDriver
 import com.migestor.data.db.AppDatabase
+import com.migestor.data.platform.wipeAllUserData
 import com.migestor.data.repository.AttendanceRepositorySqlDelight
 import com.migestor.data.repository.AIAuditRepositorySqlDelight
 import com.migestor.data.repository.AcademicYearsRepositorySqlDelight
@@ -161,6 +162,24 @@ class KmpContainer(val driver: SqlDriver) {
         classesRepository = classesRepository,
         attendanceRepository = attendanceRepository,
     )
+
+    /**
+     * Borrado total: vacia todas las tablas por SQL, con la conexion que ya esta abierta.
+     *
+     * La capa Swift llamaba antes a esto borrando el fichero SQLite del disco, lo que
+     * invalidaba los descriptores del driver y acababa abortando el proceso
+     * (ver `wipeAllUserData` en DatabaseWipe.kt). Los adjuntos y las copias de seguridad
+     * los sigue borrando Swift: son ficheros que nadie tiene abiertos.
+     *
+     * Los `Flow` ya suscritos no se re-emiten (el borrado no pasa por las queries
+     * generadas de SQLDelight, asi que sus listeners no se notifican). No es un problema
+     * porque el borrado exige reinicio de la app en ambas plataformas, pero es la razon
+     * por la que no basta con llamar a esto y seguir usando la sesion actual.
+     */
+    @Throws(Exception::class)
+    fun wipeAllData() {
+        wipeAllUserData(driver, database)
+    }
 
     suspend fun seedDemoDataIfEmpty() {
         val now = Clock.System.now().toEpochMilliseconds()

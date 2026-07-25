@@ -107,42 +107,71 @@ struct SettingsDangerZoneView: View {
     }
 
     private func wipeAllData() {
-        // Para primero el trabajo en segundo plano (bucle de auto-sync,
-        // debounces de guardado, listener de sync): sin esto, una tarea en
-        // curso puede intentar tocar la base de datos justo cuando sus
-        // ficheros ya no existen y lanzar una excepción Kotlin no
-        // capturable en Swift, que el runtime trata como fatal (crash real
-        // reportado por el usuario).
+        Task { @MainActor in
+            await performWipe()
+        }
+    }
+
+    /// Borrado total.
+    ///
+    /// Hasta 2026-07 esto borraba `desktop_mi_gestor_kmp.db`, `-wal` y `-shm` del disco
+    /// mientras el driver de SQLDelight los tenía abiertos. macOS invalidaba entonces
+    /// todos los descriptores del pool (`vnode unlinked while in use`), la siguiente
+    /// consulta fallaba con `SQLITE_IOERR` y el proceso abortaba — crash real reportado
+    /// por el usuario, parcheado dos veces por síntomas (cancelar tareas de fondo,
+    /// guards de `needsRestart`) antes de atacar la causa.
+    ///
+    /// Ahora la base se **vacía por SQL** con la conexión que ya está abierta
+    /// (`KmpContainer.wipeAllData()`): no se invalida ningún descriptor y no puede
+    /// fallar por E/S. Solo se borran como ficheros las cosas que nadie tiene abiertas
+    /// (copias, adjuntos, documentos de SA, cuarentenas).
+    @MainActor
+    private func performWipe() async {
+        let backupService = AppleBackupService.shared
+
+        // 1. Parar el trabajo en segundo plano de este proceso (bucle de auto-sync,
+        //    debounces de guardado, listener SSE).
         bridge.stopBackgroundSyncWork()
 
-        let fileManager = FileManager.default
-        let dbPath = AppleBridgeBootstrap.current().databasePath
-        let dbURL = URL(fileURLWithPath: dbPath)
-        let appDataURL = dbURL.deletingLastPathComponent()
+        // 2. Vaciar la base por SQL. Si falla, se avisa y no se borra nada más: es
+        //    preferible dejarlo todo como estaba a borrar los adjuntos de unos datos
+        //    que siguen ahí.
+        do {
+            try bridge.wipeAllDatabaseData()
+        } catch {
+            feedbackMessage = "No se pudieron borrar los datos: \(error.localizedDescription)"
+            return
+        }
 
-        // Delete database sidecars
-        for suffix in ["", "-wal", "-shm"] {
-            let path = dbPath + suffix
-            if fileManager.fileExists(atPath: path) {
-                try? fileManager.removeItem(atPath: path)
+        // 3. Ficheros que nadie tiene abiertos.
+        let fileManager = FileManager.default
+        var fileErrors: [String] = []
+
+        func remove(_ url: URL, _ label: String) {
+            guard fileManager.fileExists(atPath: url.path) else { return }
+            do {
+                try fileManager.removeItem(at: url)
+            } catch {
+                fileErrors.append(label)
             }
         }
 
-        // Delete backups
-        let backupsDir = appDataURL.appendingPathComponent("backups", isDirectory: true)
-        if fileManager.fileExists(atPath: backupsDir.path) {
-            try? fileManager.removeItem(at: backupsDir)
-        }
+        remove(backupService.backupsDirectoryURL, "copias de seguridad")
+        remove(backupService.attachmentsURL, "adjuntos del cuaderno")
 
-        // Delete attachments
-        let attachmentsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("NotebookEvidence", isDirectory: true) ?? appDataURL.appendingPathComponent("NotebookEvidence")
-        if fileManager.fileExists(atPath: attachmentsDir.path) {
-            try? fileManager.removeItem(at: attachmentsDir)
+        await backupService.scanBackups()
+
+        if !fileErrors.isEmpty {
+            let detail = Set(fileErrors).sorted().joined(separator: ", ")
+            feedbackMessage = "Los datos se han borrado, pero no se pudieron eliminar algunos archivos: \(detail)."
         }
 
         // needsRestart es observado en la raíz de la app (iOS: AppleAppRootView, macOS: MacRootView)
-        // para bloquear la UI con un aviso de reinicio en lugar de dejar datos en memoria obsoletos.
-        AppleBackupService.shared.needsRestart = true
+        // para bloquear la UI con un aviso de reinicio. Sigue siendo necesario aunque la base
+        // ya no se rompa: los cachés en memoria y los Flow ya suscritos conservan los datos
+        // viejos (el vaciado por SQL no pasa por las queries generadas, así que no notifica
+        // a sus listeners).
+        backupService.needsRestart = true
         #if os(macOS)
         scheduleAutomaticRelaunch()
         #endif

@@ -4,11 +4,13 @@ struct ScheduleImportPreviewSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let preview: ScheduleImportPreview
+    let plan: ScheduleImportCatalogPlan
     let knownGroupNames: [String: String]
     let isImporting: Bool
-    let onConfirm: (ScheduleEmptySlotImportMode) -> Void
+    let onConfirm: (ScheduleEmptySlotImportMode, Bool) -> Void
 
     @State private var emptySlotMode: ScheduleEmptySlotImportMode = .skip
+    @State private var createSubjects = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,6 +39,7 @@ struct ScheduleImportPreviewSheet: View {
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 16) {
                     summary
+                    catalogPlanCard
                     emptySlotControl
                     diagnostics
                 }
@@ -49,6 +52,7 @@ struct ScheduleImportPreviewSheet: View {
 
             VStack(alignment: .leading, spacing: 18) {
                 summary
+                catalogPlanCard
                 emptySlotControl
                 diagnostics
                 slotsByDay
@@ -119,6 +123,52 @@ struct ScheduleImportPreviewSheet: View {
                 metric("Huecos vacíos", "\(preview.emptyCandidates.count)")
                 metric("Grupos", "\(preview.groupCodes.count)")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var catalogPlanCard: some View {
+        if !plan.groupsToCreate.isEmpty || !plan.subjectsToCreate.isEmpty || plan.groupsReusedCount > 0 || plan.subjectsReusedCount > 0 {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Se creará")
+                    .font(.headline)
+
+                if !plan.groupsToCreate.isEmpty {
+                    catalogPlanLine(title: "\(plan.groupsToCreate.count) grupo(s) nuevo(s)", values: plan.groupsToCreate.map(\.title))
+                }
+                if !plan.subjectsToCreate.isEmpty {
+                    catalogPlanLine(title: "\(plan.subjectsToCreate.count) asignatura(s) nueva(s)", values: plan.subjectsToCreate.map(\.title))
+                }
+                if plan.groupsReusedCount > 0 || plan.subjectsReusedCount > 0 {
+                    Text("Se reutilizan \(plan.groupsReusedCount) grupo(s) y \(plan.subjectsReusedCount) asignatura(s) ya existentes.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                if !plan.subjectsToCreate.isEmpty {
+                    Toggle("Añadir las asignaturas a mi catálogo", isOn: $createSubjects)
+                        .toggleStyle(.switch)
+                        .font(.caption.weight(.semibold))
+                }
+
+                ForEach(plan.warnings, id: \.self) { warning in
+                    Text(warning)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(16)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private func catalogPlanLine(title: String, values: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.bold))
+            Text(values.joined(separator: " · "))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -236,7 +286,7 @@ struct ScheduleImportPreviewSheet: View {
                 .keyboardShortcut(.cancelAction)
 
             Button {
-                onConfirm(emptySlotMode)
+                onConfirm(emptySlotMode, createSubjects)
             } label: {
                 Label(isImporting ? "Importando..." : "Importar horario", systemImage: "square.and.arrow.down")
             }
@@ -280,10 +330,7 @@ struct ScheduleImportPreviewSheet: View {
     }
 
     private func groupDisplayName(for code: String) -> String {
-        guard code.count >= 5 else { return code }
-        let course = code.prefix(1)
-        let suffix = code.suffix(1)
-        return "\(course)º ESO \(suffix)"
+        ScheduleGroupNaming.displayName(forCode: code)
     }
 
     private func weekdayLabel(_ weekday: Int) -> String {

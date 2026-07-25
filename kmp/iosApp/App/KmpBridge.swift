@@ -1422,7 +1422,10 @@ final class KmpBridge: ObservableObject {
         guard !didBootstrap else { return }
         didBootstrap = true
         do {
-            try await seedIfNeeded()
+            if !UserDefaults.standard.bool(forKey: Self.hasCompletedInitialSeedKey) {
+                try await seedIfNeeded()
+                UserDefaults.standard.set(true, forKey: Self.hasCompletedInitialSeedKey)
+            }
             try await refreshDashboard()
             try await loadDashboard(mode: .office)
             try await refreshClasses()
@@ -1442,6 +1445,16 @@ final class KmpBridge: ObservableObject {
     var appDatabasePath: String {
         appleBootstrap.databasePath
     }
+
+    /// Fuera del SQLite a propósito: `wipeAllData()` (Ajustes → Zona de Riesgo)
+    /// borra el fichero de base de datos entero, así que cualquier marca que
+    /// viviera dentro de una tabla desaparecería con él y la siembra de
+    /// datos de demo (`seedDemoDataIfEmpty`, que solo mira si hay alumnos)
+    /// volvería a dispararse en el siguiente arranque, deshaciendo el
+    /// borrado. `UserDefaults` sobrevive al borrado del SQLite, así que una
+    /// vez sembrado no se vuelve a sembrar nunca más, ni siquiera tras un
+    /// borrado deliberado.
+    private static let hasCompletedInitialSeedKey = "demo.seed.completed.v1"
 
     private func seedIfNeeded() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in

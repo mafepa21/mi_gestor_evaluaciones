@@ -72,7 +72,7 @@ struct SettingsDangerZoneView: View {
                 confirmationText = ""
             }
         } message: {
-            Text("Esta acción eliminará de forma irreversible toda tu información, incluyendo clases, estudiantes, rúbricas y copias de seguridad locales. Escribe 'BORRAR' en mayúsculas para continuar.")
+            Text("Esta acción eliminará de forma irreversible toda tu información, incluyendo clases, estudiantes, rúbricas y copias de seguridad locales. También se desvinculará la sincronización con otros dispositivos. Escribe 'BORRAR' en mayúsculas para continuar.")
         }
         .alert(item: Binding(
             get: { feedbackMessage.map { IdentifiableString(value: $0) } },
@@ -123,8 +123,7 @@ struct SettingsDangerZoneView: View {
     ///
     /// Ahora la base se **vacía por SQL** con la conexión que ya está abierta
     /// (`KmpContainer.wipeAllData()`): no se invalida ningún descriptor y no puede
-    /// fallar por E/S. Solo se borran como ficheros las cosas que nadie tiene abiertas
-    /// (copias, adjuntos, documentos de SA, cuarentenas).
+    /// fallar por E/S. Solo se borran como ficheros las cosas que nadie tiene abiertas.
     @MainActor
     private func performWipe() async {
         let backupService = AppleBackupService.shared
@@ -133,7 +132,19 @@ struct SettingsDangerZoneView: View {
         //    debounces de guardado, listener SSE).
         bridge.stopBackgroundSyncWork()
 
-        // 2. Vaciar la base por SQL. Si falla, se avisa y no se borra nada más: es
+        // 2. Desemparejar antes de borrar. Sin esto el borrado no sobrevivía al
+        //    reinicio: el dispositivo seguía emparejado y el primer pull volvía a
+        //    traerse todos los datos desde el iPad, deshaciendo el borrado. Se hace
+        //    antes de parar el helper porque avisa al servidor por red.
+        await bridge.unpairLanSync()
+
+        // 3. macOS: parar el helper de Sync LAN, que corre en un proceso aparte con su
+        //    propia conexión SQLite al mismo fichero y sigue sirviendo /sync/pull.
+        #if os(macOS)
+        NotificationCenter.default.post(name: .appleCommandCenterStopRequested, object: nil)
+        #endif
+
+        // 4. Vaciar la base por SQL. Si falla, se avisa y no se borra nada más: es
         //    preferible dejarlo todo como estaba a borrar los adjuntos de unos datos
         //    que siguen ahí.
         do {
@@ -143,7 +154,7 @@ struct SettingsDangerZoneView: View {
             return
         }
 
-        // 3. Ficheros que nadie tiene abiertos.
+        // 5. Ficheros que nadie tiene abiertos.
         let fileManager = FileManager.default
         var fileErrors: [String] = []
 

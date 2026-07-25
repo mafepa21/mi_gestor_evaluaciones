@@ -970,8 +970,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
             case .paragraph(let rawText):
                 let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { continue }
-                if let pendingLabel {
-                    assign(pendingLabel, text)
+                if let labelWaitingForValue = pendingLabel {
+                    assign(labelWaitingForValue, text)
                     pendingLabel = nil
                     continue
                 }

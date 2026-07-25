@@ -1325,4 +1325,3 @@ private extension SessionJournalLinkType {
         }
     }
 }
-

@@ -1513,22 +1513,26 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     private var importedInstrumentRows: some View {
-        ForEach(Array((instrumentImportDraft?.instruments ?? []).indices), id: \.self) { index in
-            let instrument = instrumentImportDraft?.instruments[index]
+        ForEach(instrumentImportDraft?.instruments ?? [], id: \.id) { instrument in
             Toggle(isOn: Binding(
-                get: { instrumentImportDraft?.instruments[index].isSelected ?? false },
-                set: { instrumentImportDraft?.instruments[index].isSelected = $0 }
+                get: {
+                    instrumentImportDraft?.instruments.first(where: { $0.id == instrument.id })?.isSelected ?? false
+                },
+                set: { newValue in
+                    guard let index = instrumentImportDraft?.instruments.firstIndex(where: { $0.id == instrument.id }) else { return }
+                    instrumentImportDraft?.instruments[index].isSelected = newValue
+                }
             )) {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(instrument?.title ?? "")
+                        Text(instrument.title)
                             .font(.body.weight(.semibold))
                         Text(importedInstrumentSubtitle(instrument))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 8)
-                    if let weight = instrument?.weightPercent, weight > 0 {
+                    if let weight = instrument.weightPercent, weight > 0 {
                         Text("\(Int(weight.rounded()))%")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(NotebookStyle.primaryTint)
@@ -2183,6 +2187,7 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
                         .foregroundStyle(.secondary)
                     TextField("Peso %", text: weightBinding(for: index))
                         .textFieldStyle(.roundedBorder)
+                        .appKeyboardType(.decimalPad)
                 }
                 .frame(maxWidth: 160)
             }

@@ -11242,6 +11242,7 @@ final class KmpBridge: ObservableObject {
                 do {
                     try await Task.sleep(nanoseconds: self.nextAutoSyncIntervalNanoseconds())
                     guard self.pairedSyncHost != nil, self.syncToken != nil else { continue }
+                    guard !AppleBackupService.shared.needsRestart else { continue }
                     #if os(macOS)
                     await self.checkLocalDbFileModification()
                     #endif
@@ -11372,6 +11373,7 @@ final class KmpBridge: ObservableObject {
     }
 
     private func checkLocalDbFileModification() async {
+        guard !AppleBackupService.shared.needsRestart else { return }
         guard let dbURL = getDatabaseURL() else { return }
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: dbURL.path)
@@ -11434,6 +11436,14 @@ final class KmpBridge: ObservableObject {
     func onAppDidEnterBackground() {
         isAppInForeground = false
         autoSyncDebounceTask?.cancel()
+        // Cerrar la ventana justo después de "Borrar todos los datos" dispara
+        // esta transición de scenePhase (macOS pasa a `.background` al perder
+        // el último foco), y sin este guard se lanzaba un `Task` nuevo que
+        // `stopBackgroundSyncWork()` no puede cancelar porque todavía no
+        // existe en ese momento — mismo crash que la propia siembra de
+        // fondo: `syncNow` toca repositorios Kotlin no declarados `@Throws`
+        // sobre un fichero de base de datos que acaba de desaparecer.
+        guard !AppleBackupService.shared.needsRestart else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.syncNow(reason: "background_flush", forceFullPull: false, silent: true)
@@ -11441,6 +11451,13 @@ final class KmpBridge: ObservableObject {
     }
 
     private func syncNow(reason: String, forceFullPull: Bool, silent: Bool) async {
+        // Red de seguridad centralizada: `syncNow` tiene varios puntos de
+        // entrada (arranque, primer plano, segundo plano, bucle de
+        // auto-sync, listener SSE, helper listo...). Tras un borrado
+        // nuclear (`needsRestart == true`) ninguno de ellos debe tocar la
+        // base de datos, así que el guard vive aquí en vez de repetirlo en
+        // cada llamante.
+        guard !AppleBackupService.shared.needsRestart else { return }
         guard pairedSyncHost != nil, syncToken != nil else { return }
         guard !isPairingInFlight else { return }
         let now = Date()

@@ -712,19 +712,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
     /// Extrae todos los códigos de criterio de un fragmento de texto (con o sin prefijo
     /// "CE"/"Criterio"/"Criteri") y los normaliza siempre a la forma "CE X.X", sin duplicados.
     private func allCriterionCodes(in text: String) -> [String] {
-        guard let regex = try? NSRegularExpression(
-            pattern: #"(?:CE|Criteri[oa]?|Criterion)?\s*([0-9]+\.[0-9]+)"#,
-            options: [.caseInsensitive]
-        ) else { return [] }
-        let nsText = text as NSString
-        var seen = Set<String>()
-        var results: [String] = []
-        regex.enumerateMatches(in: text, range: NSRange(location: 0, length: nsText.length)) { match, _, _ in
-            guard let match, let range = Range(match.range(at: 1), in: text) else { return }
-            let code = "CE \(text[range])"
-            if seen.insert(code).inserted { results.append(code) }
-        }
-        return results
+        criterionCodesInText(text)
     }
 
     /// A8(b): compara los términos "Texto (NN%)" de la fórmula de calificación final con los
@@ -886,6 +874,26 @@ struct LearningSituationAssessmentInstrumentsImportService {
             "proyecto", "diario", "registro"
         ].map(normalized)
     }
+}
+
+/// Compartido entre los tres importadores de documentos de Situaciones de Aprendizaje: extrae
+/// todos los códigos de criterio de un texto ("CE 1.2", "Criteri 1.1", "Criterio 3.2 (CE3)",
+/// "2.1" a secas...) y los normaliza siempre a la forma "CE X.X", sin duplicados y descartando
+/// el resto del texto (incluido el contenido entre paréntesis).
+func criterionCodesInText(_ text: String) -> [String] {
+    guard let regex = try? NSRegularExpression(
+        pattern: #"(?:CE|Criteri[oa]?|Criterion)?\s*([0-9]+\.[0-9]+)"#,
+        options: [.caseInsensitive]
+    ) else { return [] }
+    let nsText = text as NSString
+    var seen = Set<String>()
+    var results: [String] = []
+    regex.enumerateMatches(in: text, range: NSRange(location: 0, length: nsText.length)) { match, _, _ in
+        guard let match, let range = Range(match.range(at: 1), in: text) else { return }
+        let code = "CE \(text[range])"
+        if seen.insert(code).inserted { results.append(code) }
+    }
+    return results
 }
 
 /// Compartido entre los tres importadores de documentos de Situaciones de Aprendizaje

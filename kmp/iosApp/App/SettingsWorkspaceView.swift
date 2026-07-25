@@ -126,6 +126,7 @@ struct SettingsWorkspaceView: View {
             EvaluationSettingsView(settings: settings)
         case "datasec":
             DataSecuritySettingsView(settings: settings)
+                .environmentObject(bridge)
         case "datamgmt":
             DataManagementSettingsView()
                 .environmentObject(bridge)

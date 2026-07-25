@@ -320,6 +320,7 @@
 		C21D9DEB8533954E1AA81B74 /* NotebookAverageExplanationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC46319C44007155F43DDDB /* NotebookAverageExplanationView.swift */; };
 		C237C005BDDD27D53C8EA5C6 /* NotebookColumnVisibilityRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F06B84E53590F642FC31288 /* NotebookColumnVisibilityRules.swift */; };
 		C29EE7CFDABD680D89230324 /* PlannerWeekMiniatureLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 992519C5A19AC4FD6AA36D33 /* PlannerWeekMiniatureLayout.swift */; };
+		C2B23018326A7C1277211AD9 /* ScheduleImportCatalogResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71BEA9C12B3B5D07B2227901 /* ScheduleImportCatalogResolver.swift */; };
 		C30F449FC9351644DF8F33D6 /* PlannerSessionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E409AC49E4C2F349EEC469ED /* PlannerSessionDetailSheet.swift */; };
 		C371E7CCB485B2E8475ABE79 /* DashboardSharedBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8C8563CC96E19042E114CEA /* DashboardSharedBlocks.swift */; };
 		C3F8BC42806F5865C3CBF99B /* CoursesWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC6FF32972AD484A9FAEABBC /* CoursesWorkspaceView.swift */; };
@@ -363,6 +364,7 @@
 		DEF0A0A4EF14D55FB47F66E5 /* AppleAISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F8916B5C4C8F6DBC133D2B /* AppleAISettingsView.swift */; };
 		DF2840097D2921E61D2A2FDB /* IOSFeatureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335E30511BBCB3DFBF1FA0BE /* IOSFeatureRegistry.swift */; };
 		DFEEA8B716E874E7C7BE0E8B /* AssignRubricToTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 893DD0805D75AD4923832EDD /* AssignRubricToTabView.swift */; };
+		DFFE663E21FDE8303C0A282A /* ScheduleImportCatalogResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71BEA9C12B3B5D07B2227901 /* ScheduleImportCatalogResolver.swift */; };
 		E03782393DE2FFC0711A44DA /* NotebookModuleDataState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6144B137C267EC5DEA266F2 /* NotebookModuleDataState.swift */; };
 		E11C883BCE69B05FE0FBC324 /* DiaryWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */; };
 		E27E8289EECC90601506ADB9 /* NotebookMacLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E833F8E8281D5E3F4BFB0F /* NotebookMacLayout.swift */; };
@@ -545,6 +547,7 @@
 		6DFB7CB99B772BA64AA591A9 /* NotebookAICommentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAICommentSheet.swift; sourceTree = "<group>"; };
 		6ED32EAFF51BE275270F5F2A /* MeetingActaPDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingActaPDF.swift; sourceTree = "<group>"; };
 		6F08CE3BCBD53B85A89136EF /* PlannerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerModels.swift; sourceTree = "<group>"; };
+		71BEA9C12B3B5D07B2227901 /* ScheduleImportCatalogResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImportCatalogResolver.swift; sourceTree = "<group>"; };
 		72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingEvaluationPickerSheet.swift; sourceTree = "<group>"; };
 		73E80A05F8F203CF9F01667C /* PlannerFloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerFloatingTabBar.swift; sourceTree = "<group>"; };
 		74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadWorkspaceShell.swift; sourceTree = "<group>"; };
@@ -775,6 +778,7 @@
 				D9892E60A7CF035F7B78B081 /* QRCodeView.swift */,
 				C6A13EB373B0EE87E425E97C /* ScheduleExcelImportService.swift */,
 				B18D4606AA037B05A26A0280 /* ScheduleGridPDFRenderer.swift */,
+				71BEA9C12B3B5D07B2227901 /* ScheduleImportCatalogResolver.swift */,
 				C85AD42D18AFCD452127D549 /* ScheduleImportModels.swift */,
 				B2383FA2AFCB17CB773F8D8C /* ScheduleImportPreviewSheet.swift */,
 				EE3C26A04796CFACD4AB0C44 /* ScheduleWeekGridView.swift */,
@@ -1341,6 +1345,7 @@
 				B24F51E7FA5D688CC7914FCF /* RubricsStyle.swift in Sources */,
 				92F738EBFD7858DFB104C047 /* ScheduleExcelImportService.swift in Sources */,
 				3433239DDE5DF8DCB8F79FF5 /* ScheduleGridPDFRenderer.swift in Sources */,
+				C2B23018326A7C1277211AD9 /* ScheduleImportCatalogResolver.swift in Sources */,
 				9B35E3F2A1902328316396AA /* ScheduleImportModels.swift in Sources */,
 				F87C4CB8E1252A911F0BEFA7 /* ScheduleImportPreviewSheet.swift in Sources */,
 				07C8F017EE7EF64E6F167A8F /* ScheduleWeekGridView.swift in Sources */,
@@ -1534,6 +1539,7 @@
 				60B356AED1B03C03C94B4D39 /* RubricsStyle.swift in Sources */,
 				C017001FB2CDCB2BAB1AB70A /* ScheduleExcelImportService.swift in Sources */,
 				4967D7BFC05BD566EEFCB680 /* ScheduleGridPDFRenderer.swift in Sources */,
+				DFFE663E21FDE8303C0A282A /* ScheduleImportCatalogResolver.swift in Sources */,
 				E82642A66E908879848A94B8 /* ScheduleImportModels.swift in Sources */,
 				733437AB0213E2D83A1686C7 /* ScheduleImportPreviewSheet.swift in Sources */,
 				A763BAAF440754459070E60B /* ScheduleWeekGridView.swift in Sources */,

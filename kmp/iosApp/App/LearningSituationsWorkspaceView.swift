@@ -1959,7 +1959,31 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
                 }
             }
 
+            gradingFormulaPanel
+
             diagnosticsPanel
+        }
+    }
+
+    // D2: la fórmula de calificación final del documento ("Nota SA = Rúbrica... (40%) +
+    // Rejilla... (35%) + ...") se parseaba (`gradingFormula`) pero no se mostraba en ningún
+    // sitio; el docente no tenía forma de contrastarla con los instrumentos detectados salvo
+    // leyendo el DOCX aparte. Se enseña junto al resumen de pesos de la hoja de revisión.
+    @ViewBuilder
+    private var gradingFormulaPanel: some View {
+        if let gradingFormula = editableDraft.gradingFormula, !gradingFormula.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Fórmula de calificación del documento", systemImage: "function")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(gradingFormula)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
 

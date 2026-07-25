@@ -55,6 +55,15 @@ enum ScheduleEmptySlotImportMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Un par asignatura↔grupo tal y como aparece en un segmento de celda
+/// (`CODIGO_ASIGNATURA:CODIGO_GRUPO`). Preserva el emparejamiento real de la
+/// celda, que se perdía al acumular `subjectCodes` y `groupCodes` en arrays
+/// independientes.
+struct ImportedSlotAssignment: Hashable {
+    let subjectCode: String
+    let groupCode: String
+}
+
 struct ImportedScheduleSlot: Identifiable, Hashable {
     let id = UUID()
     let weekday: Int
@@ -62,9 +71,17 @@ struct ImportedScheduleSlot: Identifiable, Hashable {
     let endMinute: Int
     let rawText: String
     let kind: ImportedScheduleSlotKind
-    let subjectCodes: [String]
+    let assignments: [ImportedSlotAssignment]
     let subjectName: String?
-    let groupCodes: [String]
+
+    var subjectCodes: [String] { stableUnique(assignments.map(\.subjectCode)) }
+    var groupCodes: [String] { stableUnique(assignments.map(\.groupCode)) }
+
+    /// Asignatura asociada a un grupo concreto de esta franja, cuando la
+    /// celda mezcla varios pares asignatura↔grupo (ej. `EFI:1ESOA / MUS:2ESOB`).
+    func subjectCode(forGroup groupCode: String) -> String? {
+        assignments.first(where: { $0.groupCode == groupCode })?.subjectCode
+    }
 
     var startTime: String { Self.timeString(from: startMinute) }
     var endTime: String { Self.timeString(from: endMinute) }
@@ -84,6 +101,16 @@ struct ImportedScheduleSlot: Identifiable, Hashable {
     static func timeString(from minutes: Int) -> String {
         String(format: "%02d:%02d", minutes / 60, minutes % 60)
     }
+}
+
+func stableUnique(_ values: [String]) -> [String] {
+    var seen: Set<String> = []
+    var result: [String] = []
+    for value in values where !seen.contains(value) {
+        seen.insert(value)
+        result.append(value)
+    }
+    return result
 }
 
 struct ScheduleImportPreview: Identifiable {

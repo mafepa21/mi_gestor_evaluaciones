@@ -193,9 +193,8 @@ struct ScheduleExcelImportService {
                     endMinute: endMinute,
                     rawText: "",
                     kind: isBreak(startMinute: startMinute, endMinute: endMinute) ? .breakTime : .empty,
-                    subjectCodes: [],
-                    subjectName: nil,
-                    groupCodes: []
+                    assignments: [],
+                    subjectName: nil
                 )
             ]
         }
@@ -205,8 +204,7 @@ struct ScheduleExcelImportService {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
-        var subjectCodes: [String] = []
-        var groupCodes: [String] = []
+        var assignments: [ImportedSlotAssignment] = []
 
         for part in parts {
             let pieces = part
@@ -218,11 +216,11 @@ struct ScheduleExcelImportService {
                 .components(separatedBy: .whitespacesAndNewlines)
                 .joined()
                 .uppercased()
-            if !subjectCode.isEmpty { subjectCodes.append(subjectCode) }
-            if !groupCode.isEmpty { groupCodes.append(groupCode) }
+            guard !subjectCode.isEmpty, !groupCode.isEmpty else { continue }
+            assignments.append(ImportedSlotAssignment(subjectCode: subjectCode, groupCode: groupCode))
         }
 
-        guard !subjectCodes.isEmpty || !groupCodes.isEmpty else {
+        guard !assignments.isEmpty else {
             return [
                 ImportedScheduleSlot(
                     weekday: weekday,
@@ -230,13 +228,13 @@ struct ScheduleExcelImportService {
                     endMinute: endMinute,
                     rawText: raw,
                     kind: .teaching,
-                    subjectCodes: [],
-                    subjectName: raw,
-                    groupCodes: []
+                    assignments: [],
+                    subjectName: raw
                 )
             ]
         }
 
+        let subjectCodes = stableUnique(assignments.map(\.subjectCode))
         let kind: ImportedScheduleSlotKind = subjectCodes.contains { $0.hasPrefix("TUT") } ? .tutoring : .teaching
         let subjectName = resolveSubjectName(subjectCodes: subjectCodes, legendByCode: legendByCode, kind: kind)
 
@@ -247,9 +245,8 @@ struct ScheduleExcelImportService {
                 endMinute: endMinute,
                 rawText: raw,
                 kind: kind,
-                subjectCodes: stableUnique(subjectCodes),
-                subjectName: subjectName,
-                groupCodes: stableUnique(groupCodes)
+                assignments: assignments,
+                subjectName: subjectName
             )
         ]
     }
@@ -355,15 +352,6 @@ struct ScheduleExcelImportService {
             .joined(separator: " ")
     }
 
-    private func stableUnique(_ values: [String]) -> [String] {
-        var seen: Set<String> = []
-        var result: [String] = []
-        for value in values where !seen.contains(value) {
-            seen.insert(value)
-            result.append(value)
-        }
-        return result
-    }
 }
 
 private struct Header {

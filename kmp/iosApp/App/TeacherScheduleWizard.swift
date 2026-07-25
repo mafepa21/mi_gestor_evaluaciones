@@ -130,10 +130,11 @@ struct TeacherScheduleWizard: View {
         .sheet(item: $vm.scheduleImportPreview) { preview in
             ScheduleImportPreviewSheet(
                 preview: preview,
+                plan: vm.scheduleImportPlan ?? .empty,
                 knownGroupNames: vm.knownGroupNamesByCode(),
                 isImporting: vm.isImportingSchedule
-            ) { mode in
-                Task { await vm.importSchedulePreview(preview, emptySlotMode: mode) }
+            ) { mode, createSubjects in
+                Task { await vm.importSchedulePreview(preview, emptySlotMode: mode, createSubjects: createSubjects) }
             }
         }
         .sheet(item: $activeExtra) { extra in

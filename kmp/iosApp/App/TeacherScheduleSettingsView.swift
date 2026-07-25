@@ -20,6 +20,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var forecastRows: [PlannerSessionForecast] = []
     @Published var nonTeachingEvents: [CalendarEvent] = []
     @Published var scheduleImportPreview: ScheduleImportPreview?
+    @Published var scheduleImportPlan: ScheduleImportCatalogPlan?
     @Published var isImportingSchedule = false
 
     @Published var scheduleName = "Agenda docente"
@@ -51,6 +52,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     private weak var bridge: KmpBridge?
     private var selectedClassId: Int64?
     private var isBound = false
+    private let catalogResolver = ScheduleImportCatalogResolver()
 
     var activeWeekdaySummary: String {
         let labels = activeWeekdays.sorted().map(dayLabel(for:))
@@ -254,35 +256,53 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         do {
             let url = try result.get()
             let parsed = try ScheduleExcelImportService().preview(from: url)
-            scheduleImportPreview = previewWithExistingConflicts(parsed)
+            let withConflicts = previewWithExistingConflicts(parsed)
+            scheduleImportPreview = withConflicts
+            scheduleImportPlan = buildCatalogPlan(for: withConflicts)
             scheduleError = ""
             scheduleImportStatusMessage = ""
             scheduleSaveState = .idle
         } catch {
             scheduleError = error.localizedDescription
+            scheduleImportPlan = nil
             scheduleImportStatusMessage = ""
             scheduleSaveState = .failed(scheduleError)
         }
     }
 
-    func importSchedulePreview(_ preview: ScheduleImportPreview, emptySlotMode: ScheduleEmptySlotImportMode) async {
+    func importSchedulePreview(_ preview: ScheduleImportPreview, emptySlotMode: ScheduleEmptySlotImportMode, createSubjects: Bool = true) async {
         guard let bridge, teacherSchedule != nil else { return }
         isImportingSchedule = true
         scheduleSaveState = .saving
         defer { isImportingSchedule = false }
 
         do {
-            var groupIdByCode = try await ensureImportedGroups(preview.groupCodes)
+            let catalog = try await ensureImportedCatalog(preview, createSubjects: createSubjects)
             guard let schedule = teacherSchedule else { return }
 
             var importedCount = 0
+            var skippedCount = 0
             for slot in preview.persistableSlots {
                 for groupCode in slot.groupCodes {
-                    guard let classId = groupIdByCode[groupCode] else { continue }
+                    guard let classId = catalog.groupIdByCode[groupCode] else { continue }
+                    let subjectLabel = resolvedSubjectLabel(for: slot, groupCode: groupCode, subjectNameByCode: catalog.subjectNameByCode)
+
+                    let alreadyExists = effectiveScheduleSlots.contains { existing in
+                        existing.schoolClassId == classId
+                            && Int(existing.dayOfWeek) == slot.weekday
+                            && existing.startTime == slot.startTime
+                            && existing.endTime == slot.endTime
+                            && existing.subjectLabel == subjectLabel
+                    }
+                    if alreadyExists {
+                        skippedCount += 1
+                        continue
+                    }
+
                     _ = try await bridge.plannerSaveTeacherScheduleSlot(
                         scheduleId: schedule.id,
                         classId: classId,
-                        subjectLabel: slot.subjectName ?? slot.subjectCode ?? slot.displayTitle,
+                        subjectLabel: subjectLabel,
                         unitLabel: slot.kind == .tutoring ? "Tutoría multigrupo" : nil,
                         dayOfWeek: slot.weekday,
                         startTime: slot.startTime,
@@ -292,19 +312,32 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
                 }
             }
 
-            groupIdByCode.removeAll(keepingCapacity: true)
             scheduleImportPreview = nil
+            scheduleImportPlan = nil
             await reload()
             scheduleSaveState = .saved(Date())
             scheduleError = ""
-            scheduleImportStatusMessage = emptySlotMode == .skip
-                ? "Horario importado correctamente (\(importedCount) franjas)."
-                : "Horario importado correctamente (\(importedCount) franjas). Los huecos vacíos quedan clasificados en la previsualización, pero esta versión no los persiste sin grupo."
+
+            var message = "Horario importado correctamente (\(importedCount) franjas)."
+            if skippedCount > 0 {
+                message += " \(skippedCount) ya existían y se omitieron."
+            }
+            if emptySlotMode != .skip {
+                message += " Los huecos vacíos quedan clasificados en la previsualización, pero esta versión no los persiste sin grupo."
+            }
+            scheduleImportStatusMessage = message
         } catch {
             scheduleError = error.localizedDescription
             scheduleImportStatusMessage = ""
             scheduleSaveState = .failed(scheduleError)
         }
+    }
+
+    private func resolvedSubjectLabel(for slot: ImportedScheduleSlot, groupCode: String, subjectNameByCode: [String: String]) -> String {
+        if let code = slot.subjectCode(forGroup: groupCode), let name = subjectNameByCode[code] {
+            return name
+        }
+        return slot.subjectName ?? slot.displayTitle
     }
 
     func addEvaluationPeriod() async {
@@ -453,53 +486,149 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     }
 
     func knownGroupNamesByCode() -> [String: String] {
-        Dictionary(
-            groups.compactMap { group in
-                guard let code = groupCode(from: group.name) else { return nil }
-                return (code, group.name)
+        guard let preview = scheduleImportPreview else { return [:] }
+        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups)
+        return Dictionary(
+            groupResolution.matchedIdByCode.compactMap { code, classId in
+                groups.first(where: { $0.id == classId }).map { (code, $0.name) }
             },
             uniquingKeysWith: { first, _ in first }
         )
     }
 
-    private func ensureImportedGroups(_ groupCodes: [String]) async throws -> [String: Int64] {
-        guard let bridge else { return [:] }
-        var idByCode = Dictionary(
-            groups.compactMap { group in
-                groupCode(from: group.name).map { ($0, group.id) }
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
+    private func buildCatalogPlan(for preview: ScheduleImportPreview) -> ScheduleImportCatalogPlan {
+        guard let bridge else { return .empty }
+        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups)
+        let subjectResolution = catalogResolver.resolveSubjects(preview: preview, existingSubjects: bridge.subjects)
+        let plan = ScheduleImportCatalogPlan.build(groupResolution: groupResolution, subjectResolution: subjectResolution)
 
-        for code in groupCodes where idByCode[code] == nil {
-            let className = groupDisplayName(for: code)
-            let course = Int32(Int(code.prefix(1)) ?? 0)
-            let classId = try await bridge.createClass(name: className, course: course)
-            idByCode[code] = classId
-            await bridge.ensureClassesLoaded()
-            groups = bridge.classes.sorted { $0.name < $1.name }
+        let ambiguousWarnings = catalogResolver.subjectCodesByGroup(preview: preview)
+            .filter { $0.value.count > 1 }
+            .map { groupCode, subjectCodes -> String in
+                let name = groupResolution.matchedIdByCode[groupCode]
+                    .flatMap { classId in groups.first(where: { $0.id == classId })?.name }
+                    ?? groupDisplayName(for: groupCode)
+                return "\(name) imparte \(subjectCodes.count) materias (\(subjectCodes.sorted().joined(separator: ", "))): se deja sin asignatura fija. Duplica el grupo desde Cursos si quieres cuadernos separados."
+            }
+            .sorted()
+
+        guard !ambiguousWarnings.isEmpty else { return plan }
+        return ScheduleImportCatalogPlan(
+            groupsToCreate: plan.groupsToCreate,
+            groupsReusedCount: plan.groupsReusedCount,
+            subjectsToCreate: plan.subjectsToCreate,
+            subjectsReusedCount: plan.subjectsReusedCount,
+            warnings: plan.warnings + ambiguousWarnings
+        )
+    }
+
+    /// Crea en el catálogo los grupos y asignaturas que detecta el Excel y
+    /// no existen todavía, y hace backfill de `subjectId` en grupos ya
+    /// existentes que imparten una única asignatura y aún no lo tenían. Los
+    /// grupos con `subjectId` puesto a mano nunca se tocan.
+    private func ensureImportedCatalog(
+        _ preview: ScheduleImportPreview,
+        createSubjects: Bool
+    ) async throws -> (groupIdByCode: [String: Int64], subjectNameByCode: [String: String]) {
+        guard let bridge else { return ([:], [:]) }
+
+        let subjectResolution = catalogResolver.resolveSubjects(preview: preview, existingSubjects: bridge.subjects)
+        var subjectIdByCode = subjectResolution.matchedIdByCode
+        let subjectNames = subjectNameByCode(from: subjectResolution, existingSubjects: bridge.subjects)
+        if createSubjects {
+            for item in subjectResolution.toCreate {
+                let subjectId = try await bridge.saveSubject(code: item.code, name: item.name)
+                subjectIdByCode[item.code] = subjectId
+            }
         }
-        return idByCode
+
+        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups)
+        let subjectCodesByGroup = catalogResolver.subjectCodesByGroup(preview: preview)
+        var groupIdByCode = groupResolution.matchedIdByCode
+
+        for item in groupResolution.toCreate {
+            let singleSubjectCode = subjectCodesByGroup[item.code]?.count == 1 ? subjectCodesByGroup[item.code]?.first : nil
+            let classId = try await bridge.createClass(
+                name: item.name,
+                course: item.course,
+                subjectId: singleSubjectCode.flatMap { subjectIdByCode[$0] }
+            )
+            groupIdByCode[item.code] = classId
+        }
+
+        for (groupCode, classId) in groupResolution.matchedIdByCode {
+            guard let existingGroup = groups.first(where: { $0.id == classId }), existingGroup.subjectId == nil else { continue }
+            guard let subjectCodes = subjectCodesByGroup[groupCode], subjectCodes.count == 1, let onlyCode = subjectCodes.first else { continue }
+            guard let subjectId = subjectIdByCode[onlyCode] else { continue }
+            try await bridge.updateClass(
+                id: classId,
+                name: existingGroup.name,
+                course: existingGroup.course,
+                description: existingGroup.description_,
+                centerId: existingGroup.centerId?.int64Value,
+                academicYearId: existingGroup.academicYearId?.int64Value,
+                stageCycleId: existingGroup.stageCycleId?.int64Value,
+                subjectId: subjectId
+            )
+        }
+
+        await bridge.ensureClassesLoaded()
+        groups = bridge.classes.sorted { $0.name < $1.name }
+
+        return (groupIdByCode, subjectNames)
+    }
+
+    /// Nombre a mostrar por código de asignatura: el del catálogo cuando ya
+    /// existe (nunca se sobrescribe), o el que se le asignará al crearla.
+    /// Compartido entre la comprobación de idempotencia y el guardado real
+    /// para que ambos calculen exactamente el mismo `subjectLabel`.
+    private func subjectNameByCode(
+        from resolution: ScheduleImportCatalogResolver.SubjectResolution,
+        existingSubjects: [KmpSubject]
+    ) -> [String: String] {
+        var result = Dictionary(
+            uniqueKeysWithValues: resolution.matchedIdByCode.compactMap { code, subjectId in
+                existingSubjects.first(where: { $0.id == subjectId }).map { (code, $0.name) }
+            }
+        )
+        for item in resolution.toCreate {
+            result[item.code] = item.name
+        }
+        return result
     }
 
     private func previewWithExistingConflicts(_ preview: ScheduleImportPreview) -> ScheduleImportPreview {
-        let idByCode = Dictionary(
-            groups.compactMap { group in
-                groupCode(from: group.name).map { ($0, group.id) }
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
+        guard let bridge else { return preview }
+        let groupResolution = catalogResolver.resolveGroups(preview: preview, existingGroups: groups)
+        let subjectResolution = catalogResolver.resolveSubjects(preview: preview, existingSubjects: bridge.subjects)
+        let subjectNames = subjectNameByCode(from: subjectResolution, existingSubjects: bridge.subjects)
         var conflicts = preview.conflicts
+        var warnings = preview.warnings
+        var alreadyImportedCount = 0
 
         for imported in preview.persistableSlots {
             for groupCode in imported.groupCodes {
-                guard let classId = idByCode[groupCode] else { continue }
+                guard let classId = groupResolution.matchedIdByCode[groupCode] else { continue }
+                let subjectLabel = resolvedSubjectLabel(for: imported, groupCode: groupCode, subjectNameByCode: subjectNames)
+                let groupName = groups.first(where: { $0.id == classId })?.name ?? groupDisplayName(for: groupCode)
+
                 for existing in effectiveScheduleSlots where existing.schoolClassId == classId && Int(existing.dayOfWeek) == imported.weekday {
-                    if rangesOverlap(startA: existing.startTime, endA: existing.endTime, startB: imported.startTime, endB: imported.endTime) {
-                        conflicts.append("\(dayLabel(for: imported.weekday)) \(imported.startTime)-\(imported.endTime) se solapa con una franja existente de \(groupDisplayName(for: groupCode)).")
+                    guard rangesOverlap(startA: existing.startTime, endA: existing.endTime, startB: imported.startTime, endB: imported.endTime) else { continue }
+
+                    let isIdenticalSlot = existing.startTime == imported.startTime
+                        && existing.endTime == imported.endTime
+                        && existing.subjectLabel == subjectLabel
+                    if isIdenticalSlot {
+                        alreadyImportedCount += 1
+                    } else {
+                        conflicts.append("\(dayLabel(for: imported.weekday)) \(imported.startTime)-\(imported.endTime) se solapa con una franja existente de \(groupName).")
                     }
                 }
             }
+        }
+
+        if alreadyImportedCount > 0 {
+            warnings.append("\(alreadyImportedCount) franja(s) ya existen igual en el horario y se omitirán al importar.")
         }
 
         return ScheduleImportPreview(
@@ -507,7 +636,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             slots: preview.slots,
             subjectLegend: preview.subjectLegend,
             conflicts: Array(Set(conflicts)).sorted(),
-            warnings: preview.warnings
+            warnings: warnings
         )
     }
 
@@ -525,21 +654,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     }
 
     private func groupDisplayName(for code: String) -> String {
-        guard code.count >= 5 else { return code }
-        return "\(code.prefix(1))º ESO \(code.suffix(1))"
-    }
-
-    private func groupCode(from name: String) -> String? {
-        let normalized = name
-            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-            .uppercased()
-            .replacingOccurrences(of: "º", with: "")
-            .replacingOccurrences(of: "°", with: "")
-        guard normalized.contains("ESO") else { return nil }
-        let digits = normalized.filter(\.isNumber)
-        let letters = normalized.filter(\.isLetter)
-        guard let course = digits.first, let group = letters.last else { return nil }
-        return "\(course)ESO\(group)"
+        ScheduleGroupNaming.displayName(forCode: code)
     }
 }
 

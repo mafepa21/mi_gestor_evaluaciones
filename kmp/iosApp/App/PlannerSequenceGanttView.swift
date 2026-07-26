@@ -9,6 +9,7 @@ struct PlannerSequenceGanttView: View {
     @State private var selectedRange: PlannerGanttRange = .current
     @State private var selectedGroupId: Int64?
     @State private var expandedSituationIds: Set<String> = []
+    @AppStorage("plannerGanttHintDismissed") private var ganttHintDismissed = false
 
     private let labelWidth: CGFloat = 208
     private let weekWidth: CGFloat = 64
@@ -23,6 +24,7 @@ struct PlannerSequenceGanttView: View {
             if vm.sequenceGroupsEnriched.isEmpty {
                 emptyContent
             } else {
+                onboardingHint
                 ganttContent
             }
         }
@@ -242,11 +244,46 @@ struct PlannerSequenceGanttView: View {
         }
     }
 
+    /// Aviso de "cómo se lee esto" mostrado solo la primera vez (mismo patrón
+    /// `@AppStorage` que el aviso de arrastre del grid semanal), con cierre explícito.
+    @ViewBuilder
+    private var onboardingHint: some View {
+        if !ganttHintDismissed {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "info.circle.fill")
+                    .foregroundStyle(EvaluationDesign.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Cada fila es una situación de aprendizaje")
+                        .font(.caption.weight(.bold))
+                    Text("Cada marca de color es una sesión: toca una para abrir su ficha. El color indica su estado — mira la leyenda de abajo.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Button {
+                    withAnimation(uiFeatureFlags.interactionAnimation) {
+                        ganttHintDismissed = true
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Descartar aviso")
+            }
+            .padding(12)
+            .plannerGlassPanel(.control, cornerRadius: 12)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
     private var legend: some View {
         HStack(spacing: 16) {
             PlannerGanttLegendItem(label: "Impartida", tint: EvaluationDesign.success)
             PlannerGanttLegendItem(label: "Planificada", tint: EvaluationDesign.accent)
             PlannerGanttLegendItem(label: "Pendiente de ubicar", tint: IOSAppStyle.warning)
+            PlannerGanttLegendItem(label: "Cancelada", tint: EvaluationDesign.danger)
             PlannerGanttLegendItem(label: "Vacaciones", tint: Color.secondary.opacity(0.35))
             Spacer()
         }
@@ -541,10 +578,24 @@ private struct PlannerGanttGroupRow: View {
                         .lineLimit(1)
 
                     if let pace = paceLabel {
-                        Text(pace.text)
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(pace.tint)
-                            .lineLimit(1)
+                        if pace.isBehind {
+                            Button {
+                                vm.selectGroup(group.groupId)
+                                vm.activeSection = .week
+                            } label: {
+                                Label(pace.text, systemImage: "arrow.right.circle.fill")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(pace.tint)
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Abre la Semana filtrada por \(group.groupName) para ponerte al día")
+                        } else {
+                            Text(pace.text)
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(pace.tint)
+                                .lineLimit(1)
+                        }
                     } else {
                         Text("\(group.plannedCount) planificadas")
                             .font(.caption2.weight(.medium))
@@ -600,7 +651,7 @@ private struct PlannerGanttGroupRow: View {
 
     /// Sesiones esperadas a día de hoy (proporcional al punto en que estamos dentro
     /// del rango real de semanas de la situación) frente a las realmente completadas.
-    private var paceLabel: (text: String, tint: Color)? {
+    private var paceLabel: (text: String, tint: Color, isBehind: Bool)? {
         let assignedWeeks = group.rows.compactMap { row -> PlannerGanttWeek? in
             guard let session = row.planningSession else { return nil }
             return PlannerGanttWeek(year: Int(session.year), week: Int(session.weekNumber))
@@ -618,11 +669,11 @@ private struct PlannerGanttGroupRow: View {
         let delta = group.completedCount - expected
 
         if delta == 0 {
-            return ("Al día con el plan", EvaluationDesign.success)
+            return ("Al día con el plan", EvaluationDesign.success, false)
         } else if delta > 0 {
-            return ("Vas \(delta) sesión\(delta == 1 ? "" : "es") por delante", EvaluationDesign.success)
+            return ("Vas \(delta) sesión\(delta == 1 ? "" : "es") por delante", EvaluationDesign.success, false)
         } else {
-            return ("Vas \(-delta) sesión\(-delta == 1 ? "" : "es") por detrás", IOSAppStyle.warning)
+            return ("Vas \(-delta) sesión\(-delta == 1 ? "" : "es") por detrás", IOSAppStyle.warning, true)
         }
     }
 }
@@ -681,17 +732,25 @@ private struct PlannerGanttContinuousBar: View {
         }
     }
 
+    /// Cuántas ganas de llamar la atención del docente tiene cada estado si una semana
+    /// tiene varias filas: lo que necesita acción (ubicar/cancelada) gana a lo ya resuelto.
+    private func attentionRank(for statusText: String) -> Int {
+        switch statusText {
+        case "Pendiente de ubicar": return 4
+        case "Cancelada": return 3
+        case "Cerrada", "Impartida": return 2
+        default: return 1 // Planificada, En Curso, Solo calendario
+        }
+    }
+
+    /// Única fuente de color: el `statusColor` ya calculado en el ViewModel para cada fila
+    /// (evita que esta vista re-derive el color por su cuenta y se desincronice de él).
     private func segmentColor(for rows: [PlannerSequenceRow]) -> Color {
-        guard !rows.isEmpty else {
+        guard let leading = rows.max(by: { attentionRank(for: $0.statusText) < attentionRank(for: $1.statusText) }) else {
             return EvaluationDesign.accent.opacity(0.16)
         }
-        if rows.contains(where: { $0.statusText == "Cerrada" || $0.statusText == "Impartida" }) {
-            return EvaluationDesign.success.opacity(0.30)
-        }
-        if rows.contains(where: { $0.statusText == "Pendiente de ubicar" }) {
-            return IOSAppStyle.warning.opacity(0.24)
-        }
-        return EvaluationDesign.accent.opacity(0.24)
+        let opacity: Double = leading.statusText == "Cerrada" || leading.statusText == "Impartida" ? 0.30 : 0.24
+        return leading.statusColor.opacity(opacity)
     }
 
     private func rowsForWeek(_ week: PlannerGanttWeek) -> [PlannerSequenceRow] {
@@ -764,14 +823,8 @@ private struct PlannerGanttSessionMark: View {
             )
     }
 
-    private var tint: Color {
-        if row.planningSession == nil { return IOSAppStyle.warning }
-        if row.statusText.localizedCaseInsensitiveContains("cerrad")
-            || row.statusText.localizedCaseInsensitiveContains("impart") {
-            return EvaluationDesign.success
-        }
-        return EvaluationDesign.accent
-    }
+    /// Mismo `statusColor` que ya trae la fila desde el ViewModel — nada de re-derivarlo aquí.
+    private var tint: Color { row.statusColor }
 }
 
 private struct PlannerGanttLegendItem: View {

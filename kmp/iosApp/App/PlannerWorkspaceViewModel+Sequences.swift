@@ -117,19 +117,19 @@ extension PlannerWorkspaceViewModel {
                                 if isCompleted {
                                     statusText = "Cerrada"
                                     statusIcon = "checkmark.seal.fill"
-                                    statusColor = Color.green
+                                    statusColor = EvaluationDesign.success
                                 } else if session.status == .completed {
                                     statusText = "Impartida"
                                     statusIcon = "checkmark.circle.fill"
-                                    statusColor = Color.green
+                                    statusColor = EvaluationDesign.success
                                 } else if session.status == .inProgress {
                                     statusText = "En Curso"
                                     statusIcon = "circle.lefthalf.filled"
-                                    statusColor = Color.yellow
+                                    statusColor = EvaluationDesign.accent
                                 } else if session.status == .cancelled {
                                     statusText = "Cancelada"
                                     statusIcon = "xmark.circle.fill"
-                                    statusColor = Color.red
+                                    statusColor = EvaluationDesign.danger
                                 } else {
                                     statusText = "Planificada"
                                     statusIcon = "circle"
@@ -155,7 +155,7 @@ extension PlannerWorkspaceViewModel {
                                     objective: plan.objective,
                                     statusText: "Pendiente de ubicar",
                                     statusIcon: "calendar.badge.plus",
-                                    statusColor: Color.orange,
+                                    statusColor: IOSAppStyle.warning,
                                     planningSession: nil,
                                     learningSituationSessionPlanId: plan.id
                                 ))
@@ -218,11 +218,11 @@ extension PlannerWorkspaceViewModel {
                             if isCompleted {
                                 statusText = "Cerrada"
                                 statusIcon = "checkmark.seal.fill"
-                                statusColor = Color.green
+                                statusColor = EvaluationDesign.success
                             } else if session.status == .completed {
                                 statusText = "Impartida"
                                 statusIcon = "checkmark.circle.fill"
-                                statusColor = Color.green
+                                statusColor = EvaluationDesign.success
                             } else {
                                 statusText = "Solo calendario"
                                 statusIcon = "calendar"

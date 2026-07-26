@@ -599,7 +599,7 @@ class ClassesRepositorySqlDelight(
      * tarde desde el otro dispositivo. Ver SqlDelightSyncAdapter.applyIncomingChangesLww
      * y KmpBridge.applyPulledChanges ("class_roster").
      */
-    suspend fun latestEnrollmentUpdatedAt(classId: Long, studentId: Long): Long? = withContext(Dispatchers.Default) {
+    override suspend fun latestEnrollmentUpdatedAt(classId: Long, studentId: Long): Long? = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.selectLatestEnrollmentUpdatedAt(classId, studentId).executeAsOneOrNull()
     }
 

@@ -55,6 +55,100 @@ internal fun wipeAllUserData(driver: SqlDriver, transacter: Transacter) {
     }
 }
 
+enum class WipeCategory(
+    val displayName: String,
+    val description: String,
+    val tableNames: List<String>,
+) {
+    CLASSES(
+        displayName = "Cursos y evaluaciones",
+        description = "Clases, calificaciones, cuaderno docente, asistencias e incidencias",
+        tableNames = listOf(
+            "classes", "class_students", "student_enrollments", "evaluations", "grades",
+            "attendance", "incidents", "notebook_tabs", "notebook_columns",
+            "notebook_column_categories", "notebook_work_groups", "notebook_cell_entries",
+            "notebook_instrument_templates", "notebook_instrument_items", "notebook_instrument_responses"
+        )
+    ),
+    STUDENTS(
+        displayName = "Alumnado",
+        description = "Fichas de estudiantes, medidas de apoyo y tutorías",
+        tableNames = listOf(
+            "students", "student_support_measures", "student_tutoring_sessions"
+        )
+    ),
+    RUBRICS(
+        displayName = "Rúbricas",
+        description = "Plantillas de rúbricas, criterios, niveles y evaluaciones de rúbrica",
+        tableNames = listOf(
+            "rubrics", "rubric_criteria", "rubric_levels", "rubric_assessments"
+        )
+    ),
+    LEARNING_SITUATIONS(
+        displayName = "Situaciones de aprendizaje",
+        description = "Unidades didácticas, planes de sesión y recursos enlazados",
+        tableNames = listOf(
+            "learning_situations", "learning_situation_versions", "learning_situation_classes",
+            "learning_situation_links", "learning_situation_sequence_versions",
+            "learning_situation_session_plans", "units", "sessions"
+        )
+    ),
+    TEACHER_SCHEDULE(
+        displayName = "Horario y Planificador",
+        description = "Franjas de horario, calendario, sesiones planificadas y diario",
+        tableNames = listOf(
+            "teacher_schedules", "teacher_schedule_slots", "planner_evaluation_periods",
+            "calendar_events", "planner_week_plan", "weekly_template_slots", "planned_sessions",
+            "session_journal"
+        )
+    ),
+    MEETINGS(
+        displayName = "Reuniones",
+        description = "Actas de reunión y acuerdos registrados",
+        tableNames = listOf(
+            "meetings", "meeting_agreements"
+        )
+    ),
+    AI_AUDIT(
+        displayName = "Auditoría de IA",
+        description = "Historial de sugerencias y logs de agentes de IA local",
+        tableNames = listOf(
+            "ai_audit_events"
+        )
+    )
+}
+
+/**
+ * Vacia las tablas pertenecientes a las categorias seleccionadas **sin tocar los ficheros de la base**
+ * ni eliminar las copias de seguridad.
+ */
+internal fun wipeSelectiveUserData(
+    driver: SqlDriver,
+    transacter: Transacter,
+    categories: Set<WipeCategory>
+) {
+    if (categories.isEmpty()) return
+    val allTables = allTableNames(driver)
+    val targetTables = categories.flatMap { it.tableNames }.distinct().filter { it in allTables }
+
+    driver.execute(null, "PRAGMA defer_foreign_keys = ON", 0)
+
+    transacter.transaction {
+        for (table in targetTables) {
+            driver.execute(null, """DELETE FROM "$table"""", 0)
+        }
+        if ("sqlite_sequence" in allTables && categories.contains(WipeCategory.CLASSES)) {
+            driver.execute(null, "DELETE FROM sqlite_sequence", 0)
+        }
+    }
+
+    try {
+        driver.execute(null, "PRAGMA wal_checkpoint(TRUNCATE)", 0)
+    } catch (error: Throwable) {
+        println("[DatabaseWipe] WAL checkpoint fallo tras el borrado selectivo (no critico): ${error.message}")
+    }
+}
+
 /**
  * Todas las tablas de la base. Se consulta a `sqlite_master` en vez de mantener una
  * lista fija para que una tabla nueva no se quede sin borrar en silencio la proxima

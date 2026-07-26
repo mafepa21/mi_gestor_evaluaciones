@@ -54,6 +54,7 @@ import com.migestor.shared.usecase.SaveStudentUseCase
 import com.migestor.shared.usecase.SaveSubjectUseCase
 import kotlinx.datetime.Clock
 
+import com.migestor.data.repository.NotebookConfigRepositorySqlDelight
 import com.migestor.shared.repository.*
 import com.migestor.shared.usecase.*
 
@@ -93,7 +94,7 @@ class KmpContainer(val driver: SqlDriver) {
     val weeklyTemplateRepository: WeeklyTemplateRepository = WeeklyTemplateRepositorySqlDelight(database)
     val plannedSessionRepository: PlannedSessionRepository = PlannedSessionRepositorySqlDelight(database)
     val learningSituationsRepository: LearningSituationsRepository = LearningSituationsRepositorySqlDelight(database)
-    val syncTombstoneRepository: SyncTombstoneRepository = SyncTombstoneRepositorySqlDelight(database)
+    val syncTombstoneRepository = SyncTombstoneRepositorySqlDelight(database)
     val aiTrendsRepository: AITrendsRepository = AITrendsRepositorySqlDelight(database)
     val teacherScheduleRepository: TeacherScheduleRepository = TeacherScheduleRepositorySqlDelight(
         db = database,
@@ -143,7 +144,6 @@ class KmpContainer(val driver: SqlDriver) {
     val buildNotebookSheet = BuildNotebookSheetUseCase(getNotebook)
     val getNotebookConfig = GetNotebookConfigUseCase(notebookConfigRepository)
     val getOperationalDashboardSnapshot = GetOperationalDashboardSnapshotUseCase(dashboardOperationalRepository)
-    val aiTrendsRepository = AITrendsRepositorySqlDelight(database)
     val getAITrendsAndMetrics = GetAITrendsAndMetricsUseCase(aiTrendsRepository)
 
     val notebookRepository = NotebookRepositorySqlDelight(
@@ -180,6 +180,11 @@ class KmpContainer(val driver: SqlDriver) {
     @Throws(Throwable::class)
     fun wipeAllData() {
         wipeAllUserData(driver, database)
+    }
+
+    @Throws(Throwable::class)
+    fun wipeSelectiveData(categories: Set<com.migestor.data.platform.WipeCategory>) {
+        com.migestor.data.platform.wipeSelectiveUserData(driver, database, categories)
     }
 
     suspend fun seedDemoDataIfEmpty() {

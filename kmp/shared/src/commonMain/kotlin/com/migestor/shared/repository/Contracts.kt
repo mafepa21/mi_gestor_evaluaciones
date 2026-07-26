@@ -71,6 +71,8 @@ interface ClassesRepository {
     @Throws(Throwable::class)
     suspend fun listClasses(): List<SchoolClass>
     @Throws(Throwable::class)
+    suspend fun latestEnrollmentUpdatedAt(classId: Long, studentId: Long): Long? = null
+    @Throws(Throwable::class)
     suspend fun listCourseOverviews(): List<CourseOverview> = listClasses().map {
         CourseOverview(
             classId = it.id,

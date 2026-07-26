@@ -147,6 +147,10 @@ struct SettingsDangerZoneView: View {
     private func performWipe() async {
         let backupService = AppleBackupService.shared
 
+        // 0. Marcar inmediatamente que la app necesita reinicio para bloquear
+        //    cualquier intento de relanzar el helper o ejecutar consultas en segundo plano.
+        backupService.needsRestart = true
+
         // 1. Parar el trabajo en segundo plano de este proceso (bucle de auto-sync,
         //    debounces de guardado, listener SSE).
         bridge.stopBackgroundSyncWork()
@@ -161,6 +165,8 @@ struct SettingsDangerZoneView: View {
         //    propia conexión SQLite al mismo fichero y sigue sirviendo /sync/pull.
         #if os(macOS)
         NotificationCenter.default.post(name: .appleCommandCenterStopRequested, object: nil)
+        // Dar tiempo a que el proceso del helper reciba la orden y finalice completamente
+        try? await Task.sleep(nanoseconds: 300_000_000)
         #endif
 
         // 4. Vaciar la base por SQL. Si falla, se avisa y no se borra nada más: es
@@ -169,6 +175,7 @@ struct SettingsDangerZoneView: View {
         do {
             try bridge.wipeAllDatabaseData()
         } catch {
+            backupService.needsRestart = false
             feedbackMessage = "No se pudieron borrar los datos: \(error.localizedDescription)"
             return
         }

@@ -70,6 +70,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
     }
 
     func startIfNeeded() {
+        guard !AppleBackupService.shared.needsRestart else { return }
         guard process?.isRunning != true else { return }
 
         print("[Pairing] start requested")

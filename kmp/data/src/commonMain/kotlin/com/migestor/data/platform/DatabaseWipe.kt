@@ -44,12 +44,14 @@ internal fun wipeAllUserData(driver: SqlDriver, transacter: Transacter) {
         }
     }
 
-    // Fuera de transaccion: devuelve al sistema el espacio de las paginas liberadas.
-    // Si falla no invalida el borrado, que ya esta confirmado.
+    // Fuera de transaccion: vuelca los datos confirmados del WAL al fichero principal
+    // y trunca el fichero WAL a 0 bytes sin reconstruir la base ni tocar descriptores de archivo.
+    // NUNCA usar VACUUM aquí: VACUUM crea un fichero db temporal, borra el original y renombra,
+    // lo que en macOS desvincula el vnode (`vnode unlinked while in use`) en conexiones concurrentes.
     try {
-        driver.execute(null, "VACUUM", 0)
+        driver.execute(null, "PRAGMA wal_checkpoint(TRUNCATE)", 0)
     } catch (error: Throwable) {
-        println("[DatabaseWipe] VACUUM fallo tras el borrado (no critico): ${error.message}")
+        println("[DatabaseWipe] WAL checkpoint fallo tras el borrado (no critico): ${error.message}")
     }
 }
 

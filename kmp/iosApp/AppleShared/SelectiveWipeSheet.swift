@@ -13,6 +13,7 @@ struct SelectiveWipeSheet: View {
     @State private var showingConfirmationAlert: Bool = false
     @State private var confirmationText: String = ""
     @State private var isProcessing: Bool = false
+    @State private var isRestarting: Bool = false
     @State private var statusFeedback: String? = nil
 
     private var allCategories: [WipeCategory] {
@@ -28,138 +29,26 @@ struct SelectiveWipeSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Borrado modular y personalizado", systemImage: "slider.horizontal.3")
-                            .font(.headline)
-                            .foregroundColor(.primary)
+            ZStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Header Banner
+                        headerBanner
 
-                        Text("Selecciona únicamente la información que deseas eliminar. Los elementos no marcados se mantendrán intactos en tu base de datos.")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                        // Card: Backup Previsto
+                        backupSectionCard
+
+                        // Card: Presets Rápidos
+                        presetsSectionCard
+
+                        // Card: Categorías
+                        categoriesSectionCard
                     }
-                    .padding(.vertical, 4)
+                    .padding(20)
                 }
 
-                Section("Copia de seguridad previa") {
-                    Toggle(isOn: $createEmergencyBackup) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Guardar copia de seguridad automática")
-                                .font(.body.weight(.medium))
-                            Text("Genera una copia en disco (.sqlite) inmediatamente antes de proceder al borrado")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .tint(.blue)
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "shield.checkmark.fill")
-                            .foregroundColor(.green)
-                            .font(.caption)
-                        Text("Tus copias de seguridad en disco nunca se borrarán desde esta pantalla.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                Section("Presets de selección rápida") {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            Button("Solo Cursos y Notas") {
-                                selectedCategories = [.classes]
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.orange)
-
-                            Button("Todo excepto Rúbricas y SA") {
-                                selectedCategories = Set(allCategories).subtracting([.rubrics, .learningSituations])
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.purple)
-
-                            Button("Seleccionar todo") {
-                                selectedCategories = Set(allCategories)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.red)
-
-                            Button("Desmarcar todo") {
-                                selectedCategories.removeAll()
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.gray)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-
-                Section("Categorías de información") {
-                    ForEach(allCategories, id: \.self) { category in
-                        let isSelected = selectedCategories.contains(category)
-                        Button {
-                            if isSelected {
-                                selectedCategories.remove(category)
-                            } else {
-                                selectedCategories.insert(category)
-                            }
-                        } label: {
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .font(.title3)
-                                    .foregroundColor(isSelected ? .red : .gray)
-                                    .padding(.top, 2)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(category.displayName)
-                                            .font(.body.weight(.semibold))
-                                            .foregroundColor(.primary)
-                                        Spacer()
-                                        Text(isSelected ? "Se eliminará" : "Se conservará")
-                                            .font(.caption2.weight(.bold))
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 3)
-                                            .background(isSelected ? Color.red.opacity(0.12) : Color.green.opacity(0.12))
-                                            .foregroundColor(isSelected ? .red : .green)
-                                            .cornerRadius(6)
-                                    }
-
-                                    Text(category.description_)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                        .multilineTextAlignment(.leading)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.vertical, 4)
-                    }
-                }
-
-                Section {
-                    Button(role: .destructive) {
-                        confirmationText = ""
-                        showingConfirmationAlert = true
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if isProcessing {
-                                ProgressView()
-                                    .padding(.trailing, 6)
-                                Text("Procesando borrado...")
-                            } else {
-                                Label(
-                                    selectedCategories.isEmpty ? "Selecciona al menos una categoría" : "Eliminar \(selectedCategories.count) categoría\(selectedCategories.count == 1 ? "" : "s")",
-                                    systemImage: "trash.fill"
-                                )
-                                .font(.body.weight(.bold))
-                            }
-                            Spacer()
-                        }
-                    }
-                    .disabled(selectedCategories.isEmpty || isProcessing)
+                if isProcessing || isRestarting {
+                    processingOverlay
                 }
             }
             .navigationTitle("Borrado Seleccionable")
@@ -171,6 +60,17 @@ struct SelectiveWipeSheet: View {
                     Button("Cancelar") {
                         dismiss()
                     }
+                    .disabled(isProcessing || isRestarting)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(role: .destructive) {
+                        confirmationText = ""
+                        showingConfirmationAlert = true
+                    } label: {
+                        Text(selectedCategories.isEmpty ? "Eliminar" : "Eliminar (\(selectedCategories.count))")
+                            .bold()
+                    }
+                    .disabled(selectedCategories.isEmpty || isProcessing || isRestarting)
                 }
             }
             .alert("Confirmar borrado selectivo", isPresented: $showingConfirmationAlert) {
@@ -199,11 +99,248 @@ struct SelectiveWipeSheet: View {
                 set: { statusFeedback = $0?.value }
             )) { message in
                 Alert(title: Text("Aviso"), message: Text(message.value), dismissButton: .default(Text("OK")) {
-                    dismiss()
+                    if !isRestarting {
+                        dismiss()
+                    }
                 })
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 620, idealWidth: 680, minHeight: 660, idealHeight: 740)
+        #else
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        #endif
     }
+
+    // MARK: - Subviews
+
+    private var headerBanner: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.15))
+                    .frame(width: 48, height: 48)
+                Image(systemName: "slider.horizontal.3")
+                    .font(.title2.weight(.bold))
+                    .foregroundColor(.orange)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Borrado modular y personalizado")
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(.primary)
+
+                Text("Selecciona únicamente la información que deseas eliminar. Los elementos no marcados se mantendrán intactos.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color.primary.opacity(0.03))
+        )
+    }
+
+    private var backupSectionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $createEmergencyBackup) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Guardar copia de seguridad automática previa")
+                        .font(.body.weight(.semibold))
+                        .foregroundColor(.primary)
+
+                    Text("Genera una copia completa en disco (.sqlite) inmediatamente antes de aplicar el borrado.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .tint(.blue)
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Image(systemName: "lock.shield.fill")
+                    .foregroundColor(.green)
+                    .font(.caption)
+                Text("Tus copias de seguridad en disco nunca se borrarán desde esta pantalla.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color.primary.opacity(0.03))
+        )
+    }
+
+    private var presetsSectionCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Presets de selección rápida")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.secondary)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                Button {
+                    selectedCategories = [.classes]
+                } label: {
+                    HStack {
+                        Image(systemName: "folder.badge.minus")
+                        Text("Solo Cursos y Notas")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+
+                Button {
+                    selectedCategories = Set(allCategories).subtracting([.rubrics, .learningSituations])
+                } label: {
+                    HStack {
+                        Image(systemName: "bookmark.slash")
+                        Text("Todo menos Rúbricas y SA")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+                .tint(.purple)
+
+                Button {
+                    selectedCategories = Set(allCategories)
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark.square.stack.fill")
+                        Text("Seleccionar Todo")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+
+                Button {
+                    selectedCategories.removeAll()
+                } label: {
+                    HStack {
+                        Image(systemName: "square.dashed")
+                        Text("Desmarcar Todo")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+                .tint(.gray)
+            }
+        }
+    }
+
+    private var categoriesSectionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Categorías de información (\(allCategories.count))")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 10) {
+                ForEach(allCategories, id: \.self) { category in
+                    let isSelected = selectedCategories.contains(category)
+                    Button {
+                        if isSelected {
+                            selectedCategories.remove(category)
+                        } else {
+                            selectedCategories.insert(category)
+                        }
+                    } label: {
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                .font(.title2)
+                                .foregroundColor(isSelected ? .red : .secondary.opacity(0.5))
+                                .padding(.top, 2)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(category.displayName)
+                                        .font(.body.weight(.bold))
+                                        .foregroundColor(.primary)
+
+                                    Spacer()
+
+                                    Text(isSelected ? "Se eliminará" : "Se conservará")
+                                        .font(.caption.weight(.bold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            Capsule()
+                                                .fill(isSelected ? Color.red.opacity(0.15) : Color.green.opacity(0.15))
+                                        )
+                                        .foregroundColor(isSelected ? .red : .green)
+                                }
+
+                                Text(category.description_)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(isSelected ? Color.red.opacity(0.04) : Color.primary.opacity(0.02))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(isSelected ? Color.red.opacity(0.3) : Color.primary.opacity(0.06), lineWidth: 1)
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var processingOverlay: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                ProgressView()
+                    .controlSize(.large)
+
+                Text(isRestarting ? "Reiniciando aplicación..." : "Ejecutando borrado selectivo...")
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(.primary)
+
+                Text(isRestarting ? "La app se relanzará automáticamente en unos segundos." : "Guardando estado y limpiando tablas seleccionadas...")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(28)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    #if os(macOS)
+                    .fill(Color(NSColor.windowBackgroundColor).opacity(0.95))
+                    #else
+                    .fill(Color(UIColor.systemBackground).opacity(0.95))
+                    #endif
+                    .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 8)
+            )
+        }
+    }
+
+    // MARK: - Logic & Auto-Restart
 
     private func executeSelectiveWipe() {
         isProcessing = true
@@ -230,12 +367,35 @@ struct SelectiveWipeSheet: View {
             // 3. Ejecutar vaciado SQL por categorías
             do {
                 try bridge.wipeSelectiveDatabaseData(categories: selectedCategories)
+
+                #if os(macOS)
+                isProcessing = false
+                isRestarting = true
+                scheduleAutomaticRelaunch()
+                #else
+                isProcessing = false
                 statusFeedback = "El borrado selectivo se ha completado correctamente."
+                #endif
             } catch {
                 backupService.needsRestart = false
+                isProcessing = false
                 statusFeedback = "Error durante el borrado: \(error.localizedDescription)"
             }
-            isProcessing = false
         }
     }
+
+    #if os(macOS)
+    private func scheduleAutomaticRelaunch() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.createsNewApplicationInstance = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in
+                DispatchQueue.main.async {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+    }
+    #endif
 }

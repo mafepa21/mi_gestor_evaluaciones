@@ -9,6 +9,7 @@ struct SettingsDangerZoneView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showingWipeConfirmation = false
+    @State private var showingSelectiveWipeSheet = false
     @State private var confirmationText = ""
     @State private var pendingAction: DangerZoneAction? = nil
     @State private var feedbackMessage: String? = nil
@@ -26,6 +27,12 @@ struct SettingsDangerZoneView: View {
             }
 
             Section("Zona de peligro crítico") {
+                Button {
+                    showingSelectiveWipeSheet = true
+                } label: {
+                    Label("Borrado modular por categorías...", systemImage: "slider.horizontal.3")
+                }
+
                 Button(role: .destructive) {
                     confirmationText = ""
                     showingWipeConfirmation = true
@@ -34,6 +41,10 @@ struct SettingsDangerZoneView: View {
                         .foregroundColor(.red)
                 }
             }
+        }
+        .sheet(isPresented: $showingSelectiveWipeSheet) {
+            SelectiveWipeSheet()
+                .environmentObject(bridge)
         }
         .navigationTitle("Zona de Riesgo")
         .confirmationDialog(

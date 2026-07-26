@@ -5,6 +5,7 @@ import Security
 import CryptoKit
 
 typealias KmpSubject = MiGestorKit.Subject
+typealias WipeCategory = MiGestorKit.WipeCategory
 
 struct StructuredInstrumentEvaluationModel: Identifiable {
     let id: String
@@ -11372,6 +11373,10 @@ final class KmpBridge: ObservableObject {
     /// puede llegar a él sin abrir un driver nuevo por su cuenta.
     func wipeAllDatabaseData() throws {
         try container.wipeAllData()
+    }
+
+    func wipeSelectiveDatabaseData(categories: Set<WipeCategory>) throws {
+        try container.wipeSelectiveData(categories: categories)
     }
 
     /// Ruta de la base de datos activa. Se pide al bootstrap, que a su vez la pide al

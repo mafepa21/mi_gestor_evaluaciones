@@ -251,6 +251,7 @@
 		928E20A763449E7538247603 /* IOSSelectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A593BC56B52D68974ADE4DAE /* IOSSelectionStore.swift */; };
 		92F738EBFD7858DFB104C047 /* ScheduleExcelImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A13EB373B0EE87E425E97C /* ScheduleExcelImportService.swift */; };
 		940E55921CC7B148C4C5D0C2 /* NotebookCompactCommandBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B06388784ADA4E7EFF4FDB4 /* NotebookCompactCommandBar.swift */; };
+		9431E05EA810B154003DED20 /* SelectiveWipeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F49432D42F3A8BBD54876B /* SelectiveWipeSheet.swift */; };
 		9546F37A775EA87B30F4F374 /* MacSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 926C38D687AB3B3B857DA79A /* MacSyncView.swift */; };
 		96D1470DC455935FA3D0954A /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9892E60A7CF035F7B78B081 /* QRCodeView.swift */; };
 		98067CCD9F1ED097B9C60692 /* NotebookFocusMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3042AD483C9D7A9B0BCE80F8 /* NotebookFocusMode.swift */; };
@@ -392,6 +393,7 @@
 		EC465FA1A3AA49BBF03CF1B5 /* AppleBackupModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B44EBC79907A49017DC0CD /* AppleBackupModels.swift */; };
 		EE0C661D1602554402374D55 /* NotebookSupportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 834354958EC7B5CE22A3BA07 /* NotebookSupportViews.swift */; };
 		EE21D09A94AB9AA500C3E28D /* SettingsSectionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF5F802820D600F56AC6F2D /* SettingsSectionCard.swift */; };
+		EE585AABD4D49886E85298C0 /* SelectiveWipeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F49432D42F3A8BBD54876B /* SelectiveWipeSheet.swift */; };
 		EFDFB4479447A7246D91ABCA /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7AB4FB2753F16568E54891 /* DashboardView.swift */; };
 		F068E3CEACB675A1CED9011C /* NotebookModuleDataState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6144B137C267EC5DEA266F2 /* NotebookModuleDataState.swift */; };
 		F0B171DB64DE32129BFBCE30 /* AppleAppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */; };
@@ -547,6 +549,7 @@
 		6DFB7CB99B772BA64AA591A9 /* NotebookAICommentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAICommentSheet.swift; sourceTree = "<group>"; };
 		6ED32EAFF51BE275270F5F2A /* MeetingActaPDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingActaPDF.swift; sourceTree = "<group>"; };
 		6F08CE3BCBD53B85A89136EF /* PlannerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerModels.swift; sourceTree = "<group>"; };
+		70F49432D42F3A8BBD54876B /* SelectiveWipeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectiveWipeSheet.swift; sourceTree = "<group>"; };
 		71BEA9C12B3B5D07B2227901 /* ScheduleImportCatalogResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImportCatalogResolver.swift; sourceTree = "<group>"; };
 		72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingEvaluationPickerSheet.swift; sourceTree = "<group>"; };
 		73E80A05F8F203CF9F01667C /* PlannerFloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerFloatingTabBar.swift; sourceTree = "<group>"; };
@@ -782,6 +785,7 @@
 				C85AD42D18AFCD452127D549 /* ScheduleImportModels.swift */,
 				B2383FA2AFCB17CB773F8D8C /* ScheduleImportPreviewSheet.swift */,
 				EE3C26A04796CFACD4AB0C44 /* ScheduleWeekGridView.swift */,
+				70F49432D42F3A8BBD54876B /* SelectiveWipeSheet.swift */,
 				0998A4D4BC5E85BB92250336 /* SettingsDangerZoneView.swift */,
 				56F2CF5E5B8BFCE0959388B9 /* SettingsDiagnosticsView.swift */,
 				4309F19FDFC6A480E12806A8 /* SettingsRow.swift */,
@@ -1349,6 +1353,7 @@
 				9B35E3F2A1902328316396AA /* ScheduleImportModels.swift in Sources */,
 				F87C4CB8E1252A911F0BEFA7 /* ScheduleImportPreviewSheet.swift in Sources */,
 				07C8F017EE7EF64E6F167A8F /* ScheduleWeekGridView.swift in Sources */,
+				EE585AABD4D49886E85298C0 /* SelectiveWipeSheet.swift in Sources */,
 				15B5532C3730939CF3945119 /* SettingsDangerZoneView.swift in Sources */,
 				3A7321203FAD5FDC7FA37FAB /* SettingsDiagnosticsView.swift in Sources */,
 				0666D2FC7622A37D40117922 /* SettingsRow.swift in Sources */,
@@ -1543,6 +1548,7 @@
 				E82642A66E908879848A94B8 /* ScheduleImportModels.swift in Sources */,
 				733437AB0213E2D83A1686C7 /* ScheduleImportPreviewSheet.swift in Sources */,
 				A763BAAF440754459070E60B /* ScheduleWeekGridView.swift in Sources */,
+				9431E05EA810B154003DED20 /* SelectiveWipeSheet.swift in Sources */,
 				0B33E01BA1D995654A80EA9C /* SettingsDangerZoneView.swift in Sources */,
 				B01252AA878F99C736D23E0B /* SettingsDiagnosticsView.swift in Sources */,
 				F94056FF4937226611623FB6 /* SettingsRow.swift in Sources */,

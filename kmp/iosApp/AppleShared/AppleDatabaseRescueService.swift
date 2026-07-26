@@ -82,13 +82,30 @@ final class AppleDatabaseRescueService: ObservableObject {
         }
 
         do {
-            for suffix in ["", "-wal", "-shm"] {
+            // El reemplazo es atómico: `removeItem` + `copyItem` dejaba la ruta de la
+            // base activa sin fichero durante la copia, con el driver de SQLDelight
+            // abierto sobre ella. Esa es la misma situación que hacía abortar el proceso
+            // en el borrado total (`vnode unlinked while in use` → `SQLITE_IOERR`), y si
+            // la copia fallaba a mitad dejaba a la docente sin base ninguna.
+            let stagingURL = databaseURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("rescue-\(UUID().uuidString).sqlite", isDirectory: false)
+            try fileManager.copyItem(at: backupURL, to: stagingURL)
+            defer { try? fileManager.removeItem(at: stagingURL) }
+
+            for suffix in ["-wal", "-shm"] {
                 let active = URL(fileURLWithPath: databaseURL.path + suffix)
                 if fileManager.fileExists(atPath: active.path) {
                     try fileManager.removeItem(at: active)
                 }
             }
-            try fileManager.copyItem(at: backupURL, to: databaseURL)
+
+            if fileManager.fileExists(atPath: databaseURL.path) {
+                _ = try fileManager.replaceItemAt(databaseURL, withItemAt: stagingURL)
+            } else {
+                try fileManager.moveItem(at: stagingURL, to: databaseURL)
+            }
+
             for suffix in ["-wal", "-shm"] {
                 let source = URL(fileURLWithPath: marker.backupPath + suffix)
                 if fileManager.fileExists(atPath: source.path) {

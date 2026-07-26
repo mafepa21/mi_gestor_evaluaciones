@@ -2,6 +2,7 @@ package com.migestor.data.di
 
 import app.cash.sqldelight.db.SqlDriver
 import com.migestor.data.db.AppDatabase
+import com.migestor.data.platform.wipeAllUserData
 import com.migestor.data.repository.AttendanceRepositorySqlDelight
 import com.migestor.data.repository.AIAuditRepositorySqlDelight
 import com.migestor.data.repository.AcademicYearsRepositorySqlDelight
@@ -53,53 +54,54 @@ import com.migestor.shared.usecase.SaveStudentUseCase
 import com.migestor.shared.usecase.SaveSubjectUseCase
 import kotlinx.datetime.Clock
 
-import com.migestor.data.repository.NotebookConfigRepositorySqlDelight
+import com.migestor.shared.repository.*
 import com.migestor.shared.usecase.*
 
 class KmpContainer(val driver: SqlDriver) {
     val database = AppDatabase(driver)
 
-    val studentsRepository = StudentsRepositorySqlDelight(database)
-    val academicYearsRepository = AcademicYearsRepositorySqlDelight(database)
-    val classesRepository = ClassesRepositorySqlDelight(database)
-    val subjectsRepository = SubjectsRepositorySqlDelight(database)
-    val notebookConfigRepository = NotebookConfigRepositorySqlDelight(database)
-    val evaluationsRepository = EvaluationsRepositorySqlDelight(database)
-    val gradesRepository = GradesRepositorySqlDelight(database)
-    val notebookCellsRepository = NotebookCellsRepositorySqlDelight(database)
+    val studentsRepository: StudentsRepository = StudentsRepositorySqlDelight(database)
+    val academicYearsRepository: AcademicYearsRepository = AcademicYearsRepositorySqlDelight(database)
+    val classesRepository: ClassesRepository = ClassesRepositorySqlDelight(database)
+    val subjectsRepository: SubjectsRepository = SubjectsRepositorySqlDelight(database)
+    val notebookConfigRepository: NotebookConfigRepository = NotebookConfigRepositorySqlDelight(database)
+    val evaluationsRepository: EvaluationsRepository = EvaluationsRepositorySqlDelight(database)
+    val gradesRepository: GradesRepository = GradesRepositorySqlDelight(database)
+    val notebookCellsRepository: NotebookCellsRepository = NotebookCellsRepositorySqlDelight(database)
     // Compartida entre NotebookRepositorySqlDelight y NotebookInstrumentsRepositorySqlDelight
     // para que guardar respuestas estructuradas (checklist/observación/quiz) invalide el mismo
     // caché de NotebookSheet que usan los guardados de nota normales, y el Cuaderno refleje el
     // cambio de inmediato en vez de servir una hoja cacheada desactualizada.
     val notebookSheetCache = NotebookSheetMemoryCache()
-    val notebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database, gradesRepository, notebookSheetCache)
-    val rubricsRepository = RubricsRepositorySqlDelight(database)
-    val attendanceRepository = AttendanceRepositorySqlDelight(database)
-    val studentSupportMeasureRepository = StudentSupportMeasureRepositorySqlDelight(database)
-    val studentTutoringSessionRepository = StudentTutoringSessionRepositorySqlDelight(database)
-    val meetingRepository = MeetingRepositorySqlDelight(database)
-    val plannerWeekPlanRepository = PlannerWeekPlanRepositorySqlDelight(database)
-    val aiAuditRepository = AIAuditRepositorySqlDelight(database)
-    val competenciesRepository = CompetenciesRepositorySqlDelight(database)
-    val incidentsRepository = IncidentsRepositorySqlDelight(database)
-    val calendarRepository = CalendarRepositorySqlDelight(database)
-    val configurationTemplateRepository = ConfigurationTemplateRepositorySqlDelight(database)
-    val dashboardRepository = DashboardRepositorySqlDelight(database)
-    val backupMetadataRepository = BackupMetadataRepositorySqlDelight(database)
-    val plannerRepository = PlannerRepositorySqlDelight(database)
-    val physicalTestsRepository = PhysicalTestsRepositorySqlDelight(database)
-    val sessionJournalRepository = SessionJournalRepositorySqlDelight(database)
-    val weeklyTemplateRepository = WeeklyTemplateRepositorySqlDelight(database)
-    val plannedSessionRepository = PlannedSessionRepositorySqlDelight(database)
-    val learningSituationsRepository = LearningSituationsRepositorySqlDelight(database)
-    val syncTombstoneRepository = SyncTombstoneRepositorySqlDelight(database)
-    val teacherScheduleRepository = TeacherScheduleRepositorySqlDelight(
+    val notebookInstrumentsRepository: NotebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database, gradesRepository, notebookSheetCache)
+    val rubricsRepository: RubricsRepository = RubricsRepositorySqlDelight(database)
+    val attendanceRepository: AttendanceRepository = AttendanceRepositorySqlDelight(database)
+    val studentSupportMeasureRepository: StudentSupportMeasureRepository = StudentSupportMeasureRepositorySqlDelight(database)
+    val studentTutoringSessionRepository: StudentTutoringSessionRepository = StudentTutoringSessionRepositorySqlDelight(database)
+    val meetingRepository: MeetingRepository = MeetingRepositorySqlDelight(database)
+    val plannerWeekPlanRepository: PlannerWeekPlanRepository = PlannerWeekPlanRepositorySqlDelight(database)
+    val aiAuditRepository: AIAuditRepository = AIAuditRepositorySqlDelight(database)
+    val competenciesRepository: CompetenciesRepository = CompetenciesRepositorySqlDelight(database)
+    val incidentsRepository: IncidentsRepository = IncidentsRepositorySqlDelight(database)
+    val calendarRepository: CalendarRepository = CalendarRepositorySqlDelight(database)
+    val configurationTemplateRepository: ConfigurationTemplateRepository = ConfigurationTemplateRepositorySqlDelight(database)
+    val dashboardRepository: DashboardRepository = DashboardRepositorySqlDelight(database)
+    val backupMetadataRepository: BackupMetadataRepository = BackupMetadataRepositorySqlDelight(database)
+    val plannerRepository: PlannerRepository = PlannerRepositorySqlDelight(database)
+    val physicalTestsRepository: PhysicalTestsRepository = PhysicalTestsRepositorySqlDelight(database)
+    val sessionJournalRepository: SessionJournalRepository = SessionJournalRepositorySqlDelight(database)
+    val weeklyTemplateRepository: WeeklyTemplateRepository = WeeklyTemplateRepositorySqlDelight(database)
+    val plannedSessionRepository: PlannedSessionRepository = PlannedSessionRepositorySqlDelight(database)
+    val learningSituationsRepository: LearningSituationsRepository = LearningSituationsRepositorySqlDelight(database)
+    val syncTombstoneRepository: SyncTombstoneRepository = SyncTombstoneRepositorySqlDelight(database)
+    val aiTrendsRepository: AITrendsRepository = AITrendsRepositorySqlDelight(database)
+    val teacherScheduleRepository: TeacherScheduleRepository = TeacherScheduleRepositorySqlDelight(
         db = database,
         plannerRepository = plannerRepository,
         calendarRepository = calendarRepository,
         classesRepository = classesRepository
     )
-    val dashboardOperationalRepository = DashboardOperationalRepositoryDefault(
+    val dashboardOperationalRepository: DashboardOperationalRepository = DashboardOperationalRepositoryDefault(
         classesRepository = classesRepository,
         attendanceRepository = attendanceRepository,
         evaluationsRepository = evaluationsRepository,
@@ -111,10 +113,10 @@ class KmpContainer(val driver: SqlDriver) {
         rubricsRepository = rubricsRepository,
     )
     
-    val csvImportService = CsvImportServiceImpl()
-    val xlsxImportService = createPlatformXlsxImportService()
-    val reportService = createPlatformReportService()
-    val backupService = createPlatformBackupService()
+    val csvImportService: CsvImportService = CsvImportServiceImpl()
+    val xlsxImportService: XlsxImportService = createPlatformXlsxImportService()
+    val reportService: ReportService = createPlatformReportService()
+    val backupService: BackupService = createPlatformBackupService()
 
     val saveStudent = SaveStudentUseCase(studentsRepository)
     val saveClass = SaveClassUseCase(classesRepository)
@@ -161,6 +163,24 @@ class KmpContainer(val driver: SqlDriver) {
         classesRepository = classesRepository,
         attendanceRepository = attendanceRepository,
     )
+
+    /**
+     * Borrado total: vacia todas las tablas por SQL, con la conexion que ya esta abierta.
+     *
+     * La capa Swift llamaba antes a esto borrando el fichero SQLite del disco, lo que
+     * invalidaba los descriptores del driver y acababa abortando el proceso
+     * (ver `wipeAllUserData` en DatabaseWipe.kt). Los adjuntos y las copias de seguridad
+     * los sigue borrando Swift: son ficheros que nadie tiene abiertos.
+     *
+     * Los `Flow` ya suscritos no se re-emiten (el borrado no pasa por las queries
+     * generadas de SQLDelight, asi que sus listeners no se notifican). No es un problema
+     * porque el borrado exige reinicio de la app en ambas plataformas, pero es la razon
+     * por la que no basta con llamar a esto y seguir usando la sesion actual.
+     */
+    @Throws(Throwable::class)
+    fun wipeAllData() {
+        wipeAllUserData(driver, database)
+    }
 
     suspend fun seedDemoDataIfEmpty() {
         val now = Clock.System.now().toEpochMilliseconds()

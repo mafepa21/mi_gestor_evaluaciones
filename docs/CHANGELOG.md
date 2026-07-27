@@ -21,7 +21,10 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Changed
 
+- Ajustes → Gestión de datos: Ampliada la función de borrado para detectar e incluir **Cuadernos por curso**, **Pestañas de cuaderno**, **Columnas de cuaderno** y **Sesiones planificadas (Planner)**. Rediseño completo de la interfaz mediante `CollapsibleBulkDeleteSection` organizando las 8 categorías en bloques temáticos (Estructura Escolar, Cuaderno de Evaluación, Planificación e Instrumentos) con menús colapsables `DisclosureGroup`, badges circulares por color, contador total de elementos y selección múltiple o borrado individual por deslizamiento.
 - Cuaderno: la cabecera de columnas con peso porcentual mostraba `×55` o `×0,4` en lugar de `55%` o `40%` (`columnWeightBadge`, `NotebookModuleGridCells.swift`) porque el formateador evaluaba primero si era un número entero antes de comprobar el porcentaje y limitaba el rango a fracciones `< 1`. Se ha corregido la lógica para que los pesos asignados o importados (ej. `55`, `15`, `20` o `0,4`) se muestren como `55%`, `15%`, `20%` y `40%` en la cabecera.
+
+
 
 ### Added
 

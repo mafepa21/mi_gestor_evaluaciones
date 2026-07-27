@@ -5778,6 +5778,26 @@ final class KmpBridge: ObservableObject {
         try await container.notebookConfigRepository.listTabs(classId: classId)
     }
 
+    func fetchNotebookTabs(for classId: Int64) async throws -> [NotebookTab] {
+        try await container.notebookConfigRepository.listTabs(classId: classId)
+    }
+
+    func fetchNotebookColumns(for classId: Int64) async throws -> [NotebookColumnDefinition] {
+        try await container.notebookConfigRepository.listColumns(classId: classId)
+    }
+
+    func clearNotebookForClass(classId: Int64) async throws {
+        let columns = try await container.notebookConfigRepository.listColumns(classId: classId)
+        for col in columns {
+            deleteColumn(id: col.id, evaluationId: col.evaluationId?.int64Value)
+        }
+        let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+        for tab in tabs {
+            deleteTab(id: tab.id)
+        }
+    }
+
+
     func repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: Int64) async throws {
         let repairedLevels = try await repairAssessmentInstrumentRubricLevelPoints(classId: classId)
         let repairedColumns = try await repairAssessmentInstrumentNotebookColumns(classId: classId)

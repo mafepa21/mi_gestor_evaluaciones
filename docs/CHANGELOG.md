@@ -21,7 +21,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Changed
 
-- Cuaderno: la cabecera de una columna importada de una SA con peso porcentual mostraba `×0,4` para un instrumento del 40 % (`columnWeightBadge`, `NotebookModuleGridCells.swift`), que se lee como un multiplicador que reduce la nota. Cuando la columna está ligada a una evaluación importada y su peso es una fracción entre 0 y 1, se pinta como porcentaje (`40%`). Los multiplicadores manuales (`×2`, `×0,5` en columnas sin evaluación asociada) se mantienen tal cual. La entrada anterior del changelog daba esto por hecho en `columnHeaderMeta`; el código real seguía sin la rama de porcentaje.
+- Cuaderno: la cabecera de columnas con peso porcentual mostraba `×55` o `×0,4` en lugar de `55%` o `40%` (`columnWeightBadge`, `NotebookModuleGridCells.swift`) porque el formateador evaluaba primero si era un número entero antes de comprobar el porcentaje y limitaba el rango a fracciones `< 1`. Se ha corregido la lógica para que los pesos asignados o importados (ej. `55`, `15`, `20` o `0,4`) se muestren como `55%`, `15%`, `20%` y `40%` en la cabecera.
 
 ### Added
 

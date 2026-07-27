@@ -5680,10 +5680,13 @@ final class KmpBridge: ObservableObject {
         }
         guard !instrumentsToCreate.isEmpty else { return }
 
+        let teachingUnitId = try await ensureTeachingUnitForLearningSituation(situation: situation, classId: classId)
+
         for (index, instrument) in instrumentsToCreate.enumerated() {
             let rubricId = try await saveAssessmentInstrumentRubricIfNeeded(
                 instrument: instrument,
                 classId: classId,
+                teachingUnitId: teachingUnitId,
                 sourceFileName: draft.sourceFileName
             )
             let evaluationId = try await container.evaluationsRepository.saveEvaluation(
@@ -5798,20 +5801,139 @@ final class KmpBridge: ObservableObject {
     }
 
 
+    func ensureTeachingUnitForLearningSituation(
+        situation: LearningSituation,
+        classId: Int64
+    ) async throws -> Int64 {
+        let linkedResources = try await container.learningSituationsRepository.listLinkedResources(learningSituationId: situation.id)
+        if let existingResource = linkedResources.first(where: { $0.kind == .teachingUnit }),
+           let unitId = Int64(existingResource.resourceId) {
+            return unitId
+        }
+
+        let existingUnits = try await container.plannerRepository.listAllTeachingUnits()
+        if let found = existingUnits.first(where: {
+            $0.name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) ==
+            situation.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) &&
+            ($0.schoolClassId?.int64Value == classId || $0.groupId?.int64Value == classId)
+        }) {
+            try await saveLearningSituationLinkedResource(
+                situationId: situation.id,
+                kind: .teachingUnit,
+                resourceId: "\(found.id)",
+                classId: classId,
+                label: situation.title,
+                trace: situation.trace
+            )
+            return found.id
+        }
+
+        let unit = TeachingUnit(
+            id: 0,
+            name: situation.title,
+            description: "Situación de aprendizaje: \(situation.challenge)",
+            colorHex: plannerCourseColor(for: classId),
+            groupId: KotlinLong(value: classId),
+            schoolClassId: KotlinLong(value: classId),
+            startDate: nil,
+            endDate: nil
+        )
+        let unitId = try await container.plannerRepository.upsertTeachingUnit(unit: unit).int64Value
+        try await saveLearningSituationLinkedResource(
+            situationId: situation.id,
+            kind: .teachingUnit,
+            resourceId: "\(unitId)",
+            classId: classId,
+            label: situation.title,
+            trace: situation.trace
+        )
+        return unitId
+    }
+
     func repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: Int64) async throws {
         let repairedLevels = try await repairAssessmentInstrumentRubricLevelPoints(classId: classId)
         let repairedColumns = try await repairAssessmentInstrumentNotebookColumns(classId: classId)
         let repairedEvaluations = try await repairAssessmentInstrumentEvaluations(classId: classId)
         let repairedTemplates = try await repairStructuredAssessmentInstrumentTemplates(classId: classId)
-        if repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates {
+        let repairedRubricUnits = try await repairAssessmentInstrumentRubricTeachingUnits(classId: classId)
+        if repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates || repairedRubricUnits {
             refreshCurrentNotebook()
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
     }
 
+    private func repairAssessmentInstrumentRubricTeachingUnits(classId: Int64) async throws -> Bool {
+        let allSituations = try await container.learningSituationsRepository.listSituations()
+        var situations: [LearningSituation] = []
+        for candidate in allSituations {
+            let links = try await container.learningSituationsRepository.listClassLinks(learningSituationId: candidate.id)
+            if links.contains(where: { $0.classId == classId }) {
+                situations.append(candidate)
+            }
+        }
+        guard !situations.isEmpty else { return false }
+
+        let rubrics = try await container.rubricsRepository.listRubrics()
+        let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
+        var didRepair = false
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+
+        for situation in situations {
+            let teachingUnitId = try await ensureTeachingUnitForLearningSituation(situation: situation, classId: classId)
+            let linkedResources = try await container.learningSituationsRepository.listLinkedResources(learningSituationId: situation.id)
+
+            for resource in linkedResources where resource.kind == .rubric {
+                guard let rubricId = Int64(resource.resourceId),
+                      let detail = rubrics.first(where: { $0.rubric.id == rubricId }),
+                      detail.rubric.teachingUnitId?.int64Value != teachingUnitId else { continue }
+
+                _ = try await container.rubricsRepository.saveRubric(
+                    id: KotlinLong(value: detail.rubric.id),
+                    name: detail.rubric.name,
+                    description: detail.rubric.description,
+                    classId: detail.rubric.classId ?? KotlinLong(value: classId),
+                    teachingUnitId: KotlinLong(value: teachingUnitId),
+                    createdAtEpochMs: detail.rubric.trace.createdAt.toEpochMilliseconds(),
+                    updatedAtEpochMs: nowMs,
+                    deviceId: localDeviceId,
+                    syncVersion: detail.rubric.trace.syncVersion
+                )
+                didRepair = true
+            }
+
+            for resource in linkedResources where resource.kind == .evaluation {
+                guard let evaluationId = Int64(resource.resourceId),
+                      let ev = evaluations.first(where: { $0.id == evaluationId }),
+                      let rubricId = ev.rubricId?.int64Value,
+                      let detail = rubrics.first(where: { $0.rubric.id == rubricId }),
+                      detail.rubric.teachingUnitId?.int64Value != teachingUnitId else { continue }
+
+                _ = try await container.rubricsRepository.saveRubric(
+                    id: KotlinLong(value: detail.rubric.id),
+                    name: detail.rubric.name,
+                    description: detail.rubric.description,
+                    classId: detail.rubric.classId ?? KotlinLong(value: classId),
+                    teachingUnitId: KotlinLong(value: teachingUnitId),
+                    createdAtEpochMs: detail.rubric.trace.createdAt.toEpochMilliseconds(),
+                    updatedAtEpochMs: nowMs,
+                    deviceId: localDeviceId,
+                    syncVersion: detail.rubric.trace.syncVersion
+                )
+                didRepair = true
+            }
+        }
+
+        if didRepair {
+            try? await refreshRubrics()
+            try? await refreshRubricClassLinks()
+        }
+        return didRepair
+    }
+
     private func saveAssessmentInstrumentRubricIfNeeded(
         instrument: AssessmentInstrumentDraft,
         classId: Int64,
+        teachingUnitId: Int64? = nil,
         sourceFileName: String
     ) async throws -> Int64? {
         guard instrument.kind == .rubric else { return nil }
@@ -5824,7 +5946,7 @@ final class KmpBridge: ObservableObject {
             name: instrument.title,
             description: "Importada desde \(sourceFileName)",
             classId: KotlinLong(value: classId),
-            teachingUnitId: nil,
+            teachingUnitId: teachingUnitId.map { KotlinLong(value: $0) },
             createdAtEpochMs: nowMs,
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,

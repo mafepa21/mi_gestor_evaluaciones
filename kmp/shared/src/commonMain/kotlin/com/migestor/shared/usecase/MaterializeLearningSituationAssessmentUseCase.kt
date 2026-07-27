@@ -157,6 +157,7 @@ class MaterializeLearningSituationAssessmentUseCase(
             name = spec.title,
             description = "Importada desde ${request.sourceLabel}",
             classId = request.classId,
+            teachingUnitId = request.situationId,
             createdAtEpochMs = trace.createdAt.toEpochMilliseconds(),
             updatedAtEpochMs = trace.updatedAt.toEpochMilliseconds(),
             deviceId = request.deviceId,

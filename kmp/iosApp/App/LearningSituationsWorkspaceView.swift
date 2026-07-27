@@ -1854,8 +1854,10 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
             if instrument.countsTowardAverage && instrument.scoreStrategy == .none {
                 errors.append("\(title): elige una estrategia de puntuación.")
             }
-            if instrument.countsTowardAverage && instrument.scoreStrategy == .checklistProportional {
-                errors.append("\(title): la checklist proporcional aún no genera nota automática.")
+            if instrument.countsTowardAverage &&
+                instrument.scoreStrategy == .checklistProportional &&
+                instrument.checklistItems.isEmpty {
+                errors.append("\(title): la checklist proporcional necesita ítems para calcular la nota.")
             }
             if instrument.countsTowardAverage &&
                 instrument.scoreStrategy == .observationScale1To4 &&

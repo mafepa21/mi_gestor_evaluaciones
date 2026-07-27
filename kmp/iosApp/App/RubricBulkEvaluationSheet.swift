@@ -185,10 +185,11 @@ struct RubricBulkEvaluationSheet: View {
             let criteriaText = rubricCriteriaSummary(rubric: rubric)
             AssessmentCriteriaDisclosureView(rawText: criteriaText)
         }
+        .padding(.bottom, 8)
     }
 
     private func rubricCriteriaSummary(rubric: RubricDetail) -> String {
-        var parts: [String] = [rubric.rubric.name]
+        var parts: [String] = [rubric.rubric.name, rubric.rubric.description]
         parts.append(contentsOf: rubric.criteria.map { $0.criterion.description_ })
         return parts.joined(separator: " · ")
     }

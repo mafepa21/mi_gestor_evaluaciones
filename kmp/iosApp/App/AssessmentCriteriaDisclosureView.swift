@@ -1,23 +1,11 @@
 import SwiftUI
 
-/// Componente SwiftUI nativo para mostrar los Criterios de Evaluación vinculados a un instrumento
-/// (rúbrica, rejilla de observación, checklist), permitiendo ver el código (ej. "CE 2.1") y su
-/// descripción literal oficial según la ley (LOMLOE).
 struct AssessmentCriteriaDisclosureView: View {
-    let criteria: [LomloeCriterionDefinition]
-    let initialExpanded: Bool
-    
-    @State private var isExpanded: Bool
+    let rawText: String?
+    @State private var isExpanded: Bool = false
 
-    init(criteria: [LomloeCriterionDefinition], initialExpanded: Bool = false) {
-        self.criteria = criteria
-        self.initialExpanded = initialExpanded
-        _isExpanded = State(initialValue: initialExpanded)
-    }
-
-    init(rawText: String?, initialExpanded: Bool = false) {
-        let resolved = LomloeCriteriaCatalog.resolveCriteria(from: rawText)
-        self.init(criteria: resolved, initialExpanded: initialExpanded)
+    private var criteria: [LomloeCriterionDefinition] {
+        LomloeCriteriaCatalog.resolveCriteria(from: rawText)
     }
 
     var body: some View {
@@ -25,31 +13,32 @@ struct AssessmentCriteriaDisclosureView: View {
 
         return AnyView(
             VStack(alignment: .leading, spacing: 8) {
-                // Cabecera interactiva con resumen y botón de desplegar
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                // Cabecera interactiva con Badges de los Criterios
+                Button(action: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                         isExpanded.toggle()
                     }
-                } label: {
+                }) {
                     HStack(spacing: 8) {
-                        Image(systemName: "book.pages")
-                            .font(.system(size: 13, weight: .semibold))
+                        Image(systemName: "text.book.closed.fill")
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(Color.accentColor)
 
-                        Text("Criterios de evaluación")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
+                        Text("Criterios LOMLOE:")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.secondary)
 
-                        // Badges compactos por cada código
-                        HStack(spacing: 4) {
-                            ForEach(criteria) { criterion in
-                                Text(criterion.code)
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.accentColor.opacity(0.12))
-                                    .foregroundStyle(Color.accentColor)
-                                    .clipShape(Capsule())
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(criteria) { criterion in
+                                    Text(criterion.code)
+                                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(Color.accentColor.opacity(0.12))
+                                        .foregroundStyle(Color.accentColor)
+                                        .clipShape(Capsule())
+                                }
                             }
                         }
 
@@ -88,6 +77,15 @@ struct AssessmentCriteriaDisclosureView: View {
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .lineSpacing(2)
+
+                                if let valencian = criterion.valencianDescription {
+                                    Text(valencian)
+                                        .font(.system(size: 11, weight: .regular))
+                                        .foregroundStyle(.secondary.opacity(0.8))
+                                        .italic()
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .padding(.top, 2)
+                                }
                             }
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -101,6 +99,7 @@ struct AssessmentCriteriaDisclosureView: View {
                             )
                         }
                     }
+                    .padding(.top, 4)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }

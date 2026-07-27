@@ -85,20 +85,17 @@ struct StructuredInstrumentEvaluationSheet: View {
     private func formContent(_ model: Binding<StructuredInstrumentEvaluationModel>) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(request.studentName)
-                            .font(.title2.weight(.bold))
-                        HStack(spacing: 8) {
-                            ProgressView(value: progressFraction(for: model.wrappedValue))
-                                .tint(NotebookStyle.successTint)
-                                .frame(maxWidth: 160)
-                            Text(progressText(for: model.wrappedValue))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(request.studentName)
+                        .font(.title2.weight(.bold))
+                    HStack(spacing: 8) {
+                        ProgressView(value: progressFraction(for: model.wrappedValue))
+                            .tint(NotebookStyle.successTint)
+                            .frame(maxWidth: 160)
+                        Text(progressText(for: model.wrappedValue))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
                     }
-
                     let criteriaText = structuredCriteriaSummary(model: model.wrappedValue)
                     AssessmentCriteriaDisclosureView(rawText: criteriaText)
                 }

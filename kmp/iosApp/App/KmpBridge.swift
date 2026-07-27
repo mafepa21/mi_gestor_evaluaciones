@@ -6044,8 +6044,13 @@ final class KmpBridge: ObservableObject {
         }
 
         if !instrument.checklistItems.isEmpty {
+            // La checklist ponderada usa el prefijo de clave `chkp_` para que
+            // `NotebookInstrumentsRepositorySqlDelight.saveResponses` derive su nota
+            // proporcional (ítems marcados / total × 10). Las checklists de requisito de
+            // entrega y las de todo/nada mantienen `check_` y no generan nota automática.
+            let keyPrefix = instrument.scoreStrategy == .checklistProportional ? "chkp" : "check"
             let specs = instrument.checklistItems.enumerated().map { index, item in
-                ("check_\(index + 1)", item.title, NotebookInstrumentItemType.check, [] as [String])
+                ("\(keyPrefix)_\(index + 1)", item.title, NotebookInstrumentItemType.check, [] as [String])
             }
             return makeInstrumentItems(columnId: columnId, specs: specs)
         }
@@ -6385,16 +6390,22 @@ final class KmpBridge: ObservableObject {
             return .numeric
         case .quizPercentCorrect:
             return .numeric
-        case .checklistProportional, .none:
+        // La checklist ponderada materializa nota 0-10 derivada de los ítems marcados, así que
+        // su columna es numérica como la de la rejilla de observación (la entrada sigue siendo
+        // la checklist estructurada).
+        case .checklistProportional:
+            return .numeric
+        case .none:
             return .text
         }
     }
 
     private func canMaterializeAverage(for strategy: AssessmentInstrumentScoreStrategy) -> Bool {
         switch strategy {
-        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4, .quizPercentCorrect:
+        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4,
+             .quizPercentCorrect, .checklistProportional:
             return true
-        case .checklistProportional, .none:
+        case .none:
             return false
         }
     }
@@ -6461,7 +6472,10 @@ final class KmpBridge: ObservableObject {
             return .yesNo
         case .quizPercentCorrect:
             return .percentage
-        case .checklistProportional, .none:
+        // Nota derivada 0-10 (ítems marcados / total × 10).
+        case .checklistProportional:
+            return .tenPoint
+        case .none:
             return .custom
         }
     }

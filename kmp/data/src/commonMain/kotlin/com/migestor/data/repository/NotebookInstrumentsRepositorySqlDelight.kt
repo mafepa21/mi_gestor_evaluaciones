@@ -213,7 +213,9 @@ class NotebookInstrumentsRepositorySqlDelight(
                 sync_version = syncVersion,
             )
         }
-        deriveObservationGridScore(detail.items, responsesByItem)?.let { derivedScore ->
+        val derived = deriveObservationGridScore(detail.items, responsesByItem)
+            ?: deriveProportionalChecklistScore(detail.items, responsesByItem)
+        derived?.let { derivedScore ->
             gradesRepository.saveGrade(
                 classId = classId,
                 studentId = studentId,
@@ -259,6 +261,25 @@ class NotebookInstrumentsRepositorySqlDelight(
         if (valuesBySession.isEmpty()) return null
         val sessionAverages = valuesBySession.values.map { it.average() }
         return sessionAverages.average()
+    }
+
+    /// Traduce una checklist ponderada ("checklist proporcional": el documento le asigna un %
+    /// del peso de la SA) en una nota 0-10 = ítems marcados / ítems totales × 10. Solo se aplica
+    /// a los instrumentos cuyos ítems siguen la convención de clave `chkp_<n>` que genera el
+    /// importador Apple para `AssessmentInstrumentScoreStrategy.CHECKLIST_PROPORTIONAL`; las
+    /// checklists de requisito de entrega (`check_<n>`, sin peso) y las de todo/nada siguen sin
+    /// generar nota automática.
+    private fun deriveProportionalChecklistScore(
+        items: List<NotebookInstrumentItem>,
+        responsesByItem: Map<String, NotebookInstrumentResponse>,
+    ): Double? {
+        val keyPattern = Regex("""^chkp_\d+$""")
+        val checkItems = items.filter {
+            keyPattern.matches(it.key) && it.type == NotebookInstrumentItemType.CHECK
+        }
+        if (checkItems.isEmpty()) return null
+        val checked = checkItems.count { responsesByItem[it.id]?.boolValue == true }
+        return checked.toDouble() / checkItems.size.toDouble() * 10.0
     }
 
     private fun summarize(

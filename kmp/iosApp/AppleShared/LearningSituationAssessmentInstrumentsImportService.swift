@@ -309,19 +309,17 @@ struct LearningSituationAssessmentInstrumentsImportService {
             checklistItems: checklistItems,
             observationFields: effectiveObservationFields
         )
-        // A6 (matiz importante): `.checklistProportional` refleja correctamente que el
-        // documento SÍ pondera la checklist (deja de etiquetarse como "Auxiliar" sin más), pero
-        // la app todavía no calcula ni persiste una nota derivada de "ítems marcados / total"
-        // para ese caso (`NotebookInstrumentsRepositorySqlDelight.saveResponses`, en `kmp/data`,
-        // archivo protegido, solo deriva nota automática para rejillas de observación). Por eso
-        // `countsTowardAverage` se mantiene alineado con lo que la materialización real puede
-        // sumar a la media hoy (mismo criterio que `canMaterializeAverage` en KmpBridge.swift),
-        // para no prometer en la vista previa algo que la columna materializada no cumple.
+        // A6: `.checklistProportional` refleja que el documento SÍ pondera la checklist, y desde
+        // el soporte de nota proporcional (`ítems marcados / total × 10`, derivada en
+        // `NotebookInstrumentsRepositorySqlDelight.saveResponses`) la columna materializada sí
+        // suma a la media. `countsTowardAverage` sigue alineado con lo que la materialización
+        // real puede calcular hoy (mismo criterio que `canMaterializeAverage` en KmpBridge.swift).
         let materializesAverageAutomatically: Bool
         switch scoreStrategy {
-        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4, .quizPercentCorrect:
+        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4,
+             .quizPercentCorrect, .checklistProportional:
             materializesAverageAutomatically = true
-        case .checklistProportional, .none:
+        case .none:
             materializesAverageAutomatically = false
         }
         let countsTowardAverage = materializesAverageAutomatically && (heading.weightPercent ?? 0) > 0
@@ -339,15 +337,15 @@ struct LearningSituationAssessmentInstrumentsImportService {
             .map(\.element)
         var noteText: String?
         if countsTowardAverage {
-            noteText = narrativeNotes.isEmpty ? nil : narrativeNotes.joined(separator: "\n")
-        } else {
-            var parts: [String]
+            var parts: [String] = []
             if scoreStrategy == .checklistProportional {
                 let weightText = heading.weightPercent.map(formatPercent) ?? "peso detectado"
-                parts = ["Checklist con ponderación (\(weightText)) detectada; la app aún no calcula su nota proporcional automáticamente — revísala y decide cómo puntuarla."]
-            } else {
-                parts = ["Auxiliar o sin puntuación computable detectada"]
+                parts.append("Checklist ponderada (\(weightText)): la nota se calcula como ítems marcados ÷ ítems totales × 10.")
             }
+            parts.append(contentsOf: narrativeNotes)
+            noteText = parts.isEmpty ? nil : parts.joined(separator: "\n")
+        } else {
+            var parts: [String] = ["Auxiliar o sin puntuación computable detectada"]
             parts.append(contentsOf: narrativeNotes)
             noteText = parts.joined(separator: "\n")
         }

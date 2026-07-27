@@ -399,6 +399,18 @@ extension NotebookModuleView {
         if column.weight.truncatingRemainder(dividingBy: 1) == 0 {
             return "×\(Int(column.weight))"
         }
+        // D1: los instrumentos importados de una SA guardan el peso como fracción
+        // (0,4 para un instrumento del 40 %). Pintar "×0,4" hacía leer una ponderación
+        // que reduce la nota, cuando el documento dice "40 % de la SA". Se limita a las
+        // columnas ligadas a una evaluación importada para no reetiquetar como porcentaje
+        // un multiplicador manual del tipo ×0,5.
+        if column.evaluationId != nil, column.weight > 0, column.weight < 1 {
+            let percent = column.weight * 100
+            let rounded = (percent * 10).rounded() / 10
+            return rounded.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(rounded))%"
+                : "\(String(format: "%.1f", rounded).replacingOccurrences(of: ".", with: ","))%"
+        }
         return "×\(IosFormatting.decimal(from: column.weight))"
     }
 

@@ -574,6 +574,12 @@ struct LearningSituationSessionSequenceDocumentImportService {
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf: url)
         let blocks = try wordDocumentBlocks(from: data)
+        return try preview(blocks: blocks, data: data, url: url)
+    }
+
+    /// Separado de `preview(from:)` para poder ejercitar el parser con los bloques ya
+    /// extraídos (documentos de prueba) sin pasar por la descompresión del `.docx`.
+    func preview(blocks: [WordDocumentBlock], data: Data, url: URL) throws -> LearningSituationSessionSequenceImportDraft {
         guard !blocks.isEmpty else { throw LearningSituationImportError.missingDocumentBody }
 
         // `defaultMinutesByType` (B6) sigue operando sobre el texto plano de todo el documento
@@ -586,6 +592,14 @@ struct LearningSituationSessionSequenceDocumentImportService {
             }
         }
         let defaultMinutes = defaultMinutesByType(in: allParagraphTexts)
+
+        // B7: formato semanal (`sesiones_por_semana.docx`). La unidad de planificación es la
+        // SEMANA, con un BLOQUE LARGO (90′) y un BLOQUE CORTO (30′) en vez de "SESIÓN N con
+        // versión simple y doble". Se detecta antes que el formato de sesión: si el documento
+        // trae encabezados de semana, se usa esta ruta.
+        if let weekly = try weeklyPreview(blocks: blocks, data: data, url: url) {
+            return weekly
+        }
 
         struct HeaderMatch {
             let blockIndex: Int
@@ -686,6 +700,395 @@ struct LearningSituationSessionSequenceDocumentImportService {
         )
     }
 
+    // MARK: - B7: formato semanal (BLOQUE LARGO / BLOQUE CORTO)
+
+    /// Encabezado de semana: "SEMANA 3 — Classification Tournament (23 y 26 de abril)".
+    /// Se exige el mismo separador explícito que en el encabezado de sesión para no confundir
+    /// una frase de prosa ("La semana 3 cierra el diseño...") con un encabezado real.
+    private static let weekHeaderPattern = try! NSRegularExpression(
+        pattern: #"^(?:SEMANA|SETMANA|WEEK)\s+([0-9]+)(?:\s*[.:\-–—]\s*(.*))?$"#,
+        options: [.caseInsensitive]
+    )
+
+    private enum WeekBlockKind {
+        case long
+        case short
+    }
+
+    /// "BLOQUE LARGO (90′ útiles — dos bloques de 45′...)" / "BLOQUE CORTO (30′ útiles)",
+    /// con sus equivalentes en inglés. Devuelve el tipo de bloque y los minutos declarados.
+    private func weekBlockHeading(_ paragraph: String) -> (kind: WeekBlockKind, minutes: Int?)? {
+        guard paragraph.split(separator: " ").count <= 20 else { return nil }
+        let value = normalized(paragraph)
+        let kind: WeekBlockKind
+        if value.hasPrefix("bloque largo") || value.hasPrefix("long block") {
+            kind = .long
+        } else if value.hasPrefix("bloque corto") || value.hasPrefix("short block") {
+            kind = .short
+        } else {
+            return nil
+        }
+        return (kind, integerMatch(in: paragraph, pattern: #"([0-9]+)\s*(?:['’′]|minutos?|minutes?|min)"#))
+    }
+
+    /// Tabla del bloque corto: una sola tabla con dos columnas de variante
+    /// ("Variante PREPARA (cae antes del largo…)" / "Variante CONSOLIDA (…)").
+    private func variantColumnIndexes(_ header: [String]) -> [(index: Int, title: String)] {
+        header.enumerated().compactMap { index, raw in
+            let value = normalized(raw)
+            guard value.contains("prepara") || value.contains("consolida") || value.contains("variante") || value.contains("variant") else {
+                return nil
+            }
+            return (index, raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+
+    /// Convierte la tabla de dos variantes en una sección de desarrollo por variante,
+    /// conservando la franja de tiempo y la fase de cada fila.
+    private func variantSections(_ rows: [[String]]) -> [LearningSituationSessionSectionDraft] {
+        guard let header = rows.first else { return [] }
+        let variants = variantColumnIndexes(header)
+        guard variants.count >= 2 else { return [] }
+        let normalizedHeader = header.map(normalized)
+        let timeIndex = normalizedHeader.firstIndex { $0.contains("time") || $0.contains("hora") || $0.contains("tiempo") }
+        let phaseIndex = normalizedHeader.firstIndex { $0.contains("phase") || $0.contains("fase") }
+        return variants.map { variant in
+            let lines = rows.dropFirst().compactMap { row -> String? in
+                guard variant.index < row.count else { return nil }
+                let content = row[variant.index].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !content.isEmpty, content != "—", content != "-" else { return nil }
+                let prefix = [timeIndex, phaseIndex]
+                    .compactMap { index -> String? in
+                        guard let index, index < row.count else { return nil }
+                        let value = row[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                        return value.isEmpty ? nil : value
+                    }
+                    .joined(separator: " · ")
+                return prefix.isEmpty ? content : "\(prefix) · \(content)"
+            }
+            return LearningSituationSessionSectionDraft(title: variant.title, lines: lines)
+        }
+    }
+
+    /// Encabezado de desarrollo dentro de una semana: "Block 1 (45′)", "Break (15′) — …",
+    /// "Bloque 2". No se reutiliza `isDevelopmentHeading` (formato de sesión) porque este
+    /// acepta cualquier párrafo que contenga un rango numérico, y en el formato semanal hay
+    /// prosa con rangos ("3-4 comisiones", "limited throws per possession (3-5)") que acabaría
+    /// convertida en secciones vacías.
+    private func isWeekDevelopmentHeading(_ paragraph: String) -> Bool {
+        guard paragraph.split(separator: " ").count <= 14 || normalized(paragraph).hasPrefix("break") ||
+            normalized(paragraph).hasPrefix("descanso") else { return false }
+        let value = normalized(paragraph)
+        return value.hasPrefix("block ") || value.hasPrefix("bloque ") ||
+            value.hasPrefix("break") || value.hasPrefix("descanso")
+    }
+
+    /// Encabezados de cierre del documento (posteriores a la última semana): la tabla resumen
+    /// de momentos de evaluación de la SA no pertenece a la Semana N.
+    private func isDocumentTailHeading(_ paragraph: String) -> Bool {
+        guard paragraph.split(separator: " ").count <= 10 else { return false }
+        let value = normalized(paragraph)
+        return (value.contains("resumen") && value.contains("momentos")) ||
+            (value.contains("summary") && value.contains("assessment"))
+    }
+
+    /// Resultado de leer una semana del documento.
+    private struct ParsedWeek {
+        let number: Int
+        let header: String
+        let title: String
+        let objective: String
+        let criteria: [String]
+        let material: String
+        let longSections: [LearningSituationSessionSectionDraft]
+        let longMinutes: Int?
+        let shortSections: [LearningSituationSessionSectionDraft]
+        let shortMinutes: Int?
+        let sharedSections: [LearningSituationSessionSectionDraft]
+        let adaptations: [String]
+    }
+
+    /// Devuelve `nil` si el documento no está en formato semanal (para que `preview` siga con
+    /// el formato de sesión de siempre).
+    private func weeklyPreview(blocks: [WordDocumentBlock], data: Data, url: URL) throws -> LearningSituationSessionSequenceImportDraft? {
+        var weekHeaders: [(blockIndex: Int, header: String, number: Int, title: String)] = []
+        for (index, block) in blocks.enumerated() {
+            guard case .paragraph(let text) = block else { continue }
+            guard let match = Self.weekHeaderPattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let numberRange = Range(match.range(at: 1), in: text),
+                  let number = Int(text[numberRange]) else { continue }
+            var title = ""
+            if match.range(at: 2).location != NSNotFound, let titleRange = Range(match.range(at: 2), in: text) {
+                title = String(text[titleRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            weekHeaders.append((index, text, number, title))
+        }
+        guard !weekHeaders.isEmpty else { return nil }
+
+        var weeks: [ParsedWeek] = []
+        for (position, header) in weekHeaders.enumerated() {
+            let end = position + 1 < weekHeaders.count ? weekHeaders[position + 1].blockIndex : blocks.count
+            weeks.append(parseWeek(
+                number: header.number,
+                header: header.header,
+                title: header.title,
+                body: Array(blocks[(header.blockIndex + 1)..<end])
+            ))
+        }
+
+        var plans: [LearningSituationSessionPlanDraft] = []
+        var warnings: [String] = []
+        for week in weeks {
+            let baseTitle = week.title.isEmpty ? "Semana \(week.number)" : week.title
+            let longMinutes = week.longMinutes ?? 90
+            let shortMinutes = week.shortMinutes ?? 30
+            if week.longSections.isEmpty {
+                warnings.append("La semana \(week.number) no tiene BLOQUE LARGO reconocido.")
+            }
+            if week.shortSections.isEmpty {
+                warnings.append("La semana \(week.number) no tiene BLOQUE CORTO reconocido.")
+            }
+            plans.append(LearningSituationSessionPlanDraft(
+                sessionNumber: week.number * 2 - 1,
+                sourceLabel: "\(week.header) · BLOQUE LARGO (\(longMinutes)′)",
+                title: "\(baseTitle) — Bloque largo",
+                sessionType: "Bloque largo",
+                effectiveMinutes: longMinutes,
+                objective: week.objective,
+                criteria: week.criteria,
+                material: week.material,
+                development: week.longSections + week.sharedSections,
+                adaptations: week.adaptations
+            ))
+            plans.append(LearningSituationSessionPlanDraft(
+                sessionNumber: week.number * 2,
+                sourceLabel: "\(week.header) · BLOQUE CORTO (\(shortMinutes)′)",
+                title: "\(baseTitle) — Bloque corto",
+                sessionType: "Bloque corto",
+                effectiveMinutes: shortMinutes,
+                objective: week.objective,
+                criteria: week.criteria,
+                material: week.material,
+                development: week.shortSections + week.sharedSections,
+                adaptations: week.adaptations
+            ))
+        }
+
+        // El documento es el mismo para los dos grupos: lo que cambia es el orden dentro de la
+        // semana (el bloque largo cae en el día de sesión doble del grupo). La app todavía no
+        // ubica las sesiones automáticamente contra el horario, así que se avisa en vez de
+        // decidir por el docente.
+        warnings.append("Formato semanal: cada semana se importa como dos sesiones (bloque largo de 90′ y bloque corto de 30′). Al ubicarlas, el bloque largo va en el día de sesión doble del grupo y el corto en el simple; el orden dentro de la semana cambia entre grupos.")
+        let missingObjective = plans.filter { $0.objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+        if missingObjective > 0 {
+            warnings.append("\(missingObjective) bloques no tienen objetivo reconocido.")
+        }
+        let missingDevelopment = plans.filter { $0.development.isEmpty }.count
+        if missingDevelopment > 0 {
+            warnings.append("\(missingDevelopment) bloques no tienen desarrollo reconocido.")
+        }
+        let numbers = weeks.map(\.number).sorted()
+        if let maximum = numbers.max(), numbers != Array(1...maximum) {
+            warnings.append("La numeración de las semanas no es consecutiva.")
+        }
+
+        return LearningSituationSessionSequenceImportDraft(
+            plans: plans.sorted { $0.sessionNumber < $1.sessionNumber },
+            warnings: warnings,
+            sourceURL: url,
+            sourceFileName: url.lastPathComponent,
+            sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
+            sizeBytes: Int64(data.count)
+        )
+    }
+
+    private func parseWeek(number: Int, header: String, title: String, body: [WordDocumentBlock]) -> ParsedWeek {
+        var objective = ""
+        var material = ""
+        var saberes = ""
+        var criteriaRaw = ""
+        var evidence = ""
+        var fichaTitle = ""
+
+        var longSections: [LearningSituationSessionSectionDraft] = []
+        var shortSections: [LearningSituationSessionSectionDraft] = []
+        var sharedSections: [LearningSituationSessionSectionDraft] = []
+        var adaptations: [String] = []
+
+        // Destino actual: antes del primer "BLOQUE …" y después de la última tabla del bloque
+        // corto, el contenido pertenece a la semana entera (preguntas guía, variantes de
+        // dificultad, adaptaciones) y se copia en los dos bloques.
+        var target: WeekBlockKind?
+        var reachedFinalSections = false
+        var reachedDocumentTail = false
+        var currentTitle: String?
+        var currentLines: [String] = []
+        var currentIsAdaptations = false
+        var longMinutes: Int?
+        var shortMinutes: Int?
+        var pendingLabel: FichaField?
+
+        func assign(_ field: FichaField, _ rawValue: String) {
+            let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { return }
+            switch field {
+            case .title: if fichaTitle.isEmpty { fichaTitle = value }
+            case .objective: if objective.isEmpty { objective = value }
+            case .criteria: criteriaRaw = criteriaRaw.isEmpty ? value : "\(criteriaRaw), \(value)"
+            case .material: if material.isEmpty { material = value }
+            case .saberes: if saberes.isEmpty { saberes = value }
+            case .evidence: if evidence.isEmpty { evidence = value }
+            case .organisation, .date: break
+            }
+        }
+
+        func flushSection() {
+            defer {
+                currentTitle = nil
+                currentLines = []
+                currentIsAdaptations = false
+            }
+            guard let sectionTitle = currentTitle else { return }
+            if currentIsAdaptations {
+                adaptations.append(contentsOf: currentLines)
+                return
+            }
+            let section = LearningSituationSessionSectionDraft(title: sectionTitle, lines: currentLines)
+            if reachedFinalSections || target == nil {
+                sharedSections.append(section)
+            } else if target == .long {
+                longSections.append(section)
+            } else {
+                shortSections.append(section)
+            }
+        }
+
+        func startSection(_ sectionTitle: String, isAdaptations: Bool = false) {
+            flushSection()
+            currentTitle = sectionTitle
+            currentLines = []
+            currentIsAdaptations = isAdaptations
+        }
+
+        func appendLine(_ line: String) {
+            if currentTitle == nil {
+                switch target {
+                case .some(.long): currentTitle = "Bloque largo"
+                case .some(.short): currentTitle = "Bloque corto"
+                case .none: currentTitle = "Notas de la semana"
+                }
+                currentLines = []
+            }
+            currentLines.append(line)
+        }
+
+        for block in body {
+            switch block {
+            case .paragraph(let rawText):
+                let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                if isDocumentTailHeading(text) { reachedDocumentTail = true }
+                if reachedDocumentTail { continue }
+                if let waiting = pendingLabel {
+                    assign(waiting, text)
+                    pendingLabel = nil
+                    continue
+                }
+                if let blockHeading = weekBlockHeading(text) {
+                    flushSection()
+                    reachedFinalSections = false
+                    target = blockHeading.kind
+                    switch blockHeading.kind {
+                    case .long: longMinutes = blockHeading.minutes
+                    case .short: shortMinutes = blockHeading.minutes
+                    }
+                    continue
+                }
+                if let field = fichaLabelOnly(text) {
+                    pendingLabel = field
+                    continue
+                }
+                if let (field, value) = fichaColonPair(text) {
+                    assign(field, value)
+                    continue
+                }
+                if let final = finalSectionHeading(text) {
+                    reachedFinalSections = true
+                    switch final {
+                    case .development(let sectionTitle):
+                        startSection(sectionTitle)
+                    case .adaptations:
+                        startSection("Adaptaciones", isAdaptations: true)
+                    }
+                    continue
+                }
+                if isWeekDevelopmentHeading(text) {
+                    startSection(text)
+                    continue
+                }
+                appendLine(text)
+            case .table(let rawRows):
+                if reachedDocumentTail { continue }
+                let rows = rawRows.map { row in row.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } }
+                    .filter { row in row.contains { !$0.isEmpty } }
+                guard !rows.isEmpty else { continue }
+                if let tableHeader = rows.first, !variantColumnIndexes(tableHeader).isEmpty {
+                    flushSection()
+                    let sections = variantSections(rows)
+                    if sections.isEmpty {
+                        for row in rows.dropFirst() { appendLine(row.joined(separator: " · ")) }
+                    } else if target == .long {
+                        longSections.append(contentsOf: sections)
+                    } else {
+                        shortSections.append(contentsOf: sections)
+                    }
+                    continue
+                }
+                if isTimeTable(rows) {
+                    for line in timeTableLines(rows) { appendLine(line) }
+                    continue
+                }
+                if let tableHeader = rows.first, tableHeader.count >= 2 {
+                    let dataRows = tableHeader.first.flatMap(fichaField(forLabel:)) != nil ? rows : Array(rows.dropFirst())
+                    var matchedAny = false
+                    for row in dataRows {
+                        guard row.count >= 2, let field = fichaField(forLabel: row[0]) else { continue }
+                        assign(field, row.dropFirst().joined(separator: " "))
+                        matchedAny = true
+                    }
+                    if !matchedAny {
+                        for row in rows.dropFirst() { appendLine(row.joined(separator: " · ")) }
+                    }
+                    continue
+                }
+                for row in rows.dropFirst() { appendLine(row.joined(separator: " · ")) }
+            }
+        }
+        flushSection()
+
+        if !evidence.isEmpty {
+            sharedSections.insert(LearningSituationSessionSectionDraft(title: "Evaluación", lines: [evidence]), at: 0)
+        }
+        if !saberes.isEmpty {
+            material = material.isEmpty ? saberes : "\(material) — Saberes básicos: \(saberes)"
+        }
+
+        return ParsedWeek(
+            number: number,
+            header: header,
+            title: fichaTitle.isEmpty ? title : fichaTitle,
+            objective: objective,
+            criteria: criterionCodes(in: criteriaRaw),
+            material: material,
+            longSections: longSections,
+            longMinutes: longMinutes,
+            shortSections: shortSections,
+            shortMinutes: shortMinutes,
+            sharedSections: sharedSections,
+            adaptations: adaptations
+        )
+    }
+
     /// Formato A (solo SA 1, párrafos con etiquetas "Objetivo:", "Criterios:", "Material:",
     /// "Evidencia:", "Bloque N (45'):"). Sin cambios de comportamiento respecto al parser
     /// original: el soporte de tablas del bloque B no debe degradarlo.
@@ -766,7 +1169,10 @@ struct LearningSituationSessionSequenceDocumentImportService {
             return .saberes
         case "organizacion del grupo", "group organisation", "student grouping":
             return .organisation
-        case "evidencia", "evidencias", "evidence":
+        case "evidencia", "evidencias", "evidence",
+             // Formato semanal: la ficha de la semana declara en "Assessment"/"Evaluación" qué
+             // instrumento se recoge y en qué bloque.
+             "assessment", "evaluacion", "evaluation":
             return .evidence
         case "fecha", "date":
             return .date

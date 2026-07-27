@@ -495,8 +495,8 @@ struct DataManagementSettingsView: View {
     private func reloadPlannerSessions() async {
         let sessions = (try? await bridge.plannerListAllSessions()) ?? []
         self.plannerSessions = sessions.map { session in
-            let groupLabel = session.groupName ?? "Sin curso"
-            let unitLabel = session.teachingUnitName ?? "Sesión"
+            let groupLabel = session.groupName
+            let unitLabel = session.teachingUnitName
             let title = "\(groupLabel) · \(unitLabel)"
 
             var subParts: [String] = []

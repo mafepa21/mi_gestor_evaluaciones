@@ -20,7 +20,7 @@ struct SelectiveWipeSheet: View {
         let vals = WipeCategory.values()
         var list: [WipeCategory] = []
         for i in 0..<vals.size {
-            if let cat = vals.get(index: i) as? WipeCategory {
+            if let cat = vals.get(index: i) {
                 list.append(cat)
             }
         }

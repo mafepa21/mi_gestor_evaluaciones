@@ -88,29 +88,40 @@ struct RubricEvaluationView: View {
     }
 
     private func headerSection(rubric: RubricDetail, score: Double, progress: Double) -> some View {
-        HStack(alignment: .top, spacing: 16) {
-            Button(action: closeRubric) {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 16) {
+                Button(action: closeRubric) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cerrar")
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(state.studentName)
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    Text(rubric.rubric.name)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 16)
+
+                RubricScoreRing(progress: progress, scoreOutOfTen: score)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Cerrar")
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(state.studentName)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.primary)
-
-                Text(rubric.rubric.name)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 16)
-
-            RubricScoreRing(progress: progress, scoreOutOfTen: score)
+            let criteriaText = rubricCriteriaSummary(rubric: rubric)
+            AssessmentCriteriaDisclosureView(rawText: criteriaText)
         }
+    }
+
+    private func rubricCriteriaSummary(rubric: RubricDetail) -> String {
+        var parts: [String] = [state.rubricName, rubric.rubric.name, rubric.rubric.description]
+        parts.append(contentsOf: rubric.criteria.map { $0.criterion.description_ })
+        return parts.joined(separator: " · ")
     }
 
     private func saveSection(rubric: RubricDetail, score: Double) -> some View {

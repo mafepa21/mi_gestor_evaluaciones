@@ -201,10 +201,13 @@ struct NotebookStudentInspector: View {
 
     private var detailsSection: some View {
         NotebookInspectorSection(title: "Detalle", systemImage: "tablecells") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), alignment: .top)], alignment: .leading, spacing: 12) {
-                ForEach(detailRows, id: \.title) { row in
-                    NotebookInspectorInfoRow(title: row.title, value: row.value)
+            VStack(alignment: .leading, spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), alignment: .top)], alignment: .leading, spacing: 12) {
+                    ForEach(detailRows, id: \.title) { row in
+                        NotebookInspectorInfoRow(title: row.title, value: row.value)
+                    }
                 }
+                AssessmentCriteriaDisclosureView(rawText: criteriaText)
             }
         }
     }

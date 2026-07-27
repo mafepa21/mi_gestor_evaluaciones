@@ -85,17 +85,22 @@ struct StructuredInstrumentEvaluationSheet: View {
     private func formContent(_ model: Binding<StructuredInstrumentEvaluationModel>) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(request.studentName)
-                        .font(.title2.weight(.bold))
-                    HStack(spacing: 8) {
-                        ProgressView(value: progressFraction(for: model.wrappedValue))
-                            .tint(NotebookStyle.successTint)
-                            .frame(maxWidth: 160)
-                        Text(progressText(for: model.wrappedValue))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(request.studentName)
+                            .font(.title2.weight(.bold))
+                        HStack(spacing: 8) {
+                            ProgressView(value: progressFraction(for: model.wrappedValue))
+                                .tint(NotebookStyle.successTint)
+                                .frame(maxWidth: 160)
+                            Text(progressText(for: model.wrappedValue))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
                     }
+
+                    let criteriaText = structuredCriteriaSummary(model: model.wrappedValue)
+                    AssessmentCriteriaDisclosureView(rawText: criteriaText)
                 }
 
                 if let sessionGroups = observationSessionGroups(for: model.wrappedValue.items) {
@@ -128,6 +133,12 @@ struct StructuredInstrumentEvaluationSheet: View {
         guard total > 0 else { return 0 }
         let completed = model.items.filter(isCompleted).count
         return Double(completed) / Double(total)
+    }
+
+    private func structuredCriteriaSummary(model: StructuredInstrumentEvaluationModel) -> String {
+        var parts: [String] = [request.title]
+        parts.append(contentsOf: model.items.map { $0.title })
+        return parts.joined(separator: " · ")
     }
 
     private func isCompleted(_ item: StructuredInstrumentEvaluationItem) -> Bool {

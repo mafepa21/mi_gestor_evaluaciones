@@ -15,6 +15,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 Cambios posteriores a `v0.3.0-traceability-baseline`.
 
+### Docs
+
+- Nuevo `plan_adaptacion_import_formato_semanal_2026-07-27.md`: continuación de `plan_correccion_import_sa_2026-07-25.md` con el diagnóstico y la verificación de los tres frentes de esta tanda (checklists ponderadas que bloqueaban el import, formato semanal BLOQUE LARGO/CORTO, peso porcentual en la cabecera), incluidos los motivos para tocar los dos archivos protegidos y lo que deliberadamente no se ha hecho (la colocación automática de las sesiones contra el horario del grupo, que es funcionalidad del Planner, no del importador).
+
 ### Changed
 
 - Cuaderno: la cabecera de una columna importada de una SA con peso porcentual mostraba `×0,4` para un instrumento del 40 % (`columnWeightBadge`, `NotebookModuleGridCells.swift`), que se lee como un multiplicador que reduce la nota. Cuando la columna está ligada a una evaluación importada y su peso es una fracción entre 0 y 1, se pinta como porcentaje (`40%`). Los multiplicadores manuales (`×2`, `×0,5` en columnas sin evaluación asociada) se mantienen tal cual. La entrada anterior del changelog daba esto por hecho en `columnHeaderMeta`; el código real seguía sin la rama de porcentaje.

@@ -69,6 +69,9 @@ private val materializableAverageStrategies = setOf(
     AssessmentInstrumentScoreStrategy.NUMERIC_0_TO_10,
     AssessmentInstrumentScoreStrategy.RUBRIC,
     AssessmentInstrumentScoreStrategy.CHECKLIST_ALL_OR_NOTHING,
+    // La checklist proporcional ya materializa nota (ítems marcados / total × 10) en
+    // `NotebookInstrumentsRepositorySqlDelight.saveResponses`, así que puede computar en la media.
+    AssessmentInstrumentScoreStrategy.CHECKLIST_PROPORTIONAL,
     AssessmentInstrumentScoreStrategy.OBSERVATION_SCALE_1_TO_4,
     AssessmentInstrumentScoreStrategy.FORMULA,
 )
@@ -94,9 +97,6 @@ fun AssessmentInstrumentSpec.validationIssues(): List<AssessmentInstrumentValida
     }
     if (countsTowardAverage && scoreStrategy == AssessmentInstrumentScoreStrategy.NONE) {
         issues += AssessmentInstrumentValidationIssue(label, "Un instrumento computable necesita estrategia de puntuación.", true)
-    }
-    if (countsTowardAverage && scoreStrategy == AssessmentInstrumentScoreStrategy.CHECKLIST_PROPORTIONAL) {
-        issues += AssessmentInstrumentValidationIssue(label, "La checklist proporcional aún no materializa nota automática.", true)
     }
     if (scoreStrategy == AssessmentInstrumentScoreStrategy.RUBRIC &&
         (rubricDraft == null || rubricDraft.criteria.isEmpty() || rubricDraft.levels.isEmpty())

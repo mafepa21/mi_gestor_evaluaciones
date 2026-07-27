@@ -166,6 +166,121 @@ class NotebookInstrumentsRepositorySqlDelightTest {
     }
 
     @Test
+    fun `saveResponses derives a proportional checklist score from the marked items`() = runTest {
+        val fixture = createFixture()
+        val studentId = fixture.students.saveStudent(firstName = "Nuria", lastName = "Gil", email = null)
+        val classId = fixture.classes.saveClass(name = "1 BAC C", course = 1, description = null)
+        fixture.classes.addStudentToClass(classId, studentId)
+        fixture.config.saveColumn(
+            classId,
+            NotebookColumnDefinition(
+                id = "chkp_col",
+                title = "Checklist de protocolo de RCP",
+                type = NotebookColumnType.NUMERIC,
+                inputKind = NotebookCellInputKind.STRUCTURED_CHECKLIST,
+                weight = 0.2,
+            )
+        )
+        val titles = listOf("Comprueba consciencia", "Pide ayuda", "Abre vía aérea", "Compresiones 30:2")
+        fixture.instruments.saveTemplate(
+            template = NotebookInstrumentTemplate(
+                id = "template_chkp_col",
+                classId = classId,
+                columnId = "chkp_col",
+                title = "Checklist de protocolo de RCP",
+                kind = NotebookInstrumentTemplateKind.CHECKLIST,
+                inputKind = NotebookCellInputKind.STRUCTURED_CHECKLIST,
+            ),
+            items = titles.mapIndexed { index, title ->
+                NotebookInstrumentItem(
+                    id = "template_chkp_col_chkp_${index + 1}",
+                    templateId = "template_chkp_col",
+                    key = "chkp_${index + 1}",
+                    title = title,
+                    type = NotebookInstrumentItemType.CHECK,
+                )
+            }
+        )
+
+        // 3 de 4 ítems marcados -> 7,5 sobre 10.
+        fixture.instruments.saveResponses(
+            classId = classId,
+            studentId = studentId,
+            columnId = "chkp_col",
+            responses = titles.indices.map { index ->
+                NotebookInstrumentResponse(
+                    classId = classId,
+                    studentId = studentId,
+                    columnId = "chkp_col",
+                    itemId = "template_chkp_col_chkp_${index + 1}",
+                    boolValue = index < 3,
+                )
+            },
+            updatedAtEpochMs = 1L,
+            deviceId = "test",
+            syncVersion = 1L,
+        )
+
+        assertEquals(7.5, fixture.grades.listGradesForStudentInClass(studentId, classId).single().value)
+    }
+
+    @Test
+    fun `saveResponses does not derive a score for a plain submission checklist`() = runTest {
+        val fixture = createFixture()
+        val studentId = fixture.students.saveStudent(firstName = "Iker", lastName = "Sanz", email = null)
+        val classId = fixture.classes.saveClass(name = "1 BAC D", course = 1, description = null)
+        fixture.classes.addStudentToClass(classId, studentId)
+        fixture.config.saveColumn(
+            classId,
+            NotebookColumnDefinition(
+                id = "entrega_col",
+                title = "Checklist final de entrega",
+                type = NotebookColumnType.TEXT,
+                inputKind = NotebookCellInputKind.STRUCTURED_CHECKLIST,
+            )
+        )
+        fixture.instruments.saveTemplate(
+            template = NotebookInstrumentTemplate(
+                id = "template_entrega_col",
+                classId = classId,
+                columnId = "entrega_col",
+                title = "Checklist final de entrega",
+                kind = NotebookInstrumentTemplateKind.CHECKLIST,
+                inputKind = NotebookCellInputKind.STRUCTURED_CHECKLIST,
+            ),
+            items = listOf(
+                NotebookInstrumentItem(
+                    id = "template_entrega_col_check_1",
+                    templateId = "template_entrega_col",
+                    key = "check_1",
+                    title = "Producto final entregado",
+                    type = NotebookInstrumentItemType.CHECK,
+                )
+            )
+        )
+
+        fixture.instruments.saveResponses(
+            classId = classId,
+            studentId = studentId,
+            columnId = "entrega_col",
+            responses = listOf(
+                NotebookInstrumentResponse(
+                    classId = classId,
+                    studentId = studentId,
+                    columnId = "entrega_col",
+                    itemId = "template_entrega_col_check_1",
+                    boolValue = true,
+                )
+            ),
+            updatedAtEpochMs = 1L,
+            deviceId = "test",
+            syncVersion = 1L,
+        )
+
+        assertEquals(0, fixture.grades.listGradesForStudentInClass(studentId, classId).size)
+    }
+
+    @Test
     fun `saveResponses derives an observation grid score and it counts toward the average`() = runTest {
         val fixture = createFixture()
         val studentId = fixture.students.saveStudent(firstName = "Maria", lastName = "Lopez", email = null)

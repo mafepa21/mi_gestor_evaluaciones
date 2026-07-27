@@ -15,6 +15,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 Cambios posteriores a `v0.3.0-traceability-baseline`.
 
+### Data
+
+- Cuaderno (instrumentos estructurados): las **checklists ponderadas** ya generan nota automática. `NotebookInstrumentsRepositorySqlDelight.saveResponses` solo derivaba nota para las rejillas de observación (`obs_s<sesión>_i<indicador>`); ahora deriva también `ítems marcados ÷ ítems totales × 10` para los instrumentos cuyos ítems siguen la convención de clave `chkp_<n>`, que es la que genera el importador Apple cuando el documento asigna un porcentaje a una checklist. Las checklists de requisito de entrega y las de todo/nada mantienen la clave `check_<n>` y siguen sin nota automática, así que ningún instrumento ya importado cambia de comportamiento. En consecuencia, `AssessmentInstrumentScoreStrategy.CHECKLIST_PROPORTIONAL` entra en `materializableAverageStrategies` y deja de emitir el aviso bloqueante de `validationIssues()`.
+
 ### Fixed
 
 - Borrado total de datos: Corregido crash fatal `SIGABRT` / `vnode unlinked while in use` y crash de SwiftUI por falta de `EnvironmentObject` al ejecutar "Borrar todos los datos" desde Ajustes → Zona de riesgo.

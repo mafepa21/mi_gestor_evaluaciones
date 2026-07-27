@@ -12,14 +12,7 @@ Prioridad:
 
 ## Paso previo obligatorio
 
-Antes de escribir codigo, pensar como implementar de la mejor manera las ideas del skill `jobs-design-philosophy`:
-- Simplicidad radical: una pantalla debe tener una tarea principal obvia.
-- Whitespace generoso para reducir carga cognitiva.
-- Rejilla disciplinada de 8pt; usar 4pt solo para microajustes justificados.
-- Jerarquia visual clara, con un unico foco dominante.
-- Cambios quirurgicos que no alteren la logica de negocio salvo peticion expresa.
-- Eliminar ruido visual, divisores innecesarios y acciones sin utilidad diaria real.
-- Validar mentalmente el Test del Aire, el Test del Bizqueo y el Test de la Obviedad.
+Antes de tocar UI, aplicar la skill `jobs-design-philosophy`. No repetir aqui su contenido: la skill es la fuente unica.
 
 ## Arquitectura
 
@@ -38,12 +31,12 @@ Antes de escribir codigo, pensar como implementar de la mejor manera las ideas d
 - `kmp/iosApp/AppleShared/*.swift`
 - `kmp/iosApp/MacApp/*.swift` si es macOS especifico
 
-No tocar salvo peticion explicita:
-- `KmpBridge.swift`
-- `kmp/shared/`
-- `kmp/data/`
-- `EvaluationDesign.swift`
-- `desktopApp/`
+Archivos protegidos (no tocar salvo orden explicita, explicando antes el motivo):
+- `kmp/iosApp/App/KmpBridge.swift`
+- `kmp/iosApp/App/EvaluationDesign.swift`
+- `kmp/shared/domain/`
+- `kmp/data/src/commonMain/sqldelight/`
+- `kmp/desktopApp/`
 
 ## Skills
 
@@ -79,18 +72,11 @@ La skill no sustituye a la skill tecnica principal. Se usa como capa final de tr
 
 Referencia completa: `docs/AGENT_WORKFLOW.md`.
 
-## Reduccion de alcance
+## Alcance
 
-Por defecto:
-- 1 View.
-- 1 flujo.
-- 1-3 archivos.
-- 1 entregable.
-- Sin refactor global.
+Acotar cada cambio al flujo o componente concreto que pide la tarea; no hacer refactors globales sin autorizacion explicita.
 
-Si el archivo es grande, acotar a una seccion, componente o flujo concreto.
-
-Archivos especialmente grandes o sensibles:
+Archivos especialmente grandes o sensibles (acotar a una seccion o componente, no reescribir entero):
 - `ContentView.swift`
 - `IPadWorkspaceShell.swift`
 - `NotebookModuleView.swift`
@@ -114,32 +100,11 @@ Archivos especialmente grandes o sensibles:
 | macOS | `kmp/iosApp/MacApp/` |
 | Compartido Apple | `kmp/iosApp/AppleShared/` |
 
-## Archivos protegidos
-
-No modificar salvo orden explicita:
-- `kmp/iosApp/App/KmpBridge.swift`
-- `kmp/iosApp/App/EvaluationDesign.swift`
-- `kmp/shared/domain/`
-- `kmp/data/src/commonMain/sqldelight/`
-- `kmp/desktopApp/`
-
-Si parece necesario tocarlos, explicar primero el motivo.
-
 ## UI/UX
 
-La app debe sentirse:
-- premium,
-- nativa Apple,
-- minimalista,
-- rapida,
-- clara para uso docente diario.
-
 Prioridades:
-- Menos ruido visual.
-- Jerarquia clara.
-- Acciones principales visibles.
-- Menus compactos.
-- Inspector util y no invasivo.
+- Menos ruido visual, jerarquia clara, acciones principales visibles.
+- Inspector util y no invasivo; menus compactos.
 - Coherencia iOS/macOS.
 - No anadir opciones sin utilidad diaria real.
 
@@ -187,39 +152,16 @@ Si se toca SQLDelight:
 
 ## Build y comprobaciones
 
-Antes de finalizar, intentar ejecutar las comprobaciones relevantes.
+Elegir segun alcance:
+- KMP/shared: `./gradlew :shared:test`.
+- SQLDelight/data: `./gradlew :data:desktopTest`.
+- iOS/macOS Apple: `xcodebuild` con el esquema afectado.
+- UI: build y, si procede, capturas o QA manual.
 
-Pendiente de confirmar comandos reales del proyecto.
+Si un comando falla por entorno, registrar el fallo y el motivo (ver `docs/AGENT_WORKFLOW.md`).
 
-Posibles comprobaciones:
-- Build iOS desde Xcode.
-- Build macOS desde Xcode.
-- Tests KMP si se toca `kmp/shared/`.
-- Verificacion SQLDelight si se toca `kmp/data/`.
+## Flujo Git, PR y entregable
 
-No inventar comandos si no estan claros en el repo.
-
-## Flujo Git y PR
-
-Por defecto:
-- Revisar `git status --short --branch` antes de tocar archivos.
-- Agrupar commits por intencion: `docs`, `feat`, `fix`, `ui`, `data`, `kmp`, `build`, `test`, `refactor`.
-- No mezclar cambios de UI, KMP, SQLDelight y documentacion en un mismo commit salvo dependencia real.
-- Abrir o actualizar PR con la plantilla de `.github/pull_request_template.md`.
-- Registrar pruebas ejecutadas y pruebas no ejecutadas con motivo concreto.
-
-Para el proceso completo, seguir `docs/AGENT_WORKFLOW.md` y `docs/REPO_GOVERNANCE.md`.
-
-## Entregable
-
-Responder siempre con:
-1. Resumen breve.
-2. Archivos modificados.
-3. Cambios realizados.
-4. Que no se ha tocado.
-5. Riesgos o pendientes.
-6. Casos probados.
-7. Diff o resumen del diff.
+Revisar `git status --short --branch` antes de tocar archivos. Para el flujo completo (ramas, worktree, commits, changelog, PR, formato de entregable), seguir la skill `registrar-avance-app`, `docs/AGENT_WORKFLOW.md` y `docs/REPO_GOVERNANCE.md` — no repetir aqui ese contenido.
 
 No mezclar tareas no pedidas.
-No hacer refactors globales sin autorizacion.

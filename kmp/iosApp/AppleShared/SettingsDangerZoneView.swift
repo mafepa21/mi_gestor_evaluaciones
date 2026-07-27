@@ -1,10 +1,15 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 struct SettingsDangerZoneView: View {
     @ObservedObject var settings: AppSettingsStore
+    @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
 
     @State private var showingWipeConfirmation = false
+    @State private var showingSelectiveWipeSheet = false
     @State private var confirmationText = ""
     @State private var pendingAction: DangerZoneAction? = nil
     @State private var feedbackMessage: String? = nil
@@ -22,6 +27,12 @@ struct SettingsDangerZoneView: View {
             }
 
             Section("Zona de peligro crítico") {
+                Button {
+                    showingSelectiveWipeSheet = true
+                } label: {
+                    Label("Borrado modular por categorías...", systemImage: "slider.horizontal.3")
+                }
+
                 Button(role: .destructive) {
                     confirmationText = ""
                     showingWipeConfirmation = true
@@ -30,6 +41,10 @@ struct SettingsDangerZoneView: View {
                         .foregroundColor(.red)
                 }
             }
+        }
+        .sheet(isPresented: $showingSelectiveWipeSheet) {
+            SelectiveWipeSheet()
+                .environmentObject(bridge)
         }
         .navigationTitle("Zona de Riesgo")
         .confirmationDialog(
@@ -68,7 +83,7 @@ struct SettingsDangerZoneView: View {
                 confirmationText = ""
             }
         } message: {
-            Text("Esta acción eliminará de forma irreversible toda tu información, incluyendo clases, estudiantes, rúbricas y copias de seguridad locales. Escribe 'BORRAR' en mayúsculas para continuar.")
+            Text("Esta acción eliminará de forma irreversible toda tu información, incluyendo clases, estudiantes, rúbricas y copias de seguridad locales. También se desvinculará la sincronización con otros dispositivos. Escribe 'BORRAR' en mayúsculas para continuar.")
         }
         .alert(item: Binding(
             get: { feedbackMessage.map { IdentifiableString(value: $0) } },
@@ -90,48 +105,165 @@ struct SettingsDangerZoneView: View {
         feedbackMessage = action.successMessage
     }
 
+    /// Limpia solo la caché de MiGestor.
+    ///
+    /// En iOS `.cachesDirectory` es el contenedor de la app, así que borrar todo su
+    /// contenido es correcto. En macOS la app **no está en sandbox** (la base vive en
+    /// `~/Library/Application Support/MiGestor`, no en un contenedor), así que
+    /// `.cachesDirectory` es `~/Library/Caches` del usuario entero: la versión anterior
+    /// borraba ahí dentro todo lo que encontraba — cachés de Safari, Xcode y de
+    /// cualquier otra app instalada — bajo un botón que dice "No afecta a tus datos".
+    /// En macOS se acota al subdirectorio propio, identificado por el bundle id.
     private func clearAppCache() {
         let fileManager = FileManager.default
-        let cacheDirs = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
-        for dir in cacheDirs {
-            if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil, options: []) {
-                for file in contents {
-                    try? fileManager.removeItem(at: file)
-                }
-            }
+        guard let cachesRoot = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+
+        #if os(macOS)
+        let bundleId = Bundle.main.bundleIdentifier ?? "com.migestor.mac"
+        let appCacheDir = cachesRoot.appendingPathComponent(bundleId, isDirectory: true)
+        #else
+        let appCacheDir = cachesRoot
+        #endif
+
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: appCacheDir,
+            includingPropertiesForKeys: nil,
+            options: []
+        ) else { return }
+
+        for file in contents {
+            try? fileManager.removeItem(at: file)
         }
     }
 
     private func wipeAllData() {
-        let fileManager = FileManager.default
-        let dbPath = AppleBridgeBootstrap.current().databasePath
-        let dbURL = URL(fileURLWithPath: dbPath)
-        let appDataURL = dbURL.deletingLastPathComponent()
+        Task { @MainActor in
+            await performWipe()
+        }
+    }
 
-        // Delete database sidecars
-        for suffix in ["", "-wal", "-shm"] {
-            let path = dbPath + suffix
-            if fileManager.fileExists(atPath: path) {
-                try? fileManager.removeItem(atPath: path)
+    /// Borrado total.
+    ///
+    /// Hasta 2026-07 esto borraba `desktop_mi_gestor_kmp.db`, `-wal` y `-shm` del disco
+    /// mientras el driver de SQLDelight los tenía abiertos. macOS invalidaba entonces
+    /// todos los descriptores del pool (`vnode unlinked while in use`), la siguiente
+    /// consulta fallaba con `SQLITE_IOERR` y el proceso abortaba — crash real reportado
+    /// por el usuario, parcheado dos veces por síntomas (cancelar tareas de fondo,
+    /// guards de `needsRestart`) antes de atacar la causa.
+    ///
+    /// Ahora la base se **vacía por SQL** con la conexión que ya está abierta
+    /// (`KmpContainer.wipeAllData()`): no se invalida ningún descriptor y no puede
+    /// fallar por E/S. Solo se borran como ficheros las cosas que nadie tiene abiertas.
+    @MainActor
+    private func performWipe() async {
+        let backupService = AppleBackupService.shared
+
+        // 0. Marcar inmediatamente que la app necesita reinicio para bloquear
+        //    cualquier intento de relanzar el helper o ejecutar consultas en segundo plano.
+        backupService.needsRestart = true
+
+        // 1. Parar el trabajo en segundo plano de este proceso (bucle de auto-sync,
+        //    debounces de guardado, listener SSE).
+        bridge.stopBackgroundSyncWork()
+
+        // 2. Desemparejar antes de borrar. Sin esto el borrado no sobrevivía al
+        //    reinicio: el dispositivo seguía emparejado y el primer pull volvía a
+        //    traerse todos los datos desde el iPad, deshaciendo el borrado. Se hace
+        //    antes de parar el helper porque avisa al servidor por red.
+        await bridge.unpairLanSync()
+
+        // 3. macOS: parar el helper de Sync LAN, que corre en un proceso aparte con su
+        //    propia conexión SQLite al mismo fichero y sigue sirviendo /sync/pull.
+        #if os(macOS)
+        NotificationCenter.default.post(name: .appleCommandCenterStopRequested, object: nil)
+        // Dar tiempo a que el proceso del helper reciba la orden y finalice completamente
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        #endif
+
+        // 4. Vaciar la base por SQL. Si falla, se avisa y no se borra nada más: es
+        //    preferible dejarlo todo como estaba a borrar los adjuntos de unos datos
+        //    que siguen ahí.
+        do {
+            try bridge.wipeAllDatabaseData()
+        } catch {
+            backupService.needsRestart = false
+            feedbackMessage = "No se pudieron borrar los datos: \(error.localizedDescription)"
+            return
+        }
+
+        // 5. Ficheros que nadie tiene abiertos.
+        let fileManager = FileManager.default
+        var fileErrors: [String] = []
+
+        func remove(_ url: URL, _ label: String) {
+            guard fileManager.fileExists(atPath: url.path) else { return }
+            do {
+                try fileManager.removeItem(at: url)
+            } catch {
+                fileErrors.append(label)
             }
         }
 
-        // Delete backups
-        let backupsDir = appDataURL.appendingPathComponent("backups", isDirectory: true)
-        if fileManager.fileExists(atPath: backupsDir.path) {
-            try? fileManager.removeItem(at: backupsDir)
-        }
+        remove(backupService.backupsDirectoryURL, "copias de seguridad")
+        remove(backupService.attachmentsURL, "adjuntos del cuaderno")
+        // Los documentos de situaciones de aprendizaje se quedaban sin borrar pese a que
+        // el diálogo promete eliminar "toda tu información".
+        remove(backupService.learningSituationsURL, "documentos de situaciones de aprendizaje")
 
-        // Delete attachments
-        let attachmentsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("NotebookEvidence", isDirectory: true) ?? appDataURL.appendingPathComponent("NotebookEvidence")
-        if fileManager.fileExists(atPath: attachmentsDir.path) {
-            try? fileManager.removeItem(at: attachmentsDir)
+        // Bases apartadas por un arranque fallido (`<db>.backup_<epoch>`): son copias
+        // completas de los datos de la docente y sobrevivían enteras al borrado total.
+        backupService.scanQuarantinedDatabases()
+        for quarantined in backupService.quarantinedDatabases {
+            remove(quarantined.url, "bases apartadas")
+            for suffix in ["-wal", "-shm"] {
+                remove(URL(fileURLWithPath: quarantined.url.path + suffix), "bases apartadas")
+            }
+        }
+        // Y el marcador que, si sobrevive, hace saltar la alerta de rescate en el
+        // siguiente arranque ofreciendo restaurar una base que ya no existe.
+        remove(URL(fileURLWithPath: backupService.databaseURL.path + ".rescue_marker"), "marcador de rescate")
+
+        await backupService.scanBackups()
+
+        if !fileErrors.isEmpty {
+            let detail = Set(fileErrors).sorted().joined(separator: ", ")
+            feedbackMessage = "Los datos se han borrado, pero no se pudieron eliminar algunos archivos: \(detail)."
         }
 
         // needsRestart es observado en la raíz de la app (iOS: AppleAppRootView, macOS: MacRootView)
-        // para bloquear la UI con un aviso de reinicio en lugar de dejar datos en memoria obsoletos.
-        AppleBackupService.shared.needsRestart = true
+        // para bloquear la UI con un aviso de reinicio. Sigue siendo necesario aunque la base
+        // ya no se rompa: los cachés en memoria y los Flow ya suscritos conservan los datos
+        // viejos (el vaciado por SQL no pasa por las queries generadas, así que no notifica
+        // a sus listeners).
+        backupService.needsRestart = true
+        #if os(macOS)
+        scheduleAutomaticRelaunch()
+        #endif
     }
+
+    #if os(macOS)
+    /// En macOS sí se puede relanzar la app: `wipeAllData()` borra los ficheros
+    /// en disco pero la conexión SQLite y el estado en memoria del proceso
+    /// actual siguen siendo los antiguos, así que un reinicio manual era el
+    /// único modo de ver los cambios reflejados. El retardo deja ver el aviso
+    /// de `RestartRequiredOverlay` antes de que el proceso termine.
+    ///
+    /// iOS/iPadOS no tiene equivalente: Apple no permite que una app se
+    /// autorelance (rechazado en App Review), así que ahí se mantiene el
+    /// aviso de reinicio manual sin cambios.
+    private func scheduleAutomaticRelaunch() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.createsNewApplicationInstance = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in
+                DispatchQueue.main.async {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+    }
+    #endif
 }
 
 private enum DangerZoneAction: String, Identifiable {

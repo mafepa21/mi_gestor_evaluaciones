@@ -108,7 +108,9 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookInspectorAvailable = inspectorAvailable
             self.isNotebookInspectorPresented = isInspectorPresented
             self.notebookAddColumnAvailable = addColumnAvailable
-            self.notebookSearchText = searchText
+            if self.notebookSearchText != searchText {
+                self.notebookSearchText = searchText
+            }
             self.notebookSurfaceMode = surfaceMode
             self.notebookSelectedGroupId = selectedGroupId
             self.notebookAvailableGroups = availableGroups
@@ -219,24 +221,18 @@ final class WorkspaceLayoutState: ObservableObject {
     }
 
     func setNotebookSearchText(_ value: String) {
-        publishDeferred {
-            self.notebookSearchText = value
-            self.notebookSearchAction?(value)
-            }
+        notebookSearchText = value
+        notebookSearchAction?(value)
     }
 
     func setNotebookSurfaceMode(_ value: String) {
-        publishDeferred {
-            self.notebookSurfaceMode = value
-            self.notebookSurfaceModeAction?(value)
-        }
+        notebookSurfaceMode = value
+        notebookSurfaceModeAction?(value)
     }
 
     func setNotebookGroupFilter(_ value: Int64?) {
-        publishDeferred {
-            self.notebookSelectedGroupId = value
-            self.notebookGroupFilterAction?(value)
-        }
+        notebookSelectedGroupId = value
+        notebookGroupFilterAction?(value)
     }
 
     func openNotebookOrganizationMenu() {
@@ -492,6 +488,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
     case planner
     case situations
     case diary
+    case meetings
     case evaluationHub
     case rubrics
     case reports
@@ -518,6 +515,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "Planner"
         case .situations: return "Situaciones"
         case .diary: return "Diario de aula"
+        case .meetings: return "Reuniones"
         case .evaluationHub: return "Evaluación"
         case .rubrics: return "Rúbricas"
         case .reports: return "Informes"
@@ -544,6 +542,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "Preparación lectiva"
         case .situations: return "Programación curricular"
         case .diary: return "Trazabilidad de sesión"
+        case .meetings: return "Actas de centro y acuerdos"
         case .evaluationHub: return "Instrumentos y calendario"
         case .rubrics: return "Banco de rúbricas"
         case .reports: return "Salida docente"
@@ -570,6 +569,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "calendar.badge.clock"
         case .situations: return "doc.text.magnifyingglass"
         case .diary: return "doc.text.fill"
+        case .meetings: return "person.3.fill"
         case .evaluationHub: return "chart.bar.doc.horizontal"
         case .rubrics: return "checklist"
         case .reports: return "doc.richtext.fill"
@@ -589,7 +589,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard, .courses, .students, .teacherRadar, .notebook:
             return .academic
-        case .attendance, .planner, .situations, .diary:
+        case .attendance, .planner, .situations, .diary, .meetings:
             return .operations
         case .evaluationHub, .rubrics, .reports, .library:
             return .evaluation
@@ -2670,9 +2670,12 @@ struct WorkspaceActionRow: View {
 struct WorkspaceEmptyState: View {
     let title: String
     let subtitle: String
+    var systemImage = "square.stack.3d.up.slash"
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
 
     var body: some View {
-        PremiumEmptyState(title: title, subtitle: subtitle)
+        PremiumEmptyState(title: title, subtitle: subtitle, systemImage: systemImage, actionTitle: actionTitle, action: action)
     }
 }
 
@@ -3163,13 +3166,6 @@ struct ContextualAIAssistantSheet: View {
                 )
             }
         }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

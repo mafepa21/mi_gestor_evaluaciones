@@ -600,6 +600,95 @@ data class StudentSupportMeasure(
     val trace: AuditTrace = AuditTrace(),
 )
 
+/**
+ * Entrevista con la familia de un alumno. El acta es documental: fecha, quien
+ * asistio, que se trato y que se acordo. Los acuerdos van en texto libre a
+ * proposito; estructurarlos con responsable y vencimiento propios seria una
+ * tabla hija, no un cambio de esta.
+ */
+data class StudentTutoringSession(
+    val id: Long,
+    val studentId: Long,
+    val date: LocalDate,
+    val channel: TutoringChannel = TutoringChannel.IN_PERSON,
+    val attendees: String = "",
+    val topics: String = "",
+    val agreements: String = "",
+    val reviewDue: LocalDate? = null,
+    val isClosed: Boolean = false,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+enum class TutoringChannel {
+    IN_PERSON,
+    PHONE,
+    VIDEO_CALL,
+    WRITTEN,
+}
+
+/**
+ * Reunion de centro (claustro, equipo docente, departamento...) con su acta. A
+ * diferencia de la tutoria con familias, que es de ambito alumno, esto es de
+ * ambito centro y no cuelga de ninguna otra fila. Los `agreements` si van
+ * estructurados en su propia tabla hija ([MeetingAgreement]) porque el valor del
+ * acta esta en poder decir quien se hace cargo de que y para cuando; eso es lo
+ * que la migracion 36 de las tutorias dejo dicho que llegaria aqui.
+ */
+data class Meeting(
+    val id: Long,
+    val title: String,
+    val date: LocalDate,
+    val type: MeetingType = MeetingType.OTRA,
+    val location: String = "",
+    val attendees: String = "",
+    val summary: String = "",
+    val isClosed: Boolean = false,
+    val agreements: List<MeetingAgreement> = emptyList(),
+    val trace: AuditTrace = AuditTrace(),
+)
+
+enum class MeetingType {
+    CLAUSTRO,
+    EQUIPO_DOCENTE,
+    DEPARTAMENTO,
+    CCP,
+    COORDINACION,
+    OTRA,
+}
+
+/**
+ * Un acuerdo tomado en una reunion. `due` es la fecha limite y `responsible` el
+ * texto libre de quien responde; `isDone` se marca por separado segun se van
+ * cerrando, sin reescribir el acta. Cuelga de [Meeting] con ON DELETE CASCADE.
+ */
+data class MeetingAgreement(
+    val id: Long,
+    val meetingId: Long,
+    val description: String,
+    val responsible: String = "",
+    val due: LocalDate? = null,
+    val isDone: Boolean = false,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+/**
+ * Plan pedagogico de una semana de un grupo: que estrategias didacticas e
+ * instrumentos de evaluacion se marcan para esa semana. `strategies` e
+ * `instruments` son listas de claves estables de un banco cerrado definido en la
+ * UI; aqui viajan como listas para no acoplar el dominio a ese banco. Clave
+ * natural (classId, year, week).
+ */
+data class PlannerWeekPlan(
+    val id: Long,
+    val classId: Long,
+    val year: Int,
+    val week: Int,
+    val strategies: List<String> = emptyList(),
+    val instruments: List<String> = emptyList(),
+    val notes: String = "",
+    val trace: AuditTrace = AuditTrace(),
+)
+
 data class Incident(
     val id: Long,
     val classId: Long,
@@ -1841,6 +1930,16 @@ data class PlanningSession(
     val endTime: String? = null,
     val learningSituationSessionPlanId: Long? = null,
     val status: SessionStatus = SessionStatus.PLANNED
+)
+
+data class PlannerSessionTemplate(
+    val id: Long = 0,
+    val title: String,
+    val category: String = "GENERAL",
+    val objectives: String = "",
+    val activities: String = "",
+    val evaluation: String = "",
+    val createdAtEpochMs: Long = 0
 )
 
 enum class CollisionResolution {

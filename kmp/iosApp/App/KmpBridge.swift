@@ -5,6 +5,7 @@ import Security
 import CryptoKit
 
 typealias KmpSubject = MiGestorKit.Subject
+typealias WipeCategory = MiGestorKit.WipeCategory
 
 struct StructuredInstrumentEvaluationModel: Identifiable {
     let id: String
@@ -371,6 +372,87 @@ final class KmpBridge: ObservableObject {
         let lateCount: Int
         let pendingTodayCount: Int
         let attendanceRate: Int
+    }
+
+    struct TutoringSessionSnapshot: Identifiable, Hashable {
+        let id: Int64
+        let studentId: Int64
+        let dateIso: String
+        let channel: TutoringChannelUI
+        let attendees: String
+        let topics: String
+        let agreements: String
+        let reviewDueIso: String?
+        let isClosed: Bool
+    }
+
+    struct TutoringSessionDraft {
+        var studentId: Int64
+        var dateIso: String
+        var channel: TutoringChannelUI = .inPerson
+        var attendees: String = ""
+        var topics: String = ""
+        var agreements: String = ""
+        var reviewDueIso: String?
+        var isClosed: Bool = false
+    }
+
+    struct MeetingAgreementSnapshot: Identifiable, Hashable {
+        let id: Int64
+        let meetingId: Int64
+        let description: String
+        let responsible: String
+        let dueIso: String?
+        let isDone: Bool
+    }
+
+    struct MeetingSnapshot: Identifiable, Hashable {
+        let id: Int64
+        let title: String
+        let dateIso: String
+        let type: MeetingTypeUI
+        let location: String
+        let attendees: String
+        let summary: String
+        let isClosed: Bool
+        let agreements: [MeetingAgreementSnapshot]
+    }
+
+    struct MeetingDraft {
+        var title: String = ""
+        var dateIso: String
+        var type: MeetingTypeUI = .otra
+        var location: String = ""
+        var attendees: String = ""
+        var summary: String = ""
+        var isClosed: Bool = false
+    }
+
+    struct MeetingAgreementDraft {
+        var meetingId: Int64
+        var description: String = ""
+        var responsible: String = ""
+        var dueIso: String?
+        var isDone: Bool = false
+    }
+
+    struct WeekPlanSnapshot: Identifiable, Hashable {
+        let id: Int64?
+        let classId: Int64
+        let year: Int
+        let week: Int
+        let strategyKeys: [String]
+        let instrumentKeys: [String]
+        let notes: String
+    }
+
+    struct WeekPlanDraft {
+        var classId: Int64
+        var year: Int
+        var week: Int
+        var strategyKeys: [String] = []
+        var instrumentKeys: [String] = []
+        var notes: String = ""
     }
 
     struct SupportMeasureSnapshot: Identifiable {
@@ -1341,7 +1423,10 @@ final class KmpBridge: ObservableObject {
         guard !didBootstrap else { return }
         didBootstrap = true
         do {
-            try await seedIfNeeded()
+            if !UserDefaults.standard.bool(forKey: Self.hasCompletedInitialSeedKey) {
+                try await seedIfNeeded()
+                UserDefaults.standard.set(true, forKey: Self.hasCompletedInitialSeedKey)
+            }
             try await refreshDashboard()
             try await loadDashboard(mode: .office)
             try await refreshClasses()
@@ -1361,6 +1446,16 @@ final class KmpBridge: ObservableObject {
     var appDatabasePath: String {
         appleBootstrap.databasePath
     }
+
+    /// Fuera del SQLite a propósito: `wipeAllData()` (Ajustes → Zona de Riesgo)
+    /// borra el fichero de base de datos entero, así que cualquier marca que
+    /// viviera dentro de una tabla desaparecería con él y la siembra de
+    /// datos de demo (`seedDemoDataIfEmpty`, que solo mira si hay alumnos)
+    /// volvería a dispararse en el siguiente arranque, deshaciendo el
+    /// borrado. `UserDefaults` sobrevive al borrado del SQLite, así que una
+    /// vez sembrado no se vuelve a sembrar nunca más, ni siquiera tras un
+    /// borrado deliberado.
+    private static let hasCompletedInitialSeedKey = "demo.seed.completed.v1"
 
     private func seedIfNeeded() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -2903,6 +2998,34 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    func plannerListSessionTemplates() async throws -> [PlannerSessionTemplate] {
+        try await container.plannerRepository.listSessionTemplates()
+    }
+
+    func plannerSaveSessionTemplate(
+        id: Int64 = 0,
+        title: String,
+        category: String = "GENERAL",
+        objectives: String,
+        activities: String,
+        evaluation: String = ""
+    ) async throws -> Int64 {
+        let template = PlannerSessionTemplate(
+            id: id,
+            title: title,
+            category: category,
+            objectives: objectives,
+            activities: activities,
+            evaluation: evaluation,
+            createdAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+        return try await container.plannerRepository.saveSessionTemplate(template: template).int64Value
+    }
+
+    func plannerDeleteSessionTemplate(id: Int64) async throws -> Bool {
+        try await container.plannerRepository.deleteSessionTemplate(templateId: id).boolValue
+    }
+
     func plannerJournal(for session: PlanningSession) async throws -> SessionJournalAggregate {
         try await container.sessionJournalRepository.getOrCreateJournal(session: session)
     }
@@ -3593,13 +3716,17 @@ final class KmpBridge: ObservableObject {
             }
     }
 
+    /// `note`/`hasIncident`/`followUpRequired` son `nil` por defecto (no `""`/`false`)
+    /// a proposito: la mayoria de llamadas solo cambian el `status` (toque rapido
+    /// de asistencia) y no deben borrar una observacion o incidencia ya guardada
+    /// ese dia. `nil` conserva el valor existente; un valor explicito lo sustituye.
     func saveAttendance(
         studentId: Int64,
         classId: Int64,
         on date: Date,
         status: String,
-        note: String = "",
-        hasIncident: Bool = false,
+        note: String? = nil,
+        hasIncident: Bool? = nil,
         followUpRequired: Bool? = nil,
         sessionId: Int64? = nil
     ) async throws {
@@ -3611,6 +3738,9 @@ final class KmpBridge: ObservableObject {
         } ?? existingRecords.first { record in
             record.studentId == studentId
         }
+        let resolvedNote = note ?? existing?.note ?? ""
+        let resolvedHasIncident = hasIncident ?? existing?.hasIncident ?? false
+        let resolvedFollowUpRequired = followUpRequired ?? existing?.followUpRequired ?? resolvedHasIncident
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         _ = try await container.attendanceRepository.saveAttendance(
             id: kotlinLong(existing?.id),
@@ -3618,9 +3748,9 @@ final class KmpBridge: ObservableObject {
             classId: classId,
             dateEpochMs: dateEpochMs,
             status: status,
-            note: note,
-            hasIncident: hasIncident,
-            followUpRequired: followUpRequired ?? hasIncident,
+            note: resolvedNote,
+            hasIncident: resolvedHasIncident,
+            followUpRequired: resolvedFollowUpRequired,
             sessionId: kotlinLong(linkedSessionId),
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
@@ -3635,9 +3765,9 @@ final class KmpBridge: ObservableObject {
                 "classId": classId,
                 "dateEpochMs": dateEpochMs,
                 "status": status,
-                "note": note,
-                "hasIncident": hasIncident,
-                "followUpRequired": followUpRequired ?? hasIncident,
+                "note": resolvedNote,
+                "hasIncident": resolvedHasIncident,
+                "followUpRequired": resolvedFollowUpRequired,
                 "sessionId": linkedSessionId ?? NSNull()
             ]
         )
@@ -3725,6 +3855,280 @@ final class KmpBridge: ObservableObject {
             updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
             payload: ["id": id],
             op: "delete"
+        )
+    }
+
+    func tutoringSessions(for studentId: Int64) async throws -> [TutoringSessionSnapshot] {
+        let rows = try await container.studentTutoringSessionRepository.listByStudent(studentId: studentId)
+        return rows.compactMap(tutoringSessionSnapshot(from:))
+    }
+
+    /// Seguimientos abiertos cuya revisión vence en o antes de `onOrBeforeIso`.
+    func pendingTutoringReviews(onOrBefore onOrBeforeIso: String) async throws -> [TutoringSessionSnapshot] {
+        let rows = try await container.studentTutoringSessionRepository.listPendingReviews(onOrBeforeIso: onOrBeforeIso)
+        return rows.compactMap(tutoringSessionSnapshot(from:))
+    }
+
+    @discardableResult
+    func saveTutoringSession(id: Int64? = nil, draft: TutoringSessionDraft) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let savedId = try await container.studentTutoringSessionRepository.save(
+            id: kotlinLong(id),
+            studentId: draft.studentId,
+            dateIso: draft.dateIso,
+            channel: kotlinTutoringChannel(draft.channel),
+            attendees: draft.attendees,
+            topics: draft.topics,
+            agreements: draft.agreements,
+            reviewDueIso: draft.reviewDueIso,
+            isClosed: draft.isClosed,
+            createdAtEpochMs: id == nil ? nowMs : 0,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        enqueueLocalChange(
+            entity: "student_tutoring_sessions",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "studentId": draft.studentId,
+                "dateIso": draft.dateIso,
+                "channel": draft.channel.rawValue,
+                "attendees": draft.attendees,
+                "topics": draft.topics,
+                "agreements": draft.agreements,
+                "reviewDueIso": draft.reviewDueIso ?? NSNull(),
+                "isClosed": draft.isClosed
+            ]
+        )
+        return savedId
+    }
+
+    func deleteTutoringSession(id: Int64) async throws {
+        try await container.studentTutoringSessionRepository.delete(id: id)
+        enqueueLocalChange(
+            entity: "student_tutoring_sessions",
+            id: "\(id)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: ["id": id],
+            op: "delete"
+        )
+    }
+
+    /// `nil` si la fila trae un canal que esta version no conoce. Se descarta en
+    /// vez de forzar un valor: mismo criterio que las medidas de apoyo.
+    private func tutoringSessionSnapshot(from session: StudentTutoringSession) -> TutoringSessionSnapshot? {
+        guard let channel = TutoringChannelUI(rawValue: session.channel.name) else { return nil }
+        return TutoringSessionSnapshot(
+            id: session.id,
+            studentId: session.studentId,
+            dateIso: session.date.description(),
+            channel: channel,
+            attendees: session.attendees,
+            topics: session.topics,
+            agreements: session.agreements,
+            reviewDueIso: session.reviewDue?.description(),
+            isClosed: session.isClosed
+        )
+    }
+
+    private func kotlinTutoringChannel(_ channel: TutoringChannelUI) -> TutoringChannel {
+        TutoringChannel.entries.first { $0.name == channel.rawValue } ?? TutoringChannel.entries[0]
+    }
+
+    // MARK: - Reuniones de centro y actas (B-2)
+
+    func meetings() async throws -> [MeetingSnapshot] {
+        let rows = try await container.meetingRepository.listAll()
+        return rows.compactMap(meetingSnapshot(from:))
+    }
+
+    func meeting(id: Int64) async throws -> MeetingSnapshot? {
+        guard let row = try await container.meetingRepository.getById(id: id) else { return nil }
+        return meetingSnapshot(from: row)
+    }
+
+    /// Acuerdos abiertos cuya fecha límite vence en o antes de `onOrBeforeIso`.
+    func pendingMeetingAgreements(onOrBefore onOrBeforeIso: String) async throws -> [MeetingAgreementSnapshot] {
+        let rows = try await container.meetingRepository.listPendingAgreements(onOrBeforeIso: onOrBeforeIso)
+        return rows.map(meetingAgreementSnapshot(from:))
+    }
+
+    @discardableResult
+    func saveMeeting(id: Int64? = nil, draft: MeetingDraft) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let savedId = try await container.meetingRepository.saveMeeting(
+            id: kotlinLong(id),
+            title: draft.title,
+            dateIso: draft.dateIso,
+            type: kotlinMeetingType(draft.type),
+            location: draft.location,
+            attendees: draft.attendees,
+            summary: draft.summary,
+            isClosed: draft.isClosed,
+            createdAtEpochMs: id == nil ? nowMs : 0,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        enqueueLocalChange(
+            entity: "meetings",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "title": draft.title,
+                "dateIso": draft.dateIso,
+                "type": draft.type.rawValue,
+                "location": draft.location,
+                "attendees": draft.attendees,
+                "summary": draft.summary,
+                "isClosed": draft.isClosed
+            ]
+        )
+        return savedId
+    }
+
+    func deleteMeeting(id: Int64) async throws {
+        try await container.meetingRepository.deleteMeeting(id: id)
+        enqueueLocalChange(
+            entity: "meetings",
+            id: "\(id)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: ["id": id],
+            op: "delete"
+        )
+    }
+
+    @discardableResult
+    func saveMeetingAgreement(id: Int64? = nil, draft: MeetingAgreementDraft) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let savedId = try await container.meetingRepository.saveAgreement(
+            id: kotlinLong(id),
+            meetingId: draft.meetingId,
+            description: draft.description,
+            responsible: draft.responsible,
+            dueIso: draft.dueIso,
+            isDone: draft.isDone,
+            createdAtEpochMs: id == nil ? nowMs : 0,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        enqueueLocalChange(
+            entity: "meeting_agreements",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "meetingId": draft.meetingId,
+                "description": draft.description,
+                "responsible": draft.responsible,
+                "dueIso": draft.dueIso ?? NSNull(),
+                "isDone": draft.isDone
+            ]
+        )
+        return savedId
+    }
+
+    func deleteMeetingAgreement(id: Int64) async throws {
+        try await container.meetingRepository.deleteAgreement(id: id)
+        enqueueLocalChange(
+            entity: "meeting_agreements",
+            id: "\(id)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: ["id": id],
+            op: "delete"
+        )
+    }
+
+    /// `nil` si la fila trae un tipo que esta versión no conoce. Se descarta en
+    /// vez de forzar un valor: mismo criterio que las tutorías.
+    private func meetingSnapshot(from meeting: Meeting) -> MeetingSnapshot? {
+        guard let type = MeetingTypeUI(rawValue: meeting.type.name) else { return nil }
+        return MeetingSnapshot(
+            id: meeting.id,
+            title: meeting.title,
+            dateIso: meeting.date.description(),
+            type: type,
+            location: meeting.location,
+            attendees: meeting.attendees,
+            summary: meeting.summary,
+            isClosed: meeting.isClosed,
+            agreements: meeting.agreements.map(meetingAgreementSnapshot(from:))
+        )
+    }
+
+    private func meetingAgreementSnapshot(from agreement: MeetingAgreement) -> MeetingAgreementSnapshot {
+        MeetingAgreementSnapshot(
+            id: agreement.id,
+            meetingId: agreement.meetingId,
+            // `description_` con guion bajo: el nombre Kotlin `description` colisiona
+            // con `-[NSObject description]`, y el puente lo renombra. Usar `.description`
+            // devolvería el toString del objeto entero.
+            description: agreement.description_,
+            responsible: agreement.responsible,
+            dueIso: agreement.due?.description(),
+            isDone: agreement.isDone
+        )
+    }
+
+    private func kotlinMeetingType(_ type: MeetingTypeUI) -> MeetingType {
+        MeetingType.entries.first { $0.name == type.rawValue } ?? MeetingType.entries[0]
+    }
+
+    // MARK: - Plan pedagógico semanal (B-3)
+
+    /// `nil` si aún no hay plan guardado para esa (clase, año, semana).
+    func weekPlan(classId: Int64, year: Int, week: Int) async throws -> WeekPlanSnapshot? {
+        guard let plan = try await container.plannerWeekPlanRepository.getPlan(
+            classId: classId,
+            year: Int32(year),
+            week: Int32(week)
+        ) else { return nil }
+        return weekPlanSnapshot(from: plan)
+    }
+
+    @discardableResult
+    func saveWeekPlan(id: Int64? = nil, draft: WeekPlanDraft) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let savedId = try await container.plannerWeekPlanRepository.save(
+            id: kotlinLong(id),
+            classId: draft.classId,
+            year: Int32(draft.year),
+            week: Int32(draft.week),
+            strategies: draft.strategyKeys,
+            instruments: draft.instrumentKeys,
+            notes: draft.notes,
+            createdAtEpochMs: id == nil ? nowMs : 0,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        enqueueLocalChange(
+            entity: "planner_week_plan",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "classId": draft.classId,
+                "year": draft.year,
+                "week": draft.week,
+                "strategies": draft.strategyKeys,
+                "instruments": draft.instrumentKeys,
+                "notes": draft.notes
+            ]
+        )
+        return savedId
+    }
+
+    private func weekPlanSnapshot(from plan: PlannerWeekPlan) -> WeekPlanSnapshot {
+        WeekPlanSnapshot(
+            id: plan.id,
+            classId: plan.classId,
+            year: Int(plan.year),
+            week: Int(plan.week),
+            strategyKeys: plan.strategies.map { String(describing: $0) },
+            instrumentKeys: plan.instruments.map { String(describing: $0) },
+            notes: plan.notes
         )
     }
 
@@ -4801,6 +5205,50 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    func updateLearningSituationStatus(id: Int64, status: LearningSituationStatus) async throws {
+        guard let situation = try await container.learningSituationsRepository.getSituation(id: id) else {
+            throw NSError(domain: "LearningSituations", code: 2, userInfo: [NSLocalizedDescriptionKey: "No se encontró la situación para actualizar su estado."])
+        }
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let updatedTrace = situation.trace.doCopy(
+            authorUserId: situation.trace.authorUserId,
+            createdAt: situation.trace.createdAt,
+            updatedAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+            associatedGroupId: situation.trace.associatedGroupId,
+            deviceId: localDeviceId,
+            syncVersion: situation.trace.syncVersion + 1
+        )
+        let updated = situation.doCopy(
+            id: situation.id,
+            title: situation.title,
+            stageLabel: situation.stageLabel,
+            courseLabel: situation.courseLabel,
+            subjectLabel: situation.subjectLabel,
+            termLabel: situation.termLabel,
+            centerLabel: situation.centerLabel,
+            sessionCount: situation.sessionCount,
+            challenge: situation.challenge,
+            finalProduct: situation.finalProduct,
+            payloadJson: situation.payloadJson,
+            status: status,
+            trace: updatedTrace
+        )
+        _ = try await container.learningSituationsRepository.saveSituation(situation: updated)
+        enqueueLocalChange(
+            entity: "learning_situation",
+            id: "\(id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": situation.id, "title": situation.title, "stageLabel": situation.stageLabel,
+                "courseLabel": situation.courseLabel, "subjectLabel": situation.subjectLabel,
+                "termLabel": situation.termLabel, "centerLabel": situation.centerLabel,
+                "sessionCount": situation.sessionCount, "challenge": situation.challenge,
+                "finalProduct": situation.finalProduct, "payloadJson": situation.payloadJson,
+                "status": status.name
+            ]
+        )
+    }
+
     func learningSituationVersions(id: Int64) async throws -> [LearningSituationVersion] {
 
         try await container.learningSituationsRepository.listVersions(learningSituationId: id)
@@ -5330,6 +5778,26 @@ final class KmpBridge: ObservableObject {
         try await container.notebookConfigRepository.listTabs(classId: classId)
     }
 
+    func fetchNotebookTabs(for classId: Int64) async throws -> [NotebookTab] {
+        try await container.notebookConfigRepository.listTabs(classId: classId)
+    }
+
+    func fetchNotebookColumns(for classId: Int64) async throws -> [NotebookColumnDefinition] {
+        try await container.notebookConfigRepository.listColumns(classId: classId)
+    }
+
+    func clearNotebookForClass(classId: Int64) async throws {
+        let columns = try await container.notebookConfigRepository.listColumns(classId: classId)
+        for col in columns {
+            deleteColumn(id: col.id, evaluationId: col.evaluationId?.int64Value)
+        }
+        let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+        for tab in tabs {
+            deleteTab(id: tab.id)
+        }
+    }
+
+
     func repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: Int64) async throws {
         let repairedLevels = try await repairAssessmentInstrumentRubricLevelPoints(classId: classId)
         let repairedColumns = try await repairAssessmentInstrumentNotebookColumns(classId: classId)
@@ -5596,8 +6064,13 @@ final class KmpBridge: ObservableObject {
         }
 
         if !instrument.checklistItems.isEmpty {
+            // La checklist ponderada usa el prefijo de clave `chkp_` para que
+            // `NotebookInstrumentsRepositorySqlDelight.saveResponses` derive su nota
+            // proporcional (ítems marcados / total × 10). Las checklists de requisito de
+            // entrega y las de todo/nada mantienen `check_` y no generan nota automática.
+            let keyPrefix = instrument.scoreStrategy == .checklistProportional ? "chkp" : "check"
             let specs = instrument.checklistItems.enumerated().map { index, item in
-                ("check_\(index + 1)", item.title, NotebookInstrumentItemType.check, [] as [String])
+                ("\(keyPrefix)_\(index + 1)", item.title, NotebookInstrumentItemType.check, [] as [String])
             }
             return makeInstrumentItems(columnId: columnId, specs: specs)
         }
@@ -5937,16 +6410,22 @@ final class KmpBridge: ObservableObject {
             return .numeric
         case .quizPercentCorrect:
             return .numeric
-        case .checklistProportional, .none:
+        // La checklist ponderada materializa nota 0-10 derivada de los ítems marcados, así que
+        // su columna es numérica como la de la rejilla de observación (la entrada sigue siendo
+        // la checklist estructurada).
+        case .checklistProportional:
+            return .numeric
+        case .none:
             return .text
         }
     }
 
     private func canMaterializeAverage(for strategy: AssessmentInstrumentScoreStrategy) -> Bool {
         switch strategy {
-        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4, .quizPercentCorrect:
+        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4,
+             .quizPercentCorrect, .checklistProportional:
             return true
-        case .checklistProportional, .none:
+        case .none:
             return false
         }
     }
@@ -6013,7 +6492,10 @@ final class KmpBridge: ObservableObject {
             return .yesNo
         case .quizPercentCorrect:
             return .percentage
-        case .checklistProportional, .none:
+        // Nota derivada 0-10 (ítems marcados / total × 10).
+        case .checklistProportional:
+            return .tenPoint
+        case .none:
             return .custom
         }
     }
@@ -10795,6 +11277,7 @@ final class KmpBridge: ObservableObject {
                 do {
                     try await Task.sleep(nanoseconds: self.nextAutoSyncIntervalNanoseconds())
                     guard self.pairedSyncHost != nil, self.syncToken != nil else { continue }
+                    guard !AppleBackupService.shared.needsRestart else { continue }
                     #if os(macOS)
                     await self.checkLocalDbFileModification()
                     #endif
@@ -10887,22 +11370,59 @@ final class KmpBridge: ObservableObject {
         #endif
     }
 
+    /// Detiene todo el trabajo en segundo plano que pueda tocar la base de
+    /// datos: el bucle de auto-sync, los debounces de guardado (cambios
+    /// locales, notas del cuaderno, snapshot de calificaciones) y el
+    /// listener de eventos de sync. Se llama antes de cualquier operación
+    /// que borre o sustituya los ficheros de la base de datos en disco
+    /// (p.ej. el borrado nuclear de Ajustes → Zona de Riesgo): sin esto,
+    /// una tarea en curso puede intentar leer/escribir un fichero que
+    /// acaba de desaparecer y lanzar una excepción Kotlin que no está
+    /// declarada `@Throws` en el contrato, y el runtime de Kotlin/Native
+    /// la trata como fatal (aborta el proceso) en vez de propagarla como
+    /// error de Swift capturable.
+    func stopBackgroundSyncWork() {
+        autoSyncLoopTask?.cancel()
+        autoSyncLoopTask = nil
+        autoSyncDebounceTask?.cancel()
+        autoSyncDebounceTask = nil
+        localChangesNotifyTask?.cancel()
+        localChangesNotifyTask = nil
+        pendingChangesPersistenceTask?.cancel()
+        pendingChangesPersistenceTask = nil
+        notebookSnapshotDebounceTask?.cancel()
+        notebookSnapshotDebounceTask = nil
+        pendingGradeSnapshotTask?.cancel()
+        pendingGradeSnapshotTask = nil
+        postSyncRefreshTask?.cancel()
+        postSyncRefreshTask = nil
+        syncEventListener.stop()
+    }
+
+    /// Vacía todas las tablas de la base con la conexión que ya está abierta.
+    ///
+    /// Existe para que el borrado total (`SettingsDangerZoneView`) deje de eliminar el
+    /// fichero SQLite del disco por debajo del driver: eso invalidaba los descriptores
+    /// del pool y abortaba el proceso. El contenedor es privado, así que la vista no
+    /// puede llegar a él sin abrir un driver nuevo por su cuenta.
+    func wipeAllDatabaseData() throws {
+        try container.wipeAllData()
+    }
+
+    func wipeSelectiveDatabaseData(categories: Set<WipeCategory>) throws {
+        try container.wipeSelectiveData(categories: categories)
+    }
+
+    /// Ruta de la base de datos activa. Se pide al bootstrap, que a su vez la pide al
+    /// módulo que abre el driver: es la única fuente de verdad. Reconstruirla a mano aquí
+    /// ya produjo dos rutas divergentes (macOS apuntaba a un fichero fantasma, e iOS a
+    /// "MiGestor/" cuando su directorio real es "MiGestorKMPiOS/").
     private func getDatabaseURL() -> URL? {
-        let fileManager = FileManager.default
-        guard let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        #if os(macOS)
-        let dbName = "desktop_mi_gestor_kmp.db"
-        #else
-        let dbName = "mi_gestor_kmp.db"
-        #endif
-        return appSupportURL
-            .appendingPathComponent("MiGestor", isDirectory: true)
-            .appendingPathComponent(dbName, isDirectory: false)
+        URL(fileURLWithPath: appleBootstrap.databasePath)
     }
 
     private func checkLocalDbFileModification() async {
+        guard !AppleBackupService.shared.needsRestart else { return }
         guard let dbURL = getDatabaseURL() else { return }
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: dbURL.path)
@@ -10965,6 +11485,14 @@ final class KmpBridge: ObservableObject {
     func onAppDidEnterBackground() {
         isAppInForeground = false
         autoSyncDebounceTask?.cancel()
+        // Cerrar la ventana justo después de "Borrar todos los datos" dispara
+        // esta transición de scenePhase (macOS pasa a `.background` al perder
+        // el último foco), y sin este guard se lanzaba un `Task` nuevo que
+        // `stopBackgroundSyncWork()` no puede cancelar porque todavía no
+        // existe en ese momento — mismo crash que la propia siembra de
+        // fondo: `syncNow` toca repositorios Kotlin no declarados `@Throws`
+        // sobre un fichero de base de datos que acaba de desaparecer.
+        guard !AppleBackupService.shared.needsRestart else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.syncNow(reason: "background_flush", forceFullPull: false, silent: true)
@@ -10972,6 +11500,13 @@ final class KmpBridge: ObservableObject {
     }
 
     private func syncNow(reason: String, forceFullPull: Bool, silent: Bool) async {
+        // Red de seguridad centralizada: `syncNow` tiene varios puntos de
+        // entrada (arranque, primer plano, segundo plano, bucle de
+        // auto-sync, listener SSE, helper listo...). Tras un borrado
+        // nuclear (`needsRestart == true`) ninguno de ellos debe tocar la
+        // base de datos, así que el guard vive aquí en vez de repetirlo en
+        // cada llamante.
+        guard !AppleBackupService.shared.needsRestart else { return }
         guard pairedSyncHost != nil, syncToken != nil else { return }
         guard !isPairingInFlight else { return }
         let now = Date()
@@ -12491,24 +13026,67 @@ extension KmpBridge {
         prompt: String?
     ) async throws -> ChartFacts {
         let incidents = try await incidents(for: schoolClass.id)
-        let cutoff = Calendar.current.date(byAdding: .day, value: -timeRange.dayCount, to: Date()) ?? Date.distantPast
-        let filtered = incidents.filter { Date(timeIntervalSince1970: TimeInterval($0.date.epochSeconds)) >= cutoff }
-        let weekdaySymbols = ["L", "M", "X", "J", "V", "S", "D"]
+
+        // Semana escolar: empieza en lunes, y las filas son semanas naturales,
+        // no ventanas móviles de 7 días contadas desde hoy. Con el reparto
+        // anterior, el viernes de una semana y el lunes de la siguiente caían
+        // en la misma fila, que es justo el eje que da sentido al gráfico.
+        let calendar = Calendar.current
+
+        // Lunes de la semana de `date`, calculado a mano a partir del día de la
+        // semana. Deliberadamente NO se usa `dateInterval(of: .weekOfYear:)`:
+        // depende de `firstWeekday` y de la configuración regional, y su rama de
+        // fallo obliga a un fallback que, si se activa, convierte las filas en
+        // días sueltos y deja la rejilla entera a cero sin avisar.
+        func startOfWeek(for date: Date) -> Date {
+            let day = calendar.startOfDay(for: date)
+            // `weekday`: 1 = domingo … 7 = sábado. Lunes -> 0, domingo -> 6.
+            let daysSinceMonday = (calendar.component(.weekday, from: day) + 5) % 7
+            return calendar.date(byAdding: .day, value: -daysSinceMonday, to: day) ?? day
+        }
+
+        // Días en el orden lectivo L→D. `Calendar.component(.weekday)` devuelve
+        // 1 = domingo … 7 = sábado; el bucle anterior iteraba 2...8, así que la
+        // columna del domingo nunca podía recibir nada y el propio domingo no
+        // se contaba en ninguna columna.
+        let weekdayColumns: [(symbol: String, weekday: Int)] = [
+            ("L", 2), ("M", 3), ("X", 4), ("J", 5), ("V", 6), ("S", 7), ("D", 1)
+        ]
+
         let weeksBack = max(2, min(6, timeRange.dayCount / 14 + 1))
+        let currentWeekStart = startOfWeek(for: Date())
+        let oldestWeekStart = calendar.date(byAdding: .weekOfYear, value: -(weeksBack - 1), to: currentWeekStart) ?? currentWeekStart
+
+        // El recorte es el inicio de la semana más antigua que se pinta, no
+        // `timeRange.dayCount` días naturales: así el total y el pico describen
+        // exactamente lo que se ve en la rejilla y no un periodo más ancho.
+        let filtered = incidents.filter {
+            Date(timeIntervalSince1970: TimeInterval($0.date.epochSeconds)) >= oldestWeekStart
+        }
+
+        let weekLabelFormatter = DateFormatter()
+        weekLabelFormatter.locale = Locale(identifier: "es_ES")
+        weekLabelFormatter.setLocalizedDateFormatFromTemplate("d/M")
+
+        // De la semana más antigua a la más reciente, para que la rejilla se lea
+        // de arriba abajo en orden cronológico. Las etiquetas son la fecha del
+        // lunes de cada semana: `S-1`…`S-6` se leía al revés de lo que sugiere.
         var cells: [HeatmapCell] = []
-        for offset in 0..<weeksBack {
-            let weekLabel = "S-\(weeksBack - offset)"
-            for weekday in 2...8 {
+        for offset in stride(from: weeksBack - 1, through: 0, by: -1) {
+            guard let weekStart = calendar.date(byAdding: .weekOfYear, value: -offset, to: currentWeekStart) else { continue }
+            let weekLabel = weekLabelFormatter.string(from: weekStart)
+            for column in weekdayColumns {
                 let count = filtered.filter { incident in
                     let date = Date(timeIntervalSince1970: TimeInterval(incident.date.epochSeconds))
-                    let weeksDifference = Calendar.current.dateComponents([.weekOfYear], from: date, to: Date()).weekOfYear ?? 0
-                    let weekdayValue = Calendar.current.component(.weekday, from: date)
-                    return weeksDifference == offset && weekdayValue == weekday
+                    // Comparación por día, no por `Date` exacta: los cambios de
+                    // hora dejan medianoches que no son iguales al segundo.
+                    return calendar.isDate(startOfWeek(for: date), inSameDayAs: weekStart)
+                        && calendar.component(.weekday, from: date) == column.weekday
                 }.count
                 cells.append(
                     HeatmapCell(
                         rowLabel: weekLabel,
-                        columnLabel: weekdaySymbols[max(0, min(weekdaySymbols.count - 1, weekday - 2))],
+                        columnLabel: column.symbol,
                         value: Double(count)
                     )
                 )
@@ -12530,7 +13108,7 @@ extension KmpBridge {
             ],
             factLines: compactSuggestions(
                 "Se han revisado \(total) incidencias en el periodo seleccionado.",
-                maxCell.map { "Mayor concentración: \($0.rowLabel) · \($0.columnLabel) con \(Int($0.value)) incidencias." }
+                maxCell.map { "Mayor concentración: semana del \($0.rowLabel), \($0.columnLabel), con \(Int($0.value)) incidencias." }
             ),
             highlights: compactSuggestions(
                 total == 0 ? "No hay incidencias registradas en el periodo." : nil,
@@ -12971,9 +13549,5 @@ private extension Array {
 private extension String {
     var nilIfEmpty: String? {
         isEmpty ? nil : self
-    }
-
-    var nilIfBlank: String? {
-        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
     }
 }

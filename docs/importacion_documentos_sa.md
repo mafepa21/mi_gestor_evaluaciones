@@ -1,0 +1,194 @@
+# Contrato de importación de documentos de Situaciones de Aprendizaje
+
+Este documento describe, para cada uno de los tres tipos de DOCX que la app sabe
+importar desde una carpeta de Situación de Aprendizaje (SA), qué estructura espera el
+parser real y qué produce. Es la referencia técnica que faltaba en el repo — la única
+guía de autoría existente hasta ahora (`GUIA_AUTORIA_DOCX_INSTRUMENTOS.md`, fuera del
+repo, en `Knowledge/estructuras/` de la carpeta de Programaciones) solo cubre
+`instrumentos_evaluacion.docx`.
+
+Auditoría de referencia: `plan_correccion_import_sa_2026-07-25.md` (raíz del repo),
+volcando el XML real de los 30 DOCX de las 10 carpetas de
+`Programación aula/Situaciones de aprendizaje/`.
+
+Los tres servicios de importación viven en
+`kmp/iosApp/AppleShared/LearningSituation*ImportService.swift`; la materialización a
+evaluaciones/columnas/rúbricas del cuaderno está en `kmp/iosApp/App/KmpBridge.swift`.
+Los tres leen el documento por **bloques** (párrafo o tabla, en orden de aparición),
+usando el lector compartido `wordDocumentBlocks(from:)`.
+
+## 1. `01_PROGRAMACION_DIDACTICA/situacion_aprendizaje_*.docx`
+
+Servicio: `LearningSituationDocumentImportService`.
+
+Metadatos de la ficha técnica (etapa, curso, materia, centro, trimestre, duración) se
+reconocen en dos formas, probando primero la de párrafo y si no hay nada cayendo a la
+de tabla:
+
+- **Párrafo**: `Etiqueta: valor` en la misma línea (ej. `Etapa: Bachillerato.`).
+- **Tabla**: dos columnas `Campo | Dato` (o similar), una fila por metadato (ej.
+  `Etapa / curso | 1º de Bachillerato`); la etiqueta se busca por coincidencia de
+  substring normalizado en la primera celda de cada fila.
+
+Sinónimos reconocidos por campo (normalizados, sin tildes): etapa (`etapa`, `stage`),
+curso (`curso`, `grade`), materia (`materia`, `subject`), trimestre (`trimestre`,
+`term`, `evaluacion` — ej. `Evaluación: 2ª evaluación`), centro (`centro de
+referencia`, `centro`, `center`, `context`, `contexto`), duración (`temporalización`,
+`time allocation`, `duration`, `duración`).
+
+Reto/pregunta motriz y producto final: párrafo con la etiqueta seguida de `:` en la
+misma línea, o el párrafo siguiente si la etiqueta va sola. Etiquetas: `Pregunta
+Motriz`, `Driving question`, `Pregunta guía`, `Reto inicial` (reto); `Producto Final`,
+`Final product` (producto).
+
+Justificación: texto que sigue a un encabezado de sección — `JUSTIFICACIÓN Y RETO`,
+`CLIL justification and driving question`, `justification` o `Justificación` (ej.
+`2. Justificación y pregunta guía`) — hasta el siguiente encabezado (`Pregunta
+Motriz`/`Driving question`/`CLIL 4Cs`/`4Cs`).
+
+Competencias: párrafos que empiezan por `CE.`/`CEn.`/`CE n` o contienen la palabra
+"competencia" **junto con** un código de criterio o `:` (un encabezado de sección
+como "Competencias específicas", sin código ni contenido propio, se descarta).
+
+Criterios de evaluación: dos fuentes, con preferencia por párrafos si hay alguno:
+
+- **Párrafo**: contiene "criterio"/"criterion" y, o bien lleva un código de criterio
+  (`\d+\.\d+`, con o sin prefijo `CE`/`Criterio`/`Criteri`/`Criterion`), o bien tiene
+  contenido tras `:`. Si el párrafo siguiente empieza por `Evidencia:`/`Evidence:`, se
+  usa como evidencia asociada.
+- **Tabla**: cabecera cuya primera columna contiene "criterio"/"criteri" (ej.
+  `Criterio | Enunciado oficial (traducción de trabajo) | Rol en esta SA`); cada fila
+  aporta un criterio (código normalizado a `CE X.X`) con la segunda columna como
+  evidencia.
+
+Saberes básicos y metodología: texto entre un encabezado de inicio y uno de fin (ver
+`sectionText` en el código para la lista completa de sinónimos ES/EN).
+
+Ponderaciones de evaluación (`evaluationItems`): párrafo con `%` que además contiene
+"criterio", "criteri" (forma valenciana: `Criteri 1.1 Diseño del plan - 40%: …`),
+"criterion", "total", "ce " o "ce.", **o** que cae dentro de las ~15 líneas siguientes
+a un encabezado `Sistema de evaluación`/`Evaluación (resumen)` aunque no lleve ninguna
+de esas palabras.
+
+## 2. `02_SESIONES/sesiones_secuenciadas*.docx`
+
+Servicio: `LearningSituationSessionSequenceDocumentImportService`.
+
+### Encabezado de sesión (común a los dos formatos)
+
+Un párrafo que empieza por `Sesión`/`Sesiones`/`Session`/`Sessions` (con o sin tilde,
+singular o plural), seguido del número (o de "N y M" para una ficha compartida entre
+dos sesiones), y **inmediatamente** después — sin texto de prosa pegado — o bien nada
+más, o bien una anotación entre paréntesis (`(NEW)`/`(nueva)`), o bien uno de estos
+separadores: `.`, `-`, `–`, `—`, `:`. Ejemplos válidos: `Sesión 1 - Doble: Principios
+de entrenamiento`, `Session 1. Rules, safety...`, `Sesiones 3 y 5 - Dobles: ...`,
+`Session 7 (NEW) — Designing...`. Un párrafo de prosa que solo *empieza* pareciendo un
+encabezado (`Session 3 finishes the panel and starts planning the final event.`) no
+matchea porque tras el número no hay separador ni fin de línea.
+
+El texto tras el separador es el título; se recorta el prefijo de tipo (`Simple`/
+`Simples`/`Double`/`Doubles`/`Doble`/`Dobles`, con o sin plural) y cualquier anotación
+entre paréntesis.
+
+El **cuerpo** de la sesión es todo lo que hay entre un encabezado y el siguiente. Si
+contiene alguna tabla, se usa el formato B (tablas); si no, el formato A (párrafos).
+
+### Formato A — solo SA 1
+
+Etiquetas en párrafos, cada una con su valor tras `:` en la misma línea:
+`Objetivo:`/`Objetivos:`, `Criterios:`/`Criterio:` (los códigos se extraen con
+`(?:CE|Criteri[oa]?|Criterion)?\s*\d+\.\d+`, normalizados a `CE X.X`, ignorando el
+texto entre paréntesis), `Material:`/`Materiales:`, `Evidencia:`/`Evidencias:`.
+Desarrollo: párrafos que empiezan por `Bloque N`, `Descanso`, `Desarrollo de la
+sesión...` o contienen un rango horario (`0'-3': ...`) actúan como título de una
+sección; las líneas siguientes son su contenido, hasta el siguiente título o hasta
+`Adaptación al contexto...`/`Context adaptation...` (lo que sigue a esa etiqueta se
+guarda como adaptaciones).
+
+### Formato B — el resto de carpetas (SA 2 a SA 6, los 4 documentos de cierre)
+
+Ficha de sesión con las mismas etiquetas que el formato A más sinónimos en inglés,
+en dos posibles formas:
+
+- **Tabla** `etiqueta | valor` (a veces con cabecera genérica `Item | Detail`).
+- **Dos párrafos consecutivos**: uno con la etiqueta sola (≤6 palabras) y el
+  siguiente con el contenido.
+
+Etiquetas reconocidas (normalizadas): objetivo (`objetivo`, `objetivo específico`,
+`specific objective`, `main objective`...), criterios (`criterios de evaluación`,
+`criteria worked`, `evaluation criteria addressed`, `assessment focus`...), saberes
+básicos (`saberes básicos trabajados`, `core knowledge addressed`...), material
+(`material necesario`, `materials needed`...), organización del grupo (informativo,
+no se guarda en un campo propio), evidencia, fecha (se ignora).
+
+Cada sesión trae normalmente **dos versiones** de la misma sesión, marcadas por un
+párrafo que contiene "version"/"versión" (o "session adaptation"/"sesión simple") y
+"simple" o "doble"/"double" (ej. `SIMPLE version (30' effective)...`, `Timed
+development — 90' version (Double session...)`, `Simple session adaptation (30'
+useful)`). **No se duplica la sesión**: cada versión genera una sección de desarrollo
+propia (`Versión simple (30′)` / `Versión doble (90′)`); `sessionType` refleja las
+versiones presentes (`Simple`, `Doble` o `Simple y Doble`) y `effectiveMinutes` toma
+la simple como referencia cuando hay las dos, con aviso explícito.
+
+Cada versión trae una o más **tablas horarias**, con cabecera `Time | Phase | Activity
+| Teacher role | Student role | Evidence` (o su equivalente en español: `Tiempo | Fase
+| Actividad | Papel del docente/Profesorado | Papel del alumnado/Alumnado |
+Evidencia`); cada fila se convierte en una línea legible de desarrollo (`Tiempo · Fase
+— Actividad (Profesorado: ...; Alumnado: ...; Evidencia: ...)`).
+
+Secciones finales que se conservan (por palabras clave, ES/EN, contains, no exact
+match): `Guiding questions`/`Preguntas guía` → sección "Preguntas orientativas";
+`Difficulty variants`/`Variantes de dificultad` → "Variantes de dificultad";
+`Adaptations`/`Adaptaciones` → van al campo `adaptations`, no a `development`;
+`Evidence collected`/`Evidencias recogidas` → "Evidencia recogida"; `Assessment
+instrument`/`Instrumento(s) de evaluación` → "Instrumento de evaluación"; `Closure`/
+`Cierre` → "Cierre". Cualquier otro párrafo o tabla no reconocido se conserva como
+línea de una sección de desarrollo genérica ("Desarrollo"), nunca se descarta.
+
+### Minutos por tipo (`defaultMinutesByType`)
+
+Se buscan en todo el documento (incluidas las celdas de tabla) frases como `Simple
+sessions are designed for 30 effective minutes.` o `(30' útiles)`. Se acepta un
+apóstrofo (`'`/`’`/`′`, con la palabra `effective`/`useful`/`efectivos`/`útiles`
+opcional detrás) o esas mismas palabras seguidas de `minutos`/`minutes`/`min`.
+
+## 3. `05_EVALUACION/instrumentos_evaluacion*.docx`
+
+Servicio: `LearningSituationAssessmentInstrumentsImportService`. Contrato completo en
+`GUIA_AUTORIA_DOCX_INSTRUMENTOS.md` (Knowledge/estructuras/, fuera del repo,
+actualizada en la misma revisión que este documento). Resumen de los puntos que
+cambiaron en la auditoría de 2026-07-25:
+
+- Un encabezado sin numerar con un criterio decimal (`Rúbrica... - CE 2.1 - 40%`) ya
+  no se descarta por el punto de "2.1".
+- Un encabezado numerado sin palabra clave pero con `%` y/o `CE X.X` cuenta como
+  encabezado igualmente.
+- Con varios criterios en el mismo encabezado se extraen todos, no solo el primero.
+- La sección "Nota para quien importe esto" corta de verdad el resto del documento.
+- Los párrafos no consumidos como ítem/pregunta se conservan como nota del
+  instrumento, no se descartan.
+- Una checklist con ítems y peso se detecta como computable (`checklistProportional`)
+  en vez de "Auxiliar"; **limitación conocida**: la app aún no calcula ni guarda una
+  nota automática de "ítems marcados / total" para ese caso (solo lo hace para la
+  rejilla de observación 1-4, en `NotebookInstrumentsRepositorySqlDelight.saveResponses`),
+  así que de momento no suma a la media aunque el instrumento ya no se mal-etiquete.
+- Una rejilla con peso cuya última columna es de nota (`Nota`/`Note`/`Final mark`) sin
+  escala explícita asume escala 1-4 y avisa.
+- El aviso de descuadre de pesos se emite siempre (antes solo si no había fórmula de
+  calificación), y se añade verificación cruzada entre los términos de la fórmula y
+  los instrumentos detectados.
+- Una pregunta de quiz con opciones por `/` pero sin `?` se importa con sus opciones,
+  cortando en el último `:` cuando no hay `?`.
+
+## Limitaciones conocidas (no resueltas por la auditoría de 2026-07-25)
+
+- **Checklist proporcional sin nota automática**: ver punto anterior. La columna se
+  crea pero no cuenta hacia la media hasta que se implemente el cálculo en
+  `kmp/data` (archivo protegido, fuera del alcance de esta tarea).
+- **Peso importado (0,4) vs. peso manual (×1) en la misma pestaña**: las columnas
+  importadas de una SA guardan `weight = weightPercent / 100`, mientras que las
+  columnas manuales usan multiplicadores enteros (`×1`, `×2`...). Si conviven en la
+  misma pestaña, las importadas pesan mucho menos de lo que sugiere su porcentaje en
+  el cálculo real de la media. La cabecera de columna del cuaderno ya muestra el peso
+  como porcentaje en vez de `×0,4` (más legible), pero el cálculo subyacente no
+  cambia.

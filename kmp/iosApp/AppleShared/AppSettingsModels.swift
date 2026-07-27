@@ -231,20 +231,24 @@ public enum SubjectTemplateRegistry {
 
 public enum SettingsRoute: Hashable, Identifiable {
     case general
+    case schedule
     case evaluation
     case notebook
     case dataSecurity
+    case dataManagement
     case sync
     case appleAI
     case appearance
     case diagnostics
-    
+
     public var id: String {
         switch self {
         case .general: return "general"
+        case .schedule: return "schedule"
         case .evaluation: return "evaluation"
         case .notebook: return "notebook"
         case .dataSecurity: return "dataSecurity"
+        case .dataManagement: return "dataManagement"
         case .sync: return "sync"
         case .appleAI: return "appleAI"
         case .appearance: return "appearance"

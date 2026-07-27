@@ -205,7 +205,7 @@ extension PlannerWorkspaceViewModel {
         }
     }
 
-    static func isoWeeks(in year: Int) -> Int {
+    nonisolated static func isoWeeks(in year: Int) -> Int {
         var calendar = Calendar(identifier: .iso8601)
         calendar.firstWeekday = 2
         calendar.minimumDaysInFirstWeek = 4
@@ -213,19 +213,4 @@ extension PlannerWorkspaceViewModel {
         return calendar.component(.weekOfYear, from: date)
     }
 
-}
-
-private extension Optional where Wrapped == String {
-    var nilIfBlank: String? {
-        switch self?.trimmingCharacters(in: .whitespacesAndNewlines) {
-        case .some(let value) where !value.isEmpty: return value
-        default: return nil
-        }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
-    }
 }

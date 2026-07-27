@@ -70,6 +70,8 @@ Prioridad: alta.
   Avance: `AppleAIOrchestrator` completa el router tipado con catálogo de capacidades, trazabilidad y consumo desde Cuaderno/EF sobre servicios estructurados ya implementados.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.
+  Avance: Gestión de datos en Ajustes rediseñada con menús colapsables por áreas (Estructura Escolar, Cuaderno, Planificación e Instrumentos) y borrado granular en lote/swipe de Cursos, Asignaturas, Cuadernos por curso, Pestañas, Columnas, Sesiones planificadas del Planner, Situaciones de Aprendizaje y Rúbricas.
+
 
 ## Fase 3 - Datos, sync y seguridad
 

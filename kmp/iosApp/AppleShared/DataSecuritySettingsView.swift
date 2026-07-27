@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DataSecuritySettingsView: View {
     @ObservedObject var settings: AppSettingsStore
+    @EnvironmentObject private var bridge: KmpBridge
     
     var body: some View {
         Form {
@@ -26,6 +27,7 @@ struct DataSecuritySettingsView: View {
             Section("Zona de riesgo") {
                 NavigationLink {
                     SettingsDangerZoneView(settings: settings)
+                        .environmentObject(bridge)
                 } label: {
                     Label("Acciones destructivas", systemImage: "exclamationmark.shield")
                         .foregroundColor(.red)

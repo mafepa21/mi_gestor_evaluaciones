@@ -29,8 +29,7 @@ internal fun createAppleDriver(
         legacySourcePaths = legacySourcePaths,
     )
 
-    var firstAttemptDriver: NativeSqliteDriver? = null
-    val driver = try {
+    fun openAndValidate(): NativeSqliteDriver {
         val d = NativeSqliteDriver(
             schema = AppleAppDatabaseSchema,
             name = databaseName,
@@ -40,43 +39,34 @@ internal fun createAppleDriver(
                 )
             },
         )
-        firstAttemptDriver = d
-        getVersion(d)
-        d
-    } catch (e: Throwable) {
-        println("[AppleDriver] Error initializing NativeSqliteDriver: ${e.message}")
         try {
-            firstAttemptDriver?.close()
-        } catch (closeEx: Throwable) {
-            println("[AppleDriver] Error closing failed driver: ${closeEx.message}")
-        }
-
-        val fileManager = NSFileManager.defaultManager
-        if (fileManager.fileExistsAtPath(databasePath)) {
-            val timestamp = platform.posix.time(null)
-            val backupPath = "$databasePath.backup_$timestamp"
-            println("[AppleDriver] Renaming database $databasePath -> $backupPath to recover")
-            fileManager.moveItemAtPath(databasePath, backupPath, null)
-
-            val walPath = "$databasePath-wal"
-            if (fileManager.fileExistsAtPath(walPath)) {
-                fileManager.removeItemAtPath(walPath, null)
+            getVersion(d)
+        } catch (e: Throwable) {
+            try {
+                d.close()
+            } catch (closeEx: Throwable) {
+                println("[AppleDriver] Error closing failed driver: ${closeEx.message}")
             }
-            val shmPath = "$databasePath-shm"
-            if (fileManager.fileExistsAtPath(shmPath)) {
-                fileManager.removeItemAtPath(shmPath, null)
-            }
+            throw e
         }
+        return d
+    }
 
-        NativeSqliteDriver(
-            schema = AppleAppDatabaseSchema,
-            name = databaseName,
-            onConfiguration = { config ->
-                config.copy(
-                    extendedConfig = DatabaseConfiguration.Extended(basePath = basePath)
-                )
-            },
-        )
+    val driver = try {
+        openAndValidate()
+    } catch (firstError: Throwable) {
+        println("[AppleDriver] Error initializing NativeSqliteDriver (intento 1/2): ${firstError.message}")
+        // La mayoria de fallos de apertura son transitorios (bloqueo de fichero,
+        // disco lleno momentaneamente): un segundo intento evita renombrar y vaciar
+        // una base de datos sana por un error que ya se ha resuelto solo.
+        platform.posix.usleep(300_000u)
+        try {
+            openAndValidate()
+        } catch (secondError: Throwable) {
+            println("[AppleDriver] Error initializing NativeSqliteDriver (intento 2/2): ${secondError.message}")
+            rescueUnreadableDatabase(databasePath, secondError)
+            openAndValidate()
+        }
     }
 
     val currentVersion = getVersion(driver)
@@ -90,138 +80,78 @@ internal fun createAppleDriver(
         setVersion(driver, latestVersion)
     }
 
+    // Red de seguridad idempotente compartida con desktop (commonMain):
+    // ver com.migestor.data.platform.runRescueMigrations en RescueMigrations.kt.
+    // Cubre columnas de notebook_columns/notebook_tabs, las tablas de
+    // instrumentos estructurados, las tablas prerequisito multi-centro y las
+    // tablas del planner, para que Apple y desktop no puedan divergir.
     runRescueMigrations(driver)
-    ensurePrerequisiteTables(driver)
-    ensurePlannerScheduleTables(driver)
 
     return driver
 }
 
-private fun runRescueMigrations(driver: SqlDriver) {
-    ensureColumns(
-        driver = driver,
-        tableName = "notebook_tabs",
-        columnDefinitions = listOf(
-            "fixed_column_width REAL",
-        )
-    )
-    ensureColumns(
-        driver = driver,
-        tableName = "notebook_columns",
-        columnDefinitions = listOf(
-            "category_kind TEXT NOT NULL DEFAULT 'CUSTOM'",
-            "instrument_kind TEXT NOT NULL DEFAULT 'CUSTOM'",
-            "input_kind TEXT NOT NULL DEFAULT 'TEXT'",
-            "date_epoch_ms INTEGER",
-            "unit_name TEXT",
-            "competency_criteria_ids_csv TEXT NOT NULL DEFAULT ''",
-            "scale_kind TEXT NOT NULL DEFAULT 'CUSTOM'",
-            "tab_ids_csv TEXT NOT NULL DEFAULT ''",
-            "shared_across_tabs INTEGER NOT NULL DEFAULT 0",
-            "color_hex TEXT NOT NULL DEFAULT '#FFFFFF'",
-            "icon_name TEXT",
-            "sort_order INTEGER NOT NULL DEFAULT 0",
-            "width_dp REAL NOT NULL DEFAULT 132.0",
-            "category_id TEXT",
-            "visibility TEXT NOT NULL DEFAULT 'VISIBLE'",
-            "is_locked INTEGER NOT NULL DEFAULT 0",
-            "counts_toward_average INTEGER NOT NULL DEFAULT 1",
-            "is_pinned INTEGER NOT NULL DEFAULT 0",
-            "is_hidden INTEGER NOT NULL DEFAULT 0",
-            "is_template INTEGER NOT NULL DEFAULT 0",
-            "empty_cell_policy TEXT NOT NULL DEFAULT 'EXCLUDE_FROM_AVERAGE'",
-            "updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0",
-            "device_id TEXT",
-            "sync_version INTEGER NOT NULL DEFAULT 0",
-        )
-    )
-    ensureStructuredInstrumentTables(driver)
-}
+/**
+ * La base de datos no se pudo abrir tras dos intentos. En vez de perderla, se renombra
+ * a un fichero `.backup_<epoch>` junto al original y se deja un marcador en disco para
+ * que la capa SwiftUI avise a la docente en el proximo arranque y le ofrezca reintentar
+ * o restaurar, en lugar de seguir en silencio con una base vacia (ver docs/QUALITY_NORTH_STAR.md, I3).
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun rescueUnreadableDatabase(databasePath: String, error: Throwable) {
+    val fileManager = NSFileManager.defaultManager
+    if (!fileManager.fileExistsAtPath(databasePath)) return
 
-private fun ensureStructuredInstrumentTables(driver: SqlDriver) {
-    driver.execute(null, """
-        CREATE TABLE IF NOT EXISTS notebook_instrument_templates (
-            id TEXT NOT NULL PRIMARY KEY,
-            class_id INTEGER NOT NULL,
-            column_id TEXT NOT NULL UNIQUE,
-            evaluation_id INTEGER,
-            title TEXT NOT NULL,
-            kind TEXT NOT NULL,
-            input_kind TEXT NOT NULL,
-            source TEXT,
-            created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            device_id TEXT,
-            sync_version INTEGER NOT NULL DEFAULT 0
-        )
-    """.trimIndent(), 0)
-    driver.execute(null, "CREATE INDEX IF NOT EXISTS idx_notebook_instrument_templates_class ON notebook_instrument_templates(class_id)", 0)
-    driver.execute(null, "CREATE INDEX IF NOT EXISTS idx_notebook_instrument_templates_column ON notebook_instrument_templates(column_id)", 0)
-    driver.execute(null, """
-        CREATE TABLE IF NOT EXISTS notebook_instrument_items (
-            id TEXT NOT NULL PRIMARY KEY,
-            template_id TEXT NOT NULL,
-            item_key TEXT NOT NULL,
-            title TEXT NOT NULL,
-            item_type TEXT NOT NULL,
-            options_csv TEXT NOT NULL DEFAULT '',
-            required INTEGER NOT NULL DEFAULT 1,
-            sort_order INTEGER NOT NULL DEFAULT 0,
-            help_text TEXT,
-            updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            device_id TEXT,
-            sync_version INTEGER NOT NULL DEFAULT 0
-        )
-    """.trimIndent(), 0)
-    driver.execute(null, "CREATE INDEX IF NOT EXISTS idx_notebook_instrument_items_template ON notebook_instrument_items(template_id, sort_order, id)", 0)
-    driver.execute(null, """
-        CREATE TABLE IF NOT EXISTS notebook_instrument_responses (
-            class_id INTEGER NOT NULL,
-            student_id INTEGER NOT NULL,
-            column_id TEXT NOT NULL,
-            item_id TEXT NOT NULL,
-            value_text TEXT,
-            value_bool INTEGER,
-            value_number REAL,
-            updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            device_id TEXT,
-            sync_version INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (class_id, student_id, column_id, item_id)
-        )
-    """.trimIndent(), 0)
-    driver.execute(null, "CREATE INDEX IF NOT EXISTS idx_notebook_instrument_responses_cell ON notebook_instrument_responses(class_id, student_id, column_id)", 0)
-    driver.execute(null, "CREATE INDEX IF NOT EXISTS idx_notebook_instrument_responses_item ON notebook_instrument_responses(item_id)", 0)
-}
+    val timestamp = platform.posix.time(null)
+    val backupPath = "$databasePath.backup_$timestamp"
+    println("[AppleDriver] Renaming database $databasePath -> $backupPath to recover")
+    fileManager.moveItemAtPath(databasePath, backupPath, null)
 
-private fun ensureColumns(
-    driver: SqlDriver,
-    tableName: String,
-    columnDefinitions: List<String>,
-) {
-    val existingColumns = tableColumns(driver, tableName)
-    if (existingColumns.isEmpty()) return
-
-    for (columnDef in columnDefinitions) {
-        val columnName = columnDef.substringBefore(" ")
-        if (columnName in existingColumns) continue
-        driver.execute(null, "ALTER TABLE $tableName ADD COLUMN $columnDef", 0)
-        println("[RescueMigration] Added column $columnName to $tableName")
+    // El WAL contiene transacciones ya confirmadas que aún no se han volcado al fichero
+    // principal. Borrarlo destruye datos reales del usuario y deja el .db en cuarentena
+    // incompleto e irrecuperable. Se mueven junto al .db para que la cuarentena sea
+    // restaurable tal cual.
+    for (suffix in listOf("-wal", "-shm")) {
+        val sidecarPath = "$databasePath$suffix"
+        if (fileManager.fileExistsAtPath(sidecarPath)) {
+            fileManager.moveItemAtPath(sidecarPath, "$backupPath$suffix", null)
+        }
     }
+
+    writeRescueMarker(
+        markerPath = "$databasePath.rescue_marker",
+        backupPath = backupPath,
+        timestampEpochSeconds = timestamp,
+        reason = error.message ?: error.toString(),
+    )
 }
 
-private fun tableColumns(driver: SqlDriver, tableName: String): Set<String> {
-    return driver.executeQuery(
-        identifier = null,
-        sql = "PRAGMA table_info($tableName)",
-        mapper = { cursor ->
-            val columns = mutableSetOf<String>()
-            while (cursor.next().value) {
-                cursor.getString(1)?.let(columns::add)
-            }
-            QueryResult.Value(columns)
-        },
-        parameters = 0,
-    ).value
+@OptIn(ExperimentalForeignApi::class)
+private fun writeRescueMarker(
+    markerPath: String,
+    backupPath: String,
+    timestampEpochSeconds: Long,
+    reason: String,
+) {
+    val json = """{"backupPath":"${jsonEscape(backupPath)}","timestampEpochSeconds":$timestampEpochSeconds,"reason":"${jsonEscape(reason)}"}"""
+    val file = platform.posix.fopen(markerPath, "w")
+    if (file == null) {
+        println("[AppleDriver] No se pudo escribir el marcador de rescate en $markerPath")
+        return
+    }
+    platform.posix.fputs(json, file)
+    platform.posix.fclose(file)
+}
+
+private fun jsonEscape(value: String): String {
+    val escaped = value
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", " ")
+        .replace("\r", " ")
+        .replace("\t", " ")
+    // Cualquier otro caracter de control roto el JSON si se cuela sin escapar
+    // (p.ej. en un mensaje de excepcion arbitrario); se sustituye por espacio.
+    return escaped.map { if (it.code < 0x20) ' ' else it }.joinToString("")
 }
 
 private object AppleAppDatabaseSchema : SqlSchema<QueryResult.Value<Unit>> {
@@ -295,55 +225,6 @@ internal fun migrateAppleDatabaseIfNeeded(
     fileManager.copyItemAtPath(sourcePath, targetDatabasePath, null)
 }
 
-private fun ensurePrerequisiteTables(driver: SqlDriver) {
-    driver.execute(null, """
-        CREATE TABLE IF NOT EXISTS centers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            code TEXT NOT NULL UNIQUE,
-            name TEXT NOT NULL,
-            author_user_id INTEGER,
-            created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            associated_group_id INTEGER,
-            device_id TEXT,
-            sync_version INTEGER NOT NULL DEFAULT 0
-        )
-    """.trimIndent(), 0)
-    driver.execute(null, """
-        CREATE TABLE IF NOT EXISTS academic_years (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            center_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            start_epoch_ms INTEGER NOT NULL,
-            end_epoch_ms INTEGER NOT NULL,
-            author_user_id INTEGER,
-            created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            associated_group_id INTEGER,
-            device_id TEXT,
-            sync_version INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY (center_id) REFERENCES centers(id) ON DELETE CASCADE
-        )
-    """.trimIndent(), 0)
-    driver.execute(null, """
-        CREATE TABLE IF NOT EXISTS app_users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            external_id TEXT,
-            display_name TEXT NOT NULL,
-            email TEXT,
-            role TEXT NOT NULL,
-            center_id INTEGER,
-            author_user_id INTEGER,
-            created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            associated_group_id INTEGER,
-            device_id TEXT,
-            sync_version INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY (center_id) REFERENCES centers(id) ON DELETE SET NULL
-        )
-    """.trimIndent(), 0)
-}
-
 private fun getVersion(driver: SqlDriver): Long {
     return driver.executeQuery(
         identifier = null,
@@ -358,53 +239,4 @@ private fun getVersion(driver: SqlDriver): Long {
 
 private fun setVersion(driver: SqlDriver, version: Long) {
     driver.execute(null, "PRAGMA user_version = $version", 0)
-}
-
-private fun ensurePlannerScheduleTables(driver: SqlDriver) {
-    driver.execute(null, """
-        CREATE TABLE IF NOT EXISTS teacher_schedules (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            owner_user_id INTEGER NOT NULL,
-            academic_year_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            start_date TEXT NOT NULL,
-            end_date TEXT NOT NULL,
-            active_weekdays TEXT NOT NULL DEFAULT '1,2,3,4,5',
-            author_user_id INTEGER,
-            created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
-            associated_group_id INTEGER,
-            device_id TEXT,
-            sync_version INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY (owner_user_id) REFERENCES app_users(id) ON DELETE CASCADE,
-            FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE
-        )
-    """.trimIndent(), 0)
-    driver.execute(null, """
-        CREATE TABLE IF NOT EXISTS teacher_schedule_slots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            teacher_schedule_id INTEGER NOT NULL,
-            school_class_id INTEGER NOT NULL,
-            subject_label TEXT NOT NULL DEFAULT '',
-            unit_label TEXT,
-            day_of_week INTEGER NOT NULL,
-            start_time TEXT NOT NULL,
-            end_time TEXT NOT NULL,
-            weekly_template_id INTEGER,
-            FOREIGN KEY (teacher_schedule_id) REFERENCES teacher_schedules(id) ON DELETE CASCADE,
-            FOREIGN KEY (school_class_id) REFERENCES classes(id) ON DELETE CASCADE,
-            FOREIGN KEY (weekly_template_id) REFERENCES weekly_slot_template(id) ON DELETE SET NULL
-        )
-    """.trimIndent(), 0)
-    driver.execute(null, """
-        CREATE TABLE IF NOT EXISTS planner_evaluation_periods (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            teacher_schedule_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            start_date TEXT NOT NULL,
-            end_date TEXT NOT NULL,
-            sort_order INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY (teacher_schedule_id) REFERENCES teacher_schedules(id) ON DELETE CASCADE
-        )
-    """.trimIndent(), 0)
 }

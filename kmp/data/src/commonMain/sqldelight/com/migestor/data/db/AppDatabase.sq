@@ -227,6 +227,25 @@ CREATE TABLE IF NOT EXISTS student_support_measures (
 );
 CREATE INDEX IF NOT EXISTS idx_support_measures_student ON student_support_measures(student_id, is_active);
 
+CREATE TABLE IF NOT EXISTS student_tutoring_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    date_iso TEXT NOT NULL,
+    channel TEXT NOT NULL DEFAULT 'IN_PERSON',
+    attendees TEXT NOT NULL DEFAULT '',
+    topics TEXT NOT NULL DEFAULT '',
+    agreements TEXT NOT NULL DEFAULT '',
+    review_due_iso TEXT,
+    is_closed INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_tutoring_sessions_student ON student_tutoring_sessions(student_id, date_iso DESC);
+CREATE INDEX IF NOT EXISTS idx_tutoring_sessions_review ON student_tutoring_sessions(review_due_iso) WHERE is_closed = 0;
+
 CREATE TABLE IF NOT EXISTS backup_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     path TEXT NOT NULL,
@@ -1261,6 +1280,161 @@ WHERE id = ?;
 deleteSupportMeasure:
 DELETE FROM student_support_measures WHERE id = ?;
 
+selectTutoringSessionsByStudent:
+SELECT id, student_id, date_iso, channel, attendees, topics, agreements, review_due_iso, is_closed, updated_at_epoch_ms, device_id, sync_version
+FROM student_tutoring_sessions
+WHERE student_id = ?
+ORDER BY date_iso DESC, id DESC;
+
+selectPendingTutoringReviews:
+SELECT id, student_id, date_iso, channel, attendees, topics, agreements, review_due_iso, is_closed, updated_at_epoch_ms, device_id, sync_version
+FROM student_tutoring_sessions
+WHERE is_closed = 0 AND review_due_iso IS NOT NULL AND review_due_iso <= ?
+ORDER BY review_due_iso ASC, id ASC;
+
+insertTutoringSession:
+INSERT INTO student_tutoring_sessions(student_id, date_iso, channel, attendees, topics, agreements, review_due_iso, is_closed, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Actualiza en el sitio los campos editables sin tocar created_at_epoch_ms:
+-- corregir el acta de una entrevista no debe reescribir cuando se registro.
+-- sync_version se incrementa siempre, para mantener la monotonia que usa la
+-- sincronizacion (mismo criterio que updateSupportMeasure).
+updateTutoringSession:
+UPDATE student_tutoring_sessions
+SET date_iso = ?, channel = ?, attendees = ?, topics = ?, agreements = ?, review_due_iso = ?, is_closed = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+deleteTutoringSession:
+DELETE FROM student_tutoring_sessions WHERE id = ?;
+
+-- created_at no viaja en el SELECT del repositorio (no se muestra); se consulta
+-- aparte para poder verificar en test que editar un acta no lo reescribe.
+selectTutoringSessionCreatedAt:
+SELECT created_at_epoch_ms FROM student_tutoring_sessions WHERE id = ?;
+
+CREATE TABLE IF NOT EXISTS meetings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL DEFAULT '',
+    date_iso TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'OTRA',
+    location TEXT NOT NULL DEFAULT '',
+    attendees TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    is_closed INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS meeting_agreements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    meeting_id INTEGER NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    responsible TEXT NOT NULL DEFAULT '',
+    due_iso TEXT,
+    is_done INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(date_iso DESC);
+CREATE INDEX IF NOT EXISTS idx_meeting_agreements_meeting ON meeting_agreements(meeting_id, id);
+CREATE INDEX IF NOT EXISTS idx_meeting_agreements_due ON meeting_agreements(due_iso) WHERE is_done = 0;
+
+selectAllMeetings:
+SELECT id, title, date_iso, type, location, attendees, summary, is_closed, updated_at_epoch_ms, device_id, sync_version
+FROM meetings
+ORDER BY date_iso DESC, id DESC;
+
+selectMeetingById:
+SELECT id, title, date_iso, type, location, attendees, summary, is_closed, updated_at_epoch_ms, device_id, sync_version
+FROM meetings
+WHERE id = ?;
+
+insertMeeting:
+INSERT INTO meetings(title, date_iso, type, location, attendees, summary, is_closed, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Actualiza en el sitio sin tocar created_at_epoch_ms e incrementando siempre
+-- sync_version, igual que updateTutoringSession: corregir el acta no debe
+-- reescribir cuando se creo la reunion.
+updateMeeting:
+UPDATE meetings
+SET title = ?, date_iso = ?, type = ?, location = ?, attendees = ?, summary = ?, is_closed = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+deleteMeeting:
+DELETE FROM meetings WHERE id = ?;
+
+selectMeetingCreatedAt:
+SELECT created_at_epoch_ms FROM meetings WHERE id = ?;
+
+selectAgreementsByMeeting:
+SELECT id, meeting_id, description, responsible, due_iso, is_done, updated_at_epoch_ms, device_id, sync_version
+FROM meeting_agreements
+WHERE meeting_id = ?
+ORDER BY id ASC;
+
+-- Acuerdos abiertos con fecha limite ya vencida o proxima, para el aviso de pendientes.
+selectPendingAgreements:
+SELECT id, meeting_id, description, responsible, due_iso, is_done, updated_at_epoch_ms, device_id, sync_version
+FROM meeting_agreements
+WHERE is_done = 0 AND due_iso IS NOT NULL AND due_iso <= ?
+ORDER BY due_iso ASC, id ASC;
+
+insertMeetingAgreement:
+INSERT INTO meeting_agreements(meeting_id, description, responsible, due_iso, is_done, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateMeetingAgreement:
+UPDATE meeting_agreements
+SET description = ?, responsible = ?, due_iso = ?, is_done = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+deleteMeetingAgreement:
+DELETE FROM meeting_agreements WHERE id = ?;
+
+CREATE TABLE IF NOT EXISTS planner_week_plan (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    strategies TEXT NOT NULL DEFAULT '',
+    instruments TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_planner_week_plan_key ON planner_week_plan(class_id, year, week);
+
+selectWeekPlan:
+SELECT id, class_id, year, week, strategies, instruments, notes, updated_at_epoch_ms, device_id, sync_version
+FROM planner_week_plan
+WHERE class_id = ? AND year = ? AND week = ?;
+
+insertWeekPlan:
+INSERT INTO planner_week_plan(class_id, year, week, strategies, instruments, notes, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Actualiza en el sitio sin tocar created_at_epoch_ms e incrementando siempre
+-- sync_version, mismo criterio que el resto de tablas documentales.
+updateWeekPlan:
+UPDATE planner_week_plan
+SET strategies = ?, instruments = ?, notes = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+deleteWeekPlan:
+DELETE FROM planner_week_plan WHERE id = ?;
+
+selectWeekPlanCreatedAt:
+SELECT created_at_epoch_ms FROM planner_week_plan WHERE id = ?;
+
 selectBackupEntries:
 SELECT id, path, created_at_epoch_ms, platform, size_bytes
 FROM backup_entries
@@ -1611,10 +1785,21 @@ WHERE learning_situation_id = ?
 ORDER BY class_id;
 
 upsertLearningSituationLink:
-INSERT OR REPLACE INTO learning_situation_links(
+INSERT INTO learning_situation_links(
     id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateLearningSituationLink:
+UPDATE learning_situation_links
+SET label = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+selectLearningSituationLinkId:
+SELECT id FROM learning_situation_links
+WHERE learning_situation_id = ? AND resource_kind = ? AND resource_id = ?
+  AND (class_id = :classId OR (class_id IS NULL AND :classId IS NULL))
+LIMIT 1;
 
 selectLearningSituationLinks:
 SELECT id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
@@ -1672,11 +1857,26 @@ deleteInstrumentItemsByTemplate:
 DELETE FROM notebook_instrument_items
 WHERE template_id = ?;
 
+deleteInstrumentItemsNotIn:
+DELETE FROM notebook_instrument_items
+WHERE template_id = ? AND id NOT IN ?;
+
 upsertInstrumentItem:
 INSERT OR REPLACE INTO notebook_instrument_items(
     id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+insertInstrumentItem:
+INSERT INTO notebook_instrument_items(
+    id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateInstrumentItem:
+UPDATE notebook_instrument_items
+SET item_key = ?, title = ?, item_type = ?, options_csv = ?, required = ?, sort_order = ?, help_text = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = ?
+WHERE id = ?;
 
 upsertInstrumentResponse:
 INSERT OR REPLACE INTO notebook_instrument_responses(

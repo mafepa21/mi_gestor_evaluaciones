@@ -20,12 +20,14 @@ enum MacDashboardDestination {
 }
 
 struct MacDashboardView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let bridge: KmpBridge
     @ObservedObject var dashboardStore: DashboardBridgeStore
     @ObservedObject var backupStore: MacBackupStore
     let bootstrap: AppleBridgeBootstrap
     var onNavigate: (MacDashboardDestination) -> Void = { _ in }
     var onToolbarActionsChange: (MacDashboardToolbarActions?) -> Void = { _ in }
+    var onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void = { _, _, _ in }
 
     @State private var loadState: MacDashboardLoadState = .loading
     @State private var reloadTask: Task<Void, Never>?
@@ -34,6 +36,15 @@ struct MacDashboardView: View {
     @State private var aiBriefing: TeachingAssistantDraft? = nil
     @State private var aiBriefingState: DashboardAIBriefingState = .deterministic
     @State private var activeAIBriefingKey: DashboardAIBriefingCacheKey?
+
+    // Bloques compartidos con iPad (Resumen por grupo/Agenda/EF/LOMLOE/KPIs):
+    // se apoyan en el `DashboardSnapshot` real del backend, el mismo que usa
+    // iPad, en vez del modelo ad-hoc (`MacDashboardSnapshot`) que hasta ahora
+    // era la única fuente de datos de este dashboard.
+    @State private var operationalSnapshot: DashboardSnapshot?
+    @State private var classTrends: KmpBridge.AITrendsSnapshot?
+    @State private var isLoadingClassTrends = false
+    @State private var classTrendsLoadFailed = false
 
     @State private var teachingAssistantService = AppleFoundationTeachingAssistantService()
 
@@ -126,15 +137,31 @@ struct MacDashboardView: View {
 
     @ViewBuilder
     private func readyContent(snapshot: MacDashboardSnapshot, isWide: Bool) -> some View {
-        if isWide {
-            HStack(alignment: .top, spacing: 24) {
-                DashboardHeroNowCard(
-                    context: snapshot.currentClassContext ?? snapshot.nextClassContext,
-                    onAction: handleQuickAction,
-                    onOpenSheet: { activeSheet = $0 }
-                )
-                .frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 24) {
+            if isWide {
+                HStack(alignment: .top, spacing: 24) {
+                    DashboardHeroNowCard(
+                        context: snapshot.currentClassContext ?? snapshot.nextClassContext,
+                        onAction: handleQuickAction,
+                        onOpenSheet: { activeSheet = $0 }
+                    )
+                    .frame(maxWidth: .infinity)
 
+                    VStack(alignment: .leading, spacing: 24) {
+                        DashboardProactiveInsightCard(
+                            insights: proactiveInsights,
+                            aiBriefing: aiBriefing,
+                            aiBriefingState: aiBriefingState,
+                            actionAvailability: proactiveActionAvailable,
+                            onAction: handleProactiveAction
+                        )
+                        DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
+                        DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
+                        DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
+                    }
+                    .frame(width: 380)
+                }
+            } else {
                 VStack(alignment: .leading, spacing: 24) {
                     DashboardProactiveInsightCard(
                         insights: proactiveInsights,
@@ -143,30 +170,65 @@ struct MacDashboardView: View {
                         actionAvailability: proactiveActionAvailable,
                         onAction: handleProactiveAction
                     )
+                    DashboardHeroNowCard(
+                        context: snapshot.currentClassContext ?? snapshot.nextClassContext,
+                        onAction: handleQuickAction,
+                        onOpenSheet: { activeSheet = $0 }
+                    )
                     DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
                     DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
                     DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
                 }
-                .frame(width: 380)
             }
-        } else {
-            VStack(alignment: .leading, spacing: 24) {
-                DashboardProactiveInsightCard(
-                    insights: proactiveInsights,
-                    aiBriefing: aiBriefing,
-                    aiBriefingState: aiBriefingState,
-                    actionAvailability: proactiveActionAvailable,
-                    onAction: handleProactiveAction
-                )
-                DashboardHeroNowCard(
-                    context: snapshot.currentClassContext ?? snapshot.nextClassContext,
-                    onAction: handleQuickAction,
-                    onOpenSheet: { activeSheet = $0 }
-                )
-                DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
-                DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
-                DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
+
+            if let operationalSnapshot {
+                sharedOperationalBlocks(snapshot: operationalSnapshot, isWide: isWide)
             }
+        }
+    }
+
+    /// Resumen por grupo, Agenda docente, Educación Física y Auditoría
+    /// LOMLOE: hasta ahora solo existían en iPad. Se renderizan aquí sobre
+    /// el mismo `DashboardSnapshot` real del backend (compartido con iPad
+    /// vía DashboardSharedBlocks.swift), no sobre el `MacDashboardSnapshot`
+    /// ad-hoc de "Ahora"/Pendientes/Riesgo, que sigue derivándose del
+    /// horario fijo del profesor y no tiene equivalente en el snapshot
+    /// operativo del backend.
+    @ViewBuilder
+    private func sharedOperationalBlocks(snapshot: DashboardSnapshot, isWide: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme)
+            if isWide {
+                HStack(alignment: .top, spacing: 16) {
+                    dashboardGroupSummaryBlock(snapshot: snapshot, isWide: true)
+                    dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
+                }
+                HStack(alignment: .top, spacing: 16) {
+                    dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme, onSelectItem: handleSelectPEItem)
+                    dashboardLomloeAuditBlock(
+                        trends: classTrends,
+                        isLoading: isLoadingClassTrends,
+                        loadFailed: classTrendsLoadFailed,
+                        onRetry: { Task { await rebuildProactiveRadarForCurrentState() } }
+                    )
+                }
+            } else {
+                dashboardGroupSummaryBlock(snapshot: snapshot, isWide: false)
+                dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
+                dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme, onSelectItem: handleSelectPEItem)
+                dashboardLomloeAuditBlock(
+                    trends: classTrends,
+                    isLoading: isLoadingClassTrends,
+                    loadFailed: classTrendsLoadFailed,
+                    onRetry: { Task { await rebuildProactiveRadarForCurrentState() } }
+                )
+            }
+        }
+    }
+
+    private func handleSelectPEItem(_ item: PEOperationalItem) {
+        if let destination = peDestination(for: item) {
+            onOpenModule(destination, item.classId?.int64Value, nil)
         }
     }
 
@@ -206,6 +268,8 @@ struct MacDashboardView: View {
         loadState = .loading
         do {
             await bridge.ensureClassesLoaded()
+            await bridge.refreshDashboard(mode: .office)
+            operationalSnapshot = dashboardStore.dashboardSnapshot
             guard !dashboardStore.classes.isEmpty else {
                 loadState = .empty(.noClasses)
                 return
@@ -265,15 +329,21 @@ struct MacDashboardView: View {
             proactiveInsights = []
             aiBriefing = nil
             aiBriefingState = .deterministic
+            classTrends = nil
+            classTrendsLoadFailed = false
             return
         }
         let context = snapshot.currentClassContext ?? snapshot.nextClassContext
+        isLoadingClassTrends = context?.classId != nil
         let trends: KmpBridge.AITrendsSnapshot?
         if let classId = context?.classId {
             trends = try? await bridge.getAITrendsAndMetrics(classId: classId, studentId: nil)
         } else {
             trends = nil
         }
+        classTrends = trends
+        classTrendsLoadFailed = context?.classId != nil && trends == nil
+        isLoadingClassTrends = false
         proactiveInsights = DashboardProactiveInsightEngine.build(
             snapshot: snapshot.proactiveSnapshot,
             trends: trends,
@@ -1112,6 +1182,20 @@ private struct DashboardRiskCard: View {
                                     Text(item.subtitle)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                    if let recommendation = DashboardRecommendations.action(
+                                        type: "", title: item.title, detail: item.subtitle
+                                    ) {
+                                        HStack(alignment: .top, spacing: 6) {
+                                            Image(systemName: "lightbulb.fill")
+                                                .font(.caption2.weight(.bold))
+                                                .foregroundStyle(.yellow)
+                                            Text(recommendation)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+                                        .padding(.top, 2)
+                                    }
                                 }
                                 Spacer()
                             }
@@ -2068,12 +2152,5 @@ private struct ObservationComposerSheet: View {
             bridge.selectClass(id: selectedClassId)
             await bridge.selectStudentsClass(classId: selectedClassId)
         }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }

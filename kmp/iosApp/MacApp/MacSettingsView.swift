@@ -10,15 +10,18 @@ struct MacSettingsView: View {
 
     @StateObject private var settings = AppSettingsStore()
     @State private var selectedRoute: SettingsRoute = .general
+    @State private var scheduleSelectedClassId: Int64?
 
     var body: some View {
         HStack(spacing: 0) {
             List(selection: $selectedRoute) {
                 Section("Ajustes") {
                     settingsRow("General", systemImage: "slider.horizontal.3", route: .general)
+                    settingsRow("Horario docente", systemImage: "calendar.badge.clock", route: .schedule)
                     settingsRow("Evaluación", systemImage: "chart.bar.doc.horizontal", route: .evaluation)
                     settingsRow("Cuaderno", systemImage: "text.book.closed", route: .notebook)
                     settingsRow("Datos y Seguridad", systemImage: "lock.shield", route: .dataSecurity)
+                    settingsRow("Gestión de datos", systemImage: "trash", route: .dataManagement)
                     settingsRow("Sincronización", systemImage: "arrow.triangle.2.circlepath", route: .sync)
                     settingsRow("IA Apple", systemImage: "sparkles", route: .appleAI)
                     settingsRow("Apariencia", systemImage: "paintpalette", route: .appearance)
@@ -30,14 +33,38 @@ struct MacSettingsView: View {
 
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    detailViewForRoute(selectedRoute)
+            // "Horario docente" gestiona su propio scroll y su cabecera/pie
+            // fijos (es el asistente progresivo); envolverlo en el ScrollView
+            // genérico de Ajustes anidaría dos scrolls y perdería el pie fijo.
+            if selectedRoute == .schedule {
+                TeacherScheduleWizard(
+                    bridge: session.bridge,
+                    selectedClassId: $scheduleSelectedClassId
+                )
+                .background(Color(NSColor.windowBackgroundColor))
+            } else {
+                // `detailViewForRoute` puede navegar con `NavigationLink` (p.ej.
+                // Datos y Seguridad → Zona de Riesgo). Sin un `NavigationStack`
+                // propio aquí, ese push se resuelve contra un contexto de
+                // navegación implícito ligado a la ventana en vez de a esta
+                // vista: al cambiar de `selectedRoute` (o de sección en la
+                // barra lateral principal) el push queda huérfano y sigue
+                // tapando el panel de detalle aunque el resto de la app haya
+                // navegado a otro sitio. `.id(selectedRoute)` fuerza además a
+                // resetear el push al cambiar de sección de Ajustes sin salir
+                // de Ajustes.
+                NavigationStack {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            detailViewForRoute(selectedRoute)
+                        }
+                        .padding(24)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .background(Color(NSColor.windowBackgroundColor))
                 }
-                .padding(24)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .id(selectedRoute)
             }
-            .background(Color(NSColor.windowBackgroundColor))
         }
     }
 
@@ -56,12 +83,18 @@ struct MacSettingsView: View {
         switch route {
         case .general:
             GeneralSettingsView(settings: settings)
+        case .schedule:
+            EmptyView()
         case .evaluation:
             EvaluationSettingsView(settings: settings)
         case .notebook:
             NotebookSettingsView(settings: settings)
         case .dataSecurity:
             DataSecuritySettingsView(settings: settings)
+                .environmentObject(session.bridge)
+        case .dataManagement:
+            DataManagementSettingsView()
+                .environmentObject(session.bridge)
         case .sync:
             SyncSettingsView(settings: settings)
                 .environmentObject(session.bridge)

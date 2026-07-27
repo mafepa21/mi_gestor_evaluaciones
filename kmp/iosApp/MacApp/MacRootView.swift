@@ -7,6 +7,7 @@ struct MacRootView: View {
     @ObservedObject private var commandCenter: MacCommandCenterCoordinator
     @ObservedObject private var backupStore: MacBackupStore
     @ObservedObject private var backupService = AppleBackupService.shared
+    @ObservedObject private var rescueService = AppleDatabaseRescueService.shared
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Environment(\.openWindow) private var openWindow
     @StateObject private var layoutState = WorkspaceLayoutState()
@@ -76,6 +77,7 @@ struct MacRootView: View {
             isInspectorVisible = storedInspectorVisible && session.inspectorVisible
         }
         .task {
+            rescueService.checkForPendingRescue()
             notebookStore.bind(to: session.bridge)
             dashboardStore.bind(to: session.bridge)
             studentsBridgeStore.bind(to: session.bridge)
@@ -98,6 +100,23 @@ struct MacRootView: View {
                 RestartRequiredOverlay()
             }
         }
+        .alert(
+            "No se pudo abrir la base de datos",
+            isPresented: $rescueService.isAlertPresented,
+            presenting: rescueService.pendingRescue
+        ) { marker in
+            Button("Reintentar apertura") {
+                rescueService.retryRescuedDatabase()
+            }
+            Button("Abrir copias de seguridad") {
+                openWindow(id: MacDesktopWindowID.backups.rawValue)
+            }
+            Button("Seguir con base vacía", role: .destructive) {
+                rescueService.continueWithEmptyDatabase()
+            }
+        } message: { marker in
+            Text(marker.displayMessage)
+        }
     }
 
     private func startCommandCenterAfterInitialLayout() async {
@@ -107,19 +126,24 @@ struct MacRootView: View {
         commandCenter.startIfNeeded()
     }
 
-    @ViewBuilder
+    // Un único `.toolbar { }` para todas las pantallas: antes esto alternaba
+    // estructuralmente entre `.toolbar(id: "notebook.toolbar")` (personalizable)
+    // y `.toolbar { }` (normal) según `selectedFeature`, y ese `if/else` en la
+    // raíz hacía que SwiftUI tratara cada rama como una identidad de vista
+    // distinta. Al cruzar la frontera Cuaderno↔otra pantalla, todo el árbol
+    // (sidebar, detalle y el puente de la NSToolbar) se destruía y reconstruía
+    // a la vez que la transición animada del panel de detalle, y eso disparaba
+    // un bucle de "Update Constraints in Window pass" sobre la ventana de la
+    // toolbar (crash real reportado por el usuario al navegar de Cuaderno a
+    // Cursos/Situaciones). `macToolbar` ya decidía el contenido correcto según
+    // `selectedFeature`; el modificador `.toolbar` en sí solo necesita
+    // permanecer estable. Se pierde la personalización nativa (arrastrar/
+    // ocultar) de la toolbar del Cuaderno a cambio de no crashear.
     private var navigationSplit: some View {
-        if selectedFeature == .notebook {
-            navigationSplitContent
-                .toolbar(id: "notebook.toolbar") {
-                    macNotebookToolbar
-                }
-        } else {
-            navigationSplitContent
-                .toolbar {
-                    macToolbar
-                }
-        }
+        navigationSplitContent
+            .toolbar {
+                macToolbar
+            }
     }
 
     // Esta vista se trocea en subexpresiones a propósito: como una sola cadena
@@ -133,7 +157,21 @@ struct MacRootView: View {
         // iPad (760-860pt), which the shell's generic inspector (maxWidth 440) can't give it.
         // Diary opts out too: DiaryWorkspaceView (shared with iPad/iOS) brings its own
         // 3-panel layout with an internal inspector.
-        if selectedFeature == .attendance || selectedFeature == .planner || selectedFeature == .diary {
+        // Rubrics opts out too: featureInspector(for:) has no real case for .rubrics (falls
+        // to the generic MacModuleInspectorPlaceholder), and MacRubricsView already has its
+        // own HSplitView detail panel — the shell inspector was just reserving 320-440pt for
+        // nothing (UI-13 de plan_auditoria_ui_2026-07-15.md).
+        // Meetings opts out for the same reason: MacMeetingsView brings its own HSplitView
+        // (lista + detalle del acta), y superponer el inspector del shell provocaba un bucle
+        // de "Update Constraints in Window pass" de AppKit (dos gestores de anchura compitiendo).
+        // Notebook opts out too: NotebookModuleView ya pinta su propio panel lateral en macOS
+        // (shouldUseSideInspector es siempre true fuera de iOS) vía HStack + Divider cuando
+        // isInspectorPresented está activo. Envolverlo además en el inspector nativo del shell
+        // duplicaba la reserva de ancho con una segunda instancia de NotebookMacLayout, y al
+        // navegar fuera de Cuaderno ambas instancias se destruían a la vez en plena animación,
+        // provocando el mismo bucle de constraints de AppKit que crasheaba la app.
+        if selectedFeature == .attendance || selectedFeature == .planner || selectedFeature == .diary
+            || selectedFeature == .rubrics || selectedFeature == .meetings || selectedFeature == .notebook {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
                 .transition(uiFeatureFlags.contentSwitchTransition)
@@ -367,7 +405,8 @@ struct MacRootView: View {
                 backupStore: backupStore,
                 bootstrap: session.bootstrap,
                 onNavigate: navigateFromDashboard,
-                onToolbarActionsChange: setDashboardToolbarActions
+                onToolbarActionsChange: setDashboardToolbarActions,
+                onOpenModule: open(module:classId:studentId:)
             )
         case .teacherRadar:
             MacDashboardView(
@@ -376,7 +415,8 @@ struct MacRootView: View {
                 backupStore: backupStore,
                 bootstrap: session.bootstrap,
                 onNavigate: navigateFromDashboard,
-                onToolbarActionsChange: setDashboardToolbarActions
+                onToolbarActionsChange: setDashboardToolbarActions,
+                onOpenModule: open(module:classId:studentId:)
             )
         case .courses:
             CoursesWorkspaceView(
@@ -468,6 +508,9 @@ struct MacRootView: View {
                 onOpenModule: open(module:classId:studentId:)
             )
             .environmentObject(session.bridge)
+        case .meetings:
+            MacMeetingsView(bridge: session.bridge)
+                .environmentObject(session.bridge)
         case .sync:
             MacSyncView(bridge: session.bridge, commandCenter: commandCenter)
         case .backups:
@@ -482,18 +525,6 @@ struct MacRootView: View {
     @ViewBuilder
     private func featureInspector(for feature: MacFeatureDescriptor.Feature) -> some View {
         switch feature {
-        case .notebook:
-            NotebookMacLayout(
-                bridge: session.bridge,
-                notebookStore: notebookStore,
-                layoutState: layoutState,
-                toolbarActions: notebookToolbarActions,
-                inspectorState: notebookInspectorState,
-                selectedClassId: studentSelection.selectedClassBinding,
-                selectedStudentId: studentSelection.selectedStudentBinding,
-                onOpenModule: open(module:classId:studentId:),
-                presentation: .inspector
-            )
         case .students:
             MacStudentsView(
                 bridge: session.bridge,
@@ -1023,6 +1054,7 @@ struct MacRootView: View {
         case .planner: return .orange
         case .diary: return .pink
         case .situations: return .indigo
+        case .meetings: return .brown
         case .students: return .blue
         case .rubrics: return .teal
         case .physicalTests: return .orange

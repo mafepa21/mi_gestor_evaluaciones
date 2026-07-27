@@ -244,7 +244,8 @@ struct MacPlannerView: View {
                 onOpenDiary: openMacSessionDiary,
                 onDropSession: { sessionId, day, period in
                     cascadeCoordinator.handleDrop(sessionId: sessionId, day: day, period: period, vm: vm)
-                }
+                },
+                onOpenSettings: { showingScheduleSettings = true }
             )
         case .day:
             PlannerDayView(vm: vm, onOpenSession: openMacSession)
@@ -291,25 +292,11 @@ private struct MacPlannerScheduleSettingsSheet: View {
     let onClose: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            MacPopupActionBar(
-                title: "Configurar agenda",
-                subtitle: "Horario docente, curso y previsión lectiva",
-                onClose: onClose
-            )
-            .frame(maxWidth: .infinity)
-            .zIndex(2)
-
-            ScrollView(.vertical, showsIndicators: true) {
-                MacTeacherScheduleSettingsPanel(
-                    bridge: bridge,
-                    selectedClassId: $selectedClassId
-                )
-                .padding(MacAppStyle.pagePadding)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-            .background(MacAppStyle.pageBackground)
-        }
+        TeacherScheduleWizard(
+            bridge: bridge,
+            selectedClassId: $selectedClassId,
+            onClose: onClose
+        )
         .background(MacAppStyle.pageBackground)
     }
 }

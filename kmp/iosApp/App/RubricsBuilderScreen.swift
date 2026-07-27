@@ -28,10 +28,10 @@ struct RubricsBuilderScreen: View {
                         TextEditor(text: instructionsBinding)
                             .frame(height: 88)
                             .padding(8)
-                            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous)
+                                    .stroke(RubricsStyle.fieldBorder, lineWidth: 1)
                             )
 
                         RubricBuilderGridView(state: state)
@@ -46,7 +46,7 @@ struct RubricsBuilderScreen: View {
                                 .foregroundStyle(Color.accentColor)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 16)
-                                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
                         }
                         .buttonStyle(.plain)
 
@@ -83,7 +83,7 @@ struct RubricsBuilderScreen: View {
                                 .foregroundStyle(contrastingTextColor(for: Color.accentColor))
                                 .padding(.horizontal, 24)
                                 .padding(.vertical, 16)
-                                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
                             }
                             .buttonStyle(.plain)
                             .disabled(state.rubricName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isSaving)
@@ -219,10 +219,25 @@ private struct RubricBuilderHeader: View {
     }
 }
 
+/// Campo con foco en `RubricBuilderGridView`. El grid repite el mismo tipo de
+/// campo (nombre de nivel, descripción de criterio, descripción de nivel)
+/// decenas de veces sin ninguna indicación de cuál se está editando; el
+/// anillo de foco resuelve eso con el mismo idioma (accent, 2pt) que usan las
+/// blueprint cards de "Nueva columna" y los niveles de rúbrica al evaluar —
+/// aquí disparado por foco de teclado, no por una selección persistente,
+/// porque un campo de texto no tiene "seleccionado", tiene "con el cursor
+/// dentro".
+private enum RubricBuilderField: Hashable {
+    case levelName(Int)
+    case criterionDescription(Int)
+    case levelDescription(criterionIndex: Int, levelUid: String)
+}
+
 private struct RubricBuilderGridView: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
     let state: RubricUiState
+    @FocusState private var focusedField: RubricBuilderField?
 
     var body: some View {
         GeometryReader { proxy in
@@ -254,12 +269,16 @@ private struct RubricBuilderGridView: View {
                             set: { bridge.updateRubricLevelName(at: index, name: $0) }
                         ))
                         .textFieldStyle(.plain)
+                        .focused($focusedField, equals: .levelName(index))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: RubricsStyle.fieldRadius, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RubricsStyle.fieldRadius, style: .continuous)
+                                .stroke(
+                                    focusedField == .levelName(index) ? Color.accentColor : RubricsStyle.fieldBorder,
+                                    lineWidth: focusedField == .levelName(index) ? 2 : 1
+                                )
                         )
 
                         Button(role: .destructive) {
@@ -303,12 +322,16 @@ private struct RubricBuilderGridView: View {
                 ), axis: .vertical)
                 .lineLimit(2...3)
                 .textFieldStyle(.plain)
+                .focused($focusedField, equals: .criterionDescription(index))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: RubricsStyle.fieldRadius, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RubricsStyle.fieldRadius, style: .continuous)
+                        .stroke(
+                            focusedField == .criterionDescription(index) ? Color.accentColor : RubricsStyle.fieldBorder,
+                            lineWidth: focusedField == .criterionDescription(index) ? 2 : 1
+                        )
                 )
 
                 Slider(value: Binding(
@@ -328,12 +351,16 @@ private struct RubricBuilderGridView: View {
                     get: { criterion.levelDescriptions[level.uid] ?? "" },
                     set: { bridge.updateRubricLevelDescription(criterionIndex: index, levelUid: level.uid, description: $0) }
                 ))
+                .focused($focusedField, equals: .levelDescription(criterionIndex: index, levelUid: level.uid))
                 .frame(width: layout.levelWidth, height: layout.editorHeight)
                 .padding(8)
-                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: RubricsStyle.fieldRadius, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RubricsStyle.fieldRadius, style: .continuous)
+                        .stroke(
+                            focusedField == .levelDescription(criterionIndex: index, levelUid: level.uid) ? Color.accentColor : RubricsStyle.fieldBorder,
+                            lineWidth: focusedField == .levelDescription(criterionIndex: index, levelUid: level.uid) ? 2 : 1
+                        )
                 )
             }
 

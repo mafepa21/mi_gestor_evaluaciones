@@ -115,11 +115,17 @@ struct MacRubricsView: View {
                     description: Text("Aún no hay rúbricas cargadas en el bridge.")
                 )
             } else {
-                HStack(alignment: .top, spacing: MacAppStyle.sectionSpacing) {
+                // HStack con ancho fijo + Divider en vez de HSplitView: el NSSplitView del
+                // maestro-detalle (tabla de rúbricas + panel de detalle), anidado en el
+                // NavigationSplitView raíz, entra en el bucle de "Update Constraints in Window
+                // pass" de AppKit y tumba la app al cambiar de rúbrica seleccionada (mismo crash
+                // corregido en reuniones/alumnado/sync).
+                HStack(spacing: 0) {
                     rubricsTable
-                        .frame(minWidth: 400, idealWidth: 480, maxWidth: 560)
+                        .frame(width: 460)
+                    Divider()
                     rubricDetailPanel
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
         }
@@ -239,7 +245,7 @@ struct MacRubricsView: View {
         .sheet(isPresented: $showingBuilder) {
             RubricsBuilderScreen()
                 .environmentObject(bridge)
-                .frame(minWidth: 1200, minHeight: 820)
+                .frame(minWidth: 860, idealWidth: 1200, minHeight: 560, idealHeight: 800)
         }
         .fileImporter(
             isPresented: $showingRubricFileImporter,
@@ -288,7 +294,7 @@ struct MacRubricsView: View {
         ) {
             RubricBulkEvaluationSheet(bridge: bridge)
                 .environmentObject(bridge)
-                .frame(minWidth: 1320, minHeight: 860)
+                .frame(minWidth: 900, idealWidth: 1180, minHeight: 600, idealHeight: 760)
         }
     }
 
@@ -446,7 +452,7 @@ struct MacRubricsView: View {
             .padding(.vertical, 12)
             .background(
                 selectedRubricId == rubric.rubric.id
-                    ? Color.accentColor.opacity(0.10)
+                    ? RubricsStyle.selectionFill
                     : Color.clear
             )
         }

@@ -46,22 +46,50 @@ class NotebookInstrumentsRepositorySqlDelight(
                 device_id = template.trace.deviceId,
                 sync_version = template.trace.syncVersion,
             )
-            db.appDatabaseQueries.deleteInstrumentItemsByTemplate(template.id)
+            val existingIds = db.appDatabaseQueries
+                .selectInstrumentItemsByTemplate(template.id)
+                .executeAsList()
+                .map { it.id }
+                .toSet()
+            val newIds = items.map { it.id }
+            if (newIds.isEmpty()) {
+                db.appDatabaseQueries.deleteInstrumentItemsByTemplate(template.id)
+            } else {
+                db.appDatabaseQueries.deleteInstrumentItemsNotIn(template.id, newIds)
+            }
             items.forEachIndexed { index, item ->
-                db.appDatabaseQueries.upsertInstrumentItem(
-                    id = item.id,
-                    template_id = template.id,
-                    item_key = item.key,
-                    title = item.title,
-                    item_type = item.type.name,
-                    options_csv = item.options.joinToString("|"),
-                    required = if (item.required) 1L else 0L,
-                    sort_order = item.order.takeIf { it >= 0 }?.toLong() ?: index.toLong(),
-                    help_text = item.helpText,
-                    updated_at_epoch_ms = item.trace.updatedAt.toEpochMilliseconds().takeIf { it > 0 } ?: now,
-                    device_id = item.trace.deviceId,
-                    sync_version = item.trace.syncVersion,
-                )
+                val sortOrder = item.order.takeIf { it >= 0 }?.toLong() ?: index.toLong()
+                val updatedAt = item.trace.updatedAt.toEpochMilliseconds().takeIf { it > 0 } ?: now
+                if (item.id in existingIds) {
+                    db.appDatabaseQueries.updateInstrumentItem(
+                        item_key = item.key,
+                        title = item.title,
+                        item_type = item.type.name,
+                        options_csv = item.options.joinToString("|"),
+                        required = if (item.required) 1L else 0L,
+                        sort_order = sortOrder,
+                        help_text = item.helpText,
+                        updated_at_epoch_ms = updatedAt,
+                        device_id = item.trace.deviceId,
+                        sync_version = item.trace.syncVersion,
+                        id = item.id,
+                    )
+                } else {
+                    db.appDatabaseQueries.insertInstrumentItem(
+                        id = item.id,
+                        template_id = template.id,
+                        item_key = item.key,
+                        title = item.title,
+                        item_type = item.type.name,
+                        options_csv = item.options.joinToString("|"),
+                        required = if (item.required) 1L else 0L,
+                        sort_order = sortOrder,
+                        help_text = item.helpText,
+                        updated_at_epoch_ms = updatedAt,
+                        device_id = item.trace.deviceId,
+                        sync_version = item.trace.syncVersion,
+                    )
+                }
             }
         }
         NotebookRefreshBus.emitRefresh()
@@ -185,7 +213,9 @@ class NotebookInstrumentsRepositorySqlDelight(
                 sync_version = syncVersion,
             )
         }
-        deriveObservationGridScore(detail.items, responsesByItem)?.let { derivedScore ->
+        val derived = deriveObservationGridScore(detail.items, responsesByItem)
+            ?: deriveProportionalChecklistScore(detail.items, responsesByItem)
+        derived?.let { derivedScore ->
             gradesRepository.saveGrade(
                 classId = classId,
                 studentId = studentId,
@@ -231,6 +261,25 @@ class NotebookInstrumentsRepositorySqlDelight(
         if (valuesBySession.isEmpty()) return null
         val sessionAverages = valuesBySession.values.map { it.average() }
         return sessionAverages.average()
+    }
+
+    /// Traduce una checklist ponderada ("checklist proporcional": el documento le asigna un %
+    /// del peso de la SA) en una nota 0-10 = ítems marcados / ítems totales × 10. Solo se aplica
+    /// a los instrumentos cuyos ítems siguen la convención de clave `chkp_<n>` que genera el
+    /// importador Apple para `AssessmentInstrumentScoreStrategy.CHECKLIST_PROPORTIONAL`; las
+    /// checklists de requisito de entrega (`check_<n>`, sin peso) y las de todo/nada siguen sin
+    /// generar nota automática.
+    private fun deriveProportionalChecklistScore(
+        items: List<NotebookInstrumentItem>,
+        responsesByItem: Map<String, NotebookInstrumentResponse>,
+    ): Double? {
+        val keyPattern = Regex("""^chkp_\d+$""")
+        val checkItems = items.filter {
+            keyPattern.matches(it.key) && it.type == NotebookInstrumentItemType.CHECK
+        }
+        if (checkItems.isEmpty()) return null
+        val checked = checkItems.count { responsesByItem[it.id]?.boolValue == true }
+        return checked.toDouble() / checkItems.size.toDouble() * 10.0
     }
 
     private fun summarize(

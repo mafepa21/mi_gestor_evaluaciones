@@ -9,12 +9,11 @@ import com.migestor.shared.domain.NotebookInstrumentKind
 import com.migestor.shared.domain.NotebookScaleKind
 import com.migestor.shared.domain.validationIssues
 import kotlin.test.Test
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AssessmentInstrumentSpecTest {
     @Test
-    fun `checklist proportional is explicit but not materializable as average yet`() {
+    fun `checklist proportional counts toward the average`() {
         val spec = baseSpec(
             sourceKind = AssessmentInstrumentSourceKind.CHECKLIST,
             columnType = NotebookColumnType.TEXT,
@@ -24,8 +23,10 @@ class AssessmentInstrumentSpecTest {
             scoreStrategy = AssessmentInstrumentScoreStrategy.CHECKLIST_PROPORTIONAL,
         )
 
-        assertFalse(spec.canMaterializeAverage())
-        assertTrue(spec.validationIssues().any { it.blocksMaterialization })
+        // La nota se deriva de "ítems marcados / total × 10" al guardar las respuestas, así que
+        // ya no es un instrumento auxiliar ni bloquea la materialización del import.
+        assertTrue(spec.canMaterializeAverage())
+        assertTrue(spec.validationIssues().none { it.blocksMaterialization })
     }
 
     @Test

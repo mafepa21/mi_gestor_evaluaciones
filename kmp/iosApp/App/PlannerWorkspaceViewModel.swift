@@ -60,6 +60,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var composerContextError = ""
     @Published var isSavingComposer = false
     @Published var composerSaveState: PlannerSaveState = .idle
+    @Published var sessionTemplates: [PlannerSessionTemplate] = []
     @Published var scheduleGenerationPreview: [PlannerScheduleGenerationPreviewRow] = []
     @Published var scheduleGenerationSummary = ""
     @Published var isGeneratingScheduleSessions = false

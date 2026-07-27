@@ -6,6 +6,7 @@ struct CreateCourseSheet: View {
     @Environment(\.dismiss) var dismiss
     @State var name = ""
     @State var course = "3"
+    @State private var errorMessage: String?
     let onDismiss: () -> Void
 
     private var canSave: Bool {
@@ -30,6 +31,14 @@ struct CreateCourseSheet: View {
                 }
             }
         }
+        .alert("No se pudo guardar", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func close() {
@@ -41,8 +50,12 @@ struct CreateCourseSheet: View {
         Task {
             guard let numericCourse = Int32(course),
                   !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            _ = try? await bridge.createClass(name: name, course: numericCourse)
-            close()
+            do {
+                _ = try await bridge.createClass(name: name, course: numericCourse)
+                close()
+            } catch {
+                errorMessage = "No se pudo crear la clase: \(error.localizedDescription)"
+            }
         }
     }
 }
@@ -58,6 +71,7 @@ struct CreateStudentSheet: View {
     @State var studentSex: StudentSex = .unspecified
     @State var hasBirthDate = false
     @State var birthDate = Calendar.current.date(byAdding: .year, value: -13, to: Date()) ?? Date()
+    @State private var errorMessage: String?
 
     private var canSave: Bool {
         !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
@@ -102,6 +116,14 @@ struct CreateStudentSheet: View {
                 }
             }
         }
+        .alert("No se pudo guardar", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     func localDate(from date: Date) -> LocalDate {
@@ -124,15 +146,19 @@ struct CreateStudentSheet: View {
             if bridge.selectedStudentsClassId != defaultClassId {
                 await bridge.selectStudentsClass(classId: defaultClassId)
             }
-            try? await bridge.createStudentInSelectedClass(
-                firstName: firstName,
-                lastName: lastName,
-                isInjured: isInjured,
-                sex: studentSex,
-                sexSource: studentSex == .unspecified ? nil : .manual,
-                birthDate: hasBirthDate ? localDate(from: birthDate) : nil
-            )
-            close()
+            do {
+                try await bridge.createStudentInSelectedClass(
+                    firstName: firstName,
+                    lastName: lastName,
+                    isInjured: isInjured,
+                    sex: studentSex,
+                    sexSource: studentSex == .unspecified ? nil : .manual,
+                    birthDate: hasBirthDate ? localDate(from: birthDate) : nil
+                )
+                close()
+            } catch {
+                errorMessage = "No se pudo crear el alumno: \(error.localizedDescription)"
+            }
         }
     }
 }
@@ -146,6 +172,7 @@ struct CreateEvaluationSheet: View {
     @State var name = ""
     @State var type = "Rúbrica"
     @State var weight = "1.0"
+    @State private var errorMessage: String?
 
     private var canSave: Bool {
         defaultClassId != nil &&
@@ -173,6 +200,14 @@ struct CreateEvaluationSheet: View {
                 }
             }
         }
+        .alert("No se pudo guardar", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func close() {
@@ -186,8 +221,12 @@ struct CreateEvaluationSheet: View {
                   let numericWeight = Double(weight),
                   !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            try? await bridge.createEvaluation(classId: defaultClassId, code: code, name: name, type: type, weight: numericWeight)
-            close()
+            do {
+                try await bridge.createEvaluation(classId: defaultClassId, code: code, name: name, type: type, weight: numericWeight)
+                close()
+            } catch {
+                errorMessage = "No se pudo crear la evaluación: \(error.localizedDescription)"
+            }
         }
     }
 }
@@ -343,6 +382,7 @@ struct CreatePESessionSheet: View {
     @State var sessionDate = Date()
     @State var period = 1
     @State var status: SessionStatus = .planned
+    @State private var errorMessage: String?
 
     private var canSave: Bool {
         defaultClassId != nil && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -384,6 +424,14 @@ struct CreatePESessionSheet: View {
                 .pickerStyle(.segmented)
             }
         }
+        .alert("No se pudo guardar", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func close() {
@@ -397,21 +445,25 @@ struct CreatePESessionSheet: View {
                   !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             let isoCalendar = Calendar(identifier: .iso8601)
             let isoWeekday = ((isoCalendar.component(.weekday, from: sessionDate) + 5) % 7) + 1
-            _ = try? await bridge.createPESession(
-                classId: defaultClassId,
-                title: title,
-                dayOfWeek: isoWeekday,
-                period: period,
-                weekNumber: isoCalendar.component(.weekOfYear, from: sessionDate),
-                year: isoCalendar.component(.yearForWeekOfYear, from: sessionDate),
-                objectives: objectives,
-                activities: activities,
-                status: status,
-                scheduledSpace: scheduledSpace,
-                usedSpace: usedSpace,
-                materialToPrepare: materialToPrepare
-            )
-            close()
+            do {
+                _ = try await bridge.createPESession(
+                    classId: defaultClassId,
+                    title: title,
+                    dayOfWeek: isoWeekday,
+                    period: period,
+                    weekNumber: isoCalendar.component(.weekOfYear, from: sessionDate),
+                    year: isoCalendar.component(.yearForWeekOfYear, from: sessionDate),
+                    objectives: objectives,
+                    activities: activities,
+                    status: status,
+                    scheduledSpace: scheduledSpace,
+                    usedSpace: usedSpace,
+                    materialToPrepare: materialToPrepare
+                )
+                close()
+            } catch {
+                errorMessage = "No se pudo crear la sesión: \(error.localizedDescription)"
+            }
         }
     }
 }
@@ -427,6 +479,7 @@ struct CreatePhysicalTestSheet: View {
     @State var kind = "Tiempo"
     @State var weight = "1.0"
     @State var description = ""
+    @State private var errorMessage: String?
 
     let templates = ["Tiempo", "Distancia", "Repeticiones", "Resistencia", "Flexibilidad"]
 
@@ -468,6 +521,14 @@ struct CreatePhysicalTestSheet: View {
                 }
             }
         }
+        .alert("No se pudo guardar", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func close() {
@@ -481,15 +542,19 @@ struct CreatePhysicalTestSheet: View {
                   let numericWeight = Double(weight),
                   !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            try? await bridge.createPhysicalTest(
-                classId: defaultClassId,
-                code: code,
-                name: name,
-                kind: kind,
-                weight: numericWeight,
-                description: description.nilIfBlank
-            )
-            close()
+            do {
+                try await bridge.createPhysicalTest(
+                    classId: defaultClassId,
+                    code: code,
+                    name: name,
+                    kind: kind,
+                    weight: numericWeight,
+                    description: description.nilIfBlank
+                )
+                close()
+            } catch {
+                errorMessage = "No se pudo crear el test físico: \(error.localizedDescription)"
+            }
         }
     }
 }
@@ -509,6 +574,7 @@ struct CreatePEIncidentSheet: View {
     @State var selectedSessionId: Int64?
     @State var followUpNote = ""
     @State var sessions: [KmpBridge.PESessionSnapshot] = []
+    @State private var errorMessage: String?
 
     let categories = ["Lesión", "Seguridad", "Conducta", "Material", "Equipación"]
 
@@ -589,6 +655,14 @@ struct CreatePEIncidentSheet: View {
                 classId: defaultClassId
             )) ?? []
         }
+        .alert("No se pudo guardar", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func save() {
@@ -600,15 +674,18 @@ struct CreatePEIncidentSheet: View {
                 selectedSessionId == nil ? nil : "Sesión vinculada #\(selectedSessionId!)",
                 followUpNote.nilIfBlank.map { "Seguimiento inicial: \($0)" }
             ].compactMap { $0?.nilIfBlank }.joined(separator: "\n")
-            if let incidentId = try? await bridge.createIncident(
-                classId: defaultClassId,
-                studentId: selectedStudentId,
-                title: finalTitle,
-                detail: finalDetail,
-                severity: severity
-            ) {
+            do {
+                let incidentId = try await bridge.createIncident(
+                    classId: defaultClassId,
+                    studentId: selectedStudentId,
+                    title: finalTitle,
+                    detail: finalDetail,
+                    severity: severity
+                )
                 onSaved(incidentId, category, workflowState, selectedSessionId, followUpNote)
                 dismiss()
+            } catch {
+                errorMessage = "No se pudo crear la incidencia: \(error.localizedDescription)"
             }
         }
     }
@@ -697,6 +774,7 @@ struct CreatePEMaterialRecordSheet: View {
     @State var status: PEMaterialStatus = .prepared
     @State var note = ""
     @State var selectedSessionId: Int64?
+    @State private var errorMessage: String?
 
     private var isEditing: Bool { existingRecord != nil }
 
@@ -740,6 +818,14 @@ struct CreatePEMaterialRecordSheet: View {
             note = existingRecord.note
             selectedSessionId = existingRecord.sessionId
         }
+        .alert("No se pudo guardar", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func save() {
@@ -755,26 +841,30 @@ struct CreatePEMaterialRecordSheet: View {
                 note: note,
                 createdAt: existingRecord?.createdAt ?? Date()
             )
-            if let session = sessions.first(where: { $0.id == selectedSessionId }) {
-                let materialLine = "\(itemName) x\(quantity)" + (note.nilIfBlank.map { " (\($0))" } ?? "")
-                let prepared = status == .prepared ? materialLine : session.materialToPrepareText
-                let used = status == .used ? materialLine : session.materialUsedText
-                try? await bridge.savePESessionOperationalData(
-                    sessionId: session.id,
-                    scheduledSpace: "",
-                    usedSpace: "",
-                    materialToPrepare: prepared,
-                    materialUsed: used,
-                    injuries: session.injuriesText,
-                    unequippedStudents: session.unequippedStudentsText,
-                    intensityScore: session.intensityScore,
-                    stationObservations: session.stationObservationsText,
-                    physicalIncidents: session.physicalIncidentsText,
-                    journalStatus: session.summary?.status ?? .draft
-                )
+            do {
+                if let session = sessions.first(where: { $0.id == selectedSessionId }) {
+                    let materialLine = "\(itemName) x\(quantity)" + (note.nilIfBlank.map { " (\($0))" } ?? "")
+                    let prepared = status == .prepared ? materialLine : session.materialToPrepareText
+                    let used = status == .used ? materialLine : session.materialUsedText
+                    try await bridge.savePESessionOperationalData(
+                        sessionId: session.id,
+                        scheduledSpace: "",
+                        usedSpace: "",
+                        materialToPrepare: prepared,
+                        materialUsed: used,
+                        injuries: session.injuriesText,
+                        unequippedStudents: session.unequippedStudentsText,
+                        intensityScore: session.intensityScore,
+                        stationObservations: session.stationObservationsText,
+                        physicalIncidents: session.physicalIncidentsText,
+                        journalStatus: session.summary?.status ?? .draft
+                    )
+                }
+                onSaved(record)
+                dismiss()
+            } catch {
+                errorMessage = "No se pudo guardar el registro de material: \(error.localizedDescription)"
             }
-            onSaved(record)
-            dismiss()
         }
     }
 }
@@ -1154,12 +1244,5 @@ struct SupportMeasureFormSheet: View {
                 errorMessage = "No se pudo guardar la medida: \(error.localizedDescription)"
             }
         }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }

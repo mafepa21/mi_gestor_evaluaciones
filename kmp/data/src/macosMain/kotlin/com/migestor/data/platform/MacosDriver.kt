@@ -36,3 +36,16 @@ fun getMacosAppDataPath(fileName: String): String = appleAppSupportPath(
     appSupportDirectoryName = MACOS_APP_SUPPORT_DIR,
     fileName = fileName,
 )
+
+/**
+ * Nombre del fichero de base de datos que realmente abre la app macOS.
+ *
+ * Existe para que nadie vuelva a escribirlo a mano: hasta 2026-07 `AppleBridgeBootstrap`
+ * usaba el nombre legacy `mi_gestor_kmp.db`, que en este directorio corresponde a un
+ * fichero fantasma vacío. Consecuencia: las copias de seguridad de macOS se generaban
+ * de 0 bytes y se reportaban como correctas, y restaurarlas no hacía nada.
+ */
+fun macosDatabaseFileName(): String = MACOS_DB_NAME
+
+/** Ruta completa de la base de datos que abre la app macOS. */
+fun getMacosDatabasePath(): String = getMacosAppDataPath(MACOS_DB_NAME)

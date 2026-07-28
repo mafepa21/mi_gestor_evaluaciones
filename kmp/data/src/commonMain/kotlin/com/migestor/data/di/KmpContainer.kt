@@ -112,6 +112,8 @@ class KmpContainer(val driver: SqlDriver) {
         calendarRepository = calendarRepository,
         plannerRepository = plannerRepository,
         rubricsRepository = rubricsRepository,
+        teacherScheduleRepository = teacherScheduleRepository,
+        sessionJournalRepository = sessionJournalRepository,
     )
     
     val csvImportService: CsvImportService = CsvImportServiceImpl()

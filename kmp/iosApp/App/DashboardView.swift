@@ -2,25 +2,6 @@ import SwiftUI
 import MiGestorKit
 
 // MARK: - Dashboard Module
-private enum OperationalDashboardMode: String {
-    case classroom
-    case office
-
-    var kotlinMode: DashboardMode {
-        switch self {
-        case .classroom: return .classroom
-        case .office: return .office
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .classroom: return "Modo Clase"
-        case .office: return "Modo Despacho"
-        }
-    }
-}
-
 private enum DashboardInspectorSelection: Hashable {
     case session(Int64)
     case alert(String)
@@ -97,7 +78,7 @@ struct DashboardView: View {
 #endif
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
-    @AppStorage("dashboard_operational_mode") private var modeRawValue: String = OperationalDashboardMode.office.rawValue
+    @AppStorage("dashboard_mode_preference") private var modeRawValue: String = DashboardModePreference.auto.rawValue
     @State private var severityFilter: DashboardFilterOption = .all
     @State private var priorityFilter: DashboardFilterOption = .all
     @State private var sessionStatusFilter: DashboardSessionFilterOption = .all
@@ -115,6 +96,7 @@ struct DashboardView: View {
     @State private var dashboardReloadTask: Task<Void, Never>? = nil
     @State private var dashboardReloadGeneration = 0
     @State private var loadPhase: DashboardLoadPhase = .shell
+    @State private var isSecondaryExpanded = false
 
     private let teachingAssistantService = AppleFoundationTeachingAssistantService()
 
@@ -130,9 +112,18 @@ struct DashboardView: View {
         self.onOpenModule = onOpenModule
     }
 
-    private var mode: OperationalDashboardMode {
-        OperationalDashboardMode(rawValue: modeRawValue) ?? .office
+    private var modePreference: DashboardModePreference {
+        DashboardModePreference(rawValue: modeRawValue) ?? .auto
     }
+
+    /// El modo efectivo sale del horario cuando la preferencia es `auto`. Si no
+    /// hay contexto todavía (primera carga), cae a Despacho, que es el estado
+    /// seguro: enseña de más, no de menos.
+    private var mode: DashboardMode {
+        modePreference.resolved(for: dashboardStore.dashboardSnapshot?.currentContext)
+    }
+
+    private var isClassroomMode: Bool { mode == .classroom }
 
     private var isCompactWidth: Bool {
 #if os(iOS)
@@ -157,7 +148,7 @@ struct DashboardView: View {
             DashboardQuickEvaluationSheet(
                 bridge: bridge,
                 initialClassId: dashboardActionClassId,
-                mode: mode.kotlinMode
+                mode: mode
             )
             #if os(iOS)
             .presentationDetents([.large])
@@ -329,12 +320,21 @@ struct DashboardView: View {
                 dashboardExportMenu(snapshot: snapshot)
             }
 
-            Picker("Contexto", selection: $modeRawValue) {
-                Text("Clase").tag(OperationalDashboardMode.classroom.rawValue)
-                Text("Despacho").tag(OperationalDashboardMode.office.rawValue)
+            VStack(alignment: .trailing, spacing: 4) {
+                Picker("Contexto", selection: $modeRawValue) {
+                    ForEach(DashboardModePreference.allCases) { option in
+                        Text(option.title).tag(option.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+
+                if let hint = modePreference.resolvedHint(for: dashboardStore.dashboardSnapshot?.currentContext) {
+                    Text(hint)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 240)
         }
     }
 
@@ -465,46 +465,92 @@ struct DashboardView: View {
     @ViewBuilder
     private func dashboardLoadedContent(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-            // 1. KPIs — la única fila numérica, de un vistazo y arriba del
-            // todo. Antes vivía después de Hoy/Pendiente/Riesgo repitiendo
-            // los mismos contadores que ya llevan esas tarjetas en su
-            // cabecera; ahora es el resumen y las tarjetas dejan de duplicar
-            // el número de la KPI correspondiente.
-            dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme)
+            // 1. Ahora — qué clase tengo delante. Es lo primero que mira un
+            // profesor entre timbre y timbre, y hasta ahora solo existía en
+            // macOS. Viene del mismo snapshot compartido.
+            dashboardNowCard(
+                context: snapshot.currentContext,
+                colorScheme: colorScheme,
+                isCompact: isCompactWidth,
+                onAction: handleNowAction
+            )
 
-            // 2. Filtros — justo antes de lo que filtran (Hoy/Pendiente/
-            // Riesgo), no varias secciones después.
-            dashboardFilterChips
+            if isClassroomMode {
+                // En Clase el dashboard se queda en tres bloques: Ahora, lo
+                // urgente del grupo y los accesos para evaluar. Ni KPIs, ni
+                // filtros, ni comparativas: eso no se consulta con el grupo
+                // delante.
+                if loadPhase.includes(.lists) {
+                    dashboardRiskBlock(snapshot: snapshot)
+                } else {
+                    dashboardListSkeleton
+                }
 
-            // 3. Hoy — qué requiere atención inmediata
-            dashboardTodayBlock(snapshot: snapshot)
+                if isInspectorPresented {
+                    dashboardInspector
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
-            // 4. Alertas — accionables, priorizadas
-            if loadPhase.includes(.lists) {
-                dashboardAlertsSection(snapshot: snapshot)
+                dashboardQuickEvalBlock(snapshot: snapshot)
             } else {
-                dashboardListSkeleton
+                // 2. KPIs — la única fila numérica, de un vistazo y arriba del
+                // todo. Antes vivía después de Hoy/Pendiente/Riesgo repitiendo
+                // los mismos contadores que ya llevan esas tarjetas en su
+                // cabecera; ahora es el resumen y las tarjetas dejan de duplicar
+                // el número de la KPI correspondiente.
+                dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme)
+
+                // 3. Hoy — qué requiere atención inmediata
+                dashboardTodayBlock(snapshot: snapshot)
+
+                // 4. Alertas — accionables, priorizadas. Los filtros van
+                // pegados a lo que filtran, no sueltos en la cabecera.
+                dashboardFilterChips
+
+                if loadPhase.includes(.lists) {
+                    dashboardAlertsSection(snapshot: snapshot)
+                } else {
+                    dashboardListSkeleton
+                }
+
+                if isInspectorPresented {
+                    dashboardInspector
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                // 5. Accesos rápidos — iniciar una tarea
+                dashboardQuickEvalBlock(snapshot: snapshot)
+
+                // 6. Insight proactivo — una única tarjeta, descartable
+                if loadPhase.includes(.ai) {
+                    dashboardProactiveRadar(snapshot: snapshot)
+                } else {
+                    dashboardRadarSkeleton
+                }
+
+                // 7. Contexto secundario — plegado por defecto
+                dashboardSecondaryGrid(snapshot: snapshot)
             }
-
-            if isInspectorPresented {
-                dashboardInspector
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            // 5. Accesos rápidos — iniciar una tarea
-            dashboardQuickEvalBlock(snapshot: snapshot)
-
-            // 6. Insight proactivo — una única tarjeta, descartable
-            if loadPhase.includes(.ai) {
-                dashboardProactiveRadar(snapshot: snapshot)
-            } else {
-                dashboardRadarSkeleton
-            }
-
-            // 7. Contexto secundario — agenda y estado del sistema
-            dashboardSecondaryGrid(snapshot: snapshot)
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: loadPhase.rawValue)
+    }
+
+    private func handleNowAction(_ action: DashboardNowAction) {
+        let classId = dashboardStore.dashboardSnapshot?.currentContext?.classId?.int64Value ?? dashboardActionClassId
+        switch action {
+        case .passList:
+            onOpenModule(.attendance, classId, nil)
+        case .openNotebook:
+            onOpenModule(.notebook, classId, nil)
+        case .evaluate:
+            onOpenModule(.rubrics, classId, nil)
+        case .observation:
+            Task { await performObservation() }
+        case .quickEvaluation:
+            performQuickEvaluation()
+        case .openPlanner, .openJournal:
+            onOpenModule(.planner, classId, nil)
+        }
     }
 
     @ViewBuilder
@@ -524,36 +570,47 @@ struct DashboardView: View {
 
     @ViewBuilder
     private func dashboardSecondaryGrid(snapshot: DashboardSnapshot) -> some View {
-        let blocks: [DashboardBlock] = mode == .classroom
-            ? [.groupSummary, .agenda, .physicalEducation, .lomloeAudit, .system]
-            : [.lomloeAudit, .groupSummary, .agenda, .physicalEducation, .system]
+        // Contexto, no acción: cinco tarjetas siempre abiertas eran el grueso
+        // del "dashboard cargado". Ahora van dentro de un desplegable cerrado
+        // por defecto, con el mismo patrón que Ajustes → Gestión de datos.
+        let blocks: [DashboardBlock] = [.lomloeAudit, .groupSummary, .agenda, .physicalEducation, .system]
 
-        VStack(spacing: EvaluationDesign.cardSpacing) {
-            ForEach(blocks, id: \.self) { block in
-                switch block {
-                case .groupSummary:
-                    dashboardGroupSummaryBlock(snapshot: snapshot, isWide: showsWideSummary)
-                case .agenda:
-                    dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
-                case .physicalEducation:
-                    dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme) { item in
-                        inspectorSelection = .pe(item.id)
-                        isInspectorPresented = true
-                    }
-                case .lomloeAudit:
-                    dashboardLomloeAuditBlock(
-                        trends: classTrends,
-                        isLoading: isLoadingClassTrends,
-                        loadFailed: classTrendsLoadFailed
-                    ) {
-                        Task { await loadClassTrends() }
-                    }
-                case .system:
-                    dashboardSystemBlock()
-                case .today, .pending, .risk, .alerts, .quickEvaluation:
-                    EmptyView()
+        DisclosureGroup(isExpanded: $isSecondaryExpanded) {
+            VStack(spacing: EvaluationDesign.cardSpacing) {
+                ForEach(blocks, id: \.self) { block in
+                    dashboardSecondaryBlock(block, snapshot: snapshot)
                 }
             }
+            .padding(.top, EvaluationDesign.cardSpacing)
+        } label: {
+            dashboardSecondaryTitle("Más contexto", systemImage: "square.grid.2x2")
+        }
+    }
+
+    @ViewBuilder
+    private func dashboardSecondaryBlock(_ block: DashboardBlock, snapshot: DashboardSnapshot) -> some View {
+        switch block {
+        case .groupSummary:
+            dashboardGroupSummaryBlock(snapshot: snapshot, isWide: showsWideSummary)
+        case .agenda:
+            dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
+        case .physicalEducation:
+            dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme) { item in
+                inspectorSelection = .pe(item.id)
+                isInspectorPresented = true
+            }
+        case .lomloeAudit:
+            dashboardLomloeAuditBlock(
+                trends: classTrends,
+                isLoading: isLoadingClassTrends,
+                loadFailed: classTrendsLoadFailed
+            ) {
+                Task { await loadClassTrends() }
+            }
+        case .system:
+            dashboardSystemBlock()
+        case .today, .pending, .risk, .alerts, .quickEvaluation:
+            EmptyView()
         }
     }
 
@@ -1521,7 +1578,7 @@ struct DashboardView: View {
         guard let classId = dashboardActionClassId else { return }
         await bridge.performQuickAction(
             type: .passList,
-            mode: mode.kotlinMode,
+            mode: mode,
             classId: classId,
             attendanceStatus: "presente"
         )
@@ -1531,7 +1588,7 @@ struct DashboardView: View {
         guard let classId = dashboardActionClassId else { return }
         await bridge.performQuickAction(
             type: .registerObservation,
-            mode: mode.kotlinMode,
+            mode: mode,
             classId: classId,
             note: "Observación registrada desde dashboard"
         )
@@ -1555,7 +1612,7 @@ struct DashboardView: View {
             priority: priorityFilter.rawValue,
             sessionStatus: sessionStatusFilter.rawValue
         )
-        await bridge.refreshDashboard(mode: mode.kotlinMode)
+        await bridge.refreshDashboard(mode: mode)
         guard !Task.isCancelled else { return }
         if let expectedReloadGeneration, expectedReloadGeneration != dashboardReloadGeneration {
             return

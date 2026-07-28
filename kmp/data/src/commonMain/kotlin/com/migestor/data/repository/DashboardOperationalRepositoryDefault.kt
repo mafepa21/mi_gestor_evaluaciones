@@ -5,6 +5,8 @@ import com.migestor.shared.domain.AgendaItem
 import com.migestor.shared.domain.AlertItem
 import com.migestor.shared.domain.DashboardFilters
 import com.migestor.shared.domain.DashboardMode
+import com.migestor.shared.domain.DashboardSessionContext
+import com.migestor.shared.domain.DashboardSessionContextStatus
 import com.migestor.shared.domain.DashboardSnapshot
 import com.migestor.shared.domain.Evaluation
 import com.migestor.shared.domain.Grade
@@ -14,6 +16,10 @@ import com.migestor.shared.domain.PEOperationalItem
 import com.migestor.shared.domain.QuickActionCommand
 import com.migestor.shared.domain.QuickActionResult
 import com.migestor.shared.domain.QuickActionType
+import com.migestor.shared.domain.SessionJournalStatus
+import com.migestor.shared.domain.SessionStatus
+import com.migestor.shared.domain.TeacherSchedule
+import com.migestor.shared.domain.TeacherScheduleSlot
 import com.migestor.shared.domain.TodaySessionItem
 import com.migestor.shared.repository.AttendanceRepository
 import com.migestor.shared.repository.CalendarRepository
@@ -25,12 +31,15 @@ import com.migestor.shared.repository.IncidentsRepository
 import com.migestor.shared.repository.NotebookConfigRepository
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
+import com.migestor.shared.repository.SessionJournalRepository
+import com.migestor.shared.repository.TeacherScheduleRepository
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
@@ -46,6 +55,8 @@ class DashboardOperationalRepositoryDefault(
     private val calendarRepository: CalendarRepository,
     private val plannerRepository: PlannerRepository,
     private val rubricsRepository: RubricsRepository,
+    private val teacherScheduleRepository: TeacherScheduleRepository,
+    private val sessionJournalRepository: SessionJournalRepository,
 ) : DashboardOperationalRepository {
 
     override suspend fun getSnapshot(
@@ -61,8 +72,37 @@ class DashboardOperationalRepositoryDefault(
         val dateMinus30 = date.minus(30, DateTimeUnit.DAY).atStartOfDayIn(tz)
 
         val allClasses = classesRepository.listClasses()
-        val targetClasses = filters.classId?.let { id -> allClasses.filter { it.id == id } } ?: allClasses
         val classNameById = allClasses.associateBy({ it.id }, { it.name })
+        val classCourseById = allClasses.associateBy({ it.id }, { it.course })
+
+        // Contexto "qué clase tengo ahora": se deduce del horario fijo del
+        // profesor, no del calendario, porque el horario es la fuente que
+        // siempre está rellena cuando el profesor ha configurado el curso.
+        val currentContext = resolveCurrentContext(
+            date = date,
+            now = now,
+            tz = tz,
+            classNameById = classNameById,
+            classCourseById = classCourseById,
+        )
+
+        // El modo dejaba de ser decorativo aquí: hasta ahora `mode` entraba
+        // como parámetro y solo se copiaba al snapshot devuelto, así que Clase
+        // y Despacho producían exactamente los mismos datos y solo se
+        // distinguían por el orden de las tarjetas en la interfaz de iPad.
+        //
+        // Ahora el modo decide el ALCANCE (cuántos grupos) y el HORIZONTE
+        // (cuánto tiempo por delante):
+        //  - CLASSROOM: solo el grupo que tengo delante, solo lo urgente.
+        //  - OFFICE: todos los grupos, el trabajo acumulado de la semana.
+        val classroomClassId = filters.classId ?: currentContext.classId?.takeIf {
+            currentContext.status == DashboardSessionContextStatus.ACTIVE ||
+                currentContext.status == DashboardSessionContextStatus.NEXT_TODAY
+        }
+        val isClassroom = mode == DashboardMode.CLASSROOM
+        val scopedClassId = if (isClassroom) classroomClassId else filters.classId
+
+        val targetClasses = scopedClassId?.let { id -> allClasses.filter { it.id == id } } ?: allClasses
         val studentsByClass = targetClasses.associate { it.id to classesRepository.listStudentsInClass(it.id) }
         val gradesByClass = targetClasses.associate { it.id to gradesRepository.listGradesForClass(it.id) }
         val evaluationsByClass = targetClasses.associate { it.id to evaluationsRepository.listClassEvaluations(it.id) }
@@ -79,7 +119,7 @@ class DashboardOperationalRepositoryDefault(
         val todayEvents = calendarRepository.listEvents(classId = null)
             .asSequence()
             .filter { event -> event.startAt >= dayStart && event.startAt < dayEnd }
-            .filter { event -> filters.classId == null || event.classId == filters.classId }
+            .filter { event -> scopedClassId == null || event.classId == scopedClassId }
             .map { event ->
                 val start = event.startAt.toLocalDateTime(tz)
                 val end = event.endAt.toLocalDateTime(tz)
@@ -204,12 +244,17 @@ class DashboardOperationalRepositoryDefault(
         }
 
         val filteredAlerts = alerts
-            .filter { filters.classId == null || it.classId == filters.classId }
+            .filter { scopedClassId == null || it.classId == scopedClassId }
             .filter { filters.severity.isNullOrBlank() || it.severity.equals(filters.severity, ignoreCase = true) }
             .filter { filters.priority.isNullOrBlank() || it.priority.equals(filters.priority, ignoreCase = true) }
+            // En Clase solo cabe lo urgente: con el grupo delante no se revisan
+            // avisos de prioridad media ni recordatorios de papeleo.
+            .filter { !isClassroom || severityScore(it.severity) >= 3 || priorityScore(it.priority) >= 3 }
             .sortedWith(compareByDescending<AlertItem> { priorityScore(it.priority) }.thenByDescending { severityScore(it.severity) }.thenBy { it.title })
 
-        val groupSummaries = targetClasses.map { schoolClass ->
+        // El resumen por grupo compara grupos entre sí: es trabajo de despacho.
+        // En Clase no se calcula, para no pagar el coste ni ofrecer la tarjeta.
+        val groupSummaries = if (isClassroom) emptyList() else targetClasses.map { schoolClass ->
             val classId = schoolClass.id
             val students = studentsByClass[classId].orEmpty()
             val grades = gradesByClass[classId].orEmpty().filter { it.value != null }
@@ -271,8 +316,8 @@ class DashboardOperationalRepositoryDefault(
                 navigationKind = "none",
             )
         }
-        val plannerAgenda = plannerRepository.listSessionsInRange(
-            groupId = filters.classId,
+        val plannerAgenda = if (isClassroom) emptyList() else plannerRepository.listSessionsInRange(
+            groupId = scopedClassId,
             fromDate = date,
             toDate = date.plus(1, DateTimeUnit.DAY)
         ).mapIndexed { index, session ->
@@ -287,7 +332,14 @@ class DashboardOperationalRepositoryDefault(
                 navigationKind = "none",
             )
         }
-        val agendaItems = (sessionAgenda + plannerAgenda + pendingAgenda).distinctBy { it.id }.take(12)
+        // La agenda docente es la vista de la semana: en Clase se queda en las
+        // sesiones de hoy del grupo que tengo delante, sin recordatorios ni
+        // revisiones del Planner, que son horizonte de despacho.
+        val agendaItems = if (isClassroom) {
+            sessionAgenda
+        } else {
+            (sessionAgenda + plannerAgenda + pendingAgenda).distinctBy { it.id }.take(12)
+        }
 
         val quickColumns = evaluationsByClass.values.flatten()
             .sortedByDescending { it.trace.updatedAt }
@@ -309,17 +361,25 @@ class DashboardOperationalRepositoryDefault(
             since = dateMinus7,
         )
 
-        val nextSession = calendarRepository.listEvents(classId = filters.classId)
+        val nextSession = calendarRepository.listEvents(classId = scopedClassId)
             .filter { it.startAt >= now }
             .sortedBy { it.startAt }
             .firstOrNull()
 
         return DashboardSnapshot(
             mode = mode,
+            currentContext = currentContext,
             filters = filters,
             todayCount = filteredTodaySessions.size,
             alertsCount = filteredAlerts.size,
-            pendingCount = agendaItems.count { it.status.equals("pendiente", ignoreCase = true) },
+            // En Clase la agenda ya no lleva recordatorios, así que el contador
+            // de pendientes se toma de los avisos urgentes del grupo en vez de
+            // quedarse siempre a cero.
+            pendingCount = if (isClassroom) {
+                filteredAlerts.count { priorityScore(it.priority) >= 3 }
+            } else {
+                agendaItems.count { it.status.equals("pendiente", ignoreCase = true) }
+            },
             nextSessionLabel = nextSession?.let { event ->
                 val local = event.startAt.toLocalDateTime(tz)
                 val className = classNameById[event.classId] ?: "Sin grupo"
@@ -333,6 +393,163 @@ class DashboardOperationalRepositoryDefault(
             agendaItems = agendaItems,
             peItems = peItems,
         )
+    }
+
+    /// Traducción a Kotlin de la resolución de "clase actual / siguiente" que
+    /// hasta ahora vivía solo en Swift (`MacDashboardView.context(for:...)` y
+    /// `nextContext(from:...)`), con la misma lógica: franja activa del día si
+    /// la hay, si no la siguiente franja de hoy, y si no la primera franja del
+    /// próximo día lectivo. Al vivir aquí, iPad y Mac comparten el resultado.
+    private suspend fun resolveCurrentContext(
+        date: LocalDate,
+        now: Instant,
+        tz: TimeZone,
+        classNameById: Map<Long, String>,
+        classCourseById: Map<Long, Int>,
+    ): DashboardSessionContext {
+        val schedule = runCatching { teacherScheduleRepository.getOrCreatePrimarySchedule() }.getOrNull()
+            ?: return DashboardSessionContext(status = DashboardSessionContextStatus.NO_SCHEDULE)
+        val slots = runCatching { teacherScheduleRepository.listScheduleSlots(schedule.id) }.getOrDefault(emptyList())
+        if (slots.isEmpty()) {
+            return DashboardSessionContext(status = DashboardSessionContextStatus.NO_SCHEDULE)
+        }
+        if (!isInsideSchoolYear(date, schedule)) {
+            return DashboardSessionContext(status = DashboardSessionContextStatus.OUTSIDE_SCHOOL_YEAR)
+        }
+
+        val activeWeekdays = parseWeekdays(schedule.activeWeekdaysCsv)
+        val today = date.dayOfWeek.isoDayNumber
+        val nowMinutes = now.toLocalDateTime(tz).let { it.hour * 60 + it.minute }
+        val sortedSlots = slots.sortedWith(compareBy({ it.dayOfWeek }, { it.startTime }, { it.endTime }))
+        val todayIsLective = activeWeekdays.isEmpty() || activeWeekdays.contains(today)
+
+        if (todayIsLective) {
+            val activeSlot = sortedSlots.firstOrNull { slot ->
+                slot.dayOfWeek == today && isNowInsideSlot(nowMinutes, slot)
+            }
+            if (activeSlot != null) {
+                return buildSessionContext(
+                    slot = activeSlot,
+                    status = DashboardSessionContextStatus.ACTIVE,
+                    date = date,
+                    classNameById = classNameById,
+                    classCourseById = classCourseById,
+                    includeSession = true,
+                )
+            }
+
+            val nextTodaySlot = sortedSlots.firstOrNull { slot ->
+                slot.dayOfWeek == today && (parseMinutes(slot.startTime) ?: Int.MIN_VALUE) > nowMinutes
+            }
+            if (nextTodaySlot != null) {
+                return buildSessionContext(
+                    slot = nextTodaySlot,
+                    status = DashboardSessionContextStatus.NEXT_TODAY,
+                    date = date,
+                    classNameById = classNameById,
+                    classCourseById = classCourseById,
+                    includeSession = true,
+                )
+            }
+        }
+
+        for (offset in 1..7) {
+            val candidateDate = date.plus(offset, DateTimeUnit.DAY)
+            val candidateDay = candidateDate.dayOfWeek.isoDayNumber
+            if (activeWeekdays.isNotEmpty() && !activeWeekdays.contains(candidateDay)) continue
+            val slot = sortedSlots.firstOrNull { it.dayOfWeek == candidateDay } ?: continue
+            return buildSessionContext(
+                slot = slot,
+                status = DashboardSessionContextStatus.NEXT_OTHER_DAY,
+                date = candidateDate,
+                classNameById = classNameById,
+                classCourseById = classCourseById,
+                includeSession = false,
+            )
+        }
+
+        return DashboardSessionContext(status = DashboardSessionContextStatus.NO_SCHEDULE)
+    }
+
+    private suspend fun buildSessionContext(
+        slot: TeacherScheduleSlot,
+        status: DashboardSessionContextStatus,
+        date: LocalDate,
+        classNameById: Map<Long, String>,
+        classCourseById: Map<Long, Int>,
+        includeSession: Boolean,
+    ): DashboardSessionContext {
+        val classId = slot.schoolClassId
+        val session = if (includeSession) {
+            runCatching {
+                plannerRepository.listSessionsInRange(
+                    groupId = classId,
+                    fromDate = date,
+                    toDate = date,
+                )
+            }.getOrDefault(emptyList()).firstOrNull { it.dayOfWeek == slot.dayOfWeek }
+        } else {
+            null
+        }
+
+        val journalLabel = session?.let { planned ->
+            val summary = runCatching {
+                sessionJournalRepository.listSummariesForSessions(listOf(planned.id)).firstOrNull()
+            }.getOrNull()
+            when (summary?.status) {
+                SessionJournalStatus.COMPLETED -> "Diario cerrado"
+                SessionJournalStatus.DRAFT -> "Diario en borrador"
+                else -> null
+            }
+        }
+
+        val subtitle = listOfNotNull(
+            session?.objectives?.takeIf { it.isNotBlank() },
+            session?.activities?.takeIf { it.isNotBlank() },
+        ).joinToString(" · ")
+
+        return DashboardSessionContext(
+            status = status,
+            classId = classId,
+            className = classNameById[classId] ?: session?.groupName ?: "Grupo $classId",
+            subjectLabel = classCourseById[classId]?.let { "${it}º" } ?: slot.subjectLabel.takeIf { it.isNotBlank() },
+            unitLabel = session?.teachingUnitName?.takeIf { it.isNotBlank() } ?: slot.unitLabel?.takeIf { it.isNotBlank() },
+            startTime = slot.startTime,
+            endTime = slot.endTime,
+            dayOfWeek = slot.dayOfWeek,
+            scheduleSlotId = slot.id,
+            sessionId = session?.id,
+            sessionTitle = session?.teachingUnitName?.takeIf { it.isNotBlank() },
+            sessionSubtitle = subtitle.takeIf { it.isNotBlank() },
+            sessionStatusLabel = session?.let {
+                if (it.status == SessionStatus.COMPLETED) "Impartida" else "Planificada"
+            } ?: journalLabel,
+            isFromPlannedSession = session != null,
+        )
+    }
+
+    private fun isInsideSchoolYear(date: LocalDate, schedule: TeacherSchedule): Boolean {
+        val start = runCatching { LocalDate.parse(schedule.startDateIso.take(10)) }.getOrNull()
+        val end = runCatching { LocalDate.parse(schedule.endDateIso.take(10)) }.getOrNull()
+        if (start == null || end == null) return true
+        return date >= start && date <= end
+    }
+
+    private fun parseWeekdays(csv: String): Set<Int> =
+        csv.split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
+
+    private fun parseMinutes(time: String): Int? {
+        val parts = time.split(":")
+        if (parts.size < 2) return null
+        val hour = parts[0].trim().toIntOrNull() ?: return null
+        val minute = parts[1].trim().toIntOrNull() ?: return null
+        return hour * 60 + minute
+    }
+
+    private fun isNowInsideSlot(nowMinutes: Int, slot: TeacherScheduleSlot): Boolean {
+        val start = parseMinutes(slot.startTime) ?: return false
+        val end = parseMinutes(slot.endTime) ?: return false
+        return nowMinutes in start..end
     }
 
     private fun resolveAgendaNavigationTargets(

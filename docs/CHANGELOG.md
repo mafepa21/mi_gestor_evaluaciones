@@ -13,6 +13,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Data
+
+- Sync LAN (helper macOS): `SqlDelightSyncAdapter` no compilaba. Las consultas de instrumentos
+  estructurados llamaban a una propiedad `db` que no existe en esa clase (solo tiene `container`),
+  y serializaban `value_number` (REAL) como si fuera texto. `:data:compileKotlinDesktop` fallaba y
+  con él el target `MiGestorKMPMac`, porque el helper Command Center va embebido en la app de Mac.
+  Corregido a `container.database.appDatabaseQueries` y con la conversión explícita del número.
+
 ### Fixed
 
 - **Sincronización SyncLAN de Instrumentos Estructurados e Integración de Criterios en iPad/Mac**:

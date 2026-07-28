@@ -15,9 +15,17 @@ El formato sigue una variante practica de Keep a Changelog:
 
 Cambios posteriores a `v0.3.0-traceability-baseline`.
 
+### Changed
+
+- Dashboard: el modo `Clase`/`Despacho` deja de ser decorativo. Hasta ahora `DashboardOperationalRepositoryDefault.getSnapshot` recibía `mode: DashboardMode` y **no lo usaba en ninguna consulta ni filtro**: solo lo copiaba al `DashboardSnapshot` devuelto, así que los dos modos producían exactamente los mismos datos y la única diferencia visible en toda la app era el orden de las cinco tarjetas secundarias en `DashboardView.dashboardSecondaryGrid` (iPad). Ahora el modo decide el **alcance** y el **horizonte**: en `CLASSROOM` el snapshot se limita al grupo que se está impartiendo (deducido de `currentContext` cuando no hay filtro explícito de clase), deja fuera el resumen por grupo, las revisiones del Planner y los recordatorios de la agenda, y solo conserva los avisos urgentes (severidad o prioridad alta); en `OFFICE` se mantiene el comportamiento anterior, con todos los grupos y el trabajo acumulado. El contador de pendientes en `CLASSROOM` pasa a contar avisos urgentes del grupo en vez de quedarse a cero al vaciarse la agenda.
+
 ### Added
 
 - Dashboard: el `DashboardSnapshot` compartido incorpora `currentContext` (`DashboardSessionContext` + `DashboardSessionContextStatus`), el contexto de "qué clase tengo ahora o cuál es la siguiente". Hasta ahora esa resolución solo existía en Swift y solo en macOS (`MacDashboardView.context(for:)` / `nextContext(from:)`, sobre el modelo privado `CurrentClassDashboardContext`), así que el dashboard de iPad no podía enseñar la tarjeta "Ahora". Se traduce a Kotlin en `DashboardOperationalRepositoryDefault` con la misma lógica que tenía el Mac: franja activa del horario fijo del profesor si la hay, si no la siguiente franja de hoy, y si no la primera franja del próximo día lectivo, enriquecida con la sesión planificada del Planner y la etiqueta del diario de sesión. Se distinguen además los estados sin horario configurado y fuera del curso escolar, que antes solo el Mac sabía detectar. Requiere ampliar `kmp/shared/domain/Models.kt` (archivo protegido) con un campo aditivo de valor por defecto `null`, sin migración de datos ni cambio de firma en lo existente, autorizado explícitamente por el usuario.
+
+### Verification
+
+- Nuevo `DashboardOperationalRepositoryModeTest` (`kmp/data/src/desktopTest/`): 4 pruebas que fijan que `Clase` y `Despacho` ya no devuelven lo mismo (alcance por grupo, resumen por grupo solo en Despacho, avisos urgentes solo en Clase) y que el contexto de clase actual se resuelve desde el horario del profesor. Ejecutadas en verde con `./gradlew :data:desktopTest`.
 
 ### Docs
 

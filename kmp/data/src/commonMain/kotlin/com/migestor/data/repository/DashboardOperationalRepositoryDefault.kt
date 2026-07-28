@@ -86,7 +86,23 @@ class DashboardOperationalRepositoryDefault(
             classCourseById = classCourseById,
         )
 
-        val targetClasses = filters.classId?.let { id -> allClasses.filter { it.id == id } } ?: allClasses
+        // El modo dejaba de ser decorativo aquí: hasta ahora `mode` entraba
+        // como parámetro y solo se copiaba al snapshot devuelto, así que Clase
+        // y Despacho producían exactamente los mismos datos y solo se
+        // distinguían por el orden de las tarjetas en la interfaz de iPad.
+        //
+        // Ahora el modo decide el ALCANCE (cuántos grupos) y el HORIZONTE
+        // (cuánto tiempo por delante):
+        //  - CLASSROOM: solo el grupo que tengo delante, solo lo urgente.
+        //  - OFFICE: todos los grupos, el trabajo acumulado de la semana.
+        val classroomClassId = filters.classId ?: currentContext.classId?.takeIf {
+            currentContext.status == DashboardSessionContextStatus.ACTIVE ||
+                currentContext.status == DashboardSessionContextStatus.NEXT_TODAY
+        }
+        val isClassroom = mode == DashboardMode.CLASSROOM
+        val scopedClassId = if (isClassroom) classroomClassId else filters.classId
+
+        val targetClasses = scopedClassId?.let { id -> allClasses.filter { it.id == id } } ?: allClasses
         val studentsByClass = targetClasses.associate { it.id to classesRepository.listStudentsInClass(it.id) }
         val gradesByClass = targetClasses.associate { it.id to gradesRepository.listGradesForClass(it.id) }
         val evaluationsByClass = targetClasses.associate { it.id to evaluationsRepository.listClassEvaluations(it.id) }
@@ -103,7 +119,7 @@ class DashboardOperationalRepositoryDefault(
         val todayEvents = calendarRepository.listEvents(classId = null)
             .asSequence()
             .filter { event -> event.startAt >= dayStart && event.startAt < dayEnd }
-            .filter { event -> filters.classId == null || event.classId == filters.classId }
+            .filter { event -> scopedClassId == null || event.classId == scopedClassId }
             .map { event ->
                 val start = event.startAt.toLocalDateTime(tz)
                 val end = event.endAt.toLocalDateTime(tz)
@@ -228,12 +244,17 @@ class DashboardOperationalRepositoryDefault(
         }
 
         val filteredAlerts = alerts
-            .filter { filters.classId == null || it.classId == filters.classId }
+            .filter { scopedClassId == null || it.classId == scopedClassId }
             .filter { filters.severity.isNullOrBlank() || it.severity.equals(filters.severity, ignoreCase = true) }
             .filter { filters.priority.isNullOrBlank() || it.priority.equals(filters.priority, ignoreCase = true) }
+            // En Clase solo cabe lo urgente: con el grupo delante no se revisan
+            // avisos de prioridad media ni recordatorios de papeleo.
+            .filter { !isClassroom || severityScore(it.severity) >= 3 || priorityScore(it.priority) >= 3 }
             .sortedWith(compareByDescending<AlertItem> { priorityScore(it.priority) }.thenByDescending { severityScore(it.severity) }.thenBy { it.title })
 
-        val groupSummaries = targetClasses.map { schoolClass ->
+        // El resumen por grupo compara grupos entre sí: es trabajo de despacho.
+        // En Clase no se calcula, para no pagar el coste ni ofrecer la tarjeta.
+        val groupSummaries = if (isClassroom) emptyList() else targetClasses.map { schoolClass ->
             val classId = schoolClass.id
             val students = studentsByClass[classId].orEmpty()
             val grades = gradesByClass[classId].orEmpty().filter { it.value != null }
@@ -295,8 +316,8 @@ class DashboardOperationalRepositoryDefault(
                 navigationKind = "none",
             )
         }
-        val plannerAgenda = plannerRepository.listSessionsInRange(
-            groupId = filters.classId,
+        val plannerAgenda = if (isClassroom) emptyList() else plannerRepository.listSessionsInRange(
+            groupId = scopedClassId,
             fromDate = date,
             toDate = date.plus(1, DateTimeUnit.DAY)
         ).mapIndexed { index, session ->
@@ -311,7 +332,14 @@ class DashboardOperationalRepositoryDefault(
                 navigationKind = "none",
             )
         }
-        val agendaItems = (sessionAgenda + plannerAgenda + pendingAgenda).distinctBy { it.id }.take(12)
+        // La agenda docente es la vista de la semana: en Clase se queda en las
+        // sesiones de hoy del grupo que tengo delante, sin recordatorios ni
+        // revisiones del Planner, que son horizonte de despacho.
+        val agendaItems = if (isClassroom) {
+            sessionAgenda
+        } else {
+            (sessionAgenda + plannerAgenda + pendingAgenda).distinctBy { it.id }.take(12)
+        }
 
         val quickColumns = evaluationsByClass.values.flatten()
             .sortedByDescending { it.trace.updatedAt }
@@ -333,7 +361,7 @@ class DashboardOperationalRepositoryDefault(
             since = dateMinus7,
         )
 
-        val nextSession = calendarRepository.listEvents(classId = filters.classId)
+        val nextSession = calendarRepository.listEvents(classId = scopedClassId)
             .filter { it.startAt >= now }
             .sortedBy { it.startAt }
             .firstOrNull()
@@ -344,7 +372,14 @@ class DashboardOperationalRepositoryDefault(
             filters = filters,
             todayCount = filteredTodaySessions.size,
             alertsCount = filteredAlerts.size,
-            pendingCount = agendaItems.count { it.status.equals("pendiente", ignoreCase = true) },
+            // En Clase la agenda ya no lleva recordatorios, así que el contador
+            // de pendientes se toma de los avisos urgentes del grupo en vez de
+            // quedarse siempre a cero.
+            pendingCount = if (isClassroom) {
+                filteredAlerts.count { priorityScore(it.priority) >= 3 }
+            } else {
+                agendaItems.count { it.status.equals("pendiente", ignoreCase = true) }
+            },
             nextSessionLabel = nextSession?.let { event ->
                 val local = event.startAt.toLocalDateTime(tz)
                 val className = classNameById[event.classId] ?: "Sin grupo"

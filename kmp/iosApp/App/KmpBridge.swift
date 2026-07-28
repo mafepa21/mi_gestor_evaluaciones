@@ -6629,7 +6629,7 @@ final class KmpBridge: ObservableObject {
         let grades = try await container.gradesRepository.listGradesForClass(classId: classId)
 
         let physicalEvaluations = evaluations.filter { evaluation in
-            let normalized = "\(evaluation.type) \(evaluation.name) \(evaluation.description)".lowercased()
+            let normalized = "\(evaluation.type) \(evaluation.name) \(evaluation.description_ ?? "")".lowercased()
             return normalized.contains("physical")
                 || normalized.contains("física")
                 || normalized.contains("fisica")
@@ -9403,7 +9403,11 @@ final class KmpBridge: ObservableObject {
                     "weight": evaluation.weight,
                     "formula": evaluation.formula ?? "",
                     "rubricId": evaluation.rubricId?.int64Value ?? 0,
-                    "description": evaluation.description
+                    // `description` a secas es el `description` de NSObject (el toString del
+                    // objeto Kotlin, "Evaluation(id=…, code=…)"); el campo real del dominio se
+                    // expone en Swift como `description_`. Enviar el primero sincronizaba ese
+                    // volcado como si fuera la descripción del criterio de evaluación.
+                    "description": evaluation.description_ ?? ""
                 ],
                 shouldPersist: false,
                 shouldScheduleAutoSync: false

@@ -55,6 +55,15 @@ El formato sigue una variante practica de Keep a Changelog:
   su código, su nombre o la unidad/situación; si no hay nada real, no se muestra la línea. Además
   el mismo bloque se pintaba dos veces seguidas, en la cabecera de la hoja y otra vez en
   `ObservationGridInstrumentContent`: se deja solo el de la cabecera.
+- Sync LAN: `enqueueNotebookSnapshot` enviaba `"description": evaluation.description`. En Swift
+  `description` es el de `NSObject` (el `toString` del objeto Kotlin,
+  `Evaluation(id=…, code=…, …)`); el campo real del dominio se expone como `description_`, que es
+  lo que usa el resto del bridge. Comprobado en el Simulador: `evaluation.description` devuelve
+  literalmente `Evaluation(id=3, classId=1, code=CE 3.2, …)`. Cada sincronización mandaba ese
+  volcado como si fuera la descripción del criterio de evaluación, machacándola en el dispositivo
+  receptor. Bug preexistente (viene del snapshot inicial), no introducido por los commits de
+  instrumentos, pero afecta justo al texto del criterio. Mismo arreglo en el filtro de pruebas
+  físicas, que también normalizaba sobre el volcado.
 
 
 ### Fixed

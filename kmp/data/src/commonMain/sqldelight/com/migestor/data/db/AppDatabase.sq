@@ -1888,6 +1888,28 @@ deleteInstrumentByColumn:
 DELETE FROM notebook_instrument_templates
 WHERE column_id = ?;
 
+selectAllInstrumentTemplatesByClass:
+SELECT id, class_id, column_id, evaluation_id, title, kind, input_kind, source, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_instrument_templates
+WHERE class_id = ?;
+
+selectAllInstrumentResponsesByClass:
+SELECT class_id, student_id, column_id, item_id, value_text, value_bool, value_number, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_instrument_responses
+WHERE class_id = ?;
+
+deleteInstrumentTemplateById:
+DELETE FROM notebook_instrument_templates
+WHERE id = ?;
+
+deleteInstrumentItemById:
+DELETE FROM notebook_instrument_items
+WHERE id = ?;
+
+deleteInstrumentResponseById:
+DELETE FROM notebook_instrument_responses
+WHERE class_id = ? AND student_id = ? AND column_id = ? AND item_id = ?;
+
 CREATE TABLE IF NOT EXISTS notebook_tabs (
     id          TEXT NOT NULL PRIMARY KEY,
     class_id    INTEGER NOT NULL,

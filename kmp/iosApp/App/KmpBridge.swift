@@ -14,6 +14,7 @@ struct StructuredInstrumentEvaluationModel: Identifiable {
     let columnId: String
     let title: String
     let kind: NotebookInstrumentTemplateKind
+    let criterionLabel: String?
     var items: [StructuredInstrumentEvaluationItem]
 }
 
@@ -7229,7 +7230,7 @@ final class KmpBridge: ObservableObject {
                 // afecta a entidades del cuaderno (grades, columnas, celdas, rúbricas).
                 // Esto evita recargas innecesarias cuando solo cambian clases o alumnos.
                 let notebookEntityTypes: Set<String> = [
-                    "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell", "rubric_assessment", "student", "class", "class_roster", "evaluation", "notebook_group", "notebook_group_member"
+                    "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell", "rubric_assessment", "student", "class", "class_roster", "evaluation", "notebook_group", "notebook_group_member", "notebook_instrument_template", "notebook_instrument_item", "notebook_instrument_response"
                 ]
                 let hasNotebookChangesFromRemote = capturedChanges.contains {
                     notebookEntityTypes.contains($0.entity) && $0.deviceId != capturedLocalDeviceId
@@ -8203,9 +8204,123 @@ final class KmpBridge: ObservableObject {
         studentId: Int64,
         columnId: String
     ) async throws -> StructuredInstrumentEvaluationModel? {
-        guard let detail = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId) else {
+        var detail = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId)
+        let columns = try await container.notebookConfigRepository.listColumns(classId: classId)
+        let column = columns.first(where: { $0.id == columnId })
+
+        if detail == nil, let column {
+            let titleLower = column.title.lowercased()
+            if column.inputKind.isStructuredInstrument || column.instrumentKind == .systematicObservation || titleLower.contains("rejilla") || titleLower.contains("observación") {
+                let templateId = "template_\(columnId)"
+                let isObs = column.inputKind == .structuredObservation || column.instrumentKind == .systematicObservation || titleLower.contains("rejilla") || titleLower.contains("observación")
+                let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+                let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+
+                let template = NotebookInstrumentTemplate(
+                    id: templateId,
+                    classId: classId,
+                    columnId: columnId,
+                    evaluationId: column.evaluationId,
+                    title: column.title,
+                    kind: isObs ? .observation : .form,
+                    inputKind: isObs ? .structuredObservation : column.inputKind,
+                    source: "auto_repair",
+                    trace: AuditTrace(
+                        authorUserId: nil,
+                        createdAt: nowInstant,
+                        updatedAt: nowInstant,
+                        associatedGroupId: KotlinLong(value: classId),
+                        deviceId: localDeviceId,
+                        syncVersion: 1
+                    )
+                )
+
+                var items: [NotebookInstrumentItem] = []
+                if isObs {
+                    let sessions = [
+                        "Semana 4, bloque corto - juegos condicionados",
+                        "Semana 5, bloque corto - partido de disfrute",
+                        "Semana 5, bloque largo - aplicación en el reto final"
+                    ]
+                    let indicators = [
+                        "Usa 2 golpeos distintos",
+                        "Elige el golpeo adecuado",
+                        "Comunicación en juego",
+                        "Conducta segura en pista"
+                    ]
+                    var itemIdx = 0
+                    for (sIdx, session) in sessions.enumerated() {
+                        for (iIdx, indicator) in indicators.enumerated() {
+                            itemIdx += 1
+                            items.append(NotebookInstrumentItem(
+                                id: "\(templateId)_item_\(itemIdx)",
+                                templateId: templateId,
+                                key: "obs_s\(sIdx)_i\(iIdx)",
+                                title: "\(session) · \(indicator)",
+                                type: .scale14,
+                                options: [],
+                                required: true,
+                                order: Int32(itemIdx),
+                                helpText: nil,
+                                trace: AuditTrace(
+                                    authorUserId: nil,
+                                    createdAt: nowInstant,
+                                    updatedAt: nowInstant,
+                                    associatedGroupId: KotlinLong(value: classId),
+                                    deviceId: localDeviceId,
+                                    syncVersion: 1
+                                )
+                            ))
+                        }
+                    }
+                } else {
+                    items = [
+                        NotebookInstrumentItem(
+                            id: "\(templateId)_item_1",
+                            templateId: templateId,
+                            key: "item_1",
+                            title: "Indicador principal de evaluación",
+                            type: .scale14,
+                            options: [],
+                            required: true,
+                            order: 1,
+                            helpText: nil,
+                            trace: AuditTrace(
+                                authorUserId: nil,
+                                createdAt: nowInstant,
+                                updatedAt: nowInstant,
+                                associatedGroupId: KotlinLong(value: classId),
+                                deviceId: localDeviceId,
+                                syncVersion: 1
+                            )
+                        )
+                    ]
+                }
+
+                try? await container.notebookInstrumentsRepository.saveTemplate(template: template, items: items)
+                detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId)
+            }
+        }
+
+        guard let detail else {
             return nil
         }
+
+        var criterionLabel: String? = nil
+        if let evalId = column?.evaluationId?.int64Value {
+            if let evaluation = try? await container.evaluationsRepository.getEvaluation(evaluationId: evalId) {
+                if let desc = evaluation.description_, !desc.isEmpty {
+                    criterionLabel = desc
+                }
+            }
+        }
+        if (criterionLabel == nil || criterionLabel?.isEmpty == true), let criteriaIds = column?.competencyCriteriaIds, !criteriaIds.isEmpty {
+            criterionLabel = criteriaIds.map { "CE \($0.int64Value)" }.joined(separator: " · ")
+        }
+        if (criterionLabel == nil || criterionLabel?.isEmpty == true), let unit = column?.unitOrSituation, !unit.isEmpty {
+            criterionLabel = unit
+        }
+
         let responses = try await container.notebookInstrumentsRepository.listResponsesForCell(
             classId: classId,
             studentId: studentId,
@@ -8231,6 +8346,7 @@ final class KmpBridge: ObservableObject {
             columnId: columnId,
             title: detail.template_.title,
             kind: detail.template_.kind,
+            criterionLabel: criterionLabel,
             items: items
         )
     }
@@ -10152,6 +10268,130 @@ final class KmpBridge: ObservableObject {
                     associatedGroupId: nil
                 )
 
+            case "notebook_instrument_template":
+                guard
+                    let id = payloadObject["id"] as? String,
+                    let classId = int64Value(payloadObject["classId"]),
+                    let columnId = payloadObject["columnId"] as? String,
+                    let title = payloadObject["title"] as? String
+                else { continue }
+
+                let kindStr = (payloadObject["kind"] as? String) ?? "observation"
+                let inputKindStr = (payloadObject["inputKind"] as? String) ?? "structuredObservation"
+                let kind = notebookInstrumentTemplateKind(kindStr)
+                let inputKind = notebookInputKind(inputKindStr)
+                let evaluationId = int64Value(payloadObject["evaluationId"]).flatMap { $0 > 0 ? KotlinLong(value: $0) : nil }
+                let source = payloadObject["source"] as? String
+                let createdAtMs = int64Value(payloadObject["createdAtEpochMs"]) ?? change.updatedAtEpochMs
+                let createdAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: createdAtMs)
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+
+                let template = NotebookInstrumentTemplate(
+                    id: id,
+                    classId: classId,
+                    columnId: columnId,
+                    evaluationId: evaluationId,
+                    title: title,
+                    kind: kind,
+                    inputKind: inputKind,
+                    source: source,
+                    trace: AuditTrace(
+                        authorUserId: nil,
+                        createdAt: createdAt,
+                        updatedAt: updatedAt,
+                        associatedGroupId: KotlinLong(value: classId),
+                        deviceId: change.deviceId,
+                        syncVersion: 1
+                    )
+                )
+                let existingItems = (try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId))?.items ?? []
+                try await container.notebookInstrumentsRepository.saveTemplate(template: template, items: existingItems)
+
+            case "notebook_instrument_item":
+                guard
+                    let id = payloadObject["id"] as? String,
+                    let templateId = payloadObject["templateId"] as? String,
+                    let itemKey = payloadObject["itemKey"] as? String,
+                    let title = payloadObject["title"] as? String
+                else { continue }
+
+                let itemTypeStr = (payloadObject["itemType"] as? String) ?? "scale14"
+                let itemType = notebookInstrumentItemType(itemTypeStr)
+                let optionsCsv = (payloadObject["optionsCsv"] as? String) ?? ""
+                let options = optionsCsv.split(separator: "|").map(String.init).filter { !$0.isEmpty }
+                let required = boolValue(payloadObject["required"]) ?? true
+                let sortOrder = int64Value(payloadObject["sortOrder"]) ?? 0
+                let helpText = payloadObject["helpText"] as? String
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+
+                let item = NotebookInstrumentItem(
+                    id: id,
+                    templateId: templateId,
+                    key: itemKey,
+                    title: title,
+                    type: itemType,
+                    options: options,
+                    required: required,
+                    order: Int32(sortOrder),
+                    helpText: helpText?.isEmpty == true ? nil : helpText,
+                    trace: AuditTrace(
+                        authorUserId: nil,
+                        createdAt: updatedAt,
+                        updatedAt: updatedAt,
+                        associatedGroupId: nil,
+                        deviceId: change.deviceId,
+                        syncVersion: 1
+                    )
+                )
+                let targetColId = templateId.hasPrefix("template_") ? String(templateId.dropFirst(9)) : templateId
+                if var detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: targetColId) {
+                    var items = detail.items.filter { $0.id != id }
+                    items.append(item)
+                    items.sort { $0.order < $1.order }
+                    try await container.notebookInstrumentsRepository.saveTemplate(template: detail.template_, items: items)
+                }
+
+            case "notebook_instrument_response":
+                guard
+                    let classId = int64Value(payloadObject["classId"]),
+                    let studentId = int64Value(payloadObject["studentId"]),
+                    let columnId = payloadObject["columnId"] as? String,
+                    let itemId = payloadObject["itemId"] as? String
+                else { continue }
+
+                let textValue = payloadObject["valueText"] as? String
+                let boolVal = boolValue(payloadObject["valueBool"])
+                let numValue = (payloadObject["valueNumber"] as? String) ?? ""
+
+                var responses = (try? await container.notebookInstrumentsRepository.listResponsesForCell(classId: classId, studentId: studentId, columnId: columnId)) ?? []
+                responses.removeAll { $0.itemId == itemId }
+                responses.append(NotebookInstrumentResponse(
+                    classId: classId,
+                    studentId: studentId,
+                    columnId: columnId,
+                    itemId: itemId,
+                    textValue: textValue ?? "",
+                    boolValue: boolVal.map { KotlinBoolean(value: $0) },
+                    numberValue: numValue.isEmpty ? nil : KotlinDouble(value: Double(numValue) ?? 0.0),
+                    trace: AuditTrace(
+                        authorUserId: nil,
+                        createdAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs),
+                        updatedAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs),
+                        associatedGroupId: nil,
+                        deviceId: change.deviceId,
+                        syncVersion: 1
+                    )
+                ))
+                _ = try await container.notebookInstrumentsRepository.saveResponses(
+                    classId: classId,
+                    studentId: studentId,
+                    columnId: columnId,
+                    responses: responses,
+                    updatedAtEpochMs: change.updatedAtEpochMs,
+                    deviceId: change.deviceId,
+                    syncVersion: 1
+                )
+
             case "teaching_unit":
                 guard let name = payloadObject["name"] as? String else { continue }
                 let unit = TeachingUnit(
@@ -10627,6 +10867,29 @@ final class KmpBridge: ObservableObject {
             if !columnId.isEmpty {
                 try await container.notebookRepository.deleteColumn(columnId: columnId)
             }
+        case "notebook_instrument_template":
+            let templateId = (payloadObject["id"] as? String) ?? change.id
+            let columnId = templateId.hasPrefix("template_") ? String(templateId.dropFirst(9)) : templateId
+            if var detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId) {
+                try await container.notebookInstrumentsRepository.saveTemplate(template: detail.template_, items: [])
+            }
+        case "notebook_instrument_response":
+            if let classId = int64Value(payloadObject["classId"]),
+               let studentId = int64Value(payloadObject["studentId"]),
+               let columnId = payloadObject["columnId"] as? String,
+               let itemId = payloadObject["itemId"] as? String {
+                var responses = (try? await container.notebookInstrumentsRepository.listResponsesForCell(classId: classId, studentId: studentId, columnId: columnId)) ?? []
+                responses.removeAll { $0.itemId == itemId }
+                _ = try await container.notebookInstrumentsRepository.saveResponses(
+                    classId: classId,
+                    studentId: studentId,
+                    columnId: columnId,
+                    responses: responses,
+                    updatedAtEpochMs: change.updatedAtEpochMs,
+                    deviceId: change.deviceId,
+                    syncVersion: 1
+                )
+            }
         case "notebook_column_category":
             let categoryId = (payloadObject["id"] as? String) ?? change.id
             let classId = int64Value(payloadObject["classId"]) ?? notebookViewModel.currentClassId?.int64Value ?? 0
@@ -10739,11 +11002,11 @@ final class KmpBridge: ObservableObject {
             return 0
         case "class", "student", "rubric_bundle", "teaching_unit", "calendar_event", "teacher_schedule", "learning_situation":
             return 1
-        case "evaluation", "weekly_slot", "teacher_schedule_slot", "planner_evaluation_period", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member", "learning_situation_version", "learning_situation_class_link", "learning_situation_link":
+        case "evaluation", "weekly_slot", "teacher_schedule_slot", "planner_evaluation_period", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member", "learning_situation_version", "learning_situation_class_link", "learning_situation_link", "notebook_instrument_template":
             return 2
-        case "class_roster", "attendance", "incident":
+        case "class_roster", "attendance", "incident", "notebook_instrument_item":
             return 3
-        case "grade", "notebook_cell", "rubric_assessment", "planning_session":
+        case "grade", "notebook_cell", "rubric_assessment", "planning_session", "notebook_instrument_response":
             return 4
         case "student_deleted":
             return 5
@@ -11101,6 +11364,25 @@ final class KmpBridge: ObservableObject {
         case "HIDDEN": return .hidden
         case "ARCHIVED": return .archived
         default: return .visible
+        }
+    }
+
+    private func notebookInstrumentTemplateKind(_ raw: String?) -> NotebookInstrumentTemplateKind {
+        switch raw?.uppercased() {
+        case "CHECKLIST": return .checklist
+        case "OBSERVATION": return .observation
+        case "QUIZ": return .quiz
+        default: return .form
+        }
+    }
+
+    private func notebookInstrumentItemType(_ raw: String?) -> NotebookInstrumentItemType {
+        switch raw?.uppercased() {
+        case "CHECK": return .check
+        case "CHOICE": return .choice
+        case "NUMBER": return .number
+        case "TEXT": return .text
+        default: return .scale14
         }
     }
 

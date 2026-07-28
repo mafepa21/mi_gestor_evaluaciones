@@ -13,7 +13,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
-Cambios posteriores a `v0.3.0-traceability-baseline`.
+### Fixed
+
+- **Sincronización SyncLAN de Instrumentos Estructurados e Integración de Criterios en iPad/Mac**:
+  - Se añadieron las entidades `notebook_instrument_template`, `notebook_instrument_item` y `notebook_instrument_response` a los adaptadores de sincronización SyncLAN en Kotlin (`SqlDelightSyncAdapter.kt`) y Swift (`KmpBridge.swift`), permitiendo que las plantillas e indicadores creados en Mac se sincronicen correctamente al iPad y evitando la pantalla vacía "Sin plantilla".
+  - Se implementó un mecanismo de auto-recuperación en `KmpBridge.swift:loadStructuredInstrumentEvaluation` para sintetizar y persistir automáticamente la plantilla local si por algún motivo la sincronización sufriera retraso o faltase la plantilla estructurada en SQLite.
+  - Se incorporó la propiedad `criterionLabel` en `StructuredInstrumentEvaluationModel` y su renderizado en `StructuredInstrumentEvaluationSheet` (`NotebookStructuredInstrumentSupport.swift`), permitiendo ver de forma destacada el Criterio de Evaluación (ej. `CE 1.2 · CE 1.4` o `CE 2.1`) que se está evaluando dentro de la vista modal del instrumento.
+
 
 ### Docs
 

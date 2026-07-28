@@ -17,6 +17,8 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Docs
 
+- Nuevo `plan_unificacion_dashboard_2026-07-28.md`: plan para unificar el Dashboard de iPad y Mac y hacer real el modo Clase/Despacho. Documenta el hallazgo de partida — el selector segmentado del iPad **no cambia la información**: `DashboardOperationalRepositoryDefault.getSnapshot` recibe `mode: DashboardMode` y no lo usa en ninguna consulta (solo lo copia al snapshot devuelto), así que los dos modos producen el mismo `DashboardSnapshot` y lo único que varía es el orden de las cinco tarjetas secundarias en `DashboardView.dashboardSecondaryGrid`. El plan propone que el modo distinga por alcance y horizonte temporal (Clase = una sola clase y la sesión en curso; Despacho = todos los grupos, la semana y el trimestre), conmutación automática desde el horario, subir la tarjeta "Ahora" del Mac (`MacDashboardSnapshot`, modelo Swift paralelo que hoy duplica la carga de datos) al `DashboardSnapshot` compartido, y una sola composición de bloques para ambas plataformas. Incluye el motivo para tocar `kmp/shared/domain/Models.kt` (archivo protegido, campo `currentContext` aditivo) y por qué **no** hace falta tocar `KmpBridge.swift`.
+
 - Nuevo `plan_adaptacion_import_formato_semanal_2026-07-27.md`: continuación de `plan_correccion_import_sa_2026-07-25.md` con el diagnóstico y la verificación de los tres frentes de esta tanda (checklists ponderadas que bloqueaban el import, formato semanal BLOQUE LARGO/CORTO, peso porcentual en la cabecera), incluidos los motivos para tocar los dos archivos protegidos y lo que deliberadamente no se ha hecho (la colocación automática de las sesiones contra el horario del grupo, que es funcionalidad del Planner, no del importador).
 
 ### Changed

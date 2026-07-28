@@ -326,15 +326,14 @@ struct MacDashboardView: View {
                 return
             }
 
-            let context = snapshot?.currentContext
-            switch context?.status {
-            case .some(DashboardSessionContextStatus.outsideSchoolYear):
-                loadState = .empty(.outsideSchoolYear)
-            case .some(DashboardSessionContextStatus.noSchedule), .none:
-                loadState = .empty(.noScheduleConfigured)
-            default:
-                loadState = .ready(try await buildSnapshot(context: context))
-            }
+            // Sin horario o fuera del rango del curso ya NO vacían la página.
+            // Antes sí, y por eso el mismo estado se veía radicalmente distinto
+            // en las dos plataformas: macOS sustituía todo el dashboard por una
+            // tarjeta de aviso mientras iPad seguía enseñando alertas,
+            // pendientes y riesgo. Ese aviso lo da ahora la propia tarjeta
+            // "Ahora", igual que en iPad, y el resto del dashboard sigue ahí:
+            // el trabajo pendiente no deja de existir porque sea julio.
+            loadState = .ready(try await buildSnapshot(context: snapshot?.currentContext))
         } catch {
             loadState = .error("No se pudo cargar el dashboard: \(error.localizedDescription)")
         }
@@ -529,10 +528,11 @@ private enum MacDashboardLoadState {
     case error(String)
 }
 
+/// Única razón que justifica vaciar la página entera: sin clases no hay nada
+/// que enseñar. Sin horario o fuera de curso sí hay dashboard, y lo avisa la
+/// tarjeta "Ahora".
 private enum MacDashboardEmptyReason {
-    case noScheduleConfigured
     case noClasses
-    case outsideSchoolYear
 }
 
 private struct MacDashboardSnapshot {
@@ -1093,72 +1093,46 @@ private struct DashboardEmptyStateView: View {
 
     private var title: String {
         switch reason {
-        case .noScheduleConfigured: return "Agenda docente pendiente"
         case .noClasses: return "Sin clases"
-        case .outsideSchoolYear: return "Fuera del rango del curso"
         }
     }
 
     private var message: String {
         switch reason {
-        case .noScheduleConfigured:
-            return "Configura tu horario docente para mostrar la clase activa."
-        case .noClasses:
-            return "Todavía no hay clases creadas."
-        case .outsideSchoolYear:
-            return "Estás fuera del rango del curso configurado."
+        case .noClasses: return "Todavía no hay clases creadas."
         }
     }
 
     private var buttonTitle: String {
         switch reason {
-        case .noScheduleConfigured: return "Configurar horario"
         case .noClasses: return "Crear clase"
-        case .outsideSchoolYear: return "Editar agenda docente"
         }
     }
 
     private var destination: MacDashboardDestination {
         switch reason {
-        case .noScheduleConfigured, .outsideSchoolYear:
-            return .plannerAgenda
-        case .noClasses:
-            return .students(classId: nil)
+        case .noClasses: return .students(classId: nil)
         }
     }
 
     private var systemImage: String {
         switch reason {
-        case .noScheduleConfigured, .outsideSchoolYear: return "calendar.badge.exclamationmark"
         case .noClasses: return "person.3.sequence"
         }
     }
 
     private var tint: Color {
         switch reason {
-        case .noScheduleConfigured, .outsideSchoolYear: return MacAppStyle.warningTint
         case .noClasses: return MacAppStyle.infoTint
         }
     }
 
     private var actions: [DashboardEmptyAction] {
         switch reason {
-        case .noScheduleConfigured:
-            return [
-                .init(title: "Planificar horario", subtitle: "Crear franjas para activar Hoy.", systemImage: "calendar.badge.plus", destination: .plannerAgenda, tint: MacAppStyle.warningTint),
-                .init(title: "Abrir cuaderno", subtitle: "Revisar notas aunque no haya sesión.", systemImage: "tablecells", destination: .notebook(classId: nil), tint: MacAppStyle.infoTint),
-                .init(title: "Pasar asistencia", subtitle: "Entrar manualmente si ya hay grupo.", systemImage: "checklist.checked", destination: .attendance(classId: nil), tint: MacAppStyle.successTint),
-                .init(title: "Revisar alumnado", subtitle: "Perfiles, observaciones y seguimiento.", systemImage: "person.3.sequence", destination: .students(classId: nil), tint: MacAppStyle.infoTint)
-            ]
         case .noClasses:
             return [
                 .init(title: "Crear grupo", subtitle: "Empieza por el alumnado y sus clases.", systemImage: "person.3.sequence", destination: .students(classId: nil), tint: MacAppStyle.infoTint),
                 .init(title: "Preparar agenda", subtitle: "Define el marco del curso.", systemImage: "calendar", destination: .plannerAgenda, tint: MacAppStyle.warningTint)
-            ]
-        case .outsideSchoolYear:
-            return [
-                .init(title: "Editar agenda", subtitle: "Ajustar fechas del curso activo.", systemImage: "calendar.badge.clock", destination: .plannerAgenda, tint: MacAppStyle.warningTint),
-                .init(title: "Abrir informes", subtitle: "Consultar datos ya registrados.", systemImage: "doc.text.image", destination: .reports(classId: nil), tint: MacAppStyle.infoTint)
             ]
         }
     }

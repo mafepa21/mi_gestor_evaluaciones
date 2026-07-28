@@ -15,6 +15,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 Cambios posteriores a `v0.3.0-traceability-baseline`.
 
+### Fixed
+
+- Dashboard (macOS): sin horario configurado o fuera del rango del curso, el Mac sustituía **todo** el dashboard por una única tarjeta de aviso (`loadState = .empty(...)`), mientras iPad seguía enseñando KPIs, alertas, pendientes y riesgo. Con el mismo estado y los mismos datos, las dos plataformas se veían radicalmente distintas. Ahora esos dos estados ya no vacían la página: el aviso lo da la propia tarjeta "Ahora", igual que en iPad, y el resto del dashboard sigue disponible, porque el trabajo pendiente no desaparece por estar en vacaciones. La única razón que sigue vaciando la página es no tener ninguna clase creada.
+- Dashboard: en los estados sin horario o fuera de curso, la tarjeta "Ahora" mostraba sus botones de acción en gris y deshabilitados (no hay grupo al que apuntar), o sea un callejón sin salida. Ahora esos estados muestran un aviso con su salida real: "Configurar horario" o "Editar agenda docente".
+
 ### Changed
 
 - Dashboard unificado entre iPad y Mac. **iPad gana la tarjeta "Ahora"** (qué clase tengo delante, qué sesión toca y las acciones del aula), que hasta ahora solo existía en macOS. **Mac gana el selector de modo**, que hasta ahora no tenía: su dashboard estaba fijado a Despacho con `refreshDashboard(mode: .office)` escrito a mano. Las dos plataformas pintan ahora el mismo cuerpo de tarjeta desde `dashboardNowCard` en la capa compartida (`DashboardSharedBlocks.swift`); macOS solo conserva su propio marco (`MacPanel` con cristal líquido) y iPad el suyo, porque forzar un único cromado habría sido una regresión visual, no una unificación.

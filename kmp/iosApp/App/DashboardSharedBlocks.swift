@@ -357,13 +357,20 @@ func dashboardNowCard(
                     .foregroundStyle(tint)
             }
 
-            if context.isFromPlannedSession {
-                dashboardNowPlannedSession(context: context, colorScheme: colorScheme)
-            } else if context.status == .active {
-                dashboardNowMissingSession(onAction: onAction)
-            }
+            if dashboardContextHasNoClass(context.status) {
+                // Sin horario o fuera del rango del curso no hay grupo al que
+                // apuntar: ofrecer "Pasar lista" o "Evaluar" en gris es un
+                // callejón sin salida. Se enseña la salida real.
+                dashboardNowScheduleGap(status: context.status, onAction: onAction)
+            } else {
+                if context.isFromPlannedSession {
+                    dashboardNowPlannedSession(context: context, colorScheme: colorScheme)
+                } else if context.status == .active {
+                    dashboardNowMissingSession(onAction: onAction)
+                }
 
-            dashboardNowActions(context: context, onAction: onAction)
+                dashboardNowActions(context: context, onAction: onAction)
+            }
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Sin clase activa", systemImage: "calendar")
@@ -386,6 +393,46 @@ func dashboardNowCard(
         RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
             .stroke(tint.opacity(0.25), lineWidth: 1)
     )
+}
+
+/// Estados en los que el horario no señala ninguna clase concreta.
+func dashboardContextHasNoClass(_ status: DashboardSessionContextStatus) -> Bool {
+    switch status {
+    case .active, .nextToday, .nextOtherDay: return false
+    default: return true
+    }
+}
+
+@ViewBuilder
+private func dashboardNowScheduleGap(
+    status: DashboardSessionContextStatus,
+    onAction: @escaping (DashboardNowAction) -> Void
+) -> some View {
+    let outsideYear = status == .outsideSchoolYear
+    HStack(alignment: .top, spacing: 12) {
+        Image(systemName: "calendar.badge.exclamationmark")
+            .foregroundStyle(IOSAppStyle.warning)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(outsideYear
+                 ? "Hoy queda fuera de las fechas del curso configurado."
+                 : "Todavía no hay horario docente configurado.")
+                .font(.callout.weight(.semibold))
+            Text(outsideYear
+                 ? "El resto del dashboard sigue disponible: el trabajo pendiente no desaparece."
+                 : "Crea tus franjas para que el dashboard sepa qué clase tienes en cada momento.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        Spacer(minLength: 8)
+        Button(outsideYear ? "Editar agenda docente" : "Configurar horario") {
+            onAction(.openPlanner)
+        }
+        .buttonStyle(.borderedProminent)
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(IOSAppStyle.warning.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 }
 
 @ViewBuilder

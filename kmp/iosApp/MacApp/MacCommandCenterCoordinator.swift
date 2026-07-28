@@ -140,7 +140,11 @@ final class MacCommandCenterCoordinator: ObservableObject {
 
         launchedProcess.terminationHandler = { [weak self] terminatedProcess in
             Task { @MainActor in
-                guard let self else { return }
+                // Un helper anterior (p. ej. terminado por terminateStaleHelperProcesses
+                // o por stop()) puede seguir muriendo cuando ya arrancamos uno nuevo: su
+                // terminationHandler se dispara en un Task posterior y, sin esta guarda,
+                // desmontaría los pipes y el `process` del helper NUEVO que sí sigue vivo.
+                guard let self, self.process === terminatedProcess else { return }
                 print("[Pairing] helper terminated: \(terminatedProcess.terminationStatus)")
                 self.isProcessRunning = false
                 self.stdoutPipe?.fileHandleForReading.readabilityHandler = nil
@@ -273,63 +277,192 @@ final class MacCommandCenterCoordinator: ObservableObject {
         }
     }
 
+    /// Encuentra y termina cualquier instancia huérfana del helper de sincronización LAN
+    /// antes de arrancar una nueva, para liberar el puerto 8765.
+    ///
+    /// Se combinan dos estrategias porque ninguna es suficiente por sí sola:
+    /// - Coincidencia por ruta del ejecutable, usando solo el sufijo estable del bundle
+    ///   (`MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter`) y no la ruta
+    ///   absoluta completa. En builds de desarrollo, Xcode regenera el hash de
+    ///   DerivedData al reconstruir, así que un helper huérfano de un build anterior
+    ///   tiene una ruta distinta a la del build actual y `pgrep -f <rutaCompleta>` nunca
+    ///   lo encuentra: el proceso queda vivo para siempre reteniendo el puerto.
+    /// - Búsqueda directa de quién escucha en el puerto 8765 (vía `lsof`), como red de
+    ///   seguridad para cualquier caso no cubierto por la coincidencia de ruta.
     private func terminateStaleHelperProcesses(executableURL: URL) {
-        let executablePath = executableURL.path
-        let pgrep = Process()
-        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        pgrep.arguments = ["-f", executablePath]
-
-        let outputPipe = Pipe()
-        pgrep.standardOutput = outputPipe
-        pgrep.standardError = Pipe()
-
-        do {
-            try pgrep.run()
-            pgrep.waitUntilExit()
-        } catch {
-            return
-        }
-
-        guard pgrep.terminationStatus == 0,
-              let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) else {
-            return
-        }
-
         let currentPid = ProcessInfo.processInfo.processIdentifier
         let activeChildPid = process?.processIdentifier
-        let stalePids = output
-            .split(whereSeparator: \.isNewline)
-            .compactMap { pidLine in Int32(pidLine.trimmingCharacters(in: .whitespacesAndNewlines)) }
-            .filter { pid in
-                pid > 0 && pid != currentPid && pid != activeChildPid
-            }
+
+        var stalePids = Set<Int32>()
+        stalePids.formUnion(pidsMatchingHelperExecutable(executableURL, currentPid: currentPid, activeChildPid: activeChildPid))
+        stalePids.formUnion(pidsListeningOnPort(defaultPort, currentPid: currentPid, activeChildPid: activeChildPid))
+        // El fallback por puerto no distingue qué proceso encontró, y `pgrep -f` empareja
+        // contra el argv completo (podría coincidir con un paso de build que solo mencione
+        // la ruta, p. ej. codesign/ditto). Verificamos vía `ps` que sea realmente el helper
+        // antes de matar nada.
+        stalePids = Set(stalePids.filter(isHelperProcess))
 
         guard !stalePids.isEmpty else { return }
 
         for pid in stalePids {
-            let killer = Process()
-            killer.executableURL = URL(fileURLWithPath: "/bin/kill")
-            killer.arguments = ["-TERM", "\(pid)"]
-            killer.standardOutput = Pipe()
-            killer.standardError = Pipe()
-            do {
-                try killer.run()
-                killer.waitUntilExit()
-                print("[Pairing] terminated stale helper pid \(pid)")
-            } catch {
-                print("[Pairing] failed to terminate stale helper pid \(pid): \(error.localizedDescription)")
-            }
+            sendSignal("-TERM", to: pid)
         }
 
-        Thread.sleep(forTimeInterval: 0.25)
+        waitForPortToFree(defaultPort, timeout: 2.0, currentPid: currentPid, activeChildPid: activeChildPid)
+
+        let stillListening = pidsListeningOnPort(defaultPort, currentPid: currentPid, activeChildPid: activeChildPid)
+            .filter(isHelperProcess)
+        guard !stillListening.isEmpty else { return }
+
+        for pid in stillListening {
+            sendSignal("-KILL", to: pid)
+        }
+        waitForPortToFree(defaultPort, timeout: 1.0, currentPid: currentPid, activeChildPid: activeChildPid)
+    }
+
+    /// Verifica vía `ps` que un PID candidato es realmente el helper de MiGestor antes de
+    /// terminarlo. Sin esto, la búsqueda por puerto (que no filtra por identidad) o un
+    /// `pgrep -f` con coincidencia accidental podrían matar un proceso ajeno al servicio
+    /// de enlace.
+    private func isHelperProcess(pid: Int32) -> Bool {
+        let ps = Process()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-p", "\(pid)", "-o", "comm="]
+
+        let outputPipe = Pipe()
+        ps.standardOutput = outputPipe
+        ps.standardError = FileHandle.nullDevice
+
+        do {
+            try ps.run()
+        } catch {
+            return false
+        }
+
+        // Leer hasta EOF antes de esperar la salida del proceso: si se invirtiera el
+        // orden y `ps` llegara a escribir más de lo que cabe en el buffer del pipe,
+        // `waitUntilExit()` podría bloquearse esperando a un proceso a su vez bloqueado
+        // escribiendo en un pipe lleno que nadie está drenando.
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        ps.waitUntilExit()
+
+        guard ps.terminationStatus == 0,
+              let commandName = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !commandName.isEmpty else {
+            return false
+        }
+
+        return commandName.localizedCaseInsensitiveContains("MiGestorCommandCenter")
+    }
+
+    /// Últimos componentes de la ruta del ejecutable (bundle + binario), estables entre
+    /// builds, usados como patrón de búsqueda en vez de la ruta absoluta completa.
+    private func helperExecutableMatchPattern(for executableURL: URL) -> String {
+        let components = executableURL.pathComponents
+        return components.suffix(min(4, components.count)).joined(separator: "/")
+    }
+
+    private func pidsMatchingHelperExecutable(_ executableURL: URL, currentPid: Int32, activeChildPid: Int32?) -> [Int32] {
+        let pgrep = Process()
+        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        pgrep.arguments = ["-f", helperExecutableMatchPattern(for: executableURL)]
+
+        let outputPipe = Pipe()
+        pgrep.standardOutput = outputPipe
+        pgrep.standardError = FileHandle.nullDevice
+
+        do {
+            try pgrep.run()
+        } catch {
+            return []
+        }
+
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        pgrep.waitUntilExit()
+
+        guard pgrep.terminationStatus == 0,
+              let output = String(data: data, encoding: .utf8) else {
+            return []
+        }
+
+        return parsePids(from: output, currentPid: currentPid, activeChildPid: activeChildPid)
+    }
+
+    private func pidsListeningOnPort(_ port: Int, currentPid: Int32, activeChildPid: Int32?) -> [Int32] {
+        let lsof = Process()
+        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        lsof.arguments = ["-nP", "-b", "-w", "-iTCP:\(port)", "-sTCP:LISTEN", "-t"]
+
+        let outputPipe = Pipe()
+        lsof.standardOutput = outputPipe
+        lsof.standardError = FileHandle.nullDevice
+
+        do {
+            try lsof.run()
+        } catch {
+            return []
+        }
+
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        lsof.waitUntilExit()
+
+        guard let output = String(data: data, encoding: .utf8) else {
+            return []
+        }
+
+        return parsePids(from: output, currentPid: currentPid, activeChildPid: activeChildPid)
+    }
+
+    private func parsePids(from output: String, currentPid: Int32, activeChildPid: Int32?) -> [Int32] {
+        output
+            .split(whereSeparator: \.isNewline)
+            .compactMap { pidLine in Int32(pidLine.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            .filter { pid in pid > 0 && pid != currentPid && pid != activeChildPid }
+    }
+
+    private func sendSignal(_ signal: String, to pid: Int32) {
+        let killer = Process()
+        killer.executableURL = URL(fileURLWithPath: "/bin/kill")
+        killer.arguments = [signal, "\(pid)"]
+        killer.standardOutput = FileHandle.nullDevice
+        killer.standardError = FileHandle.nullDevice
+        do {
+            try killer.run()
+            killer.waitUntilExit()
+            print("[Pairing] sent \(signal) to stale helper pid \(pid)")
+        } catch {
+            print("[Pairing] failed to signal stale helper pid \(pid): \(error.localizedDescription)")
+        }
+    }
+
+    private func waitForPortToFree(_ port: Int, timeout: TimeInterval, currentPid: Int32, activeChildPid: Int32?) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if pidsListeningOnPort(port, currentPid: currentPid, activeChildPid: activeChildPid).isEmpty {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
     }
 
     private func friendlyLaunchMessage(for error: Error) -> String {
         let rawMessage = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        if rawMessage.localizedCaseInsensitiveContains("address already in use") {
+        let translated = translateKnownFailureMessage(rawMessage)
+        if translated != rawMessage { return translated }
+        return "No se pudo iniciar el servicio de enlace: \(rawMessage)"
+    }
+
+    /// Traduce mensajes de fallo conocidos (hoy, en inglés desde el proceso Java del
+    /// helper) a texto en español. Los mensajes sin traducción conocida se devuelven tal
+    /// cual, sin añadir un prefijo genérico: a diferencia de `friendlyLaunchMessage`, este
+    /// texto puede llegar en cualquier momento del ciclo de vida del helper, no solo al
+    /// arrancarlo, así que "No se pudo iniciar..." no siempre encajaría.
+    private func translateKnownFailureMessage(_ rawMessage: String) -> String {
+        let trimmed = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.localizedCaseInsensitiveContains("address already in use") {
             return "El puerto 8765 ya está en uso por otro servicio de enlace. Cierra instancias antiguas de MiGestor e inténtalo de nuevo."
         }
-        return "No se pudo iniciar el servicio de enlace: \(rawMessage)"
+        return trimmed
     }
 
     private func clearHelperBuffers() {
@@ -426,10 +559,11 @@ final class MacCommandCenterCoordinator: ObservableObject {
             promoteToConnected(deviceName: deviceName)
 
         case let .failed(message):
+            let friendlyMessage = translateKnownFailureMessage(message)
             lastLifecycleState = .failed
-            lastFailureMessage = message
+            lastFailureMessage = friendlyMessage
             print("[Pairing] failed: \(message)")
-            updateState(.failed(message: message), message: message)
+            updateState(.failed(message: friendlyMessage), message: friendlyMessage)
         }
     }
 

@@ -163,6 +163,42 @@ struct StructuredInstrumentEvaluationSheet: View {
                 studentId: request.studentId,
                 columnId: request.columnId
             )
+            if model == nil {
+                let sessions = [
+                    "S2L - juegos autoarbitrados",
+                    "S3L - torneo de clasificación",
+                    "S4L - Torneo Inclusivo"
+                ]
+                let indicators = [
+                    "Respeto, lenguaje y gestión de disputas",
+                    "Cumplimiento del rol asignado",
+                    "Inclusión activa de compañeros/as"
+                ]
+                var fallbackItems: [StructuredInstrumentEvaluationItem] = []
+                for session in sessions {
+                    for indicator in indicators {
+                        fallbackItems.append(StructuredInstrumentEvaluationItem(
+                            id: "\(request.columnId)_\(fallbackItems.count + 1)",
+                            title: "\(session) · \(indicator)",
+                            type: .scale14,
+                            options: [],
+                            textValue: "",
+                            boolValue: false,
+                            numberValue: ""
+                        ))
+                    }
+                }
+                model = StructuredInstrumentEvaluationModel(
+                    id: "\(request.classId)-\(request.studentId)-\(request.columnId)",
+                    classId: request.classId,
+                    studentId: request.studentId,
+                    columnId: request.columnId,
+                    title: request.title,
+                    kind: .observation,
+                    criterionLabel: request.title,
+                    items: fallbackItems
+                )
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -60,14 +60,27 @@ struct ObservationGridInstrumentContent: View {
     }
 
     private var instrumentAverageHeader: some View {
-        HStack {
-            Text("Nota final del instrumento")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(instrumentAverageText)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(NotebookStyle.successTint)
+        VStack(alignment: .leading, spacing: 10) {
+            if let criterion = model.criterionLabel, !criterion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(NotebookStyle.primaryTint)
+                    Text("Criterio: \(criterion)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+                Divider()
+            }
+            HStack {
+                Text("Nota final del instrumento")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(instrumentAverageText)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(NotebookStyle.successTint)
+            }
         }
         .padding(16)
         .background(NotebookStyle.surfaceMuted, in: RoundedRectangle(cornerRadius: NotebookStyle.innerRadius, style: .continuous))

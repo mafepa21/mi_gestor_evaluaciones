@@ -8205,85 +8205,66 @@ final class KmpBridge: ObservableObject {
         columnId: String
     ) async throws -> StructuredInstrumentEvaluationModel? {
         var detail = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId)
-        let columns = try await container.notebookConfigRepository.listColumns(classId: classId)
-        let column = columns.first(where: { $0.id == columnId })
+        let altId = columnId.hasPrefix("eval_") ? String(columnId.dropFirst(5)) : "eval_\(columnId)"
+        if detail == nil {
+            detail = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: altId)
+        }
 
-        if detail == nil, let column {
-            let titleLower = column.title.lowercased()
-            if column.inputKind.isStructuredInstrument || column.instrumentKind == .systematicObservation || titleLower.contains("rejilla") || titleLower.contains("observación") {
-                let templateId = "template_\(columnId)"
-                let isObs = column.inputKind == .structuredObservation || column.instrumentKind == .systematicObservation || titleLower.contains("rejilla") || titleLower.contains("observación")
-                let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-                let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        let columns = (try? await container.notebookConfigRepository.listColumns(classId: classId)) ?? []
+        let column = columns.first(where: { $0.id == columnId || $0.id == altId || (columnId.hasPrefix("eval_") && "eval_\($0.evaluationId?.int64Value ?? 0)" == columnId) })
 
-                let template = NotebookInstrumentTemplate(
-                    id: templateId,
-                    classId: classId,
-                    columnId: columnId,
-                    evaluationId: column.evaluationId,
-                    title: column.title,
-                    kind: isObs ? .observation : .form,
-                    inputKind: isObs ? .structuredObservation : column.inputKind,
-                    source: "auto_repair",
-                    trace: AuditTrace(
-                        authorUserId: nil,
-                        createdAt: nowInstant,
-                        updatedAt: nowInstant,
-                        associatedGroupId: KotlinLong(value: classId),
-                        deviceId: localDeviceId,
-                        syncVersion: 1
-                    )
+        if detail == nil {
+            let colTitle = column?.title ?? "Rejilla de observación sistemática de fair play, roles e inclusión"
+            let titleLower = colTitle.lowercased()
+            let templateId = "template_\(columnId)"
+            let isObs = column?.inputKind == .structuredObservation || column?.instrumentKind == .systematicObservation || titleLower.contains("rejilla") || titleLower.contains("observación") || titleLower.contains("fair play") || titleLower.contains("roles") || titleLower.contains("inclusión")
+            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+            let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+
+            let template = NotebookInstrumentTemplate(
+                id: templateId,
+                classId: classId,
+                columnId: columnId,
+                evaluationId: column?.evaluationId,
+                title: colTitle,
+                kind: isObs ? .observation : .form,
+                inputKind: isObs ? .structuredObservation : (column?.inputKind ?? .structuredForm),
+                source: "auto_repair",
+                trace: AuditTrace(
+                    authorUserId: nil,
+                    createdAt: nowInstant,
+                    updatedAt: nowInstant,
+                    associatedGroupId: KotlinLong(value: classId),
+                    deviceId: localDeviceId,
+                    syncVersion: 1
                 )
+            )
 
-                var items: [NotebookInstrumentItem] = []
-                if isObs {
-                    let sessions = [
-                        "Semana 4, bloque corto - juegos condicionados",
-                        "Semana 5, bloque corto - partido de disfrute",
-                        "Semana 5, bloque largo - aplicación en el reto final"
-                    ]
-                    let indicators = [
-                        "Usa 2 golpeos distintos",
-                        "Elige el golpeo adecuado",
-                        "Comunicación en juego",
-                        "Conducta segura en pista"
-                    ]
-                    var itemIdx = 0
-                    for (sIdx, session) in sessions.enumerated() {
-                        for (iIdx, indicator) in indicators.enumerated() {
-                            itemIdx += 1
-                            items.append(NotebookInstrumentItem(
-                                id: "\(templateId)_item_\(itemIdx)",
-                                templateId: templateId,
-                                key: "obs_s\(sIdx)_i\(iIdx)",
-                                title: "\(session) · \(indicator)",
-                                type: .scale14,
-                                options: [],
-                                required: true,
-                                order: Int32(itemIdx),
-                                helpText: nil,
-                                trace: AuditTrace(
-                                    authorUserId: nil,
-                                    createdAt: nowInstant,
-                                    updatedAt: nowInstant,
-                                    associatedGroupId: KotlinLong(value: classId),
-                                    deviceId: localDeviceId,
-                                    syncVersion: 1
-                                )
-                            ))
-                        }
-                    }
-                } else {
-                    items = [
-                        NotebookInstrumentItem(
-                            id: "\(templateId)_item_1",
+            var items: [NotebookInstrumentItem] = []
+            if isObs {
+                let sessions = [
+                    "S2L - juegos autoarbitrados",
+                    "S3L - torneo de clasificación",
+                    "S4L - Torneo Inclusivo"
+                ]
+                let indicators = [
+                    "Respeto, lenguaje y gestión de disputas",
+                    "Cumplimiento del rol asignado",
+                    "Inclusión activa de compañeros/as"
+                ]
+                var itemIdx = 0
+                for session in sessions {
+                    for indicator in indicators {
+                        itemIdx += 1
+                        items.append(NotebookInstrumentItem(
+                            id: "\(templateId)_item_\(itemIdx)",
                             templateId: templateId,
-                            key: "item_1",
-                            title: "Indicador principal de evaluación",
+                            key: "obs_item_\(itemIdx)",
+                            title: "\(session) · \(indicator)",
                             type: .scale14,
                             options: [],
                             required: true,
-                            order: 1,
+                            order: Int32(itemIdx),
                             helpText: nil,
                             trace: AuditTrace(
                                 authorUserId: nil,
@@ -8293,13 +8274,35 @@ final class KmpBridge: ObservableObject {
                                 deviceId: localDeviceId,
                                 syncVersion: 1
                             )
-                        )
-                    ]
+                        ))
+                    }
                 }
-
-                try? await container.notebookInstrumentsRepository.saveTemplate(template: template, items: items)
-                detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId)
+            } else {
+                items = [
+                    NotebookInstrumentItem(
+                        id: "\(templateId)_item_1",
+                        templateId: templateId,
+                        key: "item_1",
+                        title: "Indicador principal de evaluación",
+                        type: .scale14,
+                        options: [],
+                        required: true,
+                        order: 1,
+                        helpText: nil,
+                        trace: AuditTrace(
+                            authorUserId: nil,
+                            createdAt: nowInstant,
+                            updatedAt: nowInstant,
+                            associatedGroupId: KotlinLong(value: classId),
+                            deviceId: localDeviceId,
+                            syncVersion: 1
+                        )
+                    )
+                ]
             }
+
+            try? await container.notebookInstrumentsRepository.saveTemplate(template: template, items: items)
+            detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId)
         }
 
         guard let detail else {
@@ -8307,18 +8310,27 @@ final class KmpBridge: ObservableObject {
         }
 
         var criterionLabel: String? = nil
-        if let evalId = column?.evaluationId?.int64Value {
+        if let criteriaIds = column?.competencyCriteriaIds, !criteriaIds.isEmpty {
+            criterionLabel = criteriaIds.map { "CE \($0.int64Value)" }.joined(separator: " · ")
+        }
+
+        let targetEvalId = column?.evaluationId?.int64Value ?? detail.template_.evaluationId?.int64Value
+        if (criterionLabel == nil || criterionLabel?.isEmpty == true), let evalId = targetEvalId, evalId > 0 {
             if let evaluation = try? await container.evaluationsRepository.getEvaluation(evaluationId: evalId) {
                 if let desc = evaluation.description_, !desc.isEmpty {
                     criterionLabel = desc
+                } else if !evaluation.code.isEmpty {
+                    criterionLabel = evaluation.code
+                } else if !evaluation.name.isEmpty {
+                    criterionLabel = evaluation.name
                 }
             }
         }
-        if (criterionLabel == nil || criterionLabel?.isEmpty == true), let criteriaIds = column?.competencyCriteriaIds, !criteriaIds.isEmpty {
-            criterionLabel = criteriaIds.map { "CE \($0.int64Value)" }.joined(separator: " · ")
-        }
         if (criterionLabel == nil || criterionLabel?.isEmpty == true), let unit = column?.unitOrSituation, !unit.isEmpty {
             criterionLabel = unit
+        }
+        if (criterionLabel == nil || criterionLabel?.isEmpty == true) {
+            criterionLabel = column?.title ?? detail.template_.title
         }
 
         let responses = try await container.notebookInstrumentsRepository.listResponsesForCell(

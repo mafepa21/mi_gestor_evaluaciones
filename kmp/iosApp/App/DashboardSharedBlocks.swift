@@ -27,6 +27,107 @@ struct DashboardGroupRow: Identifiable {
     let studentsInFollowUp: Int
 }
 
+// MARK: - Modo operativo (Clase / Despacho)
+
+/// Lo que el usuario elige. `auto` es el valor por defecto: el modo se deduce
+/// del horario, así que al entrar en el aula el dashboard ya está en Clase sin
+/// tocar nada. Las otras dos opciones son una anulación manual.
+enum DashboardModePreference: String, CaseIterable, Identifiable {
+    case auto
+    case classroom
+    case office
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .auto: return "Auto"
+        case .classroom: return "Clase"
+        case .office: return "Despacho"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .auto: return "wand.and.stars"
+        case .classroom: return "figure.run"
+        case .office: return "tray.full"
+        }
+    }
+
+    /// Con `auto`, hay clase en curso -> Clase; cualquier otra cosa ->
+    /// Despacho. Si el horario no da contexto, se cae a Despacho en vez de
+    /// dejar una pantalla vacía.
+    func resolved(for context: DashboardSessionContext?) -> DashboardMode {
+        switch self {
+        case .classroom: return .classroom
+        case .office: return .office
+        case .auto:
+            guard let context else { return .office }
+            return context.status == .active ? .classroom : .office
+        }
+    }
+
+    /// Etiqueta que explica qué ha decidido el automático, para que el usuario
+    /// no tenga que adivinar por qué ve una cosa u otra.
+    func resolvedHint(for context: DashboardSessionContext?) -> String? {
+        guard self == .auto else { return nil }
+        return resolved(for: context) == .classroom ? "Auto · Clase en curso" : "Auto · Despacho"
+    }
+}
+
+// MARK: - Contexto "Ahora"
+
+func dashboardContextStatusLabel(_ status: DashboardSessionContextStatus) -> String {
+    switch status {
+    case .active: return "En curso"
+    case .nextToday: return "Hoy"
+    case .nextOtherDay: return "Próxima"
+    case .noSchedule: return "Sin horario"
+    case .outsideSchoolYear: return "Fuera de curso"
+    default: return "Sin horario"
+    }
+}
+
+func dashboardContextStatusTint(_ status: DashboardSessionContextStatus) -> Color {
+    switch status {
+    case .active: return EvaluationDesign.success
+    case .nextToday, .nextOtherDay: return EvaluationDesign.accent
+    default: return IOSAppStyle.warning
+    }
+}
+
+func dashboardContextDayLabel(_ day: Int?) -> String {
+    switch day {
+    case 1: return "Lunes"
+    case 2: return "Martes"
+    case 3: return "Miércoles"
+    case 4: return "Jueves"
+    case 5: return "Viernes"
+    case 6: return "Sábado"
+    case 7: return "Domingo"
+    default: return "Día"
+    }
+}
+
+func dashboardContextTitle(_ context: DashboardSessionContext) -> String {
+    switch context.status {
+    case .active: return context.className.isEmpty ? "Clase actual" : context.className
+    case .nextToday, .nextOtherDay: return "Próxima clase"
+    case .outsideSchoolYear: return "Fuera de curso"
+    default: return "Sin horario"
+    }
+}
+
+func dashboardContextSubtitle(_ context: DashboardSessionContext) -> String {
+    let parts = [
+        context.className.isEmpty ? nil : context.className,
+        context.subjectLabel,
+        context.unitLabel,
+    ].compactMap { $0 }.filter { !$0.isEmpty }
+    return parts.isEmpty ? "Sin detalle de grupo" : parts.joined(separator: " · ")
+}
+
 // MARK: - Cromado
 
 /// Nivel "contexto, no acción": `.thinMaterial`, sin sombra de color, para
@@ -164,6 +265,212 @@ func trendBgColor(_ direction: String) -> Color {
     case "DOWNWARD": return .red
     case "STABLE": return .blue
     default: return .gray
+    }
+}
+
+// MARK: - Tarjeta "Ahora"
+
+/// Acciones que ofrece la tarjeta "Ahora". Se declaran aquí, sin destinos de
+/// plataforma, para que iPad y Mac ofrezcan las mismas y cada uno las resuelva
+/// con su propia navegación.
+enum DashboardNowAction: String, Identifiable {
+    case passList
+    case openNotebook
+    case evaluate
+    case observation
+    case quickEvaluation
+    case openPlanner
+    case openJournal
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .passList: return "Pasar lista"
+        case .openNotebook: return "Abrir cuaderno"
+        case .evaluate: return "Evaluar"
+        case .observation: return "Observación"
+        case .quickEvaluation: return "Evaluación rápida"
+        case .openPlanner: return "Abrir Planner"
+        case .openJournal: return "Diario"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .passList: return "checkmark.circle"
+        case .openNotebook: return "tablecells"
+        case .evaluate: return "checklist.checked"
+        case .observation: return "note.text.badge.plus"
+        case .quickEvaluation: return "sparkles"
+        case .openPlanner: return "calendar"
+        case .openJournal: return "doc.text"
+        }
+    }
+}
+
+/// La tarjeta "Ahora": qué clase tengo delante, qué sesión toca y los tres
+/// botones que se usan de verdad con el grupo en el aula. Hasta ahora solo
+/// existía en macOS, escrita contra un modelo Swift propio; ahora lee el
+/// `DashboardSessionContext` del snapshot compartido y la pintan las dos
+/// plataformas.
+@ViewBuilder
+func dashboardNowCard(
+    context: DashboardSessionContext?,
+    colorScheme: ColorScheme,
+    isCompact: Bool,
+    onAction: @escaping (DashboardNowAction) -> Void
+) -> some View {
+    let tint = context.map { dashboardContextStatusTint($0.status) } ?? IOSAppStyle.warning
+
+    VStack(alignment: .leading, spacing: 16) {
+        if let context {
+            HStack(alignment: .top, spacing: 14) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 12, height: 12)
+                    .padding(.top, 8)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(dashboardContextTitle(context))
+                        .font(.system(size: isCompact ? 22 : 26, weight: .bold, design: .rounded))
+                    Text(dashboardContextSubtitle(context))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    if let start = context.startTime, let end = context.endTime {
+                        Label(
+                            "\(dashboardContextDayLabel(context.dayOfWeek?.intValue)) · \(start)-\(end)",
+                            systemImage: "clock"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                Text(dashboardContextStatusLabel(context.status))
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(tint.opacity(0.15), in: Capsule())
+                    .foregroundStyle(tint)
+            }
+
+            if context.isFromPlannedSession {
+                dashboardNowPlannedSession(context: context, colorScheme: colorScheme)
+            } else if context.status == .active {
+                dashboardNowMissingSession(onAction: onAction)
+            }
+
+            dashboardNowActions(context: context, onAction: onAction)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Sin clase activa", systemImage: "calendar")
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                Text("No hay franja lectiva en el horario docente para este momento.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button("Configurar horario") { onAction(.openPlanner) }
+                    .buttonStyle(.bordered)
+                    .padding(.top, 4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+    .padding(EvaluationDesign.cardSpacing)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(appCardBackground(for: colorScheme))
+    .cornerRadius(EvaluationDesign.innerRadius)
+    .overlay(
+        RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+            .stroke(tint.opacity(0.25), lineWidth: 1)
+    )
+}
+
+@ViewBuilder
+private func dashboardNowPlannedSession(context: DashboardSessionContext, colorScheme: ColorScheme) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+        Label("Sesión planificada", systemImage: "calendar.badge.checkmark")
+            .font(.system(size: 13, weight: .semibold, design: .rounded))
+            .foregroundStyle(.secondary)
+        Text(context.sessionTitle ?? context.unitLabel ?? "Sesión")
+            .font(.callout.weight(.semibold))
+        if let subtitle = context.sessionSubtitle {
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if let status = context.sessionStatusLabel {
+            Text(status)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(EvaluationDesign.accent.opacity(0.14), in: Capsule())
+        }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+}
+
+@ViewBuilder
+private func dashboardNowMissingSession(onAction: @escaping (DashboardNowAction) -> Void) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+        Image(systemName: "calendar.badge.plus")
+            .foregroundStyle(IOSAppStyle.warning)
+        VStack(alignment: .leading, spacing: 4) {
+            Text("No hay sesión planificada para esta franja.")
+                .font(.callout.weight(.semibold))
+            Text("Puedes seguir con el horario fijo o crearla en el Planner.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        Spacer(minLength: 8)
+        Button("Crear sesión") { onAction(.openPlanner) }
+            .buttonStyle(.bordered)
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(IOSAppStyle.warning.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+}
+
+@ViewBuilder
+private func dashboardNowActions(
+    context: DashboardSessionContext,
+    onAction: @escaping (DashboardNowAction) -> Void
+) -> some View {
+    // Con el grupo delante solo caben las tres acciones que se usan de verdad.
+    // Fuera de clase, la tarjeta ofrece preparar en vez de ejecutar.
+    let actions: [DashboardNowAction] = context.status == .active
+        ? [.passList, .observation, .evaluate]
+        : [.openPlanner, .openNotebook]
+
+    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+        ForEach(actions) { action in
+            Button {
+                onAction(action)
+            } label: {
+                Label(action.title, systemImage: action.systemImage)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(action == .evaluate ? EvaluationDesign.accent : nil)
+            .disabled(context.classId == nil)
+        }
+        if let sessionId = context.sessionId, context.status == .active {
+            Button {
+                onAction(.openJournal)
+            } label: {
+                Label(DashboardNowAction.openJournal.title, systemImage: DashboardNowAction.openJournal.systemImage)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Abrir diario de la sesión \(sessionId)")
+        }
     }
 }
 

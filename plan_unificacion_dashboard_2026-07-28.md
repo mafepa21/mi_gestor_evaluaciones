@@ -202,5 +202,40 @@ Se registrará honestamente qué se ejecuta y qué no:
 
 ## Estado
 
-Plan aprobado por el usuario el 2026-07-28. Pendiente de confirmar el punto de `Models.kt`
-(archivo protegido) antes de empezar la fase 2.
+Plan aprobado y **ejecutado** el 2026-07-28. El usuario autorizó explícitamente tocar
+`Models.kt`.
+
+Las fases se ejecutaron en tres commits, cambiando el orden previsto: la fase 2 (contexto
+compartido) va **antes** que la fase 1 (filtrado por modo), porque el filtrado de modo Clase
+necesita saber qué clase está en curso, y esa información la aporta el contexto. Hacerlo al
+revés habría obligado a escribir una detección provisional desde el calendario para tirarla en
+el commit siguiente.
+
+- `91b4d89` — fase 2 (backend): `DashboardSessionContext` en `Models.kt` y resolución en Kotlin.
+- `c46ec2b` — fase 1: el modo filtra de verdad, con 4 pruebas en `desktopTest`.
+- `c14db67` — fases 2 (UI), 3, 4 y 5: tarjeta "Ahora" compartida, selector de modo en Mac,
+  modo automático y aligerado del iPad.
+
+### Diferencias con el plan original
+
+- **Fase 3 no fuerza un cromado único.** iPad y Mac comparten el cuerpo de la tarjeta "Ahora"
+  (`dashboardNowCard`) y todos los bloques secundarios, pero cada plataforma conserva su marco:
+  `MacPanel` con cristal líquido en macOS, tarjeta `EvaluationDesign` en iPad. Unificar también
+  el cromado habría sido una regresión visual en macOS, no una unificación.
+- **El color del grupo sigue resolviéndose en Swift** (`plannerCourseColor`), porque es cromado
+  de la app y no dato del snapshot. Se pasa a la tarjeta como parámetro.
+- **`KmpBridge.swift` no se ha tocado**, como estaba previsto.
+
+### Verificación ejecutada
+
+- `./gradlew :data:desktopTest` con las 4 pruebas nuevas de `DashboardOperationalRepositoryModeTest`:
+  en verde.
+- `xcodebuild` de los esquemas `MiGestorKMPMac` (macOS) y `MiGestorKMPiOS` (simulador iOS
+  genérico): **BUILD SUCCEEDED** en los dos.
+
+### Verificación pendiente
+
+No se ha ejecutado prueba manual en dispositivo ni simulador. Quedan por comprobar a mano los
+tres estados de mayor riesgo: aula en curso con horario configurado (debe entrar en Clase solo),
+fuera de horario (debe caer a Despacho) y sin horario configurado (debe mostrar el estado vacío
+con salida al Planner, no una pantalla en blanco).

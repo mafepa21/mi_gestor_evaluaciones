@@ -23,6 +23,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Cuaderno: la rejilla de observación aparecía vacía ("Sin plantilla") en el iPad mientras el Mac
+  la abría entera. La plantilla estructurada la crea el importador de instrumentos de la situación
+  de aprendizaje, así que vivía solo en la base de datos del dispositivo donde se importó, y
+  `enqueueNotebookSnapshot` — el empuje completo del Cuaderno a Sync LAN — no emitía ninguna de sus
+  tres entidades: mandaba 19 tipos (`student`, `evaluation`, `notebook_column`, `notebook_cell`,
+  `grade`, `rubric_assessment`…) y ni `notebook_instrument_template`, ni `notebook_instrument_item`,
+  ni `notebook_instrument_response`. El otro dispositivo recibía la columna pero nunca su
+  contenido. Los dos lados receptores (`KmpBridge.applyPulledChanges` y `SqlDelightSyncAdapter`)
+  ya sabían aplicar esas entidades; faltaba quien las emitiera. Ahora el snapshot las emite, con la
+  plantilla, sus ítems y las respuestas por alumno de cada columna de instrumento estructurado.
 - Cuaderno: se retira la "auto-recuperación" de plantillas de `loadStructuredInstrumentEvaluation`.
   No recuperaba nada: cuando no encontraba plantilla **inventaba** una rejilla con sesiones e
   indicadores escritos a mano en el código fuente ("S2L - juegos autoarbitrados", "Respeto,

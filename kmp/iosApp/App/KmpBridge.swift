@@ -9579,6 +9579,81 @@ final class KmpBridge: ObservableObject {
             )
         }
 
+        // Instrumentos estructurados (plantilla, sus ítems y las respuestas por alumno). Sin esto
+        // el dispositivo donde se importa la situación de aprendizaje se queda la rejilla para sí:
+        // el resto solo recibe la columna, abre la celda y ve "Sin plantilla". `KmpBridge` y
+        // `SqlDelightSyncAdapter` ya sabían aplicar estas tres entidades al recibirlas, pero nadie
+        // las emitía.
+        for column in columns where column.inputKind.isStructuredInstrument {
+            guard let detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: column.id) else {
+                continue
+            }
+            let template = detail.template_
+            enqueueLocalChange(
+                entity: "notebook_instrument_template",
+                id: template.id,
+                updatedAtEpochMs: template.trace.updatedAt.toEpochMilliseconds(),
+                payload: [
+                    "id": template.id,
+                    "classId": template.classId,
+                    "columnId": template.columnId,
+                    "evaluationId": template.evaluationId?.int64Value ?? 0,
+                    "title": template.title,
+                    "kind": template.kind.name,
+                    "inputKind": template.inputKind.name,
+                    "source": template.source ?? "",
+                    "createdAtEpochMs": template.trace.createdAt.toEpochMilliseconds()
+                ],
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
+            )
+            detail.items.forEach { item in
+                enqueueLocalChange(
+                    entity: "notebook_instrument_item",
+                    id: item.id,
+                    updatedAtEpochMs: item.trace.updatedAt.toEpochMilliseconds(),
+                    payload: [
+                        "id": item.id,
+                        "templateId": item.templateId,
+                        "itemKey": item.key,
+                        "title": item.title,
+                        "itemType": item.type.name,
+                        "optionsCsv": item.options.joined(separator: "|"),
+                        "required": item.required,
+                        "sortOrder": Int(item.order),
+                        "helpText": item.helpText ?? ""
+                    ],
+                    shouldPersist: false,
+                    shouldScheduleAutoSync: false
+                )
+            }
+            for student in students {
+                let studentResponses = (try? await container.notebookInstrumentsRepository.listResponsesForCell(
+                    classId: classId,
+                    studentId: student.id,
+                    columnId: column.id
+                )) ?? []
+                studentResponses.forEach { response in
+                    enqueueLocalChange(
+                        entity: "notebook_instrument_response",
+                        id: "\(response.classId)-\(response.studentId)-\(response.columnId)-\(response.itemId)",
+                        updatedAtEpochMs: response.trace.updatedAt.toEpochMilliseconds(),
+                        payload: [
+                            "classId": response.classId,
+                            "studentId": response.studentId,
+                            "columnId": response.columnId,
+                            "itemId": response.itemId,
+                            "valueText": response.textValue ?? "",
+                            "valueBool": response.boolValue?.boolValue ?? false,
+                            "valueNumber": response.numberValue.map { plainStructuredNumberString($0.doubleValue) } ?? ""
+                        ],
+                        shouldPersist: false,
+                        shouldScheduleAutoSync: false
+                    )
+                }
+            }
+        }
+
         for evaluation in rubricEvaluations {
             for student in students {
                 let assessments = try await container.rubricsRepository.listRubricAssessments(

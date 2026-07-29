@@ -25,6 +25,10 @@ struct ScheduleWeekGridView: View {
     let activeWeekdays: [Int]
     let dayLabel: (Int) -> String
     var compact: Bool = false
+    /// Sólo el asistente de horario lo pasa: hace que los huecos libres sean
+    /// pulsables para precargar día y hora en el editor de franjas. En lectura
+    /// (iPad, PDF) se deja a `nil` y la rejilla sigue siendo sólo para mirar.
+    var onSelectEmptySlot: ((_ day: Int, _ startTime: String, _ endTime: String) -> Void)? = nil
 
     private var timeSlots: [String] {
         var seen = Set<String>()
@@ -74,7 +78,7 @@ struct ScheduleWeekGridView: View {
                             .frame(width: timeColumnWidth, alignment: .leading)
 
                         ForEach(days, id: \.self) { day in
-                            cell(entries(day: day, timeSlot: timeSlot))
+                            cell(entries(day: day, timeSlot: timeSlot), day: day, timeSlot: timeSlot)
                         }
                     }
                 }
@@ -83,14 +87,35 @@ struct ScheduleWeekGridView: View {
     }
 
     @ViewBuilder
-    private func cell(_ cellEntries: [Entry]) -> some View {
+    private func cell(_ cellEntries: [Entry], day: Int, timeSlot: String) -> some View {
         // Hueco libre: espacio sobrio y sin llamada a la acción. El alta de
         // franjas vive en el editor, y un "+" por celda vacía sería ruido en la
-        // vista que existe para leer la semana de un vistazo.
+        // vista que existe para leer la semana de un vistazo. La excepción es
+        // el asistente, que sí pasa `onSelectEmptySlot`: ahí la rejilla es la
+        // herramienta de edición y repetir una hora en otro día debe costar un
+        // toque, no teclear cuatro campos.
         if cellEntries.isEmpty {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.secondary.opacity(0.06))
-                .frame(maxWidth: .infinity, minHeight: rowHeight)
+            if let onSelectEmptySlot {
+                Button {
+                    let parts = timeSlot.split(separator: "-", maxSplits: 1).map(String.init)
+                    onSelectEmptySlot(day, parts.first ?? "", parts.count > 1 ? parts[1] : "")
+                } label: {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.secondary.opacity(0.06))
+                        .frame(maxWidth: .infinity, minHeight: rowHeight)
+                        .overlay(
+                            Image(systemName: "plus")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.tertiary)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Añadir franja el \(dayLabel(day)) a las \(timeSlot)")
+            } else {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.secondary.opacity(0.06))
+                    .frame(maxWidth: .infinity, minHeight: rowHeight)
+            }
         } else {
             VStack(spacing: 4) {
                 // Los solapes se apilan: si dos grupos comparten franja, el

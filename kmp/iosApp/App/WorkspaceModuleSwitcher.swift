@@ -164,8 +164,11 @@ extension AppWorkspaceShell {
             PETournamentsWorkspaceView(selectedClassId: $selectedClassId)
                 .environmentObject(bridge)
         case .settings:
-            SettingsWorkspaceView()
-                .environmentObject(bridge)
+            SettingsWorkspaceView(
+                selectedClassId: $selectedClassId,
+                onOpenModule: open(module:classId:studentId:)
+            )
+            .environmentObject(bridge)
         case .backups:
             BackupsWorkspaceView(selectedClassId: $selectedClassId)
         }

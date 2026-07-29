@@ -16,6 +16,57 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Added
 
 - Apple Foundation Models / IA Local: Añadida la capacidad `weeklyStudentEmail` para redactar borradores masivos e individuales de correos semanales de seguimiento evaluativo para alumnos y sus familias. Incluye motor dual (`AppleFoundationStudentEmailService`) con rama de Foundation Models on-device y fallback determinista por reglas pedagógicas, el workspace interactivo `WeeklyStudentEmailWorkspaceView` con previsualización, edición de destinatario/asunto/cuerpo, exportación a Mail nativo (`mailto:`) y copiado al portapapeles. Integrado con `AppleAIOrchestrator`, la Ficha de Alumno (`StudentProfilesWorkspaceView`), el Inspector del Cuaderno (`NotebookStudentInspector`) y el módulo de Informes (`RubricsReportsWorkspaceViews`).
+- Primer uso: la app estrena una bienvenida y una lista de "Primeros pasos" (`OnboardingModels`,
+  `OnboardingWelcomeSheet`, `OnboardingChecklistView`, `OnboardingHost`, todo en `AppleShared/`).
+  Hasta ahora no existía ningún onboarding: abrir la app de cero dejaba al docente en `Cursos` con
+  "Este curso escolar no tiene grupos" y sin indicación de por dónde empezar, y el orden real
+  (asignatura → curso escolar → grupos uno a uno, o bien irse a Ajustes a importar el horario) no
+  estaba escrito en ninguna parte. La lista recorre cinco pasos en el orden que tiene sentido
+  docente — fechas del curso, horario semanal, grupos, alumnado, situaciones de aprendizaje — y
+  cada uno ofrece los dos caminos con nombre propio ("Importar Excel" / "Escribir nombres"). No
+  reimplementa pantallas: abre las que ya existen (`TeacherScheduleWizard`, `StudentImportSheet`,
+  el módulo de Situaciones). El progreso se deriva de los datos reales (franjas, grupos, alumnado,
+  SA), no de un contador propio, así que restaurar un backup o recibir datos por Sync LAN también
+  lo actualiza; la única excepción documentada son las fechas del curso, que se crean solas con
+  valores por defecto y por eso necesitan una marca explícita al pulsar "Guardar" en el asistente.
+  La bienvenida solo salta si la base está realmente vacía (grupos y alumnado reales, descontando
+  la clase de demostración de la primera instalación), y se reevalúa en cada arranque del proceso,
+  no solo la primera vez: cubre también el borrado total o modular de Ajustes → Zona de Riesgo, que
+  siempre fuerza un reinicio de la app, y a un docente que ha ido borrando grupos y alumnado a mano
+  hasta vaciarla. La primera vez que se ve en un dispositivo enseña la tarjeta de bienvenida
+  completa; las siguientes veces que la base aparece vacía salta directa a la lista de pasos, sin
+  repetir la presentación. Se reabre también a mano desde Ajustes → General → Primeros pasos.
+  `KmpBridge.swift` gana una `hasCompletedBootstrap` publicada (aditivo, sin cambiar firmas
+  existentes) para que la comprobación espere a que termine el primer *pull* de Sync LAN antes de
+  decidir si la base está vacía: sin esa espera, un iPad recién emparejado vería su base local vacía
+  por un instante y podría marcarla como "sin datos" antes de que llegue lo que ya tiene el otro
+  dispositivo.
+- Alumnado: `OnboardingStudentsSheet` da por fin un punto de entrada a la importación de alumnado
+  en iPhone/iPad. La hoja de revisión `StudentImportSheet` existía desde hace tiempo pero solo se
+  podía alcanzar desde `MacStudentsView`: en iOS no había forma de llegar a ella. Además del Excel
+  del centro admite escribir los nombres a mano, uno por línea.
+
+### Changed
+
+- Horario: el camino manual del asistente pasa a ser posible. El selector de grupo de
+  `slotEditorForm` solo listaba grupos ya existentes y "Añadir franja" quedaba deshabilitado sin
+  ellos, así que **sin importar un Excel no se podía crear ni una sola franja** y los grupos solo
+  nacían de la importación. Ahora hay alta de grupo en línea (mismo `createClass` del bridge que
+  usa la pantalla de Cursos y la propia importación; el nivel se deduce del nombre), un estado de
+  salida explicado cuando no hay grupos, y los huecos de la rejilla semanal son pulsables para
+  repetir una hora en otro día sin teclear cuatro campos. El paso "Terminado" enlaza con el
+  alumnado, que es lo siguiente que hace falta para dar clase.
+- Navegación: `Cursos` sale de la barra lateral en los tres shells (iOS, iPad, macOS) y pasa a ser
+  `Ajustes → Cursos y grupos`. Es configuración de principio de curso, no trabajo diario. La
+  pantalla `CoursesWorkspaceView` no se toca por dentro, solo cambia de sitio. Los accesos que
+  apuntaban al módulo (el menú "Gestión de grupos" del Cuaderno en los tres shells, el estado vacío
+  del dashboard, `MacRootView.open(module:)`) se redirigen a la nueva ubicación mediante un
+  `SettingsNavigationStore` nuevo, y un módulo `.courses` restaurado de una versión anterior se
+  reencamina a Ajustes en vez de dejar la barra lateral sin nada marcado. Ajustes en iPhone pasa de
+  `NavigationLink(destination:)` a `navigationDestination(item:)` para que esas peticiones externas
+  también naveguen en pantalla compacta.
+- Dashboard: el botón principal del estado sin clases deja de ser "Crear clase" (que llevaba a
+  crear un grupo suelto) y pasa a ser "Configurar mi curso", que abre la lista de primeros pasos.
 
 ### Data
 

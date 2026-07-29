@@ -231,6 +231,9 @@ public enum SubjectTemplateRegistry {
 
 public enum SettingsRoute: Hashable, Identifiable {
     case general
+    /// Curso escolar, asignaturas y grupos. Vive en Ajustes desde que dejó de
+    /// ser un módulo de la barra lateral.
+    case courses
     case schedule
     case evaluation
     case notebook
@@ -244,6 +247,7 @@ public enum SettingsRoute: Hashable, Identifiable {
     public var id: String {
         switch self {
         case .general: return "general"
+        case .courses: return "courses"
         case .schedule: return "schedule"
         case .evaluation: return "evaluation"
         case .notebook: return "notebook"

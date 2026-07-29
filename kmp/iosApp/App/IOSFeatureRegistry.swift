@@ -16,10 +16,13 @@ struct IOSFeatureDescriptor: Identifiable, Hashable {
     var id: AppWorkspaceModule { module }
 }
 
+/// `Cursos` no aparece en ninguna de las dos listas a propósito: es
+/// configuración de principio de curso, no trabajo diario, y vive dentro de
+/// Ajustes → Cursos y grupos. El módulo `.courses` sigue existiendo como
+/// destino de navegación (`descriptor(for:)` lo resuelve por defecto).
 enum IOSFeatureRegistry {
     static let daily: [IOSFeatureDescriptor] = [
         .init(module: .dashboard, title: "Hoy", subtitle: "Dashboard y radar docente", systemImage: "rectangle.3.group", priority: .daily, visibleInDailyMode: true),
-        .init(module: .courses, title: "Cursos", subtitle: "Curso escolar y grupos", systemImage: "calendar.badge.clock", priority: .daily, visibleInDailyMode: true),
         .init(module: .notebook, title: "Cuaderno", subtitle: "Evaluación diaria", systemImage: "tablecells", priority: .daily, visibleInDailyMode: true),
         .init(module: .attendance, title: "Asistencia", subtitle: "Pase y seguimiento", systemImage: "checklist.checked", priority: .daily, visibleInDailyMode: true),
         .init(module: .planner, title: "Planificación", subtitle: "Sesiones y agenda", systemImage: "calendar", priority: .daily, visibleInDailyMode: true)

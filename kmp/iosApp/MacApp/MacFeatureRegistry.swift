@@ -75,7 +75,9 @@ enum MacFeatureSection: String, CaseIterable, Identifiable {
         case .hoy:
             return [.dashboard]
         case .evaluacion:
-            return [.courses, .notebook, .attendance, .rubrics, .physicalTests]
+            // `Cursos` no está aquí a propósito: es configuración de principio
+            // de curso, no trabajo diario. Vive en Ajustes → Cursos y grupos.
+            return [.notebook, .attendance, .rubrics, .physicalTests]
         case .planificacion:
             return [.planner, .diary, .situations, .meetings, .students]
         case .sistema:

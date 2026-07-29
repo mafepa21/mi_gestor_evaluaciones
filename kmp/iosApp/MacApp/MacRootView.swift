@@ -76,6 +76,15 @@ struct MacRootView: View {
             columnVisibility = NavigationSplitViewVisibility(macRootStoredValue: storedColumnVisibility)
             isInspectorVisible = storedInspectorVisible && session.inspectorVisible
         }
+        .onboardingHost(bridge: session.bridge) { module in
+            open(module: module, classId: nil, studentId: nil)
+        }
+        .appOnChange(of: session.bootstrapState) { state in
+            // Sólo con la shell lista tiene sentido preguntar si la base está
+            // vacía; antes lo parecería siempre.
+            guard state == .ready else { return }
+            Task { await OnboardingStore.shared.bootstrap(bridge: session.bridge) }
+        }
         .task {
             rescueService.checkForPendingRescue()
             notebookStore.bind(to: session.bridge)
@@ -516,9 +525,14 @@ struct MacRootView: View {
         case .backups:
             MacBackupsView(store: backupStore)
         case .settings:
-            MacSettingsView(session: session, commandCenter: commandCenter, backupStore: backupStore) {
-                selectFeature(.sync)
-            }
+            MacSettingsView(
+                session: session,
+                commandCenter: commandCenter,
+                backupStore: backupStore,
+                onOpenSync: { selectFeature(.sync) },
+                selectedClassId: studentSelection.selectedClassBinding,
+                onOpenModule: open(module:classId:studentId:)
+            )
         }
     }
 
@@ -1367,7 +1381,11 @@ struct MacRootView: View {
         case .teacherRadar:
             selectFeature(.dashboard)
         case .courses:
-            selectFeature(.courses)
+            // Cursos ya no es una entrada de la barra lateral: vive dentro de
+            // Ajustes. Se pide la sección antes de navegar para que la pantalla
+            // aparezca ya abierta por ella.
+            SettingsNavigationStore.shared.request(.courses)
+            selectFeature(.settings)
         case .notebook:
             selectFeature(.notebook)
         case .students:

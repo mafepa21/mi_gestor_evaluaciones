@@ -108,6 +108,9 @@ struct IOSRootView: View {
         .sheet(item: $activeSheet) { sheet in
             iosSheetContent(for: sheet)
         }
+        .onboardingHost(bridge: bridge) { module in
+            openModule(module, classId: nil, studentId: nil)
+        }
         .appFullScreenCover(isPresented: $showingRubricBuilder) {
             RubricsBuilderScreen()
                 .environmentObject(bridge)
@@ -128,6 +131,10 @@ struct IOSRootView: View {
             
             // Restore class and student selection after KMP data is loaded
             await restorePersistedDataState()
+
+            // Con los datos ya cargados: decidir si toca la bienvenida de
+            // primer uso. Antes de este punto la base parecería vacía.
+            await OnboardingStore.shared.bootstrap(bridge: bridge)
         }
         .appOnChange(of: activeModule) { newValue in
             persistedModule = newValue.rawValue
@@ -200,6 +207,9 @@ struct IOSRootView: View {
 
     private func normalizedModule(_ module: AppWorkspaceModule) -> AppWorkspaceModule {
         if module == .teacherRadar { return .dashboard }
+        // Un módulo `.courses` restaurado de una versión anterior dejaría la
+        // barra lateral sin nada marcado: ahora vive dentro de Ajustes.
+        if module == .courses { return .settings }
         if module.requiresPhysicalEducationProfile {
             let enabledProfiles = TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw)
             if !enabledProfiles.contains(.physicalEducation) { return .dashboard }
@@ -232,6 +242,12 @@ struct IOSRootView: View {
     }
 
     func openModule(_ module: AppWorkspaceModule, classId: Int64? = nil, studentId: Int64? = nil) {
+        // Cursos ya no es una entrada de la barra lateral: `normalizedModule`
+        // lo reencamina a Ajustes, y aquí se pide además la sección para que la
+        // pantalla aparezca ya abierta por ella.
+        if module == .courses {
+            SettingsNavigationStore.shared.request(.courses)
+        }
         let module = normalizedModule(module)
         withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.22))) {
             activeModule = module
@@ -521,7 +537,7 @@ struct IOSRootView: View {
                 .disabled(!layoutState.notebookOrganizationMenuAvailable)
 
                 Button {
-                    activeModule = .courses
+                    openModule(.courses)
                 } label: {
                     Label("Gestión de grupos", systemImage: "person.2")
                 }
@@ -1131,8 +1147,11 @@ struct IOSWorkspaceContent: View {
             PETournamentsWorkspaceView(selectedClassId: $selectionStore.selectedClassId)
                 .environmentObject(bridge)
         case .settings:
-            SettingsWorkspaceView()
-                .environmentObject(bridge)
+            SettingsWorkspaceView(
+                selectedClassId: $selectionStore.selectedClassId,
+                onOpenModule: onOpenModule
+            )
+            .environmentObject(bridge)
         case .backups:
             BackupsWorkspaceView(selectedClassId: $selectionStore.selectedClassId)
         default:

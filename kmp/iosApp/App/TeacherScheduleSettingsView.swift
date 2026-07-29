@@ -176,6 +176,54 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         }
     }
 
+    /// Alta rápida de grupo desde el propio editor de franjas.
+    ///
+    /// Hasta ahora el camino manual del horario era impracticable: el selector
+    /// de grupo sólo listaba grupos ya existentes y "Añadir franja" quedaba
+    /// deshabilitado, así que sin importar un Excel no se podía crear ni una
+    /// franja. Reutiliza el mismo `createClass` del bridge que usa la pantalla
+    /// de Cursos y la importación: no hay una segunda vía de creación.
+    ///
+    /// El nivel (`course`) se deduce del primer número del nombre ("1º ESO A"
+    /// → 1) para no pedir dos campos donde el docente sólo piensa en uno.
+    @discardableResult
+    func createGroupInline(named rawName: String) async -> Int64? {
+        guard let bridge else { return nil }
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return nil }
+        if let existing = groups.first(where: { $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }) {
+            scheduleFormGroupId = existing.id
+            return existing.id
+        }
+        do {
+            let classId = try await bridge.createClass(name: name, course: inferredCourseLevel(from: name))
+            await reload()
+            scheduleFormGroupId = classId
+            scheduleError = ""
+            return classId
+        } catch {
+            scheduleError = error.localizedDescription
+            return nil
+        }
+    }
+
+    private func inferredCourseLevel(from name: String) -> Int32 {
+        let digits = name.prefix(while: { !$0.isNumber }).isEmpty ? name : String(name.drop(while: { !$0.isNumber }))
+        let leading = digits.prefix(while: { $0.isNumber })
+        return Int32(leading) ?? 1
+    }
+
+    /// Precarga día y horas en el formulario desde un hueco de la rejilla.
+    func prefillSlotForm(day: Int, startTime: String, endTime: String) {
+        editingScheduleSlotId = nil
+        editingScheduleSlotWeeklyTemplateId = nil
+        scheduleFormDay = day
+        scheduleFormStart = startTime
+        scheduleFormEnd = endTime
+        scheduleFormStartTimeValue = AppDateTimeSupport.time(from: startTime, fallback: scheduleFormStartTimeValue)
+        scheduleFormEndTimeValue = AppDateTimeSupport.time(from: endTime, fallback: scheduleFormEndTimeValue)
+    }
+
     func addScheduleSlot() async {
         guard let bridge, let schedule = teacherSchedule, let groupId = scheduleFormGroupId else { return }
         syncScheduleSlotTimesFromPicker()

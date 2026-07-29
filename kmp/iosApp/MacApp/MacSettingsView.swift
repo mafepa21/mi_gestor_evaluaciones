@@ -7,8 +7,12 @@ struct MacSettingsView: View {
     @ObservedObject var commandCenter: MacCommandCenterCoordinator
     @ObservedObject var backupStore: MacBackupStore
     let onOpenSync: () -> Void
+    /// Necesarios desde que "Cursos y grupos" vive dentro de Ajustes.
+    @Binding var selectedClassId: Int64?
+    let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
 
     @StateObject private var settings = AppSettingsStore()
+    @ObservedObject private var settingsNavigation = SettingsNavigationStore.shared
     @State private var selectedRoute: SettingsRoute = .general
     @State private var scheduleSelectedClassId: Int64?
 
@@ -17,6 +21,7 @@ struct MacSettingsView: View {
             List(selection: $selectedRoute) {
                 Section("Ajustes") {
                     settingsRow("General", systemImage: "slider.horizontal.3", route: .general)
+                    settingsRow("Cursos y grupos", systemImage: "person.2.fill", route: .courses)
                     settingsRow("Horario docente", systemImage: "calendar.badge.clock", route: .schedule)
                     settingsRow("Evaluación", systemImage: "chart.bar.doc.horizontal", route: .evaluation)
                     settingsRow("Cuaderno", systemImage: "text.book.closed", route: .notebook)
@@ -33,14 +38,26 @@ struct MacSettingsView: View {
 
             Divider()
 
-            // "Horario docente" gestiona su propio scroll y su cabecera/pie
-            // fijos (es el asistente progresivo); envolverlo en el ScrollView
-            // genérico de Ajustes anidaría dos scrolls y perdería el pie fijo.
+            // "Horario docente" y "Cursos y grupos" gestionan su propio scroll
+            // (el primero es el asistente progresivo con cabecera y pie fijos);
+            // envolverlos en el ScrollView genérico de Ajustes anidaría dos
+            // scrolls y, en el asistente, perdería el pie fijo.
             if selectedRoute == .schedule {
                 TeacherScheduleWizard(
                     bridge: session.bridge,
                     selectedClassId: $scheduleSelectedClassId
                 )
+                .background(Color(NSColor.windowBackgroundColor))
+            } else if selectedRoute == .courses {
+                CoursesWorkspaceView(
+                    selectedClassId: $selectedClassId,
+                    onOpenModule: onOpenModule,
+                    onCreateStudent: { classId in
+                        selectedClassId = classId
+                        onOpenModule(.students, classId, nil)
+                    }
+                )
+                .environmentObject(session.bridge)
                 .background(Color(NSColor.windowBackgroundColor))
             } else {
                 // `detailViewForRoute` puede navegar con `NavigationLink` (p.ej.
@@ -66,6 +83,21 @@ struct MacSettingsView: View {
                 .id(selectedRoute)
             }
         }
+        .task { consumePendingSection() }
+        .appOnChange(of: settingsNavigation.pendingSection) { _ in
+            consumePendingSection()
+        }
+    }
+
+    /// Alguien ha pedido "abre Ajustes por esta sección" desde fuera (menú del
+    /// Cuaderno, lista de primeros pasos).
+    private func consumePendingSection() {
+        guard let request = settingsNavigation.consume() else { return }
+        switch request {
+        case .general: selectedRoute = .general
+        case .courses: selectedRoute = .courses
+        case .schedule: selectedRoute = .schedule
+        }
     }
 
     @ViewBuilder
@@ -83,7 +115,8 @@ struct MacSettingsView: View {
         switch route {
         case .general:
             GeneralSettingsView(settings: settings)
-        case .schedule:
+        case .courses, .schedule:
+            // Se resuelven arriba, fuera del ScrollView genérico.
             EmptyView()
         case .evaluation:
             EvaluationSettingsView(settings: settings)

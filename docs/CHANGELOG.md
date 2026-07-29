@@ -13,6 +13,50 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- Primer uso: la app estrena una bienvenida y una lista de "Primeros pasos" (`OnboardingModels`,
+  `OnboardingWelcomeSheet`, `OnboardingChecklistView`, `OnboardingHost`, todo en `AppleShared/`).
+  Hasta ahora no existía ningún onboarding: abrir la app de cero dejaba al docente en `Cursos` con
+  "Este curso escolar no tiene grupos" y sin indicación de por dónde empezar, y el orden real
+  (asignatura → curso escolar → grupos uno a uno, o bien irse a Ajustes a importar el horario) no
+  estaba escrito en ninguna parte. La lista recorre cinco pasos en el orden que tiene sentido
+  docente — fechas del curso, horario semanal, grupos, alumnado, situaciones de aprendizaje — y
+  cada uno ofrece los dos caminos con nombre propio ("Importar Excel" / "Escribir nombres"). No
+  reimplementa pantallas: abre las que ya existen (`TeacherScheduleWizard`, `StudentImportSheet`,
+  el módulo de Situaciones). El progreso se deriva de los datos reales (franjas, grupos, alumnado,
+  SA), no de un contador propio, así que restaurar un backup o recibir datos por Sync LAN también
+  lo actualiza; la única excepción documentada son las fechas del curso, que se crean solas con
+  valores por defecto y por eso necesitan una marca explícita al pulsar "Guardar" en el asistente.
+  La bienvenida solo salta si la base está vacía **y** no se ha visto antes, para no lanzarle un
+  tutorial a un docente con el curso empezado. Se reabre desde Ajustes → General → Primeros pasos.
+- Alumnado: `OnboardingStudentsSheet` da por fin un punto de entrada a la importación de alumnado
+  en iPhone/iPad. La hoja de revisión `StudentImportSheet` existía desde hace tiempo pero solo se
+  podía alcanzar desde `MacStudentsView`: en iOS no había forma de llegar a ella. Además del Excel
+  del centro admite escribir los nombres a mano, uno por línea.
+
+### Changed
+
+- Horario: el camino manual del asistente pasa a ser posible. El selector de grupo de
+  `slotEditorForm` solo listaba grupos ya existentes y "Añadir franja" quedaba deshabilitado sin
+  ellos, así que **sin importar un Excel no se podía crear ni una sola franja** y los grupos solo
+  nacían de la importación. Ahora hay alta de grupo en línea (mismo `createClass` del bridge que
+  usa la pantalla de Cursos y la propia importación; el nivel se deduce del nombre), un estado de
+  salida explicado cuando no hay grupos, y los huecos de la rejilla semanal son pulsables para
+  repetir una hora en otro día sin teclear cuatro campos. El paso "Terminado" enlaza con el
+  alumnado, que es lo siguiente que hace falta para dar clase.
+- Navegación: `Cursos` sale de la barra lateral en los tres shells (iOS, iPad, macOS) y pasa a ser
+  `Ajustes → Cursos y grupos`. Es configuración de principio de curso, no trabajo diario. La
+  pantalla `CoursesWorkspaceView` no se toca por dentro, solo cambia de sitio. Los accesos que
+  apuntaban al módulo (el menú "Gestión de grupos" del Cuaderno en los tres shells, el estado vacío
+  del dashboard, `MacRootView.open(module:)`) se redirigen a la nueva ubicación mediante un
+  `SettingsNavigationStore` nuevo, y un módulo `.courses` restaurado de una versión anterior se
+  reencamina a Ajustes en vez de dejar la barra lateral sin nada marcado. Ajustes en iPhone pasa de
+  `NavigationLink(destination:)` a `navigationDestination(item:)` para que esas peticiones externas
+  también naveguen en pantalla compacta.
+- Dashboard: el botón principal del estado sin clases deja de ser "Crear clase" (que llevaba a
+  crear un grupo suelto) y pasa a ser "Configurar mi curso", que abre la lista de primeros pasos.
+
 ### Data
 
 - Sync LAN (helper macOS): `SqlDelightSyncAdapter` no compilaba. Las consultas de instrumentos

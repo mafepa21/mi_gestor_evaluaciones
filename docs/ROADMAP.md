@@ -83,6 +83,7 @@ Prioridad: media-alta.
 - Multi-asignatura: relación real grupo-asignatura con catálogo visible y presets aplicables por materia; siguiente paso, usarla en filtros y onboarding.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
+  Propuesta pendiente de decision: entregas del alumnado via web (PWA) como fuente adicional de respuestas de instrumento, en `plan_entregas_web_alumnado_2026-07-29.md`. Restricciones fijadas: `LocalSyncServer` no se expone a Internet y el Mac tira de una bandeja externa; toda entrada pasa por `saveResponses`, nunca por SQL directo; cifrado extremo a extremo con tabla de correspondencias solo local. Si se aprueba, necesita ADR y migracion SQLDelight.
 - Exportaciones: informes utiles y reproducibles.
   Avance: Informes Apple IA dispone de `StudentReportSummary` estructurado como base para renderizar informes nativos y PDFs sin depender de texto libre como contrato principal.
 - Privacidad: mantener `PRIVACY.md` y `docs/04_legal_comercial/datos_personales.md` como base operativa pendiente de revision juridica.

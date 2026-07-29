@@ -171,6 +171,26 @@ El formato sigue una variante practica de Keep a Changelog:
   faltarían (clave de respuestas, contrato de autoría en el DOCX, puntuación por pregunta,
   versionado de la clave y derivación local verificable).
 
+- Nuevo `plan_entregas_web_alumnado_2026-07-29.md`: diseño para que el alumnado complete los
+  materiales de `03_ALUMNADO` de las Situaciones de Aprendizaje desde una PWA y que las respuestas
+  entren en la app **como respuestas de los instrumentos que ya existen**, sin sistema de
+  evaluación paralelo. Parte de lo verificado en código (las tres tablas de instrumento en
+  `AppDatabase.sq:674`, `physical_test_*` en `:2134`, `saveResponses` en
+  `NotebookInstrumentsRepositorySqlDelight.kt:161`, el patrón de ingesta de SyncLAN en
+  `KmpBridge.swift:10621`) y fija como principios: **nunca `INSERT` directo** en
+  `notebook_instrument_responses` — toda entrada pasa por `saveResponses`, que es quien resume el
+  estado, escribe `display_value`, deriva la nota, invalida `sheetCache` y emite
+  `NotebookRefreshBus` —; **el Mac tira, nadie empuja al Mac**, así que `LocalSyncServer.kt` no se
+  toca ni se expone y la bandeja (`CloudSubmissionInbox`, solo en `desktopMain`) es un cliente
+  saliente; cifrado extremo a extremo con la privada en Keychain y el alias en el fragmento del
+  enlace, que no viaja en la petición HTTP; alias por actividad y tabla de correspondencias en
+  cuatro tablas locales **sin `sync_version` ni `device_id`**, para que no puedan salir del Mac;
+  idempotencia por `submissionId`; y previsualización obligatoria. El contrato web se limita a los
+  cinco tipos de ítem reales (`NotebookInstrumentItemType`: `CHECK`, `TEXT`, `NUMBER`, `SCALE_1_4`,
+  `CHOICE`). Piloto por riesgo de dato, no por riqueza funcional: SA 2 Bádminton primero, SA 4 RCP
+  cuando exista la clave de respuestas, y SA 1 Pasaporte de Salud al final por incluir condición
+  física, hábitos y alimentación. Sin vídeo en el primer piloto.
+
 - Nuevo `plan_unificacion_dashboard_2026-07-28.md`: plan para unificar el Dashboard de iPad y Mac y hacer real el modo Clase/Despacho. Documenta el hallazgo de partida — el selector segmentado del iPad **no cambia la información**: `DashboardOperationalRepositoryDefault.getSnapshot` recibe `mode: DashboardMode` y no lo usa en ninguna consulta (solo lo copia al snapshot devuelto), así que los dos modos producen el mismo `DashboardSnapshot` y lo único que varía es el orden de las cinco tarjetas secundarias en `DashboardView.dashboardSecondaryGrid`. El plan propone que el modo distinga por alcance y horizonte temporal (Clase = una sola clase y la sesión en curso; Despacho = todos los grupos, la semana y el trimestre), conmutación automática desde el horario, subir la tarjeta "Ahora" del Mac (`MacDashboardSnapshot`, modelo Swift paralelo que hoy duplica la carga de datos) al `DashboardSnapshot` compartido, y una sola composición de bloques para ambas plataformas. Incluye el motivo para tocar `kmp/shared/domain/Models.kt` (archivo protegido, campo `currentContext` aditivo) y por qué **no** hace falta tocar `KmpBridge.swift`.
 
 - Nuevo `plan_adaptacion_import_formato_semanal_2026-07-27.md`: continuación de `plan_correccion_import_sa_2026-07-25.md` con el diagnóstico y la verificación de los tres frentes de esta tanda (checklists ponderadas que bloqueaban el import, formato semanal BLOQUE LARGO/CORTO, peso porcentual en la cabecera), incluidos los motivos para tocar los dos archivos protegidos y lo que deliberadamente no se ha hecho (la colocación automática de las sesiones contra el horario del grupo, que es funcionalidad del Planner, no del importador).

@@ -1617,6 +1617,11 @@ private struct LearningSituationEvaluationSheet: View {
         bridge.resetRubricBuilder()
         if let classId {
             bridge.selectRubricClass(classId)
+            Task {
+                if let unitId = try? await bridge.ensureTeachingUnitForLearningSituation(situation: situation, classId: classId) {
+                    bridge.selectRubricTeachingUnit(unitId)
+                }
+            }
         }
         bridge.updateRubricName(proposal.title)
         showingRubricBuilder = true

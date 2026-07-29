@@ -147,40 +147,51 @@ struct RubricBulkEvaluationSheet: View {
         state: BulkRubricEvaluationUiState,
         cache: BulkRubricEvaluationCache
     ) -> some View {
-        HStack(alignment: .center, spacing: 24) {
-            EvaluationIconButton(systemImage: "chevron.left", tint: .primary.opacity(0.8)) {
-                bridge.closeBulkRubricEvaluation()
-                dismiss()
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 24) {
+                EvaluationIconButton(systemImage: "chevron.left", tint: .primary.opacity(0.8)) {
+                    bridge.closeBulkRubricEvaluation()
+                    dismiss()
+                }
 
-            EvaluationSectionTitle(
-                eyebrow: "Pulsar para volver",
-                title: className,
-                subtitle: rubric.rubric.name
-            )
-
-            Spacer(minLength: 32)
-
-            HStack(spacing: 16) {
-                EvaluationChip(
-                    label: "\(cache.totalPendingCriteria) pendientes",
-                    systemImage: "clock.badge.exclamationmark",
-                    tint: cache.totalPendingCriteria == 0 ? EvaluationDesign.success : EvaluationDesign.accent
+                EvaluationSectionTitle(
+                    eyebrow: "Pulsar para volver",
+                    title: className,
+                    subtitle: rubric.rubric.name
                 )
 
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(state.isSaving ? EvaluationDesign.accent : EvaluationDesign.success)
-                        .frame(width: 8, height: 8)
+                Spacer(minLength: 32)
 
-                    Text(state.isSaving ? "Guardando…" : "Guardado")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.secondary)
+                HStack(spacing: 16) {
+                    EvaluationChip(
+                        label: "\(cache.totalPendingCriteria) pendientes",
+                        systemImage: "clock.badge.exclamationmark",
+                        tint: cache.totalPendingCriteria == 0 ? EvaluationDesign.success : EvaluationDesign.accent
+                    )
+
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(state.isSaving ? EvaluationDesign.accent : EvaluationDesign.success)
+                            .frame(width: 8, height: 8)
+
+                        Text(state.isSaving ? "Guardando…" : "Guardado")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.trailing, 8)
                 }
-                .padding(.trailing, 8)
             }
+
+            let criteriaText = rubricCriteriaSummary(rubric: rubric)
+            AssessmentCriteriaDisclosureView(rawText: criteriaText)
         }
         .padding(.bottom, 8)
+    }
+
+    private func rubricCriteriaSummary(rubric: RubricDetail) -> String {
+        var parts: [String] = [rubric.rubric.name, rubric.rubric.description]
+        parts.append(contentsOf: rubric.criteria.map { $0.criterion.description_ })
+        return parts.joined(separator: " · ")
     }
 
     private func compactEvaluationByCriterion(

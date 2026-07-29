@@ -100,6 +100,8 @@ struct StructuredInstrumentEvaluationSheet: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
+                    let criteriaText = structuredCriteriaSummary(model: model.wrappedValue)
+                    AssessmentCriteriaDisclosureView(rawText: criteriaText)
                 }
 
                 if !model.wrappedValue.criterionStatements.isEmpty
@@ -140,6 +142,12 @@ struct StructuredInstrumentEvaluationSheet: View {
         guard total > 0 else { return 0 }
         let completed = model.items.filter(isCompleted).count
         return Double(completed) / Double(total)
+    }
+
+    private func structuredCriteriaSummary(model: StructuredInstrumentEvaluationModel) -> String {
+        var parts: [String] = [request.title]
+        parts.append(contentsOf: model.items.map { $0.title })
+        return parts.joined(separator: " · ")
     }
 
     private func isCompleted(_ item: StructuredInstrumentEvaluationItem) -> Bool {

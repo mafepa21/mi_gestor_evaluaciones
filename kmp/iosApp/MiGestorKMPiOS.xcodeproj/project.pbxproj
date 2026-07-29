@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0048F941E7643E01204877FE /* AssessmentCriteriaDisclosureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0807C62AFA54EB7276D768B /* AssessmentCriteriaDisclosureView.swift */; };
 		01398CDF11AA8E8DB9ED5CF0 /* IOSAppStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12FE78CDE41ADDC94B9D4A83 /* IOSAppStyle.swift */; };
 		016DB0A03C88D75C6392179C /* NotebookFormulaEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9967D38B9A879C71B174CAE6 /* NotebookFormulaEditorSheet.swift */; };
 		01E7A6102F8410F3B3442227 /* PhysicalTestCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FB4440A1EC9C54F45F11BC /* PhysicalTestCaptureView.swift */; };
@@ -386,6 +387,7 @@
 		E8AE4881FFB88C106A37924D /* PlannerSummaryDashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1867CC94618A27E645618888 /* PlannerSummaryDashboard.swift */; };
 		E9032AE57114FF9AB7D4C082 /* MiGestorKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9B37D82D4C30174CBD843E47 /* MiGestorKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E94011DC47D904A106662F80 /* AppleFoundationStudentInsightService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C7735C70A8D47952837D52A /* AppleFoundationStudentInsightService.swift */; };
+		E9954D003354CCEF68E08F88 /* LomloeCriteriaCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0D53C0F7E51FE144808FD67 /* LomloeCriteriaCatalog.swift */; };
 		EA158B52B3D624457F236702 /* PlannerWorkspaceViewModel+Sequences.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBE8AD35C6410CC79F4CB876 /* PlannerWorkspaceViewModel+Sequences.swift */; };
 		EA5A98F4E0DDCA4302284B10 /* NotebookModuleDisplayFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A9F5C3A35823EC9555F412 /* NotebookModuleDisplayFormatting.swift */; };
 		EB0DA30115D7B0863E94E1D1 /* TutoringShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = D332467A125C50215481D20B /* TutoringShared.swift */; };
@@ -412,6 +414,7 @@
 		F812D370A189E21F84E08454 /* BackupStatusHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78E88B21BBD0EF622338678A /* BackupStatusHero.swift */; };
 		F87C4CB8E1252A911F0BEFA7 /* ScheduleImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2383FA2AFCB17CB773F8D8C /* ScheduleImportPreviewSheet.swift */; };
 		F8870EF71ED0F19930062E05 /* AppleFoundationStudentInsightService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C7735C70A8D47952837D52A /* AppleFoundationStudentInsightService.swift */; };
+		F8DDB81600029B10D82D9189 /* AssessmentCriteriaDisclosureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0807C62AFA54EB7276D768B /* AssessmentCriteriaDisclosureView.swift */; };
 		F8E257A5666B11DB4B5671AF /* SupportMeasureShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7EEE397867C9AB1B682637 /* SupportMeasureShared.swift */; };
 		F94056FF4937226611623FB6 /* SettingsRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4309F19FDFC6A480E12806A8 /* SettingsRow.swift */; };
 		F97BB1FBE7B0EE0179EAC7B9 /* WorkspaceCreationSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B295CDB0A0C9F2C1835EF56 /* WorkspaceCreationSheets.swift */; };
@@ -421,6 +424,7 @@
 		FB055151EE3D206236A08C2F /* PlannerWeekDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E31019B3456252E21063E25 /* PlannerWeekDetailPane.swift */; };
 		FCFCDB058F5AC765537750B3 /* NotebookModuleOrganization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEEB5AEB802B224689F0882B /* NotebookModuleOrganization.swift */; };
 		FD6F861A6B411D998DA2AF5E /* PhysicalTestsColumnOptionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41139A912BA4EE69F5B2DC1A /* PhysicalTestsColumnOptionsView.swift */; };
+		FE44A49751896CE5F073F18F /* LomloeCriteriaCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0D53C0F7E51FE144808FD67 /* LomloeCriteriaCatalog.swift */; };
 		FE7FB36A220367CDED1D8E56 /* AppleAIReadinessFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9066EF34A52C09F07E8CFAE7 /* AppleAIReadinessFixtures.swift */; };
 		FED6693A0057C3BFB3B39773 /* TeacherRadarCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DB5D8A7B19B0874750549A0 /* TeacherRadarCard.swift */; };
 		FEF8B70AE33C8ABB44582F1C /* WorkspaceLayoutState+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB9B3E078267BD94A53D6B2 /* WorkspaceLayoutState+Extensions.swift */; };
@@ -611,6 +615,7 @@
 		AC2F0852F9CAA60482FA9785 /* PlannerWorkspaceViewModel+WeekBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+WeekBoard.swift"; sourceTree = "<group>"; };
 		AD1C7AE3703AF328A706E700 /* DashboardProactiveInsight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardProactiveInsight.swift; sourceTree = "<group>"; };
 		AEEB5AEB802B224689F0882B /* NotebookModuleOrganization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleOrganization.swift; sourceTree = "<group>"; };
+		B0807C62AFA54EB7276D768B /* AssessmentCriteriaDisclosureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentCriteriaDisclosureView.swift; sourceTree = "<group>"; };
 		B18D4606AA037B05A26A0280 /* ScheduleGridPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleGridPDFRenderer.swift; sourceTree = "<group>"; };
 		B2383FA2AFCB17CB773F8D8C /* ScheduleImportPreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImportPreviewSheet.swift; sourceTree = "<group>"; };
 		B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSharedBridge.swift; sourceTree = "<group>"; };
@@ -663,6 +668,7 @@
 		ED160717C62AAA3AB794905E /* PlannerWorkspaceViewModel+CascadeMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+CascadeMove.swift"; sourceTree = "<group>"; };
 		EE3C26A04796CFACD4AB0C44 /* ScheduleWeekGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleWeekGridView.swift; sourceTree = "<group>"; };
 		F0BFD8699A1E65C7A09163CF /* NotebookAverageEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAverageEditorSheet.swift; sourceTree = "<group>"; };
+		F0D53C0F7E51FE144808FD67 /* LomloeCriteriaCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LomloeCriteriaCatalog.swift; sourceTree = "<group>"; };
 		F42B9FCF55764453E68E5BB6 /* AttendanceShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceShared.swift; sourceTree = "<group>"; };
 		F6B44EBC79907A49017DC0CD /* AppleBackupModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBackupModels.swift; sourceTree = "<group>"; };
 		F7414896A8713DD61AE874FC /* NotebookDynamicCellsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookDynamicCellsRow.swift; sourceTree = "<group>"; };
@@ -844,6 +850,7 @@
 				14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */,
 				27176C9EB76172D41191833D /* AppleFoundationReportService.swift */,
 				1C7735C70A8D47952837D52A /* AppleFoundationStudentInsightService.swift */,
+				B0807C62AFA54EB7276D768B /* AssessmentCriteriaDisclosureView.swift */,
 				2BAD893EC7E90121671F7BDB /* Assets.xcassets */,
 				893DD0805D75AD4923832EDD /* AssignRubricToTabView.swift */,
 				284EFC5D21CE71AE69E43094 /* AttendanceWorkspaceView.swift */,
@@ -867,6 +874,7 @@
 				3F4818F5D8B238485F914767 /* KmpBridgeObservationStores.swift */,
 				05FB1EEE057F9F3861BEECD8 /* LearningSituationsWorkspaceView.swift */,
 				6DC16E368E9913D847BB6D51 /* LibraryAndPEWorkspaceViews.swift */,
+				F0D53C0F7E51FE144808FD67 /* LomloeCriteriaCatalog.swift */,
 				3B0B097D45446340980CA846 /* MeetingsWorkspaceView.swift */,
 				C20918D0AFE00F50C0378076 /* MiGestorKMPiOSApp.swift */,
 				6DFB7CB99B772BA64AA591A9 /* NotebookAICommentSheet.swift */,
@@ -1196,6 +1204,7 @@
 				7B200C717CDA9324BBC303F3 /* AppleSharedBridge.swift in Sources */,
 				8260D6F8F24ABD735B285EBA /* AppleSpreadsheetReader.swift in Sources */,
 				BEE09F01DFABE9A8498C8B0E /* AppleViewCompatibility.swift in Sources */,
+				F8DDB81600029B10D82D9189 /* AssessmentCriteriaDisclosureView.swift in Sources */,
 				DFEEA8B716E874E7C7BE0E8B /* AssignRubricToTabView.swift in Sources */,
 				7342286FCDBCE94224A61888 /* AttendanceShared.swift in Sources */,
 				5AA56A1A703EDF8406F8B991 /* AttendanceWorkspaceView.swift in Sources */,
@@ -1232,6 +1241,7 @@
 				380C5B0861247861C8158E36 /* LearningSituationDocumentImportService.swift in Sources */,
 				A8C1A2062C3815D1FAC4C4BE /* LearningSituationsWorkspaceView.swift in Sources */,
 				AD204E79F58440E3B5FEAB9B /* LibraryAndPEWorkspaceViews.swift in Sources */,
+				E9954D003354CCEF68E08F88 /* LomloeCriteriaCatalog.swift in Sources */,
 				F1D09F5DF977701D749A19AD /* MacAppSessionController.swift in Sources */,
 				636BFAF254D3F3711AE5CF10 /* MacAppStyle.swift in Sources */,
 				541330321B3E26376DF94E13 /* MacAttendanceDayRow.swift in Sources */,
@@ -1419,6 +1429,7 @@
 				9D01F457DE02D070677CF7CC /* AppleSharedBridge.swift in Sources */,
 				F990EE3FCD3323B9BCB3891A /* AppleSpreadsheetReader.swift in Sources */,
 				BEE5A4B10ED6EF26DC223E17 /* AppleViewCompatibility.swift in Sources */,
+				0048F941E7643E01204877FE /* AssessmentCriteriaDisclosureView.swift in Sources */,
 				1862DCED173C424EA7C21B6F /* AssignRubricToTabView.swift in Sources */,
 				428537EEF8A394024D951475 /* AttendanceShared.swift in Sources */,
 				9AA8BC06ED560D826F02901B /* AttendanceWorkspaceView.swift in Sources */,
@@ -1455,6 +1466,7 @@
 				3AB64143C70A452FF016C4BA /* LearningSituationDocumentImportService.swift in Sources */,
 				5A06D3FAE61109EBEA5791A2 /* LearningSituationsWorkspaceView.swift in Sources */,
 				0230F89B204872CC089E8B47 /* LibraryAndPEWorkspaceViews.swift in Sources */,
+				FE44A49751896CE5F073F18F /* LomloeCriteriaCatalog.swift in Sources */,
 				D307D469B599F0AFFF1A01A5 /* MacTrackpadSwipeHelper.swift in Sources */,
 				89CFFF0BE042923FABF74C79 /* MeetingActaPDF.swift in Sources */,
 				77F4C6489C8C8B4B4A1A3EF9 /* MeetingsShared.swift in Sources */,
@@ -1679,17 +1691,8 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = (
-					UIInterfaceOrientationPortrait,
-					UIInterfaceOrientationPortraitUpsideDown,
-					UIInterfaceOrientationLandscapeLeft,
-					UIInterfaceOrientationLandscapeRight,
-				);
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = (
-					UIInterfaceOrientationPortrait,
-					UIInterfaceOrientationLandscapeLeft,
-					UIInterfaceOrientationLandscapeRight,
-				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1789,17 +1792,8 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = (
-					UIInterfaceOrientationPortrait,
-					UIInterfaceOrientationPortraitUpsideDown,
-					UIInterfaceOrientationLandscapeLeft,
-					UIInterfaceOrientationLandscapeRight,
-				);
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = (
-					UIInterfaceOrientationPortrait,
-					UIInterfaceOrientationLandscapeLeft,
-					UIInterfaceOrientationLandscapeRight,
-				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

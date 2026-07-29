@@ -13,9 +13,90 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
-Cambios posteriores a `v0.3.0-traceability-baseline`.
+### Data
+
+- Sync LAN (helper macOS): `SqlDelightSyncAdapter` no compilaba. Las consultas de instrumentos
+  estructurados llamaban a una propiedad `db` que no existe en esa clase (solo tiene `container`),
+  y serializaban `value_number` (REAL) como si fuera texto. `:data:compileKotlinDesktop` fallaba y
+  con él el target `MiGestorKMPMac`, porque el helper Command Center va embebido en la app de Mac.
+  Corregido a `container.database.appDatabaseQueries` y con la conversión explícita del número.
+
+### Fixed
+
+- Cuaderno: la rejilla de observación aparecía vacía ("Sin plantilla") en el iPad mientras el Mac
+  la abría entera. La plantilla estructurada la crea el importador de instrumentos de la situación
+  de aprendizaje, así que vivía solo en la base de datos del dispositivo donde se importó, y
+  `enqueueNotebookSnapshot` — el empuje completo del Cuaderno a Sync LAN — no emitía ninguna de sus
+  tres entidades: mandaba 19 tipos (`student`, `evaluation`, `notebook_column`, `notebook_cell`,
+  `grade`, `rubric_assessment`…) y ni `notebook_instrument_template`, ni `notebook_instrument_item`,
+  ni `notebook_instrument_response`. El otro dispositivo recibía la columna pero nunca su
+  contenido. Los dos lados receptores (`KmpBridge.applyPulledChanges` y `SqlDelightSyncAdapter`)
+  ya sabían aplicar esas entidades; faltaba quien las emitiera. Ahora el snapshot las emite, con la
+  plantilla, sus ítems y las respuestas por alumno de cada columna de instrumento estructurado.
+- Cuaderno: se retira la "auto-recuperación" de plantillas de `loadStructuredInstrumentEvaluation`.
+  No recuperaba nada: cuando no encontraba plantilla **inventaba** una rejilla con sesiones e
+  indicadores escritos a mano en el código fuente ("S2L - juegos autoarbitrados", "Respeto,
+  lenguaje y gestión de disputas"…) y la **persistía** en la base de datos del docente con
+  `source = "auto_repair"`. Reproducido en el Simulador con base de datos de demo limpia: una
+  columna de observación de una clase que no tiene nada que ver abre la hoja llena de esos
+  indicadores y los guarda como trabajo del docente. Sus ítems usaban la clave `obs_item_<n>`,
+  que ni siquiera casa con el contrato `^obs_s(\d+)_i(\d+)$` que `deriveObservationGridScore`
+  necesita, así que esa rejilla inventada tampoco podía dar nota nunca. El mismo bloque duplicado
+  como fallback en memoria en `NotebookStructuredInstrumentSupport.swift` también se elimina, junto
+  con la búsqueda por id alternativo `eval_<id>`/`<id>`, que podía enganchar la plantilla de otra
+  columna. Sin plantilla, la hoja vuelve a enseñar su estado vacío, ahora explicando la causa real
+  y la salida (sincronizar desde el dispositivo donde se importó).
+- Cuaderno: el "Criterio: X" de la hoja de instrumento estructurado mostraba el título de la
+  columna en vez del criterio. La cascada probaba primero `competencyCriteriaIds` renderizado como
+  `"CE \(id)"` — identificadores de fila de la base de datos, no códigos curriculares, así que
+  imprimía cosas como "CE 47" — y su último escalón caía al título de la columna, que ya es el
+  título de la hoja, de modo que nunca quedaba vacío y nunca era un criterio. Ahora se lee la
+  descripción de la evaluación asociada (que sí es el texto del criterio) y, si no hay ninguna,
+  su código, su nombre o la unidad/situación; si no hay nada real, no se muestra la línea. Además
+  el mismo bloque se pintaba dos veces seguidas, en la cabecera de la hoja y otra vez en
+  `ObservationGridInstrumentContent`: se deja solo el de la cabecera.
+- Sync LAN: `enqueueNotebookSnapshot` enviaba `"description": evaluation.description`. En Swift
+  `description` es el de `NSObject` (el `toString` del objeto Kotlin,
+  `Evaluation(id=…, code=…, …)`); el campo real del dominio se expone como `description_`, que es
+  lo que usa el resto del bridge. Comprobado en el Simulador: `evaluation.description` devuelve
+  literalmente `Evaluation(id=3, classId=1, code=CE 3.2, …)`. Cada sincronización mandaba ese
+  volcado como si fuera la descripción del criterio de evaluación, machacándola en el dispositivo
+  receptor. Bug preexistente (viene del snapshot inicial), no introducido por los commits de
+  instrumentos, pero afecta justo al texto del criterio. Mismo arreglo en el filtro de pruebas
+  físicas, que también normalizaba sobre el volcado.
+
+
+### Fixed
+
+- Sync LAN (macOS): el helper de enlace (`MiGestorCommandCenter`, proceso Java separado que sirve el puerto 8765) podía quedar huérfano tras un force-quit, un crash o una recompilación de Xcode, y seguir vivo reteniendo el puerto para siempre. `terminateStaleHelperProcesses` buscaba procesos previos con `pgrep -f <ruta absoluta del ejecutable actual>`, pero en builds de desarrollo Xcode regenera el hash de DerivedData al reconstruir, así que un helper huérfano de un build anterior tiene una ruta distinta a la del build actual y nunca se encontraba ni se mataba. Cada arranque posterior fallaba con `HttpsServer.create(...)` lanzando `Address already in use`, mostrado además tal cual (en inglés) en la pantalla de Sync LAN. Reproducido en la máquina de desarrollo: un helper de un build del domingo seguía ocupando el puerto 8765 días después, con la app principal ya reconstruida desde otra carpeta de DerivedData. Ahora la detección combina dos vías — coincidencia por el sufijo estable de la ruta del bundle (no la ruta absoluta completa) y búsqueda directa de quién escucha en el puerto 8765 vía `lsof` — verificando con `ps` que el PID candidato es realmente el helper antes de terminarlo (SIGTERM, con escalada a SIGKILL si el puerto sigue ocupado tras 2s). El mensaje de fallo "Address already in use" también se traduce ahora a español en la UI. De paso se corrige un bug de identidad en el `terminationHandler` del proceso: sin comprobar que el proceso que terminaba era el que seguía activo, el `terminationHandler` de un helper antiguo aún muriendo podía desmontar los pipes y el `process` de un helper **nuevo** ya arrancado, dejándolo sin seguimiento y no reiniciable con `stop()`.
+
+- Dashboard (macOS): sin horario configurado o fuera del rango del curso, el Mac sustituía **todo** el dashboard por una única tarjeta de aviso (`loadState = .empty(...)`), mientras iPad seguía enseñando KPIs, alertas, pendientes y riesgo. Con el mismo estado y los mismos datos, las dos plataformas se veían radicalmente distintas. Ahora esos dos estados ya no vacían la página: el aviso lo da la propia tarjeta "Ahora", igual que en iPad, y el resto del dashboard sigue disponible, porque el trabajo pendiente no desaparece por estar en vacaciones. La única razón que sigue vaciando la página es no tener ninguna clase creada.
+- Dashboard: en los estados sin horario o fuera de curso, la tarjeta "Ahora" mostraba sus botones de acción en gris y deshabilitados (no hay grupo al que apuntar), o sea un callejón sin salida. Ahora esos estados muestran un aviso con su salida real: "Configurar horario" o "Editar agenda docente".
+
+### Changed
+
+- Dashboard unificado entre iPad y Mac. **iPad gana la tarjeta "Ahora"** (qué clase tengo delante, qué sesión toca y las acciones del aula), que hasta ahora solo existía en macOS. **Mac gana el selector de modo**, que hasta ahora no tenía: su dashboard estaba fijado a Despacho con `refreshDashboard(mode: .office)` escrito a mano. Las dos plataformas pintan ahora el mismo cuerpo de tarjeta desde `dashboardNowCard` en la capa compartida (`DashboardSharedBlocks.swift`); macOS solo conserva su propio marco (`MacPanel` con cristal líquido) y iPad el suyo, porque forzar un único cromado habría sido una regresión visual, no una unificación.
+- Dashboard (macOS): se elimina la resolución paralela de "clase actual / siguiente" que vivía en Swift (`CurrentClassDashboardContext`, `nextContext(from:)`, `context(for:)`, `plannedSession(for:)` y siete ayudantes estáticos de fechas y horas, unas 200 líneas). Ahora lee `snapshot.currentContext` del backend, el mismo que iPad, así que el Mac deja de resolver el horario dos veces por recarga. `MacDashboardSnapshot` se queda solo con pendientes, estado de sync y acciones rápidas.
+- Dashboard: el selector de contexto pasa de dos opciones (`Clase`/`Despacho`) a tres (`Auto`/`Clase`/`Despacho`), con `Auto` como valor por defecto. En automático el modo se deduce del horario: si hay franja lectiva en curso entra en Clase, y en cualquier otro caso cae a Despacho, que es el estado seguro cuando no hay horario configurado. Debajo del selector se indica qué ha decidido el automático (`Auto · Clase en curso` / `Auto · Despacho`) para que el cambio no parezca arbitrario. La preferencia se guarda en `dashboard_mode_preference`, sustituyendo a `dashboard_operational_mode`.
+- Dashboard (iPad): aligerado. En modo Clase quedan tres bloques (Ahora, alumnado a vigilar del grupo, accesos para evaluar) y desaparecen la fila de KPIs, los filtros y las cinco tarjetas de contexto. En modo Despacho, los filtros de severidad y prioridad bajan hasta quedar pegados a las alertas que filtran (antes estaban sueltos en la cabecera, varias secciones por encima) y las cinco tarjetas secundarias pasan a un desplegable "Más contexto" cerrado por defecto, con el mismo patrón `DisclosureGroup` de Ajustes → Gestión de datos. El orden de esas tarjetas deja de depender del modo, que era la única diferencia real que producía el selector antiguo.
+
+- Dashboard: el modo `Clase`/`Despacho` deja de ser decorativo. Hasta ahora `DashboardOperationalRepositoryDefault.getSnapshot` recibía `mode: DashboardMode` y **no lo usaba en ninguna consulta ni filtro**: solo lo copiaba al `DashboardSnapshot` devuelto, así que los dos modos producían exactamente los mismos datos y la única diferencia visible en toda la app era el orden de las cinco tarjetas secundarias en `DashboardView.dashboardSecondaryGrid` (iPad). Ahora el modo decide el **alcance** y el **horizonte**: en `CLASSROOM` el snapshot se limita al grupo que se está impartiendo (deducido de `currentContext` cuando no hay filtro explícito de clase), deja fuera el resumen por grupo, las revisiones del Planner y los recordatorios de la agenda, y solo conserva los avisos urgentes (severidad o prioridad alta); en `OFFICE` se mantiene el comportamiento anterior, con todos los grupos y el trabajo acumulado. El contador de pendientes en `CLASSROOM` pasa a contar avisos urgentes del grupo en vez de quedarse a cero al vaciarse la agenda.
+
+### Added
+
+- Dashboard: el `DashboardSnapshot` compartido incorpora `currentContext` (`DashboardSessionContext` + `DashboardSessionContextStatus`), el contexto de "qué clase tengo ahora o cuál es la siguiente". Hasta ahora esa resolución solo existía en Swift y solo en macOS (`MacDashboardView.context(for:)` / `nextContext(from:)`, sobre el modelo privado `CurrentClassDashboardContext`), así que el dashboard de iPad no podía enseñar la tarjeta "Ahora". Se traduce a Kotlin en `DashboardOperationalRepositoryDefault` con la misma lógica que tenía el Mac: franja activa del horario fijo del profesor si la hay, si no la siguiente franja de hoy, y si no la primera franja del próximo día lectivo, enriquecida con la sesión planificada del Planner y la etiqueta del diario de sesión. Se distinguen además los estados sin horario configurado y fuera del curso escolar, que antes solo el Mac sabía detectar. Requiere ampliar `kmp/shared/domain/Models.kt` (archivo protegido) con un campo aditivo de valor por defecto `null`, sin migración de datos ni cambio de firma en lo existente, autorizado explícitamente por el usuario.
+
+### Verification
+
+- Sync LAN (macOS): `./scripts/verify_apple_builds.sh` (regeneración con XcodeGen + `xcodebuild` para `MiGestorKMPMac` y `MiGestorKMPiOS`) en verde tras el cambio. Root cause confirmado en la máquina de desarrollo con `lsof -iTCP:8765` y `ps`: un helper huérfano de un build de días atrás seguía escuchando en el puerto 8765 mientras la app principal corría desde una carpeta de DerivedData distinta; se liberó manualmente para restaurar el servicio en caliente sin esperar a una recompilación. No se ha probado en caliente el propio flujo de detección corregido (matar un helper huérfano real con la nueva lógica y comprobar que el emparejamiento con un iPad se recupera), porque reproducirlo de forma controlada exige forzar dos builds de Xcode con DerivedData distinta; queda pendiente de verificación manual.
+
+- Compilación de las dos apps Apple con los esquemas `MiGestorKMPMac` (destino macOS) y `MiGestorKMPiOS` (destino genérico de simulador iOS): **BUILD SUCCEEDED** en ambos tras la unificación del dashboard. No se ha ejecutado prueba manual en dispositivo ni simulador: los estados que faltan por comprobar a mano son el aula en curso con horario configurado, el paso automático a Despacho fuera de horario y el caso sin horario configurado.
+
+- Nuevo `DashboardOperationalRepositoryModeTest` (`kmp/data/src/desktopTest/`): 4 pruebas que fijan que `Clase` y `Despacho` ya no devuelven lo mismo (alcance por grupo, resumen por grupo solo en Despacho, avisos urgentes solo en Clase) y que el contexto de clase actual se resuelve desde el horario del profesor. Ejecutadas en verde con `./gradlew :data:desktopTest`.
 
 ### Docs
+
+- Nuevo `plan_unificacion_dashboard_2026-07-28.md`: plan para unificar el Dashboard de iPad y Mac y hacer real el modo Clase/Despacho. Documenta el hallazgo de partida — el selector segmentado del iPad **no cambia la información**: `DashboardOperationalRepositoryDefault.getSnapshot` recibe `mode: DashboardMode` y no lo usa en ninguna consulta (solo lo copia al snapshot devuelto), así que los dos modos producen el mismo `DashboardSnapshot` y lo único que varía es el orden de las cinco tarjetas secundarias en `DashboardView.dashboardSecondaryGrid`. El plan propone que el modo distinga por alcance y horizonte temporal (Clase = una sola clase y la sesión en curso; Despacho = todos los grupos, la semana y el trimestre), conmutación automática desde el horario, subir la tarjeta "Ahora" del Mac (`MacDashboardSnapshot`, modelo Swift paralelo que hoy duplica la carga de datos) al `DashboardSnapshot` compartido, y una sola composición de bloques para ambas plataformas. Incluye el motivo para tocar `kmp/shared/domain/Models.kt` (archivo protegido, campo `currentContext` aditivo) y por qué **no** hace falta tocar `KmpBridge.swift`.
 
 - Nuevo `plan_adaptacion_import_formato_semanal_2026-07-27.md`: continuación de `plan_correccion_import_sa_2026-07-25.md` con el diagnóstico y la verificación de los tres frentes de esta tanda (checklists ponderadas que bloqueaban el import, formato semanal BLOQUE LARGO/CORTO, peso porcentual en la cabecera), incluidos los motivos para tocar los dos archivos protegidos y lo que deliberadamente no se ha hecho (la colocación automática de las sesiones contra el horario del grupo, que es funcionalidad del Planner, no del importador).
 
@@ -32,6 +113,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 ### Fixed
 
 - **Rúbricas importadas desde Situaciones de Aprendizaje (SA) no quedaban vinculadas a la SA en la sección Rúbricas**: al materializar instrumentos evaluativos desde un documento de evaluación DOCX o al crear una rúbrica desde la vista de Situaciones de Aprendizaje, la rúbrica se guardaba con `teachingUnitId = nil`, lo que provocaba que apareciera como "Sin situación asignada" en la pantalla de Rúbricas. Se añade la resolución y vinculación del `teachingUnitId` correspondiente a la SA (`ensureTeachingUnitForLearningSituation` en `KmpBridge.swift`, y en `MaterializeLearningSituationAssessmentUseCase.kt`), asignando el `teachingUnitId` al guardar la rúbrica. Además, se añade `repairAssessmentInstrumentRubricTeachingUnits` en `KmpBridge.swift` para que cualquier rúbrica preexistente importada desde una SA sin `teachingUnitId` se repare automáticamente y quede vinculada correctamente a su SA.
+- Warnings de compilación sueltos sin relación entre sí, detectados al compilar en local: `PlannerWorkspaceViewModel+Composer.swift` capturaba `self` en un `guard let` de una `Task` donde no se usaba (`guard self != nil else { return }`); `DataManagementSettingsView.swift` aplicaba `?? "Sin curso"`/`?? "Sesión"` sobre `PlanningSession.groupName`/`teachingUnitName`, que no son opcionales, así que el `??` nunca se ejecutaba; `SelectiveWipeSheet.swift` hacía un downcast `as? WipeCategory` redundante sobre un valor que `KotlinArray.get(index:)` ya devuelve como `WipeCategory?`; `MacStudentsView.swift` marcaba `profileLoadTask` (cancelada desde `deinit`) como `@Published nonisolated(unsafe)`, combinación que Xcode señala como inconsistente entre sí (el propio fix-it de un diagnóstico rompe con el otro) — se quita `@Published` (no se usaba `$profileLoadTask` en ningún sitio) y queda como `var` aislada a `@MainActor`, sin necesidad de `nonisolated`.
 - Importación de SA (instrumentos): la hoja de revisión **impedía confirmar el import** cuando el documento ponderaba una checklist. Desde el fix A6, esas checklists se tipan como `checklistProportional`, pero aguas abajo `LearningSituationsWorkspaceView` las marcaba como error de validación bloqueante ("la checklist proporcional aún no genera nota automática") y `canConfirm` exigía cero errores: había que desmarcar "cuenta en la media" instrumento a instrumento. En SA 4 (Primeros Auxilios) eran 3 instrumentos y el 50 % de la nota. Con la nota proporcional ya implementada en la capa de datos, el error se sustituye por una comprobación real (una checklist computable necesita ítems), y el peso auto-calculable de los 8 documentos reales pasa de SA 2 90 % / SA 3 95 % / SA 4 50 % / SA 4b 90 % / SA 6 65 % a **100 % en los ocho**. La columna materializada de una checklist ponderada pasa a ser numérica con escala 0-10 (la entrada sigue siendo la checklist estructurada, como en la rejilla de observación), y la nota del instrumento explica de dónde sale la calificación en vez de avisar de que no se calcula. Toca `KmpBridge.swift` (archivo protegido) en tres puntos mínimos y acotados a este caso: `canMaterializeAverage`, el tipo/escala de columna y el prefijo de clave `chkp_` de los ítems, que es lo que activa el cálculo en la capa de datos.
 
 ### Data
@@ -246,6 +328,8 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Fixed
 
+- iOS/iPadOS: las hojas "Importar medidas Nivel III" y "Medidas de apoyo del grupo" aplicaban un ancho mínimo de escritorio (620/560 pt) sin guarda de plataforma, desbordando la pantalla en iPhone (cabecera y pie cortados). El `frame` ahora es solo de macOS; en iOS/iPadOS usan hoja a pantalla completa (`presentationDetents([.large])`). Ítem P1 de `plan_auditoria_ui_presentacion_2026-07-15.md`.
+- iOS/iPadOS: la hoja "Columnas ocultas" del Cuaderno y los placeholders "Sin datos del cuaderno" (organizador y columnas ocultas) llevaban `frame(minWidth: 420)` sin guarda de plataforma, recortando los bordes en iPhone. El `frame` queda solo en macOS, replicando el patrón ya usado por el organizador de columnas. Ítem P2 de `plan_auditoria_ui_presentacion_2026-07-15.md`.
 - CI: el workflow `Apple Builds` subía como evidencia `/tmp/mac_build.log`/`/tmp/ios_build.log`, pero `scripts/verify_apple_builds.sh` escribe `/tmp/mac_build_${WORKTREE_SUFFIX}.log`/`/tmp/ios_build_${WORKTREE_SUFFIX}.log` (sufijo por nombre de checkout, pensado para que sesiones paralelas en distintos worktrees locales no colisionen en `/tmp`). Las rutas nunca coincidían, así que el artifact `apple-build-logs` siempre se subía vacío y los errores reales de compilación de Apple eran invisibles en CI. Se cambia el `path` del `upload-artifact` a un glob (`/tmp/mac_build_*.log`, `/tmp/ios_build_*.log`) para que capture el log real sea cual sea el sufijo.
 - macOS: se resuelve un marcador de conflicto de Git sin resolver (`<<<<<<<`/`=======`/`>>>>>>>`) que quedó literalmente en `MacRootView.swift` tras el merge `90d8216` ("Merge branch 'main' into feature/planner-diario-macos-sesion"), dejando el inspector del planner (`case .planner`) sin compilar en macOS. Ver detalle en `docs/audit/INCIDENCIA_2026-07-14-build-roto-post-merge.md`.
 - iOS/macOS: se registran en `MiGestorKMPiOS.xcodeproj` cinco archivos Swift que el mismo merge trajo al repositorio sin darlos de alta en el target de ningún esquema (`SyncStatusBadge.swift`, `SupportMeasureBulkImportSheet.swift`, `SupportMeasureGroupOverviewSheet.swift`, `SupportMeasureShared.swift`, `SupportMeasureBulkImport.swift`), lo que impedía compilar y hacía que la sección "Medidas de apoyo" de la ficha de alumno no apareciera en ninguna build generada tras el merge aunque el código ya estuviera en `main`.

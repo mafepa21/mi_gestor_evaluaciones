@@ -47,7 +47,11 @@ struct StructuredInstrumentEvaluationSheet: View {
                     )
                     formContent(binding)
                 } else {
-                    NotebookContentUnavailableView("Sin plantilla", systemImage: "doc.badge.gearshape", description: "Esta columna todavía no tiene plantilla estructurada.")
+                    NotebookContentUnavailableView(
+                        "Sin plantilla",
+                        systemImage: "doc.badge.gearshape",
+                        description: "Esta columna todavía no tiene plantilla estructurada en este dispositivo. Si la importaste en otro, sincroniza con Sync LAN para recibir sus sesiones e indicadores."
+                    )
                 }
             }
             .navigationTitle(request.title)
@@ -98,6 +102,14 @@ struct StructuredInstrumentEvaluationSheet: View {
                     }
                     let criteriaText = structuredCriteriaSummary(model: model.wrappedValue)
                     AssessmentCriteriaDisclosureView(rawText: criteriaText)
+                }
+
+                if !model.wrappedValue.criterionStatements.isEmpty
+                    || !(model.wrappedValue.criterionLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    EvaluationCriterionSection(
+                        statements: model.wrappedValue.criterionStatements,
+                        fallbackText: model.wrappedValue.criterionLabel
+                    )
                 }
 
                 if let sessionGroups = observationSessionGroups(for: model.wrappedValue.items) {
@@ -156,6 +168,10 @@ struct StructuredInstrumentEvaluationSheet: View {
         isLoading = true
         errorMessage = nil
         do {
+            // Si el bridge devuelve `nil` es que esta columna no tiene plantilla estructurada en
+            // esta base de datos. No se rellena con un instrumento de ejemplo: se enseña el estado
+            // vacío, porque unos indicadores inventados parecerían trabajo real del docente y al
+            // guardarlos se propagarían al resto de dispositivos.
             model = try await bridge.loadStructuredInstrumentEvaluation(
                 classId: request.classId,
                 studentId: request.studentId,

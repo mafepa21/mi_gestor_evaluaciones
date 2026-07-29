@@ -45,7 +45,13 @@ struct SupportMeasureGroupOverviewSheet: View {
             }
         }
         .background(appPageBackground(for: colorScheme))
+        #if os(macOS)
         .frame(minWidth: 560, idealWidth: 680, minHeight: 480, idealHeight: 680)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        #endif
         .task { await loadMeasures() }
     }
 

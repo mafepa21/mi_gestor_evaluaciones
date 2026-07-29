@@ -927,9 +927,45 @@ data class PEOperationalItem(
     val severity: String = "low",
 )
 
+/// Estado de la franja lectiva que enmarca el dashboard: si hay clase ahora
+/// mismo, si la siguiente es hoy, si es otro día, o si no hay horario del que
+/// deducirlo.
+enum class DashboardSessionContextStatus {
+    ACTIVE,
+    NEXT_TODAY,
+    NEXT_OTHER_DAY,
+    NO_SCHEDULE,
+    OUTSIDE_SCHOOL_YEAR,
+}
+
+/// Contexto de "qué clase tengo ahora (o cuál es la siguiente)", derivado del
+/// horario fijo del profesor y de la sesión planificada que le corresponda.
+/// Hasta ahora esto solo existía en macOS, como modelo Swift privado
+/// (`MacDashboardSnapshot`/`CurrentClassDashboardContext`), y por eso el
+/// dashboard de iPad no podía enseñar la tarjeta "Ahora". Al vivir en el
+/// snapshot compartido, las dos plataformas pintan la misma tarjeta y el modo
+/// Clase/Despacho puede resolverse solo a partir de `status`.
+data class DashboardSessionContext(
+    val status: DashboardSessionContextStatus = DashboardSessionContextStatus.NO_SCHEDULE,
+    val classId: Long? = null,
+    val className: String = "",
+    val subjectLabel: String? = null,
+    val unitLabel: String? = null,
+    val startTime: String? = null,
+    val endTime: String? = null,
+    val dayOfWeek: Int? = null,
+    val scheduleSlotId: Long? = null,
+    val sessionId: Long? = null,
+    val sessionTitle: String? = null,
+    val sessionSubtitle: String? = null,
+    val sessionStatusLabel: String? = null,
+    val isFromPlannedSession: Boolean = false,
+)
+
 data class DashboardSnapshot(
     val generatedAt: Instant = Clock.System.now(),
     val mode: DashboardMode = DashboardMode.OFFICE,
+    val currentContext: DashboardSessionContext? = null,
     val filters: DashboardFilters = DashboardFilters(),
     val todayCount: Int = 0,
     val alertsCount: Int = 0,

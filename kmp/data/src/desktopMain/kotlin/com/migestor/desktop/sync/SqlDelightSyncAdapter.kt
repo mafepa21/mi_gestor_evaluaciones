@@ -437,6 +437,73 @@ class SqlDelightSyncAdapter(
                 }
             }
 
+            // notebook instrument templates, items & responses
+            container.database.appDatabaseQueries.selectAllInstrumentTemplatesByClass(schoolClass.id).executeAsList().forEach { t ->
+                val templateUpdatedAt = t.updated_at_epoch_ms
+                if (templateUpdatedAt > sinceEpochMs) {
+                    changes += SyncChange(
+                        entity = "notebook_instrument_template",
+                        id = t.id,
+                        updatedAtEpochMs = templateUpdatedAt,
+                        deviceId = t.device_id ?: localDeviceId,
+                        payload = buildJsonObject {
+                            put("id", JsonPrimitive(t.id))
+                            put("classId", JsonPrimitive(t.class_id))
+                            put("columnId", JsonPrimitive(t.column_id))
+                            put("evaluationId", t.evaluation_id?.let(::JsonPrimitive) ?: JsonPrimitive(0))
+                            put("title", JsonPrimitive(t.title))
+                            put("kind", JsonPrimitive(t.kind))
+                            put("inputKind", JsonPrimitive(t.input_kind))
+                            put("source", JsonPrimitive(t.source ?: ""))
+                            put("createdAtEpochMs", JsonPrimitive(t.created_at_epoch_ms))
+                        }.toString(),
+                    )
+                }
+                container.database.appDatabaseQueries.selectInstrumentItemsByTemplate(t.id).executeAsList().forEach { item ->
+                    val itemUpdatedAt = item.updated_at_epoch_ms
+                    if (itemUpdatedAt > sinceEpochMs) {
+                        changes += SyncChange(
+                            entity = "notebook_instrument_item",
+                            id = item.id,
+                            updatedAtEpochMs = itemUpdatedAt,
+                            deviceId = item.device_id ?: localDeviceId,
+                            payload = buildJsonObject {
+                                put("id", JsonPrimitive(item.id))
+                                put("templateId", JsonPrimitive(item.template_id))
+                                put("itemKey", JsonPrimitive(item.item_key))
+                                put("title", JsonPrimitive(item.title))
+                                put("itemType", JsonPrimitive(item.item_type))
+                                put("optionsCsv", JsonPrimitive(item.options_csv))
+                                put("required", JsonPrimitive(item.required != 0L))
+                                put("sortOrder", JsonPrimitive(item.sort_order))
+                                put("helpText", JsonPrimitive(item.help_text ?: ""))
+                            }.toString(),
+                        )
+                    }
+                }
+            }
+
+            container.database.appDatabaseQueries.selectAllInstrumentResponsesByClass(schoolClass.id).executeAsList().forEach { r ->
+                val responseUpdatedAt = r.updated_at_epoch_ms
+                if (responseUpdatedAt > sinceEpochMs) {
+                    changes += SyncChange(
+                        entity = "notebook_instrument_response",
+                        id = "${r.class_id}-${r.student_id}-${r.column_id}-${r.item_id}",
+                        updatedAtEpochMs = responseUpdatedAt,
+                        deviceId = r.device_id ?: localDeviceId,
+                        payload = buildJsonObject {
+                            put("classId", JsonPrimitive(r.class_id))
+                            put("studentId", JsonPrimitive(r.student_id))
+                            put("columnId", JsonPrimitive(r.column_id))
+                            put("itemId", JsonPrimitive(r.item_id))
+                            put("valueText", JsonPrimitive(r.value_text ?: ""))
+                            put("valueBool", r.value_bool?.let { JsonPrimitive(it != 0L) } ?: JsonPrimitive(false))
+                            put("valueNumber", JsonPrimitive(r.value_number?.toString() ?: ""))
+                        }.toString(),
+                    )
+                }
+            }
+
             // ── Asistencia ────────────────────────────────────────────────────
             container.attendanceRepository.listAttendance(schoolClass.id).forEach { att ->
                 val attUpdatedAt = att.trace.updatedAt.toEpochMilliseconds()
@@ -1414,6 +1481,86 @@ class SqlDelightSyncAdapter(
                         applied++
                     }
 
+                    "notebook_instrument_template" -> {
+                        val id = payload.string("id") ?: return@forEach
+                        val classId = payload.long("classId") ?: return@forEach
+                        val columnId = payload.string("columnId") ?: return@forEach
+                        val title = payload.string("title") ?: return@forEach
+                        val kind = payload.string("kind") ?: "observation"
+                        val inputKind = payload.string("inputKind") ?: "structuredObservation"
+                        val source = payload.string("source")
+                        val evaluationId = payload.long("evaluationId")?.takeIf { it > 0L }
+                        val createdAt = payload.long("createdAtEpochMs") ?: change.updatedAtEpochMs
+
+                        container.database.appDatabaseQueries.upsertInstrumentTemplate(
+                            id = id,
+                            class_id = classId,
+                            column_id = columnId,
+                            evaluation_id = evaluationId,
+                            title = title,
+                            kind = kind,
+                            input_kind = inputKind,
+                            source = source,
+                            created_at_epoch_ms = createdAt,
+                            updated_at_epoch_ms = change.updatedAtEpochMs,
+                            device_id = change.deviceId,
+                            sync_version = 1,
+                        )
+                        applied++
+                    }
+
+                    "notebook_instrument_item" -> {
+                        val id = payload.string("id") ?: return@forEach
+                        val templateId = payload.string("templateId") ?: return@forEach
+                        val itemKey = payload.string("itemKey") ?: return@forEach
+                        val title = payload.string("title") ?: return@forEach
+                        val itemType = payload.string("itemType") ?: "scale14"
+                        val optionsCsv = payload.string("optionsCsv") ?: ""
+                        val required = payload.bool("required") ?: true
+                        val sortOrder = payload.long("sortOrder") ?: 0L
+                        val helpText = payload.string("helpText")
+
+                        container.database.appDatabaseQueries.upsertInstrumentItem(
+                            id = id,
+                            template_id = templateId,
+                            item_key = itemKey,
+                            title = title,
+                            item_type = itemType,
+                            options_csv = optionsCsv,
+                            required = if (required) 1L else 0L,
+                            sort_order = sortOrder,
+                            help_text = helpText,
+                            updated_at_epoch_ms = change.updatedAtEpochMs,
+                            device_id = change.deviceId,
+                            sync_version = 1,
+                        )
+                        applied++
+                    }
+
+                    "notebook_instrument_response" -> {
+                        val classId = payload.long("classId") ?: return@forEach
+                        val studentId = payload.long("studentId") ?: return@forEach
+                        val columnId = payload.string("columnId") ?: return@forEach
+                        val itemId = payload.string("itemId") ?: return@forEach
+                        val valueText = payload.string("valueText")
+                        val valueBool = payload.bool("valueBool")
+                        val valueNumber = payload.string("valueNumber")
+
+                        container.database.appDatabaseQueries.upsertInstrumentResponse(
+                            class_id = classId,
+                            student_id = studentId,
+                            column_id = columnId,
+                            item_id = itemId,
+                            value_text = valueText,
+                            value_bool = valueBool?.let { if (it) 1L else 0L },
+                            value_number = valueNumber?.toDoubleOrNull(),
+                            updated_at_epoch_ms = change.updatedAtEpochMs,
+                            device_id = change.deviceId,
+                            sync_version = 1,
+                        )
+                        applied++
+                    }
+
                     // ── Nuevas entidades ──────────────────────────────────────
 
                     "attendance" -> {
@@ -1827,6 +1974,28 @@ class SqlDelightSyncAdapter(
                     container.notebookRepository.deleteColumn(it)
                     true
                 } ?: false
+            }
+            "notebook_instrument_template" -> {
+                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {
+                    container.database.appDatabaseQueries.deleteInstrumentTemplateById(it)
+                    true
+                } ?: false
+            }
+            "notebook_instrument_item" -> {
+                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {
+                    container.database.appDatabaseQueries.deleteInstrumentItemById(it)
+                    true
+                } ?: false
+            }
+            "notebook_instrument_response" -> {
+                val classId = payload.long("classId")
+                val studentId = payload.long("studentId")
+                val columnId = payload.string("columnId")
+                val itemId = payload.string("itemId")
+                if (classId != null && studentId != null && columnId != null && itemId != null) {
+                    container.database.appDatabaseQueries.deleteInstrumentResponseById(classId, studentId, columnId, itemId)
+                    true
+                } else false
             }
             "notebook_group" -> {
                 payload.long("id")?.let { container.notebookRepository.deleteWorkGroup(it); true } ?: false

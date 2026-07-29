@@ -2,6 +2,8 @@ package com.migestor.shared.viewmodel
 
 import com.migestor.shared.domain.*
 import com.migestor.shared.repository.*
+import com.migestor.shared.util.CriterionStatement
+import com.migestor.shared.util.EvaluationCriteriaReference
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -21,7 +23,9 @@ data class RubricEvaluationUiState(
     val studentId: Long = 0,
     val evaluationId: Long = 0,
     val columnId: String? = null,
-    val notes: String = ""
+    val notes: String = "",
+    val criterionLabel: String? = null,
+    val criterionStatements: List<CriterionStatement> = emptyList()
 ) {
     companion object {
         fun default() = RubricEvaluationUiState()
@@ -97,6 +101,8 @@ class RubricEvaluationViewModel(
                         rubricDetail = rubricDetail,
                         selectedLevels = initialSelectedLevels,
                         classId = classId,
+                        criterionLabel = evaluationCriterionLabel(evaluation),
+                        criterionStatements = evaluation?.let { EvaluationCriteriaReference.criterionStatements(it.name) } ?: emptyList(),
                         isLoading = false
                     )
                 }
@@ -152,6 +158,8 @@ class RubricEvaluationViewModel(
                         selectedLevels = initialSelectedLevels,
                         notes = previousGrade?.evidence ?: "",
                         classId = classId,
+                        criterionLabel = evaluationCriterionLabel(evaluation),
+                        criterionStatements = evaluation?.let { EvaluationCriteriaReference.criterionStatements(it.name) } ?: emptyList(),
                         isLoading = false
                     )
                 }
@@ -283,6 +291,32 @@ class RubricEvaluationViewModel(
                 _uiState.update { it.copy(isSaving = false, isSaveSuccessful = false, error = "Error al guardar: ${e.message}") }
             }
         }
+    }
+
+    // El texto del criterio curricular que evalua esta rubrica. Primero se busca el enunciado
+    // oficial en EvaluationCriteriaReference por el titulo del instrumento (mismo catalogo que usa
+    // el importador para la Rejilla de observacion, ver KmpBridge.swift). Si el instrumento no esta
+    // en ese catalogo (otra materia/curso), se cae a la `description` de la evaluacion asociada. Un
+    // bug de sync ya corregido pudo dejar ahi un volcado del propio objeto
+    // (`Evaluation(id=..., description=Evaluation(...`) o la nota generica de importacion
+    // ("Instrumento importado desde..."); ambas formas se ignoran en vez de mostrarse, cayendo a
+    // codigo o nombre.
+    private fun evaluationCriterionLabel(evaluation: Evaluation?): String? {
+        evaluation ?: return null
+        EvaluationCriteriaReference.criterionStatement(evaluation.name)?.let { return it }
+        val description = evaluation.description?.trim()
+        if (!description.isNullOrEmpty() &&
+            !description.startsWith("Evaluation(id=") &&
+            !description.contains("description=Evaluation(") &&
+            !description.startsWith("Instrumento importado desde ")
+        ) {
+            return description
+        }
+        val code = evaluation.code.trim()
+        if (code.isNotEmpty()) return code
+        val name = evaluation.name.trim()
+        if (name.isNotEmpty()) return name
+        return null
     }
 
     private fun parseRubricSelections(selectionsString: String): Map<Long, Long> {

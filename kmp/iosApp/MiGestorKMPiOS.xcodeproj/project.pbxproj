@@ -77,6 +77,7 @@
 		298E110A1EFAD27F09D1505A /* PlannerWorkspaceViewModel+BulkOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0B03581E247976F1D0F9535 /* PlannerWorkspaceViewModel+BulkOperations.swift */; };
 		2A06B1A387AF1081E88869D0 /* BackupCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1027C324D7108B1CD8EB79AC /* BackupCenterView.swift */; };
 		2A132DCD2DEABBDD1A1E8DC8 /* NotebookStructuredInstrumentSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA4D40A51F6DA104CCFFE1E /* NotebookStructuredInstrumentSupport.swift */; };
+		2ACD452E148600D935BEF751 /* EvaluationCriterionSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40AB5AD5137D95F9DBD3912 /* EvaluationCriterionSection.swift */; };
 		2B8604AE8668138313FF158A /* PlannerWorkspaceViewModel+DayBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8BFCF99CED1D1B0B14F406F /* PlannerWorkspaceViewModel+DayBoard.swift */; };
 		2B8C387421A1620F71EB8F16 /* StringHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAAEE8EDA2AFF2C273DAC5F /* StringHelpers.swift */; };
 		2C96F0474CC75AB421D42592 /* DashboardSharedBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8C8563CC96E19042E114CEA /* DashboardSharedBlocks.swift */; };
@@ -211,6 +212,7 @@
 		76B4DA5D3E5AEEB47114209D /* MeetingActaPDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ED32EAFF51BE275270F5F2A /* MeetingActaPDF.swift */; };
 		774C8481CFDCFE2829E7ACA5 /* NotebookSeatingPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5BB221D33601136CB3F7F0F /* NotebookSeatingPlanView.swift */; };
 		77F4C6489C8C8B4B4A1A3EF9 /* MeetingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DFC26768A94C315D01AF726 /* MeetingsShared.swift */; };
+		781140373BD0BEC2734B2623 /* EvaluationCriterionSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40AB5AD5137D95F9DBD3912 /* EvaluationCriterionSection.swift */; };
 		78A071A272E2BC12FABF66B2 /* AppleFoundationReportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27176C9EB76172D41191833D /* AppleFoundationReportService.swift */; };
 		79C4AFB74B06C1976052554F /* PlannerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F08CE3BCBD53B85A89136EF /* PlannerModels.swift */; };
 		7A973DCE7BAA2B903B1BF4DA /* NotebookInspectorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 064505192DE6C78C8E8249B0 /* NotebookInspectorPanel.swift */; };
@@ -630,6 +632,7 @@
 		BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookDataGrid.swift; sourceTree = "<group>"; };
 		C20918D0AFE00F50C0378076 /* MiGestorKMPiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiGestorKMPiOSApp.swift; sourceTree = "<group>"; };
 		C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationAnalyticsService.swift; sourceTree = "<group>"; };
+		C40AB5AD5137D95F9DBD3912 /* EvaluationCriterionSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationCriterionSection.swift; sourceTree = "<group>"; };
 		C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBridgeBootstrap.swift; sourceTree = "<group>"; };
 		C5BB221D33601136CB3F7F0F /* NotebookSeatingPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookSeatingPlanView.swift; sourceTree = "<group>"; };
 		C66F3C885EB6EAF74EACD0D6 /* MacAppSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppSessionController.swift; sourceTree = "<group>"; };
@@ -858,6 +861,7 @@
 				D8C8563CC96E19042E114CEA /* DashboardSharedBlocks.swift */,
 				9C7AB4FB2753F16568E54891 /* DashboardView.swift */,
 				4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */,
+				C40AB5AD5137D95F9DBD3912 /* EvaluationCriterionSection.swift */,
 				61DBB79CD6256350F830529A /* EvaluationDesign.swift */,
 				2960F7D65E3A8DF5997306CD /* EvaluationHubView.swift */,
 				12FE78CDE41ADDC94B9D4A83 /* IOSAppStyle.swift */,
@@ -1219,6 +1223,7 @@
 				DCA27168B229DA96EC2E2944 /* DataManagementSettingsView.swift in Sources */,
 				507FE6A1B2C504DD4D7A505D /* DataSecuritySettingsView.swift in Sources */,
 				CAF67FA20CA5E389338EA49A /* DiaryWorkspaceView.swift in Sources */,
+				781140373BD0BEC2734B2623 /* EvaluationCriterionSection.swift in Sources */,
 				82E4E70524506517472625EB /* EvaluationDesign.swift in Sources */,
 				47D80C34D5057F3AEA01A558 /* EvaluationHubView.swift in Sources */,
 				E87B821CC8CE67E56C40621C /* EvaluationSettingsView.swift in Sources */,
@@ -1443,6 +1448,7 @@
 				83DB805DBC12FA13994AB6DC /* DataManagementSettingsView.swift in Sources */,
 				6CDD16F9ECA1589E81197BE4 /* DataSecuritySettingsView.swift in Sources */,
 				E11C883BCE69B05FE0FBC324 /* DiaryWorkspaceView.swift in Sources */,
+				2ACD452E148600D935BEF751 /* EvaluationCriterionSection.swift in Sources */,
 				63DB1711AD7BF3AFA2B8B305 /* EvaluationDesign.swift in Sources */,
 				3DEC9F6A7A9FF704B88EFFF9 /* EvaluationHubView.swift in Sources */,
 				C0F3F85AFC82CC3FCD3EEB38 /* EvaluationSettingsView.swift in Sources */,

@@ -48,9 +48,18 @@ struct MacDashboardView: View {
 
     @State private var teachingAssistantService = AppleFoundationTeachingAssistantService()
 
-    private var activeContext: CurrentClassDashboardContext? {
+    /// Misma clave de preferencia que iPad: el modo elegido en una plataforma
+    /// no se pisa con el de la otra porque `@AppStorage` es local, pero el
+    /// comportamiento y las opciones son idénticos.
+    @AppStorage("dashboard_mode_preference") private var modePreferenceRaw: String = DashboardModePreference.auto.rawValue
+
+    private var modePreference: DashboardModePreference {
+        DashboardModePreference(rawValue: modePreferenceRaw) ?? .auto
+    }
+
+    private var activeContext: DashboardSessionContext? {
         guard case .ready(let snapshot) = loadState else { return nil }
-        return snapshot.currentClassContext ?? snapshot.nextClassContext
+        return snapshot.context
     }
 
     var body: some View {
@@ -119,6 +128,9 @@ struct MacDashboardView: View {
         .appOnChange(of: dashboardStore.pairedSyncHost) { _ in
             scheduleReload()
         }
+        .appOnChange(of: modePreferenceRaw) { _ in
+            scheduleReload()
+        }
     }
 
     private var dashboardHeader: some View {
@@ -126,13 +138,32 @@ struct MacDashboardView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Hoy")
                     .font(MacAppStyle.pageTitle)
-                Text("Qué tengo ahora, qué falta y qué hago")
+                Text(headerSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            dashboardModePicker
             SyncStatusCompactView(summary: DashboardSyncSummary(bridge: bridge))
         }
+    }
+
+    private var headerSubtitle: String {
+        modePreference.resolvedHint(for: operationalSnapshot?.currentContext)
+            ?? (modePreference == .classroom ? "Solo el grupo que tengo delante" : "Qué tengo ahora, qué falta y qué hago")
+    }
+
+    /// macOS no tenía selector de modo: el dashboard estaba fijado a Despacho.
+    /// Ahora ofrece las mismas tres opciones que iPad.
+    private var dashboardModePicker: some View {
+        Picker("Contexto", selection: $modePreferenceRaw) {
+            ForEach(DashboardModePreference.allCases) { option in
+                Text(option.title).tag(option.rawValue)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 260)
     }
 
     @ViewBuilder
@@ -141,7 +172,8 @@ struct MacDashboardView: View {
             if isWide {
                 HStack(alignment: .top, spacing: 24) {
                     DashboardHeroNowCard(
-                        context: snapshot.currentClassContext ?? snapshot.nextClassContext,
+                        context: snapshot.context,
+                        tintHex: snapshot.context?.classId.flatMap { bridge.plannerCourseColor(for: $0.int64Value) },
                         onAction: handleQuickAction,
                         onOpenSheet: { activeSheet = $0 }
                     )
@@ -171,7 +203,8 @@ struct MacDashboardView: View {
                         onAction: handleProactiveAction
                     )
                     DashboardHeroNowCard(
-                        context: snapshot.currentClassContext ?? snapshot.nextClassContext,
+                        context: snapshot.context,
+                        tintHex: snapshot.context?.classId.flatMap { bridge.plannerCourseColor(for: $0.int64Value) },
                         onAction: handleQuickAction,
                         onOpenSheet: { activeSheet = $0 }
                     )
@@ -188,17 +221,23 @@ struct MacDashboardView: View {
     }
 
     /// Resumen por grupo, Agenda docente, Educación Física y Auditoría
-    /// LOMLOE: hasta ahora solo existían en iPad. Se renderizan aquí sobre
-    /// el mismo `DashboardSnapshot` real del backend (compartido con iPad
-    /// vía DashboardSharedBlocks.swift), no sobre el `MacDashboardSnapshot`
-    /// ad-hoc de "Ahora"/Pendientes/Riesgo, que sigue derivándose del
-    /// horario fijo del profesor y no tiene equivalente en el snapshot
-    /// operativo del backend.
+    /// LOMLOE, sobre el mismo `DashboardSnapshot` del backend que usa iPad
+    /// (capa compartida en DashboardSharedBlocks.swift). El `MacDashboardSnapshot`
+    /// que queda ya solo lleva pendientes, sync y acciones: el contexto de
+    /// "Ahora" también viene del snapshot compartido.
     @ViewBuilder
     private func sharedOperationalBlocks(snapshot: DashboardSnapshot, isWide: Bool) -> some View {
+        // En modo Clase estos bloques no se pintan: comparan grupos entre sí o
+        // miran la semana entera, y el backend ya los devuelve vacíos. Se
+        // omiten en vez de dibujar cuatro tarjetas diciendo "sin datos".
+        let isClassroom = modePreference.resolved(for: snapshot.currentContext) == .classroom
         VStack(alignment: .leading, spacing: 16) {
-            dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme)
-            if isWide {
+            if !isClassroom {
+                dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme)
+            }
+            if isClassroom {
+                EmptyView()
+            } else if isWide {
                 HStack(alignment: .top, spacing: 16) {
                     dashboardGroupSummaryBlock(snapshot: snapshot, isWide: true)
                     dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
@@ -234,7 +273,7 @@ struct MacDashboardView: View {
 
     private var toolbarKey: String {
         let context = activeContext
-        return "\(context?.classId ?? -1)|\(context?.status.rawValue ?? "none")|\(dashboardStore.syncPendingChanges)|\(dashboardStore.pairedSyncHost ?? "")"
+        return "\(context?.classId?.int64Value ?? -1)|\(context.map { dashboardContextStatusLabel($0.status) } ?? "none")|\(dashboardStore.syncPendingChanges)|\(dashboardStore.pairedSyncHost ?? "")"
     }
 
     private func syncToolbarActions() {
@@ -242,8 +281,8 @@ struct MacDashboardView: View {
             MacDashboardToolbarActions(
                 canRunActions: activeContext?.classId != nil,
                 refresh: { scheduleReload() },
-                passList: { handleQuickAction(.attendance(classId: activeContext?.classId)) },
-                observation: { activeSheet = .observation(classId: activeContext?.classId) }
+                passList: { handleQuickAction(.attendance(classId: activeContext?.classId?.int64Value)) },
+                observation: { activeSheet = .observation(classId: activeContext?.classId?.int64Value) }
             )
         )
     }
@@ -268,55 +307,33 @@ struct MacDashboardView: View {
         loadState = .loading
         do {
             await bridge.ensureClassesLoaded()
-            await bridge.refreshDashboard(mode: .office)
-            operationalSnapshot = dashboardStore.dashboardSnapshot
+            // El modo ya no está fijado a `.office`: se resuelve desde la
+            // preferencia del usuario y del contexto del horario, igual que en
+            // iPad. Se pide primero con el modo vigente y, si el automático
+            // cambia de opinión al ver el contexto, se recarga una sola vez.
+            let requestedMode = modePreference.resolved(for: operationalSnapshot?.currentContext)
+            await bridge.refreshDashboard(mode: requestedMode)
+            var snapshot = dashboardStore.dashboardSnapshot
+            let settledMode = modePreference.resolved(for: snapshot?.currentContext)
+            if settledMode != requestedMode {
+                await bridge.refreshDashboard(mode: settledMode)
+                snapshot = dashboardStore.dashboardSnapshot
+            }
+            operationalSnapshot = snapshot
+
             guard !dashboardStore.classes.isEmpty else {
                 loadState = .empty(.noClasses)
                 return
             }
 
-            let schedule = try await bridge.plannerTeacherSchedule()
-            let slots = try await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)
-            guard !slots.isEmpty else {
-                loadState = .empty(.noScheduleConfigured)
-                return
-            }
-
-            let now = Date()
-            guard Self.date(now, isInside: schedule.startDateIso, and: schedule.endDateIso) else {
-                loadState = .empty(.outsideSchoolYear(startDate: schedule.startDateIso, endDate: schedule.endDateIso))
-                return
-            }
-
-            let activeWeekdays = Self.weekdays(from: schedule.activeWeekdaysCsv)
-            let today = Self.plannerWeekday(for: now)
-            guard activeWeekdays.isEmpty || activeWeekdays.contains(today) else {
-                loadState = .ready(
-                    try await buildSnapshot(
-                        current: nil,
-                        next: nextContext(from: slots, schedule: schedule, now: now, statusForToday: false)
-                    )
-                )
-                return
-            }
-
-            let sortedSlots = slots.sorted(by: Self.slotOrder)
-            if let activeSlot = sortedSlots.first(where: { slot in
-                Int(slot.dayOfWeek) == today && Self.time(now, isBetween: slot.startTime, and: slot.endTime)
-            }) {
-                let context = try await context(
-                    for: activeSlot,
-                    status: .active,
-                    schedule: schedule,
-                    now: now,
-                    includeSession: true
-                )
-                loadState = .ready(try await buildSnapshot(current: context, next: nil))
-            } else if let next = try await nextContext(from: sortedSlots, schedule: schedule, now: now, statusForToday: true) {
-                loadState = .ready(try await buildSnapshot(current: nil, next: next))
-            } else {
-                loadState = .empty(.noScheduleConfigured)
-            }
+            // Sin horario o fuera del rango del curso ya NO vacían la página.
+            // Antes sí, y por eso el mismo estado se veía radicalmente distinto
+            // en las dos plataformas: macOS sustituía todo el dashboard por una
+            // tarjeta de aviso mientras iPad seguía enseñando alertas,
+            // pendientes y riesgo. Ese aviso lo da ahora la propia tarjeta
+            // "Ahora", igual que en iPad, y el resto del dashboard sigue ahí:
+            // el trabajo pendiente no deja de existir porque sea julio.
+            loadState = .ready(try await buildSnapshot(context: snapshot?.currentContext))
         } catch {
             loadState = .error("No se pudo cargar el dashboard: \(error.localizedDescription)")
         }
@@ -333,10 +350,10 @@ struct MacDashboardView: View {
             classTrendsLoadFailed = false
             return
         }
-        let context = snapshot.currentClassContext ?? snapshot.nextClassContext
+        let context = snapshot.context
         isLoadingClassTrends = context?.classId != nil
         let trends: KmpBridge.AITrendsSnapshot?
-        if let classId = context?.classId {
+        if let classId = context?.classId?.int64Value {
             trends = try? await bridge.getAITrendsAndMetrics(classId: classId, studentId: nil)
         } else {
             trends = nil
@@ -348,7 +365,7 @@ struct MacDashboardView: View {
             snapshot: snapshot.proactiveSnapshot,
             trends: trends,
             context: DashboardProactiveContext(
-                className: context?.className,
+                className: context.map { $0.className.isEmpty ? nil : $0.className } ?? nil,
                 modeLabel: "macOS",
                 syncPendingChanges: snapshot.syncStatus.pendingChanges,
                 pairedSyncHost: snapshot.syncStatus.pairedHost,
@@ -368,11 +385,11 @@ struct MacDashboardView: View {
             aiBriefingState = .cached
             return
         }
-        let context = snapshot.currentClassContext ?? snapshot.nextClassContext
-        aiBriefing = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: context?.className)
+        let context = snapshot.context
+        aiBriefing = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: context.map { $0.className.isEmpty ? nil : $0.className } ?? nil)
         aiBriefingState = .updating
         guard DashboardAIBriefingCache.shared.beginRefresh(for: key) else { return }
-        let classId = context?.classId
+        let classId = context?.classId?.int64Value
         Task { @MainActor in
             defer { DashboardAIBriefingCache.shared.finishRefresh(for: key) }
             do {
@@ -389,7 +406,7 @@ struct MacDashboardView: View {
                 aiBriefingState = .fresh
             } catch {
                 guard activeAIBriefingKey == key else { return }
-                let fallback = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: context?.className)
+                let fallback = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: context.map { $0.className.isEmpty ? nil : $0.className } ?? nil)
                 if let fallback {
                     aiBriefing = fallback
                 }
@@ -399,12 +416,12 @@ struct MacDashboardView: View {
     }
 
     private func aiBriefingKey(snapshot: MacDashboardSnapshot) -> DashboardAIBriefingCacheKey {
-        let context = snapshot.currentClassContext ?? snapshot.nextClassContext
-        return DashboardAIBriefingCacheKey(classId: context?.classId, scope: "macOS")
+        let context = snapshot.context
+        return DashboardAIBriefingCacheKey(classId: context?.classId?.int64Value, scope: "macOS")
     }
 
     private func proactiveActionAvailable(_ action: DashboardProactiveAction) -> Bool {
-        let classId = activeContext?.classId
+        let classId = activeContext?.classId?.int64Value
         switch action {
         case .passList, .openNotebook, .evaluatePending, .quickEvaluation, .openReports:
             return classId != nil
@@ -418,7 +435,7 @@ struct MacDashboardView: View {
     }
 
     private func handleProactiveAction(_ action: DashboardProactiveAction) {
-        let classId = activeContext?.classId
+        let classId = activeContext?.classId?.int64Value
         switch action {
         case .passList:
             handleQuickAction(.attendance(classId: classId))
@@ -439,100 +456,18 @@ struct MacDashboardView: View {
         }
     }
 
-    private func buildSnapshot(
-        current: CurrentClassDashboardContext?,
-        next: CurrentClassDashboardContext?
-    ) async throws -> MacDashboardSnapshot {
-        let pending = try await pendingItems(for: current ?? next)
+    private func buildSnapshot(context: DashboardSessionContext?) async throws -> MacDashboardSnapshot {
+        let pending = try await pendingItems(for: context)
         return MacDashboardSnapshot(
-            currentClassContext: current,
-            nextClassContext: next,
+            context: context,
             pendingItems: pending,
             syncStatus: DashboardSyncSummary(bridge: bridge),
-            quickActions: DashboardQuickAction.defaults(for: current ?? next)
+            quickActions: DashboardQuickAction.defaults(for: context)
         )
     }
 
-    private func nextContext(
-        from slots: [TeacherScheduleSlot],
-        schedule: TeacherSchedule,
-        now: Date,
-        statusForToday: Bool
-    ) async throws -> CurrentClassDashboardContext? {
-        let today = Self.plannerWeekday(for: now)
-        if statusForToday,
-           let todaySlot = slots
-            .filter({ Int($0.dayOfWeek) == today && Self.time($0.startTime, isAfter: now) })
-            .sorted(by: Self.slotOrder)
-            .first {
-            return try await context(for: todaySlot, status: .nextToday, schedule: schedule, now: now, includeSession: true)
-        }
 
-        for offset in 1...7 {
-            guard let candidateDate = Calendar.current.date(byAdding: .day, value: offset, to: now) else { continue }
-            let day = Self.plannerWeekday(for: candidateDate)
-            let activeWeekdays = Self.weekdays(from: schedule.activeWeekdaysCsv)
-            guard activeWeekdays.isEmpty || activeWeekdays.contains(day) else { continue }
-            if let slot = slots.filter({ Int($0.dayOfWeek) == day }).sorted(by: Self.slotOrder).first {
-                return try await context(for: slot, status: .nextOtherDay, schedule: schedule, now: candidateDate, includeSession: false)
-            }
-        }
-        return nil
-    }
-
-    private func context(
-        for slot: TeacherScheduleSlot,
-        status: CurrentClassDashboardContext.Status,
-        schedule: TeacherSchedule,
-        now: Date,
-        includeSession: Bool
-    ) async throws -> CurrentClassDashboardContext {
-        let classId = slot.schoolClassId
-        let schoolClass = dashboardStore.classes.first(where: { $0.id == classId })
-        let session = includeSession ? try await plannedSession(for: slot, date: now) : nil
-        let journalSummary: SessionJournalSummary?
-        if let session {
-            journalSummary = try await bridge.plannerJournalSummaries(sessionIds: [session.id]).first
-        } else {
-            journalSummary = nil
-        }
-        let journalLabel = Self.journalStatusLabel(journalSummary)
-        let subjectLabel = schoolClass.map { "\($0.course)º" }
-        let subtitle = [session?.objectives.nilIfBlank, session?.activities.nilIfBlank]
-            .compactMap { $0 }
-            .joined(separator: " · ")
-
-        return CurrentClassDashboardContext(
-            status: status,
-            classId: classId,
-            className: schoolClass?.name ?? session?.groupName ?? "Grupo \(classId)",
-            classColorHex: bridge.plannerCourseColor(for: classId),
-            subjectLabel: subjectLabel,
-            unitLabel: session?.teachingUnitName.nilIfBlank,
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            dayOfWeek: Int(slot.dayOfWeek),
-            scheduleSlotId: slot.id,
-            sessionId: session?.id,
-            sessionTitle: session?.teachingUnitName.nilIfBlank,
-            sessionSubtitle: subtitle.nilIfBlank,
-            sessionStatusLabel: session.map { $0.status == .completed ? "Impartida" : "Planificada" } ?? journalLabel,
-            isFromPlannedSession: session != nil
-        )
-    }
-
-    private func plannedSession(for slot: TeacherScheduleSlot, date: Date) async throws -> PlanningSession? {
-        let calendar = Calendar(identifier: .iso8601)
-        let week = calendar.component(.weekOfYear, from: date)
-        let year = calendar.component(.yearForWeekOfYear, from: date)
-        let sessions = try await bridge.plannerListSessions(weekNumber: week, year: year, classId: slot.schoolClassId)
-        let dayOfWeek = Int(slot.dayOfWeek)
-        return sessions.first { session in
-            Int(session.dayOfWeek) == dayOfWeek
-        }
-    }
-
-    private func pendingItems(for context: CurrentClassDashboardContext?) async throws -> [DashboardPendingItem] {
+    private func pendingItems(for context: DashboardSessionContext?) async throws -> [DashboardPendingItem] {
         var items: [DashboardPendingItem] = []
 
         if let context, context.classId != nil, context.sessionId == nil {
@@ -546,7 +481,7 @@ struct MacDashboardView: View {
             )
         }
 
-        if let context, let classId = context.classId {
+        if let context, let classId = context.classId?.int64Value {
             let records = try await bridge.attendanceRecords(for: classId, on: Date())
             if records.isEmpty {
                 items.append(
@@ -584,67 +519,6 @@ struct MacDashboardView: View {
             onNavigate(destination)
         }
     }
-
-    private static func plannerWeekday(for date: Date) -> Int {
-        let appleWeekday = Calendar.current.component(.weekday, from: date)
-        return appleWeekday == 1 ? 7 : appleWeekday - 1
-    }
-
-    private static func weekdays(from csv: String) -> Set<Int> {
-        Set(csv.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) })
-    }
-
-    private static func date(_ date: Date, isInside startIso: String, and endIso: String) -> Bool {
-        let calendar = Calendar.current
-        let day = calendar.startOfDay(for: date)
-        let start = AppDateTimeSupport.date(fromISO: startIso, fallback: .distantPast)
-        let end = AppDateTimeSupport.date(fromISO: endIso, fallback: .distantFuture)
-        return day >= calendar.startOfDay(for: start) && day <= calendar.startOfDay(for: end)
-    }
-
-    private static func time(_ date: Date, isBetween start: String, and end: String) -> Bool {
-        guard let current = minutes(from: date), let startMinutes = minutes(from: start), let endMinutes = minutes(from: end) else {
-            return false
-        }
-        return current >= startMinutes && current <= endMinutes
-    }
-
-    private static func time(_ start: String, isAfter date: Date) -> Bool {
-        guard let current = minutes(from: date), let startMinutes = minutes(from: start) else { return false }
-        return startMinutes > current
-    }
-
-    private static func minutes(from date: Date) -> Int? {
-        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
-        guard let hour = components.hour, let minute = components.minute else { return nil }
-        return hour * 60 + minute
-    }
-
-    private static func minutes(from time: String) -> Int? {
-        let parts = time.split(separator: ":")
-        guard parts.count >= 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return nil }
-        return hour * 60 + minute
-    }
-
-    private static func slotOrder(lhs: TeacherScheduleSlot, rhs: TeacherScheduleSlot) -> Bool {
-        if lhs.dayOfWeek == rhs.dayOfWeek {
-            return lhs.startTime == rhs.startTime ? lhs.endTime < rhs.endTime : lhs.startTime < rhs.startTime
-        }
-        return lhs.dayOfWeek < rhs.dayOfWeek
-    }
-
-    private static func journalStatusLabel(_ summary: SessionJournalSummary?) -> String? {
-        switch summary?.status {
-        case .completed:
-            return "Diario cerrado"
-        case .draft:
-            return "Diario en borrador"
-        case .empty, .none:
-            return nil
-        default:
-            return nil
-        }
-    }
 }
 
 private enum MacDashboardLoadState {
@@ -654,33 +528,37 @@ private enum MacDashboardLoadState {
     case error(String)
 }
 
+/// Única razón que justifica vaciar la página entera: sin clases no hay nada
+/// que enseñar. Sin horario o fuera de curso sí hay dashboard, y lo avisa la
+/// tarjeta "Ahora".
 private enum MacDashboardEmptyReason {
-    case noScheduleConfigured
     case noClasses
-    case outsideSchoolYear(startDate: String, endDate: String)
 }
 
 private struct MacDashboardSnapshot {
-    let currentClassContext: CurrentClassDashboardContext?
-    let nextClassContext: CurrentClassDashboardContext?
+    /// Antes había dos contextos (`currentClassContext` y `nextClassContext`)
+    /// resueltos aquí en Swift. Ahora es uno solo y viene del backend, dentro
+    /// del `DashboardSnapshot` compartido con iPad: su `status` ya distingue si
+    /// la clase está en curso o es la siguiente.
+    let context: DashboardSessionContext?
     let pendingItems: [DashboardPendingItem]
     let syncStatus: DashboardSyncSummary
     let quickActions: [DashboardQuickAction]
 
     var proactiveSnapshot: DashboardProactiveSnapshot {
         DashboardProactiveSnapshot(
-            todayCount: currentClassContext == nil ? 0 : 1,
+            todayCount: context?.status == .active ? 1 : 0,
             alertsCount: pendingItems.filter { $0.priority == .high }.count,
             pendingCount: pendingItems.count,
-            nextSessionLabel: nextClassContext?.className ?? currentClassContext?.className ?? "Sin próxima sesión",
-            todaySessions: [currentClassContext, nextClassContext].compactMap { context in
+            nextSessionLabel: context.map { $0.className.isEmpty ? "Sin próxima sesión" : $0.className } ?? "Sin próxima sesión",
+            todaySessions: [context].compactMap { context in
                 guard let context else { return nil }
                 return DashboardProactiveSession(
-                    id: "\(context.scheduleSlotId ?? context.classId ?? -1)",
-                    groupName: context.className ?? "Grupo",
+                    id: "\(context.scheduleSlotId?.int64Value ?? context.classId?.int64Value ?? -1)",
+                    groupName: context.className.isEmpty ? "Grupo" : context.className,
                     timeLabel: [context.startTime, context.endTime].compactMap { $0 }.joined(separator: "-"),
                     didacticUnit: context.sessionTitle ?? context.unitLabel ?? "Sin sesión planificada",
-                    sessionStatus: context.status.rawValue
+                    sessionStatus: dashboardContextStatusLabel(context.status)
                 )
             },
             alerts: pendingItems.map { item in
@@ -695,32 +573,6 @@ private struct MacDashboardSnapshot {
             }
         )
     }
-}
-
-private struct CurrentClassDashboardContext {
-    enum Status: String {
-        case active
-        case nextToday
-        case nextOtherDay
-        case noScheduleConfigured
-        case outsideSchoolYear
-    }
-
-    let status: Status
-    let classId: Int64?
-    let className: String?
-    let classColorHex: String?
-    let subjectLabel: String?
-    let unitLabel: String?
-    let startTime: String?
-    let endTime: String?
-    let dayOfWeek: Int?
-    let scheduleSlotId: Int64?
-    let sessionId: Int64?
-    let sessionTitle: String?
-    let sessionSubtitle: String?
-    let sessionStatusLabel: String?
-    let isFromPlannedSession: Bool
 }
 
 private struct DashboardPendingItem: Identifiable {
@@ -800,8 +652,8 @@ private struct DashboardQuickAction: Identifiable {
     let destination: MacDashboardDestination?
     let sheet: DashboardSheet?
 
-    static func defaults(for context: CurrentClassDashboardContext?) -> [DashboardQuickAction] {
-        let classId = context?.classId
+    static func defaults(for context: DashboardSessionContext?) -> [DashboardQuickAction] {
+        let classId = context?.classId?.int64Value
         return [
             .init(id: "attendance", title: "Pasar lista", systemImage: "checkmark.circle", destination: .attendance(classId: classId), sheet: nil),
             .init(id: "notebook", title: "Abrir cuaderno", systemImage: "tablecells", destination: .notebook(classId: classId), sheet: nil),
@@ -853,194 +705,54 @@ private struct MacPanel<Content: View>: View {
 }
 
 private struct DashboardHeroNowCard: View {
-    let context: CurrentClassDashboardContext?
+    @Environment(\.colorScheme) private var colorScheme
+    let context: DashboardSessionContext?
+    /// El color del grupo se sigue resolviendo en Swift (`plannerCourseColor`),
+    /// porque es cromado de la app y no dato del snapshot.
+    let tintHex: String?
     let onAction: (MacDashboardDestination) -> Void
     let onOpenSheet: (DashboardSheet) -> Void
 
     var body: some View {
-        MacPanel(title: "Ahora", tint: contextTint) {
-            VStack(alignment: .leading, spacing: 24) {
-                if let context {
-                    contextHeader(context)
-                    if context.isFromPlannedSession {
-                        plannedSessionBlock(context)
-                    } else if context.status == .active {
-                        missingSessionBlock
-                    }
-                    quickActions(context)
-                } else {
-                    ContentUnavailableView(
-                        "Sin clase activa",
-                        systemImage: "calendar",
-                        description: Text("No hay una franja lectiva próxima en la agenda docente.")
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 220)
-                }
-            }
+        MacPanel(title: "Ahora", tint: panelTint) {
+            // El cuerpo de la tarjeta es exactamente el mismo que en iPad
+            // (`dashboardNowCard`): antes eran dos implementaciones distintas
+            // sobre dos modelos distintos. Aquí solo queda el marco de macOS.
+            dashboardNowCard(
+                context: context,
+                colorScheme: colorScheme,
+                isCompact: false,
+                onAction: handle
+            )
         }
     }
 
-    private var contextTint: Color {
-        guard let context else { return MacAppStyle.infoTint }
-        return Color(hex: context.classColorHex ?? "#2563EB")
+    private var panelTint: Color {
+        guard let tintHex else { return MacAppStyle.infoTint }
+        return Color(hex: tintHex)
     }
 
-    private func contextHeader(_ context: CurrentClassDashboardContext) -> some View {
-        HStack(alignment: .top, spacing: 16) {
-            Circle()
-                .fill(Color(hex: context.classColorHex ?? "#2563EB"))
-                .frame(width: 14, height: 14)
-                .padding(.top, 8)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title(for: context))
-                    .font(.title2.weight(.semibold))
-                Text(subtitle(for: context))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                if let start = context.startTime, let end = context.endTime {
-                    Label("\(dayLabel(context.dayOfWeek)) · \(start)-\(end)", systemImage: "clock")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            MacStatusPill(label: statusLabel(context.status), isActive: context.status == .active, tint: statusTint(context.status))
-        }
-    }
-
-    private func plannedSessionBlock(_ context: CurrentClassDashboardContext) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Sesión planificada", systemImage: "calendar.badge.checkmark")
-                .font(.headline)
-            Text(context.sessionTitle ?? context.unitLabel ?? "Sesión")
-                .font(.callout.weight(.semibold))
-            if let subtitle = context.sessionSubtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let status = context.sessionStatusLabel {
-                MacStatusPill(label: status, isActive: true, tint: MacAppStyle.infoTint)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MacAppStyle.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private var missingSessionBlock: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "calendar.badge.plus")
-                .foregroundStyle(MacAppStyle.warningTint)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("No hay sesión planificada para esta franja.")
-                    .font(.callout.weight(.semibold))
-                Text("Puedes seguir trabajando desde el horario fijo o crear la sesión en Planner.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Crear sesión en Planner") {
-                onAction(.plannerAgenda)
-            }
-        }
-        .padding(16)
-        .background(MacAppStyle.warningTint.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func quickActions(_ context: CurrentClassDashboardContext) -> some View {
-        let classId = context.classId
-        let active = context.status == .active
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: 12)], spacing: 12) {
-            if active {
-                dashboardAction("Pasar lista", "checkmark.circle", .attendance(classId: classId))
-                dashboardAction("Abrir cuaderno", "tablecells", .notebook(classId: classId))
-                dashboardAction("Evaluar rúbrica", "checklist.checked", .rubrics(classId: classId))
-                Button {
-                    onOpenSheet(.observation(classId: classId))
-                } label: {
-                    DashboardQuickActionButton(title: "Preparar observación", systemImage: "note.text.badge.plus")
-                }
-                .buttonStyle(.plain)
-                Button {
-                    onOpenSheet(.quickEvaluation(classId: classId))
-                } label: {
-                    DashboardQuickActionButton(title: "Preparar evaluación", systemImage: "sparkles")
-                }
-                .buttonStyle(.plain)
-                if let sessionId = context.sessionId {
-                    dashboardAction("Diario", "doc.text", .plannerSession(sessionId: sessionId))
-                }
-            } else {
-                dashboardAction("Preparar sesión", "calendar.badge.plus", .plannerAgenda)
-                dashboardAction("Abrir planner", "calendar", .plannerAgenda)
-                dashboardAction("Abrir cuaderno", "tablecells", .notebook(classId: classId))
-            }
-        }
-    }
-
-    private func dashboardAction(_ title: String, _ systemImage: String, _ destination: MacDashboardDestination) -> some View {
-        Button {
-            onAction(destination)
-        } label: {
-            DashboardQuickActionButton(title: title, systemImage: systemImage)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func title(for context: CurrentClassDashboardContext) -> String {
-        switch context.status {
-        case .active:
-            return context.className ?? "Clase actual"
-        case .nextToday, .nextOtherDay:
-            return "Próxima clase"
-        case .noScheduleConfigured:
-            return "Sin horario"
-        case .outsideSchoolYear:
-            return "Fuera de curso"
-        }
-    }
-
-    private func subtitle(for context: CurrentClassDashboardContext) -> String {
-        let parts = [context.className, context.subjectLabel, context.unitLabel].compactMap { $0?.nilIfBlank }
-        return parts.isEmpty ? "Sin detalle de grupo" : parts.joined(separator: " · ")
-    }
-
-    private func statusLabel(_ status: CurrentClassDashboardContext.Status) -> String {
-        switch status {
-        case .active: return "En curso"
-        case .nextToday: return "Hoy"
-        case .nextOtherDay: return "Próxima"
-        case .noScheduleConfigured: return "Sin horario"
-        case .outsideSchoolYear: return "Fuera de curso"
-        }
-    }
-
-    private func statusTint(_ status: CurrentClassDashboardContext.Status) -> Color {
-        switch status {
-        case .active: return MacAppStyle.successTint
-        case .nextToday, .nextOtherDay: return MacAppStyle.infoTint
-        case .noScheduleConfigured, .outsideSchoolYear: return MacAppStyle.warningTint
-        }
-    }
-
-    private func dayLabel(_ day: Int?) -> String {
-        switch day {
-        case 1: return "Lunes"
-        case 2: return "Martes"
-        case 3: return "Miércoles"
-        case 4: return "Jueves"
-        case 5: return "Viernes"
-        case 6: return "Sábado"
-        case 7: return "Domingo"
-        default: return "Día"
+    private func handle(_ action: DashboardNowAction) {
+        let classId = context?.classId?.int64Value
+        switch action {
+        case .passList:
+            onAction(.attendance(classId: classId))
+        case .openNotebook:
+            onAction(.notebook(classId: classId))
+        case .evaluate:
+            onAction(.rubrics(classId: classId))
+        case .observation:
+            onOpenSheet(.observation(classId: classId))
+        case .quickEvaluation:
+            onOpenSheet(.quickEvaluation(classId: classId))
+        case .openPlanner:
+            onAction(.plannerAgenda)
+        case .openJournal:
+            onAction(.plannerSession(sessionId: context?.sessionId?.int64Value))
         }
     }
 }
+
 
 private struct DashboardQuickActionButton: View {
     let title: String
@@ -1354,11 +1066,6 @@ private struct DashboardEmptyStateView: View {
                         Text(message)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        if case .outsideSchoolYear(let startDate, let endDate) = reason {
-                            Text("Curso configurado: \(startDate) - \(endDate)")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
                     }
 
                     Spacer(minLength: 24)
@@ -1386,72 +1093,46 @@ private struct DashboardEmptyStateView: View {
 
     private var title: String {
         switch reason {
-        case .noScheduleConfigured: return "Agenda docente pendiente"
         case .noClasses: return "Sin clases"
-        case .outsideSchoolYear: return "Fuera del rango del curso"
         }
     }
 
     private var message: String {
         switch reason {
-        case .noScheduleConfigured:
-            return "Configura tu horario docente para mostrar la clase activa."
-        case .noClasses:
-            return "Todavía no hay clases creadas."
-        case .outsideSchoolYear:
-            return "Estás fuera del rango del curso configurado."
+        case .noClasses: return "Todavía no hay clases creadas."
         }
     }
 
     private var buttonTitle: String {
         switch reason {
-        case .noScheduleConfigured: return "Configurar horario"
         case .noClasses: return "Crear clase"
-        case .outsideSchoolYear: return "Editar agenda docente"
         }
     }
 
     private var destination: MacDashboardDestination {
         switch reason {
-        case .noScheduleConfigured, .outsideSchoolYear:
-            return .plannerAgenda
-        case .noClasses:
-            return .students(classId: nil)
+        case .noClasses: return .students(classId: nil)
         }
     }
 
     private var systemImage: String {
         switch reason {
-        case .noScheduleConfigured, .outsideSchoolYear: return "calendar.badge.exclamationmark"
         case .noClasses: return "person.3.sequence"
         }
     }
 
     private var tint: Color {
         switch reason {
-        case .noScheduleConfigured, .outsideSchoolYear: return MacAppStyle.warningTint
         case .noClasses: return MacAppStyle.infoTint
         }
     }
 
     private var actions: [DashboardEmptyAction] {
         switch reason {
-        case .noScheduleConfigured:
-            return [
-                .init(title: "Planificar horario", subtitle: "Crear franjas para activar Hoy.", systemImage: "calendar.badge.plus", destination: .plannerAgenda, tint: MacAppStyle.warningTint),
-                .init(title: "Abrir cuaderno", subtitle: "Revisar notas aunque no haya sesión.", systemImage: "tablecells", destination: .notebook(classId: nil), tint: MacAppStyle.infoTint),
-                .init(title: "Pasar asistencia", subtitle: "Entrar manualmente si ya hay grupo.", systemImage: "checklist.checked", destination: .attendance(classId: nil), tint: MacAppStyle.successTint),
-                .init(title: "Revisar alumnado", subtitle: "Perfiles, observaciones y seguimiento.", systemImage: "person.3.sequence", destination: .students(classId: nil), tint: MacAppStyle.infoTint)
-            ]
         case .noClasses:
             return [
                 .init(title: "Crear grupo", subtitle: "Empieza por el alumnado y sus clases.", systemImage: "person.3.sequence", destination: .students(classId: nil), tint: MacAppStyle.infoTint),
                 .init(title: "Preparar agenda", subtitle: "Define el marco del curso.", systemImage: "calendar", destination: .plannerAgenda, tint: MacAppStyle.warningTint)
-            ]
-        case .outsideSchoolYear:
-            return [
-                .init(title: "Editar agenda", subtitle: "Ajustar fechas del curso activo.", systemImage: "calendar.badge.clock", destination: .plannerAgenda, tint: MacAppStyle.warningTint),
-                .init(title: "Abrir informes", subtitle: "Consultar datos ya registrados.", systemImage: "doc.text.image", destination: .reports(classId: nil), tint: MacAppStyle.infoTint)
             ]
         }
     }

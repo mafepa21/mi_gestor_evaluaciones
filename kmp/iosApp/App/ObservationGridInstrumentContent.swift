@@ -59,6 +59,9 @@ struct ObservationGridInstrumentContent: View {
         }
     }
 
+    // El criterio de evaluación se pinta una sola vez, en la cabecera de la hoja
+    // (`StructuredInstrumentEvaluationSheet.formContent`), junto al nombre del alumno. Repetirlo
+    // aquí lo mostraba dos veces seguidas en la misma pantalla.
     private var instrumentAverageHeader: some View {
         HStack {
             Text("Nota final del instrumento")

@@ -97,7 +97,7 @@ extension PlannerWorkspaceViewModel {
                 let startWeek = week
                 let startYear = year
                 Task { [weak self] in
-                    guard let self else { return }
+                    guard self != nil else { return }
                     for weekOffset in 1..<repeatCount {
                         var targetWeek = startWeek + weekOffset
                         var targetYear = startYear

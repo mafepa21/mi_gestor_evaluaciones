@@ -82,8 +82,15 @@ struct TeacherScheduleWizard: View {
     @ObservedObject var bridge: KmpBridge
     @Binding var selectedClassId: Int64?
     /// `nil` cuando el asistente vive embebido en Ajustes; presente cuando
-    /// se presenta como sheet rápido desde Planner (añade el botón "Cerrar").
+    /// se presenta como sheet rápido desde Planner o desde el onboarding
+    /// (añade el botón "Cerrar").
     var onClose: (() -> Void)? = nil
+    /// Paso en el que abrir. El onboarding entra directo a "Horario" cuando el
+    /// docente ya confirmó las fechas.
+    var initialStep: TeacherScheduleWizardStep = .course
+    /// Abre el selector de archivo nada más aparecer, para el botón
+    /// "Importar horario" de la lista de primeros pasos.
+    var autoPresentImporter: Bool = false
 
     @StateObject private var vm = TeacherScheduleSettingsViewModel()
     @State private var step: TeacherScheduleWizardStep = .course
@@ -91,6 +98,10 @@ struct TeacherScheduleWizard: View {
     @State private var pendingScheduleSlotDeletionId: Int64?
     @State private var activeExtra: TeacherScheduleWizardExtra?
     @State private var scheduleExportError = ""
+    @State private var isCreatingGroupInline = false
+    @State private var inlineGroupName = ""
+    @State private var inlineGroupError = ""
+    @State private var isSavingInlineGroup = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -108,7 +119,11 @@ struct TeacherScheduleWizard: View {
             wizardFooter
         }
         .task {
+            step = initialStep
             await vm.bind(bridge: bridge, selectedClassId: selectedClassId)
+            if autoPresentImporter {
+                isScheduleImporterPresented = true
+            }
         }
         .appOnChange(of: selectedClassId) { newValue in
             Task { await vm.updateSelectedClass(newValue) }
@@ -417,7 +432,14 @@ struct TeacherScheduleWizard: View {
                     labeledDatePicker("Fin de curso", selection: $vm.scheduleEndDateValue)
                     Spacer()
                     Button("Guardar") {
-                        Task { await vm.saveTeacherSchedule() }
+                        Task {
+                            await vm.saveTeacherSchedule()
+                            // Señal explícita de que alguien ha revisado las
+                            // fechas: el curso escolar y la agenda se crean
+                            // solos con valores por defecto, así que su mera
+                            // existencia no vale como paso hecho.
+                            OnboardingStore.shared.markCourseConfirmed()
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(vm.scheduleSaveState == .saving)
@@ -531,8 +553,18 @@ struct TeacherScheduleWizard: View {
                             entries: scheduleGridEntries,
                             activeWeekdays: Array(vm.activeWeekdays),
                             dayLabel: vm.dayLabel(for:),
-                            compact: true
+                            compact: true,
+                            onSelectEmptySlot: { day, start, end in
+                                vm.prefillSlotForm(day: day, startTime: start, endTime: end)
+                            }
                         )
+                        Text("Toca un hueco de la rejilla para repetir esa hora en otro día.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if vm.groups.isEmpty {
+                        noGroupsCallout
                     }
 
                     slotEditorForm
@@ -557,8 +589,88 @@ struct TeacherScheduleWizard: View {
         }
     }
 
+    /// Estado de salida del camino manual: sin grupos, el formulario de franjas
+    /// no puede hacer nada. En vez de dejarlo deshabilitado y mudo, se dice qué
+    /// falta y se ofrecen las dos salidas.
+    private var noGroupsCallout: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Aún no tienes grupos", systemImage: "person.2.slash")
+                .font(.subheadline.weight(.bold))
+            Text("Cada franja del horario pertenece a un grupo. Puedes importarlos con tu horario en Excel, o crear el primero aquí mismo en dos segundos.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button("Importar horario") { isScheduleImporterPresented = true }
+                    .buttonStyle(.borderedProminent)
+                Button("Crear grupo") { isCreatingGroupInline = true }
+                    .buttonStyle(.bordered)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(EvaluationDesign.accent.opacity(0.08))
+        )
+    }
+
+    private var inlineGroupCreator: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Nombre del grupo")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                TextField("1º ESO A", text: $inlineGroupName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 220)
+                Button("Crear") {
+                    Task {
+                        isSavingInlineGroup = true
+                        let created = await vm.createGroupInline(named: inlineGroupName)
+                        isSavingInlineGroup = false
+                        if created == nil {
+                            inlineGroupError = "No se pudo crear el grupo. Revisa el nombre."
+                        } else {
+                            inlineGroupError = ""
+                            inlineGroupName = ""
+                            isCreatingGroupInline = false
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(inlineGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSavingInlineGroup)
+
+                Button("Cancelar") {
+                    inlineGroupName = ""
+                    inlineGroupError = ""
+                    isCreatingGroupInline = false
+                }
+                .buttonStyle(.bordered)
+            }
+            if !inlineGroupError.isEmpty {
+                Text(inlineGroupError)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(EvaluationDesign.danger)
+            }
+            Text("El nivel se deduce del nombre. Puedes afinar asignatura y detalles luego en Ajustes → Cursos y grupos.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(EvaluationDesign.surfaceSoft)
+        )
+    }
+
     private var slotEditorForm: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if isCreatingGroupInline {
+                inlineGroupCreator
+            }
+
             HStack(spacing: 12) {
                 Picker(
                     "Grupo",
@@ -573,6 +685,17 @@ struct TeacherScheduleWizard: View {
                 }
                 .pickerStyle(.menu)
                 .frame(minWidth: 140)
+                .disabled(vm.groups.isEmpty)
+
+                Button {
+                    isCreatingGroupInline = true
+                } label: {
+                    Label("Grupo nuevo", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .help("Crear un grupo sin salir del asistente")
+                .accessibilityLabel("Crear grupo nuevo")
 
                 Picker("Día", selection: $vm.scheduleFormDay) {
                     ForEach([1, 2, 3, 4, 5, 6, 7], id: \.self) { day in
@@ -744,9 +867,24 @@ struct TeacherScheduleWizard: View {
 
                     HStack(spacing: 18) {
                         finishMetric("Curso", "\(vm.scheduleStartDate) – \(vm.scheduleEndDate)")
+                        finishMetric("Grupos", "\(vm.groups.count)")
                         finishMetric("Franjas", "\(vm.effectiveScheduleSlots.count)")
                         finishMetric("Evaluaciones", "\(vm.evaluationPeriods.count)")
-                        finishMetric("No lectivos", "\(vm.nonTeachingEvents.count)")
+                    }
+
+                    // Cierra el círculo del onboarding: con el horario puesto,
+                    // lo siguiente que hace falta para dar clase es el alumnado.
+                    if onClose != nil, !vm.groups.isEmpty {
+                        Divider()
+                        HStack(spacing: 12) {
+                            Text(vm.groups.count == 1
+                                 ? "Ya tienes 1 grupo. Lo siguiente es su alumnado."
+                                 : "Ya tienes \(vm.groups.count) grupos. Lo siguiente es su alumnado.")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Button("Añadir alumnado") { onClose?() }
+                                .buttonStyle(.bordered)
+                        }
                     }
                 }
             }

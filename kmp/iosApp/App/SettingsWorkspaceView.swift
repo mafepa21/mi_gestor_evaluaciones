@@ -17,6 +17,7 @@ struct SettingsSectionDescriptor: Identifiable, Hashable {
 extension SettingsSectionDescriptor {
     static let all: [SettingsSectionDescriptor] = [
         .init(id: "general",     title: "General",          subtitle: "Curso escolar y nombre del centro",         systemImage: "slider.horizontal.3",         tint: .blue),
+        .init(id: "courses",     title: "Cursos y grupos",  subtitle: "Curso escolar, asignaturas, grupos y archivado", systemImage: "person.2.fill",           tint: .cyan),
         .init(id: "schedule",    title: "Horario docente",  subtitle: "Franjas semanales, curso y evaluaciones",   systemImage: "calendar.badge.clock",         tint: .teal),
         .init(id: "appearance",  title: "Apariencia",        subtitle: "Tema de color y accesibilidad",            systemImage: "paintpalette.fill",            tint: .orange),
         .init(id: "evaluation",  title: "Evaluación",        subtitle: "Escalas, redondeos y cuaderno",            systemImage: "chart.bar.doc.horizontal.fill", tint: .indigo),
@@ -32,18 +33,43 @@ extension SettingsSectionDescriptor {
 
 struct SettingsWorkspaceView: View {
     @StateObject private var settings = AppSettingsStore()
+    @ObservedObject private var settingsNavigation = SettingsNavigationStore.shared
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var sizeClass
 
+    /// Necesarios desde que "Cursos y grupos" vive dentro de Ajustes: la
+    /// pantalla de cursos sigue navegando al workspace diario (abrir cuaderno
+    /// de un grupo, crear alumnado) igual que cuando estaba en la barra.
+    @Binding var selectedClassId: Int64?
+    let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
+
     @State private var selectedSection: SettingsSectionDescriptor? = SettingsSectionDescriptor.all.first
     @State private var scheduleSelectedClassId: Int64?
+    @State private var pushedSection: SettingsSectionDescriptor?
 
     var body: some View {
-        if sizeClass == .regular {
-            ipadLayout
-        } else {
-            iphoneLayout
+        Group {
+            if sizeClass == .regular {
+                ipadLayout
+            } else {
+                iphoneLayout
+            }
+        }
+        .task { consumePendingSection() }
+        .appOnChange(of: settingsNavigation.pendingSection) { _ in
+            consumePendingSection()
+        }
+    }
+
+    /// Alguien ha pedido "abre Ajustes por esta sección" desde fuera (menú del
+    /// Cuaderno, lista de primeros pasos).
+    private func consumePendingSection() {
+        guard let request = settingsNavigation.consume() else { return }
+        guard let match = SettingsSectionDescriptor.all.first(where: { $0.id == request.rawValue }) else { return }
+        selectedSection = match
+        if sizeClass != .regular {
+            pushedSection = match
         }
     }
 
@@ -75,6 +101,15 @@ struct SettingsWorkspaceView: View {
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.large)
                 #endif
+                // Push gobernado por estado, no por `NavigationLink(destination:)`:
+                // así una petición externa ("abre Cursos y grupos") también
+                // navega en iPhone, no sólo en iPad.
+                .navigationDestination(item: $pushedSection) { section in
+                    settingsDetail(for: section)
+                        #if os(iOS)
+                        .navigationBarTitleDisplayMode(.inline)
+                        #endif
+                }
         }
     }
 
@@ -90,10 +125,13 @@ struct SettingsWorkspaceView: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             } else {
-                // iPhone: NavigationLink
-                NavigationLink(destination: settingsDetail(for: section)) {
+                // iPhone: push por estado (ver `iphoneLayout`)
+                Button {
+                    pushedSection = section
+                } label: {
                     SettingsSidebarRow(section: section, isSelected: false)
                 }
+                .buttonStyle(.plain)
                 .listRowInsets(EdgeInsets(top: 5, leading: 12, bottom: 5, trailing: 12))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
@@ -115,6 +153,16 @@ struct SettingsWorkspaceView: View {
         switch section.id {
         case "general":
             GeneralSettingsView(settings: settings)
+        case "courses":
+            CoursesWorkspaceView(
+                selectedClassId: $selectedClassId,
+                onOpenModule: onOpenModule,
+                onCreateStudent: { classId in
+                    selectedClassId = classId
+                    onOpenModule(.students, classId, nil)
+                }
+            )
+            .environmentObject(bridge)
         case "schedule":
             TeacherScheduleWizard(
                 bridge: bridge,

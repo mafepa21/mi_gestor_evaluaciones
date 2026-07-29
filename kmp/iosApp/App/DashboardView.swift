@@ -379,8 +379,10 @@ struct DashboardView: View {
                 Spacer(minLength: 0)
             }
 
-            Button("Crear clase") {
-                onOpenModule(.courses, nil, nil)
+            // Sin clases, la salida buena no es "crea una clase suelta" sino el
+            // recorrido guiado: fechas → horario → grupos → alumnado.
+            Button("Configurar mi curso") {
+                OnboardingStore.shared.openChecklist()
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)

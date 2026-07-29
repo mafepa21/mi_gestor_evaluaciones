@@ -41,6 +41,7 @@ struct MacReportsView: View {
     @State private var isLoadingContext = false
     @State private var isGeneratingDraft = false
     @State private var isExporting = false
+    @State private var isWeeklyEmailSheetPresented = false
 
     private let reportService = AppleFoundationReportService()
     private let draftStore = MacReportDraftStore()
@@ -136,6 +137,10 @@ struct MacReportsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MacAppStyle.pageBackground)
+        .sheet(isPresented: $isWeeklyEmailSheetPresented) {
+            WeeklyStudentEmailWorkspaceView(classId: selectedClassId)
+                .environmentObject(bridge)
+        }
         .task {
             refreshAIAvailability()
             if selectedClassId == nil {
@@ -191,6 +196,28 @@ struct MacReportsView: View {
                     ForEach(KmpBridge.ReportKind.allCases) { kind in
                         reportKindButton(kind)
                     }
+
+                    Button {
+                        isWeeklyEmailSheetPresented = true
+                    } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "envelope.sparkles")
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Correos Semanales IA")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Borradores masivos para alumnos y familias")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                        }
+                        .padding(10)
+                        .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 MacReportPanelCard(title: "Periodo") {

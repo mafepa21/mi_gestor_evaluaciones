@@ -105,6 +105,18 @@ struct RubricEvaluationView: View {
                 Text(rubric.rubric.name)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+
+                if let criterion = state.criterionLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !criterion.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.caption2)
+                            .foregroundStyle(EvaluationDesign.accent)
+                        Text("Criterio: \(criterion)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 2)
+                }
             }
 
             Spacer(minLength: 16)

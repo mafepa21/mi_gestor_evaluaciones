@@ -21,7 +21,8 @@ data class RubricEvaluationUiState(
     val studentId: Long = 0,
     val evaluationId: Long = 0,
     val columnId: String? = null,
-    val notes: String = ""
+    val notes: String = "",
+    val criterionLabel: String? = null
 ) {
     companion object {
         fun default() = RubricEvaluationUiState()
@@ -97,6 +98,7 @@ class RubricEvaluationViewModel(
                         rubricDetail = rubricDetail,
                         selectedLevels = initialSelectedLevels,
                         classId = classId,
+                        criterionLabel = evaluationCriterionLabel(evaluation),
                         isLoading = false
                     )
                 }
@@ -152,6 +154,7 @@ class RubricEvaluationViewModel(
                         selectedLevels = initialSelectedLevels,
                         notes = previousGrade?.evidence ?: "",
                         classId = classId,
+                        criterionLabel = evaluationCriterionLabel(evaluation),
                         isLoading = false
                     )
                 }
@@ -283,6 +286,28 @@ class RubricEvaluationViewModel(
                 _uiState.update { it.copy(isSaving = false, isSaveSuccessful = false, error = "Error al guardar: ${e.message}") }
             }
         }
+    }
+
+    // El texto del criterio curricular que evalua esta rubrica: se lee de la evaluacion
+    // asociada, igual que en el instrumento de Rejilla de observacion (KmpBridge.swift,
+    // loadStructuredInstrumentEvaluation). Un bug de sync ya corregido pudo dejar en
+    // `description` un volcado del propio objeto (`Evaluation(id=..., description=Evaluation(...`)
+    // en vez del texto real; se detecta esa forma y se ignora en vez de mostrarla, cayendo a
+    // codigo o nombre.
+    private fun evaluationCriterionLabel(evaluation: Evaluation?): String? {
+        evaluation ?: return null
+        val description = evaluation.description?.trim()
+        if (!description.isNullOrEmpty() &&
+            !description.startsWith("Evaluation(id=") &&
+            !description.contains("description=Evaluation(")
+        ) {
+            return description
+        }
+        val code = evaluation.code.trim()
+        if (code.isNotEmpty()) return code
+        val name = evaluation.name.trim()
+        if (name.isNotEmpty()) return name
+        return null
     }
 
     private fun parseRubricSelections(selectionsString: String): Map<Long, Long> {

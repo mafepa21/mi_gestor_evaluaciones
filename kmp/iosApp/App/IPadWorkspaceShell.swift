@@ -1764,7 +1764,10 @@ struct AppWorkspaceShell: View {
             .disabled(!layoutState.notebookOrganizationMenuAvailable)
 
             Button {
-                activeModule = .courses
+                // Cursos vive dentro de Ajustes desde que dejó de ser una
+                // entrada de la barra lateral.
+                SettingsNavigationStore.shared.request(.courses)
+                activeModule = .settings
             } label: {
                 Label("Gestión de grupos", systemImage: "person.2")
             }

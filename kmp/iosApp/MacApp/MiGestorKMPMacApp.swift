@@ -142,11 +142,22 @@ enum MacDesktopWindowID: String {
 
 private struct MacSettingsScene: View {
     @ObservedObject var session: MacAppSessionController
+    @State private var settingsSelectedClassId: Int64?
 
     var body: some View {
-        MacSettingsView(session: session, commandCenter: session.commandCenter, backupStore: session.backupStore) {
-            session.selectedFeature = .sync
-        }
+        MacSettingsView(
+            session: session,
+            commandCenter: session.commandCenter,
+            backupStore: session.backupStore,
+            onOpenSync: { session.selectedFeature = .sync },
+            selectedClassId: $settingsSelectedClassId,
+            // Ventana de Ajustes suelta: no hay shell al que navegar, así que
+            // las acciones que salen del módulo llevan a la ventana principal.
+            onOpenModule: { module, classId, _ in
+                if let classId { settingsSelectedClassId = classId }
+                session.selectedFeature = module == .students ? .students : .dashboard
+            }
+        )
         .frame(minWidth: 760, minHeight: 520)
     }
 }

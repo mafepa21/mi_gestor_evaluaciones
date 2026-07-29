@@ -68,12 +68,31 @@ enum AppleAIReadinessFixtures {
         confidenceNote: "Fixture local para verificacion de contrato EF."
     )
 
+    static let weeklyStudentEmail = WeeklyStudentEmailDraft(
+        id: "fixture-email-1",
+        studentId: 101,
+        studentName: "Alumno Ejemplo",
+        recipientEmail: "alumno@centro.test",
+        audienceMode: .student,
+        weekRangeDescription: "esta semana",
+        subject: "Seguimiento de evaluación semanal (Alumno Ejemplo)",
+        greeting: "Hola, Alumno Ejemplo:",
+        evaluativeSummary: "Resumen de evaluación de prueba local para verificación de interfaz.",
+        strengths: ["Participación constante en clase."],
+        improvementAreas: ["Revisar entrega pendiente."],
+        upcomingMilestones: ["Entrega de proyecto el viernes."],
+        closing: "¡Sigue con buen trabajo!",
+        fullBodyText: "Hola, Alumno Ejemplo:\n\nResumen de evaluación de prueba local.\n\n📌 Aspectos destacados:\n  • Participación constante en clase.\n\n🎯 Puntos a reforzar:\n  • Revisar entrega pendiente.\n\n¡Sigue con buen trabajo!",
+        isAIGenerated: true
+    )
+
     static var contractChecks: [String] {
         var checks: [String] = []
         checks.append(earlyWarning.confidence <= 1 ? "confidence.clamped.ok" : "confidence.clamped.failed")
         checks.append(studentInsight.recommendations.count <= 3 ? "student.recommendations.limit.ok" : "student.recommendations.limit.failed")
         checks.append(tutorMeetingSummary.actions.count <= 3 ? "tutor.actions.limit.ok" : "tutor.actions.limit.failed")
         checks.append(physicalProgressAnalysis.alerts.count <= 3 ? "physical.alerts.limit.ok" : "physical.alerts.limit.failed")
+        checks.append(!weeklyStudentEmail.subject.isEmpty ? "weeklyEmail.subject.ok" : "weeklyEmail.subject.failed")
         return checks
     }
 }

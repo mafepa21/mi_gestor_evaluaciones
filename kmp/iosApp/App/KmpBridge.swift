@@ -222,6 +222,13 @@ final class KmpBridge: ObservableObject {
     ]
 
     @Published var status: String = "Inicializando..."
+    /// Se pone a `true` al final de `bootstrap()`, tanto si termina bien como si
+    /// falla. Permite a quien necesite saber si la carga inicial —incluido el
+    /// primer *pull* de Sync LAN— ya ha terminado, esperarlo en vez de leer
+    /// `classes`/`allStudents` mientras aún pueden estar vacíos de forma
+    /// transitoria (p. ej. `OnboardingStore`, que decidiría "base vacía" en un
+    /// iPad recién emparejado si mirara antes de que llegue el primer *pull*).
+    @Published private(set) var hasCompletedBootstrap = false
     @Published var statsText: String = "-"
     @Published var classes: [SchoolClass] = []
     @Published var academicYears: [AcademicYearSnapshot] = []
@@ -1443,6 +1450,7 @@ final class KmpBridge: ObservableObject {
             didBootstrap = false
             status = "Error: \(error.localizedDescription)"
         }
+        hasCompletedBootstrap = true
     }
 
     var appDatabasePath: String {

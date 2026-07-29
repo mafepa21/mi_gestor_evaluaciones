@@ -53,6 +53,7 @@ struct NotebookStudentInspector: View {
     @State private var isLoadingEducationalInsight = false
     @State private var educationalInsightError: String? = nil
     @State private var educationalInsightOrchestrator = AppleAIOrchestrator()
+    @State private var showWeeklyEmailSheet = false
 
     var body: some View {
         ScrollView {
@@ -76,6 +77,11 @@ struct NotebookStudentInspector: View {
         .task(id: studentId) {
             await loadTrends()
             await refreshEducationalInsight()
+        }
+        .sheet(isPresented: $showWeeklyEmailSheet) {
+            let student = bridge.studentsInClass.first(where: { $0.id == studentId }) ?? bridge.allStudents.first(where: { $0.id == studentId })
+            WeeklyStudentEmailWorkspaceView(student: student, classId: classId)
+                .environmentObject(bridge)
         }
     }
 
@@ -345,6 +351,14 @@ struct NotebookStudentInspector: View {
                     }
                     .buttonStyle(.bordered)
                 }
+
+                Button {
+                    showWeeklyEmailSheet = true
+                } label: {
+                    Label("Redactar correo semanal", systemImage: "envelope.sparkles")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.bordered)
             }
         }
     }

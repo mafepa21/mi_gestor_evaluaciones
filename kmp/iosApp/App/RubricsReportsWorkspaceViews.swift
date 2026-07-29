@@ -686,6 +686,7 @@ struct ReportsWorkspaceView: View {
     @State var refinePrompt = ""
     @State var isRefiningAIDraft = false
     @State var isBulkLomloeSheetPresented = false
+    @State var isWeeklyEmailSheetPresented = false
 
     @State var analyticsMode: AnalyticsMode = .dashboards
     @State var analyticsAvailability: AIAnalyticsAvailabilityState = .unavailable("Comprobando disponibilidad…")
@@ -807,6 +808,10 @@ struct ReportsWorkspaceView: View {
                 )
             }
         }
+        .sheet(isPresented: $isWeeklyEmailSheetPresented) {
+            WeeklyStudentEmailWorkspaceView(classId: selectedClassId)
+                .environmentObject(bridge)
+        }
         .sheet(isPresented: $isReportPreviewPresented) {
             AppleAIPreviewSheet(
                 title: selectedReportKind.title,
@@ -869,6 +874,25 @@ struct ReportsWorkspaceView: View {
         Section("Informes disponibles") {
             ForEach(KmpBridge.ReportKind.allCases) { kind in
                 reportButton(kind: kind)
+            }
+
+            Button {
+                isWeeklyEmailSheetPresented = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "envelope.sparkles")
+                        .font(.headline)
+                        .foregroundColor(EvaluationDesign.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Correos Semanales IA")
+                            .font(.body.bold())
+                            .foregroundColor(.primary)
+                        Text("Borradores masivos para alumnos y familias")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
             }
         }
 

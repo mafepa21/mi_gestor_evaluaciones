@@ -438,7 +438,7 @@ class SqlDelightSyncAdapter(
             }
 
             // notebook instrument templates, items & responses
-            db.appDatabaseQueries.selectAllInstrumentTemplatesByClass(schoolClass.id).executeAsList().forEach { t ->
+            container.database.appDatabaseQueries.selectAllInstrumentTemplatesByClass(schoolClass.id).executeAsList().forEach { t ->
                 val templateUpdatedAt = t.updated_at_epoch_ms
                 if (templateUpdatedAt > sinceEpochMs) {
                     changes += SyncChange(
@@ -459,7 +459,7 @@ class SqlDelightSyncAdapter(
                         }.toString(),
                     )
                 }
-                db.appDatabaseQueries.selectInstrumentItemsByTemplate(t.id).executeAsList().forEach { item ->
+                container.database.appDatabaseQueries.selectInstrumentItemsByTemplate(t.id).executeAsList().forEach { item ->
                     val itemUpdatedAt = item.updated_at_epoch_ms
                     if (itemUpdatedAt > sinceEpochMs) {
                         changes += SyncChange(
@@ -483,7 +483,7 @@ class SqlDelightSyncAdapter(
                 }
             }
 
-            db.appDatabaseQueries.selectAllInstrumentResponsesByClass(schoolClass.id).executeAsList().forEach { r ->
+            container.database.appDatabaseQueries.selectAllInstrumentResponsesByClass(schoolClass.id).executeAsList().forEach { r ->
                 val responseUpdatedAt = r.updated_at_epoch_ms
                 if (responseUpdatedAt > sinceEpochMs) {
                     changes += SyncChange(
@@ -498,7 +498,7 @@ class SqlDelightSyncAdapter(
                             put("itemId", JsonPrimitive(r.item_id))
                             put("valueText", JsonPrimitive(r.value_text ?: ""))
                             put("valueBool", r.value_bool?.let { JsonPrimitive(it != 0L) } ?: JsonPrimitive(false))
-                            put("valueNumber", JsonPrimitive(r.value_number ?: ""))
+                            put("valueNumber", JsonPrimitive(r.value_number?.toString() ?: ""))
                         }.toString(),
                     )
                 }
@@ -1492,7 +1492,7 @@ class SqlDelightSyncAdapter(
                         val evaluationId = payload.long("evaluationId")?.takeIf { it > 0L }
                         val createdAt = payload.long("createdAtEpochMs") ?: change.updatedAtEpochMs
 
-                        db.appDatabaseQueries.upsertInstrumentTemplate(
+                        container.database.appDatabaseQueries.upsertInstrumentTemplate(
                             id = id,
                             class_id = classId,
                             column_id = columnId,
@@ -1520,7 +1520,7 @@ class SqlDelightSyncAdapter(
                         val sortOrder = payload.long("sortOrder") ?: 0L
                         val helpText = payload.string("helpText")
 
-                        db.appDatabaseQueries.upsertInstrumentItem(
+                        container.database.appDatabaseQueries.upsertInstrumentItem(
                             id = id,
                             template_id = templateId,
                             item_key = itemKey,
@@ -1546,14 +1546,14 @@ class SqlDelightSyncAdapter(
                         val valueBool = payload.bool("valueBool")
                         val valueNumber = payload.string("valueNumber")
 
-                        db.appDatabaseQueries.upsertInstrumentResponse(
+                        container.database.appDatabaseQueries.upsertInstrumentResponse(
                             class_id = classId,
                             student_id = studentId,
                             column_id = columnId,
                             item_id = itemId,
                             value_text = valueText,
                             value_bool = valueBool?.let { if (it) 1L else 0L },
-                            value_number = valueNumber,
+                            value_number = valueNumber?.toDoubleOrNull(),
                             updated_at_epoch_ms = change.updatedAtEpochMs,
                             device_id = change.deviceId,
                             sync_version = 1,
@@ -1977,13 +1977,13 @@ class SqlDelightSyncAdapter(
             }
             "notebook_instrument_template" -> {
                 (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {
-                    db.appDatabaseQueries.deleteInstrumentTemplateById(it)
+                    container.database.appDatabaseQueries.deleteInstrumentTemplateById(it)
                     true
                 } ?: false
             }
             "notebook_instrument_item" -> {
                 (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {
-                    db.appDatabaseQueries.deleteInstrumentItemById(it)
+                    container.database.appDatabaseQueries.deleteInstrumentItemById(it)
                     true
                 } ?: false
             }
@@ -1993,7 +1993,7 @@ class SqlDelightSyncAdapter(
                 val columnId = payload.string("columnId")
                 val itemId = payload.string("itemId")
                 if (classId != null && studentId != null && columnId != null && itemId != null) {
-                    db.appDatabaseQueries.deleteInstrumentResponseById(classId, studentId, columnId, itemId)
+                    container.database.appDatabaseQueries.deleteInstrumentResponseById(classId, studentId, columnId, itemId)
                     true
                 } else false
             }

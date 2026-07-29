@@ -15,6 +15,7 @@ struct StructuredInstrumentEvaluationModel: Identifiable {
     let title: String
     let kind: NotebookInstrumentTemplateKind
     let criterionLabel: String?
+    let criterionStatements: [CriterionStatement]
     var items: [StructuredInstrumentEvaluationItem]
 }
 
@@ -5696,7 +5697,12 @@ final class KmpBridge: ObservableObject {
                 weight: (instrument.weightPercent ?? 0) / 100.0,
                 formula: nil,
                 rubricId: rubricId.map { KotlinLong(value: $0) },
-                description: "Instrumento importado desde \(draft.sourceFileName) para \(situation.title)",
+                // El texto real del criterio de evaluacion (buscado por titulo del instrumento en
+                // el catalogo de 1r de Batxillerat - EF) es lo que se enseña en el Cuaderno como
+                // "Criterio: X". La nota generica de importacion solo se usa cuando el instrumento
+                // no esta en ese catalogo (otra materia/curso, o titulo editado a mano).
+                description: EvaluationCriteriaReference.shared.criterionStatement(instrumentTitle: instrument.title)
+                    ?? "Instrumento importado desde \(draft.sourceFileName) para \(situation.title)",
                 authorUserId: nil,
                 createdAtEpochMs: 0,
                 updatedAtEpochMs: 0,
@@ -5804,7 +5810,9 @@ final class KmpBridge: ObservableObject {
         let repairedColumns = try await repairAssessmentInstrumentNotebookColumns(classId: classId)
         let repairedEvaluations = try await repairAssessmentInstrumentEvaluations(classId: classId)
         let repairedTemplates = try await repairStructuredAssessmentInstrumentTemplates(classId: classId)
-        if repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates {
+        let repairedDescriptions = try await repairCorruptedEvaluationDescriptions(classId: classId)
+        let repairedCriteria = try await repairAssessmentInstrumentCriterionDescriptions(classId: classId)
+        if repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates || repairedDescriptions || repairedCriteria {
             refreshCurrentNotebook()
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
@@ -6629,7 +6637,7 @@ final class KmpBridge: ObservableObject {
         let grades = try await container.gradesRepository.listGradesForClass(classId: classId)
 
         let physicalEvaluations = evaluations.filter { evaluation in
-            let normalized = "\(evaluation.type) \(evaluation.name) \(evaluation.description)".lowercased()
+            let normalized = "\(evaluation.type) \(evaluation.name) \(evaluation.description_ ?? "")".lowercased()
             return normalized.contains("physical")
                 || normalized.contains("física")
                 || normalized.contains("fisica")
@@ -8199,138 +8207,175 @@ final class KmpBridge: ObservableObject {
         rubricEvaluationViewModel.loadForNotebookCell(studentId: studentId, columnId: columnId, rubricId: rubricId, evaluationId: evaluationId)
     }
 
+    /// Detecta si el `description` de una evaluación es en realidad un volcado del objeto Kotlin
+    /// y, si lo es, recupera el texto original que quedó sepultado dentro.
+    ///
+    /// Durante un tiempo `enqueueNotebookSnapshot` envió por sync `evaluation.description` (el
+    /// `description` de NSObject, o sea el `toString` del objeto) en vez del campo real del dominio
+    /// `description_`. Cada vez que el bug se disparaba, el volcado anterior se leía como si fuera
+    /// la descripción y se envolvía en uno nuevo, así que en las bases de datos ya sincronizadas
+    /// hay valores anidados varios niveles:
+    ///
+    ///     Evaluation(id=35, …, description=Evaluation(id=35, …, description=<texto real>,
+    ///                competencyLinks=[], trace=…), competencyLinks=[], trace=…)
+    ///
+    /// El texto real es siempre el `description=` más interno, es decir el último del volcado, y
+    /// termina justo antes de `, competencyLinks=`. Si no se puede extraer con confianza (sigue
+    /// pareciendo un volcado, está vacío o es `null`) se devuelve `nil` a propósito: la cascada de
+    /// `criterionLabel` cae entonces al código o al nombre de la evaluación, que es preferible a
+    /// enseñar basura.
+    static func recoveredEvaluationDescription(from raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed.hasPrefix("Evaluation(id=") || trimmed.contains("description=Evaluation(") else {
+            return trimmed
+        }
+        guard let markerRange = trimmed.range(of: "description=", options: .backwards) else {
+            return nil
+        }
+        let afterMarker = trimmed[markerRange.upperBound...]
+        guard let endRange = afterMarker.range(of: ", competencyLinks=") else {
+            return nil
+        }
+        let inner = afterMarker[..<endRange.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !inner.isEmpty, inner != "null", !inner.hasPrefix("Evaluation(") else {
+            return nil
+        }
+        return inner
+    }
+
+    /// Reescribe en base de datos el `description` de una evaluación cuyo valor guardado es un
+    /// volcado del objeto. Se hace en cuanto se detecta, no solo al pintarlo, porque el dato
+    /// corrupto ya está sincronizado entre dispositivos: si solo se limpiara en pantalla seguiría
+    /// circulando y reapareciendo. Si el texto original no se puede recuperar se deja como está en
+    /// vez de borrarlo, para no destruir lo poco que quede.
+    @discardableResult
+    private func repairCorruptedEvaluationDescription(_ evaluation: Evaluation) async -> String? {
+        guard let stored = evaluation.description_,
+              stored.hasPrefix("Evaluation(id=") || stored.contains("description=Evaluation(") else {
+            return evaluation.description_
+        }
+        guard let recovered = KmpBridge.recoveredEvaluationDescription(from: stored) else {
+            return nil
+        }
+        await saveEvaluationWithDescription(evaluation, description: recovered)
+        return recovered
+    }
+
+    /// Recorre las evaluaciones de una clase y limpia las descripciones que quedaron convertidas en
+    /// un volcado del objeto. Se engancha a la cadena de reparaciones que ya existe para el
+    /// importador de instrumentos.
+    private func repairCorruptedEvaluationDescriptions(classId: Int64) async throws -> Bool {
+        let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
+        var didRepair = false
+        for evaluation in evaluations {
+            guard let stored = evaluation.description_,
+                  stored.hasPrefix("Evaluation(id=") || stored.contains("description=Evaluation(") else {
+                continue
+            }
+            guard KmpBridge.recoveredEvaluationDescription(from: stored) != nil else { continue }
+            await repairCorruptedEvaluationDescription(evaluation)
+            didRepair = true
+        }
+        return didRepair
+    }
+
+    /// Recorre las evaluaciones de una clase creadas por el importador de instrumentos y sustituye
+    /// la nota generica de importacion ("Instrumento importado desde...", ver
+    /// materializeLearningSituationAssessmentInstruments) o una descripcion vacia por el enunciado
+    /// oficial del criterio de evaluacion, buscado por el titulo del instrumento en
+    /// EvaluationCriteriaReference. Sin esto, cualquier instrumento importado antes de este fix se
+    /// queda enseñando la nota generica para siempre: el importador ya no la escribe, pero no
+    /// reescribe lo que ya existe en la base de datos del docente.
+    private func repairAssessmentInstrumentCriterionDescriptions(classId: Int64) async throws -> Bool {
+        let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
+        var didRepair = false
+        for evaluation in evaluations {
+            let stored = evaluation.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let looksGeneric = stored.isEmpty || stored.hasPrefix("Instrumento importado desde ")
+            guard looksGeneric,
+                  let statement = EvaluationCriteriaReference.shared.criterionStatement(instrumentTitle: evaluation.name),
+                  statement != stored else { continue }
+            await saveEvaluationWithDescription(evaluation, description: statement)
+            didRepair = true
+        }
+        return didRepair
+    }
+
+    private func saveEvaluationWithDescription(_ evaluation: Evaluation, description: String) async {
+        _ = try? await container.evaluationsRepository.saveEvaluation(
+            id: KotlinLong(value: evaluation.id),
+            classId: evaluation.classId,
+            code: evaluation.code,
+            name: evaluation.name,
+            type: evaluation.type,
+            weight: evaluation.weight,
+            formula: evaluation.formula,
+            rubricId: evaluation.rubricId,
+            description: description,
+            authorUserId: evaluation.trace.authorUserId,
+            createdAtEpochMs: evaluation.trace.createdAt.toEpochMilliseconds(),
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            associatedGroupId: evaluation.trace.associatedGroupId,
+            deviceId: localDeviceId,
+            syncVersion: evaluation.trace.syncVersion
+        )
+    }
+
     func loadStructuredInstrumentEvaluation(
         classId: Int64,
         studentId: Int64,
         columnId: String
     ) async throws -> StructuredInstrumentEvaluationModel? {
-        var detail = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId)
-        let altId = columnId.hasPrefix("eval_") ? String(columnId.dropFirst(5)) : "eval_\(columnId)"
-        if detail == nil {
-            detail = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: altId)
-        }
-
-        let columns = (try? await container.notebookConfigRepository.listColumns(classId: classId)) ?? []
-        let column = columns.first(where: { $0.id == columnId || $0.id == altId || (columnId.hasPrefix("eval_") && "eval_\($0.evaluationId?.int64Value ?? 0)" == columnId) })
-
-        if detail == nil {
-            let colTitle = column?.title ?? "Rejilla de observación sistemática de fair play, roles e inclusión"
-            let titleLower = colTitle.lowercased()
-            let templateId = "template_\(columnId)"
-            let isObs = column?.inputKind == .structuredObservation || column?.instrumentKind == .systematicObservation || titleLower.contains("rejilla") || titleLower.contains("observación") || titleLower.contains("fair play") || titleLower.contains("roles") || titleLower.contains("inclusión")
-            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-            let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
-
-            let template = NotebookInstrumentTemplate(
-                id: templateId,
-                classId: classId,
-                columnId: columnId,
-                evaluationId: column?.evaluationId,
-                title: colTitle,
-                kind: isObs ? .observation : .form,
-                inputKind: isObs ? .structuredObservation : (column?.inputKind ?? .structuredForm),
-                source: "auto_repair",
-                trace: AuditTrace(
-                    authorUserId: nil,
-                    createdAt: nowInstant,
-                    updatedAt: nowInstant,
-                    associatedGroupId: KotlinLong(value: classId),
-                    deviceId: localDeviceId,
-                    syncVersion: 1
-                )
-            )
-
-            var items: [NotebookInstrumentItem] = []
-            if isObs {
-                let sessions = [
-                    "S2L - juegos autoarbitrados",
-                    "S3L - torneo de clasificación",
-                    "S4L - Torneo Inclusivo"
-                ]
-                let indicators = [
-                    "Respeto, lenguaje y gestión de disputas",
-                    "Cumplimiento del rol asignado",
-                    "Inclusión activa de compañeros/as"
-                ]
-                var itemIdx = 0
-                for session in sessions {
-                    for indicator in indicators {
-                        itemIdx += 1
-                        items.append(NotebookInstrumentItem(
-                            id: "\(templateId)_item_\(itemIdx)",
-                            templateId: templateId,
-                            key: "obs_item_\(itemIdx)",
-                            title: "\(session) · \(indicator)",
-                            type: .scale14,
-                            options: [],
-                            required: true,
-                            order: Int32(itemIdx),
-                            helpText: nil,
-                            trace: AuditTrace(
-                                authorUserId: nil,
-                                createdAt: nowInstant,
-                                updatedAt: nowInstant,
-                                associatedGroupId: KotlinLong(value: classId),
-                                deviceId: localDeviceId,
-                                syncVersion: 1
-                            )
-                        ))
-                    }
-                }
-            } else {
-                items = [
-                    NotebookInstrumentItem(
-                        id: "\(templateId)_item_1",
-                        templateId: templateId,
-                        key: "item_1",
-                        title: "Indicador principal de evaluación",
-                        type: .scale14,
-                        options: [],
-                        required: true,
-                        order: 1,
-                        helpText: nil,
-                        trace: AuditTrace(
-                            authorUserId: nil,
-                            createdAt: nowInstant,
-                            updatedAt: nowInstant,
-                            associatedGroupId: KotlinLong(value: classId),
-                            deviceId: localDeviceId,
-                            syncVersion: 1
-                        )
-                    )
-                ]
-            }
-
-            try? await container.notebookInstrumentsRepository.saveTemplate(template: template, items: items)
-            detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId)
-        }
-
-        guard let detail else {
+        // La plantilla estructurada de una columna solo la crea el importador de instrumentos de
+        // la situación de aprendizaje (`saveAssessmentInstrumentTemplateIfNeeded`) o llega por
+        // SyncLAN desde el dispositivo donde se importó. Si no existe, se devuelve `nil` y la hoja
+        // enseña su estado vacío: sintetizar una plantilla aquí escribiría en la base de datos del
+        // docente sesiones e indicadores que él nunca ha definido, y esa invención luego se
+        // sincroniza al resto de dispositivos como si fuera trabajo real suyo.
+        guard let detail = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId) else {
             return nil
         }
+        let columns = (try? await container.notebookConfigRepository.listColumns(classId: classId)) ?? []
+        let column = columns.first(where: { $0.id == columnId })
 
+        // Descripción del criterio de evaluación que se evalúa con el instrumento. Si la
+        // `description` de la evaluación asociada está vacía o es la nota genérica de importación,
+        // se busca el enunciado oficial en EvaluationCriteriaReference por el título del
+        // instrumento y se persiste. `competencyCriteriaIds` guarda identificadores de fila, no
+        // códigos curriculares, así que no sirve como etiqueta legible. Si no hay ningún texto
+        // real, no se muestra nada en vez de repetir el título de la columna, que ya es el título
+        // de la hoja.
         var criterionLabel: String? = nil
-        if let criteriaIds = column?.competencyCriteriaIds, !criteriaIds.isEmpty {
-            criterionLabel = criteriaIds.map { "CE \($0.int64Value)" }.joined(separator: " · ")
-        }
-
+        var criterionStatements: [CriterionStatement] = []
         let targetEvalId = column?.evaluationId?.int64Value ?? detail.template_.evaluationId?.int64Value
-        if (criterionLabel == nil || criterionLabel?.isEmpty == true), let evalId = targetEvalId, evalId > 0 {
-            if let evaluation = try? await container.evaluationsRepository.getEvaluation(evaluationId: evalId) {
-                if let desc = evaluation.description_, !desc.isEmpty {
-                    criterionLabel = desc
-                } else if !evaluation.code.isEmpty {
-                    criterionLabel = evaluation.code
-                } else if !evaluation.name.isEmpty {
-                    criterionLabel = evaluation.name
-                }
+        if let evalId = targetEvalId, evalId > 0,
+           let evaluation = try? await container.evaluationsRepository.getEvaluation(evaluationId: evalId) {
+            criterionStatements = EvaluationCriteriaReference.shared.criterionStatements(instrumentTitle: evaluation.name)
+            // `description_` puede llevar arrastrando un volcado del objeto (ver
+            // repairCorruptedEvaluationDescription) de cuando el sync mandaba `description` de
+            // NSObject en vez del campo real; se repara aquí, no solo al pintarlo, para que deje de
+            // circular entre dispositivos.
+            var desc = await repairCorruptedEvaluationDescription(evaluation)
+            let looksGeneric = (desc?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                || (desc?.hasPrefix("Instrumento importado desde ") ?? false)
+            if looksGeneric, let statement = EvaluationCriteriaReference.shared.criterionStatement(instrumentTitle: evaluation.name) {
+                await saveEvaluationWithDescription(evaluation, description: statement)
+                desc = statement
+            }
+            if let desc, !desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                criterionLabel = desc
+            } else if !evaluation.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                criterionLabel = evaluation.code
+            } else if !evaluation.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                criterionLabel = evaluation.name
             }
         }
-        if (criterionLabel == nil || criterionLabel?.isEmpty == true), let unit = column?.unitOrSituation, !unit.isEmpty {
+        if criterionLabel == nil,
+           let unit = column?.unitOrSituation,
+           !unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             criterionLabel = unit
-        }
-        if (criterionLabel == nil || criterionLabel?.isEmpty == true) {
-            criterionLabel = column?.title ?? detail.template_.title
         }
 
         let responses = try await container.notebookInstrumentsRepository.listResponsesForCell(
@@ -8359,6 +8404,7 @@ final class KmpBridge: ObservableObject {
             title: detail.template_.title,
             kind: detail.template_.kind,
             criterionLabel: criterionLabel,
+            criterionStatements: criterionStatements,
             items: items
         )
     }
@@ -9497,7 +9543,11 @@ final class KmpBridge: ObservableObject {
                     "weight": evaluation.weight,
                     "formula": evaluation.formula ?? "",
                     "rubricId": evaluation.rubricId?.int64Value ?? 0,
-                    "description": evaluation.description
+                    // `description` a secas es el `description` de NSObject (el toString del
+                    // objeto Kotlin, "Evaluation(id=…, code=…)"); el campo real del dominio se
+                    // expone en Swift como `description_`. Enviar el primero sincronizaba ese
+                    // volcado como si fuera la descripción del criterio de evaluación.
+                    "description": evaluation.description_ ?? ""
                 ],
                 shouldPersist: false,
                 shouldScheduleAutoSync: false
@@ -9671,6 +9721,81 @@ final class KmpBridge: ObservableObject {
                 shouldPersist: false,
                 shouldScheduleAutoSync: false
             )
+        }
+
+        // Instrumentos estructurados (plantilla, sus ítems y las respuestas por alumno). Sin esto
+        // el dispositivo donde se importa la situación de aprendizaje se queda la rejilla para sí:
+        // el resto solo recibe la columna, abre la celda y ve "Sin plantilla". `KmpBridge` y
+        // `SqlDelightSyncAdapter` ya sabían aplicar estas tres entidades al recibirlas, pero nadie
+        // las emitía.
+        for column in columns where column.inputKind.isStructuredInstrument {
+            guard let detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: column.id) else {
+                continue
+            }
+            let template = detail.template_
+            enqueueLocalChange(
+                entity: "notebook_instrument_template",
+                id: template.id,
+                updatedAtEpochMs: template.trace.updatedAt.toEpochMilliseconds(),
+                payload: [
+                    "id": template.id,
+                    "classId": template.classId,
+                    "columnId": template.columnId,
+                    "evaluationId": template.evaluationId?.int64Value ?? 0,
+                    "title": template.title,
+                    "kind": template.kind.name,
+                    "inputKind": template.inputKind.name,
+                    "source": template.source ?? "",
+                    "createdAtEpochMs": template.trace.createdAt.toEpochMilliseconds()
+                ],
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
+            )
+            detail.items.forEach { item in
+                enqueueLocalChange(
+                    entity: "notebook_instrument_item",
+                    id: item.id,
+                    updatedAtEpochMs: item.trace.updatedAt.toEpochMilliseconds(),
+                    payload: [
+                        "id": item.id,
+                        "templateId": item.templateId,
+                        "itemKey": item.key,
+                        "title": item.title,
+                        "itemType": item.type.name,
+                        "optionsCsv": item.options.joined(separator: "|"),
+                        "required": item.required,
+                        "sortOrder": Int(item.order),
+                        "helpText": item.helpText ?? ""
+                    ],
+                    shouldPersist: false,
+                    shouldScheduleAutoSync: false
+                )
+            }
+            for student in students {
+                let studentResponses = (try? await container.notebookInstrumentsRepository.listResponsesForCell(
+                    classId: classId,
+                    studentId: student.id,
+                    columnId: column.id
+                )) ?? []
+                studentResponses.forEach { response in
+                    enqueueLocalChange(
+                        entity: "notebook_instrument_response",
+                        id: "\(response.classId)-\(response.studentId)-\(response.columnId)-\(response.itemId)",
+                        updatedAtEpochMs: response.trace.updatedAt.toEpochMilliseconds(),
+                        payload: [
+                            "classId": response.classId,
+                            "studentId": response.studentId,
+                            "columnId": response.columnId,
+                            "itemId": response.itemId,
+                            "valueText": response.textValue ?? "",
+                            "valueBool": response.boolValue?.boolValue ?? false,
+                            "valueNumber": response.numberValue.map { plainStructuredNumberString($0.doubleValue) } ?? ""
+                        ],
+                        shouldPersist: false,
+                        shouldScheduleAutoSync: false
+                    )
+                }
+            }
         }
 
         for evaluation in rubricEvaluations {

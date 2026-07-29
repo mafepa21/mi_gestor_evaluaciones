@@ -47,7 +47,11 @@ struct StructuredInstrumentEvaluationSheet: View {
                     )
                     formContent(binding)
                 } else {
-                    NotebookContentUnavailableView("Sin plantilla", systemImage: "doc.badge.gearshape", description: "Esta columna todavía no tiene plantilla estructurada.")
+                    NotebookContentUnavailableView(
+                        "Sin plantilla",
+                        systemImage: "doc.badge.gearshape",
+                        description: "Esta columna todavía no tiene plantilla estructurada en este dispositivo. Si la importaste en otro, sincroniza con Sync LAN para recibir sus sesiones e indicadores."
+                    )
                 }
             }
             .navigationTitle(request.title)
@@ -88,16 +92,6 @@ struct StructuredInstrumentEvaluationSheet: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(request.studentName)
                         .font(.title2.weight(.bold))
-                    if let criterion = model.wrappedValue.criterionLabel, !criterion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.subheadline)
-                                .foregroundStyle(NotebookStyle.primaryTint)
-                            Text("Criterio: \(criterion)")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
                     HStack(spacing: 8) {
                         ProgressView(value: progressFraction(for: model.wrappedValue))
                             .tint(NotebookStyle.successTint)
@@ -106,6 +100,14 @@ struct StructuredInstrumentEvaluationSheet: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                if !model.wrappedValue.criterionStatements.isEmpty
+                    || !(model.wrappedValue.criterionLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    EvaluationCriterionSection(
+                        statements: model.wrappedValue.criterionStatements,
+                        fallbackText: model.wrappedValue.criterionLabel
+                    )
                 }
 
                 if let sessionGroups = observationSessionGroups(for: model.wrappedValue.items) {
@@ -158,47 +160,15 @@ struct StructuredInstrumentEvaluationSheet: View {
         isLoading = true
         errorMessage = nil
         do {
+            // Si el bridge devuelve `nil` es que esta columna no tiene plantilla estructurada en
+            // esta base de datos. No se rellena con un instrumento de ejemplo: se enseña el estado
+            // vacío, porque unos indicadores inventados parecerían trabajo real del docente y al
+            // guardarlos se propagarían al resto de dispositivos.
             model = try await bridge.loadStructuredInstrumentEvaluation(
                 classId: request.classId,
                 studentId: request.studentId,
                 columnId: request.columnId
             )
-            if model == nil {
-                let sessions = [
-                    "S2L - juegos autoarbitrados",
-                    "S3L - torneo de clasificación",
-                    "S4L - Torneo Inclusivo"
-                ]
-                let indicators = [
-                    "Respeto, lenguaje y gestión de disputas",
-                    "Cumplimiento del rol asignado",
-                    "Inclusión activa de compañeros/as"
-                ]
-                var fallbackItems: [StructuredInstrumentEvaluationItem] = []
-                for session in sessions {
-                    for indicator in indicators {
-                        fallbackItems.append(StructuredInstrumentEvaluationItem(
-                            id: "\(request.columnId)_\(fallbackItems.count + 1)",
-                            title: "\(session) · \(indicator)",
-                            type: .scale14,
-                            options: [],
-                            textValue: "",
-                            boolValue: false,
-                            numberValue: ""
-                        ))
-                    }
-                }
-                model = StructuredInstrumentEvaluationModel(
-                    id: "\(request.classId)-\(request.studentId)-\(request.columnId)",
-                    classId: request.classId,
-                    studentId: request.studentId,
-                    columnId: request.columnId,
-                    title: request.title,
-                    kind: .observation,
-                    criterionLabel: request.title,
-                    items: fallbackItems
-                )
-            }
         } catch {
             errorMessage = error.localizedDescription
         }

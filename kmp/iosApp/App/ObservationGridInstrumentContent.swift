@@ -59,28 +59,18 @@ struct ObservationGridInstrumentContent: View {
         }
     }
 
+    // El criterio de evaluación se pinta una sola vez, en la cabecera de la hoja
+    // (`StructuredInstrumentEvaluationSheet.formContent`), junto al nombre del alumno. Repetirlo
+    // aquí lo mostraba dos veces seguidas en la misma pantalla.
     private var instrumentAverageHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let criterion = model.criterionLabel, !criterion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(NotebookStyle.primaryTint)
-                    Text("Criterio: \(criterion)")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
-                Divider()
-            }
-            HStack {
-                Text("Nota final del instrumento")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(instrumentAverageText)
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(NotebookStyle.successTint)
-            }
+        HStack {
+            Text("Nota final del instrumento")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(instrumentAverageText)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(NotebookStyle.successTint)
         }
         .padding(16)
         .background(NotebookStyle.surfaceMuted, in: RoundedRectangle(cornerRadius: NotebookStyle.innerRadius, style: .continuous))

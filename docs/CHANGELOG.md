@@ -13,12 +13,57 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Data
+
+- Sync LAN (helper macOS): `SqlDelightSyncAdapter` no compilaba. Las consultas de instrumentos
+  estructurados llamaban a una propiedad `db` que no existe en esa clase (solo tiene `container`),
+  y serializaban `value_number` (REAL) como si fuera texto. `:data:compileKotlinDesktop` fallaba y
+  con él el target `MiGestorKMPMac`, porque el helper Command Center va embebido en la app de Mac.
+  Corregido a `container.database.appDatabaseQueries` y con la conversión explícita del número.
+
 ### Fixed
 
-- **Sincronización SyncLAN de Instrumentos Estructurados e Integración de Criterios en iPad/Mac**:
-  - Se añadieron las entidades `notebook_instrument_template`, `notebook_instrument_item` y `notebook_instrument_response` a los adaptadores de sincronización SyncLAN en Kotlin (`SqlDelightSyncAdapter.kt`) y Swift (`KmpBridge.swift`), permitiendo que las plantillas e indicadores creados en Mac se sincronicen correctamente al iPad y evitando la pantalla vacía "Sin plantilla".
-  - Se implementó un mecanismo de auto-recuperación en `KmpBridge.swift:loadStructuredInstrumentEvaluation` para sintetizar y persistir automáticamente la plantilla local si por algún motivo la sincronización sufriera retraso o faltase la plantilla estructurada en SQLite.
-  - Se incorporó la propiedad `criterionLabel` en `StructuredInstrumentEvaluationModel` y su renderizado en `StructuredInstrumentEvaluationSheet` (`NotebookStructuredInstrumentSupport.swift`), permitiendo ver de forma destacada el Criterio de Evaluación (ej. `CE 1.2 · CE 1.4` o `CE 2.1`) que se está evaluando dentro de la vista modal del instrumento.
+- Cuaderno: la rejilla de observación aparecía vacía ("Sin plantilla") en el iPad mientras el Mac
+  la abría entera. La plantilla estructurada la crea el importador de instrumentos de la situación
+  de aprendizaje, así que vivía solo en la base de datos del dispositivo donde se importó, y
+  `enqueueNotebookSnapshot` — el empuje completo del Cuaderno a Sync LAN — no emitía ninguna de sus
+  tres entidades: mandaba 19 tipos (`student`, `evaluation`, `notebook_column`, `notebook_cell`,
+  `grade`, `rubric_assessment`…) y ni `notebook_instrument_template`, ni `notebook_instrument_item`,
+  ni `notebook_instrument_response`. El otro dispositivo recibía la columna pero nunca su
+  contenido. Los dos lados receptores (`KmpBridge.applyPulledChanges` y `SqlDelightSyncAdapter`)
+  ya sabían aplicar esas entidades; faltaba quien las emitiera. Ahora el snapshot las emite, con la
+  plantilla, sus ítems y las respuestas por alumno de cada columna de instrumento estructurado.
+- Cuaderno: se retira la "auto-recuperación" de plantillas de `loadStructuredInstrumentEvaluation`.
+  No recuperaba nada: cuando no encontraba plantilla **inventaba** una rejilla con sesiones e
+  indicadores escritos a mano en el código fuente ("S2L - juegos autoarbitrados", "Respeto,
+  lenguaje y gestión de disputas"…) y la **persistía** en la base de datos del docente con
+  `source = "auto_repair"`. Reproducido en el Simulador con base de datos de demo limpia: una
+  columna de observación de una clase que no tiene nada que ver abre la hoja llena de esos
+  indicadores y los guarda como trabajo del docente. Sus ítems usaban la clave `obs_item_<n>`,
+  que ni siquiera casa con el contrato `^obs_s(\d+)_i(\d+)$` que `deriveObservationGridScore`
+  necesita, así que esa rejilla inventada tampoco podía dar nota nunca. El mismo bloque duplicado
+  como fallback en memoria en `NotebookStructuredInstrumentSupport.swift` también se elimina, junto
+  con la búsqueda por id alternativo `eval_<id>`/`<id>`, que podía enganchar la plantilla de otra
+  columna. Sin plantilla, la hoja vuelve a enseñar su estado vacío, ahora explicando la causa real
+  y la salida (sincronizar desde el dispositivo donde se importó).
+- Cuaderno: el "Criterio: X" de la hoja de instrumento estructurado mostraba el título de la
+  columna en vez del criterio. La cascada probaba primero `competencyCriteriaIds` renderizado como
+  `"CE \(id)"` — identificadores de fila de la base de datos, no códigos curriculares, así que
+  imprimía cosas como "CE 47" — y su último escalón caía al título de la columna, que ya es el
+  título de la hoja, de modo que nunca quedaba vacío y nunca era un criterio. Ahora se lee la
+  descripción de la evaluación asociada (que sí es el texto del criterio) y, si no hay ninguna,
+  su código, su nombre o la unidad/situación; si no hay nada real, no se muestra la línea. Además
+  el mismo bloque se pintaba dos veces seguidas, en la cabecera de la hoja y otra vez en
+  `ObservationGridInstrumentContent`: se deja solo el de la cabecera.
+- Sync LAN: `enqueueNotebookSnapshot` enviaba `"description": evaluation.description`. En Swift
+  `description` es el de `NSObject` (el `toString` del objeto Kotlin,
+  `Evaluation(id=…, code=…, …)`); el campo real del dominio se expone como `description_`, que es
+  lo que usa el resto del bridge. Comprobado en el Simulador: `evaluation.description` devuelve
+  literalmente `Evaluation(id=3, classId=1, code=CE 3.2, …)`. Cada sincronización mandaba ese
+  volcado como si fuera la descripción del criterio de evaluación, machacándola en el dispositivo
+  receptor. Bug preexistente (viene del snapshot inicial), no introducido por los commits de
+  instrumentos, pero afecta justo al texto del criterio. Mismo arreglo en el filtro de pruebas
+  físicas, que también normalizaba sobre el volcado.
 
 
 ### Fixed

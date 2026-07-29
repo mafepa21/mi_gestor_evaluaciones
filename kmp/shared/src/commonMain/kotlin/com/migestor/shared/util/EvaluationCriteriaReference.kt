@@ -70,13 +70,6 @@ object EvaluationCriteriaReference {
         "Rúbrica de sostenibilidad y comunicación" to listOf("4.2"),
     )
 
-    // Claves normalizadas una sola vez, no en cada busqueda: mismo criterio de normalizacion que
-    // `normalizedAssessmentInstrumentTitle` en KmpBridge.swift (minusculas, sin tildes, espacios
-    // colapsados), para que una tilde distinta entre el titulo importado y esta tabla no rompa el
-    // emparejamiento.
-    private val instrumentCriterionCodesByNormalizedTitle: Map<String, List<String>> =
-        instrumentCriterionCodesByTitle.mapKeys { (title, _) -> normalizeTitle(title) }
-
     private val accentFold = mapOf(
         'á' to 'a', 'é' to 'e', 'í' to 'i', 'ó' to 'o', 'ú' to 'u', 'ü' to 'u', 'ñ' to 'n',
     )
@@ -86,6 +79,16 @@ object EvaluationCriteriaReference {
             .map { accentFold[it] ?: it }
             .joinToString("")
             .replace(Regex("\\s+"), " ")
+
+    // Claves normalizadas una sola vez, no en cada busqueda: mismo criterio de normalizacion que
+    // `normalizedAssessmentInstrumentTitle` en KmpBridge.swift (minusculas, sin tildes, espacios
+    // colapsados), para que una tilde distinta entre el titulo importado y esta tabla no rompa el
+    // emparejamiento. Debe declararse DESPUES de `accentFold`: los inicializadores de propiedades
+    // de un `object` en Kotlin se ejecutan en orden de declaracion, y esta llama a `normalizeTitle`,
+    // que lee `accentFold` (crash EXC_BAD_ACCESS visto en el Mac: se ejecutaba con `accentFold` aun
+    // sin inicializar).
+    private val instrumentCriterionCodesByNormalizedTitle: Map<String, List<String>> =
+        instrumentCriterionCodesByTitle.mapKeys { (title, _) -> normalizeTitle(title) }
 
     /**
      * Enunciado oficial completo del/de los criterio(s) que evalua un instrumento, buscado por su

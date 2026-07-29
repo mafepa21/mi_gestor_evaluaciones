@@ -13,6 +13,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Docs
+
+- Configuración de agentes: `AGENTS.md` queda como fuente compartida de instrucciones; `CLAUDE.md` lo importa de forma explícita y `.claude/settings.json` define permisos de consulta y verificación seguros para Claude Code.
+
 ### Added
 
 - Apple Foundation Models / IA Local: Añadida la capacidad `weeklyStudentEmail` para redactar borradores masivos e individuales de correos semanales de seguimiento evaluativo para alumnos y sus familias. Incluye motor dual (`AppleFoundationStudentEmailService`) con rama de Foundation Models on-device y fallback determinista por reglas pedagógicas, el workspace interactivo `WeeklyStudentEmailWorkspaceView` con previsualización, edición de destinatario/asunto/cuerpo, exportación a Mail nativo (`mailto:`) y copiado al portapapeles. Integrado con `AppleAIOrchestrator`, la Ficha de Alumno (`StudentProfilesWorkspaceView`), el Inspector del Cuaderno (`NotebookStudentInspector`) y el módulo de Informes (`RubricsReportsWorkspaceViews`).

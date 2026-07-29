@@ -9,6 +9,10 @@
 .idea/
 *.iml
 
+# Configuración personal de Claude Code
+CLAUDE.local.md
+.claude/settings.local.json
+
 # Flutter / Dart
 .dart_tool/
 .packages

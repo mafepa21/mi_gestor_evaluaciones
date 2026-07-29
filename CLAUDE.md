@@ -1,6 +1,8 @@
 # CLAUDE.md — mi_gestor_evaluaciones
 
-Leer también `AGENTS.md` (arquitectura, skills, alcance, archivos protegidos) y `docs/AGENT_WORKFLOW.md`. Todo artefacto (código, commits, changelog, PRs, docs) en español.
+@AGENTS.md
+
+Todo artefacto (código, commits, changelog, PRs, docs) en español.
 
 ## Reglas que nunca se saltan
 

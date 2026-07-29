@@ -5804,7 +5804,8 @@ final class KmpBridge: ObservableObject {
         let repairedColumns = try await repairAssessmentInstrumentNotebookColumns(classId: classId)
         let repairedEvaluations = try await repairAssessmentInstrumentEvaluations(classId: classId)
         let repairedTemplates = try await repairStructuredAssessmentInstrumentTemplates(classId: classId)
-        if repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates {
+        let repairedDescriptions = try await repairCorruptedEvaluationDescriptions(classId: classId)
+        if repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates || repairedDescriptions {
             refreshCurrentNotebook()
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
@@ -8199,6 +8200,96 @@ final class KmpBridge: ObservableObject {
         rubricEvaluationViewModel.loadForNotebookCell(studentId: studentId, columnId: columnId, rubricId: rubricId, evaluationId: evaluationId)
     }
 
+    /// Detecta si el `description` de una evaluación es en realidad un volcado del objeto Kotlin
+    /// y, si lo es, recupera el texto original que quedó sepultado dentro.
+    ///
+    /// Durante un tiempo `enqueueNotebookSnapshot` envió por sync `evaluation.description` (el
+    /// `description` de NSObject, o sea el `toString` del objeto) en vez del campo real del dominio
+    /// `description_`. Cada vez que el bug se disparaba, el volcado anterior se leía como si fuera
+    /// la descripción y se envolvía en uno nuevo, así que en las bases de datos ya sincronizadas
+    /// hay valores anidados varios niveles:
+    ///
+    ///     Evaluation(id=35, …, description=Evaluation(id=35, …, description=<texto real>,
+    ///                competencyLinks=[], trace=…), competencyLinks=[], trace=…)
+    ///
+    /// El texto real es siempre el `description=` más interno, es decir el último del volcado, y
+    /// termina justo antes de `, competencyLinks=`. Si no se puede extraer con confianza (sigue
+    /// pareciendo un volcado, está vacío o es `null`) se devuelve `nil` a propósito: la cascada de
+    /// `criterionLabel` cae entonces al código o al nombre de la evaluación, que es preferible a
+    /// enseñar basura.
+    static func recoveredEvaluationDescription(from raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed.hasPrefix("Evaluation(id=") || trimmed.contains("description=Evaluation(") else {
+            return trimmed
+        }
+        guard let markerRange = trimmed.range(of: "description=", options: .backwards) else {
+            return nil
+        }
+        let afterMarker = trimmed[markerRange.upperBound...]
+        guard let endRange = afterMarker.range(of: ", competencyLinks=") else {
+            return nil
+        }
+        let inner = afterMarker[..<endRange.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !inner.isEmpty, inner != "null", !inner.hasPrefix("Evaluation(") else {
+            return nil
+        }
+        return inner
+    }
+
+    /// Reescribe en base de datos el `description` de una evaluación cuyo valor guardado es un
+    /// volcado del objeto. Se hace en cuanto se detecta, no solo al pintarlo, porque el dato
+    /// corrupto ya está sincronizado entre dispositivos: si solo se limpiara en pantalla seguiría
+    /// circulando y reapareciendo. Si el texto original no se puede recuperar se deja como está en
+    /// vez de borrarlo, para no destruir lo poco que quede.
+    @discardableResult
+    private func repairCorruptedEvaluationDescription(_ evaluation: Evaluation) async -> String? {
+        guard let stored = evaluation.description_,
+              stored.hasPrefix("Evaluation(id=") || stored.contains("description=Evaluation(") else {
+            return evaluation.description_
+        }
+        guard let recovered = KmpBridge.recoveredEvaluationDescription(from: stored) else {
+            return nil
+        }
+        _ = try? await container.evaluationsRepository.saveEvaluation(
+            id: KotlinLong(value: evaluation.id),
+            classId: evaluation.classId,
+            code: evaluation.code,
+            name: evaluation.name,
+            type: evaluation.type,
+            weight: evaluation.weight,
+            formula: evaluation.formula,
+            rubricId: evaluation.rubricId,
+            description: recovered,
+            authorUserId: evaluation.trace.authorUserId,
+            createdAtEpochMs: evaluation.trace.createdAt.toEpochMilliseconds(),
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            associatedGroupId: evaluation.trace.associatedGroupId,
+            deviceId: localDeviceId,
+            syncVersion: evaluation.trace.syncVersion
+        )
+        return recovered
+    }
+
+    /// Recorre las evaluaciones de una clase y limpia las descripciones que quedaron convertidas en
+    /// un volcado del objeto. Se engancha a la cadena de reparaciones que ya existe para el
+    /// importador de instrumentos.
+    private func repairCorruptedEvaluationDescriptions(classId: Int64) async throws -> Bool {
+        let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
+        var didRepair = false
+        for evaluation in evaluations {
+            guard let stored = evaluation.description_,
+                  stored.hasPrefix("Evaluation(id=") || stored.contains("description=Evaluation(") else {
+                continue
+            }
+            guard KmpBridge.recoveredEvaluationDescription(from: stored) != nil else { continue }
+            await repairCorruptedEvaluationDescription(evaluation)
+            didRepair = true
+        }
+        return didRepair
+    }
+
     func loadStructuredInstrumentEvaluation(
         classId: Int64,
         studentId: Int64,
@@ -8225,7 +8316,12 @@ final class KmpBridge: ObservableObject {
         let targetEvalId = column?.evaluationId?.int64Value ?? detail.template_.evaluationId?.int64Value
         if let evalId = targetEvalId, evalId > 0,
            let evaluation = try? await container.evaluationsRepository.getEvaluation(evaluationId: evalId) {
-            if let desc = evaluation.description_, !desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // `description_` puede llevar arrastrando un volcado del objeto (ver
+            // repairCorruptedEvaluationDescription) de cuando el sync mandaba `description` de
+            // NSObject en vez del campo real; se repara aquí, no solo al pintarlo, para que deje de
+            // circular entre dispositivos.
+            let desc = await repairCorruptedEvaluationDescription(evaluation)
+            if let desc, !desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 criterionLabel = desc
             } else if !evaluation.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 criterionLabel = evaluation.code

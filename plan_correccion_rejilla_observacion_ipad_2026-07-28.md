@@ -99,10 +99,12 @@ del objeto como si fuera el texto del criterio de evaluación. No lo introdujo e
 | `kmp/iosApp/App/KmpBridge.swift` | `evaluation.description` → `evaluation.description_` en el payload de sync y en el filtro de pruebas físicas. |
 | `kmp/iosApp/App/NotebookStructuredInstrumentSupport.swift` | Se elimina el fallback de ítems inventados; el estado vacío explica la causa real y la salida (sincronizar). |
 | `kmp/iosApp/App/ObservationGridInstrumentContent.swift` | Se retira el "Criterio: X" duplicado. |
+| `kmp/iosApp/App/KmpBridge.swift` | Reparación del dato ya corrompido por el bug del punto 5: `recoveredEvaluationDescription` detecta si `description_` es en realidad un volcado anidado del objeto (`Evaluation(id=…, description=Evaluation(…))`) y extrae el `description=` más interno. `repairCorruptedEvaluationDescription` lo reescribe en base de datos (no solo al pintarlo, porque el dato corrupto ya está sincronizado y seguiría circulando). Se engancha en dos sitios: `loadStructuredInstrumentEvaluation` (repara al abrir la hoja del instrumento) y `repairLearningSituationAssessmentInstrumentImportIfNeeded` (repara todas las evaluaciones de la clase, vía `repairCorruptedEvaluationDescriptions`, dentro de la cadena de reparaciones que ya existe). |
 
-Archivo protegido tocado: `KmpBridge.swift`. Motivo: los tres defectos (invención de datos,
-cascada del criterio y ausencia de emisión de las entidades de instrumento en el snapshot de
-sync) viven todos ahí y no tienen otro punto de intervención.
+Archivo protegido tocado: `KmpBridge.swift`. Motivo: los cuatro defectos (invención de datos,
+cascada del criterio, ausencia de emisión de las entidades de instrumento en el snapshot de
+sync, y reparación del dato corrompido por el bug de `description`) viven todos ahí y no tienen
+otro punto de intervención.
 
 ## Evidencia
 
@@ -149,6 +151,13 @@ Todo sobre iPad Pro 13" (M5), iOS Simulator, build Debug real de esta rama.
 - `./scripts/verify_apple_builds.sh` con el arnés ya retirado: macOS ✓ COMPILADO CORRECTAMENTE,
   iOS Simulator ✓ COMPILADO CORRECTAMENTE.
 - `./gradlew :data:compileKotlinDesktop`: BUILD SUCCESSFUL.
+- La reparación del dato corrompido (punto 5) se añadió después del corte de cupo del primer
+  agente. `./scripts/verify_apple_builds.sh` vuelve a dar macOS ✓ / iOS Simulator ✓ con el código
+  de la reparación ya integrado. La lógica de `recoveredEvaluationDescription` se validó a mano
+  contra el texto exacto de la captura real que mandó el docente (evaluación id=35, "CE"
+  "SA2-I2"): el string tenía 3 niveles de anidamiento y la extracción del `description=` más
+  interno recupera correctamente "Instrumento importado desde instrumentos_evaluacion.docx para
+  SA 5: Ultimate Frisbee — Torneo Inclusivo".
 
 ### Lo que NO se ha podido verificar
 
@@ -161,6 +170,12 @@ Todo sobre iPad Pro 13" (M5), iOS Simulator, build Debug real de esta rama.
   `rubric_assessment` dentro de listas de nombres, sin cambios en su contenido; la evaluación por
   rúbrica usa `rubricEvaluationViewModel` y `rubricsRepository`, un camino que ninguno de esos
   commits toca.
+- La reparación del dato corrompido (punto 5) **solo se ha verificado por lectura de código y
+  compilación**, no ejecutándola en el Simulador contra un registro corrompido de verdad. El
+  primer agente se quedó sin cupo antes de poder montar ese escenario en el arnés de diagnóstico.
+  La lógica se revisó a mano contra el texto real de la captura (arriba), pero falta el paso de
+  abrir la hoja en el Simulador con una evaluación corrompida y comprobar en pantalla que
+  "Criterio:" sale limpio y que el registro en base de datos queda reescrito.
 
 ## Qué no se ha tocado
 

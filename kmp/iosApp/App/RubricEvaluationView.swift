@@ -21,8 +21,12 @@ struct RubricEvaluationView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
                             headerSection(rubric: rubric, score: selectedScore, progress: progress)
-                            if let criterion = state.criterionLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !criterion.isEmpty {
-                                EvaluationCriterionSection(text: criterion)
+                            if !state.criterionStatements.isEmpty
+                                || !(state.criterionLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                EvaluationCriterionSection(
+                                    statements: state.criterionStatements,
+                                    fallbackText: state.criterionLabel
+                                )
                             }
                             criteriaPanel(rubric: rubric)
                             saveSection(rubric: rubric, score: selectedScore)

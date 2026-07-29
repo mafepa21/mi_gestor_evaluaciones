@@ -1,6 +1,14 @@
 package com.migestor.shared.util
 
 /**
+ * Un criterio de evaluación resuelto: su código curricular ("2.1") y su enunciado oficial.
+ * Declarada fuera de [EvaluationCriteriaReference] (no anidada) a propósito: una `data class`
+ * anidada dentro de un `object` se expone a Swift con un nombre generado poco predecible, y esta se
+ * usa directamente desde SwiftUI (`EvaluationCriterionSection`).
+ */
+data class CriterionStatement(val code: String, val statement: String)
+
+/**
  * Texto oficial de los 16 criterios de evaluacion LOMLOE de Educacion Fisica, 1r de Batxillerat
  * (Comunitat Valenciana), y el catalogo de que instrumento evalua que criterio. Fuente: la carpeta
  * de programaciones del docente (fuera de este repositorio), documentos
@@ -91,20 +99,26 @@ object EvaluationCriteriaReference {
         instrumentCriterionCodesByTitle.mapKeys { (title, _) -> normalizeTitle(title) }
 
     /**
-     * Enunciado oficial completo del/de los criterio(s) que evalua un instrumento, buscado por su
-     * titulo (por ejemplo "Rejilla de observación sistemática de fair play, roles e inclusión" ->
-     * el enunciado del criterio 3.2). Si el instrumento evalua dos criterios (p.ej. "CE 1.2 y
-     * 1.4"), devuelve ambos enunciados con su codigo delante, uno por parrafo. `null` si el titulo
-     * no esta en el catalogo (instrumento de otra materia/curso, o titulo editado a mano).
+     * Todos los criterios que evalúa un instrumento, buscado por su título (por ejemplo "Rejilla de
+     * observación sistemática de fair play, roles e inclusión" -> el criterio 3.2 con su
+     * enunciado). Un instrumento puede evaluar más de un criterio (p.ej. "CE 1.2 y 1.4"): la lista
+     * devuelve todos, en el mismo orden en que aparecen en el documento de origen. Lista vacía si el
+     * título no está en el catálogo (instrumento de otra materia/curso, o título editado a mano).
      */
-    fun criterionStatement(instrumentTitle: String): String? {
-        val codes = instrumentCriterionCodesByNormalizedTitle[normalizeTitle(instrumentTitle)]
-            ?.takeIf { it.isNotEmpty() } ?: return null
-        val statements = codes.mapNotNull { code ->
-            officialCriterionStatements[code]?.let { statement ->
-                if (codes.size > 1) "Criterio $code: $statement" else statement
-            }
-        }
-        return statements.takeIf { it.isNotEmpty() }?.joinToString("\n\n")
+    fun criterionStatements(instrumentTitle: String): List<CriterionStatement> {
+        val codes = instrumentCriterionCodesByNormalizedTitle[normalizeTitle(instrumentTitle)] ?: return emptyList()
+        return codes.mapNotNull { code -> officialCriterionStatements[code]?.let { CriterionStatement(code, it) } }
     }
+
+    /**
+     * Igual que [criterionStatements], pero como un único texto plano ("Criterio 2.1: <enunciado>",
+     * uno por párrafo si hay varios). Es lo que se persiste en `Evaluation.description` — un campo
+     * de texto, no una lista — para que se siga viendo algo razonable en cualquier sitio que lea esa
+     * descripción sin conocer la estructura (exportaciones, sync, repositorios). Para pintar la
+     * sección de criterio en pantalla, usar [criterionStatements] en vez de este texto.
+     */
+    fun criterionStatement(instrumentTitle: String): String? =
+        criterionStatements(instrumentTitle)
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString("\n\n") { "Criterio ${it.code}: ${it.statement}" }
 }

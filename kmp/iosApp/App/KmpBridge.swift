@@ -15,6 +15,7 @@ struct StructuredInstrumentEvaluationModel: Identifiable {
     let title: String
     let kind: NotebookInstrumentTemplateKind
     let criterionLabel: String?
+    let criterionStatements: [CriterionStatement]
     var items: [StructuredInstrumentEvaluationItem]
 }
 
@@ -8347,9 +8348,11 @@ final class KmpBridge: ObservableObject {
         // real, no se muestra nada en vez de repetir el título de la columna, que ya es el título
         // de la hoja.
         var criterionLabel: String? = nil
+        var criterionStatements: [CriterionStatement] = []
         let targetEvalId = column?.evaluationId?.int64Value ?? detail.template_.evaluationId?.int64Value
         if let evalId = targetEvalId, evalId > 0,
            let evaluation = try? await container.evaluationsRepository.getEvaluation(evaluationId: evalId) {
+            criterionStatements = EvaluationCriteriaReference.shared.criterionStatements(instrumentTitle: evaluation.name)
             // `description_` puede llevar arrastrando un volcado del objeto (ver
             // repairCorruptedEvaluationDescription) de cuando el sync mandaba `description` de
             // NSObject en vez del campo real; se repara aquí, no solo al pintarlo, para que deje de
@@ -8401,6 +8404,7 @@ final class KmpBridge: ObservableObject {
             title: detail.template_.title,
             kind: detail.template_.kind,
             criterionLabel: criterionLabel,
+            criterionStatements: criterionStatements,
             items: items
         )
     }

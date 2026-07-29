@@ -2,6 +2,7 @@ package com.migestor.shared.viewmodel
 
 import com.migestor.shared.domain.*
 import com.migestor.shared.repository.*
+import com.migestor.shared.util.CriterionStatement
 import com.migestor.shared.util.EvaluationCriteriaReference
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.*
@@ -23,7 +24,8 @@ data class RubricEvaluationUiState(
     val evaluationId: Long = 0,
     val columnId: String? = null,
     val notes: String = "",
-    val criterionLabel: String? = null
+    val criterionLabel: String? = null,
+    val criterionStatements: List<CriterionStatement> = emptyList()
 ) {
     companion object {
         fun default() = RubricEvaluationUiState()
@@ -100,6 +102,7 @@ class RubricEvaluationViewModel(
                         selectedLevels = initialSelectedLevels,
                         classId = classId,
                         criterionLabel = evaluationCriterionLabel(evaluation),
+                        criterionStatements = evaluation?.let { EvaluationCriteriaReference.criterionStatements(it.name) } ?: emptyList(),
                         isLoading = false
                     )
                 }
@@ -156,6 +159,7 @@ class RubricEvaluationViewModel(
                         notes = previousGrade?.evidence ?: "",
                         classId = classId,
                         criterionLabel = evaluationCriterionLabel(evaluation),
+                        criterionStatements = evaluation?.let { EvaluationCriteriaReference.criterionStatements(it.name) } ?: emptyList(),
                         isLoading = false
                     )
                 }

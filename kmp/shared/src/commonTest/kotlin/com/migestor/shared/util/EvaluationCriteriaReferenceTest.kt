@@ -7,38 +7,52 @@ import kotlin.test.assertTrue
 
 class EvaluationCriteriaReferenceTest {
     @Test
-    fun `known instrument title resolves to the official criterion statement`() {
-        val statement = EvaluationCriteriaReference.criterionStatement(
+    fun `known instrument title resolves to its criterion code and statement`() {
+        val statements = EvaluationCriteriaReference.criterionStatements(
             "Rejilla de observación sistemática de fair play, roles e inclusión"
         )
+        assertEquals(1, statements.size)
+        assertEquals("3.2", statements.single().code)
         assertEquals(
             "Practicar diversas actividades motrices adoptando un comportamiento personal y social respetuoso y responsable, mostrando actitudes de empatía e inclusión ante la diversidad y autorregulando las emociones.",
-            statement
+            statements.single().statement
         )
     }
 
     @Test
-    fun `instrument with two criteria joins both statements with their code`() {
-        val statement = EvaluationCriteriaReference.criterionStatement(
+    fun `instrument with two criteria returns both, in document order`() {
+        val statements = EvaluationCriteriaReference.criterionStatements(
             "Rejilla de observación sistemática de proceso"
         )
-        assertTrue(statement != null && statement.startsWith("Criterio 1.2:"))
-        assertTrue(statement != null && statement.contains("Criterio 1.4:"))
+        assertEquals(listOf("1.2", "1.4"), statements.map { it.code })
+        assertTrue(statements.all { it.statement.isNotBlank() })
     }
 
     @Test
     fun `title matching is case and accent insensitive`() {
-        val statement = EvaluationCriteriaReference.criterionStatement(
+        val statements = EvaluationCriteriaReference.criterionStatements(
             "  rubrica DE organizacion SOSTENIBLE del torneo  "
         )
-        assertEquals(
-            "Diseñar y participar en eventos recreativos y deportivos aplicando políticas sostenibles de gestión y uso de materiales e instalaciones.",
-            statement
-        )
+        assertEquals("2.2", statements.single().code)
     }
 
     @Test
-    fun `unknown title returns null instead of throwing`() {
+    fun `unknown title resolves to no criteria`() {
+        assertTrue(EvaluationCriteriaReference.criterionStatements("Instrumento de otra materia").isEmpty())
         assertNull(EvaluationCriteriaReference.criterionStatement("Instrumento de otra materia"))
+    }
+
+    @Test
+    fun `flat text always prefixes the criterion code, single or multiple`() {
+        val single = EvaluationCriteriaReference.criterionStatement(
+            "Rúbrica de organización sostenible del torneo"
+        )
+        assertEquals(true, single?.startsWith("Criterio 2.2:"))
+
+        val multiple = EvaluationCriteriaReference.criterionStatement(
+            "Rejilla de observación sistemática de proceso"
+        )
+        assertTrue(multiple?.startsWith("Criterio 1.2:") == true)
+        assertTrue(multiple?.contains("Criterio 1.4:") == true)
     }
 }

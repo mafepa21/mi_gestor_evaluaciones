@@ -102,8 +102,12 @@ struct StructuredInstrumentEvaluationSheet: View {
                     }
                 }
 
-                if let criterion = model.wrappedValue.criterionLabel, !criterion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    EvaluationCriterionSection(text: criterion)
+                if !model.wrappedValue.criterionStatements.isEmpty
+                    || !(model.wrappedValue.criterionLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    EvaluationCriterionSection(
+                        statements: model.wrappedValue.criterionStatements,
+                        fallbackText: model.wrappedValue.criterionLabel
+                    )
                 }
 
                 if let sessionGroups = observationSessionGroups(for: model.wrappedValue.items) {

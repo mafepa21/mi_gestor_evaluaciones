@@ -92,16 +92,6 @@ struct StructuredInstrumentEvaluationSheet: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(request.studentName)
                         .font(.title2.weight(.bold))
-                    if let criterion = model.wrappedValue.criterionLabel, !criterion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.subheadline)
-                                .foregroundStyle(NotebookStyle.primaryTint)
-                            Text("Criterio: \(criterion)")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
                     HStack(spacing: 8) {
                         ProgressView(value: progressFraction(for: model.wrappedValue))
                             .tint(NotebookStyle.successTint)
@@ -110,6 +100,10 @@ struct StructuredInstrumentEvaluationSheet: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                if let criterion = model.wrappedValue.criterionLabel, !criterion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    EvaluationCriterionSection(text: criterion)
                 }
 
                 if let sessionGroups = observationSessionGroups(for: model.wrappedValue.items) {

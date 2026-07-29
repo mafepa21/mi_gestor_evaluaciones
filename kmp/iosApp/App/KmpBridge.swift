@@ -5696,7 +5696,12 @@ final class KmpBridge: ObservableObject {
                 weight: (instrument.weightPercent ?? 0) / 100.0,
                 formula: nil,
                 rubricId: rubricId.map { KotlinLong(value: $0) },
-                description: "Instrumento importado desde \(draft.sourceFileName) para \(situation.title)",
+                // El texto real del criterio de evaluacion (buscado por titulo del instrumento en
+                // el catalogo de 1r de Batxillerat - EF) es lo que se enseña en el Cuaderno como
+                // "Criterio: X". La nota generica de importacion solo se usa cuando el instrumento
+                // no esta en ese catalogo (otra materia/curso, o titulo editado a mano).
+                description: EvaluationCriteriaReference.shared.criterionStatement(instrumentTitle: instrument.title)
+                    ?? "Instrumento importado desde \(draft.sourceFileName) para \(situation.title)",
                 authorUserId: nil,
                 createdAtEpochMs: 0,
                 updatedAtEpochMs: 0,
@@ -5805,7 +5810,8 @@ final class KmpBridge: ObservableObject {
         let repairedEvaluations = try await repairAssessmentInstrumentEvaluations(classId: classId)
         let repairedTemplates = try await repairStructuredAssessmentInstrumentTemplates(classId: classId)
         let repairedDescriptions = try await repairCorruptedEvaluationDescriptions(classId: classId)
-        if repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates || repairedDescriptions {
+        let repairedCriteria = try await repairAssessmentInstrumentCriterionDescriptions(classId: classId)
+        if repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates || repairedDescriptions || repairedCriteria {
             refreshCurrentNotebook()
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
@@ -8252,23 +8258,7 @@ final class KmpBridge: ObservableObject {
         guard let recovered = KmpBridge.recoveredEvaluationDescription(from: stored) else {
             return nil
         }
-        _ = try? await container.evaluationsRepository.saveEvaluation(
-            id: KotlinLong(value: evaluation.id),
-            classId: evaluation.classId,
-            code: evaluation.code,
-            name: evaluation.name,
-            type: evaluation.type,
-            weight: evaluation.weight,
-            formula: evaluation.formula,
-            rubricId: evaluation.rubricId,
-            description: recovered,
-            authorUserId: evaluation.trace.authorUserId,
-            createdAtEpochMs: evaluation.trace.createdAt.toEpochMilliseconds(),
-            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
-            associatedGroupId: evaluation.trace.associatedGroupId,
-            deviceId: localDeviceId,
-            syncVersion: evaluation.trace.syncVersion
-        )
+        await saveEvaluationWithDescription(evaluation, description: recovered)
         return recovered
     }
 
@@ -8290,6 +8280,48 @@ final class KmpBridge: ObservableObject {
         return didRepair
     }
 
+    /// Recorre las evaluaciones de una clase creadas por el importador de instrumentos y sustituye
+    /// la nota generica de importacion ("Instrumento importado desde...", ver
+    /// materializeLearningSituationAssessmentInstruments) o una descripcion vacia por el enunciado
+    /// oficial del criterio de evaluacion, buscado por el titulo del instrumento en
+    /// EvaluationCriteriaReference. Sin esto, cualquier instrumento importado antes de este fix se
+    /// queda enseñando la nota generica para siempre: el importador ya no la escribe, pero no
+    /// reescribe lo que ya existe en la base de datos del docente.
+    private func repairAssessmentInstrumentCriterionDescriptions(classId: Int64) async throws -> Bool {
+        let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
+        var didRepair = false
+        for evaluation in evaluations {
+            let stored = evaluation.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let looksGeneric = stored.isEmpty || stored.hasPrefix("Instrumento importado desde ")
+            guard looksGeneric,
+                  let statement = EvaluationCriteriaReference.shared.criterionStatement(instrumentTitle: evaluation.name),
+                  statement != stored else { continue }
+            await saveEvaluationWithDescription(evaluation, description: statement)
+            didRepair = true
+        }
+        return didRepair
+    }
+
+    private func saveEvaluationWithDescription(_ evaluation: Evaluation, description: String) async {
+        _ = try? await container.evaluationsRepository.saveEvaluation(
+            id: KotlinLong(value: evaluation.id),
+            classId: evaluation.classId,
+            code: evaluation.code,
+            name: evaluation.name,
+            type: evaluation.type,
+            weight: evaluation.weight,
+            formula: evaluation.formula,
+            rubricId: evaluation.rubricId,
+            description: description,
+            authorUserId: evaluation.trace.authorUserId,
+            createdAtEpochMs: evaluation.trace.createdAt.toEpochMilliseconds(),
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            associatedGroupId: evaluation.trace.associatedGroupId,
+            deviceId: localDeviceId,
+            syncVersion: evaluation.trace.syncVersion
+        )
+    }
+
     func loadStructuredInstrumentEvaluation(
         classId: Int64,
         studentId: Int64,
@@ -8307,11 +8339,13 @@ final class KmpBridge: ObservableObject {
         let columns = (try? await container.notebookConfigRepository.listColumns(classId: classId)) ?? []
         let column = columns.first(where: { $0.id == columnId })
 
-        // Descripción del criterio de evaluación que se evalúa con el instrumento. Se lee de la
-        // evaluación asociada (su `description` es el texto del criterio); `competencyCriteriaIds`
-        // guarda identificadores de fila, no códigos curriculares, así que no sirve como etiqueta
-        // legible. Si no hay ningún texto real, no se muestra nada en vez de repetir el título de
-        // la columna, que ya es el título de la hoja.
+        // Descripción del criterio de evaluación que se evalúa con el instrumento. Si la
+        // `description` de la evaluación asociada está vacía o es la nota genérica de importación,
+        // se busca el enunciado oficial en EvaluationCriteriaReference por el título del
+        // instrumento y se persiste. `competencyCriteriaIds` guarda identificadores de fila, no
+        // códigos curriculares, así que no sirve como etiqueta legible. Si no hay ningún texto
+        // real, no se muestra nada en vez de repetir el título de la columna, que ya es el título
+        // de la hoja.
         var criterionLabel: String? = nil
         let targetEvalId = column?.evaluationId?.int64Value ?? detail.template_.evaluationId?.int64Value
         if let evalId = targetEvalId, evalId > 0,
@@ -8320,7 +8354,13 @@ final class KmpBridge: ObservableObject {
             // repairCorruptedEvaluationDescription) de cuando el sync mandaba `description` de
             // NSObject en vez del campo real; se repara aquí, no solo al pintarlo, para que deje de
             // circular entre dispositivos.
-            let desc = await repairCorruptedEvaluationDescription(evaluation)
+            var desc = await repairCorruptedEvaluationDescription(evaluation)
+            let looksGeneric = (desc?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                || (desc?.hasPrefix("Instrumento importado desde ") ?? false)
+            if looksGeneric, let statement = EvaluationCriteriaReference.shared.criterionStatement(instrumentTitle: evaluation.name) {
+                await saveEvaluationWithDescription(evaluation, description: statement)
+                desc = statement
+            }
             if let desc, !desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 criterionLabel = desc
             } else if !evaluation.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

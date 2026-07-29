@@ -2,6 +2,7 @@ package com.migestor.shared.viewmodel
 
 import com.migestor.shared.domain.*
 import com.migestor.shared.repository.*
+import com.migestor.shared.util.EvaluationCriteriaReference
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -288,18 +289,22 @@ class RubricEvaluationViewModel(
         }
     }
 
-    // El texto del criterio curricular que evalua esta rubrica: se lee de la evaluacion
-    // asociada, igual que en el instrumento de Rejilla de observacion (KmpBridge.swift,
-    // loadStructuredInstrumentEvaluation). Un bug de sync ya corregido pudo dejar en
-    // `description` un volcado del propio objeto (`Evaluation(id=..., description=Evaluation(...`)
-    // en vez del texto real; se detecta esa forma y se ignora en vez de mostrarla, cayendo a
+    // El texto del criterio curricular que evalua esta rubrica. Primero se busca el enunciado
+    // oficial en EvaluationCriteriaReference por el titulo del instrumento (mismo catalogo que usa
+    // el importador para la Rejilla de observacion, ver KmpBridge.swift). Si el instrumento no esta
+    // en ese catalogo (otra materia/curso), se cae a la `description` de la evaluacion asociada. Un
+    // bug de sync ya corregido pudo dejar ahi un volcado del propio objeto
+    // (`Evaluation(id=..., description=Evaluation(...`) o la nota generica de importacion
+    // ("Instrumento importado desde..."); ambas formas se ignoran en vez de mostrarse, cayendo a
     // codigo o nombre.
     private fun evaluationCriterionLabel(evaluation: Evaluation?): String? {
         evaluation ?: return null
+        EvaluationCriteriaReference.criterionStatement(evaluation.name)?.let { return it }
         val description = evaluation.description?.trim()
         if (!description.isNullOrEmpty() &&
             !description.startsWith("Evaluation(id=") &&
-            !description.contains("description=Evaluation(")
+            !description.contains("description=Evaluation(") &&
+            !description.startsWith("Instrumento importado desde ")
         ) {
             return description
         }

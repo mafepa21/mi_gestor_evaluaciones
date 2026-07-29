@@ -151,6 +151,26 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- `docs/importacion_documentos_sa.md`: corregida una limitación que el documento seguía dando por
+  vigente y que ya no lo estaba. Afirmaba, en §3 y otra vez en "Limitaciones conocidas", que la app
+  "aún no calcula ni guarda una nota automática de ítems marcados / total" para las checklists
+  proporcionales, y que la columna no sumaba a la media. El código sí lo hace desde la tanda de
+  importación de instrumentos: `NotebookInstrumentsRepositorySqlDelight.saveResponses` deriva la
+  nota en `deriveProportionalChecklistScore` (ítems `CHECK` con clave `chkp_<n>`, marcados / total
+  × 10) y la persiste vía `gradesRepository.saveGrade`. La entrada de §3 pasa a describir el
+  cálculo real y su convención de claves, y el punto de "Limitaciones conocidas" queda tachado y
+  marcado como resuelto. Importa porque una limitación falsa en la documentación de referencia
+  desvía decisiones de diseño: se estaba planificando sobre la idea de que esas columnas no
+  puntuaban.
+- `docs/importacion_documentos_sa.md`: documentada en su lugar la limitación que **sí** está
+  vigente, y que no aparecía en ninguna parte: **el quiz no se autocorrige**.
+  `QuizQuestionDraft` (`LearningSituationAssessmentInstrumentsImportService.swift:167`) solo guarda
+  `questionText` y `options`, sin clave de respuesta correcta, y `saveResponses` únicamente deriva
+  nota para la rejilla de observación 1-4 y la checklist proporcional: no hay cálculo de % de
+  aciertos. Un quiz se guarda como respuestas, sin nota. Se listan los cinco elementos que
+  faltarían (clave de respuestas, contrato de autoría en el DOCX, puntuación por pregunta,
+  versionado de la clave y derivación local verificable).
+
 - Nuevo `plan_unificacion_dashboard_2026-07-28.md`: plan para unificar el Dashboard de iPad y Mac y hacer real el modo Clase/Despacho. Documenta el hallazgo de partida — el selector segmentado del iPad **no cambia la información**: `DashboardOperationalRepositoryDefault.getSnapshot` recibe `mode: DashboardMode` y no lo usa en ninguna consulta (solo lo copia al snapshot devuelto), así que los dos modos producen el mismo `DashboardSnapshot` y lo único que varía es el orden de las cinco tarjetas secundarias en `DashboardView.dashboardSecondaryGrid`. El plan propone que el modo distinga por alcance y horizonte temporal (Clase = una sola clase y la sesión en curso; Despacho = todos los grupos, la semana y el trimestre), conmutación automática desde el horario, subir la tarjeta "Ahora" del Mac (`MacDashboardSnapshot`, modelo Swift paralelo que hoy duplica la carga de datos) al `DashboardSnapshot` compartido, y una sola composición de bloques para ambas plataformas. Incluye el motivo para tocar `kmp/shared/domain/Models.kt` (archivo protegido, campo `currentContext` aditivo) y por qué **no** hace falta tocar `KmpBridge.swift`.
 
 - Nuevo `plan_adaptacion_import_formato_semanal_2026-07-27.md`: continuación de `plan_correccion_import_sa_2026-07-25.md` con el diagnóstico y la verificación de los tres frentes de esta tanda (checklists ponderadas que bloqueaban el import, formato semanal BLOQUE LARGO/CORTO, peso porcentual en la cabecera), incluidos los motivos para tocar los dos archivos protegidos y lo que deliberadamente no se ha hecho (la colocación automática de las sesiones contra el horario del grupo, que es funcionalidad del Planner, no del importador).

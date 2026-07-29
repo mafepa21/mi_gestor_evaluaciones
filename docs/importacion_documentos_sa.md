@@ -168,10 +168,13 @@ cambiaron en la auditoría de 2026-07-25:
 - Los párrafos no consumidos como ítem/pregunta se conservan como nota del
   instrumento, no se descartan.
 - Una checklist con ítems y peso se detecta como computable (`checklistProportional`)
-  en vez de "Auxiliar"; **limitación conocida**: la app aún no calcula ni guarda una
-  nota automática de "ítems marcados / total" para ese caso (solo lo hace para la
-  rejilla de observación 1-4, en `NotebookInstrumentsRepositorySqlDelight.saveResponses`),
-  así que de momento no suma a la media aunque el instrumento ya no se mal-etiquete.
+  en vez de "Auxiliar", y **desde entonces la nota automática sí se calcula y se
+  guarda**: `NotebookInstrumentsRepositorySqlDelight.saveResponses` deriva
+  `ítems marcados / ítems totales × 10` en `deriveProportionalChecklistScore` y la
+  persiste vía `gradesRepository.saveGrade`, así que la columna suma a la media.
+  Solo se aplica a los ítems `CHECK` con clave `chkp_<n>` (la que genera el importador
+  Apple para `CHECKLIST_PROPORTIONAL`); las checklists de requisito de entrega
+  (`check_<n>`, sin peso) y las de todo/nada siguen sin generar nota automática.
 - Una rejilla con peso cuya última columna es de nota (`Nota`/`Note`/`Final mark`) sin
   escala explícita asume escala 1-4 y avisa.
 - El aviso de descuadre de pesos se emite siempre (antes solo si no había fórmula de
@@ -182,9 +185,14 @@ cambiaron en la auditoría de 2026-07-25:
 
 ## Limitaciones conocidas (no resueltas por la auditoría de 2026-07-25)
 
-- **Checklist proporcional sin nota automática**: ver punto anterior. La columna se
-  crea pero no cuenta hacia la media hasta que se implemente el cálculo en
-  `kmp/data` (archivo protegido, fuera del alcance de esta tarea).
+- ~~**Checklist proporcional sin nota automática**~~: **resuelto**. El cálculo ya está
+  implementado en `NotebookInstrumentsRepositorySqlDelight.deriveProportionalChecklistScore`
+  y la columna cuenta hacia la media. Ver el punto correspondiente de §3.
+- **Quiz sin autocorrección**: `QuizQuestionDraft` importa `questionText` y `options`,
+  pero no la respuesta correcta, y `saveResponses` solo deriva nota para la rejilla de
+  observación 1-4 y la checklist proporcional. Un quiz se guarda como respuestas, sin
+  nota automática de % de aciertos: haría falta clave de respuestas, puntuación por
+  pregunta y versionado de la clave.
 - **Peso importado (0,4) vs. peso manual (×1) en la misma pestaña**: las columnas
   importadas de una SA guardan `weight = weightPercent / 100`, mientras que las
   columnas manuales usan multiplicadores enteros (`×1`, `×2`...). Si conviven en la

@@ -28,8 +28,18 @@ El formato sigue una variante practica de Keep a Changelog:
   SA), no de un contador propio, así que restaurar un backup o recibir datos por Sync LAN también
   lo actualiza; la única excepción documentada son las fechas del curso, que se crean solas con
   valores por defecto y por eso necesitan una marca explícita al pulsar "Guardar" en el asistente.
-  La bienvenida solo salta si la base está vacía **y** no se ha visto antes, para no lanzarle un
-  tutorial a un docente con el curso empezado. Se reabre desde Ajustes → General → Primeros pasos.
+  La bienvenida solo salta si la base está realmente vacía (grupos y alumnado reales, descontando
+  la clase de demostración de la primera instalación), y se reevalúa en cada arranque del proceso,
+  no solo la primera vez: cubre también el borrado total o modular de Ajustes → Zona de Riesgo, que
+  siempre fuerza un reinicio de la app, y a un docente que ha ido borrando grupos y alumnado a mano
+  hasta vaciarla. La primera vez que se ve en un dispositivo enseña la tarjeta de bienvenida
+  completa; las siguientes veces que la base aparece vacía salta directa a la lista de pasos, sin
+  repetir la presentación. Se reabre también a mano desde Ajustes → General → Primeros pasos.
+  `KmpBridge.swift` gana una `hasCompletedBootstrap` publicada (aditivo, sin cambiar firmas
+  existentes) para que la comprobación espere a que termine el primer *pull* de Sync LAN antes de
+  decidir si la base está vacía: sin esa espera, un iPad recién emparejado vería su base local vacía
+  por un instante y podría marcarla como "sin datos" antes de que llegue lo que ya tiene el otro
+  dispositivo.
 - Alumnado: `OnboardingStudentsSheet` da por fin un punto de entrada a la importación de alumnado
   en iPhone/iPad. La hoja de revisión `StudentImportSheet` existía desde hace tiempo pero solo se
   podía alcanzar desde `MacStudentsView`: en iOS no había forma de llegar a ella. Además del Excel

@@ -126,12 +126,22 @@ enum OnboardingRoute: Identifiable, Equatable {
 /// existencia no prueba que nadie las haya revisado. Ahí sí hace falta una marca
 /// explícita, que también se da por buena en cuanto existe alguna franja: no se
 /// llega a tener horario sin haber pasado por las fechas.
+///
+/// La bienvenida no es un "solo una vez en la vida del dispositivo": se
+/// replantea en cada arranque del proceso mientras la base siga realmente
+/// vacía. Eso cubre a propósito el borrado total y el modular de Ajustes →
+/// Zona de Riesgo sin necesitar ningún gancho especial en esas pantallas —
+/// las dos fuerzan el reinicio de la app (aviso manual en iOS, relanzamiento
+/// automático en macOS), así que el siguiente arranque ya encuentra la base
+/// vacía y decide solo. También cubre a un docente que ha ido borrando grupos
+/// y alumnado a mano hasta vaciarla. Lo único que no se repite es la propia
+/// tarjeta de bienvenida: a partir de la primera vez que se ha visto, una
+/// base vacía salta directa a la lista de pasos, no a la presentación.
 @MainActor
 final class OnboardingStore: ObservableObject {
     static let shared = OnboardingStore()
 
     private enum Keys {
-        static let dismissed = "onboarding.dismissed.v1"
         static let welcomeSeen = "onboarding.welcomeSeen.v1"
         static let courseConfirmed = "onboarding.courseConfirmed.v1"
     }
@@ -147,6 +157,11 @@ final class OnboardingStore: ObservableObject {
     /// aquí hay cuatro hojas que se abren unas desde otras.
     @Published var route: OnboardingRoute?
 
+    /// En memoria, no persistido: evita repreguntar dos veces dentro del mismo
+    /// arranque del proceso (p.ej. si `bootstrap(bridge:)` se dispara más de
+    /// una vez por un cambio de estado). Cada arranque nuevo lo reinicia solo.
+    private var hasPromptedThisLaunch = false
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -155,7 +170,6 @@ final class OnboardingStore: ObservableObject {
 
     // MARK: - Flags persistidos
 
-    var isDismissed: Bool { defaults.bool(forKey: Keys.dismissed) }
     var hasSeenWelcome: Bool { defaults.bool(forKey: Keys.welcomeSeen) }
     var isCourseConfirmed: Bool { defaults.bool(forKey: Keys.courseConfirmed) }
 
@@ -201,11 +215,13 @@ final class OnboardingStore: ObservableObject {
         defaults.set(true, forKey: Keys.welcomeSeen)
     }
 
-    /// "Ahora no" y "Terminar": no se vuelve a abrir solo. Sigue accesible a
-    /// mano desde Ajustes → General → Primeros pasos.
+    /// "Ahora no" y "Terminar": no se vuelve a abrir solo dentro de este mismo
+    /// arranque. Sigue accesible a mano desde Ajustes → General → Primeros
+    /// pasos, y volverá a saltar solo si la base sigue vacía en un arranque
+    /// posterior (ver el aviso de la clase, arriba).
     func dismiss() {
-        defaults.set(true, forKey: Keys.dismissed)
         markWelcomeSeen()
+        hasPromptedThisLaunch = true
         route = nil
     }
 
@@ -215,21 +231,39 @@ final class OnboardingStore: ObservableObject {
 
     // MARK: - Arranque
 
-    /// Decide si hay que enseñar la bienvenida. Tres condiciones a la vez (nunca
-    /// una sola): que no se haya visto ya, que no haya grupos ni alumnado reales
-    /// (la clase de ejemplo sembrada no cuenta) y que no haya horario. Así una
-    /// actualización de la app no le lanza un tutorial en la cara a un docente
-    /// con el curso empezado.
+    /// Se llama en cada arranque del proceso, no solo la primera vez.
+    /// Reevalúa si la base está realmente vacía (grupos y alumnado reales,
+    /// descontando la clase de demo) y, si lo está, presenta el onboarding —
+    /// la bienvenida completa la primera vez que se ve en este dispositivo,
+    /// y directamente la lista de pasos las siguientes, para no repetir la
+    /// misma presentación a quien ya la conoce.
+    ///
+    /// Espera primero a que `bridge.bootstrap()` haya terminado del todo,
+    /// primer *pull* de Sync LAN incluido. Sin esa espera, un iPad recién
+    /// emparejado vería su base local vacía por un instante y podría marcarla
+    /// como "sin datos" antes de que llegue lo que ya tiene el otro
+    /// dispositivo — con la bienvenida repitiéndose en cada arranque (ver
+    /// más abajo), ese falso vacío podría no ser un caso puntual sino
+    /// reaparecer una y otra vez si el *pull* tarda.
     func bootstrap(bridge: KmpBridge) async {
+        await waitUntilBridgeBootstrapped(bridge)
         await refresh(bridge: bridge)
-        guard !isDismissed, !hasSeenWelcome else { return }
-        guard groupCount == 0, studentCount == 0 else {
-            // Base con datos: el onboarding no aplica. Se marca como visto para
-            // no volver a preguntarlo en cada arranque.
-            markWelcomeSeen()
-            return
+        guard !hasPromptedThisLaunch, groupCount == 0, studentCount == 0 else { return }
+        hasPromptedThisLaunch = true
+        route = hasSeenWelcome ? .checklist : .welcome
+    }
+
+    /// Espera a `bridge.hasCompletedBootstrap`, con un límite de tiempo por si
+    /// `bootstrap()` se quedara colgado: mejor una decisión sobre datos
+    /// parciales que bloquear el onboarding para siempre. Sondeo simple en vez
+    /// de suscribirse al publisher: ambos, `OnboardingStore` y `KmpBridge`,
+    /// están aislados al actor principal, así que leer la propiedad aquí ya es
+    /// una lectura directa y segura, sin cruzar de actor.
+    private func waitUntilBridgeBootstrapped(_ bridge: KmpBridge, timeoutSeconds: Double = 8) async {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while !bridge.hasCompletedBootstrap, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 150_000_000)
         }
-        route = .welcome
     }
 
     /// Marca que pone `KmpContainer.seedDemoDataIfEmpty` a la clase de ejemplo

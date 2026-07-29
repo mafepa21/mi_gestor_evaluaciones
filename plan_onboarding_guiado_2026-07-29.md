@@ -217,3 +217,49 @@ Se registran aquí para que el plan siga siendo fiel a lo que se hizo:
 - **Gancho en el dashboard**: en vez de una tarjeta nueva, el botón principal del estado vacío
   ("Crear clase") pasa a ser "Configurar mi curso" y abre la lista. Menos superficie, mismo efecto.
 - **Paso 6 fuera** (ver arriba).
+
+## Ampliación (2026-07-29, misma tarde): reaparición tras borrado o base vacía
+
+Petición del usuario: la bienvenida debe volver a saltar cuando alguien hace un borrado
+destructivo (Ajustes → Zona de Riesgo, total o modular) o cuando la app detecta que no hay datos
+en la base **aunque no sea la primera vez que se abre la app**. El diseño original (D4) solo la
+mostraba una vez por dispositivo, gobernado por dos `Bool` persistidos (`dismissed`, `welcomeSeen`).
+
+**Decisión de diseño**: en vez de enganchar la bienvenida a las pantallas de borrado
+(`SettingsDangerZoneView`, `SelectiveWipeSheet`), se reevalúa la base en **cada arranque del
+proceso**. Las dos vías de borrado ya fuerzan un reinicio de la app (aviso manual en iOS,
+relanzamiento automático en macOS), así que el siguiente arranque encuentra la base vacía por sí
+solo — no hace falta tocar esas dos pantallas ni ningún otro punto de entrada presente o futuro que
+acabe vaciando la base. También cubre, gratis, al docente que ha ido borrando grupos y alumnado a
+mano.
+
+Cambios en `OnboardingStore` (`OnboardingModels.swift`):
+
+- Se elimina el flag persistido `dismissed`: ya no existe un "no preguntar nunca más" permanente.
+- `bootstrap(bridge:)` se llama en cada arranque (ya lo hacía) y ahora vuelve a mostrar el
+  onboarding cada vez que `groupCount == 0 && studentCount == 0`, sin mirar si ya se había visto
+  antes. Un `hasPromptedThisLaunch` en memoria (no persistido) evita preguntar dos veces dentro del
+  mismo arranque si el `bootstrap` se dispara más de una vez.
+- Se mantiene `welcomeSeen` (persistido), pero cambia su función: ya no bloquea que se vuelva a
+  mostrar el onboarding, decide **qué** se muestra. La primera vez que un dispositivo ve la
+  bienvenida, sale la tarjeta completa (`.welcome`); las siguientes veces que la base aparece vacía,
+  se salta directa a la lista de pasos (`.checklist`), para no repetir la misma presentación a quien
+  ya la conoce.
+
+No se tocó `SettingsDangerZoneView.swift` ni `SelectiveWipeSheet.swift`: el comportamiento nuevo no
+necesita ningún gancho ahí.
+
+**Riesgo cerrado (mismo día, autorización explícita para tocar `KmpBridge.swift`)**: el hueco
+descrito arriba —`OnboardingStore.bootstrap(bridge:)` corriendo en paralelo con `bridge.bootstrap()`
+en vez de después— se cierra con un cambio mínimo en el archivo protegido:
+
+- `KmpBridge.swift`: nueva `@Published private(set) var hasCompletedBootstrap = false`, puesta a
+  `true` al final de `bootstrap()` en las dos salidas (éxito y error). Es aditivo, no cambia ninguna
+  firma existente ni el comportamiento de `bootstrap()` en sí.
+- `OnboardingStore.bootstrap(bridge:)` espera ahora a `bridge.hasCompletedBootstrap` (sondeo simple,
+  ambos aislados al actor principal, límite de 8 segundos por si `bootstrap()` se colgara) antes de
+  mirar `groupCount`/`studentCount`. Así el primer *pull* de Sync LAN ya ha terminado —o ha fallado,
+  que también cuenta como "terminado"— antes de decidir si la base está vacía.
+- En macOS el cambio es un no-op en la práctica: `MacAppSessionController.start()` ya solo pone
+  `bootstrapState = .ready` después de que `bridge.bootstrap()` termine, así que la espera nueva
+  siempre encuentra `hasCompletedBootstrap` ya en `true` y no bloquea nada.

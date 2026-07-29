@@ -46,6 +46,8 @@ struct StudentProfilesWorkspaceView: View {
     @State private var pendingDeleteTutoringSession: TutoringSessionRow?
     @State private var showBulkImportSheet = false
     @State private var showGroupOverviewSheet = false
+    @State private var showWeeklyEmailSheet = false
+    @State private var selectedEmailStudent: Student?
     @State private var pendingDeleteStudent: Student?
     @State private var pendingDeleteSupportMeasure: SupportMeasureRow?
     @State private var editingStudent: Student?
@@ -386,6 +388,13 @@ struct StudentProfilesWorkspaceView: View {
                         Image(systemName: "list.bullet.clipboard")
                     }
                     .help("Ver medidas del grupo")
+
+                    Button {
+                        showWeeklyEmailSheet = true
+                    } label: {
+                        Image(systemName: "envelope.sparkles")
+                    }
+                    .help("Generar correos semanales de evaluación")
                 }
             }
         }
@@ -408,6 +417,10 @@ struct StudentProfilesWorkspaceView: View {
                 roster: studentsBridgeStore.studentsInClass
             )
             .environmentObject(bridge)
+        }
+        .sheet(isPresented: $showWeeklyEmailSheet) {
+            WeeklyStudentEmailWorkspaceView(classId: selectedClassId)
+                .environmentObject(bridge)
         }
     }
 

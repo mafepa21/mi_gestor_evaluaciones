@@ -71,6 +71,7 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
     case tutorMeetingSummary
     case earlyWarning
     case physicalProgressAnalysis
+    case weeklyStudentEmail
 
     var id: String { rawValue }
 
@@ -78,7 +79,7 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
         switch self {
         case .studentInsight, .averageExplanation:
             return .evaluator
-        case .tutorMeetingSummary, .earlyWarning:
+        case .tutorMeetingSummary, .earlyWarning, .weeklyStudentEmail:
             return .tutor
         case .physicalProgressAnalysis:
             return .physicalEducation
@@ -97,6 +98,8 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
             return "Señal preventiva"
         case .physicalProgressAnalysis:
             return "Análisis EF"
+        case .weeklyStudentEmail:
+            return "Correo semanal"
         }
     }
 
@@ -112,6 +115,8 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
             return "Ordena señales revisables sin diagnosticar ni decidir."
         case .physicalProgressAnalysis:
             return "Resume progreso físico desde snapshots existentes."
+        case .weeklyStudentEmail:
+            return "Redacta borrador de correo semanal de seguimiento evaluativo."
         }
     }
 }
@@ -149,6 +154,7 @@ enum AppleAIRequest {
     case physicalScaleRecommendation(PhysicalScaleRecommendationInput)
     case physicalProgressAnalysis(PhysicalProgressEvidence)
     case formulaSuggestion(String, String, [NotebookColumnDefinition])
+    case weeklyStudentEmail(StudentInsightEvidence, String?, WeeklyEmailAudienceMode, String)
 }
 
 enum AppleAIResult {
@@ -164,6 +170,7 @@ enum AppleAIResult {
     case physicalScaleRecommendation(PhysicalScaleRecommendationDraft)
     case physicalProgressAnalysis(PhysicalProgressAnalysis)
     case formulaSuggestion(String)
+    case weeklyStudentEmail(WeeklyStudentEmailDraft)
 }
 
 struct AppleAIGeneration {
@@ -178,6 +185,7 @@ final class AppleAIOrchestrator {
     private let analytics = AppleFoundationAnalyticsService()
     private let studentInsights = AppleFoundationStudentInsightService()
     private let formulas = AppleFoundationFormulaService()
+    private let studentEmails = AppleFoundationStudentEmailService()
 
     func availability() -> AppleAIAvailability {
         let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: true)
@@ -214,6 +222,7 @@ final class AppleAIOrchestrator {
             analytics.prewarm()
         case .studentInsight:
             studentInsights.prewarm()
+            studentEmails.prewarm()
         }
     }
 
@@ -243,6 +252,8 @@ final class AppleAIOrchestrator {
             return .physicalProgressAnalysis(try await contextual.generatePhysicalProgressAnalysis(from: evidence))
         case let .formulaSuggestion(prompt, currentFormula, columns):
             return .formulaSuggestion(try await formulas.generateFormula(request: prompt, currentFormula: currentFormula, availableColumns: columns))
+        case let .weeklyStudentEmail(evidence, recipientEmail, audienceMode, weekRange):
+            return .weeklyStudentEmail(await studentEmails.generateWeeklyEmailDraft(from: evidence, recipientEmail: recipientEmail, audienceMode: audienceMode, weekRangeDescription: weekRange))
         }
     }
 
@@ -374,6 +385,8 @@ final class AppleAIOrchestrator {
             return analysis.appearsToBeRulesFallback
         case .formulaSuggestion:
             return false
+        case .weeklyStudentEmail(let draft):
+            return !draft.isAIGenerated
         }
     }
 }

@@ -15,6 +15,17 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Entregas del alumnado vía web: banco de pruebas **solo `#if DEBUG`** para poder ver el circuito
+  funcionando en Xcode antes de que exista la publicación de formularios.
+  `WebSubmissionTestBenchView`, dentro de Ajustes → Diagnóstico, monta a mano el estado que la app
+  todavía no puede crear: una columna con plantilla de cinco ítems (uno de cada tipo real), el
+  formulario registrado, la clave privada del fixture en el llavero, el mapa de ítems y un alias
+  asignado al primer alumno del grupo; además escribe el sobre de prueba como `.mgsub` en Documentos
+  y dice la ruta, para poder elegirlo con el selector real. La columna tiene identificador estable
+  por formulario, así que preparar la prueba varias veces no ensucia el Cuaderno. Instrucciones,
+  tabla de casos a comprobar (idempotencia, fichero manipulado, entrega de otro formulario, código
+  sin asignar, asignación manual) y qué hacer si algo falla, en `docs/PRUEBA_ENTREGAS_WEB.md`. Se
+  borra entero — vista, método del puente y constantes del fixture — cuando la app sepa publicar.
 - Entregas del alumnado vía web: cableado real con la base de datos. Nuevo
   `WebSubmissionsRepository` (contrato en `shared/repository/WebSubmissionsContracts.kt`,
   implementación en `data/repository/WebSubmissionsRepositorySqlDelight.kt`, registrado en

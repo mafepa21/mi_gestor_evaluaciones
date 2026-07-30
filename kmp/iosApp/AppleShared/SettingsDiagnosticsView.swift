@@ -18,7 +18,15 @@ struct SettingsDiagnosticsView: View {
                 Text("Herramientas de Diagnóstico")
                     .font(.title2.weight(.bold))
                     .padding(.horizontal, 4)
-                
+
+                // Banco de pruebas de las entregas web. Solo DEBUG, y solo hasta
+                // que exista la publicación de formularios: entonces se borra.
+                #if DEBUG
+                WebSubmissionTestBenchView()
+                    .padding(.horizontal, 4)
+                Divider()
+                #endif
+
                 #if os(macOS)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Acciones de Soporte")

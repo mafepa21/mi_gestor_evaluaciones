@@ -4,41 +4,49 @@ import MiGestorKit
 struct PlannerSequenceGanttView: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSession: (PlanningSession) -> Void
-    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    var showsInlineGroupFilter = true
 
-    @State private var selectedRange: PlannerGanttRange = .current
-    @State private var selectedGroupId: Int64?
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @State private var selectedRange: PlannerGanttRange = .rolling
+    @State private var attentionScope: PlannerGanttAttentionScope = .all
     @State private var expandedSituationIds: Set<String> = []
+    @State private var didSelectInitialRange = false
     @AppStorage("plannerGanttHintDismissed") private var ganttHintDismissed = false
 
-    private let labelWidth: CGFloat = 208
-    private let weekWidth: CGFloat = 64
-    private let rowHeight: CGFloat = 40
-    private let monthHeaderHeight: CGFloat = 24
+    private var metrics: PlannerGanttMetrics {
+        PlannerGanttMetrics(density: vm.density)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
             progressSummaryStrip
 
-            if vm.sequenceGroupsEnriched.isEmpty {
+            if let message = vm.sequenceLoadErrorMessage {
+                errorContent(message)
+            } else if vm.isLoadingSequences && vm.sequenceGroupsEnriched.isEmpty {
+                loadingContent
+            } else if situationRows.isEmpty {
                 emptyContent
+            } else if visibleSituations.isEmpty {
+                allClearContent
             } else {
                 onboardingHint
                 ganttContent
             }
         }
         .padding(EvaluationDesign.screenPadding)
-        .task {
+        .task(id: vm.selectedGroupId) {
+            selectInitialRangeIfNeeded()
             await vm.loadEnrichedSequences()
-            expandInitialSituations()
+            reconcileExpandedSituations()
         }
-        .appOnChange(of: vm.selectedGroupId) { newValue in
-            selectedGroupId = newValue
-            Task {
-                await vm.loadEnrichedSequences()
-                expandInitialSituations()
-            }
+        .appOnChange(of: vm.evaluationPeriods.map(\.id)) { _ in
+            validateSelectedRange()
+            selectInitialRangeIfNeeded()
+        }
+        .appOnChange(of: attentionScope) { _ in
+            reconcileExpandedSituations()
         }
     }
 
@@ -47,16 +55,24 @@ struct PlannerSequenceGanttView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Secuencia")
                     .font(.title2.weight(.bold))
-                Text("Progreso de tus situaciones de aprendizaje")
+                Text("Qué está al día, qué se retrasa y qué falta por ubicar")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
             }
 
-            Spacer()
+            Spacer(minLength: 16)
 
             HStack(spacing: 8) {
+                Picker("Atención", selection: $attentionScope) {
+                    ForEach(PlannerGanttAttentionScope.allCases) { scope in
+                        Text(scope.label).tag(scope)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 248)
+
                 Picker("Periodo", selection: $selectedRange) {
-                    Text("Periodo actual").tag(PlannerGanttRange.current)
+                    Text("13 semanas").tag(PlannerGanttRange.rolling)
                     ForEach(sortedEvaluationPeriods, id: \.id) { period in
                         Text(period.name).tag(PlannerGanttRange.period(period.id))
                     }
@@ -64,102 +80,259 @@ struct PlannerSequenceGanttView: View {
                 .pickerStyle(.menu)
                 .frame(maxWidth: 176)
 
-                Picker("Grupo", selection: $selectedGroupId) {
-                    Text("Todos").tag(Optional<Int64>.none)
-                    ForEach(vm.groups, id: \.id) { group in
-                        Text(group.name).tag(Optional(group.id))
+                if showsInlineGroupFilter {
+                    Picker(
+                        "Grupo",
+                        selection: Binding(
+                            get: { vm.selectedGroupId },
+                            set: { vm.selectGroup($0) }
+                        )
+                    ) {
+                        Text("Todos").tag(Optional<Int64>.none)
+                        ForEach(vm.groups, id: \.id) { group in
+                            Text(group.name).tag(Optional(group.id))
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 176)
                 }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 176)
             }
 
             if vm.isLoadingSequences {
                 ProgressView()
+                    .controlSize(.small)
                     .tint(EvaluationDesign.accent)
             }
         }
     }
 
-    private var emptyContent: some View {
-        Group {
-            if vm.isLoadingSequences {
-                VStack {
-                    ProgressView("Cargando secuencias...")
-                        .padding()
-                }
-                .frame(maxWidth: .infinity, minHeight: 280)
-            } else {
-                PlannerEmptyState(
-                    title: "Sin secuencias",
-                    systemImage: "point.3.connected.trianglepath.dotted",
-                    message: "Todavía no hay sesiones vinculadas a situaciones de aprendizaje. Crea sesiones desde la vista Semana y vincúlalas a una SA para ver su progreso aquí."
-                )
-            }
+    private var loadingContent: some View {
+        VStack {
+            ProgressView("Cargando el plan completo…")
+                .padding()
         }
+        .frame(maxWidth: .infinity, minHeight: 280)
+    }
+
+    private func errorContent(_ message: String) -> some View {
+        VStack(spacing: 16) {
+            ContentUnavailableView(
+                "No se pudo cargar la secuencia",
+                systemImage: "exclamationmark.triangle",
+                description: Text(message)
+            )
+            Button("Reintentar") {
+                Task {
+                    await vm.loadEnrichedSequences()
+                    reconcileExpandedSituations()
+                }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, minHeight: 280)
+    }
+
+    private var emptyContent: some View {
+        PlannerEmptyState(
+            title: "Sin secuencias",
+            systemImage: "point.3.connected.trianglepath.dotted",
+            message: "Importa una secuencia en Situaciones de aprendizaje y vincúlala a un grupo. Aparecerá aquí antes incluso de agendar su primera sesión."
+        )
+    }
+
+    private var allClearContent: some View {
+        VStack(spacing: 16) {
+            ContentUnavailableView(
+                "Todo está al día",
+                systemImage: "checkmark.seal",
+                description: Text("No hay sesiones sin ubicar, cancelaciones ni grupos retrasados en este periodo.")
+            )
+            Button("Mostrar todas las situaciones") {
+                attentionScope = .all
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
     }
 
     private var ganttContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ScrollView([.horizontal, .vertical]) {
-                VStack(alignment: .leading, spacing: 0) {
-                    monthHeader
-                    timelineHeader
+        VStack(alignment: .leading, spacing: 16) {
+            ScrollView(.vertical) {
+                HStack(alignment: .top, spacing: 0) {
+                    fixedRail
 
-                    ForEach(situationRows) { situation in
-                        PlannerGanttSituationRow(
-                            vm: vm,
-                            situation: situation,
-                            weeks: visibleWeeks,
-                            vacationWeeks: vacationWeeks,
-                            weekWidth: weekWidth,
-                            labelWidth: labelWidth,
-                            rowHeight: rowHeight,
-                            currentWeek: currentWeek,
-                            isExpanded: expandedSituationIds.contains(situation.id),
-                            onToggle: {
-                                toggle(situation.id)
-                            },
-                            onOpenSession: onOpenSession
-                        )
+                    ScrollView(.horizontal) {
+                        timeline
+                            .frame(width: timelineWidth, alignment: .leading)
                     }
+                    .scrollIndicators(.visible)
                 }
-                .plannerGlassPanel(.content, cornerRadius: 12)
+                .plannerGlassPanel(.content, cornerRadius: 16)
             }
 
             legend
         }
     }
 
-    private var monthHeader: some View {
-        HStack(spacing: 0) {
-            Color.clear.frame(width: labelWidth, height: monthHeaderHeight)
+    private var fixedRail: some View {
+        VStack(spacing: 0) {
+            Text(rangeContextLabel)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+                .frame(width: metrics.labelWidth, height: metrics.monthHeaderHeight, alignment: .leading)
+                .background(EvaluationDesign.surfaceSoft)
 
-            ForEach(monthSpans, id: \.id) { span in
-                Text(span.title)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(width: weekWidth * CGFloat(span.weekCount), height: monthHeaderHeight, alignment: .leading)
-                    .padding(.leading, 6)
+            Text("Situación / grupo")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+                .frame(width: metrics.labelWidth, height: metrics.headerHeight, alignment: .leading)
+                .background(EvaluationDesign.surfaceSoft)
+
+            ForEach(displayRows) { row in
+                fixedRailRow(row)
             }
         }
     }
 
+    @ViewBuilder
+    private func fixedRailRow(_ row: PlannerGanttDisplayRow) -> some View {
+        switch row {
+        case .situation(let situation):
+            Button {
+                toggle(situation.id)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: expandedSituationIds.contains(situation.id) ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(situation.title)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(situationSummary(situation))
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                }
+                .padding(.horizontal, 16)
+                .frame(width: metrics.labelWidth, height: metrics.rowHeight, alignment: .leading)
+                .contentShape(Rectangle())
+                .background(EvaluationDesign.surfaceSoft.opacity(0.72))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(situation.title), \(situationSummary(situation))")
+            .accessibilityValue(expandedSituationIds.contains(situation.id) ? "Expandida" : "Contraída")
+            .accessibilityHint("Alterna el detalle por grupo")
+
+        case .group(_, let group):
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.groupName)
+                        .font(.caption.weight(.bold))
+                        .lineLimit(1)
+                    Text(pace(for: group)?.text ?? "\(group.plannedCount) planificadas")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(pace(for: group)?.tint ?? .secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                if group.pendingCount > 0 {
+                    locateMenu(for: group)
+                }
+            }
+            .padding(.leading, 40)
+            .padding(.trailing, 12)
+            .frame(width: metrics.labelWidth, height: metrics.rowHeight, alignment: .leading)
+            .background(EvaluationDesign.surfaceSoft.opacity(0.36))
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    private func locateMenu(for group: PlannerSequenceGroup) -> some View {
+        Menu {
+            ForEach(group.rows.filter { $0.status == .unlocated }) { row in
+                Button {
+                    locate(row, in: group)
+                } label: {
+                    Label(
+                        "S\(row.sessionNumber) · \(row.title.isEmpty ? "Sesión" : row.title)",
+                        systemImage: "calendar.badge.plus"
+                    )
+                }
+            }
+        } label: {
+            Text("Ubicar (\(group.pendingCount))")
+                .font(.caption2.weight(.bold))
+        }
+        .menuStyle(.button)
+        .controlSize(.mini)
+        .tint(IOSAppStyle.warning)
+        .help("Agendar sesiones pendientes de \(group.groupName)")
+    }
+
+    private var timeline: some View {
+        VStack(spacing: 0) {
+            monthHeader
+            timelineHeader
+
+            ForEach(displayRows) { row in
+                switch row {
+                case .situation(let situation):
+                    PlannerGanttContinuousBar(
+                        rows: situation.groups.flatMap(\.rows),
+                        weeks: visibleWeeks,
+                        vacationWeeks: vacationWeeks,
+                        weekWidth: metrics.weekWidth,
+                        rowHeight: metrics.rowHeight,
+                        currentWeek: currentWeek,
+                        onOpenSession: onOpenSession
+                    )
+                case .group(_, let group):
+                    PlannerGanttContinuousBar(
+                        rows: group.rows,
+                        weeks: visibleWeeks,
+                        vacationWeeks: vacationWeeks,
+                        weekWidth: metrics.weekWidth,
+                        rowHeight: metrics.rowHeight,
+                        currentWeek: currentWeek,
+                        onOpenSession: onOpenSession
+                    )
+                }
+            }
+        }
+    }
+
+    private var monthHeader: some View {
+        HStack(spacing: 0) {
+            ForEach(monthSpans) { span in
+                Text(span.title)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(
+                        width: metrics.weekWidth * CGFloat(span.weekCount),
+                        height: metrics.monthHeaderHeight,
+                        alignment: .leading
+                    )
+                    .padding(.leading, 8)
+            }
+        }
+        .background(EvaluationDesign.surfaceSoft)
+    }
+
     private var timelineHeader: some View {
         HStack(spacing: 0) {
-            Text("Situación")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-                .frame(width: labelWidth, height: rowHeight, alignment: .leading)
-                .padding(.horizontal, 16)
-                .background(EvaluationDesign.surfaceSoft)
-
             ForEach(visibleWeeks, id: \.self) { week in
                 Text("S.\(week.week)")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(week == currentWeek ? EvaluationDesign.accent : .secondary)
-                    .frame(width: weekWidth, height: rowHeight)
+                    .frame(width: metrics.weekWidth, height: metrics.headerHeight)
                     .background(weekHeaderBackground(for: week))
                     .overlay(alignment: .leading) {
                         if week == currentWeek {
@@ -173,89 +346,69 @@ struct PlannerSequenceGanttView: View {
     }
 
     private func weekHeaderBackground(for week: PlannerGanttWeek) -> Color {
-        if week == currentWeek { return EvaluationDesign.accent.opacity(0.10) }
+        if week == currentWeek { return EvaluationDesign.accent.opacity(0.12) }
         if vacationWeeks.contains(week) { return Color.secondary.opacity(0.14) }
         return EvaluationDesign.surfaceSoft
     }
 
-    /// Strip de progreso global visible encima del Gantt: muestra de un vistazo
-    /// cuántas sesiones se han impartido, cuántas faltan y cuántas están pendientes de ubicar.
     @ViewBuilder
     private var progressSummaryStrip: some View {
-        let rows = situationRows
-        let totalSessions = rows.reduce(0) { $0 + $1.total }
-        let completedSessions = rows.reduce(0) { $0 + $1.completed }
-        let pendingLocate = rows.reduce(0) { $0 + $1.pending }
-        let remaining = max(totalSessions - completedSessions - pendingLocate, 0)
+        let groups = visibleSituations.flatMap(\.groups)
+        let total = groups.reduce(0) { $0 + $1.totalSessionsCount }
+        let completed = groups.reduce(0) { $0 + $1.completedCount }
+        let pending = groups.reduce(0) { $0 + $1.pendingCount }
+        let cancelled = groups.reduce(0) { $0 + $1.cancelledCount }
+        let planned = max(total - completed - pending - cancelled, 0)
 
-        if totalSessions > 0 {
-            VStack(alignment: .leading, spacing: 10) {
-                // Barra de progreso visual
+        if total > 0 {
+            VStack(alignment: .leading, spacing: 8) {
                 GeometryReader { proxy in
-                    let width = proxy.size.width
-                    let completedWidth = totalSessions > 0 ? width * CGFloat(completedSessions) / CGFloat(totalSessions) : 0
-                    let pendingWidth = totalSessions > 0 ? width * CGFloat(pendingLocate) / CGFloat(totalSessions) : 0
-
                     HStack(spacing: 0) {
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(EvaluationDesign.success)
-                            .frame(width: max(completedWidth, completedSessions > 0 ? 4 : 0))
-                        RoundedRectangle(cornerRadius: 0, style: .continuous)
-                            .fill(EvaluationDesign.accent.opacity(0.5))
-                            .frame(width: max(width - completedWidth - pendingWidth, 0))
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(IOSAppStyle.warning)
-                            .frame(width: max(pendingWidth, pendingLocate > 0 ? 4 : 0))
+                        progressSegment(value: completed, total: total, width: proxy.size.width, tint: EvaluationDesign.success)
+                        progressSegment(value: planned, total: total, width: proxy.size.width, tint: EvaluationDesign.accent.opacity(0.55))
+                        progressSegment(value: pending, total: total, width: proxy.size.width, tint: IOSAppStyle.warning)
+                        progressSegment(value: cancelled, total: total, width: proxy.size.width, tint: EvaluationDesign.danger)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
                 .frame(height: 8)
 
-                // Métricas compactas
                 HStack(spacing: 16) {
-                    PlannerProgressMetric(
-                        value: "\(completedSessions)",
-                        label: "impartidas",
-                        tint: EvaluationDesign.success,
-                        icon: "checkmark.circle.fill"
-                    )
-                    PlannerProgressMetric(
-                        value: "\(remaining)",
-                        label: "planificadas",
-                        tint: EvaluationDesign.accent,
-                        icon: "calendar"
-                    )
-                    if pendingLocate > 0 {
-                        PlannerProgressMetric(
-                            value: "\(pendingLocate)",
-                            label: "sin ubicar",
-                            tint: IOSAppStyle.warning,
-                            icon: "exclamationmark.triangle.fill"
-                        )
+                    PlannerProgressMetric(value: "\(completed)", label: "impartidas", tint: EvaluationDesign.success, icon: "checkmark.circle.fill")
+                    PlannerProgressMetric(value: "\(planned)", label: "planificadas", tint: EvaluationDesign.accent, icon: "calendar")
+                    if pending > 0 {
+                        PlannerProgressMetric(value: "\(pending)", label: "sin ubicar", tint: IOSAppStyle.warning, icon: "calendar.badge.plus")
+                    }
+                    if cancelled > 0 {
+                        PlannerProgressMetric(value: "\(cancelled)", label: "canceladas", tint: EvaluationDesign.danger, icon: "xmark.circle.fill")
                     }
                     Spacer()
-                    Text("\(completedSessions) de \(totalSessions) sesiones")
+                    Text("\(completed) de \(total) completadas")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(12)
-            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(16)
+            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 
-    /// Aviso de "cómo se lee esto" mostrado solo la primera vez (mismo patrón
-    /// `@AppStorage` que el aviso de arrastre del grid semanal), con cierre explícito.
+    private func progressSegment(value: Int, total: Int, width: CGFloat, tint: Color) -> some View {
+        Rectangle()
+            .fill(tint)
+            .frame(width: total > 0 ? width * CGFloat(value) / CGFloat(total) : 0)
+    }
+
     @ViewBuilder
     private var onboardingHint: some View {
         if !ganttHintDismissed {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "info.circle.fill")
                     .foregroundStyle(EvaluationDesign.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Cada fila es una situación de aprendizaje")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Lee el plan y actúa sin salir del Gantt")
                         .font(.caption.weight(.bold))
-                    Text("Cada marca de color es una sesión: toca una para abrir su ficha. El color indica su estado — mira la leyenda de abajo.")
+                    Text("Expande una situación para comparar grupos. Abre una marca para revisar la sesión o usa Ubicar para agendar lo pendiente.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -272,18 +425,18 @@ struct PlannerSequenceGanttView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Descartar aviso")
             }
-            .padding(12)
-            .plannerGlassPanel(.control, cornerRadius: 12)
+            .padding(16)
+            .plannerGlassPanel(.control, cornerRadius: 16)
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
 
     private var legend: some View {
         HStack(spacing: 16) {
-            PlannerGanttLegendItem(label: "Impartida", tint: EvaluationDesign.success)
-            PlannerGanttLegendItem(label: "Planificada", tint: EvaluationDesign.accent)
-            PlannerGanttLegendItem(label: "Pendiente de ubicar", tint: IOSAppStyle.warning)
-            PlannerGanttLegendItem(label: "Cancelada", tint: EvaluationDesign.danger)
+            PlannerGanttLegendItem(label: "Cerrada", tint: PlannerSequenceStatus.closed.tint)
+            PlannerGanttLegendItem(label: "Impartida", tint: PlannerSequenceStatus.taught.tint)
+            PlannerGanttLegendItem(label: "Planificada", tint: PlannerSequenceStatus.planned.tint)
+            PlannerGanttLegendItem(label: "Cancelada", tint: PlannerSequenceStatus.cancelled.tint)
             PlannerGanttLegendItem(label: "Vacaciones", tint: Color.secondary.opacity(0.35))
             Spacer()
         }
@@ -296,7 +449,7 @@ struct PlannerSequenceGanttView: View {
 
     private var visibleWeeks: [PlannerGanttWeek] {
         switch selectedRange {
-        case .current:
+        case .rolling:
             return PlannerGanttWeek.range(around: Date(), before: 6, after: 6)
         case .period(let periodId):
             guard let period = vm.evaluationPeriods.first(where: { $0.id == periodId }),
@@ -308,21 +461,132 @@ struct PlannerSequenceGanttView: View {
         }
     }
 
+    private var timelineWidth: CGFloat {
+        metrics.weekWidth * CGFloat(max(visibleWeeks.count, 1))
+    }
+
     private var currentWeek: PlannerGanttWeek {
         PlannerGanttWeek(date: Date())
     }
 
-    /// Semanas visibles que no caen dentro de ningún periodo de evaluación configurado:
-    /// son los huecos reales entre evaluaciones (Navidad, Semana Santa, verano...).
-    /// Si no hay periodos configurados no se sombrea nada (no hay con qué comparar).
     private var vacationWeeks: Set<PlannerGanttWeek> {
         guard !vm.evaluationPeriods.isEmpty else { return [] }
-        let coveredWeeks = Set(
-            vm.evaluationPeriods.flatMap { period in
-                PlannerGanttWeek.range(fromIso: period.startDateIso, toIso: period.endDateIso) ?? []
+        let covered = Set(
+            vm.evaluationPeriods.flatMap {
+                PlannerGanttWeek.range(fromIso: $0.startDateIso, toIso: $0.endDateIso) ?? []
             }
         )
-        return Set(visibleWeeks.filter { !coveredWeeks.contains($0) })
+        return Set(visibleWeeks.filter { !covered.contains($0) })
+    }
+
+    private var situationRows: [PlannerGanttSituation] {
+        let grouped = Dictionary(grouping: vm.sequenceGroupsEnriched) { group in
+            group.sequenceVersionId.map { "seq-\($0)" } ?? "title-\(normalized(group.title))"
+        }
+        return grouped.compactMap { key, groups in
+            guard let first = groups.sorted(by: { $0.title < $1.title }).first else { return nil }
+            return PlannerGanttSituation(
+                id: key,
+                title: first.title,
+                groups: groups.sorted { $0.groupName < $1.groupName }
+            )
+        }
+        .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    private var visibleSituations: [PlannerGanttSituation] {
+        switch attentionScope {
+        case .all:
+            return situationRows
+        case .attention:
+            return situationRows.filter { situation in
+                situation.groups.contains { group in
+                    group.requiresAttention || pace(for: group)?.isBehind == true
+                }
+            }
+        }
+    }
+
+    private var displayRows: [PlannerGanttDisplayRow] {
+        visibleSituations.flatMap { situation in
+            var rows: [PlannerGanttDisplayRow] = [.situation(situation)]
+            if expandedSituationIds.contains(situation.id) {
+                rows.append(contentsOf: situation.groups.map { .group(parentId: situation.id, group: $0) })
+            }
+            return rows
+        }
+    }
+
+    private var rangeContextLabel: String {
+        switch selectedRange {
+        case .rolling:
+            return "VENTANA ACTUAL"
+        case .period(let periodId):
+            return sortedEvaluationPeriods.first(where: { $0.id == periodId })?.name.uppercased() ?? "PERIODO"
+        }
+    }
+
+    private func situationSummary(_ situation: PlannerGanttSituation) -> String {
+        var parts = ["\(situation.completed) de \(situation.total) completadas"]
+        if situation.pending > 0 { parts.append("\(situation.pending) sin ubicar") }
+        if situation.cancelled > 0 { parts.append("\(situation.cancelled) canceladas") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func pace(for group: PlannerSequenceGroup) -> PlannerSequencePace? {
+        PlannerSequencePace.evaluate(group: group, currentWeek: currentWeek)
+    }
+
+    private func locate(_ row: PlannerSequenceRow, in group: PlannerSequenceGroup) {
+        vm.selectGroup(group.groupId)
+        vm.openComposer(
+            learningSituationSessionPlanId: row.learningSituationSessionPlanId,
+            initialObjectives: row.objective,
+            initialTeachingUnitName: row.title
+        )
+    }
+
+    private func toggle(_ id: String) {
+        withAnimation(uiFeatureFlags.interactionAnimation) {
+            if expandedSituationIds.contains(id) {
+                expandedSituationIds.remove(id)
+            } else {
+                expandedSituationIds.insert(id)
+            }
+        }
+    }
+
+    private func reconcileExpandedSituations() {
+        let validIds = Set(visibleSituations.map(\.id))
+        expandedSituationIds.formIntersection(validIds)
+        guard expandedSituationIds.isEmpty else { return }
+        let attentionFirst = visibleSituations.sorted {
+            let lhs = $0.groups.contains { $0.requiresAttention || pace(for: $0)?.isBehind == true }
+            let rhs = $1.groups.contains { $0.requiresAttention || pace(for: $0)?.isBehind == true }
+            return lhs && !rhs
+        }
+        expandedSituationIds = Set(attentionFirst.prefix(3).map(\.id))
+    }
+
+    private func selectInitialRangeIfNeeded() {
+        guard !didSelectInitialRange else { return }
+        didSelectInitialRange = true
+        if let currentPeriod = sortedEvaluationPeriods.first(where: {
+            (PlannerGanttWeek.range(fromIso: $0.startDateIso, toIso: $0.endDateIso) ?? []).contains(currentWeek)
+        }) {
+            selectedRange = .period(currentPeriod.id)
+        }
+    }
+
+    private func validateSelectedRange() {
+        guard case .period(let id) = selectedRange,
+              !vm.evaluationPeriods.contains(where: { $0.id == id }) else { return }
+        selectedRange = .rolling
+        didSelectInitialRange = false
+    }
+
+    private func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     private struct MonthSpan: Identifiable {
@@ -343,53 +607,40 @@ struct PlannerSequenceGanttView: View {
         }
         return spans
     }
-
-    private var filteredGroups: [PlannerSequenceGroup] {
-        vm.sequenceGroupsEnriched.filter { group in
-            selectedGroupId.map { group.groupId == $0 } ?? true
-        }
-    }
-
-    private var situationRows: [PlannerGanttSituation] {
-        let grouped = Dictionary(grouping: filteredGroups) { group in
-            group.sequenceVersionId.map { "seq-\($0)" } ?? "title-\(normalized(group.title))"
-        }
-
-        return grouped.compactMap { key, groups in
-            guard let first = groups.sorted(by: { $0.title < $1.title }).first else { return nil }
-            return PlannerGanttSituation(
-                id: key,
-                title: first.title,
-                groups: groups.sorted { $0.groupName < $1.groupName }
-            )
-        }
-        .sorted { $0.title < $1.title }
-    }
-
-    private func toggle(_ id: String) {
-        withAnimation(uiFeatureFlags.interactionAnimation) {
-            if expandedSituationIds.contains(id) {
-                expandedSituationIds.remove(id)
-            } else {
-                expandedSituationIds.insert(id)
-            }
-        }
-    }
-
-    private func expandInitialSituations() {
-        if expandedSituationIds.isEmpty {
-            expandedSituationIds = Set(situationRows.prefix(3).map(\.id))
-        }
-    }
-
-    private func normalized(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
 }
 
-private enum PlannerGanttRange: Hashable {
-    case current
+enum PlannerGanttRange: Hashable {
+    case rolling
     case period(Int64)
+}
+
+enum PlannerGanttAttentionScope: String, CaseIterable, Identifiable {
+    case all
+    case attention
+
+    var id: String { rawValue }
+    var label: String { self == .all ? "Todas" : "Requieren atención" }
+}
+
+struct PlannerGanttMetrics: Equatable {
+    let labelWidth: CGFloat
+    let weekWidth: CGFloat
+    let rowHeight: CGFloat
+    let monthHeaderHeight: CGFloat = 24
+    let headerHeight: CGFloat = 40
+
+    init(density: PlannerDensity) {
+        switch density {
+        case .compact:
+            labelWidth = 216
+            weekWidth = 48
+            rowHeight = 40
+        case .standard:
+            labelWidth = 240
+            weekWidth = 64
+            rowHeight = 48
+        }
+    }
 }
 
 struct PlannerGanttWeek: Hashable {
@@ -413,8 +664,6 @@ struct PlannerGanttWeek: Hashable {
         week = calendar.component(.weekOfYear, from: date)
     }
 
-    /// Lunes de esta semana ISO, usado para ordenar/comparar semanas por fecha real
-    /// y para derivar el nombre del mes en la cabecera.
     var mondayDate: Date? {
         var components = DateComponents()
         components.yearForWeekOfYear = year
@@ -445,19 +694,20 @@ struct PlannerGanttWeek: Hashable {
         let calendar = isoCalendar
         var weeks: [PlannerGanttWeek] = []
         var cursor = start
-        // Límite de seguridad: un periodo de evaluación nunca supera un curso escolar.
         while cursor <= end && weeks.count < 60 {
-            weeks.append(PlannerGanttWeek(date: cursor))
+            let week = PlannerGanttWeek(date: cursor)
+            if weeks.last != week {
+                weeks.append(week)
+            }
             guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: cursor) else { break }
             cursor = next
         }
         return weeks
     }
 
-    /// Diferencia en semanas ISO entre dos semanas (positiva si `other` es posterior).
     func weeks(until other: PlannerGanttWeek) -> Int {
         guard let selfDate = mondayDate, let otherDate = other.mondayDate else { return 0 }
-        let days = Calendar(identifier: .iso8601).dateComponents([.day], from: selfDate, to: otherDate).day ?? 0
+        let days = Self.isoCalendar.dateComponents([.day], from: selfDate, to: otherDate).day ?? 0
         return Int((Double(days) / 7.0).rounded())
     }
 
@@ -471,187 +721,20 @@ struct PlannerGanttWeek: Hashable {
     }
 }
 
-private struct PlannerGanttSituation: Identifiable {
-    let id: String
-    let title: String
-    let groups: [PlannerSequenceGroup]
+struct PlannerSequencePace: Equatable {
+    let delta: Int
 
-    var completed: Int { groups.reduce(0) { $0 + $1.completedCount } }
-    var total: Int { groups.reduce(0) { $0 + $1.totalSessionsCount } }
-    var pending: Int { groups.reduce(0) { $0 + $1.pendingCount } }
-}
+    var isBehind: Bool { delta < 0 }
+    var tint: Color { isBehind ? IOSAppStyle.warning : EvaluationDesign.success }
 
-private struct PlannerGanttSituationRow: View {
-    @ObservedObject var vm: PlannerWorkspaceViewModel
-    let situation: PlannerGanttSituation
-    let weeks: [PlannerGanttWeek]
-    let vacationWeeks: Set<PlannerGanttWeek>
-    let weekWidth: CGFloat
-    let labelWidth: CGFloat
-    let rowHeight: CGFloat
-    let currentWeek: PlannerGanttWeek
-    let isExpanded: Bool
-    let onToggle: () -> Void
-    let onOpenSession: (PlanningSession) -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Button(action: onToggle) {
-                HStack(spacing: 0) {
-                    HStack(spacing: 8) {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 16)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(situation.title)
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            Text("\(situation.completed) de \(situation.total) sesiones · \(situation.pending) sin ubicar")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 8)
-                    }
-                    .frame(width: labelWidth, height: rowHeight, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .background(EvaluationDesign.surfaceSoft.opacity(0.72))
-
-                    PlannerGanttContinuousBar(
-                        rows: situation.groups.flatMap(\.rows),
-                        weeks: weeks,
-                        vacationWeeks: vacationWeeks,
-                        weekWidth: weekWidth,
-                        rowHeight: rowHeight,
-                        onOpenSession: onOpenSession
-                    )
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(situation.title): \(situation.completed) de \(situation.total) sesiones, \(situation.pending) sin ubicar")
-            .accessibilityValue(isExpanded ? "Expandido" : "Contraído")
-            .accessibilityHint("Alterna el detalle por grupo")
-
-            if isExpanded {
-                ForEach(situation.groups) { group in
-                    PlannerGanttGroupRow(
-                        vm: vm,
-                        group: group,
-                        weeks: weeks,
-                        vacationWeeks: vacationWeeks,
-                        weekWidth: weekWidth,
-                        labelWidth: labelWidth,
-                        rowHeight: rowHeight,
-                        currentWeek: currentWeek,
-                        onOpenSession: onOpenSession
-                    )
-                }
-            }
-        }
-    }
-}
-
-private struct PlannerGanttGroupRow: View {
-    @ObservedObject var vm: PlannerWorkspaceViewModel
-    let group: PlannerSequenceGroup
-    let weeks: [PlannerGanttWeek]
-    let vacationWeeks: Set<PlannerGanttWeek>
-    let weekWidth: CGFloat
-    let labelWidth: CGFloat
-    let rowHeight: CGFloat
-    let currentWeek: PlannerGanttWeek
-    let onOpenSession: (PlanningSession) -> Void
-
-    private var unlocatedRows: [PlannerSequenceRow] {
-        group.rows.filter { $0.planningSession == nil }
+    var text: String {
+        if delta == 0 { return "Al día con el plan" }
+        if delta > 0 { return "Vas \(delta) sesión\(delta == 1 ? "" : "es") por delante" }
+        let behind = -delta
+        return "Vas \(behind) sesión\(behind == 1 ? "" : "es") por detrás"
     }
 
-    var body: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(group.groupName)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    if let pace = paceLabel {
-                        if pace.isBehind {
-                            Button {
-                                vm.selectGroup(group.groupId)
-                                vm.activeSection = .week
-                            } label: {
-                                Label(pace.text, systemImage: "arrow.right.circle.fill")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(pace.tint)
-                                    .lineLimit(1)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("Abre la Semana filtrada por \(group.groupName) para ponerte al día")
-                        } else {
-                            Text(pace.text)
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(pace.tint)
-                                .lineLimit(1)
-                        }
-                    } else {
-                        Text("\(group.plannedCount) planificadas")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(group.groupName): \(paceLabel?.text ?? "\(group.plannedCount) planificadas")")
-
-                if !unlocatedRows.isEmpty {
-                    locateMenu
-                }
-            }
-            .frame(width: labelWidth, height: rowHeight, alignment: .leading)
-            .padding(.horizontal, 40)
-            .background(EvaluationDesign.surfaceSoft.opacity(0.36))
-
-            PlannerGanttContinuousBar(
-                rows: group.rows,
-                weeks: weeks,
-                vacationWeeks: vacationWeeks,
-                weekWidth: weekWidth,
-                rowHeight: rowHeight,
-                onOpenSession: onOpenSession
-            )
-        }
-    }
-
-    private var locateMenu: some View {
-        Menu {
-            ForEach(unlocatedRows) { row in
-                Button {
-                    locate(row)
-                } label: {
-                    Label("Ubicar S\(row.sessionNumber) · \(row.title.isEmpty ? "Sesión" : row.title)", systemImage: "calendar.badge.plus")
-                }
-            }
-        } label: {
-            Label("\(unlocatedRows.count) sin ubicar", systemImage: "calendar.badge.plus")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(IOSAppStyle.warning)
-        }
-    }
-
-    private func locate(_ row: PlannerSequenceRow) {
-        vm.selectGroup(group.groupId)
-        vm.openComposer(
-            learningSituationSessionPlanId: row.learningSituationSessionPlanId,
-            initialObjectives: row.objective,
-            initialTeachingUnitName: row.title
-        )
-    }
-
-    /// Sesiones esperadas a día de hoy (proporcional al punto en que estamos dentro
-    /// del rango real de semanas de la situación) frente a las realmente completadas.
-    private var paceLabel: (text: String, tint: Color, isBehind: Bool)? {
+    static func evaluate(group: PlannerSequenceGroup, currentWeek: PlannerGanttWeek) -> PlannerSequencePace? {
         let assignedWeeks = group.rows.compactMap { row -> PlannerGanttWeek? in
             guard let session = row.planningSession else { return nil }
             return PlannerGanttWeek(year: Int(session.year), week: Int(session.weekNumber))
@@ -660,20 +743,33 @@ private struct PlannerGanttGroupRow: View {
               let lastWeek = assignedWeeks.max(by: { $0.weeks(until: $1) > 0 }),
               group.totalSessionsCount > 0 else { return nil }
 
-        let totalSpanWeeks = max(firstWeek.weeks(until: lastWeek) + 1, 1)
-        let elapsedWeeks = min(max(firstWeek.weeks(until: currentWeek) + 1, 0), totalSpanWeeks)
-        guard elapsedWeeks > 0 else { return nil }
-        guard currentWeek.weeks(until: lastWeek) >= -4 else { return nil }
+        let span = max(firstWeek.weeks(until: lastWeek) + 1, 1)
+        let elapsed = min(max(firstWeek.weeks(until: currentWeek) + 1, 0), span)
+        guard elapsed > 0, currentWeek.weeks(until: lastWeek) >= -4 else { return nil }
+        let expected = Int((Double(group.totalSessionsCount) * Double(elapsed) / Double(span)).rounded())
+        return PlannerSequencePace(delta: group.completedCount - expected)
+    }
+}
 
-        let expected = Int((Double(group.totalSessionsCount) * Double(elapsedWeeks) / Double(totalSpanWeeks)).rounded())
-        let delta = group.completedCount - expected
+struct PlannerGanttSituation: Identifiable {
+    let id: String
+    let title: String
+    let groups: [PlannerSequenceGroup]
 
-        if delta == 0 {
-            return ("Al día con el plan", EvaluationDesign.success, false)
-        } else if delta > 0 {
-            return ("Vas \(delta) sesión\(delta == 1 ? "" : "es") por delante", EvaluationDesign.success, false)
-        } else {
-            return ("Vas \(-delta) sesión\(-delta == 1 ? "" : "es") por detrás", IOSAppStyle.warning, true)
+    var completed: Int { groups.reduce(0) { $0 + $1.completedCount } }
+    var total: Int { groups.reduce(0) { $0 + $1.totalSessionsCount } }
+    var pending: Int { groups.reduce(0) { $0 + $1.pendingCount } }
+    var cancelled: Int { groups.reduce(0) { $0 + $1.cancelledCount } }
+}
+
+enum PlannerGanttDisplayRow: Identifiable {
+    case situation(PlannerGanttSituation)
+    case group(parentId: String, group: PlannerSequenceGroup)
+
+    var id: String {
+        switch self {
+        case .situation(let situation): return "situation-\(situation.id)"
+        case .group(let parentId, let group): return "group-\(parentId)-\(group.id)"
         }
     }
 }
@@ -684,6 +780,7 @@ private struct PlannerGanttContinuousBar: View {
     let vacationWeeks: Set<PlannerGanttWeek>
     let weekWidth: CGFloat
     let rowHeight: CGFloat
+    let currentWeek: PlannerGanttWeek
     let onOpenSession: (PlanningSession) -> Void
 
     var body: some View {
@@ -698,8 +795,7 @@ private struct PlannerGanttContinuousBar: View {
     private var spanIndexRange: ClosedRange<Int>? {
         let indices = rows.compactMap { row -> Int? in
             guard let session = row.planningSession else { return nil }
-            let week = PlannerGanttWeek(year: Int(session.year), week: Int(session.weekNumber))
-            return weeks.firstIndex(of: week)
+            return weeks.firstIndex(of: PlannerGanttWeek(year: Int(session.year), week: Int(session.weekNumber)))
         }
         guard let minIndex = indices.min(), let maxIndex = indices.max() else { return nil }
         return minIndex...maxIndex
@@ -708,49 +804,49 @@ private struct PlannerGanttContinuousBar: View {
     @ViewBuilder
     private func segment(for week: PlannerGanttWeek) -> some View {
         let weekRows = rowsForWeek(week)
-        let isWithinSpan = weeks.firstIndex(of: week).map { spanIndexRange?.contains($0) ?? false } ?? false
-        let isVacation = vacationWeeks.contains(week)
+        let withinSpan = weeks.firstIndex(of: week).map { spanIndexRange?.contains($0) ?? false } ?? false
 
         ZStack {
-            if isVacation {
+            if vacationWeeks.contains(week) {
                 Rectangle().fill(Color.secondary.opacity(0.08))
-                    .accessibilityHidden(true)
-            } else if isWithinSpan {
+            } else if withinSpan {
                 Rectangle().fill(segmentColor(for: weekRows))
-                    .accessibilityHidden(true)
             }
 
             Rectangle()
                 .fill(Color.secondary.opacity(0.10))
                 .frame(width: 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityHidden(true)
 
             if !weekRows.isEmpty {
                 PlannerGanttWeekMarks(rows: weekRows, onOpenSession: onOpenSession)
             }
         }
-    }
-
-    /// Cuántas ganas de llamar la atención del docente tiene cada estado si una semana
-    /// tiene varias filas: lo que necesita acción (ubicar/cancelada) gana a lo ya resuelto.
-    private func attentionRank(for statusText: String) -> Int {
-        switch statusText {
-        case "Pendiente de ubicar": return 4
-        case "Cancelada": return 3
-        case "Cerrada", "Impartida": return 2
-        default: return 1 // Planificada, En Curso, Solo calendario
+        .overlay(alignment: .leading) {
+            if week == currentWeek {
+                Rectangle()
+                    .fill(EvaluationDesign.accent)
+                    .frame(width: 2)
+            }
         }
     }
 
-    /// Única fuente de color: el `statusColor` ya calculado en el ViewModel para cada fila
-    /// (evita que esta vista re-derive el color por su cuenta y se desincronice de él).
     private func segmentColor(for rows: [PlannerSequenceRow]) -> Color {
-        guard let leading = rows.max(by: { attentionRank(for: $0.statusText) < attentionRank(for: $1.statusText) }) else {
-            return EvaluationDesign.accent.opacity(0.16)
+        guard let leading = rows.max(by: { attentionRank($0.status) < attentionRank($1.status) }) else {
+            return EvaluationDesign.accent.opacity(0.14)
         }
-        let opacity: Double = leading.statusText == "Cerrada" || leading.statusText == "Impartida" ? 0.30 : 0.24
-        return leading.statusColor.opacity(opacity)
+        return leading.statusColor.opacity(leading.status.isCompleted ? 0.28 : 0.22)
+    }
+
+    private func attentionRank(_ status: PlannerSequenceStatus) -> Int {
+        switch status {
+        case .unlocated: return 6
+        case .cancelled: return 5
+        case .inProgress: return 4
+        case .planned, .calendarOnly: return 3
+        case .taught: return 2
+        case .closed: return 1
+        }
     }
 
     private func rowsForWeek(_ week: PlannerGanttWeek) -> [PlannerSequenceRow] {
@@ -775,21 +871,22 @@ private struct PlannerGanttWeekMarks: View {
                         Button {
                             onOpenSession(session)
                         } label: {
-                            Label("S\(row.sessionNumber) · \(row.title.isEmpty ? "Sesión" : row.title)", systemImage: row.statusIcon)
+                            Label("S\(row.sessionNumber) · \(row.title.nilIfBlank ?? "Sesión")", systemImage: row.statusIcon)
                         }
                     }
                 }
             } label: {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.secondary.opacity(0.5))
-                    .frame(width: 18, height: 18)
-                    .overlay(
+                    .fill(Color.secondary.opacity(0.55))
+                    .frame(width: 20, height: 20)
+                    .overlay {
                         Text("\(rows.count)")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(.white)
-                    )
+                    }
             }
             .accessibilityLabel("\(rows.count) sesiones esta semana")
+            .help("\(rows.count) sesiones; abre el menú para elegir")
         }
     }
 }
@@ -807,6 +904,7 @@ private struct PlannerGanttSessionMark: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Abrir sesión \(row.sessionNumber): \(row.statusText)")
+            .help(helpText(for: session))
         } else {
             mark
         }
@@ -814,17 +912,22 @@ private struct PlannerGanttSessionMark: View {
 
     private var mark: some View {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .fill(tint)
-            .frame(width: 18, height: 18)
-            .overlay(
+            .fill(row.statusColor)
+            .frame(width: 20, height: 20)
+            .overlay {
                 Text("\(row.sessionNumber)")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.white)
-            )
+            }
     }
 
-    /// Mismo `statusColor` que ya trae la fila desde el ViewModel — nada de re-derivarlo aquí.
-    private var tint: Color { row.statusColor }
+    private func helpText(for session: PlanningSession) -> String {
+        [
+            "S\(row.sessionNumber) · \(row.title.nilIfBlank ?? "Sesión")",
+            session.groupName,
+            "Semana \(session.weekNumber) · \(row.statusText)"
+        ].joined(separator: "\n")
+    }
 }
 
 private struct PlannerGanttLegendItem: View {
@@ -832,7 +935,7 @@ private struct PlannerGanttLegendItem: View {
     let tint: Color
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(tint)
                 .frame(width: 14, height: 14)
@@ -850,13 +953,12 @@ private struct PlannerProgressMetric: View {
     let icon: String
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             Image(systemName: icon)
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(tint)
             Text(value)
                 .font(.caption.weight(.black))
-                .foregroundStyle(.primary)
             Text(label)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)

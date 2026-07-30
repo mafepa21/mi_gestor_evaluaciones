@@ -35,6 +35,14 @@ data class WebFormInstance(
     val publisherPublicKey: String?,
     val expiresAtEpochMs: Long,
     val revoked: Boolean,
+    /**
+     * El manifiesto firmado tal cual se publico. El importador lo necesita para
+     * validar cada respuesta contra el tipo declarado y para los titulos de la
+     * previsualizacion. Se guarda el JSON entero y no troceado porque la firma se
+     * verifica sobre bytes exactos. No contiene datos personales: solo preguntas
+     * y claves publicas.
+     */
+    val manifestJson: String,
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
 )

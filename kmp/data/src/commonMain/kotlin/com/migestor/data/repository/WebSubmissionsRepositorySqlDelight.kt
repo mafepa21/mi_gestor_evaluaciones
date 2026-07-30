@@ -40,6 +40,7 @@ class WebSubmissionsRepositorySqlDelight(
                         publisherPublicKey = fila.publisher_public_key,
                         expiresAtEpochMs = fila.expires_at_epoch_ms,
                         revoked = fila.revoked != 0L,
+                        manifestJson = fila.manifest_json,
                         createdAtEpochMs = fila.created_at_epoch_ms,
                         updatedAtEpochMs = fila.updated_at_epoch_ms,
                     )
@@ -60,6 +61,7 @@ class WebSubmissionsRepositorySqlDelight(
                     publisherPublicKey = fila.publisher_public_key,
                     expiresAtEpochMs = fila.expires_at_epoch_ms,
                     revoked = fila.revoked != 0L,
+                    manifestJson = fila.manifest_json,
                     createdAtEpochMs = fila.created_at_epoch_ms,
                     updatedAtEpochMs = fila.updated_at_epoch_ms,
                 )
@@ -79,6 +81,7 @@ class WebSubmissionsRepositorySqlDelight(
                 publisher_public_key = instance.publisherPublicKey,
                 expires_at_epoch_ms = instance.expiresAtEpochMs,
                 revoked = if (instance.revoked) 1L else 0L,
+                manifest_json = instance.manifestJson,
                 created_at_epoch_ms = instance.createdAtEpochMs,
                 updated_at_epoch_ms = instance.updatedAtEpochMs,
             )

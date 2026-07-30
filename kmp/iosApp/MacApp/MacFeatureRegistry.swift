@@ -79,7 +79,11 @@ enum MacFeatureSection: String, CaseIterable, Identifiable {
         case .evaluacion:
             // `Cursos` no está aquí a propósito: es configuración de principio
             // de curso, no trabajo diario. Vive en Ajustes → Cursos y grupos.
-            return [.notebook, .attendance, .rubrics, .physicalTests]
+            //
+            // `Entregas web` va aquí y no en Planificación porque lo que hace es
+            // meter evidencias en el Cuaderno, igual que Asistencia o Mediciones.
+            // Publica el formulario, pero el trabajo es recoger para evaluar.
+            return [.notebook, .attendance, .rubrics, .physicalTests, .webSubmissions]
         case .planificacion:
             return [.planner, .diary, .situations, .meetings, .students]
         case .sistema:

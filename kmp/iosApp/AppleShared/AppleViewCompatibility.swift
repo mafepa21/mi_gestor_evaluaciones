@@ -3,6 +3,9 @@ import SwiftUI
 enum AppKeyboardKind {
     case decimalPad
     case numberPad
+    /// Teclado de direcciones web: sin autocorrección ni mayúscula inicial, con la
+    /// barra y el punto a mano. Para campos donde se pega o escribe una URL.
+    case url
 }
 
 func appSecondarySystemBackgroundColor() -> Color {
@@ -70,6 +73,11 @@ extension View {
             self.keyboardType(.decimalPad)
         case .numberPad:
             self.keyboardType(.numberPad)
+        case .url:
+            // Autocorregir una URL la rompe, y la mayúscula inicial también.
+            self.keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
         }
 #endif
     }

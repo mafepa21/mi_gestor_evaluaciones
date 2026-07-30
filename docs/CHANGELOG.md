@@ -27,6 +27,26 @@ El formato sigue una variante practica de Keep a Changelog:
 - Planificador macOS: el Gantt incorpora el filtro `Todas / Requieren atención`, acciones
   `Ubicar (n)` para sesiones pendientes, información contextual al pasar el puntero y un target
   de pruebas macOS que fija estados, conteos, semanas ISO, densidades y secuencias sin agendar.
+- Entregas del alumnado vía web: **pantalla de publicación**, con la que el circuito queda completo de
+  punta a punta. `WebSubmissionPublishSheet` elige el instrumento, la dirección de la web y la fecha
+  en que se dejan de aceptar entregas; `WebSubmissionsWorkspaceView` junta las dos mitades (publicar y
+  recoger) porque son el mismo trabajo visto desde los dos extremos. Patrón adaptativo canónico: dos
+  zonas con `ViewThatFits`, fallback apilado, detents en iOS y `frame` solo bajo `#if os(macOS)`.
+  Tres decisiones de diseño que importan más que el layout: **la pantalla dice qué sale del Mac y qué
+  no** (preguntas y una clave pública sí; nombres y datos de la base no), porque publicar algo del
+  alumnado sin saber qué viaja es exactamente lo que no debe pasar; **después de publicar se enseñan
+  dos pasos numerados con dos ficheros distintos**, el manifiesto que se sube a un sitio público y la
+  hoja de enlaces que **no** se sube a ninguna parte y se reparte uno a uno, porque es el punto donde
+  más fácil es quedarse a medias o cometer el error grave; y **avisa si el instrumento ya tiene un
+  formulario activo**, porque publicar otro reparte códigos nuevos y deja los enlaces antiguos sin
+  resolver. La hoja de enlaces se escribe con permisos `0600`: es el único fichero que relaciona
+  nombre y código. `KmpBridge` gana `listPublishableWebForms`, `listWebFormInstances` y
+  `publishWebForm`, que guarda la clave en el llavero **antes** de registrar el formulario, porque un
+  formulario sin clave sería imposible de importar y eso no se vería hasta la primera entrega.
+  `AppleViewCompatibility` gana `AppKeyboardKind.url` (sin autocorrección ni mayúscula inicial, que
+  rompen una URL), añadido al helper compartido y no en la vista, como pide la guía de layout.
+  **Su sitio definitivo está sin decidir**: hoy se muestra desde Ajustes → Diagnóstico para poder
+  usarla, y está escrito en el código que eso es un aparcamiento, no una decisión.
 - Entregas del alumnado vía web: **publicación de formularios**, la otra mitad del circuito.
   `WebSubmissionPublisher` (`AppleShared/`) convierte una plantilla de instrumento en un manifiesto
   firmado que la PWA puede pintar, más un enlace personal por alumno. Genera un par X25519 y otro

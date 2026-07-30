@@ -141,6 +141,37 @@ struct WebSubmissionSnapshotResolver: WebSubmissionContextResolver {
     }
 }
 
+// MARK: - Publicación
+
+/// Una columna del Cuaderno con instrumento, candidata a publicarse.
+struct WebPublishableInstrument: Identifiable, Hashable {
+    var id: String { columnId }
+    let columnId: String
+    let columnTitle: String
+    let templateTitle: String
+    let itemCount: Int
+    /// Ya tiene un formulario vivo. Publicar otro reparte códigos nuevos y deja
+    /// los enlaces antiguos sin resolver, así que conviene avisar.
+    let alreadyPublished: Bool
+}
+
+struct WebPublishedLink: Identifiable, Hashable {
+    var id: Int64 { studentId }
+    let studentId: Int64
+    let studentName: String
+    let url: String
+}
+
+struct WebPublishResult {
+    let formInstanceId: String
+    let title: String
+    let manifestPath: String
+    let linksPath: String
+    let folderPath: String
+    let links: [WebPublishedLink]
+    let linksText: String
+}
+
 #if DEBUG
 /// Lo que devuelve el banco de pruebas al montar un formulario a mano.
 /// Se borra cuando exista la publicación de formularios de verdad.

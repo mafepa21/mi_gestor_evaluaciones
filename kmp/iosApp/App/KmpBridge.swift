@@ -1713,6 +1713,208 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    // MARK: - Publicación de formularios web
+
+    /// Columnas del grupo que tienen una plantilla de instrumento y por tanto se
+    /// pueden publicar. Se hace una consulta por columna, y está bien: son unas
+    /// pocas decenas y esto corre una vez al abrir la pantalla, no por celda.
+    func listPublishableWebForms(classId: Int64) async -> [WebPublishableInstrument] {
+        guard let columnas = try? await container.notebookRepository
+            .listNotebookVisibleColumns(classId: classId, tabId: nil) else { return [] }
+
+        var salida: [WebPublishableInstrument] = []
+        for columna in columnas {
+            guard let detalle = try? await container.notebookInstrumentsRepository
+                .getTemplateForColumn(columnId: columna.id),
+                  !detalle.items.isEmpty else { continue }
+            salida.append(
+                WebPublishableInstrument(
+                    columnId: columna.id,
+                    columnTitle: columna.title,
+                    templateTitle: detalle.template_.title,
+                    itemCount: detalle.items.count,
+                    alreadyPublished: (try? await container.webSubmissionsRepository
+                        .listFormInstancesForClass(classId: classId))?
+                        .contains(where: { $0.columnId == columna.id && !$0.revoked }) ?? false
+                )
+            )
+        }
+        return salida
+    }
+
+    /// Formularios publicados de un grupo, del más reciente al más antiguo.
+    func listWebFormInstances(classId: Int64) async throws -> [WebFormInstance] {
+        try await container.webSubmissionsRepository.listFormInstancesForClass(classId: classId)
+    }
+
+    /// Publica un formulario: genera claves, construye y firma el manifiesto, lo
+    /// guarda con sus alias y su mapa de ítems, mete la clave privada en el llavero
+    /// y escribe los dos ficheros que necesita el docente.
+    ///
+    /// Si algo falla a mitad no se queda un formulario cojo: las escrituras de
+    /// alias e ítems van en transacción, y la clave se guarda **antes** de anunciar
+    /// el éxito, porque un formulario registrado sin clave en el llavero sería
+    /// imposible de importar después.
+    func publishWebForm(
+        classId: Int64,
+        columnId: String,
+        baseURL: String,
+        expiresAt: Date
+    ) async throws -> WebPublishResult {
+        guard let detalle = try await container.notebookInstrumentsRepository
+            .getTemplateForColumn(columnId: columnId) else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "Esa columna no tiene un instrumento con apartados."]
+            )
+        }
+
+        let alumnado = try await container.classesRepository.listStudentsInClass(classId: classId)
+        guard !alumnado.isEmpty else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "El grupo no tiene alumnado al que dar enlaces."]
+            )
+        }
+
+        let items: [WebSubmissionPublisher.ItemToPublish] = detalle.items
+            .sorted { $0.order < $1.order }
+            .map { item in
+                WebSubmissionPublisher.ItemToPublish(
+                    itemId: item.id,
+                    title: item.title,
+                    type: Self.webItemType(from: item.type),
+                    required: item.required,
+                    options: item.options,
+                    helpText: item.helpText,
+                    // La plantilla del Cuaderno no guarda etiquetas por nivel; la
+                    // PWA cae a 1-2-3-4, que es lo que se ve en el instrumento.
+                    scaleLabels: nil,
+                    sectionId: nil
+                )
+            }
+
+        let publicado = try WebSubmissionPublisher.publish(
+            title: detalle.template_.title,
+            subtitle: nil,
+            locale: "es",
+            sections: [],
+            items: items,
+            students: alumnado.map {
+                WebSubmissionPublisher.StudentToPublish(
+                    id: $0.id,
+                    name: "\($0.firstName) \($0.lastName)".trimmingCharacters(in: .whitespaces)
+                )
+            },
+            baseURL: baseURL,
+            expiresAtEpochMs: Int64(expiresAt.timeIntervalSince1970 * 1000)
+        )
+
+        // La clave primero: un formulario registrado sin clave en el llavero no se
+        // podría importar nunca, y eso no se ve hasta que llega la primera entrega.
+        guard WebSubmissionKeychain.save(
+            privateKey: publicado.recipientPrivateKey,
+            reference: WebSubmissionKeychain.reference(for: publicado.formInstanceId)
+        ) else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 500,
+                userInfo: [NSLocalizedDescriptionKey: "No se pudo guardar la clave en el llavero. No se ha publicado nada."]
+            )
+        }
+
+        let ahora = Int64(Date().timeIntervalSince1970 * 1000)
+        try await container.webSubmissionsRepository.saveFormInstance(
+            instance: WebFormInstance(
+                formInstanceId: publicado.formInstanceId,
+                classId: classId,
+                columnId: columnId,
+                templateId: detalle.template_.id,
+                title: detalle.template_.title,
+                recipientPublicKey: publicado.recipientPublicKey,
+                privateKeyRef: WebSubmissionKeychain.reference(for: publicado.formInstanceId),
+                publisherPublicKey: publicado.publisherPublicKey,
+                expiresAtEpochMs: publicado.expiresAtEpochMs,
+                revoked: false,
+                manifestJson: publicado.manifestJSON,
+                createdAtEpochMs: ahora,
+                updatedAtEpochMs: ahora
+            )
+        )
+        try await container.webSubmissionsRepository.saveItemMap(
+            formInstanceId: publicado.formInstanceId,
+            entries: publicado.itemMap.map {
+                WebItemMapEntry(webItemId: $0.webItemId, itemId: $0.itemId, itemType: $0.itemType.rawValue)
+            }
+        )
+        try await container.webSubmissionsRepository.saveAliases(
+            formInstanceId: publicado.formInstanceId,
+            entries: publicado.aliases.map {
+                WebAliasEntry(alias: $0.alias, studentId: $0.studentId, createdAtEpochMs: ahora)
+            }
+        )
+
+        let carpeta = try Self.writePublishedFiles(publicado, title: detalle.template_.title)
+
+        return WebPublishResult(
+            formInstanceId: publicado.formInstanceId,
+            title: detalle.template_.title,
+            manifestPath: carpeta.manifest.path,
+            linksPath: carpeta.links.path,
+            folderPath: carpeta.folder.path,
+            links: publicado.links.map {
+                WebPublishedLink(studentId: $0.studentId, studentName: $0.studentName, url: $0.url)
+            },
+            linksText: WebSubmissionPublisher.linksText(for: publicado, title: detalle.template_.title)
+        )
+    }
+
+    /// Escribe el manifiesto y la hoja de enlaces en Documentos.
+    ///
+    /// Dos ficheros separados porque tienen destinos y sensibilidad distintos: el
+    /// manifiesto se sube a un sitio público, la hoja de enlaces **no** se sube a
+    /// ninguna parte y se reparte en privado, uno a uno.
+    private static func writePublishedFiles(
+        _ form: WebSubmissionPublisher.PublishedForm,
+        title: String
+    ) throws -> (folder: URL, manifest: URL, links: URL) {
+        let documentos = try FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let carpeta = documentos
+            .appendingPathComponent("EntregasWeb", isDirectory: true)
+            .appendingPathComponent(form.formInstanceId, isDirectory: true)
+        try FileManager.default.createDirectory(at: carpeta, withIntermediateDirectories: true)
+
+        let manifiesto = carpeta.appendingPathComponent("manifiesto.json")
+        try Data(form.manifestJSON.utf8).write(to: manifiesto)
+
+        let enlaces = carpeta.appendingPathComponent("enlaces-alumnado.txt")
+        try Data(WebSubmissionPublisher.linksText(for: form, title: title).utf8)
+            .write(to: enlaces, options: [.atomic])
+        // La hoja de enlaces sí relaciona nombre y código: se deja solo para el
+        // dueño del dispositivo.
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: enlaces.path)
+
+        return (folder: carpeta, manifest: manifiesto, links: enlaces)
+    }
+
+    private static func webItemType(from tipo: NotebookInstrumentItemType) -> WebManifestItemType {
+        switch tipo {
+        case .check: return .check
+        case .text: return .text
+        case .number: return .number
+        case .scale14: return .scale1To4
+        case .choice: return .choice
+        default: return .text
+        }
+    }
+
     // MARK: - Entregas del alumnado hechas desde la web
 
     /// Carga de una vez todo lo que hace falta para examinar un lote de entregas.

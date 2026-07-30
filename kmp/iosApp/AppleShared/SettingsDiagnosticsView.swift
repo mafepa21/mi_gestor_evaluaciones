@@ -19,8 +19,16 @@ struct SettingsDiagnosticsView: View {
                     .font(.title2.weight(.bold))
                     .padding(.horizontal, 4)
 
-                // Banco de pruebas de las entregas web. Solo DEBUG, y solo hasta
-                // que exista la publicación de formularios: entonces se borra.
+                // Entregas web. APARCADO AQUÍ, no es su sitio definitivo: es una
+                // función de trabajo diario, no una herramienta de soporte. Está
+                // aquí para poder usarla mientras se decide dónde vive.
+                WebSubmissionsWorkspaceView()
+                    .padding(.horizontal, 4)
+                Divider()
+
+                // Banco de pruebas. Solo DEBUG: monta a mano un formulario del
+                // fixture. Ya se puede publicar de verdad desde arriba, así que
+                // esto solo sirve para probar el importador de forma aislada.
                 #if DEBUG
                 WebSubmissionTestBenchView()
                     .padding(.horizontal, 4)

@@ -242,7 +242,6 @@
 		8260D6F8F24ABD735B285EBA /* AppleSpreadsheetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E628D0904D069E276C888E /* AppleSpreadsheetReader.swift */; };
 		82E4E70524506517472625EB /* EvaluationDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61DBB79CD6256350F830529A /* EvaluationDesign.swift */; };
 		83DB805DBC12FA13994AB6DC /* DataManagementSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */; };
-		850A15F127EFFF7AEBA9E583 /* PlannerGanttProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583959F23A0D26CC96A6ADDD /* PlannerGanttProjectionTests.swift */; };
 		864BD267739CF9BC84E41BB1 /* AppleAIOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D47CE5CC1A1F907BFA2E477 /* AppleAIOrchestrator.swift */; };
 		867593B8E7A8FA4FE268F0B9 /* PlannerWorkspaceViewModel+WeekBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2F0852F9CAA60482FA9785 /* PlannerWorkspaceViewModel+WeekBoard.swift */; };
 		86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */; };
@@ -345,7 +344,6 @@
 		C69D10C36B131D7D28DF9895 /* PlannerLiquidGlassControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C94B9DDCF7110BC8C2A4DB /* PlannerLiquidGlassControls.swift */; };
 		C725E5FD7CB3FAC2E6F8A72F /* MeetingsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B0B097D45446340980CA846 /* MeetingsWorkspaceView.swift */; };
 		C7A02ADEF6EA33E40D7D652D /* ObservationGridInstrumentContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38D4FE451B6BA84CD34F96EC /* ObservationGridInstrumentContent.swift */; };
-		C7C54A2DBA53B9CCE97A874F /* MiGestorKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B37D82D4C30174CBD843E47 /* MiGestorKit.framework */; };
 		C8FFAFE5E4157F90035D3A27 /* NotebookGroupManagementSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A63C3DA4B9E97ACDAA83D53 /* NotebookGroupManagementSheet.swift */; };
 		C912103268D6101445655180 /* BackupHistoryList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EA2D2AD055252AE33611496 /* BackupHistoryList.swift */; };
 		C98B0AE6088C90E8B2E58EDB /* SyncPairingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92E4753F5750444721BF2027 /* SyncPairingViews.swift */; };
@@ -425,7 +423,6 @@
 		F24DB51F8B47008FC096EECC /* MacPlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4057739C2F6FADFA30289C7 /* MacPlannerView.swift */; };
 		F2583B49F4F8E23B0B2C49E2 /* MacBackupSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36FD8823E354BF50CAD0B9E3 /* MacBackupSupport.swift */; };
 		F3AF4051FD1E837FA1009D63 /* PlannerWorkspaceViewModel+Journal.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37D119F98E876CB3CAA8910 /* PlannerWorkspaceViewModel+Journal.swift */; };
-		F57B3AEB826FCC022A0E48DC /* MiGestorKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9B37D82D4C30174CBD843E47 /* MiGestorKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F5B53E702D8FF43EAC82D921 /* AddColumnSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */; };
 		F5D4B655C174800ABAD76329 /* AppleFoundationAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */; };
 		F6B4E75C853D144083E2E482 /* MacTrackpadSwipeHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 365A0156DBB041D3F8FD72CC /* MacTrackpadSwipeHelper.swift */; };
@@ -449,16 +446,6 @@
 		FEF8B70AE33C8ABB44582F1C /* WorkspaceLayoutState+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB9B3E078267BD94A53D6B2 /* WorkspaceLayoutState+Extensions.swift */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		04E1B9484E4669453A6CB5C9 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = B3D875DD29A9A2E51ACC310C /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 917E8CD475F380E5E7C80411;
-			remoteInfo = MiGestorKMPMac;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXCopyFilesBuildPhase section */
 		6DB68CD39160D219D0A616ED /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -478,17 +465,6 @@
 			dstSubfolderSpec = 10;
 			files = (
 				E9032AE57114FF9AB7D4C082 /* MiGestorKit.framework in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		9714FFD817B789D72FDB5005 /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				F57B3AEB826FCC022A0E48DC /* MiGestorKit.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -572,7 +548,6 @@
 		55519476F175FF4B59F1AB21 /* NotebookSkeletonGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookSkeletonGridView.swift; sourceTree = "<group>"; };
 		56F2CF5E5B8BFCE0959388B9 /* SettingsDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDiagnosticsView.swift; sourceTree = "<group>"; };
 		574A36D51DB905768D1450DF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		583959F23A0D26CC96A6ADDD /* PlannerGanttProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerGanttProjectionTests.swift; sourceTree = "<group>"; };
 		583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddColumnSheet.swift; sourceTree = "<group>"; };
 		58D7199BBDD6580774907119 /* RubricsReportsWorkspaceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricsReportsWorkspaceViews.swift; sourceTree = "<group>"; };
 		5ABD5C416DAF2C9F1BB98CB1 /* MacRubricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRubricsView.swift; sourceTree = "<group>"; };
@@ -713,7 +688,6 @@
 		E6144B137C267EC5DEA266F2 /* NotebookModuleDataState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleDataState.swift; sourceTree = "<group>"; };
 		EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleRoundedCorner.swift; sourceTree = "<group>"; };
 		ED160717C62AAA3AB794905E /* PlannerWorkspaceViewModel+CascadeMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+CascadeMove.swift"; sourceTree = "<group>"; };
-		ED27E352EF435AC80EEE7439 /* MiGestorPlannerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiGestorPlannerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED64B03A28FA13E012596D4E /* OnboardingStudentsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingStudentsSheet.swift; sourceTree = "<group>"; };
 		EE3C26A04796CFACD4AB0C44 /* ScheduleWeekGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleWeekGridView.swift; sourceTree = "<group>"; };
 		F0BFD8699A1E65C7A09163CF /* NotebookAverageEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAverageEditorSheet.swift; sourceTree = "<group>"; };
@@ -754,14 +728,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		BF4C257CBF972B8EDADECF98 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				C7C54A2DBA53B9CCE97A874F /* MiGestorKit.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -798,14 +764,6 @@
 				BAC40298A578A3A7BA28D5D1 /* PlannerMacLayout.swift */,
 			);
 			path = MacApp;
-			sourceTree = "<group>";
-		};
-		23248B86CB541A9A2CEE8404 /* PlannerTests */ = {
-			isa = PBXGroup;
-			children = (
-				583959F23A0D26CC96A6ADDD /* PlannerGanttProjectionTests.swift */,
-			);
-			path = PlannerTests;
 			sourceTree = "<group>";
 		};
 		5A787C72CF4BC995C63118D0 /* AppleShared */ = {
@@ -887,7 +845,6 @@
 			children = (
 				467B02D2576A83946B6237BA /* MiGestorKMPiOS.app */,
 				BB7ABC0A1CE983C4799B4FE9 /* MiGestorKMPMac.app */,
-				ED27E352EF435AC80EEE7439 /* MiGestorPlannerTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -898,7 +855,6 @@
 				DB03CAE2DAAAE2C3E9B6F992 /* App */,
 				5A787C72CF4BC995C63118D0 /* AppleShared */,
 				05C4C41DB5CB5D22AFCD1879 /* MacApp */,
-				23248B86CB541A9A2CEE8404 /* PlannerTests */,
 				C2D1542C821E8405ADAFBDC7 /* Frameworks */,
 				93715BBAC7A38E8F669C02AE /* Products */,
 			);
@@ -1105,26 +1061,6 @@
 			productReference = BB7ABC0A1CE983C4799B4FE9 /* MiGestorKMPMac.app */;
 			productType = "com.apple.product-type.application";
 		};
-		BEBF15E52A0335247B26C410 /* MiGestorPlannerTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 575ACBC868AEAB4A4C770F28 /* Build configuration list for PBXNativeTarget "MiGestorPlannerTests" */;
-			buildPhases = (
-				9084BABF362C1934138446D1 /* Sources */,
-				BF4C257CBF972B8EDADECF98 /* Frameworks */,
-				9714FFD817B789D72FDB5005 /* Embed Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				D90851A2192EE25740AE8524 /* PBXTargetDependency */,
-			);
-			name = MiGestorPlannerTests;
-			packageProductDependencies = (
-			);
-			productName = MiGestorPlannerTests;
-			productReference = ED27E352EF435AC80EEE7439 /* MiGestorPlannerTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -1164,7 +1100,6 @@
 			targets = (
 				917E8CD475F380E5E7C80411 /* MiGestorKMPMac */,
 				7092E4728095EE27C96510EB /* MiGestorKMPiOS */,
-				BEBF15E52A0335247B26C410 /* MiGestorPlannerTests */,
 			);
 		};
 /* End PBXProject section */
@@ -1273,14 +1208,6 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		9084BABF362C1934138446D1 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				850A15F127EFFF7AEBA9E583 /* PlannerGanttProjectionTests.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		D76FF343B1E96D5067D6AA15 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1722,14 +1649,6 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		D90851A2192EE25740AE8524 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 917E8CD475F380E5E7C80411 /* MiGestorKMPMac */;
-			targetProxy = 04E1B9484E4669453A6CB5C9 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
 		11AC38E697B58F429B226C38 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -1992,29 +1911,6 @@
 			};
 			name = Debug;
 		};
-		BF833B9C8DC86B66618C8E96 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				COMBINE_HIDPI_IMAGES = YES;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/Frameworks/macos",
-					"\"Frameworks/macos\"",
-				);
-				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.migestor.planner-tests";
-				SDKROOT = macosx;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MiGestorKMPMac.app/Contents/MacOS/MiGestorKMPMac";
-			};
-			name = Release;
-		};
 		D0F48562755318C6C55888FF /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2049,29 +1945,6 @@
 			};
 			name = Release;
 		};
-		D608345C77A90C768B538A8B /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				COMBINE_HIDPI_IMAGES = YES;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/Frameworks/macos",
-					"\"Frameworks/macos\"",
-				);
-				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.migestor.planner-tests";
-				SDKROOT = macosx;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MiGestorKMPMac.app/Contents/MacOS/MiGestorKMPMac";
-			};
-			name = Debug;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -2080,15 +1953,6 @@
 			buildConfigurations = (
 				AF73670C65B9F35C0AD3286E /* Debug */,
 				D0F48562755318C6C55888FF /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
-		575ACBC868AEAB4A4C770F28 /* Build configuration list for PBXNativeTarget "MiGestorPlannerTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				D608345C77A90C768B538A8B /* Debug */,
-				BF833B9C8DC86B66618C8E96 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

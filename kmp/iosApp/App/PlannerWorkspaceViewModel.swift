@@ -22,7 +22,6 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var filteredSessions: [PlanningSession] = []
     @Published var sequenceGroupsEnriched: [PlannerSequenceGroup] = []
     @Published var isLoadingSequences = false
-    @Published var sequenceLoadErrorMessage: String?
     @Published var selectedSession: PlanningSession?
     @Published var dayViewSelectedDay: Int?
     @Published var journalDraft: PlannerJournalDraft = .empty

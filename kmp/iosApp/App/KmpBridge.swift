@@ -5299,15 +5299,6 @@ final class KmpBridge: ObservableObject {
         try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: sequenceVersionId)
     }
 
-    /// Exposición de solo lectura para que el Planner pueda representar la última
-    /// secuencia teórica incluso antes de que exista una sesión en el calendario.
-    func learningSituationSessionSequenceVersions(
-        learningSituationId: Int64
-    ) async throws -> [LearningSituationSessionSequenceVersion] {
-        try await container.learningSituationsRepository
-            .listSessionSequenceVersions(learningSituationId: learningSituationId)
-    }
-
     func learningSituationSessionSequenceVersion(id: Int64, learningSituationId: Int64) async throws -> LearningSituationSessionSequenceVersion? {
         try await container.learningSituationsRepository
             .listSessionSequenceVersions(learningSituationId: learningSituationId)
@@ -5497,16 +5488,6 @@ final class KmpBridge: ObservableObject {
         sequenceDraft: LearningSituationSessionSequenceImportDraft? = nil
     ) async throws {
         guard !scheduledSlots.isEmpty else { return }
-        guard !LearningSituationScheduleProjection.hasDuplicateDestinations(scheduledSlots) else {
-            throw NSError(
-                domain: "LearningSituations",
-                code: 3,
-                userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "No se puede programar más de una sesión en la misma fecha y franja. Revisa la previsualización."
-                ]
-            )
-        }
         let detailedPlanIds: [Int: Int64]
         if let sequenceDraft {
             detailedPlanIds = try await persistSessionSequence(situation: situation, draft: sequenceDraft)

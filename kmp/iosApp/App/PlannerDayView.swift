@@ -37,9 +37,6 @@ private enum PlannerDayTimelineRow: Identifiable {
 struct PlannerDayView: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSession: (PlanningSession) -> Void
-    var showsInlineNavigation = true
-    var showsInlinePrimaryAction = true
-    var onOpenScheduleSettings: (() -> Void)? = nil
 
     @StateObject private var timeTick = PlannerDayTimeTick()
     private var currentTime: Date { timeTick.currentTime }
@@ -56,7 +53,6 @@ struct PlannerDayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
-                scheduleWarning
                 closingSummary
                 timeline
             }
@@ -109,39 +105,35 @@ struct PlannerDayView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                if showsInlinePrimaryAction {
-                    Button {
-                        vm.openComposer(day: vm.selectedDayForDayView, period: vm.visibleSlots.first?.period ?? 1)
-                    } label: {
-                        Label("Nueva sesión", systemImage: "plus")
-                    }
-                    .buttonStyle(.borderedProminent)
+                Button {
+                    vm.openComposer(day: vm.selectedDayForDayView, period: vm.visibleSlots.first?.period ?? 1)
+                } label: {
+                    Label("Nueva sesión", systemImage: "plus")
                 }
+                .buttonStyle(.borderedProminent)
             }
 
-            if showsInlineNavigation {
-                HStack(spacing: 8) {
-                    Button {
-                        Task { await vm.goToPreviousDayInDayView() }
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .frame(minWidth: 32, minHeight: 32)
-                    }
-                    Button("Hoy") {
-                        Task { await vm.goToTodayInDayView() }
-                    }
-                    .frame(minHeight: 32)
-                    Button {
-                        Task { await vm.goToNextDayInDayView() }
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .frame(minWidth: 32, minHeight: 32)
-                    }
+            HStack(spacing: 8) {
+                Button {
+                    Task { await vm.goToPreviousDayInDayView() }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .frame(minWidth: 32, minHeight: 32)
                 }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .controlSize(.small)
+                Button("Hoy") {
+                    Task { await vm.goToTodayInDayView() }
+                }
+                .frame(minHeight: 32)
+                Button {
+                    Task { await vm.goToNextDayInDayView() }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .frame(minWidth: 32, minHeight: 32)
+                }
             }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
 
             if let completionUndo {
                 PlannerInlineBanner(message: "Sesión marcada como impartida.")
@@ -154,26 +146,6 @@ struct PlannerDayView: View {
                     }
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
-        }
-    }
-
-    @ViewBuilder
-    private var scheduleWarning: some View {
-        if let scheduleIssueMessage {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(IOSAppStyle.warning)
-                Text(scheduleIssueMessage)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                if let onOpenScheduleSettings {
-                    Button("Revisar horario", action: onOpenScheduleSettings)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-            }
-            .padding(12)
-            .background(IOSAppStyle.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
 
@@ -363,30 +335,6 @@ struct PlannerDayView: View {
         }
 
         return rows
-    }
-
-    private var scheduleIssueMessage: String? {
-        let slots = vm.visibleSlots.sorted {
-            (minutes(from: $0.startTime) ?? Int.max) < (minutes(from: $1.startTime) ?? Int.max)
-        }
-
-        for slot in slots {
-            guard let start = minutes(from: slot.startTime),
-                  let end = minutes(from: slot.endTime),
-                  end > start else {
-                return "Hay una franja con un horario inválido."
-            }
-        }
-
-        for pair in zip(slots, slots.dropFirst()) {
-            guard let currentEnd = minutes(from: pair.0.endTime),
-                  let nextStart = minutes(from: pair.1.startTime) else { continue }
-            if nextStart < currentEnd {
-                return "Hay franjas horarias solapadas."
-            }
-        }
-
-        return nil
     }
 
     private func completeSession(_ session: PlanningSession) {

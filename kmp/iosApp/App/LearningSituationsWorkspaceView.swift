@@ -18,41 +18,6 @@ struct LearningSituationScheduledSlot: Identifiable {
     }
 }
 
-struct LearningSituationScheduleTemplateDescriptor: Hashable {
-    let dayOfWeek: Int
-    let startTime: String
-    let endTime: String
-}
-
-enum LearningSituationScheduleProjection {
-    static func uniqueTemplateIndices(
-        for descriptors: [LearningSituationScheduleTemplateDescriptor]
-    ) -> [Int] {
-        var seen = Set<LearningSituationScheduleTemplateDescriptor>()
-        return descriptors.indices.filter { seen.insert(descriptors[$0]).inserted }
-    }
-
-    static func hasDuplicateDestinations(_ slots: [LearningSituationScheduledSlot]) -> Bool {
-        let calendar = Calendar(identifier: .iso8601)
-        var seen = Set<ScheduledDestination>()
-        for slot in slots {
-            let destination = ScheduledDestination(
-                date: calendar.startOfDay(for: slot.date),
-                period: slot.period
-            )
-            if !seen.insert(destination).inserted {
-                return true
-            }
-        }
-        return false
-    }
-
-    private struct ScheduledDestination: Hashable {
-        let date: Date
-        let period: Int
-    }
-}
-
 struct LearningSituationsWorkspaceView: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
@@ -229,7 +194,7 @@ struct LearningSituationsWorkspaceView: View {
                         importTargetId = nil
                         isImporterPresented = true
                     } label: {
-                        Label("Importar", systemImage: "square.and.arrow.down")
+                        Image(systemName: "plus")
                     }
                     .buttonStyle(.borderedProminent)
                     .help("Importar situación de aprendizaje")
@@ -244,42 +209,18 @@ struct LearningSituationsWorkspaceView: View {
             .padding(.vertical, 12)
             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 WorkspaceCompactStat(title: "Situaciones", value: "\(filteredSituations.count)", tint: EvaluationDesign.accent)
                 WorkspaceCompactStat(title: "Materias", value: "\(availableSubjects.count)", tint: IOSAppStyle.warning)
                 WorkspaceCompactStat(title: "Trimestres", value: "\(availableTerms.count)", tint: EvaluationDesign.success)
+                WorkspaceCompactStat(title: "Selección", value: isSelectionMode ? "\(selectedSituationIds.count)" : "1", tint: .blue)
             }
 
             situationFiltersMenu
-            if isSelectionMode {
-                Text("\(selectedSituationIds.count) seleccionadas")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
             }
             .padding(24)
 
-            if filteredSituations.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: situations.isEmpty ? "doc.badge.plus" : "line.3.horizontal.decrease.circle")
-                        .font(.title)
-                        .foregroundStyle(.secondary)
-                    Text(situations.isEmpty ? "Aún no hay situaciones" : "Ninguna coincide con los filtros")
-                        .font(.headline)
-                    if situations.isEmpty {
-                        Button("Importar situación") {
-                            importTargetId = nil
-                            isImporterPresented = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                    } else {
-                        Button("Limpiar filtros", action: clearSituationFilters)
-                            .buttonStyle(.bordered)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(24)
-            } else if isSelectionMode {
+            if isSelectionMode {
                 List(filteredSituations, id: \.id, selection: $selectedSituationIds) { situation in
                     situationRow(for: situation)
                         .tag(situation.id)
@@ -366,39 +307,16 @@ struct LearningSituationsWorkspaceView: View {
                 .padding(28)
             }
         } else {
-            if situations.isEmpty {
-                WorkspaceEmptyState(
-                    title: "Situaciones de aprendizaje",
-                    subtitle: "Importa un documento Word y asócialo a tus grupos para programar sesiones y preparar evaluación.",
-                    systemImage: "doc.text.magnifyingglass",
-                    actionTitle: "Importar situación"
-                ) {
-                    importTargetId = nil
-                    isImporterPresented = true
-                }
-            } else if filteredSituations.isEmpty {
-                WorkspaceEmptyState(
-                    title: "Sin resultados",
-                    subtitle: "No hay situaciones que coincidan con la búsqueda o los filtros activos.",
-                    systemImage: "line.3.horizontal.decrease.circle",
-                    actionTitle: "Limpiar filtros",
-                    action: clearSituationFilters
-                )
-            } else {
-                ContentUnavailableView(
-                    "Selecciona una situación",
-                    systemImage: "sidebar.left",
-                    description: Text("El detalle y sus acciones aparecerán aquí.")
-                )
+            WorkspaceEmptyState(
+                title: "Situaciones de aprendizaje",
+                subtitle: "Importa un documento Word y asócialo a tus grupos para programar sesiones y preparar evaluación.",
+                systemImage: "doc.text.magnifyingglass",
+                actionTitle: "Importar situación"
+            ) {
+                importTargetId = nil
+                isImporterPresented = true
             }
         }
-    }
-
-    private func clearSituationFilters() {
-        searchText = ""
-        subjectFilter = ""
-        termFilter = ""
-        classFilter = nil
     }
 
     private func actionRow(for situation: LearningSituation) -> some View {
@@ -887,7 +805,6 @@ private struct LearningSituationScheduleSheet: View {
     @State private var isSequenceImporterPresented = false
     @State private var sequenceDraft: LearningSituationSessionSequenceImportDraft?
     @State private var expandedPlanNumbers: Set<Int> = []
-    @State private var scheduleNotice = ""
     @State private var errorMessage = ""
 
     var body: some View {
@@ -1117,14 +1034,6 @@ private struct LearningSituationScheduleSheet: View {
                     .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    if !scheduleNotice.isEmpty {
-                        Label(scheduleNotice, systemImage: "checkmark.shield")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(EvaluationDesign.accent)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                            .background(EvaluationDesign.accentSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
                     ForEach($slots) { $slot in
                         Toggle(slot.label, isOn: $slot.isSelected)
                             .padding(12)
@@ -1299,24 +1208,11 @@ private struct LearningSituationScheduleSheet: View {
         do {
             let schedule = try await bridge.plannerTeacherSchedule()
             let allScheduleSlots = try await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)
-            let rawTemplate = allScheduleSlots.filter { $0.schoolClassId == classId }
-            let descriptors = rawTemplate.map {
-                LearningSituationScheduleTemplateDescriptor(
-                    dayOfWeek: Int($0.dayOfWeek),
-                    startTime: $0.startTime,
-                    endTime: $0.endTime
-                )
-            }
-            let uniqueIndices = LearningSituationScheduleProjection.uniqueTemplateIndices(for: descriptors)
-            let template = uniqueIndices.map { rawTemplate[$0] }
+            let template = allScheduleSlots.filter { $0.schoolClassId == classId }
             guard !template.isEmpty else {
                 errorMessage = "El grupo no tiene franjas horarias configuradas."
                 return
             }
-            let ignoredDuplicates = rawTemplate.count - template.count
-            scheduleNotice = ignoredDuplicates > 0
-                ? "Se \(ignoredDuplicates == 1 ? "ha ignorado 1 franja duplicada" : "han ignorado \(ignoredDuplicates) franjas duplicadas") del horario para evitar sustituir sesiones."
-                : ""
             var candidates: [LearningSituationScheduledSlot] = []
             var date = startDate
             let calendar = Calendar.current
@@ -1374,15 +1270,10 @@ private struct LearningSituationScheduleSheet: View {
             errorMessage = "Las fichas detalladas deben corresponder a todas las sesiones seleccionadas y contener título y objetivo."
             return
         }
-        let selectedSlots = slots.filter(\.isSelected)
-        guard !LearningSituationScheduleProjection.hasDuplicateDestinations(selectedSlots) else {
-            errorMessage = "Hay dos sesiones destinadas al mismo día y franja. Vuelve a previsualizar para distribuirlas sin sustituciones."
-            return
-        }
         do {
             try await bridge.programLearningSituationSessions(
                 situation: situation, classId: classId, groupName: schoolClass.name,
-                scheduledSlots: selectedSlots,
+                scheduledSlots: slots.filter(\.isSelected),
                 sequenceDraft: sequenceDraft
             )
             dismiss()

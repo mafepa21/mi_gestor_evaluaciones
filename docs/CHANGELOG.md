@@ -15,6 +15,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Planificador macOS: el Gantt incorpora el filtro `Todas / Requieren atención`, acciones
+  `Ubicar (n)` para sesiones pendientes, información contextual al pasar el puntero y un target
+  de pruebas macOS que fija estados, conteos, semanas ISO, densidades y secuencias sin agendar.
 - Apple Foundation Models / IA Local: Añadida la capacidad `weeklyStudentEmail` para redactar borradores masivos e individuales de correos semanales de seguimiento evaluativo para alumnos y sus familias. Incluye motor dual (`AppleFoundationStudentEmailService`) con rama de Foundation Models on-device y fallback determinista por reglas pedagógicas, el workspace interactivo `WeeklyStudentEmailWorkspaceView` con previsualización, edición de destinatario/asunto/cuerpo, exportación a Mail nativo (`mailto:`) y copiado al portapapeles. Integrado con `AppleAIOrchestrator`, la Ficha de Alumno (`StudentProfilesWorkspaceView`), el Inspector del Cuaderno (`NotebookStudentInspector`) y el módulo de Informes (`RubricsReportsWorkspaceViews`).
 - Primer uso: la app estrena una bienvenida y una lista de "Primeros pasos" (`OnboardingModels`,
   `OnboardingWelcomeSheet`, `OnboardingChecklistView`, `OnboardingHost`, todo en `AppleShared/`).
@@ -48,6 +51,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Planificador macOS: el Gantt pasa a una proyección plana con carril izquierdo fijo y una sola
+  línea temporal, métricas compacta/estándar coherentes y apertura del periodo evaluativo actual
+  —o una ventana móvil de 13 semanas—. La toolbar es contextual por Semana, Día, Secuencia y
+  Resumen; las operaciones masivas se concentran en el menú secundario y Día elimina controles
+  duplicados exclusivamente en Mac.
+- Situaciones, Asistencia y shell macOS: Situaciones recupera el ancho completo cuando no hay
+  inspector real, la importación usa una acción semántica y los estados vacíos distinguen ausencia
+  de datos de filtros sin resultados. Asistencia diferencia falta de cursos, curso sin alumnado y
+  filtros vacíos, ofreciendo en cada caso la acción de recuperación correspondiente.
 - Horario: el camino manual del asistente pasa a ser posible. El selector de grupo de
   `slotEditorForm` solo listaba grupos ya existentes y "Añadir franja" quedaba deshabilitado sin
   ellos, así que **sin importar un Excel no se podía crear ni una sola franja** y los grupos solo
@@ -78,6 +90,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Planificador: la carga del Gantt incluye situaciones enlazadas y su última secuencia aunque aún
+  no exista ninguna sesión agendada, usa estados tipados separados (`Sin ubicar`, `Planificada`,
+  `En curso`, `Impartida`, `Cerrada`, `Cancelada` y `Solo calendario`) y deja de confundir errores
+  de lectura con un estado vacío. La carga es cancelable y el filtro de grupo usa
+  `selectedGroupId` como única fuente de verdad.
+- Planificador macOS: Día avisa de franjas horarias inválidas o solapadas y enlaza con la
+  configuración del horario. El Gantt elimina botones anidados y conserva el identificador del
+  plan al abrir el composer para ubicar sesiones pendientes.
 - Cuaderno: la rejilla de observación aparecía vacía ("Sin plantilla") en el iPad mientras el Mac
   la abría entera. La plantilla estructurada la crea el importador de instrumentos de la situación
   de aprendizaje, así que vivía solo en la base de datos del dispositivo donde se importó, y
@@ -143,6 +163,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Planificador/Gantt macOS: `MiGestorPlannerTests` ejecutó 6 pruebas con 0 fallos. El comando
+  `./scripts/verify_apple_builds.sh` regeneró el proyecto Xcode y terminó con compilación correcta
+  de macOS e iOS Simulator. La revisión visual automatizada en 900/1200/1600 pt y claro/oscuro
+  queda pendiente porque el proceso de Codex no dispone de permisos de Accesibilidad ni grabación
+  de pantalla en macOS; la app compilada sí se abrió para intentar esa comprobación.
 - Sync LAN (macOS): `./scripts/verify_apple_builds.sh` (regeneración con XcodeGen + `xcodebuild` para `MiGestorKMPMac` y `MiGestorKMPiOS`) en verde tras el cambio. Root cause confirmado en la máquina de desarrollo con `lsof -iTCP:8765` y `ps`: un helper huérfano de un build de días atrás seguía escuchando en el puerto 8765 mientras la app principal corría desde una carpeta de DerivedData distinta; se liberó manualmente para restaurar el servicio en caliente sin esperar a una recompilación. No se ha probado en caliente el propio flujo de detección corregido (matar un helper huérfano real con la nueva lógica y comprobar que el emparejamiento con un iPad se recupera), porque reproducirlo de forma controlada exige forzar dos builds de Xcode con DerivedData distinta; queda pendiente de verificación manual.
 
 - Compilación de las dos apps Apple con los esquemas `MiGestorKMPMac` (destino macOS) y `MiGestorKMPiOS` (destino genérico de simulador iOS): **BUILD SUCCEEDED** en ambos tras la unificación del dashboard. No se ha ejecutado prueba manual en dispositivo ni simulador: los estados que faltan por comprobar a mano son el aula en curso con horario configurado, el paso automático a Despacho fuera de horario y el caso sin horario configurado.

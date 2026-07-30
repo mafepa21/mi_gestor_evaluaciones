@@ -19,12 +19,14 @@ struct SettingsDiagnosticsView: View {
                     .font(.title2.weight(.bold))
                     .padding(.horizontal, 4)
 
-                // Entregas web. APARCADO AQUÍ, no es su sitio definitivo: es una
-                // función de trabajo diario, no una herramienta de soporte. Está
-                // aquí para poder usarla mientras se decide dónde vive.
+                // En macOS esto ya es un módulo propio de la barra lateral, así que
+                // aquí sobraría y saldría duplicado. En iPhone/iPad sigue aparcado
+                // aquí hasta que tenga su entrada en `AppWorkspaceModule`.
+                #if !os(macOS)
                 WebSubmissionsWorkspaceView()
                     .padding(.horizontal, 4)
                 Divider()
+                #endif
 
                 // Banco de pruebas. Solo DEBUG: monta a mano un formulario del
                 // fixture. Ya se puede publicar de verdad desde arriba, así que

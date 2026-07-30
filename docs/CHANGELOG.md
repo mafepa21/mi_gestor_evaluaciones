@@ -27,6 +27,11 @@ El formato sigue una variante practica de Keep a Changelog:
 - Planificador macOS: el Gantt incorpora el filtro `Todas / Requieren atención`, acciones
   `Ubicar (n)` para sesiones pendientes, información contextual al pasar el puntero y un target
   de pruebas macOS que fija estados, conteos, semanas ISO, densidades y secuencias sin agendar.
+- Entregas del alumnado vía web: **"Entregas web" pasa a ser módulo propio de la barra lateral de
+  macOS** (`MacFeatureRegistry`, `MacRootView`), junto a Situaciones, que es su vecino natural. Estaba
+  aparcada en Ajustes → Diagnóstico, que es donde viven las herramientas de soporte, y esto es trabajo
+  diario. En iPhone/iPad sigue en Diagnóstico hasta que tenga su entrada en `AppWorkspaceModule`; la
+  de Diagnóstico queda tras un `#if !os(macOS)` para que en Mac no salga duplicada.
 - Entregas del alumnado vía web: **pantalla de publicación**, con la que el circuito queda completo de
   punta a punta. `WebSubmissionPublishSheet` elige el instrumento, la dirección de la web y la fecha
   en que se dejan de aceptar entregas; `WebSubmissionsWorkspaceView` junta las dos mitades (publicar y

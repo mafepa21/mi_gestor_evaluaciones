@@ -1,0 +1,91 @@
+-- Migration 39: entregas del alumnado via web (tabla de correspondencias local)
+--
+-- Diseno: plan_entregas_web_alumnado_2026-07-29.md (raiz del repo).
+--
+-- El alumnado rellena los materiales de 03_ALUMNADO de una Situacion de
+-- Aprendizaje desde una PWA y devuelve un sobre cifrado. Ese sobre NO contiene
+-- ningun identificador real: solo un `form_instance_id` aleatorio, un alias del
+-- participante y `web_item_id` opacos. Estas cuatro tablas son las unicas que
+-- saben traducir todo eso a clase, columna, alumno e item reales.
+--
+-- POR QUE NINGUNA LLEVA `device_id` NI `sync_version`
+--
+-- Todas las demas tablas del esquema los llevan porque viajan por Sync LAN. Estas
+-- cuatro no deben viajar: son la tabla de correspondencias, y su valor de
+-- privacidad depende de existir en UN SOLO dispositivo. Si se sincronizaran, cada
+-- iPad enlazado tendria una copia del mapa alias -> alumno, y la pseudonimizacion
+-- dejaria de significar nada. La ausencia de esas dos columnas es deliberada y es
+-- lo que impide que `SqlDelightSyncAdapter` las incluya por descuido: no encajan
+-- en la forma que espera el adaptador.
+--
+-- Consecuencia asumida: si el docente cambia de Mac, las entregas pendientes de
+-- un formulario ya publicado no se pueden resolver desde el dispositivo nuevo.
+-- Se documenta en la copia de seguridad.
+
+-- Un formulario publicado. `form_instance_id` es lo unico que viaja a la web.
+-- La clave privada NO se guarda aqui: en el llavero, y aqui solo su referencia.
+CREATE TABLE IF NOT EXISTS web_form_instances (
+    form_instance_id TEXT NOT NULL PRIMARY KEY,
+    class_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    template_id TEXT,
+    title TEXT NOT NULL DEFAULT '',
+    recipient_public_key TEXT NOT NULL,
+    private_key_ref TEXT NOT NULL,
+    publisher_public_key TEXT,
+    expires_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    revoked INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (column_id) REFERENCES notebook_columns(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_web_form_instances_class ON web_form_instances(class_id);
+CREATE INDEX IF NOT EXISTS idx_web_form_instances_column ON web_form_instances(column_id);
+
+-- alias -> alumno, POR FORMULARIO. El mismo alumno tiene un alias distinto en
+-- cada formulario, asi que dos entregas de dos SA no se pueden cruzar entre si.
+-- Dos unicidades, y las dos importan: un alias no puede apuntar a dos alumnos
+-- (PK), y un alumno no puede tener dos alias en el mismo formulario (UNIQUE), que
+-- es lo que evita entregas duplicadas atribuidas a la misma persona.
+CREATE TABLE IF NOT EXISTS web_participant_aliases (
+    form_instance_id TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    student_id INTEGER NOT NULL,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (form_instance_id, alias),
+    UNIQUE (form_instance_id, student_id),
+    FOREIGN KEY (form_instance_id) REFERENCES web_form_instances(form_instance_id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_web_aliases_student ON web_participant_aliases(student_id);
+
+-- web_item_id -> notebook_instrument_items.id. La web nunca ve el id real.
+CREATE TABLE IF NOT EXISTS web_item_map (
+    form_instance_id TEXT NOT NULL,
+    web_item_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    PRIMARY KEY (form_instance_id, web_item_id),
+    FOREIGN KEY (form_instance_id) REFERENCES web_form_instances(form_instance_id) ON DELETE CASCADE,
+    FOREIGN KEY (item_id) REFERENCES notebook_instrument_items(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_web_item_map_item ON web_item_map(item_id);
+
+-- Idempotencia. Una `submission_id` ya vista no se vuelve a importar, aunque el
+-- fichero llegue dos veces o el docente repita la operacion. Se guardan tambien
+-- las rechazadas con su motivo: sin eso, un fichero que falla se reintentaria en
+-- bucle sin que nadie sepa por que.
+CREATE TABLE IF NOT EXISTS web_submission_ledger (
+    submission_id TEXT NOT NULL PRIMARY KEY,
+    form_instance_id TEXT NOT NULL,
+    alias TEXT,
+    student_id INTEGER,
+    status TEXT NOT NULL,
+    reject_reason TEXT,
+    answer_count INTEGER NOT NULL DEFAULT 0,
+    client_submitted_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    imported_at_epoch_ms INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_web_ledger_form ON web_submission_ledger(form_instance_id, imported_at_epoch_ms);
+CREATE INDEX IF NOT EXISTS idx_web_ledger_status ON web_submission_ledger(status);

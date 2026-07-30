@@ -27,6 +27,16 @@ El formato sigue una variante practica de Keep a Changelog:
 - Planificador macOS: el Gantt incorpora el filtro `Todas / Requieren atención`, acciones
   `Ubicar (n)` para sesiones pendientes, información contextual al pasar el puntero y un target
   de pruebas macOS que fija estados, conteos, semanas ISO, densidades y secuencias sin agendar.
+- Entregas del alumnado vía web: el enlace personal pasa a llevar **también el formulario**
+  (`/#f=<formInstanceId>&a=<alias>`), y el manifiesto exportado se llama `<formInstanceId>.json`.
+  Sin esto la publicación no servía de nada: la PWA tenía la ruta del manifiesto fija en el código,
+  así que publicaras lo que publicaras el alumnado rellenaba siempre el pasaporte de demostración y
+  la entrega salía con un `formInstanceId` que no correspondía a ningún formulario publicado, o sea
+  imposible de importar. Las dos partes van detrás del `#`, que el navegador no envía al servidor.
+  El fichero se llama como el formulario porque es como lo busca la web, y así pueden convivir
+  tantos formularios publicados como haga falta: un formulario, un fichero. El paso 1 de la pantalla
+  avisa de que **no hay que cambiarle el nombre**. Corregido junto con el cambio equivalente en la
+  PWA (`entregas-alumnado`, commit `129d85a`).
 - Entregas del alumnado vía web: **"Entregas web" pasa a ser módulo propio de la barra lateral de
   macOS** (`MacFeatureRegistry`, `MacRootView`), junto a Situaciones, que es su vecino natural. Estaba
   aparcada en Ajustes → Diagnóstico, que es donde viven las herramientas de soporte, y esto es trabajo

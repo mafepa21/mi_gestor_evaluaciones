@@ -1902,7 +1902,11 @@ final class KmpBridge: ObservableObject {
             .appendingPathComponent(form.formInstanceId, isDirectory: true)
         try FileManager.default.createDirectory(at: carpeta, withIntermediateDirectories: true)
 
-        let manifiesto = carpeta.appendingPathComponent("manifiesto.json")
+        // El fichero se llama como el formulario porque así es como lo busca la
+        // web: `/manifiestos/<formInstanceId>.json`. Copiarlo tal cual a
+        // `public/manifiestos/` es todo lo que hay que hacer, y así pueden convivir
+        // varios formularios publicados sin pisarse.
+        let manifiesto = carpeta.appendingPathComponent("\(form.formInstanceId).json")
         try Data(form.manifestJSON.utf8).write(to: manifiesto)
 
         let enlaces = carpeta.appendingPathComponent("enlaces-alumnado.txt")

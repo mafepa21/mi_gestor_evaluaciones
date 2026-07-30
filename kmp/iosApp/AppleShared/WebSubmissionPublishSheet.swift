@@ -271,7 +271,7 @@ struct WebSubmissionPublishSheet: View {
                 stepCard(
                     number: 1,
                     title: "Sube el manifiesto a la web",
-                    detail: "Copia este fichero a `public/manifiestos/` del repo de la web y despliega. Se puede subir a un sitio público: solo lleva preguntas y una clave pública.",
+                    detail: "Copia este fichero a la carpeta public/manifiestos/ del repo de la web, SIN cambiarle el nombre, y despliega. Los enlaces buscan ese nombre exacto. Se puede subir a un sitio público: solo lleva preguntas y una clave pública.",
                     path: result.manifestPath,
                     tint: .indigo
                 )

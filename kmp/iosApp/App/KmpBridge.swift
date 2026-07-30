@@ -1713,6 +1713,159 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    // MARK: - Entregas del alumnado hechas desde la web
+
+    /// Carga de una vez todo lo que hace falta para examinar un lote de entregas.
+    ///
+    /// Se carga en bloque y no consulta a consulta a propósito: la alternativa era
+    /// un resolutor asíncrono, que obligaría a que `examine` fuese `async` y a una
+    /// consulta por entrega. Los datos son pocos (un alias por alumno, un ítem por
+    /// pregunta), así que caben en memoria y el examen se queda síncrono y probable.
+    ///
+    /// Devuelve `nil` si el formulario no está registrado en este dispositivo, que
+    /// es lo que pasa cuando el docente lo publicó desde otro Mac: la tabla de
+    /// correspondencias no viaja por Sync LAN, y es deliberado.
+    func loadWebSubmissionSnapshot(formInstanceId: String) async -> WebSubmissionSnapshot? {
+        guard let instancia = try? await container.webSubmissionsRepository
+            .getFormInstance(formInstanceId: formInstanceId) else { return nil }
+
+        let alias = (try? await container.webSubmissionsRepository
+            .listAliases(formInstanceId: formInstanceId)) ?? []
+        let items = (try? await container.webSubmissionsRepository
+            .listItemMap(formInstanceId: formInstanceId)) ?? []
+        let registro = (try? await container.webSubmissionsRepository
+            .listLedgerForForm(formInstanceId: formInstanceId)) ?? []
+        let alumnado = (try? await container.classesRepository
+            .listStudentsInClass(classId: instancia.classId)) ?? []
+
+        var studentIdByAlias: [String: Int64] = [:]
+        for entrada in alias { studentIdByAlias[entrada.alias] = entrada.studentId }
+
+        var itemIdByWebItemId: [String: String] = [:]
+        for entrada in items { itemIdByWebItemId[entrada.webItemId] = entrada.itemId }
+
+        // Solo cuenta como duplicado lo que se importó de verdad. Una entrega
+        // registrada como rechazada debe poder reintentarse: si el motivo era un
+        // alias que faltaba, y el docente lo arregla, tiene que poder volver.
+        var importedAt: [String: Int64] = [:]
+        for entrada in registro where entrada.status == "IMPORTED" {
+            importedAt[entrada.submissionId] = entrada.importedAtEpochMs
+        }
+
+        var nombres: [Int64: String] = [:]
+        var roster: [WebRosterEntry] = []
+        for alumno in alumnado {
+            let nombre = "\(alumno.firstName) \(alumno.lastName)"
+                .trimmingCharacters(in: .whitespaces)
+            nombres[alumno.id] = nombre
+            roster.append(WebRosterEntry(id: alumno.id, name: nombre))
+        }
+        roster.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        return WebSubmissionSnapshot(
+            formInstanceId: instancia.formInstanceId,
+            classId: instancia.classId,
+            columnId: instancia.columnId,
+            privateKeyRef: instancia.privateKeyRef,
+            revoked: instancia.revoked,
+            expiresAtEpochMs: instancia.expiresAtEpochMs,
+            title: instancia.title,
+            studentIdByAlias: studentIdByAlias,
+            itemIdByWebItemId: itemIdByWebItemId,
+            studentNames: nombres,
+            importedAtBySubmissionId: importedAt,
+            roster: roster
+        )
+    }
+
+    /// Escribe las entregas aceptadas en el Cuaderno.
+    ///
+    /// **Pasa por `saveResponses`, nunca por SQL directo.** Es quien resume el
+    /// estado de la celda (`0/7`, `Completo`), escribe `display_value`, deriva y
+    /// guarda la nota, invalida el caché de la hoja y avisa a la interfaz. Un
+    /// `INSERT` en `notebook_instrument_responses` dejaría la respuesta guardada
+    /// pero sin nota y sin refrescar el Cuaderno.
+    ///
+    /// Una llamada por celda con la entrega completa, igual que hace la ingesta de
+    /// Sync LAN. Y una entrega que falla no detiene a las demás: se anota y se
+    /// sigue, porque tener 24 de 25 importadas es mejor que tener 0.
+    func importWebSubmissions(
+        _ decisions: [WebSubmissionImportDecision],
+        formInstanceId: String
+    ) async -> WebSubmissionImportOutcome {
+        var resultado = WebSubmissionImportOutcome()
+        let ahora = Int64(Date().timeIntervalSince1970 * 1000)
+        let instant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: ahora)
+
+        for decision in decisions {
+            let borrador = decision.draft
+            let nombre = borrador.studentName
+                ?? "código \(borrador.alias.prefix(6))"
+
+            let responses: [NotebookInstrumentResponse] = borrador.answers.map { respuesta in
+                NotebookInstrumentResponse(
+                    classId: borrador.classId,
+                    studentId: decision.studentId,
+                    columnId: borrador.columnId,
+                    itemId: respuesta.itemId,
+                    textValue: respuesta.textValue ?? "",
+                    boolValue: respuesta.boolValue.map { KotlinBoolean(value: $0) },
+                    numberValue: respuesta.numberValue.map { KotlinDouble(value: $0) },
+                    trace: AuditTrace(
+                        authorUserId: nil,
+                        createdAt: instant,
+                        updatedAt: instant,
+                        associatedGroupId: nil,
+                        deviceId: nil,
+                        syncVersion: 1
+                    )
+                )
+            }
+
+            do {
+                _ = try await container.notebookInstrumentsRepository.saveResponses(
+                    classId: borrador.classId,
+                    studentId: decision.studentId,
+                    columnId: borrador.columnId,
+                    responses: responses,
+                    updatedAtEpochMs: ahora,
+                    deviceId: nil,
+                    syncVersion: 1
+                )
+                try? await container.webSubmissionsRepository.recordLedgerEntry(
+                    entry: WebLedgerEntry(
+                        submissionId: borrador.submissionId,
+                        formInstanceId: formInstanceId,
+                        alias: borrador.alias,
+                        studentId: KotlinLong(value: decision.studentId),
+                        status: "IMPORTED",
+                        rejectReason: nil,
+                        answerCount: Int64(responses.count),
+                        clientSubmittedAtEpochMs: 0,
+                        importedAtEpochMs: ahora
+                    )
+                )
+                resultado.imported += 1
+            } catch {
+                // Se registra el fallo para que el docente sepa a quién le falta,
+                // pero NO como importada: así se puede reintentar.
+                resultado.failures.append(
+                    (studentName: nombre, reason: error.localizedDescription)
+                )
+            }
+        }
+
+        // El Cuaderno tiene que reflejar lo escrito sin que el docente recargue.
+        // `saveResponses` ya invalida el caché de la hoja y emite el bus de
+        // refresco; esto solo fuerza que la vista que está delante vuelva a pedir
+        // su clase, que es lo que hace el resto de la app tras una escritura.
+        if resultado.imported > 0 {
+            refreshCurrentNotebook()
+        }
+
+        return resultado
+    }
+
     func refreshStudentsDirectory() async throws {
         if classes.isEmpty {
             try await refreshClasses()

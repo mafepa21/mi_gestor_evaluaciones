@@ -15,6 +15,27 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Entregas del alumnado vía web: cableado real con la base de datos. Nuevo
+  `WebSubmissionsRepository` (contrato en `shared/repository/WebSubmissionsContracts.kt`,
+  implementación en `data/repository/WebSubmissionsRepositorySqlDelight.kt`, registrado en
+  `KmpContainer`) sobre las cuatro tablas de la migración 39. Los modelos van en
+  `shared/repository/` y **no** en `domain/Models.kt` a propósito: son tipos de frontera de esta
+  feature, no conceptos del dominio docente — un alias no significa nada para el Cuaderno ni para
+  las notas — y así tampoco hace falta tocar un archivo protegido sin necesidad. `KmpBridge` gana
+  dos métodos: `loadWebSubmissionSnapshot`, que trae de una vez el formulario, los alias, el mapa de
+  ítems, el registro de importadas y el alumnado del grupo, y `importWebSubmissions`, que escribe.
+  Se carga en bloque y no consulta a consulta porque la alternativa era un resolutor asíncrono, que
+  obligaría a que el examen de cada entrega fuese `async` y a una consulta por entrega; los datos
+  son pocos (un alias por alumno, un ítem por pregunta) y así el examen se queda síncrono y
+  probable, con los 50 chequeos de interoperabilidad intactos. La escritura **pasa por
+  `saveResponses`**, una llamada por celda con la entrega completa, igual que la ingesta de Sync
+  LAN; una entrega que falla no detiene a las demás, porque 24 de 25 importadas es mejor que 0, y
+  la que falla **no** se marca como importada para poder reintentarla. Del registro solo cuentan
+  como duplicado las de estado `IMPORTED`: una rechazada por un alias que faltaba tiene que poder
+  volver cuando el docente lo arregle. La clave privada X25519 vive en el llavero
+  (`WebSubmissionKeychain`, `WhenUnlockedThisDeviceOnly`, sin iCloud) y la base de datos solo guarda
+  su referencia, así que copiar o restaurar el fichero de la base en otro dispositivo no permite
+  abrir ninguna entrega.
 - Entregas del alumnado vía web: nueva `WebSubmissionImportSheet` (`AppleShared/`), la hoja donde el
   docente revisa un lote antes de escribir nada. Patrón adaptativo canónico del proyecto (dos zonas
   con `ViewThatFits`, fallback apilado que conserva todas las acciones, `presentationDetents` en
@@ -218,6 +239,13 @@ El formato sigue una variante practica de Keep a Changelog:
   `extension Data` previa, en `MacModuleStubs.swift`, es `private` y con otros miembros).
   **No hay prueba manual en la app**, y no aplica todavía: sin hoja de previsualización no hay nada
   que abrir desde la interfaz.
+- Entregas del alumnado vía web: `./scripts/verify_apple_builds.sh` en verde con las dos apps tras el
+  cableado con la base de datos, y `:data:compileKotlinDesktop` correcto tras añadir el repositorio.
+  **El circuito completo sigue sin poderse ejercitar de punta a punta**, y no por un descuido: nada
+  publica todavía un formulario, así que no existe ningún `formInstanceId` registrado, ninguna clave
+  en el llavero y ninguna fila de alias contra la que importar. Al examinar se ha visto además que
+  falta guardar el manifiesto publicado (hoy no está en ninguna columna), porque el importador lo
+  necesita para validar tipos y títulos: es lo primero de la parte de publicación.
 - Entregas del alumnado vía web: `./scripts/verify_apple_builds.sh` de nuevo en verde con las dos apps
   tras añadir `WebSubmissionImportSheet`. Auditoría de layout hecha según la guía del proyecto: **no
   hay ni un `.fixedSize()` desnudo** (los dos que hay son `fixedSize(horizontal: false, vertical:

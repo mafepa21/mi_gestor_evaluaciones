@@ -31,6 +31,7 @@ struct PlannerSequenceGanttView: View {
             } else if visibleSituations.isEmpty {
                 allClearContent
             } else {
+                pendingRepairBanner
                 onboardingHint
                 ganttContent
             }
@@ -174,6 +175,46 @@ struct PlannerSequenceGanttView: View {
         }
     }
 
+    @ViewBuilder
+    private var pendingRepairBanner: some View {
+        if let target = firstUnlocatedTarget {
+            HStack(spacing: 16) {
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(IOSAppStyle.warning)
+                    .frame(width: 40, height: 40)
+                    .background(IOSAppStyle.warning.opacity(0.12), in: Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(visiblePendingCount) \(visiblePendingCount == 1 ? "sesión necesita" : "sesiones necesitan") fecha")
+                        .font(.headline)
+                    Text("No están perdidas: siguen vinculadas al plan y puedes programarlas ahora.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 16)
+
+                Button {
+                    locate(target.row, in: target.group)
+                } label: {
+                    Label(
+                        visiblePendingCount == 1 ? "Programar sesión" : "Programar siguiente",
+                        systemImage: "calendar.badge.plus"
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(IOSAppStyle.warning)
+            }
+            .padding(16)
+            .background(IOSAppStyle.warning.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(IOSAppStyle.warning.opacity(0.22), lineWidth: 1)
+            }
+        }
+    }
+
     private var fixedRail: some View {
         VStack(spacing: 0) {
             Text(rangeContextLabel)
@@ -267,13 +308,14 @@ struct PlannerSequenceGanttView: View {
                 }
             }
         } label: {
-            Text("Ubicar (\(group.pendingCount))")
-                .font(.caption2.weight(.bold))
+            Label("Programar \(group.pendingCount)", systemImage: "calendar.badge.plus")
+                .font(.caption.weight(.bold))
         }
         .menuStyle(.button)
-        .controlSize(.mini)
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
         .tint(IOSAppStyle.warning)
-        .help("Agendar sesiones pendientes de \(group.groupName)")
+        .help("Programar las sesiones que aún no tienen fecha en \(group.groupName)")
     }
 
     private var timeline: some View {
@@ -535,6 +577,23 @@ struct PlannerSequenceGanttView: View {
 
     private func pace(for group: PlannerSequenceGroup) -> PlannerSequencePace? {
         PlannerSequencePace.evaluate(group: group, currentWeek: currentWeek)
+    }
+
+    private var visiblePendingCount: Int {
+        visibleSituations.reduce(0) { partial, situation in
+            partial + situation.groups.reduce(0) { $0 + $1.pendingCount }
+        }
+    }
+
+    private var firstUnlocatedTarget: (row: PlannerSequenceRow, group: PlannerSequenceGroup)? {
+        for situation in visibleSituations {
+            for group in situation.groups {
+                if let row = group.rows.first(where: { $0.status == .unlocated }) {
+                    return (row, group)
+                }
+            }
+        }
+        return nil
     }
 
     private func locate(_ row: PlannerSequenceRow, in group: PlannerSequenceGroup) {

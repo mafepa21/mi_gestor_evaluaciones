@@ -5299,6 +5299,15 @@ final class KmpBridge: ObservableObject {
         try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: sequenceVersionId)
     }
 
+    /// Exposición de solo lectura para que el Planner pueda representar la última
+    /// secuencia teórica incluso antes de que exista una sesión en el calendario.
+    func learningSituationSessionSequenceVersions(
+        learningSituationId: Int64
+    ) async throws -> [LearningSituationSessionSequenceVersion] {
+        try await container.learningSituationsRepository
+            .listSessionSequenceVersions(learningSituationId: learningSituationId)
+    }
+
     func learningSituationSessionSequenceVersion(id: Int64, learningSituationId: Int64) async throws -> LearningSituationSessionSequenceVersion? {
         try await container.learningSituationsRepository
             .listSessionSequenceVersions(learningSituationId: learningSituationId)
@@ -5488,6 +5497,16 @@ final class KmpBridge: ObservableObject {
         sequenceDraft: LearningSituationSessionSequenceImportDraft? = nil
     ) async throws {
         guard !scheduledSlots.isEmpty else { return }
+        guard !LearningSituationScheduleProjection.hasDuplicateDestinations(scheduledSlots) else {
+            throw NSError(
+                domain: "LearningSituations",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "No se puede programar más de una sesión en la misma fecha y franja. Revisa la previsualización."
+                ]
+            )
+        }
         let detailedPlanIds: [Int: Int64]
         if let sequenceDraft {
             detailedPlanIds = try await persistSessionSequence(situation: situation, draft: sequenceDraft)
@@ -5560,9 +5579,17 @@ final class KmpBridge: ObservableObject {
         situation: LearningSituation,
         draft: LearningSituationSessionSequenceImportDraft
     ) async throws -> [Int: Int64] {
+        let existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situation.id)
+        if let identicalVersion = existingVersions.first(where: { $0.sha256 == draft.sha256 }) {
+            let existingPlans = try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: identicalVersion.id)
+            return Dictionary(
+                existingPlans.map { (Int($0.sessionNumber), $0.id) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+
         let storedURL = try LearningSituationDocumentStore().persistSourceDocument(from: draft.sourceURL, sha256: draft.sha256)
         let warningsJSON = String(data: try JSONEncoder().encode(draft.warnings), encoding: .utf8) ?? "[]"
-        let existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situation.id)
         let versionNumber = Int32((existingVersions.first?.versionNumber ?? 0) + 1)
         let versionId = try await container.learningSituationsRepository.saveSessionSequenceVersion(
             version: LearningSituationSessionSequenceVersion(

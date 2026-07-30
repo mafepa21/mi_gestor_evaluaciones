@@ -12,6 +12,13 @@ struct AppleBridgeBootstrap {
         // "mi_gestor_kmp.db" mientras el driver abría "desktop_mi_gestor_kmp.db", así que
         // las copias de seguridad salían vacías y la restauración no hacía nada.
         #if os(macOS)
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return AppleBridgeBootstrap(
+                container: KmpContainer(driver: MacosDriverKt.createMacosTestDriver()),
+                platformName: "macOS Tests",
+                databasePath: MacosDriverKt.getMacosTestDatabasePath()
+            )
+        }
         return AppleBridgeBootstrap(
             container: KmpContainer(driver: MacosDriverKt.createMacosDriver()),
             platformName: "macOS",

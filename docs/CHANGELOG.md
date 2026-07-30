@@ -13,6 +13,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Docs
+
+- Gobierno de agentes: `AGENTS.md` establece `gpt-5.6-terra` como modelo habitual y reserva consultas acotadas de `gpt-5.6-sol` para diagnósticos o decisiones excepcionalmente complejos; el agente principal mantiene la decisión y la aplicación de cambios.
+
 ### Added
 
 - Planificador macOS: el Gantt incorpora el filtro `Todas / Requieren atención`, acciones

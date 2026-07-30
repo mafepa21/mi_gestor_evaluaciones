@@ -15,6 +15,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Horario docente: la configuración inicial permite seleccionar hasta tres Excel complementarios
+  y los combina en una única previsualización antes de guardar. Los bloques idénticos se unifican,
+  los solapes se bloquean y un fallo revierte las franjas creadas. Si el horario heredado contiene
+  destinos duplicados, Ajustes muestra una acción explícita `Reparar horario` que conserva una sola
+  copia.
 - Planificador macOS: el Gantt incorpora el filtro `Todas / Requieren atención`, acciones
   `Ubicar (n)` para sesiones pendientes, información contextual al pasar el puntero y un target
   de pruebas macOS que fija estados, conteos, semanas ISO, densidades y secuencias sin agendar.

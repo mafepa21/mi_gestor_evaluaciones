@@ -15,6 +15,8 @@ struct WebSubmissionsWorkspaceView: View {
 
     /// Se recuerda entre sesiones: la dirección de la web no cambia cada vez.
     @AppStorage("webSubmissions.baseURL") private var baseURL = "https://entregas-alumnado.vercel.app"
+    /// También se recuerda: el correo de entrega no cambia de un formulario a otro.
+    @AppStorage("webSubmissions.deliveryEmail") private var deliveryEmail = ""
 
     @State private var selectedClassId: Int64?
     @State private var instruments: [WebPublishableInstrument] = []
@@ -90,9 +92,17 @@ struct WebSubmissionsWorkspaceView: View {
                 className: currentClassName,
                 instruments: instruments,
                 baseURL: $baseURL,
+                deliveryEmail: $deliveryEmail,
                 isPublishing: publishing,
-                onPublish: { columnId, url, caducidad in
-                    Task { await publish(columnId: columnId, baseURL: url, expiresAt: caducidad) }
+                onPublish: { columnId, url, correo, caducidad in
+                    Task {
+                        await publish(
+                            columnId: columnId,
+                            baseURL: url,
+                            deliveryEmail: correo,
+                            expiresAt: caducidad
+                        )
+                    }
                 },
                 result: publishResult
             )
@@ -185,7 +195,12 @@ struct WebSubmissionsWorkspaceView: View {
         }
     }
 
-    private func publish(columnId: String, baseURL url: String, expiresAt: Date) async {
+    private func publish(
+        columnId: String,
+        baseURL url: String,
+        deliveryEmail correo: String,
+        expiresAt: Date
+    ) async {
         guard let classId = selectedClassId else { return }
         publishing = true
         defer { publishing = false }
@@ -194,6 +209,7 @@ struct WebSubmissionsWorkspaceView: View {
                 classId: classId,
                 columnId: columnId,
                 baseURL: url,
+                deliveryEmail: correoLimpio(correo),
                 expiresAt: expiresAt
             )
             await reload()
@@ -201,6 +217,13 @@ struct WebSubmissionsWorkspaceView: View {
             errorMessage = error.localizedDescription
             showingPublish = false
         }
+    }
+
+    /// El campo vacío tiene que llegar como `nil` y no como cadena vacía: el
+    /// manifiesto solo lleva `deliveryEmail` si de verdad hay un correo.
+    private func correoLimpio(_ texto: String) -> String? {
+        let limpio = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        return limpio.isEmpty ? nil : limpio
     }
 
     private func confirmImport(

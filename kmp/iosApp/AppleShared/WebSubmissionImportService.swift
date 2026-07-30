@@ -67,6 +67,8 @@ struct WebFormManifest: Codable {
     let publisherKey: String?
     let signature: String?
     let expiresAt: String
+    /// Correo al que el alumnado manda su entrega. Solo lo usa la web.
+    let deliveryEmail: String?
 }
 
 struct WebSubmissionEnvelope: Codable {

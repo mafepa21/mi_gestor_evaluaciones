@@ -6,6 +6,9 @@ enum AppKeyboardKind {
     /// Teclado de direcciones web: sin autocorrección ni mayúscula inicial, con la
     /// barra y el punto a mano. Para campos donde se pega o escribe una URL.
     case url
+    /// Teclado de correo: con la arroba a mano y, como la URL, sin autocorregir ni
+    /// poner mayúscula inicial, que en una dirección estorban.
+    case email
 }
 
 func appSecondarySystemBackgroundColor() -> Color {
@@ -76,6 +79,10 @@ extension View {
         case .url:
             // Autocorregir una URL la rompe, y la mayúscula inicial también.
             self.keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        case .email:
+            self.keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         }

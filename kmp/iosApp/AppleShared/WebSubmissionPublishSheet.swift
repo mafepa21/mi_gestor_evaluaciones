@@ -19,8 +19,10 @@ struct WebSubmissionPublishSheet: View {
     let instruments: [WebPublishableInstrument]
     /// URL de la web donde está publicada la PWA.
     @Binding var baseURL: String
+    /// Correo al que el alumnado enviará su entrega.
+    @Binding var deliveryEmail: String
     let isPublishing: Bool
-    let onPublish: (_ columnId: String, _ baseURL: String, _ expiresAt: Date) -> Void
+    let onPublish: (_ columnId: String, _ baseURL: String, _ deliveryEmail: String, _ expiresAt: Date) -> Void
     let result: WebPublishResult?
 
     @State private var selectedColumnId: String?
@@ -131,6 +133,19 @@ struct WebSubmissionPublishSheet: View {
                     .textFieldStyle(.roundedBorder)
                     .appKeyboardType(.url)
                     .appWritingToolsDisabled()
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Correo donde recibes las entregas")
+                    .font(.caption.weight(.semibold))
+                TextField("tu.correo@centro.es", text: $deliveryEmail)
+                    .textFieldStyle(.roundedBorder)
+                    .appKeyboardType(.email)
+                    .appWritingToolsDisabled()
+                Text("Se enseña en la web para que el alumnado sepa a dónde mandarlo. Usa la dirección del centro: el fichero del formulario se sirve en abierto.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -390,7 +405,7 @@ struct WebSubmissionPublishSheet: View {
 
                 Button {
                     if let columnId = selectedColumnId {
-                        onPublish(columnId, baseURL, expiresAt)
+                        onPublish(columnId, baseURL, deliveryEmail, expiresAt)
                     }
                 } label: {
                     if isPublishing {
@@ -458,8 +473,9 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                     ),
                 ],
                 baseURL: .constant("https://entregas-alumnado.vercel.app"),
+                deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _ in },
+                onPublish: { _, _, _, _ in },
                 result: nil
             )
             .previewDisplayName("Antes de publicar")
@@ -469,8 +485,9 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 className: "1º Bachillerato A",
                 instruments: [],
                 baseURL: .constant("https://entregas-alumnado.vercel.app"),
+                deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _ in },
+                onPublish: { _, _, _, _ in },
                 result: WebPublishResult(
                     formInstanceId: "11111111-1111-4111-8111-111111111111",
                     title: "Rúbrica de portafolio técnico",
@@ -491,8 +508,9 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 className: "1º Bachillerato B",
                 instruments: [],
                 baseURL: .constant("https://entregas-alumnado.vercel.app"),
+                deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _ in },
+                onPublish: { _, _, _, _ in },
                 result: nil
             )
             .previewDisplayName("Sin instrumentos")

@@ -1770,6 +1770,7 @@ final class KmpBridge: ObservableObject {
         classId: Int64,
         columnId: String,
         baseURL: String,
+        deliveryEmail: String?,
         expiresAt: Date
     ) async throws -> WebPublishResult {
         guard let detalle = try await container.notebookInstrumentsRepository
@@ -1820,6 +1821,7 @@ final class KmpBridge: ObservableObject {
                 )
             },
             baseURL: baseURL,
+            deliveryEmail: deliveryEmail,
             expiresAtEpochMs: Int64(expiresAt.timeIntervalSince1970 * 1000)
         )
 

@@ -19,6 +19,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Entregas del alumnado vía web: la publicación incluye ahora el **correo al que el alumnado envía
+  su entrega** (`deliveryEmail`, campo nuevo y opcional del contrato). La PWA lo enseña en la
+  pantalla de entrega junto al botón de compartir, porque `navigator.share` adjunta el fichero pero
+  **no puede rellenar el destinatario**: ese campo lo escribe quien envía. Se pide en la hoja de
+  publicación y se recuerda entre sesiones, con el aviso de usar la dirección del centro y no una
+  personal, ya que el fichero del formulario se sirve en abierto. `AppleViewCompatibility` gana
+  `AppKeyboardKind.email` (sin autocorrección ni mayúscula inicial, que en una dirección estorban),
+  añadido al helper compartido y no en la vista.
 - Entregas del alumnado vía web: el enlace personal pasa a llevar **también el formulario**
   (`/#f=<formInstanceId>&a=<alias>`), y el manifiesto exportado se llama `<formInstanceId>.json`.
   Sin esto la publicación no servía de nada: la PWA tenía la ruta del manifiesto fija en el código,

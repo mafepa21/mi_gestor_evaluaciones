@@ -435,6 +435,7 @@
 		EE585AABD4D49886E85298C0 /* SelectiveWipeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F49432D42F3A8BBD54876B /* SelectiveWipeSheet.swift */; };
 		EFDFB4479447A7246D91ABCA /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7AB4FB2753F16568E54891 /* DashboardView.swift */; };
 		F068E3CEACB675A1CED9011C /* NotebookModuleDataState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6144B137C267EC5DEA266F2 /* NotebookModuleDataState.swift */; };
+		F0A9D243D38E8DB467FD7399 /* interop-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 869F343174526D586B2D3893 /* interop-v1.json */; };
 		F0B171DB64DE32129BFBCE30 /* AppleAppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */; };
 		F0FD5D3E81213790BCEC6415 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4D63DE58BB98EFB94E5B080 /* MacRootView.swift */; };
 		F18E51FEBE8E5C34D005F51C /* PlannerWorkspaceViewModel+Journal.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37D119F98E876CB3CAA8910 /* PlannerWorkspaceViewModel+Journal.swift */; };
@@ -639,6 +640,7 @@
 		8457F6307147064BDBB54971 /* NotebookModuleGridCells.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleGridCells.swift; sourceTree = "<group>"; };
 		85B8ED1FDFD34D1DF02ACDD8 /* TeacherScheduleSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherScheduleSettingsView.swift; sourceTree = "<group>"; };
 		863347F9ECD4F8B4496AA0AD /* AppSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsStore.swift; sourceTree = "<group>"; };
+		869F343174526D586B2D3893 /* interop-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "interop-v1.json"; sourceTree = "<group>"; };
 		86A9F5C3A35823EC9555F412 /* NotebookModuleDisplayFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleDisplayFormatting.swift; sourceTree = "<group>"; };
 		893DD0805D75AD4923832EDD /* AssignRubricToTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssignRubricToTabView.swift; sourceTree = "<group>"; };
 		8A4E8D89679CED5E074F1005 /* NotebookModuleToolbarState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleToolbarState.swift; sourceTree = "<group>"; };
@@ -831,6 +833,7 @@
 			children = (
 				583959F23A0D26CC96A6ADDD /* PlannerGanttProjectionTests.swift */,
 				09BF8CB77031070DE6567B1A /* ScheduleImportTests.swift */,
+				776735EBECA401E7250DBD94 /* Recursos */,
 			);
 			path = PlannerTests;
 			sourceTree = "<group>";
@@ -915,6 +918,14 @@
 				B9C2E7C1B3A5F4520E560349 /* WebSubmissionTestBench.swift */,
 			);
 			path = AppleShared;
+			sourceTree = "<group>";
+		};
+		776735EBECA401E7250DBD94 /* Recursos */ = {
+			isa = PBXGroup;
+			children = (
+				869F343174526D586B2D3893 /* interop-v1.json */,
+			);
+			path = Recursos;
 			sourceTree = "<group>";
 		};
 		93715BBAC7A38E8F669C02AE /* Products */ = {
@@ -1145,6 +1156,7 @@
 			buildConfigurationList = 575ACBC868AEAB4A4C770F28 /* Build configuration list for PBXNativeTarget "MiGestorPlannerTests" */;
 			buildPhases = (
 				9084BABF362C1934138446D1 /* Sources */,
+				19FFBF39F3AFFE7F41A8F154 /* Resources */,
 				BF4C257CBF972B8EDADECF98 /* Frameworks */,
 				9714FFD817B789D72FDB5005 /* Embed Frameworks */,
 			);
@@ -1205,6 +1217,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		19FFBF39F3AFFE7F41A8F154 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F0A9D243D38E8DB467FD7399 /* interop-v1.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5E7C76C4953CB83CF3B1D4B4 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;

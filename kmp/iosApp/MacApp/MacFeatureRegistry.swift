@@ -16,6 +16,7 @@ struct MacFeatureDescriptor: Identifiable, Hashable {
         case planner
         case diary
         case situations
+        case webSubmissions
         case meetings
         case students
         case rubrics
@@ -47,6 +48,7 @@ enum MacFeatureRegistry {
         .init(feature: .planner, title: "Planificación", subtitle: "Sesiones, unidades y agenda docente", systemImage: "calendar.badge.clock", source: .parityIOS, enabledInV1: true),
         .init(feature: .diary, title: "Diario de aula", subtitle: "Trazabilidad de sesión", systemImage: "doc.text.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .situations, title: "Situaciones", subtitle: "Programación e importación DOCX", systemImage: "doc.text.magnifyingglass", source: .parityIOS, enabledInV1: true),
+        .init(feature: .webSubmissions, title: "Entregas web", subtitle: "Publicar formularios y recoger respuestas", systemImage: "paperplane.circle.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .meetings, title: "Reuniones", subtitle: "Actas de centro y acuerdos", systemImage: "person.3.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .students, title: "Alumnado", subtitle: "Directorio y seguimiento rápido", systemImage: "person.3.sequence.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .rubrics, title: "Rúbricas", subtitle: "Banco de evaluación y edición", systemImage: "checklist.checked", source: .parityIOS, enabledInV1: true),

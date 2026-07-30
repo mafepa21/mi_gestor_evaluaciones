@@ -1727,6 +1727,16 @@ final class KmpBridge: ObservableObject {
             guard let detalle = try? await container.notebookInstrumentsRepository
                 .getTemplateForColumn(columnId: columna.id),
                   !detalle.items.isEmpty else { continue }
+            // Una pregunta de elección sin opciones no se puede responder, así que
+            // el formulario entero sería inservible. Se detecta aquí para avisarlo
+            // en la lista y no al pulsar Publicar.
+            let sinOpciones = detalle.items.first {
+                $0.type == .choice && $0.options.count < 2
+            }
+            let problema = sinOpciones.map {
+                "«\($0.title)» es de elección y no tiene opciones. Edita el instrumento y añádelas."
+            }
+
             salida.append(
                 WebPublishableInstrument(
                     columnId: columna.id,
@@ -1735,7 +1745,8 @@ final class KmpBridge: ObservableObject {
                     itemCount: detalle.items.count,
                     alreadyPublished: (try? await container.webSubmissionsRepository
                         .listFormInstancesForClass(classId: classId))?
-                        .contains(where: { $0.columnId == columna.id && !$0.revoked }) ?? false
+                        .contains(where: { $0.columnId == columna.id && !$0.revoked }) ?? false,
+                    blockingIssue: problema
                 )
             )
         }
@@ -2082,7 +2093,7 @@ final class KmpBridge: ObservableObject {
         recipientPublicKey: String,
         publisherPublicKey: String?,
         manifestJson: String,
-        items: [(webItemId: String, title: String, type: WebManifestItemType)],
+        items: [(webItemId: String, title: String, type: WebManifestItemType, options: [String])],
         alias: String
     ) async throws -> WebSubmissionTestFormResult {
         if classes.isEmpty { try await refreshClasses() }
@@ -2166,7 +2177,10 @@ final class KmpBridge: ObservableObject {
                 key: item.webItemId,
                 title: item.title,
                 type: Self.instrumentItemType(from: item.type),
-                options: [],
+                // Sin esto, una pregunta de elección se guardaba sin opciones y
+                // luego el publicador la rechazaba con razón: no se puede elegir
+                // entre nada.
+                options: item.options,
                 required: true,
                 order: Int32(indice),
                 helpText: nil,

@@ -153,6 +153,12 @@ struct WebPublishableInstrument: Identifiable, Hashable {
     /// Ya tiene un formulario vivo. Publicar otro reparte códigos nuevos y deja
     /// los enlaces antiguos sin resolver, así que conviene avisar.
     let alreadyPublished: Bool
+    /// Por qué NO se puede publicar, si es que no se puede. Se calcula al listar
+    /// para poder avisar en la lista: descubrirlo al pulsar Publicar, después de
+    /// haber elegido fecha y dirección, es la peor forma de enterarse.
+    let blockingIssue: String?
+
+    var canPublish: Bool { blockingIssue == nil }
 }
 
 struct WebPublishedLink: Identifiable, Hashable {

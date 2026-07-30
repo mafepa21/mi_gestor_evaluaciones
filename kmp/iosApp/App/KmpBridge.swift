@@ -5579,9 +5579,17 @@ final class KmpBridge: ObservableObject {
         situation: LearningSituation,
         draft: LearningSituationSessionSequenceImportDraft
     ) async throws -> [Int: Int64] {
+        let existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situation.id)
+        if let identicalVersion = existingVersions.first(where: { $0.sha256 == draft.sha256 }) {
+            let existingPlans = try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: identicalVersion.id)
+            return Dictionary(
+                existingPlans.map { (Int($0.sessionNumber), $0.id) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+
         let storedURL = try LearningSituationDocumentStore().persistSourceDocument(from: draft.sourceURL, sha256: draft.sha256)
         let warningsJSON = String(data: try JSONEncoder().encode(draft.warnings), encoding: .utf8) ?? "[]"
-        let existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situation.id)
         let versionNumber = Int32((existingVersions.first?.versionNumber ?? 0) + 1)
         let versionId = try await container.learningSituationsRepository.saveSessionSequenceVersion(
             version: LearningSituationSessionSequenceVersion(

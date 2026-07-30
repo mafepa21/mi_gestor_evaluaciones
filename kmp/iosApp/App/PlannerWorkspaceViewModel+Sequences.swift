@@ -17,7 +17,17 @@ private struct PlannerSequenceCatalogEntry {
     let situationTitle: String
     let groupId: Int64
     let sequenceVersionId: Int64
+    let equivalentVersionIds: Set<Int64>
     let plans: [LearningSituationSessionPlan]
+}
+
+enum PlannerSequenceVersionProjection {
+    static func equivalentVersionIds(
+        latestSha256: String,
+        versions: [(id: Int64, sha256: String)]
+    ) -> Set<Int64> {
+        Set(versions.filter { $0.sha256 == latestSha256 }.map(\.id))
+    }
 }
 
 @MainActor
@@ -84,6 +94,10 @@ extension PlannerWorkspaceViewModel {
                 let plans = try await bridge.learningSituationSessionPlans(sequenceVersionId: latestVersion.id)
                     .sorted { $0.sessionNumber < $1.sessionNumber }
                 guard !plans.isEmpty else { continue }
+                let equivalentVersionIds = PlannerSequenceVersionProjection.equivalentVersionIds(
+                    latestSha256: latestVersion.sha256,
+                    versions: versions.map { (id: $0.id, sha256: $0.sha256) }
+                )
 
                 for link in links {
                     catalog.append(
@@ -91,6 +105,7 @@ extension PlannerWorkspaceViewModel {
                             situationTitle: situation.title.nilIfBlank ?? "Situación sin título",
                             groupId: link.classId,
                             sequenceVersionId: latestVersion.id,
+                            equivalentVersionIds: equivalentVersionIds,
                             plans: plans
                         )
                     )
@@ -111,14 +126,16 @@ extension PlannerWorkspaceViewModel {
             for entry in catalog {
                 let sequenceSessions = filteredSessions.filter { session in
                     session.groupId == entry.groupId
-                        && planBySessionId[session.id]?.sequenceVersionId == entry.sequenceVersionId
+                        && planBySessionId[session.id].map {
+                            entry.equivalentVersionIds.contains($0.sequenceVersionId)
+                        } == true
                 }
                 catalogSessionIds.formUnion(sequenceSessions.map(\.id))
                 var rows: [PlannerSequenceRow] = []
 
                 for plan in entry.plans {
                     let matchingSession = sequenceSessions.first {
-                        $0.learningSituationSessionPlanId?.int64Value == plan.id
+                        planBySessionId[$0.id]?.sessionNumber == plan.sessionNumber
                     }
                     rows.append(
                         PlannerSequenceRow(

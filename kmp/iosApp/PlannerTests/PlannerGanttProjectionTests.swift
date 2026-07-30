@@ -125,4 +125,18 @@ final class PlannerGanttProjectionTests: XCTestCase {
 
         XCTAssertTrue(LearningSituationScheduleProjection.hasDuplicateDestinations(slots))
     }
+
+    func testIdenticalSequenceHashesShareOneGanttProjection() {
+        let equivalent = PlannerSequenceVersionProjection.equivalentVersionIds(
+            latestSha256: "same-document",
+            versions: [
+                (id: 1, sha256: "same-document"),
+                (id: 2, sha256: "same-document"),
+                (id: 3, sha256: "new-document")
+            ]
+        )
+
+        XCTAssertEqual(equivalent, [1, 2])
+        XCTAssertFalse(equivalent.contains(3))
+    }
 }

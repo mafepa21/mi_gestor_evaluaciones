@@ -10,6 +10,13 @@ Prioridad:
 - Arquitectura KMP estable.
 - Cambios pequenos, seguros y revisables.
 
+## Modelos y consultas complejas
+
+- Usar `gpt-5.6-terra` como modelo predeterminado para el trabajo principal y los subtareas ordinarios.
+- Cuando una decisión o diagnóstico sea excepcionalmente complejo —por ejemplo, un problema de concurrencia, una regresión difícil de aislar, una migración delicada o un diseño arquitectónico con alternativas relevantes—, lanzar un subagente de consulta con `gpt-5.6-sol`.
+- El subagente `gpt-5.6-sol` debe limitarse a analizar, proponer y señalar riesgos; el agente principal conserva la decisión final y aplica los cambios tras verificar su alcance.
+- No delegar en `gpt-5.6-sol` tareas rutinarias ni usarlo solo para acelerar trabajo paralelo.
+
 ## Paso previo obligatorio
 
 Antes de tocar UI, aplicar la skill `jobs-design-philosophy`. No repetir aqui su contenido: la skill es la fuente unica.

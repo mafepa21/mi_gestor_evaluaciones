@@ -15,6 +15,25 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Entregas del alumnado vía web: nuevo `WebSubmissionImportService` (`AppleShared/`) que abre las
+  entregas cifradas que produce la PWA del repo `entregas-alumnado` y las convierte en un borrador
+  previsualizable. Diseño en `plan_entregas_web_alumnado_2026-07-29.md`. Hace siete cosas y ninguna
+  más: verifica la firma Ed25519 del manifiesto, descifra el sobre, comprueba que la entrega es de
+  ese formulario, traduce alias → alumno y `webItemId` → `notebook_instrument_items.id`, valida cada
+  respuesta contra el tipo declarado, descarta duplicados por `submissionId` y devuelve el borrador.
+  **No escribe en la base de datos**: eso será una llamada a
+  `NotebookInstrumentsRepository.saveResponses`, que es quien resume el estado de la celda, escribe
+  `display_value`, deriva y guarda la nota, invalida `sheetCache` y emite `NotebookRefreshBus`; un
+  `INSERT` directo se salta esos cinco pasos. Tampoco calcula notas con lo que manda el navegador.
+  Criptografía con **CryptoKit y cero dependencias nuevas**: X25519 efímero por entrega,
+  HKDF-SHA256 y ChaCha20-Poly1305. Va en `AppleShared` y no en `desktopMain` como decía el plan,
+  porque todos los importadores de la app viven en Swift y ponerlo en el helper obligaría a un salto
+  extra y crearía un segundo sitio que escribe datos de evaluación; el efecto secundario bueno es
+  que en esta fase, donde el transporte es un fichero, el iPad también puede importar. Un desajuste
+  de tipo tumba la entrega **entera**, no solo ese ítem, porque media entrega importada deja la
+  celda a medias sin que nadie sepa qué falta. Un alias que no está en la tabla, en cambio, **no**
+  tumba la entrega: se marca para asignación manual, porque tirar trabajo del alumnado por una fila
+  que falta sería el peor comportamiento posible.
 - Apple Foundation Models / IA Local: Añadida la capacidad `weeklyStudentEmail` para redactar borradores masivos e individuales de correos semanales de seguimiento evaluativo para alumnos y sus familias. Incluye motor dual (`AppleFoundationStudentEmailService`) con rama de Foundation Models on-device y fallback determinista por reglas pedagógicas, el workspace interactivo `WeeklyStudentEmailWorkspaceView` con previsualización, edición de destinatario/asunto/cuerpo, exportación a Mail nativo (`mailto:`) y copiado al portapapeles. Integrado con `AppleAIOrchestrator`, la Ficha de Alumno (`StudentProfilesWorkspaceView`), el Inspector del Cuaderno (`NotebookStudentInspector`) y el módulo de Informes (`RubricsReportsWorkspaceViews`).
 - Primer uso: la app estrena una bienvenida y una lista de "Primeros pasos" (`OnboardingModels`,
   `OnboardingWelcomeSheet`, `OnboardingChecklistView`, `OnboardingHost`, todo en `AppleShared/`).
@@ -158,6 +177,26 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Entregas del alumnado vía web: nuevo `scripts/interop_entregas_web/verificar.sh`, que compila el
+  servicio real (no una copia) junto con un comprobador y lo ejecuta contra el fixture
+  `interop-v1.json` que genera la PWA. **50 comprobaciones, 0 fallos.** Prueba lo que ninguna otra
+  cosa prueba: que CryptoKit descifra exactamente lo que cifró @noble en el navegador. El fixture es
+  adversario a propósito — un decimal (`min: 0.5`) junto a un entero (`max: 250`) en el manifiesto,
+  porque `JSON.stringify(250)` da `"250"` y Swift tiende a dar `"250.0"` y eso rompería la firma sin
+  decir por qué; comillas, barra invertida y salto de línea en un título; y acentos en una respuesta.
+  Cubre además que atribuir la entrega a otro alias, recolocarla en otro formulario, cambiar el
+  `submissionId` o tocar un byte del criptograma hacen fallar el descifrado en vez de colar, y que
+  sustituir `recipientKey` en el manifiesto (el ataque que dejaría leer todas las respuestas en
+  claro) invalida la firma. No se hace como test de XCTest porque en `main` no existe todavía ningún
+  objetivo de pruebas de Swift y añadirlo aquí chocaría con `develop`, que ya lo trae.
+- Entregas del alumnado vía web: `./gradlew :data:verifyCommonMainAppDatabaseMigration`
+  **BUILD SUCCESSFUL**, y `:data:generateCommonMainAppDatabaseInterface` sin errores. Es lo que
+  confirma que la migración 39 aplicada en orden produce el mismo esquema que los `CREATE` de
+  `AppDatabase.sq`. **No se ha ejecutado ningún build de las apps Apple** en esta tanda: el fichero
+  nuevo compila con `swiftc` y se ha comprobado a mano que no colisiona con símbolos existentes
+  (`base64URLEncoded`, `JSONCanonicalizer`, `WebSubmission*` son nombres libres; la única
+  `extension Data` previa, en `MacModuleStubs.swift`, es `private` y con otros miembros), pero queda
+  pendiente `verify_apple_builds.sh` antes de dar la feature por cerrada.
 - Sync LAN (macOS): `./scripts/verify_apple_builds.sh` (regeneración con XcodeGen + `xcodebuild` para `MiGestorKMPMac` y `MiGestorKMPiOS`) en verde tras el cambio. Root cause confirmado en la máquina de desarrollo con `lsof -iTCP:8765` y `ps`: un helper huérfano de un build de días atrás seguía escuchando en el puerto 8765 mientras la app principal corría desde una carpeta de DerivedData distinta; se liberó manualmente para restaurar el servicio en caliente sin esperar a una recompilación. No se ha probado en caliente el propio flujo de detección corregido (matar un helper huérfano real con la nueva lógica y comprobar que el emparejamiento con un iPad se recupera), porque reproducirlo de forma controlada exige forzar dos builds de Xcode con DerivedData distinta; queda pendiente de verificación manual.
 
 - Compilación de las dos apps Apple con los esquemas `MiGestorKMPMac` (destino macOS) y `MiGestorKMPiOS` (destino genérico de simulador iOS): **BUILD SUCCEEDED** en ambos tras la unificación del dashboard. No se ha ejecutado prueba manual en dispositivo ni simulador: los estados que faltan por comprobar a mano son el aula en curso con horario configurado, el paso automático a Despacho fuera de horario y el caso sin horario configurado.

@@ -82,6 +82,8 @@ Prioridad: media-alta.
 - Multi-asignatura: relación real grupo-asignatura con catálogo visible y presets aplicables por materia; siguiente paso, usarla en filtros y onboarding.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
+  Avance: entregas del alumnado via web. `WebSubmissionImportService` abre y valida las entregas cifradas de la PWA (repo `entregas-alumnado`) y la migracion 39 guarda la tabla de correspondencias solo en local. Restricciones fijadas: `LocalSyncServer` no se expone a Internet; toda escritura pasara por `saveResponses`, nunca por SQL directo; las cuatro tablas nuevas no llevan `device_id` ni `sync_version` para que no viajen por Sync LAN. Diseno en `plan_entregas_web_alumnado_2026-07-29.md`.
+  Pendiente: la hoja de previsualizacion, la escritura via `saveResponses`, la publicacion del manifiesto desde la app, el llavero para la clave privada y el transporte en la nube. Sin eso el servicio existe pero todavia no hay forma de importar desde la interfaz.
 - Exportaciones: informes utiles y reproducibles.
   Avance: Informes Apple IA dispone de `StudentReportSummary` estructurado como base para renderizar informes nativos y PDFs sin depender de texto libre como contrato principal.
 - Privacidad: mantener `PRIVACY.md` y `docs/04_legal_comercial/datos_personales.md` como base operativa pendiente de revision juridica.

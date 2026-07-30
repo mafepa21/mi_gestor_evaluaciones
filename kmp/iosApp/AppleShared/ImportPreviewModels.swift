@@ -4,6 +4,10 @@ import UniformTypeIdentifiers
 extension UTType {
     static let xlsx = UTType(filenameExtension: "xlsx", conformingTo: .data)!
     static let docx = UTType(filenameExtension: "docx", conformingTo: .data)!
+    /// Entrega cifrada del alumnado hecha desde la PWA (repo `entregas-alumnado`).
+    /// Por dentro es JSON, pero se declara conforme a `.data` y no a `.json` para
+    /// que el selector de ficheros no ofrezca cualquier `.json` del dispositivo.
+    static let mgsub = UTType(filenameExtension: "mgsub", conformingTo: .data)!
 }
 
 struct AppleStudentImportPreview: Identifiable {

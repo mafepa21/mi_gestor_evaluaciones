@@ -27,6 +27,22 @@ El formato sigue una variante practica de Keep a Changelog:
 - Planificador macOS: el Gantt incorpora el filtro `Todas / Requieren atención`, acciones
   `Ubicar (n)` para sesiones pendientes, información contextual al pasar el puntero y un target
   de pruebas macOS que fija estados, conteos, semanas ISO, densidades y secuencias sin agendar.
+- Entregas del alumnado vía web: nueva `WebSubmissionImportSheet` (`AppleShared/`), la hoja donde el
+  docente revisa un lote antes de escribir nada. Patrón adaptativo canónico del proyecto (dos zonas
+  con `ViewThatFits`, fallback apilado que conserva todas las acciones, `presentationDetents` en
+  iOS/iPadOS y `frame` solo bajo `#if os(macOS)`), tomando como referencia
+  `ScheduleImportPreviewSheet`, que resuelve el mismo problema. Reparte el lote en tres cubos y el
+  orden importa: primero lo que se va a escribir, luego lo que necesita una decisión, y al final lo
+  que se ignora. **Una entrega cuyo código no esté en la tabla de alias no se descarta: se pregunta**
+  con un selector de alumnado, y el selector esconde a quien ya esté asignado a otra entrega del
+  mismo lote, porque la base de datos lo impide con un `UNIQUE` y es mejor no ofrecerlo que fallar al
+  guardar. Las que queden sin asignar se quedan fuera y el pie lo dice con su cuenta, en vez de
+  bloquear todo el lote. La tarjeta "Qué se va a escribir" avisa de que **la nota la calcula la app
+  al guardar y no viene del navegador**, para que nadie la busque en la previsualización. Incluye
+  `WebSubmissionImportButton`, que es quien abre el selector de ficheros `.mgsub` y gestiona el
+  alcance de seguridad de las URLs; el sheet se queda tonto a propósito (recibe un lote ya examinado
+  y no sabe de ficheros ni de criptografía), lo que permite previsualizarlo sin tocar disco. Tres
+  previsualizaciones de Xcode con datos de muestra: lote mixto, todo rechazado y vacío.
 - Entregas del alumnado vía web: nuevo `WebSubmissionImportService` (`AppleShared/`) que abre las
   entregas cifradas que produce la PWA del repo `entregas-alumnado` y las convierte en un borrador
   previsualizable. Diseño en `plan_entregas_web_alumnado_2026-07-29.md`. Hace siete cosas y ninguna
@@ -257,6 +273,17 @@ El formato sigue una variante practica de Keep a Changelog:
   `extension Data` previa, en `MacModuleStubs.swift`, es `private` y con otros miembros).
   **No hay prueba manual en la app**, y no aplica todavía: sin hoja de previsualización no hay nada
   que abrir desde la interfaz.
+- Entregas del alumnado vía web: `./scripts/verify_apple_builds.sh` de nuevo en verde con las dos apps
+  tras añadir `WebSubmissionImportSheet`. Auditoría de layout hecha según la guía del proyecto: **no
+  hay ni un `.fixedSize()` desnudo** (los dos que hay son `fixedSize(horizontal: false, vertical:
+  true)`, el uso correcto para que un texto largo crezca hacia abajo en vez de cortarse), los únicos
+  `frame(width:)` son el icono de 48pt y el botón de cerrar de 32pt igual que en la hoja de
+  referencia, la columna lateral usa `minWidth/idealWidth/maxWidth` en vez del ancho rígido que ya
+  cortó controles en la importación de horario, y el `frame` de tamaño mínimo va bajo
+  `#if os(macOS)` con `presentationDetents` en la otra rama. **La hoja no se ha visto renderizada**:
+  todavía no hay ningún sitio de la app que la presente, porque cablearla a la base de datos exige
+  tocar `KmpBridge.swift`, que es archivo protegido y necesita su propio permiso. Se puede ver
+  mientras tanto con las previsualizaciones de Xcode que trae el propio fichero.
 - Sync LAN (macOS): `./scripts/verify_apple_builds.sh` (regeneración con XcodeGen + `xcodebuild` para `MiGestorKMPMac` y `MiGestorKMPiOS`) en verde tras el cambio. Root cause confirmado en la máquina de desarrollo con `lsof -iTCP:8765` y `ps`: un helper huérfano de un build de días atrás seguía escuchando en el puerto 8765 mientras la app principal corría desde una carpeta de DerivedData distinta; se liberó manualmente para restaurar el servicio en caliente sin esperar a una recompilación. No se ha probado en caliente el propio flujo de detección corregido (matar un helper huérfano real con la nueva lógica y comprobar que el emparejamiento con un iPad se recupera), porque reproducirlo de forma controlada exige forzar dos builds de Xcode con DerivedData distinta; queda pendiente de verificación manual.
 
 - Compilación de las dos apps Apple con los esquemas `MiGestorKMPMac` (destino macOS) y `MiGestorKMPiOS` (destino genérico de simulador iOS): **BUILD SUCCEEDED** en ambos tras la unificación del dashboard. No se ha ejecutado prueba manual en dispositivo ni simulador: los estados que faltan por comprobar a mano son el aula en curso con horario configurado, el paso automático a Despacho fuera de horario y el caso sin horario configurado.

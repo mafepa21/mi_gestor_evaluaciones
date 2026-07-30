@@ -181,6 +181,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Importación de horario y secuencias (#179): `MiGestorPlannerTests` ejecutó 12 pruebas con 0
+  fallos; `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. La repetición de XCTest
+  conservó sin cambios la huella, versión y recuentos de la base real y creó su base aislada bajo
+  `MiGestorTests`.
 - Regresión de programación de situaciones: `PlannerGanttProjectionTests` amplía su cobertura a
   8 pruebas, con casos específicos para deduplicar franjas docentes idénticas y rechazar dos
   sesiones destinadas a la misma fecha/periodo; 8 ejecutadas, 0 fallos. Después del cambio,

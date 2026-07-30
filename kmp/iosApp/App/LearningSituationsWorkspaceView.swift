@@ -194,7 +194,7 @@ struct LearningSituationsWorkspaceView: View {
                         importTargetId = nil
                         isImporterPresented = true
                     } label: {
-                        Image(systemName: "plus")
+                        Label("Importar", systemImage: "square.and.arrow.down")
                     }
                     .buttonStyle(.borderedProminent)
                     .help("Importar situación de aprendizaje")
@@ -209,18 +209,42 @@ struct LearningSituationsWorkspaceView: View {
             .padding(.vertical, 12)
             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 WorkspaceCompactStat(title: "Situaciones", value: "\(filteredSituations.count)", tint: EvaluationDesign.accent)
                 WorkspaceCompactStat(title: "Materias", value: "\(availableSubjects.count)", tint: IOSAppStyle.warning)
                 WorkspaceCompactStat(title: "Trimestres", value: "\(availableTerms.count)", tint: EvaluationDesign.success)
-                WorkspaceCompactStat(title: "Selección", value: isSelectionMode ? "\(selectedSituationIds.count)" : "1", tint: .blue)
             }
 
             situationFiltersMenu
+            if isSelectionMode {
+                Text("\(selectedSituationIds.count) seleccionadas")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
             }
             .padding(24)
 
-            if isSelectionMode {
+            if filteredSituations.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: situations.isEmpty ? "doc.badge.plus" : "line.3.horizontal.decrease.circle")
+                        .font(.title)
+                        .foregroundStyle(.secondary)
+                    Text(situations.isEmpty ? "Aún no hay situaciones" : "Ninguna coincide con los filtros")
+                        .font(.headline)
+                    if situations.isEmpty {
+                        Button("Importar situación") {
+                            importTargetId = nil
+                            isImporterPresented = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("Limpiar filtros", action: clearSituationFilters)
+                            .buttonStyle(.bordered)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(24)
+            } else if isSelectionMode {
                 List(filteredSituations, id: \.id, selection: $selectedSituationIds) { situation in
                     situationRow(for: situation)
                         .tag(situation.id)
@@ -307,16 +331,39 @@ struct LearningSituationsWorkspaceView: View {
                 .padding(28)
             }
         } else {
-            WorkspaceEmptyState(
-                title: "Situaciones de aprendizaje",
-                subtitle: "Importa un documento Word y asócialo a tus grupos para programar sesiones y preparar evaluación.",
-                systemImage: "doc.text.magnifyingglass",
-                actionTitle: "Importar situación"
-            ) {
-                importTargetId = nil
-                isImporterPresented = true
+            if situations.isEmpty {
+                WorkspaceEmptyState(
+                    title: "Situaciones de aprendizaje",
+                    subtitle: "Importa un documento Word y asócialo a tus grupos para programar sesiones y preparar evaluación.",
+                    systemImage: "doc.text.magnifyingglass",
+                    actionTitle: "Importar situación"
+                ) {
+                    importTargetId = nil
+                    isImporterPresented = true
+                }
+            } else if filteredSituations.isEmpty {
+                WorkspaceEmptyState(
+                    title: "Sin resultados",
+                    subtitle: "No hay situaciones que coincidan con la búsqueda o los filtros activos.",
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    actionTitle: "Limpiar filtros",
+                    action: clearSituationFilters
+                )
+            } else {
+                ContentUnavailableView(
+                    "Selecciona una situación",
+                    systemImage: "sidebar.left",
+                    description: Text("El detalle y sus acciones aparecerán aquí.")
+                )
             }
         }
+    }
+
+    private func clearSituationFilters() {
+        searchText = ""
+        subjectFilter = ""
+        termFilter = ""
+        classFilter = nil
     }
 
     private func actionRow(for situation: LearningSituation) -> some View {

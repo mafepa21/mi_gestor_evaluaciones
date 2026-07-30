@@ -371,59 +371,97 @@ struct MacAttendanceView: View {
     }
 
     private var coursesContent: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
-                ForEach(classOverviews) { overview in
-                    Button {
-                        selectedClassId = overview.id
-                        mode = .day
-                    } label: {
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack(alignment: .firstTextBaseline) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(overview.schoolClass.name)
-                                        .font(.headline)
-                                        .foregroundStyle(.primary)
-                                    Text("\(overview.studentCount) alumnos")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Text("\(overview.attendanceRate)%")
-                                    .font(.system(size: 26, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(MacAppStyle.successTint)
-                            }
+        Group {
+            if attendanceStore.classes.isEmpty {
+                ContentUnavailableView {
+                    Label("Sin cursos", systemImage: "rectangle.stack.badge.plus")
+                } description: {
+                    Text("Crea o importa un curso para empezar a registrar asistencia.")
+                } actions: {
+                    Button("Gestionar cursos") {
+                        onOpenModule(.courses, nil, nil)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
+                        ForEach(classOverviews) { overview in
+                            Button {
+                                selectedClassId = overview.id
+                                mode = .day
+                            } label: {
+                                VStack(alignment: .leading, spacing: 16) {
+                                    HStack(alignment: .firstTextBaseline) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(overview.schoolClass.name)
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+                                            Text("\(overview.studentCount) alumnos")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Text("\(overview.attendanceRate)%")
+                                            .font(.system(size: 26, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(MacAppStyle.successTint)
+                                    }
 
-                            HStack(spacing: 8) {
-                                overviewChip("P", overview.presentCount, MacAppStyle.successTint)
-                                overviewChip("A", overview.absentCount, MacAppStyle.dangerTint)
-                                overviewChip("R", overview.lateCount, MacAppStyle.warningTint)
-                                overviewChip("Pend.", overview.pendingTodayCount, .gray)
+                                    HStack(spacing: 8) {
+                                        overviewChip("P", overview.presentCount, MacAppStyle.successTint)
+                                        overviewChip("A", overview.absentCount, MacAppStyle.dangerTint)
+                                        overviewChip("R", overview.lateCount, MacAppStyle.warningTint)
+                                        overviewChip("Pend.", overview.pendingTodayCount, .gray)
+                                    }
+                                }
+                                .padding(MacAppStyle.innerPadding)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(MacAppStyle.cardBackground)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                                        .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+                                }
                             }
-                        }
-                        .padding(MacAppStyle.innerPadding)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(MacAppStyle.cardBackground)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+                            .buttonStyle(MacHoverableButtonStyle(cornerRadius: MacAppStyle.cardRadius))
                         }
                     }
-                    .buttonStyle(MacHoverableButtonStyle(cornerRadius: MacAppStyle.cardRadius))
+                    .padding(.vertical, 8)
                 }
             }
-            .padding(.vertical, 8)
         }
     }
 
     private var dayContent: some View {
         Group {
-            if filteredRows.isEmpty {
-                ContentUnavailableView(
-                    "Sin alumnos visibles",
-                    systemImage: "person.crop.circle.badge.questionmark",
-                    description: Text("Ajusta el curso, la búsqueda o el filtro de estado.")
-                )
+            if selectedClassId == nil {
+                ContentUnavailableView {
+                    Label("Selecciona un curso", systemImage: "rectangle.stack")
+                } description: {
+                    Text("Elige el grupo cuya asistencia quieres registrar.")
+                } actions: {
+                    Button("Ver cursos") { mode = .courses }
+                        .buttonStyle(.borderedProminent)
+                }
+            } else if attendanceStore.studentsInClass.isEmpty {
+                ContentUnavailableView {
+                    Label("Curso sin alumnado", systemImage: "person.3.sequence")
+                } description: {
+                    Text("Añade alumnado al curso antes de pasar lista.")
+                } actions: {
+                    Button("Gestionar alumnado") {
+                        onOpenModule(.students, selectedClassId, nil)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            } else if filteredRows.isEmpty {
+                ContentUnavailableView {
+                    Label("Sin resultados", systemImage: "line.3.horizontal.decrease.circle")
+                } description: {
+                    Text("La búsqueda o el filtro de estado no muestran ningún alumno.")
+                } actions: {
+                    Button("Limpiar filtros", action: clearAttendanceFilters)
+                        .buttonStyle(.bordered)
+                }
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {

@@ -89,4 +89,40 @@ final class PlannerGanttProjectionTests: XCTestCase {
         let weeks = PlannerGanttWeek.range(around: Date(timeIntervalSince1970: 1_800_000_000), before: 6, after: 6)
         XCTAssertEqual(weeks.count, 13)
     }
+
+    func testSchedulePreviewRemovesExactDuplicateTeacherSlots() {
+        let descriptors = [
+            LearningSituationScheduleTemplateDescriptor(dayOfWeek: 5, startTime: "13:15", endTime: "14:10"),
+            LearningSituationScheduleTemplateDescriptor(dayOfWeek: 5, startTime: "14:30", endTime: "15:25"),
+            LearningSituationScheduleTemplateDescriptor(dayOfWeek: 5, startTime: "14:30", endTime: "15:25"),
+            LearningSituationScheduleTemplateDescriptor(dayOfWeek: 1, startTime: "12:20", endTime: "13:15")
+        ]
+
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.uniqueTemplateIndices(for: descriptors),
+            [0, 1, 3]
+        )
+    }
+
+    func testScheduleProjectionRejectsTwoSessionsForSameDestination() {
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        let slots = [
+            LearningSituationScheduledSlot(
+                date: date,
+                period: 6,
+                teacherScheduleSlotId: 19,
+                startTime: "14:30",
+                endTime: "15:25"
+            ),
+            LearningSituationScheduledSlot(
+                date: date,
+                period: 6,
+                teacherScheduleSlotId: 20,
+                startTime: "14:30",
+                endTime: "15:25"
+            )
+        ]
+
+        XCTAssertTrue(LearningSituationScheduleProjection.hasDuplicateDestinations(slots))
+    }
 }

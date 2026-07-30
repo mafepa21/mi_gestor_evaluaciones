@@ -27,7 +27,9 @@ Situaciones y Asistencia.
 - Acción `Ubicar (n)` que conserva el identificador del plan.
 - Toolbar contextual y controles duplicados ocultos solo en Mac.
 - Estados vacíos y acciones de recuperación coherentes.
-- Seis pruebas unitarias de proyección y estado.
+- Prevención de sustituciones cuando el horario docente contiene franjas duplicadas.
+- Acción primaria `Programar siguiente` para reparar sesiones que ya quedaron sin fecha.
+- Ocho pruebas unitarias de proyección, estado y colisiones de horario.
 
 ## Qué no se ha tocado
 
@@ -41,10 +43,12 @@ Situaciones y Asistencia.
 - La composición con datos reales debe validarse visualmente en los tres anchos y ambos modos de
   apariencia; el entorno no concedió permisos para automatizar esa captura.
 - El método nuevo del bridge es solo de lectura y reutiliza el contrato KMP existente.
+- Los datos ya afectados no se reubican automáticamente porque la fecha correcta requiere una
+  decisión docente; el Gantt conserva el plan y ofrece la reparación directa.
 
 ## Casos probados
 
-- [x] 6 pruebas de `PlannerGanttProjectionTests`, 0 fallos.
+- [x] 8 pruebas de `PlannerGanttProjectionTests`, 0 fallos.
 - [x] `./scripts/verify_apple_builds.sh`: macOS correcto.
 - [x] `./scripts/verify_apple_builds.sh`: iOS Simulator correcto.
 - [ ] QA visual/capturas a 900, 1200 y 1600 pt en claro/oscuro.

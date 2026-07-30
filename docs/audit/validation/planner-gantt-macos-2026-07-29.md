@@ -47,3 +47,25 @@ Por tanto quedan pendientes de comprobación manual y de captura:
 - navegación repetida Cuaderno ↔ Planificador ↔ Asistencia ↔ Situaciones.
 
 No se adjuntan capturas falsas ni capturas de otra plataforma.
+
+## Regresión: sesiones sustituidas por franjas duplicadas
+
+Fecha de diagnóstico: 2026-07-30
+
+La base local afectada permitió confirmar la causa sin modificar datos:
+
+- `1º BAC B` tenía dos entradas idénticas de horario el viernes de 14:30 a 15:25.
+- La secuencia tenía 8 planes, pero el calendario conservaba 6 sesiones.
+- Los planes sin enlace eran S2 y S6, las dos posiciones que habían sido sustituidas al reutilizar
+  el mismo destino fecha/periodo.
+
+Corrección verificada:
+
+- la previsualización elimina duplicados exactos conservando la primera franja;
+- el bridge rechaza destinos repetidos antes de persistir la secuencia;
+- el Gantt ofrece una acción primaria para reparar las sesiones que ya estaban sin ubicar;
+- `PlannerGanttProjectionTests`: 8 pruebas, 0 fallos;
+- `./scripts/verify_apple_builds.sh`: macOS e iOS Simulator correctos.
+
+No se alteró automáticamente la base del usuario: S2 y S6 conservan su plan y deben recibir una
+fecha elegida por el docente mediante `Programar siguiente`.

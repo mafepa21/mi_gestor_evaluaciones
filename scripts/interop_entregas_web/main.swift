@@ -455,6 +455,7 @@ let publicado = try WebSubmissionPublisher.publish(
         .init(id: 44, name: "Carmen Ruiz"),
     ],
     baseURL: "https://entregas-alumnado.vercel.app/",
+    deliveryEmail: "mario.fernandez@scorazon.hhdc.net",
     expiresAtEpochMs: 1_900_000_000_000
 )
 
@@ -505,6 +506,10 @@ do {
     comprobar("el manifiesto publicado se relee con el contrato", releido.items.count == 5)
     comprobar("no lleva los ids reales de los ítems", !publicado.manifestJSON.contains("item-1"))
     comprobar("no lleva nombres del alumnado", !publicado.manifestJSON.contains("Ana Ferrer"))
+    comprobar(
+        "lleva el correo de entrega, que la web necesita enseñar",
+        releido.deliveryEmail == "mario.fernandez@scorazon.hhdc.net"
+    )
     comprobar(
         "publica la clave pública de cifrado, no la privada",
         !publicado.manifestJSON.contains(publicado.recipientPrivateKey.base64URLEncodedString)

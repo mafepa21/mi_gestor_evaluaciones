@@ -95,6 +95,10 @@ enum WebSubmissionPublisher {
         items: [ItemToPublish],
         students: [StudentToPublish],
         baseURL: String,
+        /// Correo al que el alumnado envía su entrega. Va en el manifiesto para
+        /// que la web lo enseñe: el menú de compartir del sistema adjunta el
+        /// fichero pero NO puede rellenar el destinatario.
+        deliveryEmail: String?,
         expiresAtEpochMs: Int64,
         formInstanceId: String = UUID().uuidString
     ) throws -> PublishedForm {
@@ -154,6 +158,9 @@ enum WebSubmissionPublisher {
             "expiresAt": iso8601(expiresAtEpochMs),
         ]
         if let subtitle, !subtitle.isEmpty { manifiesto["subtitle"] = subtitle }
+        if let deliveryEmail, !deliveryEmail.isEmpty {
+            manifiesto["deliveryEmail"] = deliveryEmail
+        }
         if !sections.isEmpty {
             manifiesto["sections"] = sections.map { seccion -> [String: Any] in
                 var json: [String: Any] = ["sectionId": seccion.sectionId, "title": seccion.title]

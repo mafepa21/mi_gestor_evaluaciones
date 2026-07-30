@@ -19,6 +19,47 @@ Sin la primera mitad no hay ningún formulario registrado, ninguna clave en el
 llavero ni ninguna fila de alias, así que la segunda no se puede ejercitar. El
 banco de pruebas monta ese estado a mano.
 
+## Aviso importante antes de empezar
+
+**Todas las compilaciones de macOS comparten la misma base de datos**, en
+`~/Library/Application Support/MiGestor/desktop_mi_gestor_kmp.db`. No hay una base
+por rama.
+
+Esta rama añade las migraciones 39 y 40, así que la primera vez que ejecutes esta
+compilación **tu base real sube a la versión 41**. A partir de ahí, una compilación
+de `main` o de `develop` (que van por la 39) **ya no puede abrirla** y arranca con
+una base vacía, avisando con este diálogo:
+
+> No se pudo abrir la base de datos
+> Motivo: Database version 41 newer than config version 39
+
+No se pierde nada: la app guarda la anterior como
+`desktop_mi_gestor_kmp.db.backup_<timestamp>`. Pero mientras esta rama no esté
+fusionada, **usa solo la compilación de esta rama** para el trabajo diario, o
+prueba en un usuario o simulador aparte.
+
+Para saber en qué versión está cada fichero:
+
+```bash
+cd ~/Library/Application\ Support/MiGestor/
+for f in desktop_mi_gestor_kmp.db*; do
+  echo "$f -> $(sqlite3 "$f" 'PRAGMA user_version;' 2>/dev/null)"
+done
+```
+
+## Abre el proyecto correcto
+
+El error de arriba también aparece si abres el proyecto del checkout principal en
+vez del de esta rama. Comprueba que abres **el del worktree**, no
+`~/Projects/mi_gestor_evaluaciones/kmp/iosApp/`:
+
+```bash
+open <ruta-del-worktree>/kmp/iosApp/MiGestorKMPiOS.xcodeproj
+```
+
+Si abres el equivocado, no verás "Entregas web" en la barra lateral por una razón
+simple: **ese código no está en esa rama**.
+
 ## Antes de empezar
 
 Necesitas **un grupo con al menos un alumno o alumna**. Si la base está vacía, la

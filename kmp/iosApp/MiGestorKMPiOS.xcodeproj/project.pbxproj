@@ -286,6 +286,7 @@
 		9D01F457DE02D070677CF7CC /* AppleSharedBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */; };
 		A0BE5CCF5560809D240A0327 /* TeacherRadarGroupSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93FFE1CAA3FC3A0F8E74115 /* TeacherRadarGroupSummaryView.swift */; };
 		A0C9C6C024C63EA8416BDCF4 /* NotebookColumnVisibilityRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F06B84E53590F642FC31288 /* NotebookColumnVisibilityRules.swift */; };
+		A0E98D68463C022246BD23DB /* WebSubmissionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C466125BA1B54410C8225D8 /* WebSubmissionStore.swift */; };
 		A3A92B21AB297E3BEBC8DC15 /* AppleDatabaseRescueService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B709773B9FE5B2D3E2C936 /* AppleDatabaseRescueService.swift */; };
 		A3ED480752FFCEC976396ED0 /* OnboardingHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB163477150A620CBC0CAC7 /* OnboardingHost.swift */; };
 		A4FBB2376156A692FB457FE2 /* MacMeetingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A938799F8679B8D23E432B6E /* MacMeetingsView.swift */; };
@@ -310,6 +311,7 @@
 		B2F16AEE942D0CFE6FE12FE4 /* PlannerJournalDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0176FC5D534ADFA4ACFC6F20 /* PlannerJournalDetailPane.swift */; };
 		B3E353DF6888D460947A3171 /* NotebookViewModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000A844E2F1245DA5956673 /* NotebookViewModifiers.swift */; };
 		B3F0FF57249376955AE83723 /* MacAttendanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5FCBA2AF2D125D2CD13CFF5 /* MacAttendanceView.swift */; };
+		B5BA06AE8DFA1C1F6515972A /* WebSubmissionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C466125BA1B54410C8225D8 /* WebSubmissionStore.swift */; };
 		B68141438B789797C40E8E50 /* MacLiquidGlassStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD67BA2D3B2271344013D4FC /* MacLiquidGlassStyle.swift */; };
 		B7BE69B6080EE42E556C5BD8 /* PlannerReportPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A792A5460048557CD8302A4F /* PlannerReportPDFRenderer.swift */; };
 		B7CB07BCB74E309D55528193 /* KmpBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B819027ADD26559CC96B1BDB /* KmpBridge.swift */; };
@@ -569,6 +571,7 @@
 		49A987A394056D0AA6774110 /* PhysicalTestsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestsWorkspaceView.swift; sourceTree = "<group>"; };
 		4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleView.swift; sourceTree = "<group>"; };
 		4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAppRootView.swift; sourceTree = "<group>"; };
+		4C466125BA1B54410C8225D8 /* WebSubmissionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionStore.swift; sourceTree = "<group>"; };
 		4DB5D8A7B19B0874750549A0 /* TeacherRadarCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherRadarCard.swift; sourceTree = "<group>"; };
 		4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryWorkspaceView.swift; sourceTree = "<group>"; };
 		515D5694AA82CA792EE56E33 /* NotebookSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookSettingsView.swift; sourceTree = "<group>"; };
@@ -889,6 +892,7 @@
 				D332467A125C50215481D20B /* TutoringShared.swift */,
 				FC5FA13C4442E3CA84D9767F /* WebSubmissionImportService.swift */,
 				19FA9C3E34A9BAD4C5C9A446 /* WebSubmissionImportSheet.swift */,
+				4C466125BA1B54410C8225D8 /* WebSubmissionStore.swift */,
 			);
 			path = AppleShared;
 			sourceTree = "<group>";
@@ -1519,6 +1523,7 @@
 				EB0DA30115D7B0863E94E1D1 /* TutoringShared.swift in Sources */,
 				DA0078ED4C00E4C02E0A1A3A /* WebSubmissionImportService.swift in Sources */,
 				89F1C57F29E312B15799BEBB /* WebSubmissionImportSheet.swift in Sources */,
+				A0E98D68463C022246BD23DB /* WebSubmissionStore.swift in Sources */,
 				20B7986F3D363D8EB6A98EF0 /* WeeklyStudentEmailWorkspaceView.swift in Sources */,
 				C0C03EC5C394E3592FA171D9 /* WeightEditorSheet.swift in Sources */,
 				C9BCBCFEF87310A82BCE33A8 /* WorkspaceCreationSheets.swift in Sources */,
@@ -1727,6 +1732,7 @@
 				1DD64E29F1E15C07CF123EA7 /* TutoringShared.swift in Sources */,
 				E60B02BF707D04C4315D1A43 /* WebSubmissionImportService.swift in Sources */,
 				63782CDFBA5AA2E6E0BA6048 /* WebSubmissionImportSheet.swift in Sources */,
+				B5BA06AE8DFA1C1F6515972A /* WebSubmissionStore.swift in Sources */,
 				93EB4D66B4335BF6713CEC0A /* WeeklyStudentEmailWorkspaceView.swift in Sources */,
 				BD77C5642785F0039E37C2E7 /* WeightEditorSheet.swift in Sources */,
 				F97BB1FBE7B0EE0179EAC7B9 /* WorkspaceCreationSheets.swift in Sources */,

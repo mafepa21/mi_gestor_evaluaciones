@@ -461,10 +461,24 @@ let publicado = try WebSubmissionPublisher.publish(
 comprobar("publica un alias por alumno", publicado.aliases.count == 3)
 comprobar("los alias no se repiten", Set(publicado.aliases.map(\.alias)).count == 3)
 comprobar("cada alias mide 22 caracteres", publicado.aliases.allSatisfy { $0.alias.count == 22 })
+// El enlace tiene que llevar las DOS cosas en el fragmento: el formulario que hay
+// que abrir y el alias de quien responde. Sin `f`, la web no sabe cuál de los
+// manifiestos publicados le toca y cae en el de demostración.
 comprobar(
-    "el enlace lleva el alias en el fragmento",
-    publicado.links.allSatisfy { $0.url.contains("/#a=") },
+    "el enlace lleva el formulario y el alias en el fragmento",
+    publicado.links.allSatisfy {
+        $0.url.contains("/#f=\(publicado.formInstanceId)&a=")
+    },
     publicado.links.first?.url ?? ""
+)
+comprobar(
+    "nada del enlace va antes del #, que es lo que vería el servidor",
+    publicado.links.allSatisfy { enlace in
+        guard let almohadilla = enlace.url.firstIndex(of: "#") else { return false }
+        let antes = String(enlace.url[..<almohadilla])
+        return !antes.contains(publicado.formInstanceId)
+            && !publicado.aliases.contains { antes.contains($0.alias) }
+    }
 )
 comprobar("mapea los cinco ítems", publicado.itemMap.count == 5)
 comprobar("la clave privada mide 32 bytes", publicado.recipientPrivateKey.count == 32)

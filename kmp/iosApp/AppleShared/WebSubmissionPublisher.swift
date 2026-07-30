@@ -189,12 +189,17 @@ enum WebSubmissionPublisher {
             repeat { alias = randomAlias() } while usados.contains(alias)
             usados.insert(alias)
             aliases.append((alias: alias, studentId: alumno.id))
-            // El alias va en el FRAGMENTO: el navegador no lo envía al servidor, así
-            // que ningún registro de acceso ve nunca quién es quién.
+            // Los dos datos van en el FRAGMENTO: el navegador no lo envía al
+            // servidor, así que ningún registro de acceso ve nunca quién es quién.
+            //
+            // `f` dice QUÉ formulario abrir. Sin él, la web no tiene forma de saber
+            // cuál de los manifiestos publicados le toca a este enlace, y caería
+            // siempre en el de demostración: el alumnado rellenaría un formulario
+            // que no es el suyo y la entrega no se podría atribuir a nada.
             links.append((
                 studentId: alumno.id,
                 studentName: alumno.name,
-                url: "\(base)/#a=\(alias)"
+                url: "\(base)/#f=\(formInstanceId)&a=\(alias)"
             ))
         }
 

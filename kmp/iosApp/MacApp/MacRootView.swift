@@ -179,8 +179,7 @@ struct MacRootView: View {
         // duplicaba la reserva de ancho con una segunda instancia de NotebookMacLayout, y al
         // navegar fuera de Cuaderno ambas instancias se destruían a la vez en plena animación,
         // provocando el mismo bucle de constraints de AppKit que crasheaba la app.
-        if selectedFeature == .attendance || selectedFeature == .planner || selectedFeature == .diary
-            || selectedFeature == .rubrics || selectedFeature == .meetings || selectedFeature == .notebook {
+        if !usesShellInspector(selectedFeature) {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
                 .transition(uiFeatureFlags.contentSwitchTransition)
@@ -197,6 +196,15 @@ struct MacRootView: View {
                         .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
                         .background(.thinMaterial)
                 }
+        }
+    }
+
+    private func usesShellInspector(_ feature: MacFeatureDescriptor.Feature) -> Bool {
+        switch feature {
+        case .students, .backups, .physicalTests:
+            return true
+        default:
+            return false
         }
     }
 
@@ -1158,6 +1166,10 @@ struct MacRootView: View {
     }
 
     private func toggleInspector() {
+        guard usesShellInspector(selectedFeature) || selectedFeature == .notebook else {
+            isInspectorVisible = false
+            return
+        }
         let nextValue = !isInspectorVisible
 
         Task { @MainActor in

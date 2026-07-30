@@ -82,6 +82,13 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
     }
 
+    var duplicateScheduleSlots: [TeacherScheduleSlot] {
+        var seen: Set<TeacherScheduleSlotDestination> = []
+        return effectiveScheduleSlots.filter { slot in
+            !seen.insert(TeacherScheduleSlotDestination(slot: slot)).inserted
+        }
+    }
+
     var usingLegacyWeeklySlots: Bool {
         false
     }
@@ -299,11 +306,11 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         }
     }
 
-    func previewScheduleImport(_ result: Result<URL, Error>) async {
+    func previewScheduleImport(_ result: Result<[URL], Error>) async {
         scheduleSaveState = .saving
         do {
-            let url = try result.get()
-            let parsed = try ScheduleExcelImportService().preview(from: url)
+            let urls = try result.get()
+            let parsed = try ScheduleExcelImportService().preview(from: urls)
             let withConflicts = previewWithExistingConflicts(parsed)
             scheduleImportPreview = withConflicts
             scheduleImportPlan = buildCatalogPlan(for: withConflicts)
@@ -323,6 +330,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         isImportingSchedule = true
         scheduleSaveState = .saving
         defer { isImportingSchedule = false }
+        var importedSlotIds: [Int64] = []
 
         do {
             let catalog = try await ensureImportedCatalog(preview, createSubjects: createSubjects)
@@ -340,14 +348,13 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
                             && Int(existing.dayOfWeek) == slot.weekday
                             && existing.startTime == slot.startTime
                             && existing.endTime == slot.endTime
-                            && existing.subjectLabel == subjectLabel
                     }
                     if alreadyExists {
                         skippedCount += 1
                         continue
                     }
 
-                    _ = try await bridge.plannerSaveTeacherScheduleSlot(
+                    let importedSlotId = try await bridge.plannerSaveTeacherScheduleSlot(
                         scheduleId: schedule.id,
                         classId: classId,
                         subjectLabel: subjectLabel,
@@ -356,6 +363,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
                         startTime: slot.startTime,
                         endTime: slot.endTime
                     )
+                    importedSlotIds.append(importedSlotId)
                     importedCount += 1
                 }
             }
@@ -375,8 +383,33 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             }
             scheduleImportStatusMessage = message
         } catch {
+            for slotId in importedSlotIds.reversed() {
+                try? await bridge.plannerDeleteTeacherScheduleSlot(slotId: slotId)
+            }
+            await reload()
             scheduleError = error.localizedDescription
             scheduleImportStatusMessage = ""
+            scheduleSaveState = .failed(scheduleError)
+        }
+    }
+
+    func repairDuplicateScheduleSlots() async {
+        guard let bridge else { return }
+        let duplicates = duplicateScheduleSlots
+        guard !duplicates.isEmpty else { return }
+        scheduleSaveState = .saving
+
+        do {
+            for slot in duplicates {
+                try await bridge.plannerDeleteTeacherScheduleSlot(slotId: slot.id)
+            }
+            await reload()
+            scheduleImportStatusMessage = "Horario reparado: \(duplicates.count) franja(s) duplicadas eliminadas."
+            scheduleError = ""
+            scheduleSaveState = .saved(Date())
+        } catch {
+            await reload()
+            scheduleError = "No se pudo completar la reparación: \(error.localizedDescription)"
             scheduleSaveState = .failed(scheduleError)
         }
     }
@@ -707,6 +740,20 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
 }
 
 // MARK: - Local helpers (avoid fileprivate/private access level issues)
+
+private struct TeacherScheduleSlotDestination: Hashable {
+    let classId: Int64
+    let weekday: Int32
+    let startTime: String
+    let endTime: String
+
+    init(slot: TeacherScheduleSlot) {
+        classId = slot.schoolClassId
+        weekday = slot.dayOfWeek
+        startTime = slot.startTime.trimmingCharacters(in: .whitespacesAndNewlines)
+        endTime = slot.endTime.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
 
 private extension String {
     var _nilIfBlank: String? {

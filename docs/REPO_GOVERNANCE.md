@@ -45,7 +45,7 @@ Ejemplos:
 
 ## Commits
 
-Usar mensajes concretos, en ingles o espanol, pero consistentes dentro de una rama.
+Usar mensajes concretos en español y consistentes dentro de una rama.
 
 Formato recomendado:
 

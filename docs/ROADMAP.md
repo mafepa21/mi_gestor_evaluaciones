@@ -39,6 +39,10 @@ Prioridad: alta.
   Avance: Resumen de Planificación concentra métricas semanales, próximas sesiones, cobertura diaria y alertas en un dashboard operativo sin añadir lógica KMP.
   Avance: Planificación macOS reutiliza el toolbar y las vistas iPadOS para mantener una estética uniforme; sus botones flotantes usan `.glass`/`.glassProminent` y las pestañas se agrupan con `GlassEffectContainer`, selección transparente superpuesta y morphing `glassEffectID` en iOS/macOS 26, con fallback material.
   Avance: macOS incorpora "Diario de aula" como módulo de primer nivel en la barra lateral (paridad iPadOS reutilizando `DiaryWorkspaceView`), al que "Abrir ejecución" del Planner navega con el contexto de la sesión; el detalle de sesión se presenta como sheet propio de ancho completo en vez de un inspector genérico estrecho. La vista Día suma una etiqueta derivada "Confirmar impartida" para franjas ya pasadas (sin escribir estado en BD en automático) y un sheet de "Diario rápido" para cerrar el diario de todas las sesiones del día (impartida, pulso, participación y nota corta) con el mínimo de gestos.
+  Avance: el Gantt macOS se convierte en superficie de seguimiento accionable: carga secuencias
+  aún no agendadas, separa estados reales, identifica grupos retrasados y permite ubicar pendientes
+  mediante el composer existente. Su carril fijo y línea temporal única quedan cubiertos por pruebas
+  de proyección; se mantiene fuera de alcance la edición directa por drag & drop.
 - Dashboard: Radar docente proactivo para priorizar que pasa ahora, por que importa y que accion diaria ejecutar.
   Avance: las recargas por filtros del Dashboard se cancelan y debouncean para evitar tareas solapadas durante cambios rápidos de contexto.
   Avance: Dashboard macOS "Hoy" prioriza la clase actual o próxima, pendiente principal y acción recomendada antes que los paneles secundarios.

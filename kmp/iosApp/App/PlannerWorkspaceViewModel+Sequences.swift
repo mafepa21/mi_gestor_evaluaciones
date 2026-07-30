@@ -13,6 +13,23 @@ struct PlannerFilteredSequenceGroup {
     let sessions: [PlanningSession]
 }
 
+private struct PlannerSequenceCatalogEntry {
+    let situationTitle: String
+    let groupId: Int64
+    let sequenceVersionId: Int64
+    let equivalentVersionIds: Set<Int64>
+    let plans: [LearningSituationSessionPlan]
+}
+
+enum PlannerSequenceVersionProjection {
+    static func equivalentVersionIds(
+        latestSha256: String,
+        versions: [(id: Int64, sha256: String)]
+    ) -> Set<Int64> {
+        Set(versions.filter { $0.sha256 == latestSha256 }.map(\.id))
+    }
+}
+
 @MainActor
 extension PlannerWorkspaceViewModel {
     func sequenceGroups() -> [PlannerFilteredSequenceGroup] {
@@ -38,239 +55,204 @@ extension PlannerWorkspaceViewModel {
 
     func loadEnrichedSequences() async {
         guard let bridge = self.bridge else { return }
+        let requestedGroupId = selectedGroupId
         isLoadingSequences = true
-        defer { isLoadingSequences = false }
+        sequenceLoadErrorMessage = nil
+        defer {
+            if requestedGroupId == selectedGroupId {
+                isLoadingSequences = false
+            }
+        }
         
         do {
             let allSessions = try await bridge.plannerListAllSessions()
+            try Task.checkCancellation()
             let filteredSessions = allSessions.filter { session in
-                self.selectedGroupId.map { session.groupId == $0 } ?? true
+                requestedGroupId.map { session.groupId == $0 } ?? true
             }
-            
-            var uniqueSequenceVersionIds = Set<Int64>()
-            var allPlansBySessionId: [Int64: LearningSituationSessionPlan] = [:]
+
+            let situations = try await bridge.learningSituations()
+            try Task.checkCancellation()
+            let groupNames = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
+            let allowedGroupIds = Set(groupNames.keys.filter { classId in
+                requestedGroupId.map { classId == $0 } ?? true
+            })
+
+            var catalog: [PlannerSequenceCatalogEntry] = []
+            for situation in situations {
+                try Task.checkCancellation()
+                let links = try await bridge.learningSituationClassLinks(id: situation.id)
+                    .filter { allowedGroupIds.contains($0.classId) }
+                guard !links.isEmpty else { continue }
+
+                let versions = try await bridge.learningSituationSessionSequenceVersions(
+                    learningSituationId: situation.id
+                )
+                guard let latestVersion = versions.max(by: { $0.versionNumber < $1.versionNumber }) else {
+                    continue
+                }
+                let plans = try await bridge.learningSituationSessionPlans(sequenceVersionId: latestVersion.id)
+                    .sorted { $0.sessionNumber < $1.sessionNumber }
+                guard !plans.isEmpty else { continue }
+                let equivalentVersionIds = PlannerSequenceVersionProjection.equivalentVersionIds(
+                    latestSha256: latestVersion.sha256,
+                    versions: versions.map { (id: $0.id, sha256: $0.sha256) }
+                )
+
+                for link in links {
+                    catalog.append(
+                        PlannerSequenceCatalogEntry(
+                            situationTitle: situation.title.nilIfBlank ?? "Situación sin título",
+                            groupId: link.classId,
+                            sequenceVersionId: latestVersion.id,
+                            equivalentVersionIds: equivalentVersionIds,
+                            plans: plans
+                        )
+                    )
+                }
+            }
+
+            var planBySessionId: [Int64: LearningSituationSessionPlan] = [:]
             for session in filteredSessions {
                 if let planId = session.learningSituationSessionPlanId?.int64Value {
-                    if let plan = try? await bridge.learningSituationSessionPlan(id: planId) {
-                        uniqueSequenceVersionIds.insert(plan.sequenceVersionId)
-                        allPlansBySessionId[session.id] = plan
-                    }
+                    planBySessionId[session.id] = try await bridge.learningSituationSessionPlan(id: planId)
                 }
             }
-            
-            var sessionPlansBySequence: [Int64: [LearningSituationSessionPlan]] = [:]
-            for seqId in uniqueSequenceVersionIds {
-                if let plans = try? await bridge.learningSituationSessionPlans(sequenceVersionId: seqId) {
-                    sessionPlansBySequence[seqId] = plans.sorted { $0.sessionNumber < $1.sessionNumber }
+
+            try Task.checkCancellation()
+            var enriched: [PlannerSequenceGroup] = []
+            var catalogSessionIds = Set<Int64>()
+
+            for entry in catalog {
+                let sequenceSessions = filteredSessions.filter { session in
+                    session.groupId == entry.groupId
+                        && planBySessionId[session.id].map {
+                            entry.equivalentVersionIds.contains($0.sequenceVersionId)
+                        } == true
                 }
+                catalogSessionIds.formUnion(sequenceSessions.map(\.id))
+                var rows: [PlannerSequenceRow] = []
+
+                for plan in entry.plans {
+                    let matchingSession = sequenceSessions.first {
+                        planBySessionId[$0.id]?.sessionNumber == plan.sessionNumber
+                    }
+                    rows.append(
+                        PlannerSequenceRow(
+                            id: matchingSession.map { "plan-\(plan.id)-session-\($0.id)" } ?? "plan-\(plan.id)-unlocated",
+                            sessionNumber: Int(plan.sessionNumber),
+                            title: plan.title,
+                            objective: plan.objective,
+                            status: matchingSession.map { sequenceStatus(for: $0) } ?? .unlocated,
+                            planningSession: matchingSession,
+                            learningSituationSessionPlanId: plan.id
+                        )
+                    )
+                }
+
+                enriched.append(
+                    makeSequenceGroup(
+                        id: "\(entry.groupId)-seq-\(entry.sequenceVersionId)",
+                        title: entry.situationTitle,
+                        groupName: groupNames[entry.groupId] ?? "Grupo \(entry.groupId)",
+                        groupId: entry.groupId,
+                        sequenceVersionId: entry.sequenceVersionId,
+                        rows: rows,
+                        theoreticalTotal: entry.plans.count
+                    )
+                )
             }
-            
-            // Capture data for detached task
-            let groupNames = Dictionary(uniqueKeysWithValues: self.groups.map { ($0.id, $0.name) })
-            let journalSummary = self.journalSummaryBySessionId
-            let normalizeTitle: @Sendable (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            
-            let enrichedResult = await Task.detached {
-                var enriched: [PlannerSequenceGroup] = []
-                let sessionsByGroup = Dictionary(grouping: filteredSessions, by: { $0.groupId })
-                
-                for (groupId, groupSessions) in sessionsByGroup {
-                    let groupName = groupNames[groupId] ?? "Grupo \(groupId)"
-                    var seqIdBySessionId: [Int64: Int64] = [:]
-                    var planBySessionId: [Int64: LearningSituationSessionPlan] = [:]
-                    
-                    for session in groupSessions {
-                        if let plan = allPlansBySessionId[session.id] {
-                            seqIdBySessionId[session.id] = plan.sequenceVersionId
-                            planBySessionId[session.id] = plan
-                        }
-                    }
-                    
-                    let sessionsWithSeq = groupSessions.filter { seqIdBySessionId[$0.id] != nil }
-                    let sessionsWithoutSeq = groupSessions.filter { seqIdBySessionId[$0.id] == nil }
-                    var sessionsBySeqId: [Int64: [PlanningSession]] = [:]
-                    for session in sessionsWithSeq {
-                        guard let seqId = seqIdBySessionId[session.id] else { continue }
-                        sessionsBySeqId[seqId, default: []].append(session)
-                    }
-                    
-                    for (seqId, seqSessions) in sessionsBySeqId {
-                        guard let sortedPlans = sessionPlansBySequence[seqId] else { continue }
-                        let firstSeqSession = seqSessions.first
-                        let planTitle = sortedPlans.first?.title
-                        let sessionTitle = firstSeqSession?.teachingUnitName
-                        let seqTitle = planTitle.nilIfBlank ?? sessionTitle.nilIfBlank ?? "Secuencia didáctica"
-                        
-                        var rows: [PlannerSequenceRow] = []
-                        var mappedSessionIds = Set<Int64>()
-                        
-                        for plan in sortedPlans {
-                            let matchingSession = seqSessions.first { $0.learningSituationSessionPlanId?.int64Value == plan.id }
-                            
-                            if let session = matchingSession {
-                                mappedSessionIds.insert(session.id)
-                                let isCompleted = session.status == .completed || journalSummary[session.id]?.status == .completed
-                                let statusText: String
-                                let statusIcon: String
-                                let statusColor: Color
-                                
-                                if isCompleted {
-                                    statusText = "Cerrada"
-                                    statusIcon = "checkmark.seal.fill"
-                                    statusColor = EvaluationDesign.success
-                                } else if session.status == .completed {
-                                    statusText = "Impartida"
-                                    statusIcon = "checkmark.circle.fill"
-                                    statusColor = EvaluationDesign.success
-                                } else if session.status == .inProgress {
-                                    statusText = "En Curso"
-                                    statusIcon = "circle.lefthalf.filled"
-                                    statusColor = EvaluationDesign.accent
-                                } else if session.status == .cancelled {
-                                    statusText = "Cancelada"
-                                    statusIcon = "xmark.circle.fill"
-                                    statusColor = EvaluationDesign.danger
-                                } else {
-                                    statusText = "Planificada"
-                                    statusIcon = "circle"
-                                    statusColor = EvaluationDesign.accent
-                                }
-                                
-                                rows.append(PlannerSequenceRow(
-                                    id: "plan-\(plan.id)-session-\(session.id)",
-                                    sessionNumber: Int(plan.sessionNumber),
-                                    title: plan.title,
-                                    objective: plan.objective,
-                                    statusText: statusText,
-                                    statusIcon: statusIcon,
-                                    statusColor: statusColor,
-                                    planningSession: session,
-                                    learningSituationSessionPlanId: plan.id
-                                ))
-                            } else {
-                                rows.append(PlannerSequenceRow(
-                                    id: "plan-\(plan.id)-unlocated",
-                                    sessionNumber: Int(plan.sessionNumber),
-                                    title: plan.title,
-                                    objective: plan.objective,
-                                    statusText: "Pendiente de ubicar",
-                                    statusIcon: "calendar.badge.plus",
-                                    statusColor: IOSAppStyle.warning,
-                                    planningSession: nil,
-                                    learningSituationSessionPlanId: plan.id
-                                ))
-                            }
-                        }
-                        
-                        let unmappedSeqSessions = seqSessions.filter { !mappedSessionIds.contains($0.id) }
-                        for session in unmappedSeqSessions {
-                            rows.append(PlannerSequenceRow(
-                                id: "session-fallback-\(session.id)",
-                                sessionNumber: rows.count + 1,
-                                title: session.objectives.nilIfBlank ?? "Sesión de calendario",
-                                objective: session.activities,
-                                statusText: "Solo calendario",
-                                statusIcon: "calendar",
-                                statusColor: Color.secondary,
-                                planningSession: session,
-                                learningSituationSessionPlanId: session.learningSituationSessionPlanId?.int64Value
-                            ))
-                        }
-                        
-                        let plannedCount = rows.count { $0.statusText == "Planificada" }
-                        let pendingCount = rows.count { $0.statusText == "Pendiente de ubicar" }
-                        let completedCount = rows.count { $0.statusText == "Cerrada" || $0.statusText == "Impartida" }
-                        
-                        enriched.append(PlannerSequenceGroup(
-                            id: "\(groupId)-seq-\(seqId)",
-                            title: seqTitle,
-                            groupName: groupName,
-                            groupId: groupId,
-                            sequenceVersionId: seqId,
-                            totalSessionsCount: sortedPlans.count,
-                            plannedCount: plannedCount,
-                            pendingCount: pendingCount,
-                            completedCount: completedCount,
-                            closedCount: rows.count { $0.statusText == "Cerrada" },
-                            rows: rows
-                        ))
-                    }
-                    
-                    let groupedFallback = Dictionary(grouping: sessionsWithoutSeq, by: { "\($0.teachingUnitId)-\(normalizeTitle($0.teachingUnitName))" })
-                    for (fallbackKey, fallbackSessions) in groupedFallback {
-                        guard let first = fallbackSessions.first else { continue }
-                        let title = first.teachingUnitName.nilIfBlank ?? "Situación sin título"
-                        
-                        let sortedFallbackSessions = fallbackSessions.sorted {
-                            if $0.weekNumber == $1.weekNumber {
-                                if $0.dayOfWeek == $1.dayOfWeek { return $0.period < $1.period }
-                                return $0.dayOfWeek < $1.dayOfWeek
-                            }
-                            return $0.weekNumber < $1.weekNumber
-                        }
-                        
-                        let rows = sortedFallbackSessions.enumerated().map { index, session in
-                            let isCompleted = session.status == .completed || journalSummary[session.id]?.status == .completed
-                            let statusText: String
-                            let statusIcon: String
-                            let statusColor: Color
-                            
-                            if isCompleted {
-                                statusText = "Cerrada"
-                                statusIcon = "checkmark.seal.fill"
-                                statusColor = EvaluationDesign.success
-                            } else if session.status == .completed {
-                                statusText = "Impartida"
-                                statusIcon = "checkmark.circle.fill"
-                                statusColor = EvaluationDesign.success
-                            } else {
-                                statusText = "Solo calendario"
-                                statusIcon = "calendar"
-                                statusColor = Color.secondary
-                            }
-                            
-                            return PlannerSequenceRow(
-                                id: "fallback-session-\(session.id)",
-                                sessionNumber: index + 1,
-                                title: session.objectives.nilIfBlank ?? "Sesión de calendario",
-                                objective: session.activities,
-                                statusText: statusText,
-                                statusIcon: statusIcon,
-                                statusColor: statusColor,
-                                planningSession: session,
-                                learningSituationSessionPlanId: session.learningSituationSessionPlanId?.int64Value
-                            )
-                        }
-                        
-                        let plannedCount = rows.count { $0.statusText == "Planificada" || $0.statusText == "Solo calendario" }
-                        let completedCount = rows.count { $0.statusText == "Cerrada" || $0.statusText == "Impartida" }
-                        
-                        enriched.append(PlannerSequenceGroup(
-                            id: "\(groupId)-fallback-\(fallbackKey)",
-                            title: title,
-                            groupName: groupName,
-                            groupId: groupId,
-                            sequenceVersionId: nil,
-                            totalSessionsCount: rows.count,
-                            plannedCount: plannedCount,
-                            pendingCount: 0,
-                            completedCount: completedCount,
-                            closedCount: rows.count { $0.statusText == "Cerrada" },
-                            rows: rows
-                        ))
-                    }
+
+            let fallbackSessions = filteredSessions.filter { !catalogSessionIds.contains($0.id) }
+            let fallbackGroups = Dictionary(grouping: fallbackSessions) {
+                "\($0.groupId)-\($0.teachingUnitId)-\(normalizedSituationTitle($0.teachingUnitName))"
+            }
+            for (fallbackKey, sessions) in fallbackGroups {
+                guard let first = sessions.first else { continue }
+                let sorted = sessions.sorted {
+                    if $0.year != $1.year { return $0.year < $1.year }
+                    if $0.weekNumber != $1.weekNumber { return $0.weekNumber < $1.weekNumber }
+                    if $0.dayOfWeek != $1.dayOfWeek { return $0.dayOfWeek < $1.dayOfWeek }
+                    return $0.period < $1.period
                 }
-                
-                return enriched.sorted { lhs, rhs in
-                    lhs.groupName == rhs.groupName ? lhs.title < rhs.title : lhs.groupName < rhs.groupName
+                let rows = sorted.enumerated().map { index, session in
+                    PlannerSequenceRow(
+                        id: "fallback-session-\(session.id)",
+                        sessionNumber: index + 1,
+                        title: session.objectives.nilIfBlank ?? "Sesión de calendario",
+                        objective: session.activities,
+                        status: fallbackStatus(for: session),
+                        planningSession: session,
+                        learningSituationSessionPlanId: session.learningSituationSessionPlanId?.int64Value
+                    )
                 }
-            }.value
-            
-            self.sequenceGroupsEnriched = enrichedResult
+                enriched.append(
+                    makeSequenceGroup(
+                        id: "\(first.groupId)-fallback-\(fallbackKey)",
+                        title: first.teachingUnitName.nilIfBlank ?? "Situación sin título",
+                        groupName: groupNames[first.groupId] ?? first.groupName,
+                        groupId: first.groupId,
+                        sequenceVersionId: nil,
+                        rows: rows,
+                        theoreticalTotal: rows.count
+                    )
+                )
+            }
+
+            try Task.checkCancellation()
+            guard requestedGroupId == selectedGroupId else { return }
+            sequenceGroupsEnriched = enriched.sorted {
+                $0.groupName == $1.groupName ? $0.title < $1.title : $0.groupName < $1.groupName
+            }
+        } catch is CancellationError {
+            return
         } catch {
-            print("Error loading enriched sequences: \(error)")
+            guard requestedGroupId == selectedGroupId else { return }
+            sequenceGroupsEnriched = []
+            sequenceLoadErrorMessage = error.localizedDescription
         }
     }
 
-}
+    private func sequenceStatus(for session: PlanningSession) -> PlannerSequenceStatus {
+        if journalSummaryBySessionId[session.id]?.status == .completed {
+            return .closed
+        }
+        switch session.status {
+        case .completed: return .taught
+        case .inProgress: return .inProgress
+        case .cancelled: return .cancelled
+        default: return .planned
+        }
+    }
 
+    private func fallbackStatus(for session: PlanningSession) -> PlannerSequenceStatus {
+        let status = sequenceStatus(for: session)
+        return status == .planned ? .calendarOnly : status
+    }
+
+    private func makeSequenceGroup(
+        id: String,
+        title: String,
+        groupName: String,
+        groupId: Int64,
+        sequenceVersionId: Int64?,
+        rows: [PlannerSequenceRow],
+        theoreticalTotal: Int
+    ) -> PlannerSequenceGroup {
+        PlannerSequenceGroup(
+            id: id,
+            title: title,
+            groupName: groupName,
+            groupId: groupId,
+            sequenceVersionId: sequenceVersionId,
+            totalSessionsCount: theoreticalTotal,
+            plannedCount: rows.count { $0.status == .planned || $0.status == .inProgress || $0.status == .calendarOnly },
+            pendingCount: rows.count { $0.status == .unlocated },
+            completedCount: rows.count { $0.status.isCompleted },
+            closedCount: rows.count { $0.status == .closed },
+            taughtCount: rows.count { $0.status == .taught },
+            cancelledCount: rows.count { $0.status == .cancelled },
+            rows: rows
+        )
+    }
+}

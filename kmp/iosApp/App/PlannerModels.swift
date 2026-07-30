@@ -350,7 +350,65 @@ struct PlannerSequenceGroup: Identifiable {
     let pendingCount: Int
     let completedCount: Int
     let closedCount: Int
+    let taughtCount: Int
+    let cancelledCount: Int
     let rows: [PlannerSequenceRow]
+
+    var requiresAttention: Bool {
+        pendingCount > 0 || cancelledCount > 0
+    }
+}
+
+enum PlannerSequenceStatus: String, CaseIterable, Hashable {
+    case unlocated
+    case planned
+    case inProgress
+    case taught
+    case closed
+    case cancelled
+    case calendarOnly
+
+    var label: String {
+        switch self {
+        case .unlocated: return "Pendiente de ubicar"
+        case .planned: return "Planificada"
+        case .inProgress: return "En curso"
+        case .taught: return "Impartida"
+        case .closed: return "Cerrada"
+        case .cancelled: return "Cancelada"
+        case .calendarOnly: return "Solo calendario"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .unlocated: return "calendar.badge.plus"
+        case .planned: return "circle"
+        case .inProgress: return "circle.lefthalf.filled"
+        case .taught: return "checkmark.circle.fill"
+        case .closed: return "checkmark.seal.fill"
+        case .cancelled: return "xmark.circle.fill"
+        case .calendarOnly: return "calendar"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .unlocated: return IOSAppStyle.warning
+        case .planned, .inProgress: return EvaluationDesign.accent
+        case .taught, .closed: return EvaluationDesign.success
+        case .cancelled: return EvaluationDesign.danger
+        case .calendarOnly: return .secondary
+        }
+    }
+
+    var isCompleted: Bool {
+        self == .taught || self == .closed
+    }
+
+    var requiresAttention: Bool {
+        self == .unlocated || self == .cancelled
+    }
 }
 
 struct PlannerSequenceRow: Identifiable {
@@ -358,11 +416,13 @@ struct PlannerSequenceRow: Identifiable {
     let sessionNumber: Int
     let title: String
     let objective: String
-    let statusText: String
-    let statusIcon: String
-    let statusColor: Color
+    let status: PlannerSequenceStatus
     let planningSession: PlanningSession?
     let learningSituationSessionPlanId: Int64?
+
+    var statusText: String { status.label }
+    var statusIcon: String { status.systemImage }
+    var statusColor: Color { status.tint }
 }
 
 struct PlannerScheduleGenerationPreviewRow: Identifiable, Hashable {
@@ -583,4 +643,3 @@ struct PlannerRangeData {
         weeks: []
     )
 }
-

@@ -15,6 +15,18 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Entregas del alumnado vía web: **publicación de formularios**, la otra mitad del circuito.
+  `WebSubmissionPublisher` (`AppleShared/`) convierte una plantilla de instrumento en un manifiesto
+  firmado que la PWA puede pintar, más un enlace personal por alumno. Genera un par X25519 y otro
+  Ed25519 **por formulario**, no uno para toda la app: así una clave comprometida solo afecta a un
+  formulario y revocar es dejar de aceptar ese `formInstanceId`. Los `webItemId` se generan
+  **aleatorios y opacos**; podrían derivarse de la clave del ítem (`chkp_1`, `obs_s1_i2`), que sería
+  más fácil de depurar, pero eso publicaría la estructura interna del instrumento, y la traducción
+  vive solo en `web_item_map`. El alias va en el **fragmento** del enlace (`#a=…`), que el navegador
+  no envía al servidor, así que ningún registro de acceso ve nunca quién es quién. Cada extra del
+  manifiesto se pone solo en el tipo que lo admite (`options` únicamente en `CHOICE`, `scaleLabels`
+  únicamente en `SCALE_1_4`), porque el esquema del contrato rechaza lo contrario. Se firma la forma
+  canónica y después se añade `signature`, que la canonicalización excluye por definición.
 - Entregas del alumnado vía web: banco de pruebas **solo `#if DEBUG`** para poder ver el circuito
   funcionando en Xcode antes de que exista la publicación de formularios.
   `WebSubmissionTestBenchView`, dentro de Ajustes → Diagnóstico, monta a mano el estado que la app
@@ -137,6 +149,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- Entregas del alumnado vía web: migración **40**, que añade `manifest_json` a `web_form_instances`.
+  El importador necesita el manifiesto para validar cada respuesta contra el tipo declarado y para
+  los títulos de la previsualización, y hasta ahora se publicaba y se perdía. **Va en una migración
+  nueva y no dentro de la 39 por un motivo concreto**: la 39 ya se había aplicado en la máquina de
+  desarrollo al probar el banco de pruebas, y SQLDelight no vuelve a ejecutar una migración aplicada,
+  así que editar la 39 habría dejado esa base sin la columna y la app fallaría al leerla. Se guarda
+  el JSON firmado entero y sin trocear porque la firma se verifica sobre bytes exactos; no contiene
+  datos personales, solo preguntas y claves públicas.
 - Entregas del alumnado vía web: migración **39** con cuatro tablas nuevas
   (`web_form_instances`, `web_participant_aliases`, `web_item_map`,
   `web_submission_ledger`) que forman la tabla de correspondencias entre lo que ve la PWA
@@ -250,6 +270,19 @@ El formato sigue una variante practica de Keep a Changelog:
   `extension Data` previa, en `MacModuleStubs.swift`, es `private` y con otros miembros).
   **No hay prueba manual en la app**, y no aplica todavía: sin hoja de previsualización no hay nada
   que abrir desde la interfaz.
+- Entregas del alumnado vía web: la prueba cruzada ya va en **las dos direcciones**, que es lo que de
+  verdad protege el circuito. `scripts/interop_entregas_web/verificar.sh` sube a **62 comprobaciones,
+  0 fallos**: además de que CryptoKit descifra lo que cifra el navegador, ahora publica un formulario
+  con un apartado de cada tipo y comprueba que su firma verifica, que el manifiesto se relee con el
+  contrato y que **no filtra nada** — ni los ids reales de los ítems, ni nombres del alumnado, ni
+  ningún alias, ni la clave privada. Ese manifiesto se deja en disco y el validador de la PWA
+  (`npm run validar`, ahora con verificación de firma) lo acepta: un manifiesto firmado con CryptoKit
+  verifica con @noble, igual que uno firmado en JavaScript verifica en CryptoKit. Si la
+  canonicalización de los dos lados se desalineara, el alumnado vería "This form is not trustworthy"
+  sin explicación, y esto es lo que lo evita. `verify_apple_builds.sh` en verde con las dos apps y
+  `verifyCommonMainAppDatabaseMigration` correcto con la 40. Un fallo real cazado por el camino: al
+  añadir `manifest_json` faltaba pasarlo en el banco de pruebas, y Swift lo reportaba como "unable to
+  type-check this expression in reasonable time" en vez de como argumento que falta.
 - Entregas del alumnado vía web: `./scripts/verify_apple_builds.sh` en verde con las dos apps tras el
   cableado con la base de datos, y `:data:compileKotlinDesktop` correcto tras añadir el repositorio.
   **El circuito completo sigue sin poderse ejercitar de punta a punta**, y no por un descuido: nada

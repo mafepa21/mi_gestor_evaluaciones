@@ -1879,6 +1879,7 @@ final class KmpBridge: ObservableObject {
         title: String,
         recipientPublicKey: String,
         publisherPublicKey: String?,
+        manifestJson: String,
         items: [(webItemId: String, title: String, type: WebManifestItemType)],
         alias: String
     ) async throws -> WebSubmissionTestFormResult {
@@ -1997,6 +1998,7 @@ final class KmpBridge: ObservableObject {
                 publisherPublicKey: publisherPublicKey,
                 expiresAtEpochMs: ahora + 365 * 24 * 60 * 60 * 1000,
                 revoked: false,
+                manifestJson: manifestJson,
                 createdAtEpochMs: ahora,
                 updatedAtEpochMs: ahora
             )

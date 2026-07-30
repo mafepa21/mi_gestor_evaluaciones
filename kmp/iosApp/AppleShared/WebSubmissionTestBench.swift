@@ -120,6 +120,7 @@ struct WebSubmissionTestBenchView: View {
                 title: manifiesto.title,
                 recipientPublicKey: manifiesto.recipientKey,
                 publisherPublicKey: manifiesto.publisherKey,
+                manifestJson: WebSubmissionFixture.manifestJSON,
                 items: manifiesto.items.map { ($0.webItemId, $0.title, $0.type) },
                 alias: WebSubmissionFixture.participantAlias
             )

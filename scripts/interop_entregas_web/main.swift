@@ -430,6 +430,83 @@ comprobar(
     vistaPrevia.rejections.first?.reason ?? "sin motivo"
 )
 
+
+// MARK: - 7. Publicacion de formularios
+
+print("\nPublicación")
+
+let publicado = try WebSubmissionPublisher.publish(
+    title: "Formulario publicado de prueba",
+    subtitle: "Un apartado de cada tipo",
+    locale: "es",
+    sections: [
+        WebSubmissionPublisher.SectionToPublish(sectionId: "s1", title: "Sección 1", help: "Ayuda"),
+    ],
+    items: [
+        .init(itemId: "item-1", title: "Casilla", type: .check, required: true, options: [], helpText: nil, scaleLabels: nil, sectionId: "s1"),
+        .init(itemId: "item-2", title: "Texto con \"comillas\" y ñ", type: .text, required: true, options: [], helpText: "Escribe algo", scaleLabels: nil, sectionId: "s1"),
+        .init(itemId: "item-3", title: "Número", type: .number, required: false, options: [], helpText: nil, scaleLabels: nil, sectionId: "s1"),
+        .init(itemId: "item-4", title: "Escala", type: .scale1To4, required: true, options: [], helpText: nil, scaleLabels: ["Uno", "Dos", "Tres", "Cuatro"], sectionId: "s1"),
+        .init(itemId: "item-5", title: "Elección", type: .choice, required: true, options: ["a", "b", "c"], helpText: nil, scaleLabels: nil, sectionId: "s1"),
+    ],
+    students: [
+        .init(id: 42, name: "Ana Ferrer"),
+        .init(id: 43, name: "Bruno Gil"),
+        .init(id: 44, name: "Carmen Ruiz"),
+    ],
+    baseURL: "https://entregas-alumnado.vercel.app/",
+    expiresAtEpochMs: 1_900_000_000_000
+)
+
+comprobar("publica un alias por alumno", publicado.aliases.count == 3)
+comprobar("los alias no se repiten", Set(publicado.aliases.map(\.alias)).count == 3)
+comprobar("cada alias mide 22 caracteres", publicado.aliases.allSatisfy { $0.alias.count == 22 })
+comprobar(
+    "el enlace lleva el alias en el fragmento",
+    publicado.links.allSatisfy { $0.url.contains("/#a=") },
+    publicado.links.first?.url ?? ""
+)
+comprobar("mapea los cinco ítems", publicado.itemMap.count == 5)
+comprobar("la clave privada mide 32 bytes", publicado.recipientPrivateKey.count == 32)
+
+// Lo mas importante: la firma que pone Swift la valida el propio verificador.
+do {
+    try WebSubmissionCrypto.verifyManifestSignature(
+        rawManifestJSON: Data(publicado.manifestJSON.utf8)
+    )
+    pasadas += 1
+    print("  ok    la firma del manifiesto publicado verifica")
+} catch {
+    fallos += 1
+    print("  FALLA la firma del manifiesto publicado verifica -> \(error)")
+}
+
+// El manifiesto publicado tiene que poder leerse con los modelos del contrato, y
+// no debe filtrar nada de lo que no puede salir del Mac.
+do {
+    let releido = try JSONDecoder().decode(
+        WebFormManifest.self,
+        from: Data(publicado.manifestJSON.utf8)
+    )
+    comprobar("el manifiesto publicado se relee con el contrato", releido.items.count == 5)
+    comprobar("no lleva los ids reales de los ítems", !publicado.manifestJSON.contains("item-1"))
+    comprobar("no lleva nombres del alumnado", !publicado.manifestJSON.contains("Ana Ferrer"))
+    comprobar(
+        "publica la clave pública de cifrado, no la privada",
+        !publicado.manifestJSON.contains(publicado.recipientPrivateKey.base64URLEncodedString)
+    )
+    comprobar("no lleva ningún alias", publicado.aliases.allSatisfy { !publicado.manifestJSON.contains($0.alias) })
+} catch {
+    fallos += 1
+    print("  FALLA el manifiesto publicado se decodifica -> \(error)")
+}
+
+// Se deja en disco para que el validador de la PWA lo compruebe con SU
+// implementacion: es la prueba cruzada en el sentido contrario.
+let destinoPublicado = URL(fileURLWithPath: "/tmp/manifiesto-publicado-por-swift.json")
+try Data(publicado.manifestJSON.utf8).write(to: destinoPublicado)
+print("  ->    escrito \(destinoPublicado.path) para el validador de la PWA")
+
 // MARK: - Resultado
 
 print("\n\(pasadas) pasadas, \(fallos) fallidas")

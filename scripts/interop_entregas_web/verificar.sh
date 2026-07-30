@@ -14,6 +14,7 @@ set -euo pipefail
 
 raiz="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 servicio="$raiz/kmp/iosApp/AppleShared/WebSubmissionImportService.swift"
+publicador="$raiz/kmp/iosApp/AppleShared/WebSubmissionPublisher.swift"
 comprobador="$raiz/scripts/interop_entregas_web/main.swift"
 binario="${TMPDIR:-/tmp}/interop_entregas_web"
 
@@ -23,7 +24,7 @@ if [[ ! -f "$servicio" ]]; then
 fi
 
 echo "Compilando…"
-swiftc -O "$servicio" "$comprobador" -o "$binario"
+swiftc -O "$servicio" "$publicador" "$comprobador" -o "$binario"
 
 echo "Ejecutando…"
 "$binario"

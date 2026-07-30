@@ -129,6 +129,9 @@ struct MacRootView: View {
     }
 
     private func startCommandCenterAfterInitialLayout() async {
+        // Los unit tests alojados en la app no deben arrancar el helper LAN:
+        // mantiene vivo el proceso huésped después de terminar XCTest.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         guard !didRequestCommandCenterStart else { return }
         didRequestCommandCenterStart = true
         await Task.yield()

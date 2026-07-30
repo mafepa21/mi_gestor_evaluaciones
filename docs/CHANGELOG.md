@@ -95,6 +95,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Pruebas macOS: el host de XCTest abre una base exclusiva en `MiGestorTests` y no puede migrar,
+  rescatar ni renombrar la base real del docente al ejecutar el target del Planificador.
 - Situaciones/Planificador: volver a importar el mismo documento de sesiones reutiliza ahora la
   versión y los planes existentes mediante su SHA-256. El Gantt consolida las versiones idénticas
   heredadas y deja de presentar sus sesiones como una segunda situación de calendario.

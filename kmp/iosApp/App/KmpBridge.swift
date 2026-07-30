@@ -1866,6 +1866,180 @@ final class KmpBridge: ObservableObject {
         return resultado
     }
 
+#if DEBUG
+    /// Monta a mano un formulario de prueba: columna con instrumento, plantilla con
+    /// sus ítems, registro del formulario, mapa de ítems y un alias asignado.
+    ///
+    /// **Solo DEBUG y solo hasta que exista la publicación de formularios.** Sin
+    /// esto el circuito no se puede ver funcionando, porque nada crea todavía un
+    /// `formInstanceId` ni una fila de alias. Cuando la app sepa publicar, este
+    /// método y `WebSubmissionTestBenchView` se borran juntos.
+    func prepareWebSubmissionTestForm(
+        formInstanceId: String,
+        title: String,
+        recipientPublicKey: String,
+        publisherPublicKey: String?,
+        items: [(webItemId: String, title: String, type: WebManifestItemType)],
+        alias: String
+    ) async throws -> WebSubmissionTestFormResult {
+        if classes.isEmpty { try await refreshClasses() }
+        guard let clase = classes.first else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "Crea primero un grupo con alumnado."]
+            )
+        }
+        let classId = clase.id
+
+        let alumnado = try await container.classesRepository.listStudentsInClass(classId: classId)
+        guard let primero = alumnado.first else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "El grupo \(clase.name) no tiene alumnado."]
+            )
+        }
+
+        let ahora = Int64(Date().timeIntervalSince1970 * 1000)
+        let instant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: ahora)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: instant,
+            updatedAt: instant,
+            associatedGroupId: KotlinLong(value: classId),
+            deviceId: localDeviceId,
+            syncVersion: 0
+        )
+
+        // Columna estable por formulario: repetir la preparación no crea columnas
+        // nuevas, y así se puede pulsar el botón varias veces sin ensuciar el
+        // Cuaderno.
+        let columnId = "COL_WEB_\(formInstanceId.prefix(8))"
+        let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+        let tabIds = selectedNotebookTabId.map { [$0] } ?? tabs.first.map { [$0.id] } ?? []
+
+        let column = NotebookColumnDefinition(
+            id: columnId,
+            title: "Entregas web (prueba)",
+            type: .text,
+            categoryKind: .evaluation,
+            instrumentKind: .learningSituation,
+            inputKind: .text,
+            evaluationId: nil,
+            rubricId: nil,
+            formula: nil,
+            weight: 0,
+            dateEpochMs: KotlinLong(value: ahora),
+            unitOrSituation: title,
+            competencyCriteriaIds: [],
+            scaleKind: .custom,
+            tabIds: tabIds,
+            sessions: [],
+            sharedAcrossTabs: false,
+            colorHex: "0F766E",
+            iconName: "tray.and.arrow.down",
+            order: -1,
+            widthDp: 160,
+            categoryId: nil,
+            ordinalLevels: [],
+            availableIcons: [],
+            countsTowardAverage: false,
+            isPinned: false,
+            isHidden: false,
+            visibility: .visible,
+            isLocked: false,
+            isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
+            trace: trace
+        )
+        try await container.notebookRepository.saveColumn(classId: classId, column: column)
+
+        let templateId = "template_\(columnId)"
+        let plantillaItems: [NotebookInstrumentItem] = items.enumerated().map { indice, item in
+            NotebookInstrumentItem(
+                id: "item_\(columnId)_\(item.webItemId)",
+                templateId: templateId,
+                key: item.webItemId,
+                title: item.title,
+                type: Self.instrumentItemType(from: item.type),
+                options: [],
+                required: true,
+                order: Int32(indice),
+                helpText: nil,
+                trace: trace
+            )
+        }
+        try await container.notebookInstrumentsRepository.saveTemplate(
+            template: NotebookInstrumentTemplate(
+                id: templateId,
+                classId: classId,
+                columnId: columnId,
+                evaluationId: nil,
+                title: title,
+                kind: .form,
+                inputKind: .text,
+                source: "WEB_TEST_BENCH",
+                trace: trace
+            ),
+            items: plantillaItems
+        )
+
+        try await container.webSubmissionsRepository.saveFormInstance(
+            instance: WebFormInstance(
+                formInstanceId: formInstanceId,
+                classId: classId,
+                columnId: columnId,
+                templateId: templateId,
+                title: title,
+                recipientPublicKey: recipientPublicKey,
+                privateKeyRef: WebSubmissionKeychain.reference(for: formInstanceId),
+                publisherPublicKey: publisherPublicKey,
+                expiresAtEpochMs: ahora + 365 * 24 * 60 * 60 * 1000,
+                revoked: false,
+                createdAtEpochMs: ahora,
+                updatedAtEpochMs: ahora
+            )
+        )
+
+        try await container.webSubmissionsRepository.saveItemMap(
+            formInstanceId: formInstanceId,
+            entries: items.map { item in
+                WebItemMapEntry(
+                    webItemId: item.webItemId,
+                    itemId: "item_\(columnId)_\(item.webItemId)",
+                    itemType: item.type.rawValue
+                )
+            }
+        )
+
+        try await container.webSubmissionsRepository.saveAliases(
+            formInstanceId: formInstanceId,
+            entries: [
+                WebAliasEntry(alias: alias, studentId: primero.id, createdAtEpochMs: ahora)
+            ]
+        )
+
+        refreshCurrentNotebook()
+
+        return WebSubmissionTestFormResult(
+            classId: classId,
+            columnId: columnId,
+            studentName: "\(primero.firstName) \(primero.lastName)".trimmingCharacters(in: .whitespaces)
+        )
+    }
+
+    private static func instrumentItemType(from tipo: WebManifestItemType) -> NotebookInstrumentItemType {
+        switch tipo {
+        case .check: return .check
+        case .text: return .text
+        case .number: return .number
+        case .scale1To4: return .scale14
+        case .choice: return .choice
+        }
+    }
+#endif
+
     func refreshStudentsDirectory() async throws {
         if classes.isEmpty {
             try await refreshClasses()

@@ -141,6 +141,16 @@ struct WebSubmissionSnapshotResolver: WebSubmissionContextResolver {
     }
 }
 
+#if DEBUG
+/// Lo que devuelve el banco de pruebas al montar un formulario a mano.
+/// Se borra cuando exista la publicación de formularios de verdad.
+struct WebSubmissionTestFormResult {
+    let classId: Int64
+    let columnId: String
+    let studentName: String
+}
+#endif
+
 // MARK: - Resultado de importar
 
 struct WebSubmissionImportOutcome {

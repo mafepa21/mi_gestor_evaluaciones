@@ -247,11 +247,16 @@ El formato sigue una variante practica de Keep a Changelog:
 - Entregas del alumnado vía web: `./gradlew :data:verifyCommonMainAppDatabaseMigration`
   **BUILD SUCCESSFUL**, y `:data:generateCommonMainAppDatabaseInterface` sin errores. Es lo que
   confirma que la migración 39 aplicada en orden produce el mismo esquema que los `CREATE` de
-  `AppDatabase.sq`. **No se ha ejecutado ningún build de las apps Apple** en esta tanda: el fichero
-  nuevo compila con `swiftc` y se ha comprobado a mano que no colisiona con símbolos existentes
-  (`base64URLEncoded`, `JSONCanonicalizer`, `WebSubmission*` son nombres libres; la única
-  `extension Data` previa, en `MacModuleStubs.swift`, es `private` y con otros miembros), pero queda
-  pendiente `verify_apple_builds.sh` antes de dar la feature por cerrada.
+  `AppDatabase.sq`.
+- Entregas del alumnado vía web: `./scripts/verify_apple_builds.sh` con **las dos apps en verde**,
+  `MiGestorKMPMac` (macOS nativo) y `MiGestorKMPiOS` (simulador iOS), tras añadir el servicio. La
+  regeneración con XcodeGen mete `WebSubmissionImportService.swift` en los dos targets y esas 6
+  líneas de `project.pbxproj` se commitean: sin ellas, quien compile sin pasar antes por XcodeGen se
+  quedaría sin el fichero. Comprobado además a mano que no colisiona con símbolos existentes
+  (`base64URLEncoded`, `JSONCanonicalizer` y `WebSubmission*` son nombres libres; la única
+  `extension Data` previa, en `MacModuleStubs.swift`, es `private` y con otros miembros).
+  **No hay prueba manual en la app**, y no aplica todavía: sin hoja de previsualización no hay nada
+  que abrir desde la interfaz.
 - Sync LAN (macOS): `./scripts/verify_apple_builds.sh` (regeneración con XcodeGen + `xcodebuild` para `MiGestorKMPMac` y `MiGestorKMPiOS`) en verde tras el cambio. Root cause confirmado en la máquina de desarrollo con `lsof -iTCP:8765` y `ps`: un helper huérfano de un build de días atrás seguía escuchando en el puerto 8765 mientras la app principal corría desde una carpeta de DerivedData distinta; se liberó manualmente para restaurar el servicio en caliente sin esperar a una recompilación. No se ha probado en caliente el propio flujo de detección corregido (matar un helper huérfano real con la nueva lógica y comprobar que el emparejamiento con un iPad se recupera), porque reproducirlo de forma controlada exige forzar dos builds de Xcode con DerivedData distinta; queda pendiente de verificación manual.
 
 - Compilación de las dos apps Apple con los esquemas `MiGestorKMPMac` (destino macOS) y `MiGestorKMPiOS` (destino genérico de simulador iOS): **BUILD SUCCEEDED** en ambos tras la unificación del dashboard. No se ha ejecutado prueba manual en dispositivo ni simulador: los estados que faltan por comprobar a mano son el aula en curso con horario configurado, el paso automático a Despacho fuera de horario y el caso sin horario configurado.

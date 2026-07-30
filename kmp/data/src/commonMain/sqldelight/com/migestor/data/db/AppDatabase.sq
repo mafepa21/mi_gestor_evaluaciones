@@ -2716,3 +2716,136 @@ WHERE excluded.deleted_at_epoch_ms >= sync_tombstones.deleted_at_epoch_ms;
 
 deleteSyncTombstone:
 DELETE FROM sync_tombstones WHERE entity = ? AND entity_id = ?;
+
+-- ── entregas del alumnado via web ────────────────────────────────────────
+--
+-- Tabla de correspondencias entre lo que ve la PWA (form_instance_id, alias,
+-- web_item_id) y lo real (clase, columna, alumno, item). Ver 39.sqm para el
+-- motivo de que ninguna de estas cuatro lleve `device_id` ni `sync_version`:
+-- no deben viajar por Sync LAN, porque su valor de privacidad depende de existir
+-- en un solo dispositivo.
+
+CREATE TABLE IF NOT EXISTS web_form_instances (
+    form_instance_id TEXT NOT NULL PRIMARY KEY,
+    class_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    template_id TEXT,
+    title TEXT NOT NULL DEFAULT '',
+    recipient_public_key TEXT NOT NULL,
+    private_key_ref TEXT NOT NULL,
+    publisher_public_key TEXT,
+    expires_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    revoked INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (column_id) REFERENCES notebook_columns(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_web_form_instances_class ON web_form_instances(class_id);
+CREATE INDEX IF NOT EXISTS idx_web_form_instances_column ON web_form_instances(column_id);
+
+CREATE TABLE IF NOT EXISTS web_participant_aliases (
+    form_instance_id TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    student_id INTEGER NOT NULL,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (form_instance_id, alias),
+    UNIQUE (form_instance_id, student_id),
+    FOREIGN KEY (form_instance_id) REFERENCES web_form_instances(form_instance_id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_web_aliases_student ON web_participant_aliases(student_id);
+
+CREATE TABLE IF NOT EXISTS web_item_map (
+    form_instance_id TEXT NOT NULL,
+    web_item_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    PRIMARY KEY (form_instance_id, web_item_id),
+    FOREIGN KEY (form_instance_id) REFERENCES web_form_instances(form_instance_id) ON DELETE CASCADE,
+    FOREIGN KEY (item_id) REFERENCES notebook_instrument_items(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_web_item_map_item ON web_item_map(item_id);
+
+CREATE TABLE IF NOT EXISTS web_submission_ledger (
+    submission_id TEXT NOT NULL PRIMARY KEY,
+    form_instance_id TEXT NOT NULL,
+    alias TEXT,
+    student_id INTEGER,
+    status TEXT NOT NULL,
+    reject_reason TEXT,
+    answer_count INTEGER NOT NULL DEFAULT 0,
+    client_submitted_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    imported_at_epoch_ms INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_web_ledger_form ON web_submission_ledger(form_instance_id, imported_at_epoch_ms);
+CREATE INDEX IF NOT EXISTS idx_web_ledger_status ON web_submission_ledger(status);
+
+selectWebFormInstance:
+SELECT form_instance_id, class_id, column_id, template_id, title, recipient_public_key,
+       private_key_ref, publisher_public_key, expires_at_epoch_ms, revoked,
+       created_at_epoch_ms, updated_at_epoch_ms
+FROM web_form_instances
+WHERE form_instance_id = ?;
+
+selectWebFormInstancesByClass:
+SELECT form_instance_id, class_id, column_id, template_id, title, recipient_public_key,
+       private_key_ref, publisher_public_key, expires_at_epoch_ms, revoked,
+       created_at_epoch_ms, updated_at_epoch_ms
+FROM web_form_instances
+WHERE class_id = ?
+ORDER BY created_at_epoch_ms DESC;
+
+upsertWebFormInstance:
+INSERT OR REPLACE INTO web_form_instances(form_instance_id, class_id, column_id, template_id,
+    title, recipient_public_key, private_key_ref, publisher_public_key,
+    expires_at_epoch_ms, revoked, created_at_epoch_ms, updated_at_epoch_ms)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+revokeWebFormInstance:
+UPDATE web_form_instances SET revoked = 1, updated_at_epoch_ms = ? WHERE form_instance_id = ?;
+
+deleteWebFormInstance:
+DELETE FROM web_form_instances WHERE form_instance_id = ?;
+
+selectWebStudentIdForAlias:
+SELECT student_id FROM web_participant_aliases
+WHERE form_instance_id = ? AND alias = ?;
+
+selectWebAliasesForForm:
+SELECT alias, student_id, created_at_epoch_ms
+FROM web_participant_aliases
+WHERE form_instance_id = ?
+ORDER BY created_at_epoch_ms, alias;
+
+upsertWebAlias:
+INSERT OR REPLACE INTO web_participant_aliases(form_instance_id, alias, student_id, created_at_epoch_ms)
+VALUES (?, ?, ?, ?);
+
+selectWebItemMapForForm:
+SELECT web_item_id, item_id, item_type
+FROM web_item_map
+WHERE form_instance_id = ?
+ORDER BY web_item_id;
+
+upsertWebItemMap:
+INSERT OR REPLACE INTO web_item_map(form_instance_id, web_item_id, item_id, item_type)
+VALUES (?, ?, ?, ?);
+
+selectWebSubmissionLedgerEntry:
+SELECT submission_id, form_instance_id, alias, student_id, status, reject_reason,
+       answer_count, client_submitted_at_epoch_ms, imported_at_epoch_ms
+FROM web_submission_ledger
+WHERE submission_id = ?;
+
+selectWebSubmissionLedgerForForm:
+SELECT submission_id, form_instance_id, alias, student_id, status, reject_reason,
+       answer_count, client_submitted_at_epoch_ms, imported_at_epoch_ms
+FROM web_submission_ledger
+WHERE form_instance_id = ?
+ORDER BY imported_at_epoch_ms DESC;
+
+upsertWebSubmissionLedgerEntry:
+INSERT OR REPLACE INTO web_submission_ledger(submission_id, form_instance_id, alias, student_id,
+    status, reject_reason, answer_count, client_submitted_at_epoch_ms, imported_at_epoch_ms)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);

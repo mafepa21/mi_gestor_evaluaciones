@@ -70,6 +70,21 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- Entregas del alumnado vía web: migración **39** con cuatro tablas nuevas
+  (`web_form_instances`, `web_participant_aliases`, `web_item_map`,
+  `web_submission_ledger`) que forman la tabla de correspondencias entre lo que ve la PWA
+  (`form_instance_id`, alias, `web_item_id`) y lo real (clase, columna, alumno, ítem). **Ninguna
+  de las cuatro lleva `device_id` ni `sync_version`, y es deliberado**: todas las demás tablas del
+  esquema los llevan porque viajan por Sync LAN, y estas no deben viajar. Su valor de privacidad
+  depende de existir en un solo dispositivo: si se sincronizaran, cada iPad enlazado tendría una
+  copia del mapa alias → alumno y la pseudonimización dejaría de significar nada. La ausencia de
+  esas dos columnas es además lo que impide que `SqlDelightSyncAdapter` las arrastre por descuido,
+  porque no encajan en la forma que espera el adaptador. Consecuencia asumida y documentada: si el
+  docente cambia de Mac, las entregas pendientes de un formulario ya publicado no se resuelven
+  desde el dispositivo nuevo. La clave privada del formulario **no** se guarda en la base de datos:
+  va al llavero y la tabla solo guarda su referencia. `verifyCommonMainAppDatabaseMigration`
+  correcto: las 39 migraciones aplicadas en orden producen el mismo esquema que los `CREATE` de
+  `AppDatabase.sq`.
 - Sync LAN (helper macOS): `SqlDelightSyncAdapter` no compilaba. Las consultas de instrumentos
   estructurados llamaban a una propiedad `db` que no existe en esa clase (solo tiene `container`),
   y serializaban `value_number` (REAL) como si fuera texto. `:data:compileKotlinDesktop` fallaba y

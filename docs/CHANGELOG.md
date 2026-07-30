@@ -95,6 +95,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Situaciones/Planificador: volver a importar el mismo documento de sesiones reutiliza ahora la
+  versión y los planes existentes mediante su SHA-256. El Gantt consolida las versiones idénticas
+  heredadas y deja de presentar sus sesiones como una segunda situación de calendario.
 - Planificador/Situaciones: programar una situación podía dejar sesiones teóricas sin ubicar
   aunque el usuario hubiera seleccionado todas las franjas. La causa eran duplicados exactos en
   el horario docente: dos entradas con el mismo día y horas producían el mismo destino

@@ -54,10 +54,10 @@ Fecha de diagnóstico: 2026-07-30
 
 La base local afectada permitió confirmar la causa sin modificar datos:
 
-- `1º BAC B` tenía dos entradas idénticas de horario el viernes de 14:30 a 15:25.
+- El horario del grupo afectado tenía dos entradas idénticas para el mismo día y rango horario.
 - La secuencia tenía 8 planes, pero el calendario conservaba 6 sesiones.
-- Los planes sin enlace eran S2 y S6, las dos posiciones que habían sido sustituidas al reutilizar
-  el mismo destino fecha/periodo.
+- Los dos planes sin enlace correspondían a las posiciones sustituidas al reutilizar el mismo
+  destino fecha/periodo.
 
 Corrección verificada:
 

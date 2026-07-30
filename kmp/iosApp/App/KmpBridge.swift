@@ -5497,6 +5497,16 @@ final class KmpBridge: ObservableObject {
         sequenceDraft: LearningSituationSessionSequenceImportDraft? = nil
     ) async throws {
         guard !scheduledSlots.isEmpty else { return }
+        guard !LearningSituationScheduleProjection.hasDuplicateDestinations(scheduledSlots) else {
+            throw NSError(
+                domain: "LearningSituations",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "No se puede programar más de una sesión en la misma fecha y franja. Revisa la previsualización."
+                ]
+            )
+        }
         let detailedPlanIds: [Int: Int64]
         if let sequenceDraft {
             detailedPlanIds = try await persistSessionSequence(situation: situation, draft: sequenceDraft)

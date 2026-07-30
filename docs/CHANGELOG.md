@@ -94,6 +94,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Planificador/Situaciones: programar una situación podía dejar sesiones teóricas sin ubicar
+  aunque el usuario hubiera seleccionado todas las franjas. La causa eran duplicados exactos en
+  el horario docente: dos entradas con el mismo día y horas producían el mismo destino
+  fecha/periodo, y `programLearningSituationSessions` sustituía silenciosamente la primera sesión
+  por la segunda. La previsualización conserva ahora una sola franja por día y rango horario, avisa
+  de los duplicados ignorados y la escritura rechaza cualquier colisión residual antes de
+  persistir. El Gantt muestra además una tarjeta primaria para programar la siguiente pendiente y
+  renombra la acción de grupo a `Programar n`, haciendo reparables los datos ya afectados.
 - Planificador: la carga del Gantt incluye situaciones enlazadas y su última secuencia aunque aún
   no exista ninguna sesión agendada, usa estados tipados separados (`Sin ubicar`, `Planificada`,
   `En curso`, `Impartida`, `Cerrada`, `Cancelada` y `Solo calendario`) y deja de confundir errores
@@ -167,6 +175,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Regresión de programación de situaciones: `PlannerGanttProjectionTests` amplía su cobertura a
+  8 pruebas, con casos específicos para deduplicar franjas docentes idénticas y rechazar dos
+  sesiones destinadas a la misma fecha/periodo; 8 ejecutadas, 0 fallos. Después del cambio,
+  `./scripts/verify_apple_builds.sh` completó correctamente macOS e iOS Simulator.
 - Planificador/Gantt macOS: `MiGestorPlannerTests` ejecutó 6 pruebas con 0 fallos. El comando
   `./scripts/verify_apple_builds.sh` regeneró el proyecto Xcode y terminó con compilación correcta
   de macOS e iOS Simulator. La revisión visual automatizada en 900/1200/1600 pt y claro/oscuro

@@ -4,6 +4,7 @@ enum ScheduleExcelImportError: LocalizedError {
     case missingWeekdayHeader
     case missingTimeRows
     case emptySchedule
+    case tooManyFiles
 
     var errorDescription: String? {
         switch self {
@@ -13,14 +14,56 @@ enum ScheduleExcelImportError: LocalizedError {
             return "No se encontraron franjas con formato De HH:mm a HH:mm."
         case .emptySchedule:
             return "El horario no contiene clases ni huecos detectables."
+        case .tooManyFiles:
+            return "Puedes combinar un máximo de 3 archivos de horario."
         }
     }
 }
 
 struct ScheduleExcelImportService {
+    func preview(from urls: [URL]) throws -> ScheduleImportPreview {
+        guard urls.count <= 3 else {
+            throw ScheduleExcelImportError.tooManyFiles
+        }
+        guard !urls.isEmpty else {
+            throw ScheduleExcelImportError.emptySchedule
+        }
+        return combine(try urls.map(preview(from:)))
+    }
+
     func preview(from url: URL) throws -> ScheduleImportPreview {
         let rows = try AppleSpreadsheetReader.readRows(from: url)
         return try preview(rows: rows, sourceName: url.lastPathComponent)
+    }
+
+    func combine(_ previews: [ScheduleImportPreview]) -> ScheduleImportPreview {
+        guard previews.count > 1 else {
+            return previews.first ?? ScheduleImportPreview(
+                sourceName: "Horario",
+                slots: [],
+                subjectLegend: [],
+                conflicts: [],
+                warnings: []
+            )
+        }
+
+        let slots = deduplicatedSlots(previews.flatMap(\.slots))
+        let legend = mergedLegend(previews.flatMap(\.subjectLegend))
+        let omittedCount = previews.reduce(0) { $0 + $1.slots.count } - slots.count
+        var warnings = previews.flatMap(\.warnings)
+        if omittedCount > 0 {
+            warnings.append("\(omittedCount) bloque(s) idénticos entre archivos se han unificado.")
+        }
+
+        return ScheduleImportPreview(
+            sourceName: "\(previews.count) archivos combinados",
+            slots: slots.sorted { lhs, rhs in
+                (lhs.weekday, lhs.startMinute, lhs.endMinute, lhs.rawText) < (rhs.weekday, rhs.startMinute, rhs.endMinute, rhs.rawText)
+            },
+            subjectLegend: legend,
+            conflicts: Array(Set(previews.flatMap(\.conflicts) + detectConflicts(in: slots))).sorted(),
+            warnings: Array(Set(warnings)).sorted()
+        )
     }
 
     func preview(rows: [[String]], sourceName: String = "Horario") throws -> ScheduleImportPreview {
@@ -284,6 +327,18 @@ struct ScheduleExcelImportService {
         return Array(Set(conflicts)).sorted()
     }
 
+    private func deduplicatedSlots(_ slots: [ImportedScheduleSlot]) -> [ImportedScheduleSlot] {
+        var seen: Set<ScheduleImportSlotKey> = []
+        return slots.filter { slot in
+            seen.insert(ScheduleImportSlotKey(slot: slot)).inserted
+        }
+    }
+
+    private func mergedLegend(_ entries: [ImportedSubjectLegend]) -> [ImportedSubjectLegend] {
+        var seen: Set<String> = []
+        return entries.filter { seen.insert($0.code.uppercased()).inserted }
+    }
+
     private func buildWarnings(for slots: [ImportedScheduleSlot]) -> [String] {
         var warnings: [String] = []
         let withoutGroups = slots.filter { ($0.kind == .teaching || $0.kind == .tutoring) && $0.groupCodes.isEmpty }
@@ -352,6 +407,28 @@ struct ScheduleExcelImportService {
             .joined(separator: " ")
     }
 
+}
+
+private struct ScheduleImportSlotKey: Hashable {
+    let weekday: Int
+    let startMinute: Int
+    let endMinute: Int
+    let kind: ImportedScheduleSlotKind
+    let assignments: [String]
+    let fallbackText: String
+
+    init(slot: ImportedScheduleSlot) {
+        weekday = slot.weekday
+        startMinute = slot.startMinute
+        endMinute = slot.endMinute
+        kind = slot.kind
+        assignments = slot.assignments
+            .map { "\($0.subjectCode.uppercased()):\($0.groupCode.uppercased())" }
+            .sorted()
+        fallbackText = assignments.isEmpty
+            ? slot.rawText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            : ""
+    }
 }
 
 private struct Header {

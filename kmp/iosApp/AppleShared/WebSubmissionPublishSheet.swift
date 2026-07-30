@@ -54,8 +54,8 @@ struct WebSubmissionPublishSheet: View {
         #endif
         .onAppear {
             if selectedColumnId == nil {
-                selectedColumnId = instruments.first(where: { !$0.alreadyPublished })?.columnId
-                    ?? instruments.first?.columnId
+                selectedColumnId = instruments.first(where: { $0.canPublish && !$0.alreadyPublished })?.columnId
+                    ?? instruments.first(where: { $0.canPublish })?.columnId
             }
         }
     }
@@ -211,12 +211,18 @@ struct WebSubmissionPublishSheet: View {
     private func instrumentRow(_ instrumento: WebPublishableInstrument) -> some View {
         let seleccionado = selectedColumnId == instrumento.columnId
         return Button {
+            guard instrumento.canPublish else { return }
             selectedColumnId = instrumento.columnId
         } label: {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: seleccionado ? "largecircle.fill.circle" : "circle")
+                Image(systemName: instrumento.canPublish
+                      ? (seleccionado ? "largecircle.fill.circle" : "circle")
+                      : "exclamationmark.circle")
                     .font(.system(size: 15))
-                    .foregroundStyle(seleccionado ? Color.accentColor : .secondary)
+                    .foregroundStyle(
+                        !instrumento.canPublish ? Color.red
+                            : (seleccionado ? Color.accentColor : .secondary)
+                    )
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(instrumento.templateTitle)
@@ -226,7 +232,14 @@ struct WebSubmissionPublishSheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    if instrumento.alreadyPublished {
+                    // El problema que impide publicar va antes que el aviso de
+                    // "ya publicado": si no se puede publicar, lo demás sobra.
+                    if let problema = instrumento.blockingIssue {
+                        Text(problema)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if instrumento.alreadyPublished {
                         Text("Ya tiene un formulario activo. Publicar otro reparte códigos nuevos y los enlaces antiguos dejarán de funcionar.")
                             .font(.caption)
                             .foregroundStyle(.orange)
@@ -240,6 +253,8 @@ struct WebSubmissionPublishSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!instrumento.canPublish)
+        .opacity(instrumento.canPublish ? 1 : 0.65)
     }
 
     // MARK: - Después de publicar
@@ -422,14 +437,24 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                         columnTitle: "Portafolio técnico",
                         templateTitle: "Rúbrica de portafolio técnico",
                         itemCount: 53,
-                        alreadyPublished: false
+                        alreadyPublished: false,
+                        blockingIssue: nil
                     ),
                     WebPublishableInstrument(
                         columnId: "c2",
                         columnTitle: "Fair play",
                         templateTitle: "Rejilla de observación de fair play",
                         itemCount: 8,
-                        alreadyPublished: true
+                        alreadyPublished: true,
+                        blockingIssue: nil
+                    ),
+                    WebPublishableInstrument(
+                        columnId: "c3",
+                        columnTitle: "Taller de errores",
+                        templateTitle: "Checklist del taller de errores",
+                        itemCount: 4,
+                        alreadyPublished: false,
+                        blockingIssue: "«Mi error elegido» es de elección y no tiene opciones. Edita el instrumento y añádelas."
                     ),
                 ],
                 baseURL: .constant("https://entregas-alumnado.vercel.app"),

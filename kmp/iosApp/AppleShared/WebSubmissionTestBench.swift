@@ -121,7 +121,7 @@ struct WebSubmissionTestBenchView: View {
                 recipientPublicKey: manifiesto.recipientKey,
                 publisherPublicKey: manifiesto.publisherKey,
                 manifestJson: WebSubmissionFixture.manifestJSON,
-                items: manifiesto.items.map { ($0.webItemId, $0.title, $0.type) },
+                items: manifiesto.items.map { ($0.webItemId, $0.title, $0.type, $0.options ?? []) },
                 alias: WebSubmissionFixture.participantAlias
             )
             anotar("Clase \(resultado.classId), columna \(resultado.columnId).")

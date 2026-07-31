@@ -13,6 +13,20 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Fixed
+
+- Import de instrumentos: la autoevaluación/coevaluación ponderable se bloqueaba con "la
+  observación necesita escala 1-4" aunque su rúbrica sí la tuviera. La validación miraba solo
+  `observationFields`, y en este tipo los indicadores 1-4 viven en la tabla de rúbrica
+  (`rubric.criteria`), que es de donde salen los ítems `rub_<n>`. Se añade además un aviso propio
+  y claro cuando ese instrumento llega sin tabla de rúbrica.
+
+### Changed
+
+- Ficha estructurada del Cuaderno: los ítems muestran su texto de ayuda bajo el título. En la
+  autoevaluación/coevaluación son los cuatro descriptores del indicador, así que quien responde
+  deja de ver un "1 2 3 4" sin explicación. Antes solo se veían en el formulario web publicado.
+
 ### Added
 
 - Instrumentos de autoevaluación y coevaluación **ponderables**: un instrumento cuyo título lleva

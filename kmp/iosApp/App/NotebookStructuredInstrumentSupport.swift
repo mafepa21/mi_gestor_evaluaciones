@@ -226,6 +226,15 @@ private struct StructuredInstrumentItemRow: View {
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
 
+                // En la autoevaluación/coevaluación aquí van los cuatro descriptores del
+                // indicador: sin ellos, quien responde ve solo "1 2 3 4" sin saber qué significan.
+                if let helpText = item.helpText, !helpText.isEmpty {
+                    Text(helpText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 switch item.type {
                 case .choice:
                     Picker("Respuesta", selection: $item.textValue) {

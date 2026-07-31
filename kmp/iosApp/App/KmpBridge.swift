@@ -24,6 +24,9 @@ struct StructuredInstrumentEvaluationItem: Identifiable {
     let title: String
     let type: NotebookInstrumentItemType
     let options: [String]
+    /// Texto de ayuda de la plantilla. En los instrumentos de autoevaluación/coevaluación lleva
+    /// los cuatro descriptores del indicador, que son los que explican qué significa cada nivel.
+    let helpText: String?
     var textValue: String
     var boolValue: Bool
     var numberValue: String
@@ -9163,6 +9166,7 @@ final class KmpBridge: ObservableObject {
                 title: item.title,
                 type: item.type,
                 options: item.options,
+                helpText: item.helpText,
                 textValue: response?.textValue ?? "",
                 boolValue: response?.boolValue?.boolValue ?? false,
                 numberValue: response?.numberValue.map { plainStructuredNumberString($0.doubleValue) } ?? ""

@@ -1965,6 +1965,9 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
             if instrument.kind == .rubric && (instrument.rubric?.criteria.isEmpty ?? true) {
                 errors.append("\(title): la rúbrica no tiene criterios.")
             }
+            if instrument.kind.isStudentAuthored && (instrument.rubric?.criteria.isEmpty ?? true) {
+                errors.append("\(title): la autoevaluación necesita una tabla de rúbrica con indicadores.")
+            }
             if instrument.countsTowardAverage && instrument.scoreStrategy == .none {
                 errors.append("\(title): elige una estrategia de puntuación.")
             }
@@ -2565,7 +2568,14 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
     }
 
     private func hasObservationScale1To4(_ instrument: AssessmentInstrumentDraft) -> Bool {
-        instrument.observationFields.contains { field in
+        // En un instrumento de autoevaluación/coevaluación los indicadores 1-4 no viven en
+        // `observationFields` sino en la tabla de rúbrica (`rubric.criteria`), que es de donde
+        // salen los ítems `rub_<n>` en escala 1-4. Sin este caso, la validación del import
+        // bloqueaba con "la observación necesita escala 1-4" un instrumento que sí la tiene.
+        if instrument.kind.isStudentAuthored {
+            return !(instrument.rubric?.criteria.isEmpty ?? true)
+        }
+        return instrument.observationFields.contains { field in
             guard let scale = field.scaleLabel else { return false }
             return scale.contains("1") && scale.contains("4")
         }

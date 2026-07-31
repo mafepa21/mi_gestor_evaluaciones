@@ -40,6 +40,21 @@ atribuye cada respuesta a quien la escribe, así que una valoración sobre otro 
 la fila equivocada; esa coevaluación clásica (SA4, instrumentos 2 y 4) sigue en papel, validada por
 muestreo e introducida por el profesorado.
 
+## Corrección posterior (mismo día, rama `fix/validacion-autoevaluacion-escala-1-4`)
+
+Al importar de verdad el DOCX de SA4b, la hoja de revisión bloqueaba la confirmación con
+"Rúbrica de autoevaluación y coevaluación de cierre: la observación necesita escala 1-4". El
+instrumento se detectaba bien (Autoevaluación · CE 3.2 · Cuenta · 10 % · Observación 1-4 · 3 ítems),
+pero `LearningSituationsWorkspaceView.hasObservationScale1To4` solo miraba `observationFields`, que
+en este tipo está vacío a propósito: los indicadores 1-4 viven en `rubric.criteria`, que es de donde
+salen los ítems `rub_<n>`. Ahora ese caso valida contra la rúbrica, y si el instrumento llega sin
+tabla de rúbrica se emite un error propio ("la autoevaluación necesita una tabla de rúbrica con
+indicadores") en vez del mensaje de observación.
+
+Junto con eso, `StructuredInstrumentEvaluationItem` transporta el `helpText` de la plantilla y la
+ficha estructurada lo pinta bajo el título del ítem: los cuatro descriptores del indicador ya se
+ven también dentro de la app, no solo en el formulario web publicado.
+
 ## Verificación
 
 - `./gradlew :data:desktopTest --tests "*NotebookInstrumentsRepositorySqlDelightTest*"`: 6/6 en

@@ -1,6 +1,6 @@
 # Evidencia de validación: Planificador y Gantt macOS
 
-Fecha: 2026-07-29  
+Fecha: 2026-07-29
 Plataforma de aceptación: macOS
 
 ## Pruebas automatizadas

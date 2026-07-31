@@ -6780,6 +6780,18 @@ final class KmpBridge: ObservableObject {
             ])
         }
 
+        if normalizedTitle == "quiz de cierre del rol coach y pasaporte saludable" {
+            return makeInstrumentItems(columnId: columnId, specs: [
+                ("coach_registro", "He registrado tiempos, repeticiones o RPE de forma responsable.", .scale14, []),
+                ("coach_seguridad", "He observado la técnica y he avisado con respeto ante riesgos o ajustes necesarios.", .scale14, []),
+                ("coach_feedback", "He ofrecido un feedback concreto, respetuoso y útil a mi compañero/a.", .scale14, []),
+                ("coach_cooperacion", "He cumplido mi rol y he colaborado para que ambos pudiéramos entrenar con seguridad.", .scale14, []),
+                ("proximo_paso", "Identifico un ajuste realista para mejorar como deportista o como Coach.", .scale14, []),
+                ("evidencia_feedback", "Describe el mejor feedback que diste o recibiste. ¿Qué ocurrió y por qué fue útil?", .text, []),
+                ("compromiso", "¿Qué acción concreta aplicarás en tu próxima práctica?", .text, []),
+            ])
+        }
+
         if !instrument.checklistItems.isEmpty {
             // La checklist ponderada usa el prefijo de clave `chkp_` para que
             // `NotebookInstrumentsRepositorySqlDelight.saveResponses` derive su nota
@@ -7022,6 +7034,21 @@ final class KmpBridge: ObservableObject {
             return repairAssessmentInstrumentDraft(title: title, kind: .checklist)
         case "Healthy Habits Quiz - Session 8":
             return repairAssessmentInstrumentDraft(title: title, kind: .checklist)
+        case "Quiz de cierre del rol Coach y Pasaporte Saludable":
+            return repairAssessmentInstrumentDraft(
+                title: title,
+                kind: .quizQuestions,
+                criterionLabel: "CE 3.2",
+                quizQuestions: [
+                    QuizQuestionDraft(questionText: "He registrado tiempos, repeticiones o RPE de forma responsable.", options: []),
+                    QuizQuestionDraft(questionText: "He observado la técnica y he avisado con respeto ante riesgos o ajustes necesarios.", options: []),
+                    QuizQuestionDraft(questionText: "He ofrecido un feedback concreto, respetuoso y útil a mi compañero/a.", options: []),
+                    QuizQuestionDraft(questionText: "He cumplido mi rol y he colaborado para que ambos pudiéramos entrenar con seguridad.", options: []),
+                    QuizQuestionDraft(questionText: "Identifico un ajuste realista para mejorar como deportista o como Coach.", options: []),
+                    QuizQuestionDraft(questionText: "Describe el mejor feedback que diste o recibiste. ¿Qué ocurrió y por qué fue útil?", options: []),
+                    QuizQuestionDraft(questionText: "¿Qué acción concreta aplicarás en tu próxima práctica?", options: []),
+                ]
+            )
         case "Final Submission Checklist":
             return repairAssessmentInstrumentDraft(
                 title: title,
@@ -7045,7 +7072,8 @@ final class KmpBridge: ObservableObject {
         title: String,
         kind: AssessmentInstrumentKind,
         criterionLabel: String? = nil,
-        checklistItems: [ChecklistItemDraft] = []
+        checklistItems: [ChecklistItemDraft] = [],
+        quizQuestions: [QuizQuestionDraft] = []
     ) -> AssessmentInstrumentDraft {
         AssessmentInstrumentDraft(
             title: title,
@@ -7056,7 +7084,8 @@ final class KmpBridge: ObservableObject {
             countsTowardAverage: false,
             scoreStrategy: .none,
             rubric: nil,
-            checklistItems: checklistItems
+            checklistItems: checklistItems,
+            quizQuestions: quizQuestions
         )
     }
 

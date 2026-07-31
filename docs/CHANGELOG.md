@@ -20,6 +20,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Entregas web: la SA 1 incorpora el instrumento auxiliar **«Quiz de cierre del rol Coach y
+  Pasaporte Saludable»**. Sus cinco escalas 1-4 y dos respuestas abiertas se crean como plantilla
+  estructurada y se pueden publicar con enlaces individuales; las respuestas quedan en la ficha de
+  quien las emite y aportan evidencia para la rejilla transversal CE 3.2, sin alterar la fórmula
+  40+35+15+10 de la SA.
 - Horario docente: la configuración inicial permite seleccionar hasta tres Excel complementarios
   y los combina en una única previsualización antes de guardar. Los bloques idénticos se unifican,
   los solapes se bloquean y un fallo revierte las franjas creadas. Si el horario heredado contiene

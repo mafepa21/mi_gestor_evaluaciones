@@ -6,6 +6,12 @@ enum class AssessmentInstrumentSourceKind {
     CHECKLIST,
     TEACHER_OBSERVATION,
     SUBMISSION_CHECKLIST,
+
+    /// Instrumentos mixtos que rellena el alumnado: rúbrica pequeña de 4 niveles que sí pondera
+    /// (ítems `rub_<n>` en escala 1-4) más preguntas abiertas de reflexión que no puntúan
+    /// (ítems `open_<n>`, tipo TEXT) y que revisa el profesorado.
+    SELF_ASSESSMENT,
+    PEER_ASSESSMENT,
 }
 
 enum class AssessmentInstrumentScoreStrategy {

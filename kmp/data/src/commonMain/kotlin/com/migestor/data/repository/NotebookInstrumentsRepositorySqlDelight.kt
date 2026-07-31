@@ -214,6 +214,7 @@ class NotebookInstrumentsRepositorySqlDelight(
             )
         }
         val derived = deriveObservationGridScore(detail.items, responsesByItem)
+            ?: deriveStudentRubricScore(detail.items, responsesByItem)
             ?: deriveProportionalChecklistScore(detail.items, responsesByItem)
         derived?.let { derivedScore ->
             gradesRepository.saveGrade(
@@ -261,6 +262,24 @@ class NotebookInstrumentsRepositorySqlDelight(
         if (valuesBySession.isEmpty()) return null
         val sessionAverages = valuesBySession.values.map { it.average() }
         return sessionAverages.average()
+    }
+
+    /// Traduce la rúbrica pequeña de un instrumento de autoevaluación/coevaluación (el que
+    /// rellena el alumnado) en una nota: media de los indicadores 1-4 respondidos. Solo se
+    /// aplica a los ítems con la convención de clave `rub_<n>` que genera el importador Apple
+    /// para `.selfAssessment`/`.peerAssessment`. Las preguntas abiertas del mismo instrumento
+    /// (`open_<n>`, tipo TEXT) quedan fuera del cálculo a propósito: no se pueden ponderar de
+    /// forma automática y las revisa el profesorado.
+    private fun deriveStudentRubricScore(
+        items: List<NotebookInstrumentItem>,
+        responsesByItem: Map<String, NotebookInstrumentResponse>,
+    ): Double? {
+        val keyPattern = Regex("""^rub_\d+$""")
+        val values = items
+            .filter { keyPattern.matches(it.key) && it.type == NotebookInstrumentItemType.SCALE_1_4 }
+            .mapNotNull { responsesByItem[it.id]?.numberValue }
+        if (values.isEmpty()) return null
+        return values.average()
     }
 
     /// Traduce una checklist ponderada ("checklist proporcional": el documento le asigna un %

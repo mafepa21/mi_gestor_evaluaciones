@@ -87,6 +87,12 @@ enum AssessmentInstrumentKind: String, Codable, CaseIterable {
     case teacherObservation
     case submissionChecklist
     case quizQuestions
+    /// Instrumento mixto que rellena el **alumnado**: una rúbrica pequeña de 4 niveles que sí
+    /// pondera (escala 1-4, nota automática) más preguntas abiertas de reflexión que no puntúan
+    /// y que revisa el profesorado. Antes, cualquier título con "autoevaluación"/"coevaluación"
+    /// caía en `.checklist` y su tabla de rúbrica se perdía convertida en casillas.
+    case selfAssessment
+    case peerAssessment
 
     var label: String {
         switch self {
@@ -96,7 +102,15 @@ enum AssessmentInstrumentKind: String, Codable, CaseIterable {
         case .teacherObservation: return "Observacion docente"
         case .submissionChecklist: return "Checklist final"
         case .quizQuestions: return "Quiz"
+        case .selfAssessment: return "Autoevaluacion"
+        case .peerAssessment: return "Coevaluacion"
         }
+    }
+
+    /// Los dos tipos que rellena el alumnado comparten todo el tratamiento (rúbrica 1-4
+    /// ponderable + preguntas abiertas sin peso); solo cambia la etiqueta.
+    var isStudentAuthored: Bool {
+        self == .selfAssessment || self == .peerAssessment
     }
 }
 
@@ -282,7 +296,13 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let rubric = makeRubric(kind: kind, tables: nonEmptyTables)
         let (checklistItems, consumedParagraphs1) = makeChecklistItemsCollectingConsumption(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
         let observationFields = makeObservationFields(kind: kind, tables: nonEmptyTables)
-        let (quizQuestions, consumedParagraphs2) = makeQuizQuestionsCollectingConsumption(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
+        // En un instrumento de autoevaluación/coevaluación la única tabla es la rúbrica: las
+        // preguntas de reflexión salen siempre de los párrafos, nunca de la tabla.
+        let (quizQuestions, consumedParagraphs2) = makeQuizQuestionsCollectingConsumption(
+            kind: kind,
+            tables: kind.isStudentAuthored ? [] : nonEmptyTables,
+            paragraphs: paragraphs
+        )
 
         // A7: si la rejilla tiene peso y ninguna de sus columnas trae ya una escala explícita
         // "1-4", pero la última cabecera es claramente una columna de nota (nota/note/mark/
@@ -342,6 +362,13 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 let weightText = heading.weightPercent.map(formatPercent) ?? "peso detectado"
                 parts.append("Checklist ponderada (\(weightText)): la nota se calcula como ítems marcados ÷ ítems totales × 10.")
             }
+            if kind.isStudentAuthored {
+                let weightText = heading.weightPercent.map(formatPercent) ?? "peso detectado"
+                parts.append(
+                    "Lo rellena el alumnado (\(weightText)): la nota es la media de los indicadores 1-4 de la rúbrica. "
+                    + "Las \(quizQuestions.count) preguntas abiertas no puntúan; requieren revisión del profesorado."
+                )
+            }
             parts.append(contentsOf: narrativeNotes)
             noteText = parts.isEmpty ? nil : parts.joined(separator: "\n")
         } else {
@@ -384,6 +411,11 @@ struct LearningSituationAssessmentInstrumentsImportService {
         switch kind {
         case .rubric:
             return .rubric
+        case .selfAssessment, .peerAssessment:
+            // La rúbrica del alumnado se responde en escala 1-4, igual que una rejilla de
+            // observación: la nota la deriva `NotebookInstrumentsRepositorySqlDelight`
+            // (media de los ítems `rub_<n>`) y las preguntas abiertas no intervienen.
+            return .observationScale1To4
         case .observationGrid:
             return hasObservationScale1To4(observationFields) ? .observationScale1To4 : .none
         case .checklist:
@@ -410,7 +442,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
     }
 
     private func makeRubric(kind: AssessmentInstrumentKind, tables: [[[String]]]) -> RubricDraft? {
-        guard kind == .rubric else { return nil }
+        guard kind == .rubric || kind.isStudentAuthored else { return nil }
         guard let table = tables.first(where: { $0.count >= 2 }) else { return nil }
         let header = table[0]
         let descriptorHeaders = Array(header.dropFirst()).filter { !$0.isEmpty }
@@ -495,7 +527,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
 
     /// A5: variante de `makeQuizQuestions` que además informa qué párrafos se han consumido.
     private func makeQuizQuestionsCollectingConsumption(kind: AssessmentInstrumentKind, tables: [[[String]]], paragraphs: [String]) -> ([QuizQuestionDraft], Set<Int>) {
-        guard kind == .quizQuestions else { return ([], []) }
+        guard kind == .quizQuestions || kind.isStudentAuthored else { return ([], []) }
         let tableQuestions = tables.flatMap { table -> [QuizQuestionDraft] in
             let rows = table.dropFirst().isEmpty ? table : Array(table.dropFirst())
             return rows.compactMap { row -> QuizQuestionDraft? in
@@ -624,13 +656,20 @@ struct LearningSituationAssessmentInstrumentsImportService {
         if title.contains("submission") || title.contains("entrega") || title.contains("final checklist") || title.contains("producto final") {
             return .submissionChecklist
         }
+        // Autoevaluación/coevaluación CON tabla de rúbrica de 4 niveles: instrumento mixto que
+        // rellena el alumnado y que sí pondera. Sin esa tabla se mantiene el comportamiento
+        // histórico (`.checklist`), para no cambiar la lectura de los documentos antiguos.
+        if isStudentAuthoredTitle(title), hasFourLevelRubricTable(tables) {
+            return title.contains("coevaluacion") && !title.contains("autoevaluacion")
+                ? .peerAssessment
+                : .selfAssessment
+        }
         if title.contains("passport") ||
             title.contains("pasaporte") ||
             title.contains("checklist") ||
             title.contains("lista de cotejo") ||
             title.contains("lista de control") ||
-            title.contains("autoevaluacion") ||
-            title.contains("coevaluacion") {
+            isStudentAuthoredTitle(title) {
             return .checklist
         }
         if title.contains("quiz") {
@@ -657,6 +696,25 @@ struct LearningSituationAssessmentInstrumentsImportService {
             return .observationGrid
         }
         return .rubric
+    }
+
+    /// Títulos que indican que el instrumento lo rellena el alumnado, en las variantes de los
+    /// documentos reales del curso (castellano, valenciano e inglés).
+    private func isStudentAuthoredTitle(_ normalizedTitle: String) -> Bool {
+        ["autoevaluacion", "coevaluacion", "autoavaluacio", "coavaluacio",
+         "self-assessment", "self assessment", "peer-assessment", "peer assessment"]
+            .contains { normalizedTitle.contains(normalized($0)) }
+    }
+
+    /// Reconoce la forma "Indicador | nivel 1 | nivel 2 | nivel 3 | nivel 4": 5 columnas de
+    /// cabecera y al menos una fila de indicador. Descarta la forma de rejilla de observación
+    /// ("Alumno/a | Momento | ..."), que también tiene 5 o más columnas.
+    private func hasFourLevelRubricTable(_ tables: [[[String]]]) -> Bool {
+        tables.contains { table in
+            guard let header = table.first, header.count >= 5, table.count >= 2 else { return false }
+            let first = normalized(header.first ?? "")
+            return !first.contains("alumno") && !first.contains("student")
+        }
     }
 
     private func headingFromTable(_ rows: [[String]]) -> ParsedInstrumentHeading? {

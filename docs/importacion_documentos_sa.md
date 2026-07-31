@@ -183,6 +183,28 @@ cambiaron en la auditoría de 2026-07-25:
 - Una pregunta de quiz con opciones por `/` pero sin `?` se importa con sus opciones,
   cortando en el último `:` cuando no hay `?`.
 
+Cambio de 2026-07-31, instrumento mixto que rellena el alumnado:
+
+- Un instrumento cuyo título contiene `autoevaluación`/`coevaluación` (o `autoavaluació`,
+  `coavaluació`, `self-assessment`, `peer assessment`) **y** lleva debajo una tabla de rúbrica de
+  4 niveles deja de tiparse como `checklist` y pasa a `selfAssessment`/`peerAssessment`. Sin esa
+  tabla, el comportamiento histórico no cambia.
+- Ese instrumento genera **dos clases de ítems** en una única plantilla estructurada:
+  los indicadores de la rúbrica con clave `rub_<n>` y tipo `SCALE_1_4` (los cuatro descriptores
+  del nivel viajan en `helpText`, así que se ven también en el formulario web publicado), y las
+  preguntas de reflexión con clave `open_<n>` y tipo `TEXT`.
+- La nota se deriva en `NotebookInstrumentsRepositorySqlDelight.deriveStudentRubricScore`: media
+  de los ítems `rub_<n>` respondidos, en escala 1-4, persistida con `gradesRepository.saveGrade`.
+  La columna es `NUMERIC` con `scaleKind = FOUR_LEVEL`, así que la media del cuaderno la normaliza
+  a 0-10 igual que la de una rejilla de observación. Los ítems `open_<n>` quedan **fuera** del
+  cálculo a propósito: no se pueden ponderar solos y los revisa el profesorado.
+- Como la plantilla existe (no hay rúbrica guardada en `rubricsRepository` para este tipo), el
+  instrumento **se puede publicar como formulario web** para el alumnado, y la entrega importada
+  pasa por `saveResponses`, que calcula la nota.
+- Límite de diseño, no técnico: la rúbrica ponderable debe valorar a **quien la rellena**. La app
+  atribuye cada respuesta a quien la escribe, así que una valoración sobre otro alumno/a acabaría
+  en la fila equivocada; ese caso sigue haciéndose en papel con una rúbrica normal del docente.
+
 ## Limitaciones conocidas (no resueltas por la auditoría de 2026-07-25)
 
 - ~~**Checklist proporcional sin nota automática**~~: **resuelto**. El cálculo ya está

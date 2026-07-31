@@ -21,6 +21,9 @@ struct StructuredInstrumentEvaluationModel: Identifiable {
 
 struct StructuredInstrumentEvaluationItem: Identifiable {
     let id: String
+    /// Clave de la plantilla (`rub_<n>`, `open_<n>`, `obs_s<N>_i<M>`, `chkp_<n>`…). Es la que
+    /// distingue las dos partes de una autoevaluación/coevaluación al pintarla.
+    let key: String
     let title: String
     let type: NotebookInstrumentItemType
     let options: [String]
@@ -9163,6 +9166,7 @@ final class KmpBridge: ObservableObject {
             let response = responseByItemId[item.id]
             return StructuredInstrumentEvaluationItem(
                 id: item.id,
+                key: item.key,
                 title: item.title,
                 type: item.type,
                 options: item.options,

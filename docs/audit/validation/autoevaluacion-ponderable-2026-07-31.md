@@ -55,6 +55,23 @@ Junto con eso, `StructuredInstrumentEvaluationItem` transporta el `helpText` de 
 ficha estructurada lo pinta bajo el título del ítem: los cuatro descriptores del indicador ya se
 ven también dentro de la app, no solo en el formulario web publicado.
 
+Después, la ficha estructurada pasa a pintar este instrumento **con forma de rúbrica**
+(`StudentRubricInstrumentContent`): primero la rúbrica, con los cuatro niveles de cada indicador
+visibles y elegibles y la media en vivo sobre 4, y después las preguntas de reflexión en su propia
+sección, indicando que no puntúan. El reparto se hace por la clave del ítem (`rub_<n>` /
+`open_<n>`), que ahora viaja en `StructuredInstrumentEvaluationItem`.
+
+### Falso positivo descartado en el camino
+
+Una primera importación de SA4b creó la columna como checklist proporcional (ítems `chkp_<n>` de
+tipo CHECK, `instrument_kind = CHECKLIST`, `scale_kind = TEN_POINT`), y los párrafos de contexto
+aparecían como ítems. No era un fallo del código nuevo: la app que hizo esa importación era una
+instancia lanzada antes del cambio (su binario no contiene ni `rub_` ni las palabras clave nuevas
+del importador). El importador real, ejecutado sobre ese mismo `.docx`, devuelve `selfAssessment`
+con sus 3 indicadores y sus 9 preguntas. Para reimportar hay que cerrar la instancia antigua y
+borrar antes la columna: `materializeLearningSituationAssessmentInstruments` salta los instrumentos
+cuyo título ya existe como columna enlazada de la SA.
+
 ## Verificación
 
 - `./gradlew :data:desktopTest --tests "*NotebookInstrumentsRepositorySqlDelightTest*"`: 6/6 en

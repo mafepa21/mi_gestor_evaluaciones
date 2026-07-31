@@ -1,0 +1,99 @@
+{
+  "aviso": "Fixture de PRUEBA. La clave privada de aquí es de un solo uso y no protege ningún dato real. No usar con respuestas de alumnado.",
+  "algoritmo": "X25519 efímero -> HKDF-SHA256 -> ChaCha20-Poly1305 (RFC 8439, nonce de 12 bytes)",
+  "infoHkdf": "entregas-alumnado/v1/x25519-chacha20poly1305",
+  "aadFormato": "v1|{formInstanceId}|{submissionId}|{participantAlias} en UTF-8",
+  "recipientPrivateKey": "Yl5OWNyxcKrQqrtHngc6T1MN3fq72MDV6ZT5X16ERdc",
+  "manifest": {
+    "schemaVersion": 1,
+    "formInstanceId": "11111111-1111-4111-8111-111111111111",
+    "title": "Fixture de interoperabilidad",
+    "locale": "es",
+    "items": [
+      {
+        "webItemId": "f_check",
+        "type": "CHECK",
+        "title": "Casilla",
+        "required": true
+      },
+      {
+        "webItemId": "f_text",
+        "type": "TEXT",
+        "title": "Texto",
+        "required": true,
+        "maxLength": 200
+      },
+      {
+        "webItemId": "f_number",
+        "type": "NUMBER",
+        "title": "Número",
+        "required": true,
+        "min": 0.5,
+        "max": 250
+      },
+      {
+        "webItemId": "f_scale",
+        "type": "SCALE_1_4",
+        "title": "Escala",
+        "required": true,
+        "scaleLabels": [
+          "Uno",
+          "Dos",
+          "Tres",
+          "Cuatro"
+        ]
+      },
+      {
+        "webItemId": "f_choice",
+        "type": "CHOICE",
+        "title": "Elección con \"comillas\", barra \\ y salto\nde línea",
+        "required": true,
+        "options": [
+          "grip",
+          "trajectory",
+          "timing"
+        ]
+      }
+    ],
+    "recipientKey": "x25519:u5jJORpkkobdwvA5XXHf9znFHwjETVOinVOQZodKsQ0",
+    "publisherKey": "ed25519:X97CWG-iDirOG9phfzXSLY6c219FSN-ztyTscbnLWic",
+    "expiresAt": "2030-06-30T23:59:59Z",
+    "signature": "zpg_8fQyisXnh_IdM0DNaTdEGmU4mvvQF2eZiMasyN6xnjLh3DrDt7vhNnQCfLhMv7SwLie3yiCsyYjei9QDBA"
+  },
+  "envelope": {
+    "schemaVersion": 1,
+    "submissionId": "22222222-2222-4222-8222-222222222222",
+    "formInstanceId": "11111111-1111-4111-8111-111111111111",
+    "participantAlias": "pkzLJ58Ece2pVl3YgROF5g",
+    "clientSubmittedAt": "2026-07-30T09:15:00.000Z",
+    "encryptedPayload": "IiVQOVywTI2C5t7K-TfOjpcPH3MSNjUKLqt4Wj6bTWg8BDr6wKBJFoHp0UEWL6GUIVCGvpguMsNl0PoM-J9OZDrMrRaGBlsdqclna7b_dYlMfPZ3R2FVUcQ7BTGcfn-r-3gqpHSvpuACW6m3pgPiQM_AhXcvmi_DR66t-kDkFoHqt1TfgPBq1L7Lu7odGZu85WLAztQdiT9cmbCi6Q21VIXyePd77-JTdY-aTF1JehyulhoD802jslAyavGebOMCaJV-PQOIyqz1En1JZN32L4KSX-rzbfhDb3JCJ1op7ApxMZci9HCOw12tQCqulX05vFeuWwByKj4xfoYcCo657ij6xclnET7wS1rDB5F72F3ogSV-JwqlrNnd038a7ZBrRbB5eykGDnEmKytomfL2PNtYxhxsSPR7pm8vFX9Bv5SOZEqukvkynaqr6UGPDxWuufPsA41eNafSANv8pA",
+    "ephemeralPublicKey": "P0PC-955_7Ot1VVYZGUBerXsIy34jBfjxsEAMihF4C0",
+    "nonce": "8xsaz-4ZuAfS6VfM"
+  },
+  "expectedPayload": {
+    "schemaVersion": 1,
+    "formInstanceId": "11111111-1111-4111-8111-111111111111",
+    "answers": [
+      {
+        "webItemId": "f_check",
+        "bool": true
+      },
+      {
+        "webItemId": "f_text",
+        "text": "Mejoré el saque corto en la sesión de hoy: ñandú, çedilla"
+      },
+      {
+        "webItemId": "f_number",
+        "number": 42.5
+      },
+      {
+        "webItemId": "f_scale",
+        "number": 3
+      },
+      {
+        "webItemId": "f_choice",
+        "text": "timing"
+      }
+    ]
+  }
+}

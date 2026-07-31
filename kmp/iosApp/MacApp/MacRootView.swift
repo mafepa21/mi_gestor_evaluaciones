@@ -528,6 +528,14 @@ struct MacRootView: View {
                 onOpenModule: open(module:classId:studentId:)
             )
             .environmentObject(session.bridge)
+        case .webSubmissions:
+            // Módulo propio en la barra lateral: es trabajo diario, no soporte.
+            // Antes vivía aparcado en Ajustes → Diagnóstico.
+            ScrollView {
+                WebSubmissionsWorkspaceView()
+                    .padding(24)
+            }
+            .environmentObject(session.bridge)
         case .meetings:
             MacMeetingsView(bridge: session.bridge)
                 .environmentObject(session.bridge)
@@ -1098,6 +1106,7 @@ struct MacRootView: View {
         case .planner: return .orange
         case .diary: return .pink
         case .situations: return .indigo
+        case .webSubmissions: return .mint
         case .meetings: return .brown
         case .students: return .blue
         case .rubrics: return .teal

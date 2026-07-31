@@ -1,0 +1,22 @@
+-- Migration 40: guardar el manifiesto publicado de cada formulario web
+--
+-- El importador necesita el manifiesto para validar cada respuesta contra el tipo
+-- declarado (`CHECK`, `TEXT`, `NUMBER`, `SCALE_1_4`, `CHOICE`), y para poner el
+-- titulo de cada apartado en la previsualizacion. Hasta ahora no se guardaba en
+-- ninguna parte: el manifiesto se publicaba y se perdia, asi que el importador se
+-- quedaba sin con que comparar.
+--
+-- POR QUE VA EN UNA MIGRACION NUEVA Y NO DENTRO DE LA 39
+--
+-- La 39 ya se ha aplicado en la maquina de desarrollo (se probo el banco de
+-- pruebas con ella). SQLDelight no vuelve a ejecutar una migracion ya aplicada,
+-- asi que si se añadiera la columna editando la 39, esa base de datos se quedaria
+-- sin la columna y la app fallaria al leerla. Una migracion nueva es la unica via
+-- correcta en cuanto la anterior ha corrido aunque sea una vez.
+--
+-- Se guarda el JSON firmado tal cual, sin trocear en columnas, por dos razones:
+-- la firma se verifica sobre bytes exactos y trocear obligaria a reconstruirlos, y
+-- el manifiesto es el documento que se publico, no un conjunto de campos que la
+-- app tenga que interpretar. No contiene ningun dato personal: solo preguntas y
+-- claves publicas.
+ALTER TABLE web_form_instances ADD COLUMN manifest_json TEXT NOT NULL DEFAULT '';

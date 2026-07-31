@@ -16,6 +16,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Docs
 
 - Gobierno de agentes: `AGENTS.md` establece `gpt-5.6-terra` como modelo habitual y reserva consultas acotadas de `gpt-5.6-sol` para diagnósticos o decisiones excepcionalmente complejos; el agente principal mantiene la decisión y la aplicación de cambios.
+- Trazabilidad de la integración de entregas web: evidencia de publicación, despliegue y validaciones en `docs/audit/validation/entregas-web-main-2026-07-31.md`.
 
 ### Added
 

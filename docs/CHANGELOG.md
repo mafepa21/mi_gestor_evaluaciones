@@ -19,6 +19,136 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Horario docente: la configuración inicial permite seleccionar hasta tres Excel complementarios
+  y los combina en una única previsualización antes de guardar. Los bloques idénticos se unifican,
+  los solapes se bloquean y un fallo revierte las franjas creadas. Si el horario heredado contiene
+  destinos duplicados, Ajustes muestra una acción explícita `Reparar horario` que conserva una sola
+  copia.
+- Planificador macOS: el Gantt incorpora el filtro `Todas / Requieren atención`, acciones
+  `Ubicar (n)` para sesiones pendientes, información contextual al pasar el puntero y un target
+  de pruebas macOS que fija estados, conteos, semanas ISO, densidades y secuencias sin agendar.
+- Entregas del alumnado vía web: la publicación incluye ahora el **correo al que el alumnado envía
+  su entrega** (`deliveryEmail`, campo nuevo y opcional del contrato). La PWA lo enseña en la
+  pantalla de entrega junto al botón de compartir, porque `navigator.share` adjunta el fichero pero
+  **no puede rellenar el destinatario**: ese campo lo escribe quien envía. Se pide en la hoja de
+  publicación y se recuerda entre sesiones, con el aviso de usar la dirección del centro y no una
+  personal, ya que el fichero del formulario se sirve en abierto. `AppleViewCompatibility` gana
+  `AppKeyboardKind.email` (sin autocorrección ni mayúscula inicial, que en una dirección estorban),
+  añadido al helper compartido y no en la vista.
+- Entregas del alumnado vía web: el enlace personal pasa a llevar **también el formulario**
+  (`/#f=<formInstanceId>&a=<alias>`), y el manifiesto exportado se llama `<formInstanceId>.json`.
+  Sin esto la publicación no servía de nada: la PWA tenía la ruta del manifiesto fija en el código,
+  así que publicaras lo que publicaras el alumnado rellenaba siempre el pasaporte de demostración y
+  la entrega salía con un `formInstanceId` que no correspondía a ningún formulario publicado, o sea
+  imposible de importar. Las dos partes van detrás del `#`, que el navegador no envía al servidor.
+  El fichero se llama como el formulario porque es como lo busca la web, y así pueden convivir
+  tantos formularios publicados como haga falta: un formulario, un fichero. El paso 1 de la pantalla
+  avisa de que **no hay que cambiarle el nombre**. Corregido junto con el cambio equivalente en la
+  PWA (`entregas-alumnado`, commit `129d85a`).
+- Entregas del alumnado vía web: **"Entregas web" pasa a ser módulo propio de la barra lateral de
+  macOS** (`MacFeatureRegistry`, `MacRootView`), junto a Situaciones, que es su vecino natural. Estaba
+  aparcada en Ajustes → Diagnóstico, que es donde viven las herramientas de soporte, y esto es trabajo
+  diario. En iPhone/iPad sigue en Diagnóstico hasta que tenga su entrada en `AppWorkspaceModule`; la
+  de Diagnóstico queda tras un `#if !os(macOS)` para que en Mac no salga duplicada.
+- Entregas del alumnado vía web: **pantalla de publicación**, con la que el circuito queda completo de
+  punta a punta. `WebSubmissionPublishSheet` elige el instrumento, la dirección de la web y la fecha
+  en que se dejan de aceptar entregas; `WebSubmissionsWorkspaceView` junta las dos mitades (publicar y
+  recoger) porque son el mismo trabajo visto desde los dos extremos. Patrón adaptativo canónico: dos
+  zonas con `ViewThatFits`, fallback apilado, detents en iOS y `frame` solo bajo `#if os(macOS)`.
+  Tres decisiones de diseño que importan más que el layout: **la pantalla dice qué sale del Mac y qué
+  no** (preguntas y una clave pública sí; nombres y datos de la base no), porque publicar algo del
+  alumnado sin saber qué viaja es exactamente lo que no debe pasar; **después de publicar se enseñan
+  dos pasos numerados con dos ficheros distintos**, el manifiesto que se sube a un sitio público y la
+  hoja de enlaces que **no** se sube a ninguna parte y se reparte uno a uno, porque es el punto donde
+  más fácil es quedarse a medias o cometer el error grave; y **avisa si el instrumento ya tiene un
+  formulario activo**, porque publicar otro reparte códigos nuevos y deja los enlaces antiguos sin
+  resolver. La hoja de enlaces se escribe con permisos `0600`: es el único fichero que relaciona
+  nombre y código. `KmpBridge` gana `listPublishableWebForms`, `listWebFormInstances` y
+  `publishWebForm`, que guarda la clave en el llavero **antes** de registrar el formulario, porque un
+  formulario sin clave sería imposible de importar y eso no se vería hasta la primera entrega.
+  `AppleViewCompatibility` gana `AppKeyboardKind.url` (sin autocorrección ni mayúscula inicial, que
+  rompen una URL), añadido al helper compartido y no en la vista, como pide la guía de layout.
+  **Su sitio definitivo está sin decidir**: hoy se muestra desde Ajustes → Diagnóstico para poder
+  usarla, y está escrito en el código que eso es un aparcamiento, no una decisión.
+- Entregas del alumnado vía web: **publicación de formularios**, la otra mitad del circuito.
+  `WebSubmissionPublisher` (`AppleShared/`) convierte una plantilla de instrumento en un manifiesto
+  firmado que la PWA puede pintar, más un enlace personal por alumno. Genera un par X25519 y otro
+  Ed25519 **por formulario**, no uno para toda la app: así una clave comprometida solo afecta a un
+  formulario y revocar es dejar de aceptar ese `formInstanceId`. Los `webItemId` se generan
+  **aleatorios y opacos**; podrían derivarse de la clave del ítem (`chkp_1`, `obs_s1_i2`), que sería
+  más fácil de depurar, pero eso publicaría la estructura interna del instrumento, y la traducción
+  vive solo en `web_item_map`. El alias va en el **fragmento** del enlace (`#a=…`), que el navegador
+  no envía al servidor, así que ningún registro de acceso ve nunca quién es quién. Cada extra del
+  manifiesto se pone solo en el tipo que lo admite (`options` únicamente en `CHOICE`, `scaleLabels`
+  únicamente en `SCALE_1_4`), porque el esquema del contrato rechaza lo contrario. Se firma la forma
+  canónica y después se añade `signature`, que la canonicalización excluye por definición.
+- Entregas del alumnado vía web: banco de pruebas **solo `#if DEBUG`** para poder ver el circuito
+  funcionando en Xcode antes de que exista la publicación de formularios.
+  `WebSubmissionTestBenchView`, dentro de Ajustes → Diagnóstico, monta a mano el estado que la app
+  todavía no puede crear: una columna con plantilla de cinco ítems (uno de cada tipo real), el
+  formulario registrado, la clave privada del fixture en el llavero, el mapa de ítems y un alias
+  asignado al primer alumno del grupo; además escribe el sobre de prueba como `.mgsub` en Documentos
+  y dice la ruta, para poder elegirlo con el selector real. La columna tiene identificador estable
+  por formulario, así que preparar la prueba varias veces no ensucia el Cuaderno. Instrucciones,
+  tabla de casos a comprobar (idempotencia, fichero manipulado, entrega de otro formulario, código
+  sin asignar, asignación manual) y qué hacer si algo falla, en `docs/PRUEBA_ENTREGAS_WEB.md`. Se
+  borra entero — vista, método del puente y constantes del fixture — cuando la app sepa publicar.
+- Entregas del alumnado vía web: cableado real con la base de datos. Nuevo
+  `WebSubmissionsRepository` (contrato en `shared/repository/WebSubmissionsContracts.kt`,
+  implementación en `data/repository/WebSubmissionsRepositorySqlDelight.kt`, registrado en
+  `KmpContainer`) sobre las cuatro tablas de la migración 39. Los modelos van en
+  `shared/repository/` y **no** en `domain/Models.kt` a propósito: son tipos de frontera de esta
+  feature, no conceptos del dominio docente — un alias no significa nada para el Cuaderno ni para
+  las notas — y así tampoco hace falta tocar un archivo protegido sin necesidad. `KmpBridge` gana
+  dos métodos: `loadWebSubmissionSnapshot`, que trae de una vez el formulario, los alias, el mapa de
+  ítems, el registro de importadas y el alumnado del grupo, y `importWebSubmissions`, que escribe.
+  Se carga en bloque y no consulta a consulta porque la alternativa era un resolutor asíncrono, que
+  obligaría a que el examen de cada entrega fuese `async` y a una consulta por entrega; los datos
+  son pocos (un alias por alumno, un ítem por pregunta) y así el examen se queda síncrono y
+  probable, con los 50 chequeos de interoperabilidad intactos. La escritura **pasa por
+  `saveResponses`**, una llamada por celda con la entrega completa, igual que la ingesta de Sync
+  LAN; una entrega que falla no detiene a las demás, porque 24 de 25 importadas es mejor que 0, y
+  la que falla **no** se marca como importada para poder reintentarla. Del registro solo cuentan
+  como duplicado las de estado `IMPORTED`: una rechazada por un alias que faltaba tiene que poder
+  volver cuando el docente lo arregle. La clave privada X25519 vive en el llavero
+  (`WebSubmissionKeychain`, `WhenUnlockedThisDeviceOnly`, sin iCloud) y la base de datos solo guarda
+  su referencia, así que copiar o restaurar el fichero de la base en otro dispositivo no permite
+  abrir ninguna entrega.
+- Entregas del alumnado vía web: nueva `WebSubmissionImportSheet` (`AppleShared/`), la hoja donde el
+  docente revisa un lote antes de escribir nada. Patrón adaptativo canónico del proyecto (dos zonas
+  con `ViewThatFits`, fallback apilado que conserva todas las acciones, `presentationDetents` en
+  iOS/iPadOS y `frame` solo bajo `#if os(macOS)`), tomando como referencia
+  `ScheduleImportPreviewSheet`, que resuelve el mismo problema. Reparte el lote en tres cubos y el
+  orden importa: primero lo que se va a escribir, luego lo que necesita una decisión, y al final lo
+  que se ignora. **Una entrega cuyo código no esté en la tabla de alias no se descarta: se pregunta**
+  con un selector de alumnado, y el selector esconde a quien ya esté asignado a otra entrega del
+  mismo lote, porque la base de datos lo impide con un `UNIQUE` y es mejor no ofrecerlo que fallar al
+  guardar. Las que queden sin asignar se quedan fuera y el pie lo dice con su cuenta, en vez de
+  bloquear todo el lote. La tarjeta "Qué se va a escribir" avisa de que **la nota la calcula la app
+  al guardar y no viene del navegador**, para que nadie la busque en la previsualización. Incluye
+  `WebSubmissionImportButton`, que es quien abre el selector de ficheros `.mgsub` y gestiona el
+  alcance de seguridad de las URLs; el sheet se queda tonto a propósito (recibe un lote ya examinado
+  y no sabe de ficheros ni de criptografía), lo que permite previsualizarlo sin tocar disco. Tres
+  previsualizaciones de Xcode con datos de muestra: lote mixto, todo rechazado y vacío.
+- Entregas del alumnado vía web: nuevo `WebSubmissionImportService` (`AppleShared/`) que abre las
+  entregas cifradas que produce la PWA del repo `entregas-alumnado` y las convierte en un borrador
+  previsualizable. Diseño en `plan_entregas_web_alumnado_2026-07-29.md`. Hace siete cosas y ninguna
+  más: verifica la firma Ed25519 del manifiesto, descifra el sobre, comprueba que la entrega es de
+  ese formulario, traduce alias → alumno y `webItemId` → `notebook_instrument_items.id`, valida cada
+  respuesta contra el tipo declarado, descarta duplicados por `submissionId` y devuelve el borrador.
+  **No escribe en la base de datos**: eso será una llamada a
+  `NotebookInstrumentsRepository.saveResponses`, que es quien resume el estado de la celda, escribe
+  `display_value`, deriva y guarda la nota, invalida `sheetCache` y emite `NotebookRefreshBus`; un
+  `INSERT` directo se salta esos cinco pasos. Tampoco calcula notas con lo que manda el navegador.
+  Criptografía con **CryptoKit y cero dependencias nuevas**: X25519 efímero por entrega,
+  HKDF-SHA256 y ChaCha20-Poly1305. Va en `AppleShared` y no en `desktopMain` como decía el plan,
+  porque todos los importadores de la app viven en Swift y ponerlo en el helper obligaría a un salto
+  extra y crearía un segundo sitio que escribe datos de evaluación; el efecto secundario bueno es
+  que en esta fase, donde el transporte es un fichero, el iPad también puede importar. Un desajuste
+  de tipo tumba la entrega **entera**, no solo ese ítem, porque media entrega importada deja la
+  celda a medias sin que nadie sepa qué falta. Un alias que no está en la tabla, en cambio, **no**
+  tumba la entrega: se marca para asignación manual, porque tirar trabajo del alumnado por una fila
+  que falta sería el peor comportamiento posible.
 - Apple Foundation Models / IA Local: Añadida la capacidad `weeklyStudentEmail` para redactar borradores masivos e individuales de correos semanales de seguimiento evaluativo para alumnos y sus familias. Incluye motor dual (`AppleFoundationStudentEmailService`) con rama de Foundation Models on-device y fallback determinista por reglas pedagógicas, el workspace interactivo `WeeklyStudentEmailWorkspaceView` con previsualización, edición de destinatario/asunto/cuerpo, exportación a Mail nativo (`mailto:`) y copiado al portapapeles. Integrado con `AppleAIOrchestrator`, la Ficha de Alumno (`StudentProfilesWorkspaceView`), el Inspector del Cuaderno (`NotebookStudentInspector`) y el módulo de Informes (`RubricsReportsWorkspaceViews`).
 - Primer uso: la app estrena una bienvenida y una lista de "Primeros pasos" (`OnboardingModels`,
   `OnboardingWelcomeSheet`, `OnboardingChecklistView`, `OnboardingHost`, todo en `AppleShared/`).
@@ -52,6 +182,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Planificador macOS: el Gantt pasa a una proyección plana con carril izquierdo fijo y una sola
+  línea temporal, métricas compacta/estándar coherentes y apertura del periodo evaluativo actual
+  —o una ventana móvil de 13 semanas—. La toolbar es contextual por Semana, Día, Secuencia y
+  Resumen; las operaciones masivas se concentran en el menú secundario y Día elimina controles
+  duplicados exclusivamente en Mac.
+- Situaciones, Asistencia y shell macOS: Situaciones recupera el ancho completo cuando no hay
+  inspector real, la importación usa una acción semántica y los estados vacíos distinguen ausencia
+  de datos de filtros sin resultados. Asistencia diferencia falta de cursos, curso sin alumnado y
+  filtros vacíos, ofreciendo en cada caso la acción de recuperación correspondiente.
 - Horario: el camino manual del asistente pasa a ser posible. El selector de grupo de
   `slotEditorForm` solo listaba grupos ya existentes y "Añadir franja" quedaba deshabilitado sin
   ellos, así que **sin importar un Excel no se podía crear ni una sola franja** y los grupos solo
@@ -74,6 +213,29 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- Entregas del alumnado vía web: migración **40**, que añade `manifest_json` a `web_form_instances`.
+  El importador necesita el manifiesto para validar cada respuesta contra el tipo declarado y para
+  los títulos de la previsualización, y hasta ahora se publicaba y se perdía. **Va en una migración
+  nueva y no dentro de la 39 por un motivo concreto**: la 39 ya se había aplicado en la máquina de
+  desarrollo al probar el banco de pruebas, y SQLDelight no vuelve a ejecutar una migración aplicada,
+  así que editar la 39 habría dejado esa base sin la columna y la app fallaría al leerla. Se guarda
+  el JSON firmado entero y sin trocear porque la firma se verifica sobre bytes exactos; no contiene
+  datos personales, solo preguntas y claves públicas.
+- Entregas del alumnado vía web: migración **39** con cuatro tablas nuevas
+  (`web_form_instances`, `web_participant_aliases`, `web_item_map`,
+  `web_submission_ledger`) que forman la tabla de correspondencias entre lo que ve la PWA
+  (`form_instance_id`, alias, `web_item_id`) y lo real (clase, columna, alumno, ítem). **Ninguna
+  de las cuatro lleva `device_id` ni `sync_version`, y es deliberado**: todas las demás tablas del
+  esquema los llevan porque viajan por Sync LAN, y estas no deben viajar. Su valor de privacidad
+  depende de existir en un solo dispositivo: si se sincronizaran, cada iPad enlazado tendría una
+  copia del mapa alias → alumno y la pseudonimización dejaría de significar nada. La ausencia de
+  esas dos columnas es además lo que impide que `SqlDelightSyncAdapter` las arrastre por descuido,
+  porque no encajan en la forma que espera el adaptador. Consecuencia asumida y documentada: si el
+  docente cambia de Mac, las entregas pendientes de un formulario ya publicado no se resuelven
+  desde el dispositivo nuevo. La clave privada del formulario **no** se guarda en la base de datos:
+  va al llavero y la tabla solo guarda su referencia. `verifyCommonMainAppDatabaseMigration`
+  correcto: las 39 migraciones aplicadas en orden producen el mismo esquema que los `CREATE` de
+  `AppDatabase.sq`.
 - Sync LAN (helper macOS): `SqlDelightSyncAdapter` no compilaba. Las consultas de instrumentos
   estructurados llamaban a una propiedad `db` que no existe en esa clase (solo tiene `container`),
   y serializaban `value_number` (REAL) como si fuera texto. `:data:compileKotlinDesktop` fallaba y
@@ -82,6 +244,27 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Pruebas macOS: el host de XCTest abre una base exclusiva en `MiGestorTests` y no puede migrar,
+  rescatar ni renombrar la base real del docente al ejecutar el target del Planificador.
+- Situaciones/Planificador: volver a importar el mismo documento de sesiones reutiliza ahora la
+  versión y los planes existentes mediante su SHA-256. El Gantt consolida las versiones idénticas
+  heredadas y deja de presentar sus sesiones como una segunda situación de calendario.
+- Planificador/Situaciones: programar una situación podía dejar sesiones teóricas sin ubicar
+  aunque el usuario hubiera seleccionado todas las franjas. La causa eran duplicados exactos en
+  el horario docente: dos entradas con el mismo día y horas producían el mismo destino
+  fecha/periodo, y `programLearningSituationSessions` sustituía silenciosamente la primera sesión
+  por la segunda. La previsualización conserva ahora una sola franja por día y rango horario, avisa
+  de los duplicados ignorados y la escritura rechaza cualquier colisión residual antes de
+  persistir. El Gantt muestra además una tarjeta primaria para programar la siguiente pendiente y
+  renombra la acción de grupo a `Programar n`, haciendo reparables los datos ya afectados.
+- Planificador: la carga del Gantt incluye situaciones enlazadas y su última secuencia aunque aún
+  no exista ninguna sesión agendada, usa estados tipados separados (`Sin ubicar`, `Planificada`,
+  `En curso`, `Impartida`, `Cerrada`, `Cancelada` y `Solo calendario`) y deja de confundir errores
+  de lectura con un estado vacío. La carga es cancelable y el filtro de grupo usa
+  `selectedGroupId` como única fuente de verdad.
+- Planificador macOS: Día avisa de franjas horarias inválidas o solapadas y enlaza con la
+  configuración del horario. El Gantt elimina botones anidados y conserva el identificador del
+  plan al abrir el composer para ubicar sesiones pendientes.
 - Cuaderno: la rejilla de observación aparecía vacía ("Sin plantilla") en el iPad mientras el Mac
   la abría entera. La plantilla estructurada la crea el importador de instrumentos de la situación
   de aprendizaje, así que vivía solo en la base de datos del dispositivo donde se importó, y
@@ -147,6 +330,75 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Importación de horario y secuencias (#179): `MiGestorPlannerTests` ejecutó 12 pruebas con 0
+  fallos; `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. La repetición de XCTest
+  conservó sin cambios la huella, versión y recuentos de la base real y creó su base aislada bajo
+  `MiGestorTests`.
+- Regresión de programación de situaciones: `PlannerGanttProjectionTests` amplía su cobertura a
+  8 pruebas, con casos específicos para deduplicar franjas docentes idénticas y rechazar dos
+  sesiones destinadas a la misma fecha/periodo; 8 ejecutadas, 0 fallos. Después del cambio,
+  `./scripts/verify_apple_builds.sh` completó correctamente macOS e iOS Simulator.
+- Planificador/Gantt macOS: `MiGestorPlannerTests` ejecutó 6 pruebas con 0 fallos. El comando
+  `./scripts/verify_apple_builds.sh` regeneró el proyecto Xcode y terminó con compilación correcta
+  de macOS e iOS Simulator. La revisión visual automatizada en 900/1200/1600 pt y claro/oscuro
+  queda pendiente porque el proceso de Codex no dispone de permisos de Accesibilidad ni grabación
+  de pantalla en macOS; la app compilada sí se abrió para intentar esa comprobación.
+- Entregas del alumnado vía web: nuevo `scripts/interop_entregas_web/verificar.sh`, que compila el
+  servicio real (no una copia) junto con un comprobador y lo ejecuta contra el fixture
+  `interop-v1.json` que genera la PWA. **50 comprobaciones, 0 fallos.** Prueba lo que ninguna otra
+  cosa prueba: que CryptoKit descifra exactamente lo que cifró @noble en el navegador. El fixture es
+  adversario a propósito — un decimal (`min: 0.5`) junto a un entero (`max: 250`) en el manifiesto,
+  porque `JSON.stringify(250)` da `"250"` y Swift tiende a dar `"250.0"` y eso rompería la firma sin
+  decir por qué; comillas, barra invertida y salto de línea en un título; y acentos en una respuesta.
+  Cubre además que atribuir la entrega a otro alias, recolocarla en otro formulario, cambiar el
+  `submissionId` o tocar un byte del criptograma hacen fallar el descifrado en vez de colar, y que
+  sustituir `recipientKey` en el manifiesto (el ataque que dejaría leer todas las respuestas en
+  claro) invalida la firma. No se hace como test de XCTest porque en `main` no existe todavía ningún
+  objetivo de pruebas de Swift y añadirlo aquí chocaría con `develop`, que ya lo trae.
+- Entregas del alumnado vía web: `./gradlew :data:verifyCommonMainAppDatabaseMigration`
+  **BUILD SUCCESSFUL**, y `:data:generateCommonMainAppDatabaseInterface` sin errores. Es lo que
+  confirma que la migración 39 aplicada en orden produce el mismo esquema que los `CREATE` de
+  `AppDatabase.sq`.
+- Entregas del alumnado vía web: `./scripts/verify_apple_builds.sh` con **las dos apps en verde**,
+  `MiGestorKMPMac` (macOS nativo) y `MiGestorKMPiOS` (simulador iOS), tras añadir el servicio. La
+  regeneración con XcodeGen mete `WebSubmissionImportService.swift` en los dos targets y esas 6
+  líneas de `project.pbxproj` se commitean: sin ellas, quien compile sin pasar antes por XcodeGen se
+  quedaría sin el fichero. Comprobado además a mano que no colisiona con símbolos existentes
+  (`base64URLEncoded`, `JSONCanonicalizer` y `WebSubmission*` son nombres libres; la única
+  `extension Data` previa, en `MacModuleStubs.swift`, es `private` y con otros miembros).
+  **No hay prueba manual en la app**, y no aplica todavía: sin hoja de previsualización no hay nada
+  que abrir desde la interfaz.
+- Entregas del alumnado vía web: la prueba cruzada ya va en **las dos direcciones**, que es lo que de
+  verdad protege el circuito. `scripts/interop_entregas_web/verificar.sh` sube a **62 comprobaciones,
+  0 fallos**: además de que CryptoKit descifra lo que cifra el navegador, ahora publica un formulario
+  con un apartado de cada tipo y comprueba que su firma verifica, que el manifiesto se relee con el
+  contrato y que **no filtra nada** — ni los ids reales de los ítems, ni nombres del alumnado, ni
+  ningún alias, ni la clave privada. Ese manifiesto se deja en disco y el validador de la PWA
+  (`npm run validar`, ahora con verificación de firma) lo acepta: un manifiesto firmado con CryptoKit
+  verifica con @noble, igual que uno firmado en JavaScript verifica en CryptoKit. Si la
+  canonicalización de los dos lados se desalineara, el alumnado vería "This form is not trustworthy"
+  sin explicación, y esto es lo que lo evita. `verify_apple_builds.sh` en verde con las dos apps y
+  `verifyCommonMainAppDatabaseMigration` correcto con la 40. Un fallo real cazado por el camino: al
+  añadir `manifest_json` faltaba pasarlo en el banco de pruebas, y Swift lo reportaba como "unable to
+  type-check this expression in reasonable time" en vez de como argumento que falta.
+- Entregas del alumnado vía web: `./scripts/verify_apple_builds.sh` en verde con las dos apps tras el
+  cableado con la base de datos, y `:data:compileKotlinDesktop` correcto tras añadir el repositorio.
+  **El circuito completo sigue sin poderse ejercitar de punta a punta**, y no por un descuido: nada
+  publica todavía un formulario, así que no existe ningún `formInstanceId` registrado, ninguna clave
+  en el llavero y ninguna fila de alias contra la que importar. Al examinar se ha visto además que
+  falta guardar el manifiesto publicado (hoy no está en ninguna columna), porque el importador lo
+  necesita para validar tipos y títulos: es lo primero de la parte de publicación.
+- Entregas del alumnado vía web: `./scripts/verify_apple_builds.sh` de nuevo en verde con las dos apps
+  tras añadir `WebSubmissionImportSheet`. Auditoría de layout hecha según la guía del proyecto: **no
+  hay ni un `.fixedSize()` desnudo** (los dos que hay son `fixedSize(horizontal: false, vertical:
+  true)`, el uso correcto para que un texto largo crezca hacia abajo en vez de cortarse), los únicos
+  `frame(width:)` son el icono de 48pt y el botón de cerrar de 32pt igual que en la hoja de
+  referencia, la columna lateral usa `minWidth/idealWidth/maxWidth` en vez del ancho rígido que ya
+  cortó controles en la importación de horario, y el `frame` de tamaño mínimo va bajo
+  `#if os(macOS)` con `presentationDetents` en la otra rama. **La hoja no se ha visto renderizada**:
+  todavía no hay ningún sitio de la app que la presente, porque cablearla a la base de datos exige
+  tocar `KmpBridge.swift`, que es archivo protegido y necesita su propio permiso. Se puede ver
+  mientras tanto con las previsualizaciones de Xcode que trae el propio fichero.
 - Sync LAN (macOS): `./scripts/verify_apple_builds.sh` (regeneración con XcodeGen + `xcodebuild` para `MiGestorKMPMac` y `MiGestorKMPiOS`) en verde tras el cambio. Root cause confirmado en la máquina de desarrollo con `lsof -iTCP:8765` y `ps`: un helper huérfano de un build de días atrás seguía escuchando en el puerto 8765 mientras la app principal corría desde una carpeta de DerivedData distinta; se liberó manualmente para restaurar el servicio en caliente sin esperar a una recompilación. No se ha probado en caliente el propio flujo de detección corregido (matar un helper huérfano real con la nueva lógica y comprobar que el emparejamiento con un iPad se recupera), porque reproducirlo de forma controlada exige forzar dos builds de Xcode con DerivedData distinta; queda pendiente de verificación manual.
 
 - Compilación de las dos apps Apple con los esquemas `MiGestorKMPMac` (destino macOS) y `MiGestorKMPiOS` (destino genérico de simulador iOS): **BUILD SUCCEEDED** en ambos tras la unificación del dashboard. No se ha ejecutado prueba manual en dispositivo ni simulador: los estados que faltan por comprobar a mano son el aula en curso con horario configurado, el paso automático a Despacho fuera de horario y el caso sin horario configurado.

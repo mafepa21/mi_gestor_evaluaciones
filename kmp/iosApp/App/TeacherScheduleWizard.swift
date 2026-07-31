@@ -131,12 +131,12 @@ struct TeacherScheduleWizard: View {
         .fileImporter(
             isPresented: $isScheduleImporterPresented,
             allowedContentTypes: [.xlsx],
-            allowsMultipleSelection: false
+            allowsMultipleSelection: true
         ) { result in
             Task {
                 switch result {
                 case .success(let urls):
-                    await vm.previewScheduleImport(urls.first.map(Result.success) ?? .failure(AppleSpreadsheetReaderError.unreadableFile))
+                    await vm.previewScheduleImport(.success(urls))
                 case .failure(let error):
                     await vm.previewScheduleImport(.failure(error))
                 }
@@ -542,7 +542,7 @@ struct TeacherScheduleWizard: View {
                         Button {
                             isScheduleImporterPresented = true
                         } label: {
-                            Label("Importar", systemImage: "square.and.arrow.down")
+                            Label("Importar archivos", systemImage: "square.and.arrow.down.on.square")
                         }
                         .buttonStyle(.bordered)
                         exportButton
@@ -561,6 +561,10 @@ struct TeacherScheduleWizard: View {
                         Text("Toca un hueco de la rejilla para repetir esa hora en otro día.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+
+                    if !vm.duplicateScheduleSlots.isEmpty {
+                        duplicateScheduleRepairCallout
                     }
 
                     if vm.groups.isEmpty {
@@ -587,6 +591,32 @@ struct TeacherScheduleWizard: View {
                 }
             }
         }
+    }
+
+    private var duplicateScheduleRepairCallout: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "calendar.badge.exclamationmark")
+                .font(.title2)
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(vm.duplicateScheduleSlots.count) franja(s) duplicadas")
+                    .font(.subheadline.weight(.bold))
+                Text("Pueden hacer que dos sesiones intenten ocupar el mismo momento. La reparación conserva una sola copia de cada franja.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button("Reparar horario") {
+                Task { await vm.repairDuplicateScheduleSlots() }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(vm.scheduleSaveState == .saving)
+        }
+        .padding(16)
+        .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     /// Estado de salida del camino manual: sin grupos, el formulario de franjas

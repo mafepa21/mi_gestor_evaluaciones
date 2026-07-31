@@ -185,7 +185,11 @@ struct SettingsWorkspaceView: View {
             AppleAISettingsView(settings: settings)
                 .environmentObject(bridge)
         case "diagnostics":
+            // El puente hace falta desde que Diagnóstico aloja el banco de pruebas
+            // de las entregas web. Las demás pestañas ya lo pasaban; esta era la
+            // única que no, y por eso reventaba al entrar.
             SettingsDiagnosticsView()
+                .environmentObject(bridge)
         default:
             settingsEmptyDetail
         }

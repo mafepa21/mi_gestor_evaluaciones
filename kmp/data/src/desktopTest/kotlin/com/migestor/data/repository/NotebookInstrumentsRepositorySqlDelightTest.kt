@@ -309,7 +309,9 @@ class NotebookInstrumentsRepositorySqlDelightTest {
             items = observationGridItems()
         )
 
-        // S3=[3,2,2,3] -> 2.5, S7=[3,3,3,3] -> 3.0, S9=[4,3,4,4] -> 3.75 -> media 3.0833...
+        // S3=[3,2,2,3] -> 2.5, S7=[3,3,3,3] -> 3.0, S9=[4,3,4,4] -> 3.75.
+        // La calificación almacenada conserva la media bruta 1-4 (3.0833...). Al construir la
+        // hoja, FOUR_LEVEL la normaliza a 0-10 para el cálculo de la media (6.9444...).
         val responses = listOf(
             0 to listOf(3.0, 2.0, 2.0, 3.0),
             1 to listOf(3.0, 3.0, 3.0, 3.0),
@@ -342,7 +344,7 @@ class NotebookInstrumentsRepositorySqlDelightTest {
         val sheet = fixture.notebook.loadNotebookSnapshot(classId)
         val row = sheet.rows.single { it.student.id == studentId }
         val column = sheet.columns.single { it.id == "obs_col" }
-        assertEquals(3.0833333333333335, row.gradeValueFor(column))
+        assertEquals(6.9444444444444455, row.gradeValueFor(column))
     }
 
     private fun observationGridItems(): List<NotebookInstrumentItem> {

@@ -26,6 +26,12 @@ El formato sigue una variante practica de Keep a Changelog:
 - Ficha estructurada del Cuaderno: los ítems muestran su texto de ayuda bajo el título. En la
   autoevaluación/coevaluación son los cuatro descriptores del indicador, así que quien responde
   deja de ver un "1 2 3 4" sin explicación. Antes solo se veían en el formulario web publicado.
+- Ficha estructurada del Cuaderno: la autoevaluación/coevaluación se pinta con forma de rúbrica
+  (`StudentRubricInstrumentContent`), no como una lista suelta de campos. Primero la rúbrica, con
+  los cuatro niveles de cada indicador visibles y elegibles y la media en vivo sobre 4, y después
+  las preguntas de reflexión bajo su propio título, con el recordatorio de que no puntúan. El
+  reparto se hace por la clave del ítem (`rub_<n>` / `open_<n>`), que ahora viaja en
+  `StructuredInstrumentEvaluationItem`.
 
 ### Added
 

@@ -112,7 +112,11 @@ struct StructuredInstrumentEvaluationSheet: View {
                     )
                 }
 
-                if let sessionGroups = observationSessionGroups(for: model.wrappedValue.items) {
+                if let rubricSections = studentRubricSections(for: model.wrappedValue.items) {
+                    // Autoevaluación/coevaluación: primero la rúbrica con sus cuatro niveles y
+                    // después las preguntas de reflexión, que no puntúan.
+                    StudentRubricInstrumentContent(model: model, sections: rubricSections)
+                } else if let sessionGroups = observationSessionGroups(for: model.wrappedValue.items) {
                     ObservationGridInstrumentContent(model: model, groups: sessionGroups)
                 } else {
                     NotebookSurface(padding: 0) {
@@ -199,7 +203,9 @@ struct StructuredInstrumentEvaluationSheet: View {
     }
 }
 
-private struct StructuredInstrumentItemRow: View {
+/// Fila genérica de un ítem estructurado. La comparte la hoja normal con el contenido de
+/// autoevaluación/coevaluación, que la usa para sus preguntas de reflexión.
+struct StructuredInstrumentItemRow: View {
     @Binding var item: StructuredInstrumentEvaluationItem
 
     var body: some View {

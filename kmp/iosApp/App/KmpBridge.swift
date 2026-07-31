@@ -6702,6 +6702,8 @@ final class KmpBridge: ObservableObject {
             return .form
         case .quizQuestions:
             return .quiz
+        case .selfAssessment, .peerAssessment:
+            return .form
         }
     }
 
@@ -6717,6 +6719,8 @@ final class KmpBridge: ObservableObject {
             return .structuredForm
         case .quizQuestions:
             return .structuredQuiz
+        case .selfAssessment, .peerAssessment:
+            return .structuredForm
         }
     }
 
@@ -6792,6 +6796,30 @@ final class KmpBridge: ObservableObject {
             ])
         }
 
+        // Instrumento mixto que rellena el alumnado: los indicadores de la rúbrica van con clave
+        // `rub_<n>` y escala 1-4 (de ahí deriva la nota `NotebookInstrumentsRepositorySqlDelight`)
+        // y las preguntas de reflexión con clave `open_<n>`, que no intervienen en la nota.
+        if instrument.kind.isStudentAuthored {
+            var specs: [(String, String, NotebookInstrumentItemType, [String])] = []
+            var helpTextByKey: [String: String] = [:]
+            for (index, criterion) in (instrument.rubric?.criteria ?? []).enumerated() {
+                let key = "rub_\(index + 1)"
+                specs.append((key, criterion.title, .scale14, []))
+                // La plantilla del Cuaderno no guarda etiquetas por nivel, así que los cuatro
+                // descriptores de la rúbrica viajan en el texto de ayuda: es lo que ve el
+                // alumnado al responder, también en el formulario web publicado.
+                let descriptors = zip(instrument.rubric?.levels ?? [], criterion.descriptors)
+                    .map { level, descriptor in "\(level.label): \(descriptor)" }
+                    .joined(separator: " · ")
+                if !descriptors.isEmpty { helpTextByKey[key] = descriptors }
+            }
+            for (index, question) in instrument.quizQuestions.enumerated() {
+                let itemType: NotebookInstrumentItemType = question.options.isEmpty ? .text : .choice
+                specs.append(("open_\(index + 1)", question.questionText, itemType, question.options))
+            }
+            return makeInstrumentItems(columnId: columnId, specs: specs, helpTextByKey: helpTextByKey)
+        }
+
         if !instrument.checklistItems.isEmpty {
             // La checklist ponderada usa el prefijo de clave `chkp_` para que
             // `NotebookInstrumentsRepositorySqlDelight.saveResponses` derive su nota
@@ -6824,7 +6852,8 @@ final class KmpBridge: ObservableObject {
 
     private func makeInstrumentItems(
         columnId: String,
-        specs: [(String, String, NotebookInstrumentItemType, [String])]
+        specs: [(String, String, NotebookInstrumentItemType, [String])],
+        helpTextByKey: [String: String] = [:]
     ) -> [NotebookInstrumentItem] {
         let templateId = "template_\(columnId)"
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -6839,7 +6868,7 @@ final class KmpBridge: ObservableObject {
                 options: spec.3,
                 required: true,
                 order: Int32(index),
-                helpText: nil,
+                helpText: helpTextByKey[spec.0],
                 trace: AuditTrace(
                     authorUserId: nil,
                     createdAt: nowInstant,
@@ -7190,6 +7219,10 @@ final class KmpBridge: ObservableObject {
             return .finalProduct
         case .quizQuestions:
             return .writtenTest
+        case .selfAssessment:
+            return .selfAssessment
+        case .peerAssessment:
+            return .peerAssessment
         }
     }
 
@@ -7224,6 +7257,8 @@ final class KmpBridge: ObservableObject {
             return .numeric010
         case .quizQuestions:
             return .structuredQuiz
+        case .selfAssessment, .peerAssessment:
+            return .structuredForm
         }
     }
 

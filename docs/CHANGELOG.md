@@ -13,6 +13,19 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- Instrumentos de autoevaluación y coevaluación **ponderables**: un instrumento cuyo título lleva
+  "autoevaluación"/"coevaluación" y una tabla de rúbrica de 4 niveles ya no se importa como
+  checklist auxiliar, sino como instrumento mixto que rellena el alumnado
+  (`AssessmentInstrumentKind.selfAssessment` / `.peerAssessment`). Los indicadores de la rúbrica se
+  crean como ítems `rub_<n>` en escala 1-4 —con los cuatro descriptores en `helpText`, visibles
+  también en el formulario web publicado— y las preguntas de reflexión como ítems `open_<n>` de
+  texto. `NotebookInstrumentsRepositorySqlDelight.deriveStudentRubricScore` deriva la nota como
+  media de los `rub_<n>` respondidos y la guarda, así que la columna suma a la media de la SA; las
+  respuestas abiertas quedan fuera del cálculo porque no se pueden ponderar solas y las revisa el
+  profesorado. Sin tabla de rúbrica, esos títulos siguen comportándose como antes.
+
 ### Docs
 
 - Configuración de agentes: `AGENTS.md` queda como fuente compartida de instrucciones; `CLAUDE.md` lo importa de forma explícita y `.claude/settings.json` define permisos de consulta y verificación seguros para Claude Code.

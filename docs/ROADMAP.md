@@ -29,6 +29,7 @@ Prioridad: alta.
   Avance: inspector convertido en ficha rápida del alumno con Media, pendientes, observaciones, rúbricas y acciones.
   Avance: inspector incorpora Inteligencia Educativa local estructurada para resumir fortalezas, riesgos, recomendaciones y lectura docente de la media sin recalcular los datos KMP.
 - Rubricas: evaluacion fiable, integracion con cuaderno e informes.
+  Pendiente: los quizzes no se autocorrigen. `QuizQuestionDraft` importa pregunta y opciones pero no la respuesta correcta, y `saveResponses` solo deriva nota para la rejilla de observacion 1-4 y la checklist proporcional. Faltan clave de respuestas, contrato de autoria en el DOCX, puntuacion por pregunta, versionado de la clave y derivacion local verificable. Detalle en `docs/importacion_documentos_sa.md`.
 - Asistencia: flujo diario rapido y consistente.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
   Avance: registro y seguimiento de medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, CV) en la ficha de alumno de iOS/iPadOS y macOS, con badge en el Cuaderno y aviso determinista de revision anual, sin IA generativa ni contenido clinico persistido. Verificado con builds reales macOS e iOS Simulator (BUILD SUCCEEDED en ambos).
@@ -86,8 +87,7 @@ Prioridad: media-alta.
 - Multi-asignatura: relación real grupo-asignatura con catálogo visible y presets aplicables por materia; siguiente paso, usarla en filtros y onboarding.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
-  Avance: entregas del alumnado via web. `WebSubmissionImportService` abre y valida las entregas cifradas de la PWA (repo `entregas-alumnado`) y la migracion 39 guarda la tabla de correspondencias solo en local. Restricciones fijadas: `LocalSyncServer` no se expone a Internet; toda escritura pasara por `saveResponses`, nunca por SQL directo; las cuatro tablas nuevas no llevan `device_id` ni `sync_version` para que no viajen por Sync LAN. Diseno en `plan_entregas_web_alumnado_2026-07-29.md`.
-  Pendiente: la hoja de previsualizacion, la escritura via `saveResponses`, la publicacion del manifiesto desde la app, el llavero para la clave privada y el transporte en la nube. Sin eso el servicio existe pero todavia no hay forma de importar desde la interfaz.
+  Propuesta pendiente de decision: entregas del alumnado via web (PWA) como fuente adicional de respuestas de instrumento, en `plan_entregas_web_alumnado_2026-07-29.md`. Restricciones fijadas: `LocalSyncServer` no se expone a Internet y el Mac tira de una bandeja externa; toda entrada pasa por `saveResponses`, nunca por SQL directo; cifrado extremo a extremo con tabla de correspondencias solo local. Si se aprueba, necesita ADR y migracion SQLDelight.
 - Exportaciones: informes utiles y reproducibles.
   Avance: Informes Apple IA dispone de `StudentReportSummary` estructurado como base para renderizar informes nativos y PDFs sin depender de texto libre como contrato principal.
 - Privacidad: mantener `PRIVACY.md` y `docs/04_legal_comercial/datos_personales.md` como base operativa pendiente de revision juridica.

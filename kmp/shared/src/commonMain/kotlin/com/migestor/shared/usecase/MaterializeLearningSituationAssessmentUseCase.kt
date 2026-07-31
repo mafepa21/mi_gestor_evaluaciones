@@ -261,6 +261,8 @@ class MaterializeLearningSituationAssessmentUseCase(
             com.migestor.shared.domain.AssessmentInstrumentSourceKind.SUBMISSION_CHECKLIST -> NotebookInstrumentTemplateKind.CHECKLIST
             com.migestor.shared.domain.AssessmentInstrumentSourceKind.TEACHER_OBSERVATION -> NotebookInstrumentTemplateKind.OBSERVATION
             com.migestor.shared.domain.AssessmentInstrumentSourceKind.OBSERVATION_GRID,
+            com.migestor.shared.domain.AssessmentInstrumentSourceKind.SELF_ASSESSMENT,
+            com.migestor.shared.domain.AssessmentInstrumentSourceKind.PEER_ASSESSMENT,
             com.migestor.shared.domain.AssessmentInstrumentSourceKind.RUBRIC -> NotebookInstrumentTemplateKind.FORM
         }
 

@@ -347,6 +347,84 @@ class NotebookInstrumentsRepositorySqlDelightTest {
         assertEquals(6.9444444444444455, row.gradeValueFor(column))
     }
 
+    @Test
+    fun `saveResponses derives a self-assessment score from the rubric items and ignores the open questions`() = runTest {
+        val fixture = createFixture()
+        val studentId = fixture.students.saveStudent(firstName = "Aitana", lastName = "Ferri", email = null)
+        val classId = fixture.classes.saveClass(name = "1 BAC E", course = 1, description = null)
+        fixture.classes.addStudentToClass(classId, studentId)
+        fixture.config.saveColumn(
+            classId,
+            NotebookColumnDefinition(
+                id = "auto_col",
+                title = "Rubrica de autoevaluacion del rol Coach",
+                type = NotebookColumnType.NUMERIC,
+                inputKind = NotebookCellInputKind.STRUCTURED_OBSERVATION,
+                scaleKind = NotebookScaleKind.FOUR_LEVEL,
+                weight = 0.1,
+            )
+        )
+        val indicators = listOf("Registro responsable", "Feedback util", "Cumplimiento del rol")
+        fixture.instruments.saveTemplate(
+            template = NotebookInstrumentTemplate(
+                id = "template_auto_col",
+                classId = classId,
+                columnId = "auto_col",
+                title = "Rubrica de autoevaluacion del rol Coach",
+                kind = NotebookInstrumentTemplateKind.FORM,
+                inputKind = NotebookCellInputKind.STRUCTURED_FORM,
+            ),
+            items = indicators.mapIndexed { index, title ->
+                NotebookInstrumentItem(
+                    id = "template_auto_col_rub_${index + 1}",
+                    templateId = "template_auto_col",
+                    key = "rub_${index + 1}",
+                    title = title,
+                    type = NotebookInstrumentItemType.SCALE_1_4,
+                )
+            } + NotebookInstrumentItem(
+                id = "template_auto_col_open_1",
+                templateId = "template_auto_col",
+                key = "open_1",
+                title = "Describe el mejor feedback que diste o recibiste",
+                type = NotebookInstrumentItemType.TEXT,
+            )
+        )
+
+        // 4 + 3 + 2 -> media 3.0 en escala 1-4. La respuesta abierta no interviene.
+        fixture.instruments.saveResponses(
+            classId = classId,
+            studentId = studentId,
+            columnId = "auto_col",
+            responses = listOf(4.0, 3.0, 2.0).mapIndexed { index, value ->
+                NotebookInstrumentResponse(
+                    classId = classId,
+                    studentId = studentId,
+                    columnId = "auto_col",
+                    itemId = "template_auto_col_rub_${index + 1}",
+                    numberValue = value,
+                )
+            } + NotebookInstrumentResponse(
+                classId = classId,
+                studentId = studentId,
+                columnId = "auto_col",
+                itemId = "template_auto_col_open_1",
+                textValue = "Avise a mi companera de que la espalda no estaba recta",
+            ),
+            updatedAtEpochMs = 1L,
+            deviceId = "test",
+            syncVersion = 1L,
+        )
+
+        assertEquals(3.0, fixture.grades.listGradesForStudentInClass(studentId, classId).single().value)
+
+        val sheet = fixture.notebook.loadNotebookSnapshot(classId)
+        val row = sheet.rows.single { it.student.id == studentId }
+        val column = sheet.columns.single { it.id == "auto_col" }
+        // 3.0 en escala 1-4 -> (3-1)/3*10 = 6,66 sobre 10.
+        assertEquals(6.666666666666666, row.gradeValueFor(column)!!, 0.0001)
+    }
+
     private fun observationGridItems(): List<NotebookInstrumentItem> {
         val indicators = listOf("Tecnica", "RPE adecuado", "Ajuste de intensidad", "Compromiso motor")
         val sessions = listOf("S3 - inicio", "S7 - mitad y reajuste", "S9 - cierre")

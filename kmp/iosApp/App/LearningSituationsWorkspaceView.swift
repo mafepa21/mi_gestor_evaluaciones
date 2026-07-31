@@ -2553,6 +2553,10 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
             return .rubric
         case .observationGrid:
             return hasObservationScale1To4(instrument) ? .observationScale1To4 : .none
+        case .selfAssessment, .peerAssessment:
+            // La rúbrica que rellena el alumnado se responde en escala 1-4 y su nota se deriva
+            // igual que la de una rejilla de observación.
+            return .observationScale1To4
         case .checklist, .submissionChecklist, .teacherObservation:
             return .none
         case .quizQuestions:

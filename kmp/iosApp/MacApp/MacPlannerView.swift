@@ -10,6 +10,7 @@ struct PlannerMacToolbarActions {
     var activeSection: Binding<PlannerWorkspaceSection>
     var selectedGroupId: Binding<Int64?>
     var searchText: Binding<String>
+    var density: Binding<PlannerDensity>
     let groups: [SchoolClass]
     let canUndoCascadeMove: Bool
     let canClearSchedulelessWeek: Bool
@@ -21,6 +22,9 @@ struct PlannerMacToolbarActions {
     let onPreviousWeek: () -> Void
     let onNextWeek: () -> Void
     let onToday: () -> Void
+    let onPreviousDay: () -> Void
+    let onNextDay: () -> Void
+    let onTodayDay: () -> Void
     let onNewSession: () -> Void
     let onUndoCascadeMove: () -> Void
     let onClearSchedulelessWeek: () -> Void
@@ -158,6 +162,7 @@ struct MacPlannerView: View {
                     get: { vm.searchText },
                     set: { vm.searchText = $0; vm.applySearch() }
                 ),
+                density: Binding(get: { vm.density }, set: { vm.density = $0 }),
                 groups: vm.groups,
                 canUndoCascadeMove: vm.lastCascadeMove != nil,
                 canClearSchedulelessWeek: vm.canClearSchedulelessWeekSessions,
@@ -167,6 +172,9 @@ struct MacPlannerView: View {
                 onPreviousWeek: { Task { await vm.previousWeek() } },
                 onNextWeek: { Task { await vm.nextWeek() } },
                 onToday: { Task { await vm.goToCurrentWeek() } },
+                onPreviousDay: { Task { await vm.goToPreviousDayInDayView() } },
+                onNextDay: { Task { await vm.goToNextDayInDayView() } },
+                onTodayDay: { Task { await vm.goToTodayInDayView() } },
                 onNewSession: { openComposerForCurrentFilter() },
                 onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
                 onClearSchedulelessWeek: { showingClearSchedulelessWeekConfirmation = true },
@@ -248,9 +256,19 @@ struct MacPlannerView: View {
                 onOpenSettings: { showingScheduleSettings = true }
             )
         case .day:
-            PlannerDayView(vm: vm, onOpenSession: openMacSession)
+            PlannerDayView(
+                vm: vm,
+                onOpenSession: openMacSession,
+                showsInlineNavigation: false,
+                showsInlinePrimaryAction: false,
+                onOpenScheduleSettings: { showingScheduleSettings = true }
+            )
         case .sequence:
-            PlannerSequenceGanttView(vm: vm, onOpenSession: openMacSession)
+            PlannerSequenceGanttView(
+                vm: vm,
+                onOpenSession: openMacSession,
+                showsInlineGroupFilter: false
+            )
         case .summary:
             PlannerSummaryDashboard(
                 vm: vm,
@@ -261,7 +279,14 @@ struct MacPlannerView: View {
     }
 
     private func openComposerForCurrentFilter() {
-        vm.openComposer()
+        if vm.activeSection == .day {
+            vm.openComposer(
+                day: vm.selectedDayForDayView,
+                period: vm.visibleSlots.first?.period ?? 1
+            )
+        } else {
+            vm.openComposer()
+        }
         if let groupFilterId {
             vm.composerDraft.groupId = groupFilterId
         }

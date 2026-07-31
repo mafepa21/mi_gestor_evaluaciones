@@ -24,6 +24,7 @@ import com.migestor.data.repository.StudentSupportMeasureRepositorySqlDelight
 import com.migestor.data.repository.StudentTutoringSessionRepositorySqlDelight
 import com.migestor.data.repository.MeetingRepositorySqlDelight
 import com.migestor.data.repository.PlannerWeekPlanRepositorySqlDelight
+import com.migestor.data.repository.WebSubmissionsRepositorySqlDelight
 import com.migestor.data.repository.SubjectsRepositorySqlDelight
 import com.migestor.data.repository.NotebookRepositorySqlDelight
 import com.migestor.data.repository.PlannerRepositorySqlDelight
@@ -81,6 +82,10 @@ class KmpContainer(val driver: SqlDriver) {
     val studentTutoringSessionRepository: StudentTutoringSessionRepository = StudentTutoringSessionRepositorySqlDelight(database)
     val meetingRepository: MeetingRepository = MeetingRepositorySqlDelight(database)
     val plannerWeekPlanRepository: PlannerWeekPlanRepository = PlannerWeekPlanRepositorySqlDelight(database)
+
+    // Tabla de correspondencias de las entregas del alumnado hechas desde la web
+    // (migracion 39). Es local por diseno: no viaja por Sync LAN.
+    val webSubmissionsRepository: WebSubmissionsRepository = WebSubmissionsRepositorySqlDelight(database)
     val aiAuditRepository: AIAuditRepository = AIAuditRepositorySqlDelight(database)
     val competenciesRepository: CompetenciesRepository = CompetenciesRepositorySqlDelight(database)
     val incidentsRepository: IncidentsRepository = IncidentsRepositorySqlDelight(database)

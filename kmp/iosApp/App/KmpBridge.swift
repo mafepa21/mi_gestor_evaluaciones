@@ -1713,6 +1713,557 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    // MARK: - Publicación de formularios web
+
+    /// Columnas del grupo que tienen una plantilla de instrumento y por tanto se
+    /// pueden publicar. Se hace una consulta por columna, y está bien: son unas
+    /// pocas decenas y esto corre una vez al abrir la pantalla, no por celda.
+    func listPublishableWebForms(classId: Int64) async -> [WebPublishableInstrument] {
+        guard let columnas = try? await container.notebookRepository
+            .listNotebookVisibleColumns(classId: classId, tabId: nil) else { return [] }
+
+        var salida: [WebPublishableInstrument] = []
+        for columna in columnas {
+            guard let detalle = try? await container.notebookInstrumentsRepository
+                .getTemplateForColumn(columnId: columna.id),
+                  !detalle.items.isEmpty else { continue }
+            // Una pregunta de elección sin opciones no se puede responder, así que
+            // el formulario entero sería inservible. Se detecta aquí para avisarlo
+            // en la lista y no al pulsar Publicar.
+            let sinOpciones = detalle.items.first {
+                $0.type == .choice && $0.options.count < 2
+            }
+            let problema = sinOpciones.map {
+                "«\($0.title)» es de elección y no tiene opciones. Edita el instrumento y añádelas."
+            }
+
+            salida.append(
+                WebPublishableInstrument(
+                    columnId: columna.id,
+                    columnTitle: columna.title,
+                    templateTitle: detalle.template_.title,
+                    itemCount: detalle.items.count,
+                    alreadyPublished: (try? await container.webSubmissionsRepository
+                        .listFormInstancesForClass(classId: classId))?
+                        .contains(where: { $0.columnId == columna.id && !$0.revoked }) ?? false,
+                    blockingIssue: problema
+                )
+            )
+        }
+        return salida
+    }
+
+    /// Formularios publicados de un grupo, del más reciente al más antiguo.
+    func listWebFormInstances(classId: Int64) async throws -> [WebFormInstance] {
+        try await container.webSubmissionsRepository.listFormInstancesForClass(classId: classId)
+    }
+
+    /// Publica un formulario: genera claves, construye y firma el manifiesto, lo
+    /// guarda con sus alias y su mapa de ítems, mete la clave privada en el llavero
+    /// y escribe los dos ficheros que necesita el docente.
+    ///
+    /// Si algo falla a mitad no se queda un formulario cojo: las escrituras de
+    /// alias e ítems van en transacción, y la clave se guarda **antes** de anunciar
+    /// el éxito, porque un formulario registrado sin clave en el llavero sería
+    /// imposible de importar después.
+    func publishWebForm(
+        classId: Int64,
+        columnId: String,
+        baseURL: String,
+        deliveryEmail: String?,
+        expiresAt: Date
+    ) async throws -> WebPublishResult {
+        guard let detalle = try await container.notebookInstrumentsRepository
+            .getTemplateForColumn(columnId: columnId) else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "Esa columna no tiene un instrumento con apartados."]
+            )
+        }
+
+        let alumnado = try await container.classesRepository.listStudentsInClass(classId: classId)
+        guard !alumnado.isEmpty else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "El grupo no tiene alumnado al que dar enlaces."]
+            )
+        }
+
+        let items: [WebSubmissionPublisher.ItemToPublish] = detalle.items
+            .sorted { $0.order < $1.order }
+            .map { item in
+                WebSubmissionPublisher.ItemToPublish(
+                    itemId: item.id,
+                    title: item.title,
+                    type: Self.webItemType(from: item.type),
+                    required: item.required,
+                    options: item.options,
+                    helpText: item.helpText,
+                    // La plantilla del Cuaderno no guarda etiquetas por nivel; la
+                    // PWA cae a 1-2-3-4, que es lo que se ve en el instrumento.
+                    scaleLabels: nil,
+                    sectionId: nil
+                )
+            }
+
+        let publicado = try WebSubmissionPublisher.publish(
+            title: detalle.template_.title,
+            subtitle: nil,
+            locale: "es",
+            sections: [],
+            items: items,
+            students: alumnado.map {
+                WebSubmissionPublisher.StudentToPublish(
+                    id: $0.id,
+                    name: "\($0.firstName) \($0.lastName)".trimmingCharacters(in: .whitespaces)
+                )
+            },
+            baseURL: baseURL,
+            deliveryEmail: deliveryEmail,
+            expiresAtEpochMs: Int64(expiresAt.timeIntervalSince1970 * 1000)
+        )
+
+        // La clave primero: un formulario registrado sin clave en el llavero no se
+        // podría importar nunca, y eso no se ve hasta que llega la primera entrega.
+        guard WebSubmissionKeychain.save(
+            privateKey: publicado.recipientPrivateKey,
+            reference: WebSubmissionKeychain.reference(for: publicado.formInstanceId)
+        ) else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 500,
+                userInfo: [NSLocalizedDescriptionKey: "No se pudo guardar la clave en el llavero. No se ha publicado nada."]
+            )
+        }
+
+        let ahora = Int64(Date().timeIntervalSince1970 * 1000)
+        try await container.webSubmissionsRepository.saveFormInstance(
+            instance: WebFormInstance(
+                formInstanceId: publicado.formInstanceId,
+                classId: classId,
+                columnId: columnId,
+                templateId: detalle.template_.id,
+                title: detalle.template_.title,
+                recipientPublicKey: publicado.recipientPublicKey,
+                privateKeyRef: WebSubmissionKeychain.reference(for: publicado.formInstanceId),
+                publisherPublicKey: publicado.publisherPublicKey,
+                expiresAtEpochMs: publicado.expiresAtEpochMs,
+                revoked: false,
+                manifestJson: publicado.manifestJSON,
+                createdAtEpochMs: ahora,
+                updatedAtEpochMs: ahora
+            )
+        )
+        try await container.webSubmissionsRepository.saveItemMap(
+            formInstanceId: publicado.formInstanceId,
+            entries: publicado.itemMap.map {
+                WebItemMapEntry(webItemId: $0.webItemId, itemId: $0.itemId, itemType: $0.itemType.rawValue)
+            }
+        )
+        try await container.webSubmissionsRepository.saveAliases(
+            formInstanceId: publicado.formInstanceId,
+            entries: publicado.aliases.map {
+                WebAliasEntry(alias: $0.alias, studentId: $0.studentId, createdAtEpochMs: ahora)
+            }
+        )
+
+        let carpeta = try Self.writePublishedFiles(publicado, title: detalle.template_.title)
+
+        return WebPublishResult(
+            formInstanceId: publicado.formInstanceId,
+            title: detalle.template_.title,
+            manifestPath: carpeta.manifest.path,
+            linksPath: carpeta.links.path,
+            folderPath: carpeta.folder.path,
+            links: publicado.links.map {
+                WebPublishedLink(studentId: $0.studentId, studentName: $0.studentName, url: $0.url)
+            },
+            linksText: WebSubmissionPublisher.linksText(for: publicado, title: detalle.template_.title)
+        )
+    }
+
+    /// Escribe el manifiesto y la hoja de enlaces en Documentos.
+    ///
+    /// Dos ficheros separados porque tienen destinos y sensibilidad distintos: el
+    /// manifiesto se sube a un sitio público, la hoja de enlaces **no** se sube a
+    /// ninguna parte y se reparte en privado, uno a uno.
+    private static func writePublishedFiles(
+        _ form: WebSubmissionPublisher.PublishedForm,
+        title: String
+    ) throws -> (folder: URL, manifest: URL, links: URL) {
+        let documentos = try FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let carpeta = documentos
+            .appendingPathComponent("EntregasWeb", isDirectory: true)
+            .appendingPathComponent(form.formInstanceId, isDirectory: true)
+        try FileManager.default.createDirectory(at: carpeta, withIntermediateDirectories: true)
+
+        // El fichero se llama como el formulario porque así es como lo busca la
+        // web: `/manifiestos/<formInstanceId>.json`. Copiarlo tal cual a
+        // `public/manifiestos/` es todo lo que hay que hacer, y así pueden convivir
+        // varios formularios publicados sin pisarse.
+        let manifiesto = carpeta.appendingPathComponent("\(form.formInstanceId).json")
+        try Data(form.manifestJSON.utf8).write(to: manifiesto)
+
+        let enlaces = carpeta.appendingPathComponent("enlaces-alumnado.txt")
+        try Data(WebSubmissionPublisher.linksText(for: form, title: title).utf8)
+            .write(to: enlaces, options: [.atomic])
+        // La hoja de enlaces sí relaciona nombre y código: se deja solo para el
+        // dueño del dispositivo.
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: enlaces.path)
+
+        return (folder: carpeta, manifest: manifiesto, links: enlaces)
+    }
+
+    private static func webItemType(from tipo: NotebookInstrumentItemType) -> WebManifestItemType {
+        switch tipo {
+        case .check: return .check
+        case .text: return .text
+        case .number: return .number
+        case .scale14: return .scale1To4
+        case .choice: return .choice
+        default: return .text
+        }
+    }
+
+    // MARK: - Entregas del alumnado hechas desde la web
+
+    /// Carga de una vez todo lo que hace falta para examinar un lote de entregas.
+    ///
+    /// Se carga en bloque y no consulta a consulta a propósito: la alternativa era
+    /// un resolutor asíncrono, que obligaría a que `examine` fuese `async` y a una
+    /// consulta por entrega. Los datos son pocos (un alias por alumno, un ítem por
+    /// pregunta), así que caben en memoria y el examen se queda síncrono y probable.
+    ///
+    /// Devuelve `nil` si el formulario no está registrado en este dispositivo, que
+    /// es lo que pasa cuando el docente lo publicó desde otro Mac: la tabla de
+    /// correspondencias no viaja por Sync LAN, y es deliberado.
+    func loadWebSubmissionSnapshot(formInstanceId: String) async -> WebSubmissionSnapshot? {
+        guard let instancia = try? await container.webSubmissionsRepository
+            .getFormInstance(formInstanceId: formInstanceId) else { return nil }
+
+        let alias = (try? await container.webSubmissionsRepository
+            .listAliases(formInstanceId: formInstanceId)) ?? []
+        let items = (try? await container.webSubmissionsRepository
+            .listItemMap(formInstanceId: formInstanceId)) ?? []
+        let registro = (try? await container.webSubmissionsRepository
+            .listLedgerForForm(formInstanceId: formInstanceId)) ?? []
+        let alumnado = (try? await container.classesRepository
+            .listStudentsInClass(classId: instancia.classId)) ?? []
+
+        var studentIdByAlias: [String: Int64] = [:]
+        for entrada in alias { studentIdByAlias[entrada.alias] = entrada.studentId }
+
+        var itemIdByWebItemId: [String: String] = [:]
+        for entrada in items { itemIdByWebItemId[entrada.webItemId] = entrada.itemId }
+
+        // Solo cuenta como duplicado lo que se importó de verdad. Una entrega
+        // registrada como rechazada debe poder reintentarse: si el motivo era un
+        // alias que faltaba, y el docente lo arregla, tiene que poder volver.
+        var importedAt: [String: Int64] = [:]
+        for entrada in registro where entrada.status == "IMPORTED" {
+            importedAt[entrada.submissionId] = entrada.importedAtEpochMs
+        }
+
+        var nombres: [Int64: String] = [:]
+        var roster: [WebRosterEntry] = []
+        for alumno in alumnado {
+            let nombre = "\(alumno.firstName) \(alumno.lastName)"
+                .trimmingCharacters(in: .whitespaces)
+            nombres[alumno.id] = nombre
+            roster.append(WebRosterEntry(id: alumno.id, name: nombre))
+        }
+        roster.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        return WebSubmissionSnapshot(
+            formInstanceId: instancia.formInstanceId,
+            classId: instancia.classId,
+            columnId: instancia.columnId,
+            privateKeyRef: instancia.privateKeyRef,
+            revoked: instancia.revoked,
+            expiresAtEpochMs: instancia.expiresAtEpochMs,
+            title: instancia.title,
+            studentIdByAlias: studentIdByAlias,
+            itemIdByWebItemId: itemIdByWebItemId,
+            studentNames: nombres,
+            importedAtBySubmissionId: importedAt,
+            roster: roster
+        )
+    }
+
+    /// Escribe las entregas aceptadas en el Cuaderno.
+    ///
+    /// **Pasa por `saveResponses`, nunca por SQL directo.** Es quien resume el
+    /// estado de la celda (`0/7`, `Completo`), escribe `display_value`, deriva y
+    /// guarda la nota, invalida el caché de la hoja y avisa a la interfaz. Un
+    /// `INSERT` en `notebook_instrument_responses` dejaría la respuesta guardada
+    /// pero sin nota y sin refrescar el Cuaderno.
+    ///
+    /// Una llamada por celda con la entrega completa, igual que hace la ingesta de
+    /// Sync LAN. Y una entrega que falla no detiene a las demás: se anota y se
+    /// sigue, porque tener 24 de 25 importadas es mejor que tener 0.
+    func importWebSubmissions(
+        _ decisions: [WebSubmissionImportDecision],
+        formInstanceId: String
+    ) async -> WebSubmissionImportOutcome {
+        var resultado = WebSubmissionImportOutcome()
+        let ahora = Int64(Date().timeIntervalSince1970 * 1000)
+        let instant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: ahora)
+
+        for decision in decisions {
+            let borrador = decision.draft
+            let nombre = borrador.studentName
+                ?? "código \(borrador.alias.prefix(6))"
+
+            let responses: [NotebookInstrumentResponse] = borrador.answers.map { respuesta in
+                NotebookInstrumentResponse(
+                    classId: borrador.classId,
+                    studentId: decision.studentId,
+                    columnId: borrador.columnId,
+                    itemId: respuesta.itemId,
+                    textValue: respuesta.textValue ?? "",
+                    boolValue: respuesta.boolValue.map { KotlinBoolean(value: $0) },
+                    numberValue: respuesta.numberValue.map { KotlinDouble(value: $0) },
+                    trace: AuditTrace(
+                        authorUserId: nil,
+                        createdAt: instant,
+                        updatedAt: instant,
+                        associatedGroupId: nil,
+                        deviceId: nil,
+                        syncVersion: 1
+                    )
+                )
+            }
+
+            do {
+                _ = try await container.notebookInstrumentsRepository.saveResponses(
+                    classId: borrador.classId,
+                    studentId: decision.studentId,
+                    columnId: borrador.columnId,
+                    responses: responses,
+                    updatedAtEpochMs: ahora,
+                    deviceId: nil,
+                    syncVersion: 1
+                )
+                try? await container.webSubmissionsRepository.recordLedgerEntry(
+                    entry: WebLedgerEntry(
+                        submissionId: borrador.submissionId,
+                        formInstanceId: formInstanceId,
+                        alias: borrador.alias,
+                        studentId: KotlinLong(value: decision.studentId),
+                        status: "IMPORTED",
+                        rejectReason: nil,
+                        answerCount: Int64(responses.count),
+                        clientSubmittedAtEpochMs: 0,
+                        importedAtEpochMs: ahora
+                    )
+                )
+                resultado.imported += 1
+            } catch {
+                // Se registra el fallo para que el docente sepa a quién le falta,
+                // pero NO como importada: así se puede reintentar.
+                resultado.failures.append(
+                    (studentName: nombre, reason: error.localizedDescription)
+                )
+            }
+        }
+
+        // El Cuaderno tiene que reflejar lo escrito sin que el docente recargue.
+        // `saveResponses` ya invalida el caché de la hoja y emite el bus de
+        // refresco; esto solo fuerza que la vista que está delante vuelva a pedir
+        // su clase, que es lo que hace el resto de la app tras una escritura.
+        if resultado.imported > 0 {
+            refreshCurrentNotebook()
+        }
+
+        return resultado
+    }
+
+#if DEBUG
+    /// Monta a mano un formulario de prueba: columna con instrumento, plantilla con
+    /// sus ítems, registro del formulario, mapa de ítems y un alias asignado.
+    ///
+    /// **Solo DEBUG y solo hasta que exista la publicación de formularios.** Sin
+    /// esto el circuito no se puede ver funcionando, porque nada crea todavía un
+    /// `formInstanceId` ni una fila de alias. Cuando la app sepa publicar, este
+    /// método y `WebSubmissionTestBenchView` se borran juntos.
+    func prepareWebSubmissionTestForm(
+        formInstanceId: String,
+        title: String,
+        recipientPublicKey: String,
+        publisherPublicKey: String?,
+        manifestJson: String,
+        items: [(webItemId: String, title: String, type: WebManifestItemType, options: [String])],
+        alias: String
+    ) async throws -> WebSubmissionTestFormResult {
+        if classes.isEmpty { try await refreshClasses() }
+        guard let clase = classes.first else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "Crea primero un grupo con alumnado."]
+            )
+        }
+        let classId = clase.id
+
+        let alumnado = try await container.classesRepository.listStudentsInClass(classId: classId)
+        guard let primero = alumnado.first else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "El grupo \(clase.name) no tiene alumnado."]
+            )
+        }
+
+        let ahora = Int64(Date().timeIntervalSince1970 * 1000)
+        let instant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: ahora)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: instant,
+            updatedAt: instant,
+            associatedGroupId: KotlinLong(value: classId),
+            deviceId: localDeviceId,
+            syncVersion: 0
+        )
+
+        // Columna estable por formulario: repetir la preparación no crea columnas
+        // nuevas, y así se puede pulsar el botón varias veces sin ensuciar el
+        // Cuaderno.
+        let columnId = "COL_WEB_\(formInstanceId.prefix(8))"
+        let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+        let tabIds = selectedNotebookTabId.map { [$0] } ?? tabs.first.map { [$0.id] } ?? []
+
+        let column = NotebookColumnDefinition(
+            id: columnId,
+            title: "Entregas web (prueba)",
+            type: .text,
+            categoryKind: .evaluation,
+            instrumentKind: .learningSituation,
+            inputKind: .text,
+            evaluationId: nil,
+            rubricId: nil,
+            formula: nil,
+            weight: 0,
+            dateEpochMs: KotlinLong(value: ahora),
+            unitOrSituation: title,
+            competencyCriteriaIds: [],
+            scaleKind: .custom,
+            tabIds: tabIds,
+            sessions: [],
+            sharedAcrossTabs: false,
+            colorHex: "0F766E",
+            iconName: "tray.and.arrow.down",
+            order: -1,
+            widthDp: 160,
+            categoryId: nil,
+            ordinalLevels: [],
+            availableIcons: [],
+            countsTowardAverage: false,
+            isPinned: false,
+            isHidden: false,
+            visibility: .visible,
+            isLocked: false,
+            isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
+            trace: trace
+        )
+        try await container.notebookRepository.saveColumn(classId: classId, column: column)
+
+        let templateId = "template_\(columnId)"
+        let plantillaItems: [NotebookInstrumentItem] = items.enumerated().map { indice, item in
+            NotebookInstrumentItem(
+                id: "item_\(columnId)_\(item.webItemId)",
+                templateId: templateId,
+                key: item.webItemId,
+                title: item.title,
+                type: Self.instrumentItemType(from: item.type),
+                // Sin esto, una pregunta de elección se guardaba sin opciones y
+                // luego el publicador la rechazaba con razón: no se puede elegir
+                // entre nada.
+                options: item.options,
+                required: true,
+                order: Int32(indice),
+                helpText: nil,
+                trace: trace
+            )
+        }
+        try await container.notebookInstrumentsRepository.saveTemplate(
+            template: NotebookInstrumentTemplate(
+                id: templateId,
+                classId: classId,
+                columnId: columnId,
+                evaluationId: nil,
+                title: title,
+                kind: .form,
+                inputKind: .text,
+                source: "WEB_TEST_BENCH",
+                trace: trace
+            ),
+            items: plantillaItems
+        )
+
+        try await container.webSubmissionsRepository.saveFormInstance(
+            instance: WebFormInstance(
+                formInstanceId: formInstanceId,
+                classId: classId,
+                columnId: columnId,
+                templateId: templateId,
+                title: title,
+                recipientPublicKey: recipientPublicKey,
+                privateKeyRef: WebSubmissionKeychain.reference(for: formInstanceId),
+                publisherPublicKey: publisherPublicKey,
+                expiresAtEpochMs: ahora + 365 * 24 * 60 * 60 * 1000,
+                revoked: false,
+                manifestJson: manifestJson,
+                createdAtEpochMs: ahora,
+                updatedAtEpochMs: ahora
+            )
+        )
+
+        try await container.webSubmissionsRepository.saveItemMap(
+            formInstanceId: formInstanceId,
+            entries: items.map { item in
+                WebItemMapEntry(
+                    webItemId: item.webItemId,
+                    itemId: "item_\(columnId)_\(item.webItemId)",
+                    itemType: item.type.rawValue
+                )
+            }
+        )
+
+        try await container.webSubmissionsRepository.saveAliases(
+            formInstanceId: formInstanceId,
+            entries: [
+                WebAliasEntry(alias: alias, studentId: primero.id, createdAtEpochMs: ahora)
+            ]
+        )
+
+        refreshCurrentNotebook()
+
+        return WebSubmissionTestFormResult(
+            classId: classId,
+            columnId: columnId,
+            studentName: "\(primero.firstName) \(primero.lastName)".trimmingCharacters(in: .whitespaces)
+        )
+    }
+
+    private static func instrumentItemType(from tipo: WebManifestItemType) -> NotebookInstrumentItemType {
+        switch tipo {
+        case .check: return .check
+        case .text: return .text
+        case .number: return .number
+        case .scale1To4: return .scale14
+        case .choice: return .choice
+        }
+    }
+#endif
+
     func refreshStudentsDirectory() async throws {
         if classes.isEmpty {
             try await refreshClasses()
@@ -5299,6 +5850,15 @@ final class KmpBridge: ObservableObject {
         try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: sequenceVersionId)
     }
 
+    /// Exposición de solo lectura para que el Planner pueda representar la última
+    /// secuencia teórica incluso antes de que exista una sesión en el calendario.
+    func learningSituationSessionSequenceVersions(
+        learningSituationId: Int64
+    ) async throws -> [LearningSituationSessionSequenceVersion] {
+        try await container.learningSituationsRepository
+            .listSessionSequenceVersions(learningSituationId: learningSituationId)
+    }
+
     func learningSituationSessionSequenceVersion(id: Int64, learningSituationId: Int64) async throws -> LearningSituationSessionSequenceVersion? {
         try await container.learningSituationsRepository
             .listSessionSequenceVersions(learningSituationId: learningSituationId)
@@ -5488,6 +6048,16 @@ final class KmpBridge: ObservableObject {
         sequenceDraft: LearningSituationSessionSequenceImportDraft? = nil
     ) async throws {
         guard !scheduledSlots.isEmpty else { return }
+        guard !LearningSituationScheduleProjection.hasDuplicateDestinations(scheduledSlots) else {
+            throw NSError(
+                domain: "LearningSituations",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "No se puede programar más de una sesión en la misma fecha y franja. Revisa la previsualización."
+                ]
+            )
+        }
         let detailedPlanIds: [Int: Int64]
         if let sequenceDraft {
             detailedPlanIds = try await persistSessionSequence(situation: situation, draft: sequenceDraft)
@@ -5560,9 +6130,17 @@ final class KmpBridge: ObservableObject {
         situation: LearningSituation,
         draft: LearningSituationSessionSequenceImportDraft
     ) async throws -> [Int: Int64] {
+        let existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situation.id)
+        if let identicalVersion = existingVersions.first(where: { $0.sha256 == draft.sha256 }) {
+            let existingPlans = try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: identicalVersion.id)
+            return Dictionary(
+                existingPlans.map { (Int($0.sessionNumber), $0.id) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+
         let storedURL = try LearningSituationDocumentStore().persistSourceDocument(from: draft.sourceURL, sha256: draft.sha256)
         let warningsJSON = String(data: try JSONEncoder().encode(draft.warnings), encoding: .utf8) ?? "[]"
-        let existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situation.id)
         let versionNumber = Int32((existingVersions.first?.versionNumber ?? 0) + 1)
         let versionId = try await container.learningSituationsRepository.saveSessionSequenceVersion(
             version: LearningSituationSessionSequenceVersion(

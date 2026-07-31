@@ -462,6 +462,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Datos: la prueba de la rejilla de observación refleja la conversión vigente de escala 1-4 a
+  calificación 0-10; así deja de bloquear la CI con una expectativa anterior a esa normalización.
+
 - Entregas del alumnado vía web: nuevo `scripts/interop_entregas_web/verificar.sh`, que compila el
   servicio real (no una copia) junto con un comprobador y lo ejecuta contra el fixture
   `interop-v1.json` que genera la PWA. **50 comprobaciones, 0 fallos.** Prueba lo que ninguna otra

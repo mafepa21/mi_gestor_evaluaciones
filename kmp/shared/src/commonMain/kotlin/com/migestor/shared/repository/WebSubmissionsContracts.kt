@@ -82,6 +82,10 @@ interface WebSubmissionsRepository {
     @Throws(Throwable::class)
     suspend fun listFormInstancesForClass(classId: Long): List<WebFormInstance>
 
+    /** Todos los formularios publicados, del más reciente al más antiguo. */
+    @Throws(Throwable::class)
+    suspend fun listAllFormInstances(): List<WebFormInstance>
+
     @Throws(Throwable::class)
     suspend fun saveFormInstance(instance: WebFormInstance)
 

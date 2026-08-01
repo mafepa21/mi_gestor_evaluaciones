@@ -33,6 +33,7 @@ enum IOSFeatureRegistry {
         .init(module: .diary, title: "Diario de aula", subtitle: "Trazabilidad de sesión", systemImage: "doc.text", priority: .teaching, visibleInDailyMode: false),
         .init(module: .evaluationHub, title: "Evaluación", subtitle: "Instrumentos y calendario", systemImage: "chart.bar.doc.horizontal", priority: .teaching, visibleInDailyMode: false),
         .init(module: .situations, title: "Situaciones", subtitle: "Programación e importación", systemImage: "doc.text.magnifyingglass", priority: .teaching, visibleInDailyMode: false),
+        .init(module: .webSubmissions, title: "Entregas web", subtitle: "Gestiona desde el Mac; recibe en el Cuaderno", systemImage: "paperplane.circle.fill", priority: .teaching, visibleInDailyMode: false),
         .init(module: .meetings, title: "Reuniones", subtitle: "Actas de centro y acuerdos", systemImage: "person.3", priority: .teaching, visibleInDailyMode: false),
         .init(module: .rubrics, title: "Rúbricas", subtitle: "Banco de evaluación", systemImage: "checklist", priority: .teaching, visibleInDailyMode: false),
         .init(module: .reports, title: "Informes", subtitle: "Salida docente", systemImage: "doc.richtext", priority: .teaching, visibleInDailyMode: false),

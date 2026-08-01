@@ -71,9 +71,9 @@ struct WebSubmissionPublishSheet: View {
                 .background(.indigo.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(result == nil ? "Publicar para el alumnado" : "Formulario publicado")
+                Text(result == nil ? "Nueva tarea web" : "Formulario publicado")
                     .font(.title2.weight(.bold))
-                Text(className)
+                Text(result == nil ? "Instrumento → configuración → revisión" : className)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

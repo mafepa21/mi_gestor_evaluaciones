@@ -13,6 +13,50 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- Entregas web multi-grupo: el Mac incorpora una bandeja global de tareas con grupo,
+  instrumento, caducidad, estados Activa/Caducada/Revocada, filtros, búsqueda,
+  recuento de importaciones y acciones para abrir la carpeta o copiar enlaces.
+- Creación guiada de tareas web: Grupo → Instrumento → configuración → revisión →
+  Publicar, con URL y correo reutilizables, aviso de formularios previos y manifiesto
+  público más hoja privada en `Documents/EntregasWeb/<formInstanceId>`.
+- Importación por lotes multi-formulario: cada `.mgsub` se enruta por su
+  `formInstanceId`, se previsualiza agrupado por grupo/tarea, permite asignaciones
+  manuales aisladas y separa errores parciales, duplicados y ya importados.
+- Entregas web informativas en iPad: la operación se realiza en el Mac y las
+  respuestas llegan al Cuaderno por SyncLAN. El banco de pruebas queda limitado a
+  DEBUG.
+
+### Changed
+
+- El contrato y repositorio SQLDelight exponen `listAllFormInstances()`; la app deja
+  de depender del formulario publicado más recientemente.
+- La importación pasa `formInstanceId` en cada borrador, escribe siempre mediante
+  `saveResponses` y registra el ledger correspondiente a cada formulario.
+
+### Data
+
+- Se añadió únicamente la consulta ordenada de todos los formularios existentes. No
+  se crean tablas nuevas ni se sincronizan las tablas privadas `web_*`.
+
+### Docs
+
+- ADR `ADR-2026-08-01-entregas-web-centro-mac.md`: Mac como centro de publicación,
+  gestión e importación, con privacidad explícita para SyncLAN.
+
+### Verification
+
+- `./gradlew :data:desktopTest`: BUILD SUCCESSFUL.
+- `./gradlew :shared:desktopTest`: BUILD SUCCESSFUL.
+- `scripts/verify_apple_builds.sh`: macOS Native/Catalyst e iOS Simulator compilados
+  correctamente.
+- Tests XCTest del importador web: 5 tests, 0 fallos.
+- `./gradlew :shared:test` no pudo ejecutarse por falta de Android SDK en el entorno
+  (`ANDROID_HOME`/`kmp/local.properties` ausentes).
+- Pendiente de QA manual: flujo real Mac → lote mixto → SyncLAN → Cuaderno iPad y
+  revisión visual de bandejas en Mac/iPad.
+
 ### Fixed
 
 - Import de instrumentos: la autoevaluación/coevaluación ponderable se bloqueaba con "la

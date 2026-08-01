@@ -104,10 +104,22 @@ struct WebSubmissionSnapshot {
 
 /// Resolutor síncrono sobre un snapshot ya cargado.
 struct WebSubmissionSnapshotResolver: WebSubmissionContextResolver {
-    let snapshot: WebSubmissionSnapshot
+    let snapshotsByFormInstanceId: [String: WebSubmissionSnapshot]
+
+    init(snapshot: WebSubmissionSnapshot) {
+        self.snapshotsByFormInstanceId = [snapshot.formInstanceId: snapshot]
+    }
+
+    init(snapshots: [String: WebSubmissionSnapshot]) {
+        self.snapshotsByFormInstanceId = snapshots
+    }
+
+    private func snapshot(for formInstanceId: String) -> WebSubmissionSnapshot? {
+        snapshotsByFormInstanceId[formInstanceId]
+    }
 
     func formInstance(formInstanceId: String) -> WebFormInstanceContext? {
-        guard formInstanceId == snapshot.formInstanceId else { return nil }
+        guard let snapshot = snapshot(for: formInstanceId) else { return nil }
         return WebFormInstanceContext(
             formInstanceId: snapshot.formInstanceId,
             classId: snapshot.classId,
@@ -119,21 +131,23 @@ struct WebSubmissionSnapshotResolver: WebSubmissionContextResolver {
     }
 
     func studentId(formInstanceId: String, alias: String) -> Int64? {
-        guard formInstanceId == snapshot.formInstanceId else { return nil }
-        return snapshot.studentIdByAlias[alias]
+        snapshot(for: formInstanceId)?.studentIdByAlias[alias]
     }
 
     func studentName(studentId: Int64) -> String? {
-        snapshot.studentNames[studentId]
+        snapshotsByFormInstanceId.values
+            .compactMap { $0.studentNames[studentId] }
+            .first
     }
 
     func itemId(formInstanceId: String, webItemId: String) -> String? {
-        guard formInstanceId == snapshot.formInstanceId else { return nil }
-        return snapshot.itemIdByWebItemId[webItemId]
+        snapshot(for: formInstanceId)?.itemIdByWebItemId[webItemId]
     }
 
     func alreadyImportedAtEpochMs(submissionId: String) -> Int64? {
-        snapshot.importedAtBySubmissionId[submissionId]
+        snapshotsByFormInstanceId.values
+            .compactMap { $0.importedAtBySubmissionId[submissionId] }
+            .first
     }
 
     func recipientPrivateKey(privateKeyRef: String) -> Data? {
@@ -176,6 +190,40 @@ struct WebPublishResult {
     let folderPath: String
     let links: [WebPublishedLink]
     let linksText: String
+}
+
+enum WebSubmissionTaskStatus: String, CaseIterable, Hashable {
+    case active
+    case expired
+    case revoked
+
+    var label: String {
+        switch self {
+        case .active: return "Activa"
+        case .expired: return "Caducada"
+        case .revoked: return "Revocada"
+        }
+    }
+}
+
+/// Metadatos que la bandeja necesita para agrupar formularios publicados.
+/// El mapa privado y las claves siguen viviendo en `WebSubmissionSnapshot`.
+struct WebSubmissionTaskInfo: Identifiable, Hashable {
+    var id: String { formInstanceId }
+    let formInstanceId: String
+    let classId: Int64
+    let groupName: String
+    let title: String
+    let columnTitle: String
+    let status: WebSubmissionTaskStatus
+    let expiresAtEpochMs: Int64
+    let importedCount: Int
+    let lastImportedAtEpochMs: Int64?
+
+    var statusLabel: String { status.label }
+    var displayTitle: String {
+        "\(groupName) · \(title)"
+    }
 }
 
 #if DEBUG

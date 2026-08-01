@@ -172,10 +172,7 @@ struct WebSubmissionTestBenchView: View {
     private func confirm(_ decisiones: [WebSubmissionImportDecision], snapshot: WebSubmissionSnapshot) async {
         importing = true
         defer { importing = false }
-        let resultado = await bridge.importWebSubmissions(
-            decisiones,
-            formInstanceId: snapshot.formInstanceId
-        )
+        let resultado = await bridge.importWebSubmissions(decisiones)
         outcome = resultado.summary
         anotar(resultado.summary)
         for fallo in resultado.failures {

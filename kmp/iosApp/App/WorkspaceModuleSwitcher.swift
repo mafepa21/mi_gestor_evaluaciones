@@ -95,6 +95,8 @@ extension AppWorkspaceShell {
                 onOpenModule: open(module:classId:studentId:)
             )
                 .environmentObject(bridge)
+        case .webSubmissions:
+            WebSubmissionsIPadInfoView()
         case .rubrics:
             RubricsWorkspaceView(
                 selectedClassId: $selectedClassId,

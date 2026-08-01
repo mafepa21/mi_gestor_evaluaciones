@@ -2799,6 +2799,13 @@ FROM web_form_instances
 WHERE class_id = ?
 ORDER BY created_at_epoch_ms DESC;
 
+selectAllWebFormInstances:
+SELECT form_instance_id, class_id, column_id, template_id, title, recipient_public_key,
+       private_key_ref, publisher_public_key, expires_at_epoch_ms, revoked,
+       manifest_json, created_at_epoch_ms, updated_at_epoch_ms
+FROM web_form_instances
+ORDER BY created_at_epoch_ms DESC;
+
 upsertWebFormInstance:
 INSERT OR REPLACE INTO web_form_instances(form_instance_id, class_id, column_id, template_id,
     title, recipient_public_key, private_key_ref, publisher_public_key,

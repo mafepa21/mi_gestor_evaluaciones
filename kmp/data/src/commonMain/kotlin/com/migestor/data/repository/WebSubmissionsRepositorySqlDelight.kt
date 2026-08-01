@@ -50,22 +50,13 @@ class WebSubmissionsRepositorySqlDelight(
     override suspend fun listFormInstancesForClass(classId: Long): List<WebFormInstance> =
         withContext(Dispatchers.Default) {
             db.appDatabaseQueries.selectWebFormInstancesByClass(classId).executeAsList().map { fila ->
-                WebFormInstance(
-                    formInstanceId = fila.form_instance_id,
-                    classId = fila.class_id,
-                    columnId = fila.column_id,
-                    templateId = fila.template_id,
-                    title = fila.title,
-                    recipientPublicKey = fila.recipient_public_key,
-                    privateKeyRef = fila.private_key_ref,
-                    publisherPublicKey = fila.publisher_public_key,
-                    expiresAtEpochMs = fila.expires_at_epoch_ms,
-                    revoked = fila.revoked != 0L,
-                    manifestJson = fila.manifest_json,
-                    createdAtEpochMs = fila.created_at_epoch_ms,
-                    updatedAtEpochMs = fila.updated_at_epoch_ms,
-                )
+                mapFormInstance(fila)
             }
+        }
+
+    override suspend fun listAllFormInstances(): List<WebFormInstance> =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.selectAllWebFormInstances().executeAsList().map(::mapFormInstance)
         }
 
     override suspend fun saveFormInstance(instance: WebFormInstance) =
@@ -170,6 +161,23 @@ class WebSubmissionsRepositorySqlDelight(
                 imported_at_epoch_ms = entry.importedAtEpochMs,
             )
         }
+
+    private fun mapFormInstance(fila: com.migestor.data.db.Web_form_instances): WebFormInstance =
+        WebFormInstance(
+            formInstanceId = fila.form_instance_id,
+            classId = fila.class_id,
+            columnId = fila.column_id,
+            templateId = fila.template_id,
+            title = fila.title,
+            recipientPublicKey = fila.recipient_public_key,
+            privateKeyRef = fila.private_key_ref,
+            publisherPublicKey = fila.publisher_public_key,
+            expiresAtEpochMs = fila.expires_at_epoch_ms,
+            revoked = fila.revoked != 0L,
+            manifestJson = fila.manifest_json,
+            createdAtEpochMs = fila.created_at_epoch_ms,
+            updatedAtEpochMs = fila.updated_at_epoch_ms,
+        )
 
     private fun mapLedger(fila: com.migestor.data.db.Web_submission_ledger): WebLedgerEntry =
         WebLedgerEntry(

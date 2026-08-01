@@ -12,7 +12,7 @@ import CryptoKit
 ///   3. Comprueba que la entrega es de ese formulario.
 ///   4. Traduce alias -> alumno y `webItemId` -> `notebook_instrument_items.id`.
 ///   5. Valida cada respuesta contra el TIPO que declara el manifiesto.
-///   6. Descarta duplicados por `submissionId`.
+///   6. Clasifica duplicados por `submissionId` y por alumno/formulario.
 ///   7. Devuelve un borrador para previsualizar.
 ///
 /// Lo que deliberadamente NO hace: escribir en la base de datos. Eso es de
@@ -112,6 +112,8 @@ enum WebSubmissionImportError: LocalizedError, Equatable {
     case payloadFormMismatch
     case unknownItem(String)
     case duplicatedItem(String)
+    case duplicatedSubmission(String)
+    case duplicatedStudent(String)
     case typeMismatch(webItemId: String, detail: String)
     case unknownAlias(String)
     case noAnswers
@@ -140,6 +142,10 @@ enum WebSubmissionImportError: LocalizedError, Equatable {
             return "La respuesta \(id) no existe en este formulario."
         case .duplicatedItem(let id):
             return "La respuesta \(id) viene dos veces."
+        case .duplicatedSubmission(let id):
+            return "La entrega \(id) aparece dos veces en este lote."
+        case .duplicatedStudent(let alias):
+            return "Ya hay otra entrega para el mismo alumno en este formulario (código \(alias.prefix(6))…)."
         case .typeMismatch(let id, let detalle):
             return "La respuesta \(id) no encaja con su tipo: \(detalle)"
         case .unknownAlias(let alias):
@@ -462,10 +468,46 @@ struct WebSubmissionImportService {
     /// Examina varios ficheros `.mgsub` y devuelve qué se puede importar.
     /// No escribe nada.
     func preview(files: [(name: String, data: Data)], manifest: WebFormManifest) -> WebSubmissionImportPreview {
+        preview(files: files, manifests: [manifest.formInstanceId: manifest])
+    }
+
+    /// Examina un lote que puede contener entregas de varios formularios.
+    /// El `formInstanceId` exterior del sobre decide qué manifiesto y qué snapshot
+    /// se usan; nunca se aplica el manifiesto del primer fichero al lote entero.
+    func preview(
+        files: [(name: String, data: Data)],
+        manifests: [String: WebFormManifest],
+        manifestJSONByFormInstanceId: [String: Data] = [:]
+    ) -> WebSubmissionImportPreview {
         var resultado = WebSubmissionImportPreview()
         for fichero in files {
             do {
+                let envelope = try decodeEnvelope(from: fichero.data)
+                guard let manifest = manifests[envelope.formInstanceId] else {
+                    throw WebSubmissionImportError.wrongForm(
+                        expected: "un formulario registrado en este dispositivo",
+                        got: envelope.formInstanceId
+                    )
+                }
+                if let rawManifest = manifestJSONByFormInstanceId[envelope.formInstanceId] {
+                    try WebSubmissionCrypto.verifyManifestSignature(rawManifestJSON: rawManifest)
+                }
                 let borrador = try examine(data: fichero.data, manifest: manifest)
+
+                if resultado.drafts.contains(where: { $0.submissionId == borrador.submissionId }) {
+                    throw WebSubmissionImportError.duplicatedSubmission(borrador.submissionId)
+                }
+
+                // Nunca se sobreescribe silenciosamente la misma celda si dos
+                // ficheros representan al mismo alumno y formulario. Se conserva
+                // el primero y el segundo queda visible como rechazo explicable.
+                if let alumno = borrador.studentId,
+                   resultado.drafts.contains(where: {
+                       $0.formInstanceId == borrador.formInstanceId && $0.studentId == alumno
+                   }) {
+                    throw WebSubmissionImportError.duplicatedStudent(borrador.alias)
+                }
+
                 resultado.drafts.append(borrador)
             } catch let yaEsta as YaImportada {
                 resultado.alreadyImported.append(
@@ -487,6 +529,14 @@ struct WebSubmissionImportService {
         return resultado
     }
 
+    private func decodeEnvelope(from data: Data) throws -> WebSubmissionEnvelope {
+        do {
+            return try JSONDecoder().decode(WebSubmissionEnvelope.self, from: data)
+        } catch {
+            throw WebSubmissionImportError.notJSON("le faltan campos o no es JSON")
+        }
+    }
+
     /// Señal interna: no es un error del usuario, es que ya estaba importada.
     struct YaImportada: Error {
         let submissionId: String
@@ -495,12 +545,7 @@ struct WebSubmissionImportService {
 
     /// Examina UNA entrega. Lanza con el motivo si no se puede importar.
     func examine(data: Data, manifest: WebFormManifest) throws -> WebSubmissionDraft {
-        let envelope: WebSubmissionEnvelope
-        do {
-            envelope = try JSONDecoder().decode(WebSubmissionEnvelope.self, from: data)
-        } catch {
-            throw WebSubmissionImportError.notJSON("le faltan campos o no es JSON")
-        }
+        let envelope = try decodeEnvelope(from: data)
 
         guard envelope.schemaVersion == Self.supportedSchemaVersion else {
             throw WebSubmissionImportError.unsupportedSchemaVersion(envelope.schemaVersion)

@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import MiGestorKit
 
 /// Almacén de la clave privada de cada formulario, y adaptador entre la tabla de
 /// correspondencias de la base de datos y el `WebSubmissionImportService`.
@@ -223,6 +224,99 @@ struct WebSubmissionTaskInfo: Identifiable, Hashable {
     var statusLabel: String { status.label }
     var displayTitle: String {
         "\(groupName) · \(title)"
+    }
+}
+
+/// Enlace privado de un alumno dentro de una tarea web.
+///
+/// El enlace no se guarda en la base de datos pública ni se sincroniza: se
+/// reconstruye desde la hoja privada que se escribió al publicar el formulario
+/// y se cruza con el correo actual de la ficha del alumno.
+struct WebPublishedStudentLink: Identifiable, Hashable {
+    let studentId: Int64
+    let studentName: String
+    let email: String?
+    let url: URL
+
+    var id: Int64 { studentId }
+
+    var hasEmail: Bool {
+        guard let email else { return false }
+        return !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+/// Lee la hoja privada de enlaces creada al publicar una tarea.
+///
+/// La hoja de texto mantiene el formato cómodo para el docente. El alias del
+/// fragmento (`a=`) permite recuperar el `studentId` sin confiar en el nombre
+/// visible, que puede repetirse en un grupo.
+enum WebSubmissionPrivateLinksStore {
+    static func folderURL(for formInstanceId: String) -> URL? {
+        guard let documents = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first else { return nil }
+        return documents
+            .appendingPathComponent("EntregasWeb", isDirectory: true)
+            .appendingPathComponent(formInstanceId, isDirectory: true)
+    }
+
+    static func readLinks(
+        formInstanceId: String,
+        snapshot: WebSubmissionSnapshot,
+        students: [Student]
+    ) -> [WebPublishedStudentLink] {
+        guard let folder = folderURL(for: formInstanceId),
+              let text = try? String(
+                  contentsOf: folder.appendingPathComponent("enlaces-alumnado.txt"),
+                  encoding: .utf8
+              ) else { return [] }
+
+        let studentsById = Dictionary(
+            students.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var result: [WebPublishedStudentLink] = []
+        var seenStudentIds = Set<Int64>()
+
+        for line in text.split(whereSeparator: \.isNewline) {
+            guard let urlStart = line.range(of: "http://") ?? line.range(of: "https://") else {
+                continue
+            }
+            let urlText = String(line[urlStart.lowerBound...]).trimmingCharacters(in: .whitespaces)
+            guard let url = URL(string: urlText),
+                  let fragment = url.fragment else { continue }
+
+            let fragmentValues = Dictionary(
+                fragment.split(separator: "&").compactMap { field -> (String, String)? in
+                    let parts = field.split(separator: "=", maxSplits: 1).map(String.init)
+                    guard parts.count == 2 else { return nil }
+                    return (parts[0], parts[1])
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
+            guard fragmentValues["f"] == formInstanceId,
+                  let alias = fragmentValues["a"],
+                  let studentId = snapshot.studentIdByAlias[alias],
+                  seenStudentIds.insert(studentId).inserted else { continue }
+
+            let student = studentsById[studentId]
+            result.append(
+                WebPublishedStudentLink(
+                    studentId: studentId,
+                    studentName: snapshot.studentNames[studentId]
+                        ?? student.map { "\($0.firstName) \($0.lastName)" }
+                        ?? "Alumno \(studentId)",
+                    email: student?.email,
+                    url: url
+                )
+            )
+        }
+
+        return result.sorted {
+            $0.studentName.localizedCaseInsensitiveCompare($1.studentName) == .orderedAscending
+        }
     }
 }
 

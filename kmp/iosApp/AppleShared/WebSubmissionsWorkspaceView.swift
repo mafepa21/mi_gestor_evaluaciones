@@ -20,10 +20,12 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var snapshots: [String: WebSubmissionSnapshot] = [:]
     @State private var manifests: [String: WebFormManifest] = [:]
     @State private var manifestJSONByFormInstanceId: [String: Data] = [:]
+    @State private var linksByFormInstanceId: [String: [WebPublishedStudentLink]] = [:]
     @State private var loading = false
     @State private var errorMessage: String?
     @State private var importSummary: String?
     @State private var importing = false
+    @State private var revoking = false
 
     @State private var selectedGroupFilter = "all"
     @State private var statusFilter: WebSubmissionTaskFilter = .active
@@ -34,6 +36,8 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var showingPublish = false
     @State private var publishing = false
     @State private var publishResult: WebPublishResult?
+    @State private var emailTask: WebSubmissionTaskInfo?
+    @State private var taskToRevoke: WebSubmissionTaskInfo?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -79,6 +83,12 @@ struct WebSubmissionsWorkspaceView: View {
                 result: publishResult
             )
         }
+        .sheet(item: $emailTask) { task in
+            WebSubmissionLinkEmailSheet(
+                task: task,
+                links: linksByFormInstanceId[task.formInstanceId] ?? []
+            )
+        }
         .alert(
             "No se pudo completar la operación",
             isPresented: Binding(
@@ -89,6 +99,27 @@ struct WebSubmissionsWorkspaceView: View {
             Button("Entendido") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+        .alert(
+            "Revocar tarea web",
+            isPresented: Binding(
+                get: { taskToRevoke != nil },
+                set: { visible in if !visible { taskToRevoke = nil } }
+            )
+        ) {
+            Button("Revocar tarea", role: .destructive) {
+                guard let task = taskToRevoke else { return }
+                taskToRevoke = nil
+                Task { await revoke(task) }
+            }
+            Button("Cancelar", role: .cancel) {
+                taskToRevoke = nil
+            }
+        } message: {
+            Text(
+                "\(taskToRevoke?.title ?? "Esta tarea") quedará como Revocada en este Mac. "
+                + "No se borrarán el historial ni las entregas ya recibidas. Para bloquear nuevos accesos, retira también el manifiesto público ya desplegado."
+            )
         }
     }
 
@@ -286,10 +317,32 @@ struct WebSubmissionsWorkspaceView: View {
     private func taskActions(_ task: WebSubmissionTaskInfo) -> some View {
         #if os(macOS)
         HStack(spacing: 8) {
-            Button("Abrir carpeta") { revealFiles(for: task) }
+            if task.status == .active {
+                Button {
+                    emailTask = task
+                } label: {
+                    Label("Enviar enlaces", systemImage: "envelope")
+                }
                 .buttonStyle(.borderless)
-            Button("Copiar enlaces") { copyLinks(for: task) }
-                .buttonStyle(.borderless)
+                .disabled(revoking)
+            }
+
+            Menu {
+                Button("Abrir carpeta") { revealFiles(for: task) }
+                Button("Copiar enlaces") { copyLinks(for: task) }
+                if task.status == .active {
+                    Divider()
+                    Button("Revocar tarea", role: .destructive) {
+                        taskToRevoke = task
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .imageScale(.medium)
+            }
+            .menuStyle(.borderlessButton)
+            .help("Más acciones")
+            .disabled(revoking)
         }
         #else
         EmptyView()
@@ -327,6 +380,7 @@ struct WebSubmissionsWorkspaceView: View {
         var loadedSnapshots: [String: WebSubmissionSnapshot] = [:]
         var loadedManifests: [String: WebFormManifest] = [:]
         var loadedManifestJSON: [String: Data] = [:]
+        var loadedLinks: [String: [WebPublishedStudentLink]] = [:]
         for classId in Set(tasks.map(\.classId)) {
             guard let instances = try? await bridge.listWebFormInstances(classId: classId) else { continue }
             for instance in instances {
@@ -341,11 +395,17 @@ struct WebSubmissionsWorkspaceView: View {
                 loadedSnapshots[instance.formInstanceId] = snapshot
                 loadedManifests[instance.formInstanceId] = manifest
                 loadedManifestJSON[instance.formInstanceId] = rawManifest
+                loadedLinks[instance.formInstanceId] = WebSubmissionPrivateLinksStore.readLinks(
+                    formInstanceId: instance.formInstanceId,
+                    snapshot: snapshot,
+                    students: bridge.allStudents
+                )
             }
         }
         snapshots = loadedSnapshots
         manifests = loadedManifests
         manifestJSONByFormInstanceId = loadedManifestJSON
+        linksByFormInstanceId = loadedLinks
     }
 
     private func reloadCreationInstruments() async {
@@ -387,6 +447,18 @@ struct WebSubmissionsWorkspaceView: View {
         let result = await bridge.importWebSubmissions(decisions)
         importSummary = result.summary
         await reload()
+    }
+
+    private func revoke(_ task: WebSubmissionTaskInfo) async {
+        revoking = true
+        defer { revoking = false }
+        do {
+            try await bridge.revokeWebForm(formInstanceId: task.formInstanceId)
+            importSummary = "Tarea «\(task.title)» revocada en este Mac."
+            await reload()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func cleanEmail(_ value: String) -> String? {

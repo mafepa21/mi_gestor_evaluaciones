@@ -1824,6 +1824,28 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    /// Marca una tarea como revocada sin borrar su historial ni sus entregas.
+    ///
+    /// La revocación es local a este Mac: el manifiesto público ya desplegado
+    /// no puede cambiarse desde la app porque su firma pertenece al formulario
+    /// publicado. La bandeja deja de considerarlo activo y conserva la clave,
+    /// alias y ledger para poder importar archivos válidos recibidos antes.
+    func revokeWebForm(formInstanceId: String) async throws {
+        guard let instance = try await container.webSubmissionsRepository
+            .getFormInstance(formInstanceId: formInstanceId) else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "No se encontró la tarea web que se quiere revocar."]
+            )
+        }
+        guard !instance.revoked else { return }
+        try await container.webSubmissionsRepository.revokeFormInstance(
+            formInstanceId: formInstanceId,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+    }
+
     /// Publica un formulario: genera claves, construye y firma el manifiesto, lo
     /// guarda con sus alias y su mapa de ítems, mete la clave privada en el llavero
     /// y escribe los dos ficheros que necesita el docente.

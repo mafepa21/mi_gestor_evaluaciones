@@ -33,6 +33,14 @@ privadas ni convertirse en otra autoridad de claves.
 - La caducidad solo describe cuándo la web deja de aceptar nuevas entregas. Un
   archivo válido recibido antes puede importarse después; una tarea revocada o
   caducada permanece visible para trazabilidad.
+- La revocación desde la bandeja marca el formulario como `revoked` en el Mac y
+  conserva claves, alias, ledger y respuestas. No se presenta como un bloqueo
+  remoto inmediato: el manifiesto público está firmado y ya desplegado fuera de
+  la app. Para detener nuevas respuestas en la web hay que retirar/republicar el
+  manifiesto o añadir en el futuro un registro de revocación consultable.
+- El reparto de enlaces se realiza desde el Mac usando la hoja privada y los
+  correos actuales del alumnado. La app prepara mensajes individuales en Mail;
+  no envía credenciales ni direcciones por SyncLAN.
 
 ## Consecuencias
 
@@ -44,5 +52,10 @@ privadas ni convertirse en otra autoridad de claves.
 - Si el docente publica desde otro Mac, ese dispositivo no podrá resolver el lote
   hasta disponer del formulario, sus claves y sus mapas privados; es una propiedad
   deliberada de privacidad, no un fallback automático.
+- Revocar es seguro para el historial local, pero requiere una operación adicional
+  sobre el despliegue público si la intención es impedir el acceso web en ese mismo
+  momento.
+- Los correos pueden cambiar después de publicar: el reparto lee el correo vigente
+  de la ficha, pero nunca modifica la hoja privada ni cambia el alias del enlace.
 - El transporte futuro de los archivos originales o una copia privada entre Macs
   queda fuera de esta decisión.

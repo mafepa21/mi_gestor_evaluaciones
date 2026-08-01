@@ -1789,9 +1789,9 @@ final class KmpBridge: ObservableObject {
             let ledger = (try? await container.webSubmissionsRepository
                 .listLedgerForForm(formInstanceId: instancia.formInstanceId)) ?? []
             let importadas = ledger.filter { $0.status == "IMPORTED" }
-            let estado: WebSubmissionTaskStatus
-            if instancia.revoked {
-                estado = .revoked
+                    let estado: WebSubmissionTaskStatus
+                    if instancia.revoked {
+                        estado = .revoked
             } else if instancia.expiresAtEpochMs <= ahora {
                 estado = .expired
             } else {
@@ -1808,6 +1808,7 @@ final class KmpBridge: ObservableObject {
                     title: instancia.title,
                     columnTitle: titlesByColumnId[instancia.columnId] ?? instancia.columnId,
                     status: estado,
+                    isArchived: instancia.archived,
                     expiresAtEpochMs: instancia.expiresAtEpochMs,
                     importedCount: importadas.count,
                     lastImportedAtEpochMs: importadas.map(\.importedAtEpochMs).max()
@@ -1817,6 +1818,9 @@ final class KmpBridge: ObservableObject {
 
         let orden: [WebSubmissionTaskStatus: Int] = [.active: 0, .expired: 1, .revoked: 2]
         return resultado.sorted {
+            if $0.isArchived != $1.isArchived {
+                return !$0.isArchived
+            }
             if $0.status != $1.status {
                 return (orden[$0.status] ?? 9) < (orden[$1.status] ?? 9)
             }
@@ -1842,6 +1846,33 @@ final class KmpBridge: ObservableObject {
         guard !instance.revoked else { return }
         try await container.webSubmissionsRepository.revokeFormInstance(
             formInstanceId: formInstanceId,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+    }
+
+    /// Revoca varias tareas en una transacción del repositorio y conserva la
+    /// información privada necesaria para importar entregas ya recibidas.
+    func revokeWebForms(formInstanceIds: [String]) async throws {
+        guard !formInstanceIds.isEmpty else { return }
+        try await container.webSubmissionsRepository.revokeFormInstances(
+            formInstanceIds: formInstanceIds,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+    }
+
+    /// Archiva tareas solo en la bandeja local. No revoca el formulario web.
+    func archiveWebForms(formInstanceIds: [String]) async throws {
+        guard !formInstanceIds.isEmpty else { return }
+        try await container.webSubmissionsRepository.archiveFormInstances(
+            formInstanceIds: formInstanceIds,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+    }
+
+    func restoreArchivedWebForms(formInstanceIds: [String]) async throws {
+        guard !formInstanceIds.isEmpty else { return }
+        try await container.webSubmissionsRepository.restoreArchivedFormInstances(
+            formInstanceIds: formInstanceIds,
             updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
         )
     }
@@ -1939,6 +1970,7 @@ final class KmpBridge: ObservableObject {
                 publisherPublicKey: publicado.publisherPublicKey,
                 expiresAtEpochMs: publicado.expiresAtEpochMs,
                 revoked: false,
+                archived: false,
                 manifestJson: publicado.manifestJSON,
                 createdAtEpochMs: ahora,
                 updatedAtEpochMs: ahora
@@ -2310,6 +2342,7 @@ final class KmpBridge: ObservableObject {
                 publisherPublicKey: publisherPublicKey,
                 expiresAtEpochMs: ahora + 365 * 24 * 60 * 60 * 1000,
                 revoked: false,
+                archived: false,
                 manifestJson: manifestJson,
                 createdAtEpochMs: ahora,
                 updatedAtEpochMs: ahora

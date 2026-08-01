@@ -51,6 +51,10 @@ privadas ni convertirse en otra autoridad de claves.
 - El reparto masivo compone **un mensaje por alumno**, siempre con un único
   destinatario. Agrupar destinatarios expondría a la vez las direcciones del grupo y
   los enlaces ajenos, que son personales por diseño.
+- La bandeja permite seleccionar tareas visibles y ejecutar en lote Revocar, Archivar
+  o Restaurar. Archivar se persiste como una marca local independiente de `revoked`:
+  retira la tarea de la bandeja operativa, pero no cambia el manifiesto web, las
+  claves, los alias, el ledger ni la aceptación de nuevas entregas.
 - El texto del correo es una plantilla con huecos que se resuelve y se escapa en
   Swift antes de construir el guion. Al AppleScript solo llegan literales ya
   cerrados: un nombre de alumno con comillas o saltos de línea no puede alterar el
@@ -72,6 +76,9 @@ privadas ni convertirse en otra autoridad de claves.
 - Revocar es seguro para el historial local, pero requiere una operación adicional
   sobre el despliegue público si la intención es impedir el acceso web en ese mismo
   momento.
+- Archivar y restaurar simplifican la gestión de muchas tareas sin destruir datos;
+  la migración añade solo una columna a `web_form_instances`, y las operaciones por
+  lote se ejecutan en transacción en el repositorio local.
 - Los correos pueden cambiar después de publicar: el reparto lee el correo vigente
   de la ficha, pero nunca modifica la hoja privada ni cambia el alias del enlace.
 - El transporte futuro de los archivos originales o una copia privada entre Macs

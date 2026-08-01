@@ -40,6 +40,7 @@ class WebSubmissionsRepositorySqlDelight(
                         publisherPublicKey = fila.publisher_public_key,
                         expiresAtEpochMs = fila.expires_at_epoch_ms,
                         revoked = fila.revoked != 0L,
+                        archived = fila.archived != 0L,
                         manifestJson = fila.manifest_json,
                         createdAtEpochMs = fila.created_at_epoch_ms,
                         updatedAtEpochMs = fila.updated_at_epoch_ms,
@@ -72,6 +73,7 @@ class WebSubmissionsRepositorySqlDelight(
                 publisher_public_key = instance.publisherPublicKey,
                 expires_at_epoch_ms = instance.expiresAtEpochMs,
                 revoked = if (instance.revoked) 1L else 0L,
+                archived = if (instance.archived) 1L else 0L,
                 manifest_json = instance.manifestJson,
                 created_at_epoch_ms = instance.createdAtEpochMs,
                 updated_at_epoch_ms = instance.updatedAtEpochMs,
@@ -81,6 +83,43 @@ class WebSubmissionsRepositorySqlDelight(
     override suspend fun revokeFormInstance(formInstanceId: String, updatedAtEpochMs: Long) =
         withContext(Dispatchers.Default) {
             db.appDatabaseQueries.revokeWebFormInstance(updatedAtEpochMs, formInstanceId)
+        }
+
+    override suspend fun revokeFormInstances(formInstanceIds: List<String>, updatedAtEpochMs: Long) =
+        withContext(Dispatchers.Default) {
+            db.transaction {
+                formInstanceIds.forEach { formInstanceId ->
+                    db.appDatabaseQueries.revokeWebFormInstance(updatedAtEpochMs, formInstanceId)
+                }
+            }
+        }
+
+    override suspend fun archiveFormInstances(formInstanceIds: List<String>, updatedAtEpochMs: Long) =
+        withContext(Dispatchers.Default) {
+            db.transaction {
+                formInstanceIds.forEach { formInstanceId ->
+                    db.appDatabaseQueries.archiveWebFormInstance(updatedAtEpochMs, formInstanceId)
+                }
+            }
+        }
+
+    override suspend fun archiveFormInstance(formInstanceId: String, updatedAtEpochMs: Long) =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.archiveWebFormInstance(updatedAtEpochMs, formInstanceId)
+        }
+
+    override suspend fun restoreArchivedFormInstances(formInstanceIds: List<String>, updatedAtEpochMs: Long) =
+        withContext(Dispatchers.Default) {
+            db.transaction {
+                formInstanceIds.forEach { formInstanceId ->
+                    db.appDatabaseQueries.restoreArchivedWebFormInstance(updatedAtEpochMs, formInstanceId)
+                }
+            }
+        }
+
+    override suspend fun restoreArchivedFormInstance(formInstanceId: String, updatedAtEpochMs: Long) =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.restoreArchivedWebFormInstance(updatedAtEpochMs, formInstanceId)
         }
 
     override suspend fun listAliases(formInstanceId: String): List<WebAliasEntry> =
@@ -174,6 +213,7 @@ class WebSubmissionsRepositorySqlDelight(
             publisherPublicKey = fila.publisher_public_key,
             expiresAtEpochMs = fila.expires_at_epoch_ms,
             revoked = fila.revoked != 0L,
+            archived = fila.archived != 0L,
             manifestJson = fila.manifest_json,
             createdAtEpochMs = fila.created_at_epoch_ms,
             updatedAtEpochMs = fila.updated_at_epoch_ms,

@@ -66,4 +66,23 @@ final class WebSubmissionSharingTests: XCTestCase {
             "Hola, Ana\nhttps://entregas.example/#f=form&a=alias"
         )
     }
+
+    func testArchivedTasksStayOutOfActiveFilterAndAppearInArchiveFilter() {
+        let task = WebSubmissionTaskInfo(
+            formInstanceId: "form-archived",
+            classId: 1,
+            groupName: "3 ESO A",
+            title: "SA 1",
+            columnTitle: "Entrega",
+            status: .active,
+            isArchived: true,
+            expiresAtEpochMs: 4_000_000_000_000,
+            importedCount: 0,
+            lastImportedAtEpochMs: nil
+        )
+
+        XCTAssertFalse(WebSubmissionTaskFilter.active.matches(task))
+        XCTAssertTrue(WebSubmissionTaskFilter.all.matches(task))
+        XCTAssertTrue(WebSubmissionTaskFilter.archived.matches(task))
+    }
 }

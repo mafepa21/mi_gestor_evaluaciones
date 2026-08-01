@@ -35,6 +35,8 @@ data class WebFormInstance(
     val publisherPublicKey: String?,
     val expiresAtEpochMs: Long,
     val revoked: Boolean,
+    /** El docente la ha retirado de la bandeja operativa sin borrar su historial. */
+    val archived: Boolean = false,
     /**
      * El manifiesto firmado tal cual se publico. El importador lo necesita para
      * validar cada respuesta contra el tipo declarado y para los titulos de la
@@ -91,6 +93,35 @@ interface WebSubmissionsRepository {
 
     @Throws(Throwable::class)
     suspend fun revokeFormInstance(formInstanceId: String, updatedAtEpochMs: Long)
+
+    /** Revoca varias tareas en una única operación lógica. */
+    @Throws(Throwable::class)
+    suspend fun revokeFormInstances(formInstanceIds: List<String>, updatedAtEpochMs: Long) {
+        formInstanceIds.forEach { formInstanceId ->
+            revokeFormInstance(formInstanceId, updatedAtEpochMs)
+        }
+    }
+
+    /** Archiva varias tareas sin cambiar si la web sigue aceptando entregas. */
+    @Throws(Throwable::class)
+    suspend fun archiveFormInstances(formInstanceIds: List<String>, updatedAtEpochMs: Long) {
+        formInstanceIds.forEach { formInstanceId ->
+            archiveFormInstance(formInstanceId, updatedAtEpochMs)
+        }
+    }
+
+    @Throws(Throwable::class)
+    suspend fun archiveFormInstance(formInstanceId: String, updatedAtEpochMs: Long)
+
+    @Throws(Throwable::class)
+    suspend fun restoreArchivedFormInstances(formInstanceIds: List<String>, updatedAtEpochMs: Long) {
+        formInstanceIds.forEach { formInstanceId ->
+            restoreArchivedFormInstance(formInstanceId, updatedAtEpochMs)
+        }
+    }
+
+    @Throws(Throwable::class)
+    suspend fun restoreArchivedFormInstance(formInstanceId: String, updatedAtEpochMs: Long)
 
     /**
      * Todos los alias de un formulario de una vez. La pantalla de importacion los

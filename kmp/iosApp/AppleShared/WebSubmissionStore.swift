@@ -217,6 +217,7 @@ struct WebSubmissionTaskInfo: Identifiable, Hashable {
     let title: String
     let columnTitle: String
     let status: WebSubmissionTaskStatus
+    let isArchived: Bool
     let expiresAtEpochMs: Int64
     let importedCount: Int
     let lastImportedAtEpochMs: Int64?
@@ -224,6 +225,10 @@ struct WebSubmissionTaskInfo: Identifiable, Hashable {
     var statusLabel: String { status.label }
     var displayTitle: String {
         "\(groupName) · \(title)"
+    }
+
+    var managementLabel: String {
+        isArchived ? "Archivada" : status.label
     }
 }
 

@@ -38,11 +38,19 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var publishResult: WebPublishResult?
     @State private var emailTask: WebSubmissionTaskInfo?
     @State private var taskToRevoke: WebSubmissionTaskInfo?
+    @State private var selectionMode = false
+    @State private var selectedTaskIDs: Set<String> = []
+    @State private var bulkActionToConfirm: WebSubmissionBulkAction?
+    @State private var bulkProcessing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
             filters
+
+            #if os(macOS)
+            selectionBar
+            #endif
 
             if let importSummary {
                 Label(importSummary, systemImage: "checkmark.circle.fill")
@@ -121,6 +129,35 @@ struct WebSubmissionsWorkspaceView: View {
                 + "No se borrarán el historial ni las entregas ya recibidas. Para bloquear nuevos accesos, retira también el manifiesto público ya desplegado."
             )
         }
+        .alert(
+            "Gestionar tareas seleccionadas",
+            isPresented: Binding(
+                get: { bulkActionToConfirm != nil },
+                set: { visible in if !visible { bulkActionToConfirm = nil } }
+            )
+        ) {
+            if let action = bulkActionToConfirm {
+                switch action {
+                case .revoke:
+                    Button("Revocar seleccionadas", role: .destructive) {
+                        confirmBulkAction(action)
+                    }
+                case .archive:
+                    Button("Archivar seleccionadas") {
+                        confirmBulkAction(action)
+                    }
+                case .restore:
+                    Button("Restaurar seleccionadas") {
+                        confirmBulkAction(action)
+                    }
+                }
+            }
+            Button("Cancelar", role: .cancel) {
+                bulkActionToConfirm = nil
+            }
+        } message: {
+            Text(bulkConfirmationMessage)
+        }
     }
 
     private var header: some View {
@@ -196,6 +233,10 @@ struct WebSubmissionsWorkspaceView: View {
                 statusPicker
                 groupPicker
                 searchField
+                #if os(macOS)
+                Spacer(minLength: 8)
+                selectionToggle
+                #endif
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -203,10 +244,98 @@ struct WebSubmissionsWorkspaceView: View {
                     statusPicker
                     groupPicker
                 }
-                searchField
+                HStack(spacing: 12) {
+                    searchField
+                    #if os(macOS)
+                    Spacer(minLength: 8)
+                    selectionToggle
+                    #endif
+                }
             }
         }
     }
+
+    #if os(macOS)
+    private var selectionToggle: some View {
+        Button {
+            selectionMode.toggle()
+            if !selectionMode {
+                selectedTaskIDs.removeAll()
+            }
+        } label: {
+            Label(
+                selectionMode ? "Salir de selección" : "Seleccionar tareas",
+                systemImage: selectionMode ? "checkmark.circle.fill" : "checklist"
+            )
+        }
+        .buttonStyle(.bordered)
+        .disabled(loading || bulkProcessing)
+    }
+
+    @ViewBuilder
+    private var selectionBar: some View {
+        if selectionMode {
+            HStack(spacing: 12) {
+                Label(
+                    selectedTaskIDs.isEmpty
+                        ? "Selecciona tareas para gestionarlas juntas"
+                        : "\(selectedTaskIDs.count) seleccionada\(selectedTaskIDs.count == 1 ? "" : "s")",
+                    systemImage: "checklist"
+                )
+                .font(.callout.weight(.semibold))
+
+                Spacer(minLength: 8)
+
+                Button("Todas las visibles") {
+                    selectedTaskIDs = Set(filteredTasks.map(\.id))
+                }
+                .buttonStyle(.borderless)
+                .disabled(filteredTasks.isEmpty || bulkProcessing)
+
+                Button("Limpiar") {
+                    selectedTaskIDs.removeAll()
+                }
+                .buttonStyle(.borderless)
+                .disabled(selectedTaskIDs.isEmpty || bulkProcessing)
+
+                Menu {
+                    let revocable = selectedTasks.filter { $0.status == .active && !$0.isArchived }
+                    let archivable = selectedTasks.filter { !$0.isArchived }
+                    let restorable = selectedTasks.filter(\.isArchived)
+
+                    Button("Revocar seleccionadas (\(revocable.count))", role: .destructive) {
+                        bulkActionToConfirm = .revoke
+                    }
+                    .disabled(revocable.isEmpty || bulkProcessing)
+
+                    Button("Archivar seleccionadas (\(archivable.count))") {
+                        bulkActionToConfirm = .archive
+                    }
+                    .disabled(archivable.isEmpty || bulkProcessing)
+
+                    Button("Restaurar seleccionadas (\(restorable.count))") {
+                        bulkActionToConfirm = .restore
+                    }
+                    .disabled(restorable.isEmpty || bulkProcessing)
+                } label: {
+                    Label("Acciones", systemImage: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .disabled(selectedTaskIDs.isEmpty || bulkProcessing)
+
+                Button("Terminar") {
+                    selectionMode = false
+                    selectedTaskIDs.removeAll()
+                }
+                .buttonStyle(.borderless)
+                .disabled(bulkProcessing)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+    #endif
 
     private var statusPicker: some View {
         Picker("Estado", selection: $statusFilter) {
@@ -275,6 +404,18 @@ struct WebSubmissionsWorkspaceView: View {
     private func taskRow(_ task: WebSubmissionTaskInfo) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
+                if selectionMode {
+                    Button {
+                        toggleSelection(for: task)
+                    } label: {
+                        Image(systemName: selectedTaskIDs.contains(task.id) ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(selectedTaskIDs.contains(task.id) ? Color.accentColor : Color.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(selectedTaskIDs.contains(task.id) ? "Quitar selección" : "Seleccionar tarea")
+                }
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(task.title)
                         .font(.headline)
@@ -284,7 +425,7 @@ struct WebSubmissionsWorkspaceView: View {
                 }
 
                 Spacer(minLength: 8)
-                statusBadge(task.status)
+                statusBadge(task)
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 16) {
@@ -304,10 +445,14 @@ struct WebSubmissionsWorkspaceView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private func statusBadge(_ status: WebSubmissionTaskStatus) -> some View {
-        Text(status.label)
+    private func statusBadge(_ task: WebSubmissionTaskInfo) -> some View {
+        Text(task.managementLabel)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(status == .active ? .green : (status == .expired ? .orange : .secondary))
+            .foregroundStyle(
+                task.isArchived
+                    ? Color.secondary
+                    : (task.status == .active ? Color.green : (task.status == .expired ? Color.orange : Color.secondary))
+            )
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .background(.secondary.opacity(0.12), in: Capsule())
@@ -317,23 +462,29 @@ struct WebSubmissionsWorkspaceView: View {
     private func taskActions(_ task: WebSubmissionTaskInfo) -> some View {
         #if os(macOS)
         HStack(spacing: 8) {
-            if task.status == .active {
+            if task.status == .active && !task.isArchived {
                 Button {
                     emailTask = task
                 } label: {
                     Label("Enviar enlaces", systemImage: "envelope")
                 }
                 .buttonStyle(.borderless)
-                .disabled(revoking)
+                .disabled(revoking || bulkProcessing)
             }
 
             Menu {
                 Button("Abrir carpeta") { revealFiles(for: task) }
                 Button("Copiar enlaces") { copyLinks(for: task) }
-                if task.status == .active {
+                if task.status == .active && !task.isArchived {
                     Divider()
                     Button("Revocar tarea", role: .destructive) {
                         taskToRevoke = task
+                    }
+                }
+                if task.isArchived {
+                    Divider()
+                    Button("Restaurar en la bandeja") {
+                        Task { await restore([task]) }
                     }
                 }
             } label: {
@@ -342,7 +493,7 @@ struct WebSubmissionsWorkspaceView: View {
             }
             .menuStyle(.borderlessButton)
             .help("Más acciones")
-            .disabled(revoking)
+            .disabled(revoking || bulkProcessing)
         }
         #else
         EmptyView()
@@ -352,7 +503,7 @@ struct WebSubmissionsWorkspaceView: View {
     private var filteredTasks: [WebSubmissionTaskInfo] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return tasks.filter { task in
-            let matchesStatus = statusFilter.matches(task.status)
+            let matchesStatus = statusFilter.matches(task)
             let matchesGroup = selectedGroupFilter == "all" || task.groupName == selectedGroupFilter
             let matchesSearch = query.isEmpty
                 || task.groupName.localizedCaseInsensitiveContains(query)
@@ -376,6 +527,7 @@ struct WebSubmissionsWorkspaceView: View {
         loading = true
         defer { loading = false }
         tasks = await bridge.listWebSubmissionTasks()
+        selectedTaskIDs.formIntersection(Set(tasks.map(\.id)))
 
         var loadedSnapshots: [String: WebSubmissionSnapshot] = [:]
         var loadedManifests: [String: WebFormManifest] = [:]
@@ -461,6 +613,86 @@ struct WebSubmissionsWorkspaceView: View {
         }
     }
 
+    private func restore(_ tasks: [WebSubmissionTaskInfo]) async {
+        let targets = tasks.filter(\.isArchived)
+        guard !targets.isEmpty else { return }
+        bulkProcessing = true
+        defer { bulkProcessing = false }
+        do {
+            try await bridge.restoreArchivedWebForms(formInstanceIds: targets.map(\.formInstanceId))
+            importSummary = "\(targets.count) tareas restauradas en la bandeja."
+            await reload()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private var selectedTasks: [WebSubmissionTaskInfo] {
+        tasks.filter { selectedTaskIDs.contains($0.id) }
+    }
+
+    private var bulkConfirmationMessage: String {
+        guard let action = bulkActionToConfirm else { return "" }
+        switch action {
+        case .revoke:
+            let count = selectedTasks.filter { $0.status == .active && !$0.isArchived }.count
+            return "Se revocarán \(count) tareas activas. Se conservarán el historial y las entregas ya recibidas. Para bloquear nuevos accesos, retira también los manifiestos públicos desplegados."
+        case .archive:
+            let count = selectedTasks.filter { !$0.isArchived }.count
+            return "Se archivarán \(count) tareas en la bandeja de este Mac. Archivar no revoca el formulario ni borra sus entregas."
+        case .restore:
+            let count = selectedTasks.filter(\.isArchived).count
+            return "Se devolverán \(count) tareas a la bandeja operativa."
+        }
+    }
+
+    private func toggleSelection(for task: WebSubmissionTaskInfo) {
+        if selectedTaskIDs.contains(task.id) {
+            selectedTaskIDs.remove(task.id)
+        } else {
+            selectedTaskIDs.insert(task.id)
+        }
+    }
+
+    private func confirmBulkAction(_ action: WebSubmissionBulkAction) {
+        bulkActionToConfirm = nil
+        Task { await performBulkAction(action) }
+    }
+
+    private func performBulkAction(_ action: WebSubmissionBulkAction) async {
+        let targetTasks: [WebSubmissionTaskInfo]
+        switch action {
+        case .revoke:
+            targetTasks = selectedTasks.filter { $0.status == .active && !$0.isArchived }
+        case .archive:
+            targetTasks = selectedTasks.filter { !$0.isArchived }
+        case .restore:
+            targetTasks = selectedTasks.filter(\.isArchived)
+        }
+        guard !targetTasks.isEmpty else { return }
+
+        bulkProcessing = true
+        defer { bulkProcessing = false }
+        do {
+            let ids = targetTasks.map(\.formInstanceId)
+            switch action {
+            case .revoke:
+                try await bridge.revokeWebForms(formInstanceIds: ids)
+                importSummary = "\(ids.count) tareas revocadas en este Mac."
+            case .archive:
+                try await bridge.archiveWebForms(formInstanceIds: ids)
+                importSummary = "\(ids.count) tareas archivadas en la bandeja."
+            case .restore:
+                try await bridge.restoreArchivedWebForms(formInstanceIds: ids)
+                importSummary = "\(ids.count) tareas restauradas en la bandeja."
+            }
+            selectedTaskIDs.removeAll()
+            await reload()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func cleanEmail(_ value: String) -> String? {
         let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return clean.isEmpty ? nil : clean
@@ -509,11 +741,18 @@ struct WebSubmissionsWorkspaceView: View {
     #endif
 }
 
+private enum WebSubmissionBulkAction {
+    case revoke
+    case archive
+    case restore
+}
+
 enum WebSubmissionTaskFilter: String, CaseIterable, Identifiable {
     case active
     case all
     case expired
     case revoked
+    case archived
 
     var id: String { rawValue }
 
@@ -523,15 +762,17 @@ enum WebSubmissionTaskFilter: String, CaseIterable, Identifiable {
         case .all: return "Todas"
         case .expired: return "Caducadas"
         case .revoked: return "Revocadas"
+        case .archived: return "Archivadas"
         }
     }
 
-    func matches(_ status: WebSubmissionTaskStatus) -> Bool {
+    func matches(_ task: WebSubmissionTaskInfo) -> Bool {
         switch self {
-        case .active: return status == .active
+        case .active: return !task.isArchived && task.status == .active
         case .all: return true
-        case .expired: return status == .expired
-        case .revoked: return status == .revoked
+        case .expired: return !task.isArchived && task.status == .expired
+        case .revoked: return !task.isArchived && task.status == .revoked
+        case .archived: return task.isArchived
         }
     }
 }

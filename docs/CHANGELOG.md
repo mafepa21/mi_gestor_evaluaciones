@@ -38,6 +38,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - Plantilla de mensaje con huecos `{{nombre}}`, `{{tarea}}` y `{{enlace}}`, con vista
   previa del alumno seleccionado. El mismo texto sirve para el envío individual y
   para el masivo.
+- Gestión en lote de tareas web: la bandeja Mac permite seleccionar varias tareas
+  visibles, revocarlas o archivarlas de una vez, restaurar las archivadas y filtrar
+  después por Archivadas.
 
 ### Changed
 
@@ -47,6 +50,8 @@ El formato sigue una variante practica de Keep a Changelog:
   `saveResponses` y registra el ledger correspondiente a cada formulario.
 - Las tareas activas se pueden marcar como Revocadas desde su tarjeta, con confirmación,
   sin borrar historial, claves, alias ni entregas ya recibidas.
+- Las acciones de Revocar, Archivar y Restaurar usan operaciones por lote; archivar es
+  reversible y no cambia el estado de aceptación web del formulario.
 - La bandeja ofrece acciones secundarias agrupadas en un menú Mac y conserva la
   preparación individual en Mail en lugar de mezclar enlaces o destinatarios.
 - La hoja de envío deja de regenerar el mensaje al cambiar de alumno: el texto que
@@ -55,8 +60,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
-- Se añadió únicamente la consulta ordenada de todos los formularios existentes. No
-  se crean tablas nuevas ni se sincronizan las tablas privadas `web_*`.
+- Se añadió la migración 41 con la marca `archived` de `web_form_instances` y operaciones
+  SQLDelight transaccionales por lote. No se crean tablas nuevas ni se sincronizan las
+  tablas privadas `web_*`.
 
 ### Docs
 
@@ -70,8 +76,10 @@ El formato sigue una variante practica de Keep a Changelog:
 - `./gradlew :shared:desktopTest`: BUILD SUCCESSFUL.
 - `scripts/verify_apple_builds.sh`: macOS Native/Catalyst e iOS Simulator compilados
   correctamente.
-- Tests XCTest web: 7 tests, 0 fallos; se añaden recuperación de enlaces privados por
-  alias y construcción codificada de `mailto:`.
+- Tests XCTest web dirigidos: 20 tests, 0 fallos; incluyen filtros de archivado,
+  importación, reparto individual y reparto masivo.
+- `./gradlew :data:desktopTest --tests com.migestor.data.repository.WebSubmissionsRepositorySqlDelightTest`:
+  BUILD SUCCESSFUL; cubre archivo/restauración y revocación por lote.
 - `xcodebuild -scheme MiGestorKMPMac -destination platform=macOS build`: BUILD SUCCEEDED.
 - `xcodebuild -scheme MiGestorKMPiOS -destination generic/platform=iOS Simulator build`:
   BUILD SUCCEEDED.

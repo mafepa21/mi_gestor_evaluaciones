@@ -98,6 +98,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: MiGestorKMPMac
         INFOPLIST_KEY_CFBundleShortVersionString: "$(MARKETING_VERSION)"
         INFOPLIST_KEY_CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: "Mi Gestor prepara en Mail un correo por alumno con su enlace privado de entrega."
         FRAMEWORK_SEARCH_PATHS:
           - "$(inherited)"
           - "$(SRCROOT)/Frameworks/macos"

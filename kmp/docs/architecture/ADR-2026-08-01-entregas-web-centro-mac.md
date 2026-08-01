@@ -41,6 +41,23 @@ privadas ni convertirse en otra autoridad de claves.
 - El reparto de enlaces se realiza desde el Mac usando la hoja privada y los
   correos actuales del alumnado. La app prepara mensajes individuales en Mail;
   no envía credenciales ni direcciones por SyncLAN.
+- El reparto a todo el grupo se hace automatizando Mail con Apple Events, no con un
+  cliente SMTP propio. Se descartó SMTP porque obligaría a guardar la contraseña de
+  la cuenta del docente y a mantener entrega, reintentos y reputación de envío; se
+  descartó exportar para combinar correspondencia porque saca el enlace privado de
+  la app y depende de la herramienta del centro. Automatizar Mail reutiliza la cuenta
+  ya configurada, no guarda ninguna credencial y deja el registro del envío en la
+  propia app de correo del docente.
+- El reparto masivo compone **un mensaje por alumno**, siempre con un único
+  destinatario. Agrupar destinatarios expondría a la vez las direcciones del grupo y
+  los enlaces ajenos, que son personales por diseño.
+- El texto del correo es una plantilla con huecos que se resuelve y se escapa en
+  Swift antes de construir el guion. Al AppleScript solo llegan literales ya
+  cerrados: un nombre de alumno con comillas o saltos de línea no puede alterar el
+  guion.
+- El envío ofrece dos modos: dejar los mensajes en Borradores (por defecto) o
+  enviarlos. El envío real pide confirmación explícita. Los mensajes salen por tandas
+  con pausa porque los servidores de centro cortan las ráfagas.
 
 ## Consecuencias
 
@@ -59,3 +76,14 @@ privadas ni convertirse en otra autoridad de claves.
   de la ficha, pero nunca modifica la hoja privada ni cambia el alias del enlace.
 - El transporte futuro de los archivos originales o una copia privada entre Macs
   queda fuera de esta decisión.
+- El reparto masivo solo existe en el Mac y solo funciona con Mail. Un docente que
+  use otro cliente de correo conserva la preparación individual y la copia de
+  enlaces, pero no el envío a todo el grupo.
+- El primer reparto abre el diálogo de Automatización del sistema. Si se deniega, el
+  proceso se detiene en el primer alumno en lugar de acumular el mismo fallo una vez
+  por cada uno, y la pantalla indica dónde conceder el permiso.
+- El target macOS necesita `NSAppleEventsUsageDescription`. Si en el futuro se
+  activan el sandbox o el runtime reforzado para distribuir, habrá que añadir además
+  el entitlement `com.apple.security.automation.apple-events`; hoy la app no los usa.
+- Los alumnos sin correo utilizable no bloquean el reparto: se apartan con su motivo
+  y el resto del grupo recibe su enlace igualmente.

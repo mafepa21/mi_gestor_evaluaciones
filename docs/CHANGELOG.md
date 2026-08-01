@@ -30,6 +30,14 @@ El formato sigue una variante practica de Keep a Changelog:
 - Reparto individual de enlaces web desde la bandeja Mac: la app recupera la hoja
   privada por alias, la cruza con el correo de la ficha del alumno y prepara un
   correo individual en Mail con asunto, cuerpo y enlace.
+- Reparto masivo de enlaces web en el Mac: un botón prepara de una vez un correo por
+  alumno en Mail, con selector Borradores/Enviar, confirmación previa al envío real,
+  barra de progreso, envío por tandas de 10 con pausa y resumen final con fallos y
+  alumnado apartado. Nunca se agrupan varios destinatarios ni enlaces en un mismo
+  correo.
+- Plantilla de mensaje con huecos `{{nombre}}`, `{{tarea}}` y `{{enlace}}`, con vista
+  previa del alumno seleccionado. El mismo texto sirve para el envío individual y
+  para el masivo.
 
 ### Changed
 
@@ -41,6 +49,9 @@ El formato sigue una variante practica de Keep a Changelog:
   sin borrar historial, claves, alias ni entregas ya recibidas.
 - La bandeja ofrece acciones secundarias agrupadas en un menú Mac y conserva la
   preparación individual en Mail en lugar de mezclar enlaces o destinatarios.
+- La hoja de envío deja de regenerar el mensaje al cambiar de alumno: el texto que
+  redacta el docente ya no se pierde al pasar de una ficha a otra.
+- El target macOS declara `NSAppleEventsUsageDescription` para poder automatizar Mail.
 
 ### Data
 
@@ -61,6 +72,15 @@ El formato sigue una variante practica de Keep a Changelog:
   correctamente.
 - Tests XCTest web: 7 tests, 0 fallos; se añaden recuperación de enlaces privados por
   alias y construcción codificada de `mailto:`.
+- `xcodebuild -scheme MiGestorKMPMac -destination platform=macOS build`: BUILD SUCCEEDED.
+- `xcodebuild -scheme MiGestorKMPiOS -destination generic/platform=iOS Simulator build`:
+  BUILD SUCCEEDED.
+- `xcodebuild -scheme MiGestorPlannerTests -destination platform=macOS test`: 31 tests,
+  0 fallos. Incluye 12 tests nuevos de reparto masivo (plantilla, plan, apartados,
+  escapado del guion de Mail, borrador frente a envío, destinatario único, resumen).
+- Sin QA manual del envío real: no se ejecutó ningún AppleScript contra Mail, así que
+  la concesión del permiso de automatización y el envío efectivo siguen sin probarse
+  en un Mac real.
 - `./gradlew :shared:test` no pudo ejecutarse por falta de Android SDK en el entorno
   (`ANDROID_HOME`/`kmp/local.properties` ausentes).
 - Pendiente de QA manual: flujo real Mac → lote mixto → SyncLAN → Cuaderno iPad y

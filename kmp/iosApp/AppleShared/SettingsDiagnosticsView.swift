@@ -19,15 +19,6 @@ struct SettingsDiagnosticsView: View {
                     .font(.title2.weight(.bold))
                     .padding(.horizontal, 4)
 
-                // En macOS esto ya es un módulo propio de la barra lateral, así que
-                // aquí sobraría y saldría duplicado. En iPhone/iPad sigue aparcado
-                // aquí hasta que tenga su entrada en `AppWorkspaceModule`.
-                #if !os(macOS)
-                WebSubmissionsWorkspaceView()
-                    .padding(.horizontal, 4)
-                Divider()
-                #endif
-
                 // Banco de pruebas. Solo DEBUG: monta a mano un formulario del
                 // fixture. Ya se puede publicar de verdad desde arriba, así que
                 // esto solo sirve para probar el importador de forma aislada.

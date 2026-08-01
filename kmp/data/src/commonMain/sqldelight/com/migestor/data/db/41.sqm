@@ -1,0 +1,5 @@
+-- Migration 41: permitir retirar tareas web de la bandeja sin borrar su historial.
+--
+-- Archivar es una decisión local de organización. No cambia el manifiesto,
+-- las claves, los alias ni el ledger, y por tanto no viaja por SyncLAN.
+ALTER TABLE web_form_instances ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;

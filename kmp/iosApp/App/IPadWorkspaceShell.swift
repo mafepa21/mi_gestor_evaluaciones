@@ -490,6 +490,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
     case diary
     case meetings
     case evaluationHub
+    case webSubmissions
     case rubrics
     case reports
     case library
@@ -517,6 +518,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .diary: return "Diario de aula"
         case .meetings: return "Reuniones"
         case .evaluationHub: return "Evaluación"
+        case .webSubmissions: return "Entregas web"
         case .rubrics: return "Rúbricas"
         case .reports: return "Informes"
         case .library: return "Biblioteca"
@@ -544,6 +546,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .diary: return "Trazabilidad de sesión"
         case .meetings: return "Actas de centro y acuerdos"
         case .evaluationHub: return "Instrumentos y calendario"
+        case .webSubmissions: return "Publicar e importar desde el Mac"
         case .rubrics: return "Banco de rúbricas"
         case .reports: return "Salida docente"
         case .library: return "Plantillas reutilizables"
@@ -571,6 +574,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .diary: return "doc.text.fill"
         case .meetings: return "person.3.fill"
         case .evaluationHub: return "chart.bar.doc.horizontal"
+        case .webSubmissions: return "paperplane.circle.fill"
         case .rubrics: return "checklist"
         case .reports: return "doc.richtext.fill"
         case .library: return "books.vertical.fill"
@@ -591,7 +595,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
             return .academic
         case .attendance, .planner, .situations, .diary, .meetings:
             return .operations
-        case .evaluationHub, .rubrics, .reports, .library:
+        case .evaluationHub, .webSubmissions, .rubrics, .reports, .library:
             return .evaluation
         case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
             return .domainModules

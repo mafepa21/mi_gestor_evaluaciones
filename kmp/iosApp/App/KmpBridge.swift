@@ -1728,6 +1728,9 @@ final class KmpBridge: ObservableObject {
         guard let columnas = try? await container.notebookRepository
             .listNotebookVisibleColumns(classId: classId, tabId: nil) else { return [] }
 
+        let publicados = (try? await container.webSubmissionsRepository
+            .listFormInstancesForClass(classId: classId)) ?? []
+
         var salida: [WebPublishableInstrument] = []
         for columna in columnas {
             guard let detalle = try? await container.notebookInstrumentsRepository
@@ -1749,9 +1752,9 @@ final class KmpBridge: ObservableObject {
                     columnTitle: columna.title,
                     templateTitle: detalle.template_.title,
                     itemCount: detalle.items.count,
-                    alreadyPublished: (try? await container.webSubmissionsRepository
-                        .listFormInstancesForClass(classId: classId))?
-                        .contains(where: { $0.columnId == columna.id && !$0.revoked }) ?? false,
+                    alreadyPublished: publicados.contains {
+                        $0.columnId == columna.id && !$0.revoked
+                    },
                     blockingIssue: problema
                 )
             )
@@ -1762,6 +1765,116 @@ final class KmpBridge: ObservableObject {
     /// Formularios publicados de un grupo, del más reciente al más antiguo.
     func listWebFormInstances(classId: Int64) async throws -> [WebFormInstance] {
         try await container.webSubmissionsRepository.listFormInstancesForClass(classId: classId)
+    }
+
+    /// Resumen global para la bandeja de Entregas web del Mac.
+    /// La tabla de correspondencias sigue siendo local; solo se agregan sus
+    /// metadatos para presentar grupo, estado y actividad de importación.
+    func listWebSubmissionTasks() async -> [WebSubmissionTaskInfo] {
+        guard let instancias = try? await container.webSubmissionsRepository
+            .listAllFormInstances() else { return [] }
+
+        var titlesByColumnId: [String: String] = [:]
+        for classId in Set(instancias.map(\.classId)) {
+            let columnas = (try? await container.notebookRepository
+                .listNotebookVisibleColumns(classId: classId, tabId: nil)) ?? []
+            for columna in columnas {
+                titlesByColumnId[columna.id] = columna.title
+            }
+        }
+
+        let ahora = Int64(Date().timeIntervalSince1970 * 1000)
+        var resultado: [WebSubmissionTaskInfo] = []
+        for instancia in instancias {
+            let ledger = (try? await container.webSubmissionsRepository
+                .listLedgerForForm(formInstanceId: instancia.formInstanceId)) ?? []
+            let importadas = ledger.filter { $0.status == "IMPORTED" }
+                    let estado: WebSubmissionTaskStatus
+                    if instancia.revoked {
+                        estado = .revoked
+            } else if instancia.expiresAtEpochMs <= ahora {
+                estado = .expired
+            } else {
+                estado = .active
+            }
+
+            let nombreGrupo = classes.first(where: { $0.id == instancia.classId })?.name
+                ?? "Grupo \(instancia.classId)"
+            resultado.append(
+                WebSubmissionTaskInfo(
+                    formInstanceId: instancia.formInstanceId,
+                    classId: instancia.classId,
+                    groupName: nombreGrupo,
+                    title: instancia.title,
+                    columnTitle: titlesByColumnId[instancia.columnId] ?? instancia.columnId,
+                    status: estado,
+                    isArchived: instancia.archived,
+                    expiresAtEpochMs: instancia.expiresAtEpochMs,
+                    importedCount: importadas.count,
+                    lastImportedAtEpochMs: importadas.map(\.importedAtEpochMs).max()
+                )
+            )
+        }
+
+        let orden: [WebSubmissionTaskStatus: Int] = [.active: 0, .expired: 1, .revoked: 2]
+        return resultado.sorted {
+            if $0.isArchived != $1.isArchived {
+                return !$0.isArchived
+            }
+            if $0.status != $1.status {
+                return (orden[$0.status] ?? 9) < (orden[$1.status] ?? 9)
+            }
+            return $0.expiresAtEpochMs > $1.expiresAtEpochMs
+        }
+    }
+
+    /// Marca una tarea como revocada sin borrar su historial ni sus entregas.
+    ///
+    /// La revocación es local a este Mac: el manifiesto público ya desplegado
+    /// no puede cambiarse desde la app porque su firma pertenece al formulario
+    /// publicado. La bandeja deja de considerarlo activo y conserva la clave,
+    /// alias y ledger para poder importar archivos válidos recibidos antes.
+    func revokeWebForm(formInstanceId: String) async throws {
+        guard let instance = try await container.webSubmissionsRepository
+            .getFormInstance(formInstanceId: formInstanceId) else {
+            throw NSError(
+                domain: "WebSubmissions",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "No se encontró la tarea web que se quiere revocar."]
+            )
+        }
+        guard !instance.revoked else { return }
+        try await container.webSubmissionsRepository.revokeFormInstance(
+            formInstanceId: formInstanceId,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+    }
+
+    /// Revoca varias tareas en una transacción del repositorio y conserva la
+    /// información privada necesaria para importar entregas ya recibidas.
+    func revokeWebForms(formInstanceIds: [String]) async throws {
+        guard !formInstanceIds.isEmpty else { return }
+        try await container.webSubmissionsRepository.revokeFormInstances(
+            formInstanceIds: formInstanceIds,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+    }
+
+    /// Archiva tareas solo en la bandeja local. No revoca el formulario web.
+    func archiveWebForms(formInstanceIds: [String]) async throws {
+        guard !formInstanceIds.isEmpty else { return }
+        try await container.webSubmissionsRepository.archiveFormInstances(
+            formInstanceIds: formInstanceIds,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+    }
+
+    func restoreArchivedWebForms(formInstanceIds: [String]) async throws {
+        guard !formInstanceIds.isEmpty else { return }
+        try await container.webSubmissionsRepository.restoreArchivedFormInstances(
+            formInstanceIds: formInstanceIds,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
     }
 
     /// Publica un formulario: genera claves, construye y firma el manifiesto, lo
@@ -1857,6 +1970,7 @@ final class KmpBridge: ObservableObject {
                 publisherPublicKey: publicado.publisherPublicKey,
                 expiresAtEpochMs: publicado.expiresAtEpochMs,
                 revoked: false,
+                archived: false,
                 manifestJson: publicado.manifestJSON,
                 createdAtEpochMs: ahora,
                 updatedAtEpochMs: ahora
@@ -2015,12 +2129,13 @@ final class KmpBridge: ObservableObject {
     /// Sync LAN. Y una entrega que falla no detiene a las demás: se anota y se
     /// sigue, porque tener 24 de 25 importadas es mejor que tener 0.
     func importWebSubmissions(
-        _ decisions: [WebSubmissionImportDecision],
-        formInstanceId: String
+        _ decisions: [WebSubmissionImportDecision]
     ) async -> WebSubmissionImportOutcome {
         var resultado = WebSubmissionImportOutcome()
         let ahora = Int64(Date().timeIntervalSince1970 * 1000)
         let instant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: ahora)
+        let iso8601 = ISO8601DateFormatter()
+        iso8601.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         for decision in decisions {
             let borrador = decision.draft
@@ -2060,13 +2175,14 @@ final class KmpBridge: ObservableObject {
                 try? await container.webSubmissionsRepository.recordLedgerEntry(
                     entry: WebLedgerEntry(
                         submissionId: borrador.submissionId,
-                        formInstanceId: formInstanceId,
+                        formInstanceId: borrador.formInstanceId,
                         alias: borrador.alias,
                         studentId: KotlinLong(value: decision.studentId),
                         status: "IMPORTED",
                         rejectReason: nil,
                         answerCount: Int64(responses.count),
-                        clientSubmittedAtEpochMs: 0,
+                        clientSubmittedAtEpochMs: iso8601.date(from: borrador.clientSubmittedAt)
+                            .map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0,
                         importedAtEpochMs: ahora
                     )
                 )
@@ -2226,6 +2342,7 @@ final class KmpBridge: ObservableObject {
                 publisherPublicKey: publisherPublicKey,
                 expiresAtEpochMs: ahora + 365 * 24 * 60 * 60 * 1000,
                 revoked: false,
+                archived: false,
                 manifestJson: manifestJson,
                 createdAtEpochMs: ahora,
                 updatedAtEpochMs: ahora

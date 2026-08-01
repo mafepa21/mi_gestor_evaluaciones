@@ -1104,6 +1104,8 @@ struct IOSWorkspaceContent: View {
                 selectedStudentId: $selectionStore.selectedStudentId
             )
             .environmentObject(bridge)
+        case .webSubmissions:
+            WebSubmissionsIPadInfoView()
         case .library:
             LibraryWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,

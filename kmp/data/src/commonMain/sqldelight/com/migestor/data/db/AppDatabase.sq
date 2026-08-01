@@ -2736,6 +2736,7 @@ CREATE TABLE IF NOT EXISTS web_form_instances (
     publisher_public_key TEXT,
     expires_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     revoked INTEGER NOT NULL DEFAULT 0,
+    archived INTEGER NOT NULL DEFAULT 0,
     -- El manifiesto firmado tal cual se publico. El importador lo necesita para
     -- validar tipos y para los titulos de la previsualizacion. Ver 40.sqm.
     manifest_json TEXT NOT NULL DEFAULT '',
@@ -2787,6 +2788,7 @@ CREATE INDEX IF NOT EXISTS idx_web_ledger_status ON web_submission_ledger(status
 selectWebFormInstance:
 SELECT form_instance_id, class_id, column_id, template_id, title, recipient_public_key,
        private_key_ref, publisher_public_key, expires_at_epoch_ms, revoked,
+       archived,
        manifest_json, created_at_epoch_ms, updated_at_epoch_ms
 FROM web_form_instances
 WHERE form_instance_id = ?;
@@ -2794,19 +2796,34 @@ WHERE form_instance_id = ?;
 selectWebFormInstancesByClass:
 SELECT form_instance_id, class_id, column_id, template_id, title, recipient_public_key,
        private_key_ref, publisher_public_key, expires_at_epoch_ms, revoked,
+       archived,
        manifest_json, created_at_epoch_ms, updated_at_epoch_ms
 FROM web_form_instances
 WHERE class_id = ?
 ORDER BY created_at_epoch_ms DESC;
 
+selectAllWebFormInstances:
+SELECT form_instance_id, class_id, column_id, template_id, title, recipient_public_key,
+       private_key_ref, publisher_public_key, expires_at_epoch_ms, revoked,
+       archived,
+       manifest_json, created_at_epoch_ms, updated_at_epoch_ms
+FROM web_form_instances
+ORDER BY created_at_epoch_ms DESC;
+
 upsertWebFormInstance:
 INSERT OR REPLACE INTO web_form_instances(form_instance_id, class_id, column_id, template_id,
     title, recipient_public_key, private_key_ref, publisher_public_key,
-    expires_at_epoch_ms, revoked, manifest_json, created_at_epoch_ms, updated_at_epoch_ms)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    expires_at_epoch_ms, revoked, archived, manifest_json, created_at_epoch_ms, updated_at_epoch_ms)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 revokeWebFormInstance:
 UPDATE web_form_instances SET revoked = 1, updated_at_epoch_ms = ? WHERE form_instance_id = ?;
+
+archiveWebFormInstance:
+UPDATE web_form_instances SET archived = 1, updated_at_epoch_ms = ? WHERE form_instance_id = ?;
+
+restoreArchivedWebFormInstance:
+UPDATE web_form_instances SET archived = 0, updated_at_epoch_ms = ? WHERE form_instance_id = ?;
 
 deleteWebFormInstance:
 DELETE FROM web_form_instances WHERE form_instance_id = ?;

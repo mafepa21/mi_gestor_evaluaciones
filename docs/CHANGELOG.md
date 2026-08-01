@@ -13,6 +13,87 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- Entregas web multi-grupo: el Mac incorpora una bandeja global de tareas con grupo,
+  instrumento, caducidad, estados Activa/Caducada/Revocada, filtros, búsqueda,
+  recuento de importaciones y acciones para abrir la carpeta o copiar enlaces.
+- Creación guiada de tareas web: Grupo → Instrumento → configuración → revisión →
+  Publicar, con URL y correo reutilizables, aviso de formularios previos y manifiesto
+  público más hoja privada en `Documents/EntregasWeb/<formInstanceId>`.
+- Importación por lotes multi-formulario: cada `.mgsub` se enruta por su
+  `formInstanceId`, se previsualiza agrupado por grupo/tarea, permite asignaciones
+  manuales aisladas y separa errores parciales, duplicados y ya importados.
+- Entregas web informativas en iPad: la operación se realiza en el Mac y las
+  respuestas llegan al Cuaderno por SyncLAN. El banco de pruebas queda limitado a
+  DEBUG.
+- Reparto individual de enlaces web desde la bandeja Mac: la app recupera la hoja
+  privada por alias, la cruza con el correo de la ficha del alumno y prepara un
+  correo individual en Mail con asunto, cuerpo y enlace.
+- Reparto masivo de enlaces web en el Mac: un botón prepara de una vez un correo por
+  alumno en Mail, con selector Borradores/Enviar, confirmación previa al envío real,
+  barra de progreso, envío por tandas de 10 con pausa y resumen final con fallos y
+  alumnado apartado. Nunca se agrupan varios destinatarios ni enlaces en un mismo
+  correo.
+- Plantilla de mensaje con huecos `{{nombre}}`, `{{tarea}}` y `{{enlace}}`, con vista
+  previa del alumno seleccionado. El mismo texto sirve para el envío individual y
+  para el masivo.
+- Gestión en lote de tareas web: la bandeja Mac permite seleccionar varias tareas
+  visibles, revocarlas o archivarlas de una vez, restaurar las archivadas y filtrar
+  después por Archivadas.
+
+### Changed
+
+- El contrato y repositorio SQLDelight exponen `listAllFormInstances()`; la app deja
+  de depender del formulario publicado más recientemente.
+- La importación pasa `formInstanceId` en cada borrador, escribe siempre mediante
+  `saveResponses` y registra el ledger correspondiente a cada formulario.
+- Las tareas activas se pueden marcar como Revocadas desde su tarjeta, con confirmación,
+  sin borrar historial, claves, alias ni entregas ya recibidas.
+- Las acciones de Revocar, Archivar y Restaurar usan operaciones por lote; archivar es
+  reversible y no cambia el estado de aceptación web del formulario.
+- La bandeja ofrece acciones secundarias agrupadas en un menú Mac y conserva la
+  preparación individual en Mail en lugar de mezclar enlaces o destinatarios.
+- La hoja de envío deja de regenerar el mensaje al cambiar de alumno: el texto que
+  redacta el docente ya no se pierde al pasar de una ficha a otra.
+- El target macOS declara `NSAppleEventsUsageDescription` para poder automatizar Mail.
+
+### Data
+
+- Se añadió la migración 41 con la marca `archived` de `web_form_instances` y operaciones
+  SQLDelight transaccionales por lote. No se crean tablas nuevas ni se sincronizan las
+  tablas privadas `web_*`.
+
+### Docs
+
+- ADR `ADR-2026-08-01-entregas-web-centro-mac.md`: Mac como centro de publicación,
+  gestión, reparto e importación, con privacidad explícita para SyncLAN y la
+  limitación de revocación del manifiesto público firmado.
+
+### Verification
+
+- `./gradlew :data:desktopTest`: BUILD SUCCESSFUL.
+- `./gradlew :shared:desktopTest`: BUILD SUCCESSFUL.
+- `scripts/verify_apple_builds.sh`: macOS Native/Catalyst e iOS Simulator compilados
+  correctamente.
+- Tests XCTest web dirigidos: 20 tests, 0 fallos; incluyen filtros de archivado,
+  importación, reparto individual y reparto masivo.
+- `./gradlew :data:desktopTest --tests com.migestor.data.repository.WebSubmissionsRepositorySqlDelightTest`:
+  BUILD SUCCESSFUL; cubre archivo/restauración y revocación por lote.
+- `xcodebuild -scheme MiGestorKMPMac -destination platform=macOS build`: BUILD SUCCEEDED.
+- `xcodebuild -scheme MiGestorKMPiOS -destination generic/platform=iOS Simulator build`:
+  BUILD SUCCEEDED.
+- `xcodebuild -scheme MiGestorPlannerTests -destination platform=macOS test`: 31 tests,
+  0 fallos. Incluye 12 tests nuevos de reparto masivo (plantilla, plan, apartados,
+  escapado del guion de Mail, borrador frente a envío, destinatario único, resumen).
+- Sin QA manual del envío real: no se ejecutó ningún AppleScript contra Mail, así que
+  la concesión del permiso de automatización y el envío efectivo siguen sin probarse
+  en un Mac real.
+- `./gradlew :shared:test` no pudo ejecutarse por falta de Android SDK en el entorno
+  (`ANDROID_HOME`/`kmp/local.properties` ausentes).
+- Pendiente de QA manual: flujo real Mac → lote mixto → SyncLAN → Cuaderno iPad y
+  revisión visual de bandejas en Mac/iPad.
+
 ### Fixed
 
 - Import de instrumentos: la autoevaluación/coevaluación ponderable se bloqueaba con "la

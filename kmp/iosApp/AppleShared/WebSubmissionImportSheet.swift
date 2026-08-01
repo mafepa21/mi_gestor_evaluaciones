@@ -21,9 +21,32 @@ struct WebSubmissionImportSheet: View {
     let roster: [WebRosterEntry]
     let isImporting: Bool
     let onConfirm: ([WebSubmissionImportDecision]) -> Void
+    /// Metadatos de cada formulario presente en un lote mixto.
+    let taskInfoByFormInstanceId: [String: WebSubmissionTaskInfo]
+    /// Roster aislado por formulario para que dos grupos puedan asignarse en el
+    /// mismo lote sin mezclar alumnos.
+    let rosterByFormInstanceId: [String: [WebRosterEntry]]
 
     /// Asignaciones manuales que ha hecho el docente, por `submissionId`.
     @State private var manualAssignments: [String: Int64] = [:]
+
+    init(
+        formTitle: String,
+        preview: WebSubmissionImportPreview,
+        roster: [WebRosterEntry],
+        isImporting: Bool,
+        onConfirm: @escaping ([WebSubmissionImportDecision]) -> Void,
+        taskInfoByFormInstanceId: [String: WebSubmissionTaskInfo] = [:],
+        rosterByFormInstanceId: [String: [WebRosterEntry]] = [:]
+    ) {
+        self.formTitle = formTitle
+        self.preview = preview
+        self.roster = roster
+        self.isImporting = isImporting
+        self.onConfirm = onConfirm
+        self.taskInfoByFormInstanceId = taskInfoByFormInstanceId
+        self.rosterByFormInstanceId = rosterByFormInstanceId
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -87,7 +110,7 @@ struct WebSubmissionImportSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Entregas del alumnado")
                     .font(.title2.weight(.bold))
-                Text(formTitle)
+                Text(headerSubtitle)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -203,8 +226,20 @@ struct WebSubmissionImportSheet: View {
                     count: preview.drafts.count,
                     tint: .green
                 ) {
-                    ForEach(preview.drafts) { draft in
-                        draftRow(draft)
+                    ForEach(draftGroups) { group in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(group.title)
+                                .font(.subheadline.weight(.semibold))
+                            if let subtitle = group.subtitle {
+                                Text(subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(group.drafts) { draft in
+                                draftRow(draft)
+                            }
+                        }
+                        .padding(.vertical, 4)
                     }
                 }
             }
@@ -356,7 +391,7 @@ struct WebSubmissionImportSheet: View {
             )
         ) {
             Text("Sin asignar").tag(Int64(-1))
-            ForEach(availableRoster(for: draft.submissionId)) { entry in
+            ForEach(availableRoster(for: draft)) { entry in
                 Text(entry.name).tag(entry.id)
             }
         }
@@ -367,22 +402,49 @@ struct WebSubmissionImportSheet: View {
     /// Quita del selector al alumnado ya asignado a otra entrega del mismo lote:
     /// dos entregas no pueden ser de la misma persona, y la base de datos lo
     /// impide con un UNIQUE, así que es mejor no ofrecerlo que fallar al guardar.
-    private func availableRoster(for submissionId: String) -> [WebRosterEntry] {
+    private func availableRoster(for draft: WebSubmissionDraft) -> [WebRosterEntry] {
         let tomados = Set(
-            manualAssignments.filter { $0.key != submissionId }.values
+            preview.drafts
+                .filter { $0.formInstanceId == draft.formInstanceId && $0.submissionId != draft.submissionId }
+                .compactMap { $0.studentId ?? manualAssignments[$0.submissionId] }
         )
-        .union(preview.drafts.compactMap { $0.studentId })
 
-        return roster.filter { !tomados.contains($0.id) || manualAssignments[submissionId] == $0.id }
+        let roster = rosterByFormInstanceId[draft.formInstanceId] ?? self.roster
+        return roster.filter { !tomados.contains($0.id) || manualAssignments[draft.submissionId] == $0.id }
     }
 
     private func displayName(for draft: WebSubmissionDraft) -> String {
         if let nombre = draft.studentName { return nombre }
         if let asignado = manualAssignments[draft.submissionId],
-           let entry = roster.first(where: { $0.id == asignado }) {
+           let entry = (rosterByFormInstanceId[draft.formInstanceId] ?? roster)
+            .first(where: { $0.id == asignado }) {
             return entry.name
         }
         return "Sin asignar"
+    }
+
+    private var headerSubtitle: String {
+        if taskInfoByFormInstanceId.count == 1 {
+            return taskInfoByFormInstanceId.values.first?.displayTitle ?? formTitle
+        }
+        if taskInfoByFormInstanceId.count > 1 {
+            return "\(taskInfoByFormInstanceId.count) tareas de varios grupos"
+        }
+        return formTitle
+    }
+
+    private var draftGroups: [WebSubmissionDraftGroup] {
+        Dictionary(grouping: preview.drafts, by: \.formInstanceId)
+            .map { formInstanceId, drafts in
+                let info = taskInfoByFormInstanceId[formInstanceId]
+                return WebSubmissionDraftGroup(
+                    id: formInstanceId,
+                    title: info?.displayTitle ?? drafts.first?.formInstanceId ?? formTitle,
+                    subtitle: info.map { "\($0.columnTitle) · \($0.statusLabel)" },
+                    drafts: drafts
+                )
+            }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
     // MARK: - Pie
@@ -458,6 +520,13 @@ struct WebSubmissionImportSheet: View {
 struct WebRosterEntry: Identifiable, Hashable {
     let id: Int64
     let name: String
+}
+
+private struct WebSubmissionDraftGroup: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String?
+    let drafts: [WebSubmissionDraft]
 }
 
 /// Una entrega con su destinatario ya decidido. Es lo que sale del sheet hacia
@@ -543,6 +612,101 @@ struct WebSubmissionImportButton: View {
                 return
             }
             preview = service.preview(files: ficheros, manifest: manifest)
+        }
+    }
+}
+
+/// Selector global de entregas. A diferencia del botón histórico, no está ligado
+/// a un formulario: cada sobre decide su propio destino mediante `formInstanceId`.
+struct WebSubmissionBatchImportButton: View {
+    let taskInfoByFormInstanceId: [String: WebSubmissionTaskInfo]
+    let manifestsByFormInstanceId: [String: WebFormManifest]
+    let manifestJSONByFormInstanceId: [String: Data]
+    let service: WebSubmissionImportService
+    let rosterByFormInstanceId: [String: [WebRosterEntry]]
+    let isImporting: Bool
+    let onConfirm: ([WebSubmissionImportDecision]) -> Void
+
+    @State private var showingPicker = false
+    @State private var preview: WebSubmissionImportPreview?
+    @State private var readError: String?
+
+    init(
+        taskInfoByFormInstanceId: [String: WebSubmissionTaskInfo],
+        manifestsByFormInstanceId: [String: WebFormManifest],
+        manifestJSONByFormInstanceId: [String: Data] = [:],
+        service: WebSubmissionImportService,
+        rosterByFormInstanceId: [String: [WebRosterEntry]],
+        isImporting: Bool,
+        onConfirm: @escaping ([WebSubmissionImportDecision]) -> Void
+    ) {
+        self.taskInfoByFormInstanceId = taskInfoByFormInstanceId
+        self.manifestsByFormInstanceId = manifestsByFormInstanceId
+        self.manifestJSONByFormInstanceId = manifestJSONByFormInstanceId
+        self.service = service
+        self.rosterByFormInstanceId = rosterByFormInstanceId
+        self.isImporting = isImporting
+        self.onConfirm = onConfirm
+    }
+
+    var body: some View {
+        Button {
+            showingPicker = true
+        } label: {
+            Label("Importar lote de entregas", systemImage: "tray.and.arrow.down")
+        }
+        .fileImporter(
+            isPresented: $showingPicker,
+            allowedContentTypes: [.mgsub],
+            allowsMultipleSelection: true
+        ) { resultado in
+            handle(resultado)
+        }
+        .sheet(item: $preview) { lote in
+            WebSubmissionImportSheet(
+                formTitle: "Lote de entregas",
+                preview: lote,
+                roster: [],
+                isImporting: isImporting,
+                onConfirm: onConfirm,
+                taskInfoByFormInstanceId: taskInfoByFormInstanceId,
+                rosterByFormInstanceId: rosterByFormInstanceId
+            )
+        }
+        .alert(
+            "No se pudo leer",
+            isPresented: Binding(
+                get: { readError != nil },
+                set: { visible in if !visible { readError = nil } }
+            )
+        ) {
+            Button("Entendido") { readError = nil }
+        } message: {
+            Text(readError ?? "")
+        }
+    }
+
+    private func handle(_ resultado: Result<[URL], Error>) {
+        switch resultado {
+        case .failure(let error):
+            readError = error.localizedDescription
+        case .success(let urls):
+            var ficheros: [(name: String, data: Data)] = []
+            for url in urls {
+                let accediendo = url.startAccessingSecurityScopedResource()
+                defer { if accediendo { url.stopAccessingSecurityScopedResource() } }
+                guard let datos = try? Data(contentsOf: url) else { continue }
+                ficheros.append((name: url.lastPathComponent, data: datos))
+            }
+            guard !ficheros.isEmpty else {
+                readError = "No se pudo leer ninguno de los ficheros elegidos."
+                return
+            }
+            preview = service.preview(
+                files: ficheros,
+                manifests: manifestsByFormInstanceId,
+                manifestJSONByFormInstanceId: manifestJSONByFormInstanceId
+            )
         }
     }
 }

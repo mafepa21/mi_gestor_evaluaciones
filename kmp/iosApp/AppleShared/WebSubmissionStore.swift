@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import MiGestorKit
 
 /// Almacén de la clave privada de cada formulario, y adaptador entre la tabla de
 /// correspondencias de la base de datos y el `WebSubmissionImportService`.
@@ -104,10 +105,22 @@ struct WebSubmissionSnapshot {
 
 /// Resolutor síncrono sobre un snapshot ya cargado.
 struct WebSubmissionSnapshotResolver: WebSubmissionContextResolver {
-    let snapshot: WebSubmissionSnapshot
+    let snapshotsByFormInstanceId: [String: WebSubmissionSnapshot]
+
+    init(snapshot: WebSubmissionSnapshot) {
+        self.snapshotsByFormInstanceId = [snapshot.formInstanceId: snapshot]
+    }
+
+    init(snapshots: [String: WebSubmissionSnapshot]) {
+        self.snapshotsByFormInstanceId = snapshots
+    }
+
+    private func snapshot(for formInstanceId: String) -> WebSubmissionSnapshot? {
+        snapshotsByFormInstanceId[formInstanceId]
+    }
 
     func formInstance(formInstanceId: String) -> WebFormInstanceContext? {
-        guard formInstanceId == snapshot.formInstanceId else { return nil }
+        guard let snapshot = snapshot(for: formInstanceId) else { return nil }
         return WebFormInstanceContext(
             formInstanceId: snapshot.formInstanceId,
             classId: snapshot.classId,
@@ -119,21 +132,23 @@ struct WebSubmissionSnapshotResolver: WebSubmissionContextResolver {
     }
 
     func studentId(formInstanceId: String, alias: String) -> Int64? {
-        guard formInstanceId == snapshot.formInstanceId else { return nil }
-        return snapshot.studentIdByAlias[alias]
+        snapshot(for: formInstanceId)?.studentIdByAlias[alias]
     }
 
     func studentName(studentId: Int64) -> String? {
-        snapshot.studentNames[studentId]
+        snapshotsByFormInstanceId.values
+            .compactMap { $0.studentNames[studentId] }
+            .first
     }
 
     func itemId(formInstanceId: String, webItemId: String) -> String? {
-        guard formInstanceId == snapshot.formInstanceId else { return nil }
-        return snapshot.itemIdByWebItemId[webItemId]
+        snapshot(for: formInstanceId)?.itemIdByWebItemId[webItemId]
     }
 
     func alreadyImportedAtEpochMs(submissionId: String) -> Int64? {
-        snapshot.importedAtBySubmissionId[submissionId]
+        snapshotsByFormInstanceId.values
+            .compactMap { $0.importedAtBySubmissionId[submissionId] }
+            .first
     }
 
     func recipientPrivateKey(privateKeyRef: String) -> Data? {
@@ -176,6 +191,138 @@ struct WebPublishResult {
     let folderPath: String
     let links: [WebPublishedLink]
     let linksText: String
+}
+
+enum WebSubmissionTaskStatus: String, CaseIterable, Hashable {
+    case active
+    case expired
+    case revoked
+
+    var label: String {
+        switch self {
+        case .active: return "Activa"
+        case .expired: return "Caducada"
+        case .revoked: return "Revocada"
+        }
+    }
+}
+
+/// Metadatos que la bandeja necesita para agrupar formularios publicados.
+/// El mapa privado y las claves siguen viviendo en `WebSubmissionSnapshot`.
+struct WebSubmissionTaskInfo: Identifiable, Hashable {
+    var id: String { formInstanceId }
+    let formInstanceId: String
+    let classId: Int64
+    let groupName: String
+    let title: String
+    let columnTitle: String
+    let status: WebSubmissionTaskStatus
+    let isArchived: Bool
+    let expiresAtEpochMs: Int64
+    let importedCount: Int
+    let lastImportedAtEpochMs: Int64?
+
+    var statusLabel: String { status.label }
+    var displayTitle: String {
+        "\(groupName) · \(title)"
+    }
+
+    var managementLabel: String {
+        isArchived ? "Archivada" : status.label
+    }
+}
+
+/// Enlace privado de un alumno dentro de una tarea web.
+///
+/// El enlace no se guarda en la base de datos pública ni se sincroniza: se
+/// reconstruye desde la hoja privada que se escribió al publicar el formulario
+/// y se cruza con el correo actual de la ficha del alumno.
+struct WebPublishedStudentLink: Identifiable, Hashable {
+    let studentId: Int64
+    let studentName: String
+    let email: String?
+    let url: URL
+
+    var id: Int64 { studentId }
+
+    var hasEmail: Bool {
+        guard let email else { return false }
+        return !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+/// Lee la hoja privada de enlaces creada al publicar una tarea.
+///
+/// La hoja de texto mantiene el formato cómodo para el docente. El alias del
+/// fragmento (`a=`) permite recuperar el `studentId` sin confiar en el nombre
+/// visible, que puede repetirse en un grupo.
+enum WebSubmissionPrivateLinksStore {
+    static func folderURL(for formInstanceId: String) -> URL? {
+        guard let documents = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first else { return nil }
+        return documents
+            .appendingPathComponent("EntregasWeb", isDirectory: true)
+            .appendingPathComponent(formInstanceId, isDirectory: true)
+    }
+
+    static func readLinks(
+        formInstanceId: String,
+        snapshot: WebSubmissionSnapshot,
+        students: [Student]
+    ) -> [WebPublishedStudentLink] {
+        guard let folder = folderURL(for: formInstanceId),
+              let text = try? String(
+                  contentsOf: folder.appendingPathComponent("enlaces-alumnado.txt"),
+                  encoding: .utf8
+              ) else { return [] }
+
+        let studentsById = Dictionary(
+            students.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var result: [WebPublishedStudentLink] = []
+        var seenStudentIds = Set<Int64>()
+
+        for line in text.split(whereSeparator: \.isNewline) {
+            guard let urlStart = line.range(of: "http://") ?? line.range(of: "https://") else {
+                continue
+            }
+            let urlText = String(line[urlStart.lowerBound...]).trimmingCharacters(in: .whitespaces)
+            guard let url = URL(string: urlText),
+                  let fragment = url.fragment else { continue }
+
+            let fragmentValues = Dictionary(
+                fragment.split(separator: "&").compactMap { field -> (String, String)? in
+                    let parts = field.split(separator: "=", maxSplits: 1).map(String.init)
+                    guard parts.count == 2 else { return nil }
+                    return (parts[0], parts[1])
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
+            guard fragmentValues["f"] == formInstanceId,
+                  let alias = fragmentValues["a"],
+                  let studentId = snapshot.studentIdByAlias[alias],
+                  seenStudentIds.insert(studentId).inserted else { continue }
+
+            let student = studentsById[studentId]
+            result.append(
+                WebPublishedStudentLink(
+                    studentId: studentId,
+                    studentName: snapshot.studentNames[studentId]
+                        ?? student.map { "\($0.firstName) \($0.lastName)" }
+                        ?? "Alumno \(studentId)",
+                    email: student?.email,
+                    url: url
+                )
+            )
+        }
+
+        return result.sorted {
+            $0.studentName.localizedCaseInsensitiveCompare($1.studentName) == .orderedAscending
+        }
+    }
 }
 
 #if DEBUG

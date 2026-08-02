@@ -609,28 +609,34 @@ struct LearningSituationsWorkspaceView: View {
             }
             if !draft.knowledge.isEmpty {
                 DisclosureGroup("Saberes básicos") {
-                    ForEach(draft.knowledge, id: \.self) {
-                        Text($0).frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    bulletList(draft.knowledge)
                 }
             }
             if !draft.methodology.isEmpty {
                 DisclosureGroup("Metodología") {
-                    ForEach(draft.methodology, id: \.self) {
-                        Text($0).frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    bulletList(draft.methodology)
                 }
             }
             if !draft.inclusionMeasures.isEmpty {
                 DisclosureGroup("Medidas DUA") {
-                    ForEach(draft.inclusionMeasures, id: \.self) {
-                        Text($0).frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    bulletList(draft.inclusionMeasures)
                 }
             }
         }
         .padding(16)
         .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func bulletList(_ items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(items, id: \.self) { item in
+                HStack(alignment: .top, spacing: 8) {
+                    Text("•").foregroundStyle(.secondary)
+                    Text(item).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(.top, 4)
     }
 
     @MainActor

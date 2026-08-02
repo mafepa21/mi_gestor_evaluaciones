@@ -389,11 +389,36 @@ struct LearningSituationDocumentImportService {
 
     private func cleanBulletPrefix(_ text: String) -> String {
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        while result.hasPrefix("•") || result.hasPrefix("-") || result.hasPrefix("*") || result.hasPrefix("◦") || result.hasPrefix("▪") {
+        while result.hasPrefix("•") || result.hasPrefix("-") || result.hasPrefix("*") || result.hasPrefix("◦") || result.hasPrefix("▪") || result.hasPrefix("#") {
             result.removeFirst()
             result = result.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return result
+    }
+
+    /// Vocabulario de títulos de sección reutilizado por las distintas plantillas de SA. Sirve
+    /// para detectar el final de una sección aunque el documento no use el sinónimo exacto que se
+    /// le pasó como `untilHeadings` a `sectionText` (p.ej. una SA que titula "5. Producto final
+    /// (resumen)" en vez de "METODOLOGÍA"): sin este corte genérico, `sectionText` seguía leyendo
+    /// hasta el final del documento y volcaba el resto de secciones (metodología, medidas DUA,
+    /// tabla de secuenciación) dentro del bloque anterior.
+    private static let knownSectionHeadings: Set<String> = [
+        "saberes basicos", "saberes basicos implicados", "metodologia",
+        "atencion a la diversidad", "medidas dua", "producto final",
+        "secuenciacion", "documento fuente", "competencias especificas",
+        "criterios de evaluacion", "criterios y evidencias", "sistema de evaluacion",
+        "justificacion", "justificacion y reto", "pregunta motriz", "reto inicial"
+    ]
+
+    /// Encabezado de sección "genérico": línea con símbolo Markdown literal ("#", típico de
+    /// documentos generados a partir de Markdown), numeración de sección de primer nivel
+    /// ("5. Producto final...") o coincidencia exacta con `knownSectionHeadings`.
+    private func isGenericSectionHeading(_ paragraph: String) -> Bool {
+        let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if trimmed.hasPrefix("#") { return true }
+        if trimmed.range(of: #"^\d+\.\s+[A-ZÁÉÍÓÚÑ¿]"#, options: .regularExpression) != nil { return true }
+        return Self.knownSectionHeadings.contains(normalized(trimmed))
     }
 
     private func metadataValue(forPatterns patterns: [String], in paragraphs: [String]) -> String {
@@ -484,8 +509,11 @@ struct LearningSituationDocumentImportService {
         let normalizedEndHeadings = endHeadings.map { normalized($0) }
         return Array(tail.prefix { text in
             let normText = normalized(text)
-            return !normalizedEndHeadings.contains(where: { normText.contains($0) })
-        }).filter { !$0.localizedCaseInsensitiveContains("descriptores operativos") }
+            if normalizedEndHeadings.contains(where: { normText.contains($0) }) { return false }
+            return !isGenericSectionHeading(text)
+        })
+        .map(cleanBulletPrefix)
+        .filter { !$0.isEmpty && !$0.localizedCaseInsensitiveContains("descriptores operativos") }
     }
 
     private func criterionDrafts(from paragraphs: [String]) -> [LearningSituationCriterionDraft] {
@@ -570,7 +598,7 @@ struct LearningSituationDocumentImportService {
                 || norm.contains("explicaciones en pista")
                 || norm.contains("bilingual glossary")
         }
-        return candidates
+        return candidates.map(cleanBulletPrefix)
     }
 
     private func sessionCount(in text: String) -> Int {

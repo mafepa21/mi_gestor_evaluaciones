@@ -105,6 +105,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Import de situaciones de aprendizaje: "Saberes básicos" y "Metodología" volcaban el
+  resto del documento (secuenciación de sesiones, medidas DUA, símbolos Markdown "#"
+  sueltos) cuando el DOCX no usaba literalmente los encabezados esperados
+  ("METODOLOGÍA", "ATENCIÓN A LA DIVERSIDAD"...). `sectionText` ahora corta también al
+  llegar a cualquier encabezado de sección numerado ("5. Producto final..."), a una
+  línea Markdown ("#"/"##") o a un título conocido de la plantilla de SA ("Medidas
+  DUA", "Producto final", etc.), y limpia los símbolos de viñeta/almohadilla de cada
+  línea antes de guardarla. En la vista de detalle, "Saberes básicos", "Metodología" y
+  "Medidas DUA" se listan ahora con viñeta y espaciado consistente en vez de texto
+  corrido.
 - Situaciones de aprendizaje: la vista conserva siempre la composición de tres zonas
   (menú, lista de situaciones y detalle) y deja de apilar la lista sobre el detalle
   cuando `ViewThatFits` considera insuficiente el ancho horizontal.

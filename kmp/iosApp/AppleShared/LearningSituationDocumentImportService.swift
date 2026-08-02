@@ -207,6 +207,23 @@ enum LearningSituationImportError: LocalizedError {
     }
 }
 
+struct LearningSituationDocumentImportFailure: Identifiable {
+    let id: UUID
+    let fileName: String
+    let message: String
+
+    init(fileName: String, message: String) {
+        self.id = UUID()
+        self.fileName = fileName
+        self.message = message
+    }
+}
+
+struct LearningSituationDocumentImportBatch {
+    let drafts: [LearningSituationImportDraft]
+    let failures: [LearningSituationDocumentImportFailure]
+}
+
 struct LearningSituationDocumentImportService {
     func preview(from url: URL) throws -> LearningSituationImportDraft {
         let accessing = url.startAccessingSecurityScopedResource()
@@ -333,6 +350,29 @@ struct LearningSituationDocumentImportService {
             sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
             sizeBytes: Int64(data.count)
         )
+    }
+
+    /// Previsualiza todos los documentos seleccionados y conserva los resultados válidos aunque
+    /// uno de los archivos no pueda leerse. El orden de `drafts` y `failures` sigue el orden de
+    /// selección del usuario dentro de cada colección.
+    func preview(from urls: [URL]) -> LearningSituationDocumentImportBatch {
+        var drafts: [LearningSituationImportDraft] = []
+        var failures: [LearningSituationDocumentImportFailure] = []
+
+        for url in urls {
+            do {
+                drafts.append(try preview(from: url))
+            } catch {
+                failures.append(
+                    LearningSituationDocumentImportFailure(
+                        fileName: url.lastPathComponent,
+                        message: error.localizedDescription
+                    )
+                )
+            }
+        }
+
+        return LearningSituationDocumentImportBatch(drafts: drafts, failures: failures)
     }
 
     private func readParagraphs(from data: Data) throws -> [String] {

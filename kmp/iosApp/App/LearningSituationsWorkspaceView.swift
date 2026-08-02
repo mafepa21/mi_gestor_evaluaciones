@@ -116,20 +116,14 @@ struct LearningSituationsWorkspaceView: View {
     }
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 0) {
-                masterColumn
-                    .frame(minWidth: 336, idealWidth: 360, maxWidth: 384)
-                Color.clear.frame(width: 8)
-                detailColumn
-            }
-
-            VStack(spacing: 0) {
-                masterColumn
-                    .frame(maxHeight: 440)
-                detailColumn
-            }
+        HStack(alignment: .top, spacing: 0) {
+            masterColumn
+                .frame(minWidth: 336, idealWidth: 360, maxWidth: 384)
+            Color.clear.frame(width: 8)
+            detailColumn
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(appPageBackground(for: colorScheme))
         .task { await reload() }
         .appOnChange(of: selectedSituationId) { _ in

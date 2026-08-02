@@ -15,6 +15,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
+  documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro
+  archivo no pueda leerse o guardarse.
 - Entregas web multi-grupo: el Mac incorpora una bandeja global de tareas con grupo,
   instrumento, caducidad, estados Activa/Caducada/Revocada, filtros, búsqueda,
   recuento de importaciones y acciones para abrir la carpeta o copiar enlaces.
@@ -72,6 +75,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `xcodegen generate` desde `kmp/iosApp`: proyecto Xcode regenerado correctamente e incluye el nuevo test.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorPlannerTests -destination 'platform=macOS' test`: 33 tests, 0 fallos.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -destination 'generic/platform=iOS Simulator' build`: BUILD SUCCEEDED.
+- `xcrun swiftc -parse` sobre los archivos Swift modificados y `git diff --check`: correctos.
 - `scripts/verify_apple_builds.sh` (2026-08-02): macOS Native/Catalyst e iOS
   Simulator compilados correctamente tras el ajuste de Situaciones.
 - `./gradlew :data:desktopTest`: BUILD SUCCESSFUL.

@@ -106,15 +106,24 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Fixed
 
 - Import de situaciones de aprendizaje: "Saberes básicos" y "Metodología" volcaban el
-  resto del documento (secuenciación de sesiones, medidas DUA, símbolos Markdown "#"
-  sueltos) cuando el DOCX no usaba literalmente los encabezados esperados
-  ("METODOLOGÍA", "ATENCIÓN A LA DIVERSIDAD"...). `sectionText` ahora corta también al
-  llegar a cualquier encabezado de sección numerado ("5. Producto final..."), a una
-  línea Markdown ("#"/"##") o a un título conocido de la plantilla de SA ("Medidas
-  DUA", "Producto final", etc.), y limpia los símbolos de viñeta/almohadilla de cada
-  línea antes de guardarla. En la vista de detalle, "Saberes básicos", "Metodología" y
-  "Medidas DUA" se listan ahora con viñeta y espaciado consistente en vez de texto
-  corrido.
+  resto del documento (secuenciación de sesiones, medidas DUA, celdas de tabla sueltas)
+  porque el lector aplanaba cada celda de tabla del DOCX en un "párrafo" más dentro de
+  la misma lista de texto que las secciones, y `sectionText` solo paraba en el sinónimo
+  exacto de encabezado que se le pasaba (p.ej. "METODOLOGÍA"), no en cualquier título
+  real del documento. El importador ahora distingue título de Word (Heading 1/2/3, por
+  `w:pStyle`), párrafo y tabla en un único parseo: los títulos reales delimitan cada
+  sección aunque el documento use otro texto de encabezado, y las tablas (p.ej.
+  "Sesión | Contenido | Criterio" o "Barrera | Adaptación") se conservan como tabla en
+  vez de aplanarse en líneas sueltas, y se muestran como tabla real en la vista de
+  detalle. También se reconocen como criterio de evaluación los párrafos que empiezan
+  por "CE X.X." sin la palabra "criterio" (frecuente en las SA de 3º y 4º ESO), sin
+  confundirlos con las ponderaciones de "Evaluación" (que siempre llevan "%") ni con
+  referencias incidentales a un apartado ("apartado 5.1"). Verificado contra un
+  documento real de producción (SA 4 - Floorball, 3º ESO): antes 0 criterios
+  reconocidos y la sección "Saberes básicos" con el resto del documento dentro; ahora 3
+  criterios, secciones acotadas y las dos tablas del documento renderizadas como tabla.
+  En la vista de detalle, "Saberes básicos", "Metodología" y "Medidas DUA" se listan
+  con viñeta y espaciado consistente en vez de texto corrido.
 - Situaciones de aprendizaje: la vista conserva siempre la composición de tres zonas
   (menú, lista de situaciones y detalle) y deja de apilar la lista sobre el detalle
   cuando `ViewThatFits` considera insuficiente el ancho horizontal.

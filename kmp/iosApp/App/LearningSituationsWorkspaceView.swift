@@ -601,7 +601,9 @@ struct LearningSituationsWorkspaceView: View {
                 ForEach(draft.criteria) { criterion in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(criterion.criterion).font(.subheadline.weight(.semibold))
-                        Text(criterion.evidence).font(.caption).foregroundStyle(.secondary)
+                        if !criterion.evidence.isEmpty {
+                            Text(criterion.evidence).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 5)
@@ -622,6 +624,11 @@ struct LearningSituationsWorkspaceView: View {
                     bulletList(draft.inclusionMeasures)
                 }
             }
+            ForEach(draft.documentTables ?? []) { table in
+                DisclosureGroup(table.title) {
+                    documentTable(table)
+                }
+            }
         }
         .padding(16)
         .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -633,6 +640,29 @@ struct LearningSituationsWorkspaceView: View {
                 HStack(alignment: .top, spacing: 8) {
                     Text("•").foregroundStyle(.secondary)
                     Text(item).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    /// Tabla del documento fuente (p.ej. secuenciación de sesiones o adaptaciones) que se
+    /// mantiene como tabla real en vez de aplanarla en líneas sueltas.
+    private func documentTable(_ table: LearningSituationTableDraft) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 8) {
+                GridRow {
+                    ForEach(Array(table.header.enumerated()), id: \.offset) { _, cell in
+                        Text(cell).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    }
+                }
+                Divider()
+                ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
+                    GridRow {
+                        ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                            Text(cell).font(.caption)
+                        }
+                    }
                 }
             }
         }

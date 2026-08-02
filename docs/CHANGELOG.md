@@ -72,6 +72,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `scripts/verify_apple_builds.sh` (2026-08-02): macOS Native/Catalyst e iOS
+  Simulator compilados correctamente tras el ajuste de Situaciones.
 - `./gradlew :data:desktopTest`: BUILD SUCCESSFUL.
 - `./gradlew :shared:desktopTest`: BUILD SUCCESSFUL.
 - `scripts/verify_apple_builds.sh`: macOS Native/Catalyst e iOS Simulator compilados
@@ -96,6 +98,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Situaciones de aprendizaje: la vista conserva siempre la composición de tres zonas
+  (menú, lista de situaciones y detalle) y deja de apilar la lista sobre el detalle
+  cuando `ViewThatFits` considera insuficiente el ancho horizontal.
 - Import de instrumentos: la autoevaluación/coevaluación ponderable se bloqueaba con "la
   observación necesita escala 1-4" aunque su rúbrica sí la tuviera. La validación miraba solo
   `observationFields`, y en este tipo los indicadores 1-4 viven en la tabla de rúbrica

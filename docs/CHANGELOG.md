@@ -78,6 +78,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- Auditoría y propuesta de rediseño de los instrumentos de evaluación del Cuaderno:
+  shell común `Evaluation Workspace`, Liquid Glass reservado al chrome y superficies
+  sólidas para el contenido evaluable. Incluye rúbrica individual, evaluación masiva,
+  auto/coevaluación y rejilla de observación.
 - ADR `ADR-2026-08-01-entregas-web-centro-mac.md`: Mac como centro de publicación,
   gestión, reparto e importación, con privacidad explícita para SyncLAN y la
   limitación de revocación del manifiesto público firmado.

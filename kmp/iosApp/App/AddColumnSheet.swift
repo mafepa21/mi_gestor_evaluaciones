@@ -417,6 +417,7 @@ struct AddColumnSheet: View {
     @State private var summaryAIOrchestrator = AppleAIOrchestrator()
     @State private var rubricSearchText = ""
     @State private var expandedRubricSectionIds: Set<String> = []
+    @State private var compactColumnStep: CompactColumnStep = .type
     @State private var isSavingColumn = false
     @State private var saveErrorMessage: String? = nil
     @AppStorage("teacher.enabledSubjectProfiles.v1")
@@ -432,14 +433,6 @@ struct AddColumnSheet: View {
         .init(id: "evidence", title: "Evidencia", subtitle: "Adjunto desde inspector o celda", icon: "paperclip.circle", type: .text, categoryKind: .extras, instrumentKind: .multimediaEvidence, inputKind: .evidence, scaleKind: .custom, defaultWeight: 0),
         .init(id: "individual_summary", title: "Síntesis pedagógica", subtitle: "Columna IA editable y regenerable por alumno", icon: "apple.intelligence", type: .text, categoryKind: .followUp, instrumentKind: .privateComment, inputKind: .text, scaleKind: .custom, defaultWeight: 0),
     ]
-
-    private var basicBlueprints: [NotebookColumnBlueprint] {
-        blueprints.filter { ["written_test", "rubric", "checklist", "observation", "participation"].contains($0.id) }
-    }
-
-    private var advancedBlueprints: [NotebookColumnBlueprint] {
-        blueprints.filter { ["calculated", "evidence", "individual_summary"].contains($0.id) }
-    }
 
     private var selectedBlueprint: NotebookColumnBlueprint? {
         guard let selectedBlueprintId else { return nil }
@@ -464,6 +457,22 @@ struct AddColumnSheet: View {
         }
     }
 
+    private enum CompactColumnStep: Int, CaseIterable, Identifiable {
+        case type
+        case configuration
+        case identity
+
+        var id: Int { rawValue }
+
+        var title: String {
+            switch self {
+            case .type: return "Tipo"
+            case .configuration: return "Configuración"
+            case .identity: return "Nombre y peso"
+            }
+        }
+    }
+
     var body: some View {
         GeometryReader { geometry in
             // Sin NavigationStack: no hay NavigationLink en esta hoja, solo se
@@ -475,16 +484,10 @@ struct AddColumnSheet: View {
                 Divider()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        blueprintSection
-
-                        if selectedBlueprint != nil {
-                            Divider()
-                            contentLayout(for: geometry.size.width)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                    }
-                    .padding(24)
+                    let contentWidth = max(0, geometry.size.width - 48)
+                    contentLayout(for: contentWidth)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(24)
                 }
                 .animation(.spring(duration: 0.25), value: selectedBlueprintId)
 
@@ -530,9 +533,7 @@ struct AddColumnSheet: View {
             .presentationDragIndicator(.hidden)
             #endif
         }
-#if os(macOS)
-        .frame(minWidth: 820, idealWidth: 900, maxWidth: 1000, minHeight: 640, idealHeight: 780)
-#else
+#if os(iOS)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 #endif
     }
@@ -579,24 +580,93 @@ struct AddColumnSheet: View {
 
     @ViewBuilder
     private func contentLayout(for availableWidth: CGFloat) -> some View {
-        let usesTwoColumns = availableWidth >= 720
+        #if os(macOS)
+        // La hoja de Mac tiene una composición de catálogo propia. No debe
+        // depender de que la ventana alcance el umbral usado por iPad: en
+        // ventanas Mac medianas ese fallback mostraba el stepper compacto y
+        // dejaba fuera de pantalla el primer paso.
+        let usesCatalogLayout = true
+        #else
+        let usesCatalogLayout = availableWidth >= 1_100
+        #endif
 
-        if usesTwoColumns {
+        if usesCatalogLayout {
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 24) {
+                    NotebookSectionLabel(text: "01 · Tipo de columna")
+                    blueprintSection
+                }
+                .frame(width: min(360, availableWidth * 0.34), alignment: .topLeading)
+
+                VStack(alignment: .leading, spacing: 24) {
+                    NotebookSectionLabel(text: "02 · Configuración")
                     columnIdentitySection
+                    configurationSection
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                configurationSection
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             VStack(alignment: .leading, spacing: 24) {
-                columnIdentitySection
-                configurationSection
+                compactColumnStepBar
+
+                switch compactColumnStep {
+                case .type:
+                    blueprintSection
+                case .configuration:
+                    configurationSection
+                case .identity:
+                    VStack(alignment: .leading, spacing: 24) {
+                        columnIdentitySection
+                        configurationSummary
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var compactColumnStepBar: some View {
+        HStack(spacing: 0) {
+            ForEach(CompactColumnStep.allCases) { step in
+                Button {
+                    guard step == .type || selectedBlueprint != nil else { return }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        compactColumnStep = step
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Paso \(step.rawValue + 1)")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(step == compactColumnStep ? tintForSelectedBlueprint : .secondary)
+                        Text(step.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(step == compactColumnStep ? .primary : .secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(step == compactColumnStep ? tintForSelectedBlueprint : NotebookGridStyle.gridLineStrong.opacity(0.55))
+                            .frame(height: step == compactColumnStep ? 3 : 1)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(step != .type && selectedBlueprint == nil)
+
+                if step.rawValue < CompactColumnStep.allCases.count - 1 {
+                    Rectangle()
+                        .fill(NotebookGridStyle.gridLine)
+                        .frame(width: 1, height: 42)
+                }
             }
         }
+        .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(NotebookGridStyle.gridLineStrong, lineWidth: 1)
+        )
     }
 
     private var columnIdentitySection: some View {
@@ -628,44 +698,22 @@ struct AddColumnSheet: View {
         let cardColumns = [GridItem(.adaptive(minimum: 200), spacing: 12)]
 
         return VStack(alignment: .leading, spacing: 16) {
-            Text("Tipo de columna")
-                .font(.headline)
-
             subjectTemplateSection
 
             LazyVGrid(columns: cardColumns, spacing: 12) {
-                ForEach(basicBlueprints) { blueprint in
+                ForEach(blueprints) { blueprint in
                     ColumnBlueprintCard(
                         blueprint: blueprint,
                         isSelected: blueprint.id == selectedBlueprint?.id,
                         tint: color(for: blueprint.categoryKind)
                     ) {
                         selectedBlueprintId = blueprint.id
+                        compactColumnStep = .configuration
                     }
                 }
             }
 
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 16) {
-                    LazyVGrid(columns: cardColumns, spacing: 12) {
-                        ForEach(advancedBlueprints) { blueprint in
-                            ColumnBlueprintCard(
-                                blueprint: blueprint,
-                                isSelected: blueprint.id == selectedBlueprint?.id,
-                                tint: color(for: blueprint.categoryKind)
-                            ) {
-                                selectedBlueprintId = blueprint.id
-                            }
-                        }
-                    }
-
-                    externalColumnDestinations
-                }
-                .padding(.top, 12)
-            } label: {
-                Label("Más opciones", systemImage: "slider.horizontal.3")
-                    .font(.headline)
-            }
+            externalColumnDestinations
         }
     }
 
@@ -774,17 +822,7 @@ struct AddColumnSheet: View {
             }
 
             if shouldShowWeightControls {
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Peso")
-                            .font(.headline)
-                        TextField("0", text: $weight)
-                            .appKeyboardType(.decimalPad)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                    }
-
-                    Toggle("Cuenta para la media", isOn: $countsTowardAverage)
-                }
+                weightEditor
             }
 
             HStack(spacing: 16) {
@@ -805,30 +843,109 @@ struct AddColumnSheet: View {
                 formulaValidationPanel
             }
 
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 16) {
-                    TextField("Unidad / situación de aprendizaje", text: $unitOrSituation)
-                        .font(.subheadline.weight(.medium))
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+            VStack(alignment: .leading, spacing: 16) {
+                NotebookSectionLabel(text: "Ajustes adicionales")
 
-                    DatePicker("Fecha", selection: $selectedDate, displayedComponents: .date)
-                    Toggle("Fijar al inicio", isOn: $isPinned)
-                    Toggle("Columna bloqueada", isOn: $isLocked)
-                    Toggle("Guardar como plantilla", isOn: $isTemplate)
+                TextField("Unidad / situación de aprendizaje", text: $unitOrSituation)
+                    .font(.subheadline.weight(.medium))
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
 
-                    externalDestinationCard(
-                        title: "Pruebas físicas",
-                        subtitle: "Se gestionan desde EF · Condición física.",
-                        icon: "figure.run",
-                        tint: .orange
-                    )
-                }
-                .padding(.top, 8)
-            } label: {
-                Label("Más opciones", systemImage: "slider.horizontal.3")
-                    .font(.headline)
+                DatePicker("Fecha", selection: $selectedDate, displayedComponents: .date)
+                Toggle("Fijar al inicio", isOn: $isPinned)
+                Toggle("Columna bloqueada", isOn: $isLocked)
+                Toggle("Guardar como plantilla", isOn: $isTemplate)
+
             }
         }
+    }
+
+    private var configurationSummary: some View {
+        NotebookSurface(fill: NotebookStyle.surfaceMuted, padding: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: selectedBlueprint?.icon ?? "square.dashed")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(tintForSelectedBlueprint)
+                    .frame(width: 36, height: 36)
+                    .background(tintForSelectedBlueprint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(selectedBlueprint?.title ?? "Nueva columna")
+                        .font(.subheadline.weight(.bold))
+                    Text("Revisa el nombre, la categoría y el peso antes de crearla.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var weightEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .lastTextBaseline, spacing: 8) {
+                Text("Peso en la media")
+                    .font(.headline)
+                Spacer(minLength: 0)
+                Text("\(Int((parsedWeight ?? 0).rounded()))%")
+                    .font(.system(.title2, design: .rounded).weight(.bold))
+                    .foregroundStyle(tintForSelectedBlueprint)
+                    .monospacedDigit()
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    adjustWeight(by: -1)
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Reducir peso")
+
+                Slider(
+                    value: Binding(
+                        get: { min(max(parsedWeight ?? 0, 0), 100) },
+                        set: { weight = formattedPresetWeight($0) }
+                    ),
+                    in: 0...100,
+                    step: 1
+                )
+                .tint(tintForSelectedBlueprint)
+
+                Button {
+                    adjustWeight(by: 1)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Aumentar peso")
+            }
+
+            HStack {
+                Text("0%")
+                Spacer()
+                Text("100%")
+            }
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+
+            Toggle("Cuenta para la media", isOn: $countsTowardAverage)
+                .font(.subheadline.weight(.medium))
+        }
+        .padding(16)
+        .background(NotebookStyle.surfaceMuted, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(NotebookGridStyle.gridLineStrong, lineWidth: 1)
+        )
+    }
+
+    private func adjustWeight(by delta: Double) {
+        let current = parsedWeight ?? selectedBlueprint?.defaultWeight ?? 0
+        weight = formattedPresetWeight(min(max(current + delta, 0), 100))
     }
 
     private var individualSummaryConfiguration: some View {
@@ -1018,50 +1135,81 @@ struct AddColumnSheet: View {
     }
 
     private var footerActions: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(canSave ? "Lista para crear" : "Completa la configuración")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(canSave ? NotebookStyle.successTint : .secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            footerStatus
 
-                    if selectedBlueprint?.isIndividualSummary == true {
-                        Text(summaryFooterMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if let saveErrorMessage {
-                        Text(saveErrorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    } else if let canSaveReason {
-                        Text(canSaveReason)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Se añadirá al cuaderno actual con la configuración indicada.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer()
-
-                #if os(macOS)
-                // En iPad el cierre lo da el botón de IOSSheetHeader; duplicar un
-                // "Cancelar" aquí solo añadiría una segunda forma de hacer lo mismo.
-                Button("Cancelar") { dismiss() }
-                    .buttonStyle(.bordered)
-                    .keyboardShortcut(.cancelAction)
-                #endif
-
-                Button(action: saveColumn) {
-                    Label(isSavingColumn ? "Creando..." : primaryActionTitle, systemImage: "plus.circle.fill")
-                }
-                    .notebookSheetProminentButtonStyle()
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canSave || isSavingColumn)
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                footerButtons
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var footerStatus: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(canSave ? "Lista para crear" : "Completa la configuración")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(canSave ? NotebookStyle.successTint : .secondary)
+
+            if selectedBlueprint?.isIndividualSummary == true {
+                Text(summaryFooterMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let saveErrorMessage {
+                Text(saveErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if let canSaveReason {
+                Text(canSaveReason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Se añadirá al cuaderno actual con la configuración indicada.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var footerButtons: some View {
+        #if os(macOS)
+        // En iPad el cierre lo da el botón de IOSSheetHeader; duplicar un
+        // "Cancelar" aquí solo añadiría una segunda forma de hacer lo mismo.
+        Button("Cancelar") { dismiss() }
+            .buttonStyle(.bordered)
+            .keyboardShortcut(.cancelAction)
+
+        Button(action: saveColumn) {
+            Label(isSavingColumn ? "Creando..." : primaryActionTitle, systemImage: "plus.circle.fill")
+        }
+        .notebookSheetProminentButtonStyle()
+        .keyboardShortcut(.defaultAction)
+        .disabled(!canSave || isSavingColumn)
+        #else
+        if compactColumnStep != .identity {
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    compactColumnStep = compactColumnStep == .type ? .configuration : .identity
+                }
+            } label: {
+                Label(
+                    compactColumnStep == .type ? "Siguiente" : "Nombre y peso",
+                    systemImage: "chevron.right"
+                )
+            }
+            .notebookSheetProminentButtonStyle()
+            .disabled(selectedBlueprint == nil)
+        } else {
+            Button(action: saveColumn) {
+                Label(isSavingColumn ? "Creando..." : primaryActionTitle, systemImage: "plus.circle.fill")
+            }
+            .notebookSheetProminentButtonStyle()
+            .disabled(!canSave || isSavingColumn)
+        }
+        #endif
     }
 
     private func configurationGroup<Content: View>(

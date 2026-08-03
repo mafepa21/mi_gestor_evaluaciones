@@ -97,20 +97,39 @@ struct ObservationGridInstrumentContent: View {
     }
 
     private func indicatorRow(index: Int) -> some View {
-        HStack {
-            Text(indicatorLabel(from: model.items[index].title))
-                .font(.body)
-            Spacer()
-            Picker("Nivel", selection: itemNumberBinding(index: index)) {
-                Text("—").tag("")
-                ForEach(["1", "2", "3", "4"], id: \.self) { level in
-                    Text(level).tag(level)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 12) {
+                indicatorTitle(index: index)
+                    .layoutPriority(1)
+                Spacer(minLength: 8)
+                scalePicker(index: index)
+                    .frame(minWidth: 180, idealWidth: 220, maxWidth: 240)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 200)
+
+            VStack(alignment: .leading, spacing: 8) {
+                indicatorTitle(index: index)
+                scalePicker(index: index)
+                    .frame(maxWidth: .infinity)
+            }
         }
+    }
+
+    private func indicatorTitle(index: Int) -> some View {
+        Text(indicatorLabel(from: model.items[index].title))
+            .font(.body)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func scalePicker(index: Int) -> some View {
+        Picker("Nivel", selection: itemNumberBinding(index: index)) {
+            Text("—").tag("")
+            ForEach(["1", "2", "3", "4"], id: \.self) { level in
+                Text(level).tag(level)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
     }
 
     private func itemNumberBinding(index: Int) -> Binding<String> {

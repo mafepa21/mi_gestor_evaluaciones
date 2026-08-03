@@ -199,7 +199,7 @@ struct RubricBulkEvaluationSheet: View {
         rubric: RubricDetail,
         cache: BulkRubricEvaluationCache
     ) -> some View {
-        PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.92) {
+        NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surface, padding: 16) {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 16) {
                     EvaluationChip(label: "\(state.students.count) alumnos", systemImage: "person.3.fill")
@@ -262,7 +262,7 @@ struct RubricBulkEvaluationSheet: View {
         let actionsWidth: CGFloat = 96
         let studentWidth: CGFloat = 224
 
-        return PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.92) {
+        return NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surface, padding: 16) {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 16) {
                     EvaluationChip(
@@ -790,7 +790,7 @@ struct RubricBulkEvaluationSheet: View {
 
     private func injuredSidebar(state: BulkRubricEvaluationUiState) -> some View {
         let injuredStudents = injuredStudents(for: state)
-        return PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.90) {
+        return NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surface, padding: 16) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 10) {
                     EvaluationChip(

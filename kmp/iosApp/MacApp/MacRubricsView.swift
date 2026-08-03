@@ -245,7 +245,7 @@ struct MacRubricsView: View {
         .sheet(isPresented: $showingBuilder) {
             RubricsBuilderScreen()
                 .environmentObject(bridge)
-                .frame(minWidth: 860, idealWidth: 1200, minHeight: 560, idealHeight: 800)
+                .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
         }
         .fileImporter(
             isPresented: $showingRubricFileImporter,

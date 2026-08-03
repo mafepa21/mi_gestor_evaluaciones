@@ -16,7 +16,7 @@ struct RubricsBuilderScreen: View {
         NavigationStack {
             Group {
                 if let state {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 24) {
                         RubricBuilderHeader(
                             state: state,
                             rubricName: rubricNameBinding,
@@ -25,24 +25,46 @@ struct RubricsBuilderScreen: View {
                         )
                         .environmentObject(bridge)
 
-                        TextEditor(text: instructionsBinding)
-                            .frame(height: 88)
-                            .padding(8)
-                            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous)
-                                    .stroke(RubricsStyle.fieldBorder, lineWidth: 1)
-                            )
+                        NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surfaceMuted, padding: 16) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                NotebookSectionLabel(text: "Descripción del instrumento")
+                                TextEditor(text: instructionsBinding)
+                                    .frame(height: 72)
+                                    .scrollContentBackground(.hidden)
+                                    .background(Color.clear)
+                                    .overlay(alignment: .topLeading) {
+                                        if instructionsBinding.wrappedValue.isEmpty {
+                                            Text("Explica qué evidencia recoge esta rúbrica y cómo se interpretan sus niveles.")
+                                                .font(.subheadline)
+                                                .foregroundStyle(.tertiary)
+                                                .allowsHitTesting(false)
+                                        }
+                                    }
+                            }
+                        }
 
-                        RubricBuilderGridView(state: state)
-                            .environmentObject(bridge)
-                            .frame(maxHeight: .infinity)
+                        NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surface, padding: 16) {
+                            VStack(alignment: .leading, spacing: 16) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    NotebookSectionLabel(text: "Matriz de evaluación")
+                                    Spacer()
+                                    Text("Criterios × niveles")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                RubricBuilderGridView(state: state)
+                                    .environmentObject(bridge)
+                                    .frame(maxHeight: .infinity)
+                            }
+                        }
+                        .frame(maxHeight: .infinity)
 
                         Button {
                             bridge.addRubricCriterion()
                         } label: {
-                            Label("Añadir Nuevo Criterio", systemImage: "plus")
-                                .font(.system(size: 14, weight: .bold))
+                            Label("Añadir criterio", systemImage: "plus")
+                                .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Color.accentColor)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 16)
@@ -59,10 +81,10 @@ struct RubricsBuilderScreen: View {
                                     .foregroundStyle(.secondary)
                             } else {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(EvaluationDesign.success)
                                     .font(.system(size: 14))
                                 Text(saveFeedback ?? "Guardado")
-                                    .font(.footnote)
+                                .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -78,8 +100,8 @@ struct RubricsBuilderScreen: View {
                                     }
                                 }
                             } label: {
-                            Label("Guardar Rúbrica", systemImage: "square.and.arrow.down")
-                                .font(.system(size: 15, weight: .bold))
+                            Label("Guardar rúbrica", systemImage: "square.and.arrow.down")
+                                .font(.subheadline.weight(.bold))
                                 .foregroundStyle(contrastingTextColor(for: Color.accentColor))
                                 .padding(.horizontal, 24)
                                 .padding(.vertical, 16)
@@ -103,6 +125,9 @@ struct RubricsBuilderScreen: View {
                 }
             }
         }
+#if os(iOS)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+#endif
     }
 
     private var rubricNameBinding: Binding<String> {
@@ -145,7 +170,7 @@ private struct RubricBuilderHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             TextField("¿Cómo se llama esta rúbrica?", text: rubricName)
-                .font(.system(size: 30, weight: .black, design: .rounded))
+                .font(.title2.weight(.bold))
                 .textFieldStyle(.plain)
 
             HStack(spacing: 8) {
@@ -185,7 +210,7 @@ private struct RubricBuilderHeader: View {
                     .buttonStyle(.plain)
                 }
 
-                Text("Niveles:")
+                Text("Plantilla")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 ForEach(["Estándar", "Binario", "Numérico"], id: \.self) { preset in
@@ -203,7 +228,7 @@ private struct RubricBuilderHeader: View {
                     systemImage: state.totalWeight == 1.0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
                 )
                 .font(.caption.weight(.bold))
-                .foregroundStyle(state.totalWeight == 1.0 ? Color.green : Color.red)
+                .foregroundStyle(state.totalWeight == 1.0 ? EvaluationDesign.success : EvaluationDesign.danger)
             }
         }
     }
@@ -241,16 +266,30 @@ private struct RubricBuilderGridView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = makeLayout(in: proxy.size)
-            VStack(alignment: .leading, spacing: layout.rowSpacing) {
-                headerRow(layout: layout)
-                ForEach(Array(state.criteria.enumerated()), id: \.offset) { index, criterion in
-                    criterionRow(index: index, criterion: criterion, layout: layout)
+            let gridWidth = max(proxy.size.width, minimumGridWidth)
+            let contentWidth = max(gridWidth - 16, 320)
+
+            // Una matriz tiene una anchura mínima útil para que los campos sigan
+            // siendo editables. En ventanas Mac medianas se permite desplazarla
+            // horizontalmente en vez de recortar el último nivel y sus acciones.
+            ScrollView(.horizontal, showsIndicators: true) {
+                let layout = makeLayout(in: CGSize(width: contentWidth, height: proxy.size.height))
+                VStack(alignment: .leading, spacing: layout.rowSpacing) {
+                    headerRow(layout: layout)
+                    ForEach(Array(state.criteria.enumerated()), id: \.offset) { index, criterion in
+                        criterionRow(index: index, criterion: criterion, layout: layout)
+                    }
                 }
+                .padding(8)
+                .frame(width: gridWidth, height: proxy.size.height, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(8)
         }
+    }
+
+    private var minimumGridWidth: CGFloat {
+        let levelCount = max(state.levels.count, 1)
+        let spacing: CGFloat = 8
+        return 24 + 176 + 48 + (CGFloat(levelCount) * 96) + (spacing * CGFloat(levelCount + 1)) + 16
     }
 
     private func headerRow(layout: RubricGridLayout) -> some View {
@@ -290,15 +329,44 @@ private struct RubricBuilderGridView: View {
                         .buttonStyle(.plain)
                     }
 
-                    Stepper(value: Binding(
-                        get: { Int(level.points) },
-                        set: { bridge.updateRubricLevelPoints(at: index, points: $0) }
-                    ), in: 0...20) {
-                        Text("Pts: \(level.points)")
+                    HStack(spacing: 6) {
+                        Text("\(Int(level.points)) pts")
                             .font(.caption.weight(.semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+
+                        Spacer(minLength: 0)
+
+                        Button {
+                            bridge.updateRubricLevelPoints(at: index, points: max(0, Int(level.points) - 1))
+                        } label: {
+                            Image(systemName: "minus")
+                                .font(.caption.weight(.bold))
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityLabel("Reducir puntos")
+
+                        Button {
+                            bridge.updateRubricLevelPoints(at: index, points: min(20, Int(level.points) + 1))
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.caption.weight(.bold))
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityLabel("Aumentar puntos")
                     }
                 }
                 .frame(width: layout.levelWidth, alignment: .leading)
+                .padding(12)
+                .background(NotebookStyle.surfaceMuted, in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous)
+                        .stroke(RubricsStyle.hairlineStrong, lineWidth: 1)
+                )
             }
 
             Button {
@@ -373,6 +441,12 @@ private struct RubricBuilderGridView: View {
             .buttonStyle(.plain)
             .padding(.top, 8)
         }
+        .padding(12)
+        .background(NotebookStyle.surfaceMuted.opacity(0.72), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous)
+                .stroke(RubricsStyle.hairline, lineWidth: 1)
+        )
         .padding(.vertical, layout.rowPadding)
     }
 

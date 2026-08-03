@@ -47,6 +47,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Rediseño técnico del Cuaderno en SwiftUI: el alta de columnas usa un catálogo
+  visible y peso graduado, las celdas hacen descubribles los gestos y estados
+  mediante franjas, y el editor y la evaluación masiva de rúbricas comparten
+  superficies y controles compactos de trabajo.
+- Ajuste del layout del Cuaderno en macOS: Nueva columna mantiene el catálogo
+  de dos zonas aunque la ventana sea mediana, descuenta correctamente sus
+  márgenes y la matriz de rúbricas permite desplazamiento horizontal cuando
+  no caben todos sus niveles. La rejilla de observación adapta sus selectores
+  sin anchos rígidos para iPad.
 - El contrato y repositorio SQLDelight exponen `listAllFormInstances()`; la app deja
   de depender del formulario publicado más recientemente.
 - La importación pasa `formInstanceId` en cada borrador, escribe siempre mediante
@@ -75,6 +84,25 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `xcrun swiftc -frontend -parse` sobre las cuatro vistas SwiftUI modificadas:
+  correcto.
+- `git diff --check`: correcto.
+- `xcrun swiftc -frontend -parse` sobre `AddColumnSheet.swift`,
+  `ObservationGridInstrumentContent.swift` y `RubricsBuilderScreen.swift`:
+  correcto.
+- `plutil -lint kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` y presencia
+  del scheme iOS: correctos tras `xcodegen generate`.
+- `./scripts/verify_apple_builds.sh` (2026-08-03): XcodeGen correcto; macOS e
+  iOS no pudieron resolver SPM por DNS hacia GitHub y Xcode beta no encontró
+  runtimes de simulador. Logs: `/tmp/mac_build_ui-analysis-menu-columna-44877.log`
+  y `/tmp/ios_build_ui-analysis-menu-columna-44877.log`.
+- `./scripts/verify_apple_builds.sh`: XcodeGen correcto; macOS e iOS no pudieron
+  iniciar la compilación porque SPM no pudo clonar dependencias desde GitHub.
+  Logs: `/tmp/mac_build_ui-analysis-menu-columna-44877.log` y
+  `/tmp/ios_build_ui-analysis-menu-columna-44877.log`.
+- El build iOS con `xcodebuild` no pudo resolver las dependencias SPM porque el
+  entorno no tiene resolución DNS para GitHub (`XMLCoder`, `ZIPFoundation` y
+  `CoreXLSX`); no se afirma compilación completa.
 - `xcodegen generate` desde `kmp/iosApp`: proyecto Xcode regenerado correctamente e incluye el nuevo test.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorPlannerTests -destination 'platform=macOS' test`: 33 tests, 0 fallos.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -destination 'generic/platform=iOS Simulator' build`: BUILD SUCCEEDED.
@@ -105,6 +133,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Hojas de Nueva columna y editor de rúbricas en macOS: se elimina el
+  desbordamiento horizontal del contenido y del pie de acciones, se mantiene
+  la anchura disponible de la hoja y la matriz deja visible sus controles
+  mediante una anchura interior calculada y desplazamiento indicado.
+- Las hojas Mac de Nueva columna y edición de rúbricas tienen ahora un único
+  propietario de tamaño en cada punto de presentación; se eliminan los frames
+  internos que provocaban que AppKit midiera el contenido con un ancho y lo
+  recortara con otro.
 - Import de situaciones de aprendizaje: "Saberes básicos" y "Metodología" volcaban el
   resto del documento (secuenciación de sesiones, medidas DUA, celdas de tabla sueltas)
   porque el lector aplanaba cada celda de tabla del DOCX en un "párrafo" más dentro de

@@ -47,6 +47,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Evaluación de rúbricas e instrumentos: la rúbrica individual amplía su área
+  de trabajo para mostrar sus cuatro niveles; los selectores numéricos aceptan
+  pulsaciones en toda su superficie y la primera columna de la evaluación masiva
+  deja de invadir los botones del primer criterio.
 - Rúbrica individual del Cuaderno: los niveles se muestran siempre en una única
   fila horizontal con tarjetas rectangulares de ancho estable; la descripción
   queda visible junto al nivel y toda la tarjeta es pulsable para seleccionar.
@@ -97,6 +101,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `xcrun swiftc -frontend -parse` sobre las tres vistas SwiftUI ajustadas:
+  correcto.
+- `./scripts/verify_apple_builds.sh` (2026-08-03): XcodeGen correcto; macOS
+  Native e iOS Simulator compilados correctamente.
 - `xcrun swiftc -frontend -parse` sobre `RubricsStyle.swift` y
   `RubricEvaluationView.swift`: correcto.
 - `./scripts/verify_apple_builds.sh` (2026-08-03): XcodeGen correcto; macOS

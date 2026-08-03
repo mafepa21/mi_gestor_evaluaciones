@@ -30,12 +30,12 @@ struct RubricEvaluationView: View {
                             criteriaPanel(rubric: rubric)
                         }
                         .padding(EvaluationDesign.screenPadding)
-                        .frame(maxWidth: 640)
+                        .frame(maxWidth: 760)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         saveSection(rubric: rubric, score: selectedScore)
-                            .frame(maxWidth: 640)
+                            .frame(maxWidth: 760)
                             .padding(.horizontal, EvaluationDesign.screenPadding)
                             .padding(.bottom, 8)
                     }

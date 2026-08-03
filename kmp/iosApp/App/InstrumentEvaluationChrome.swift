@@ -151,11 +151,12 @@ struct InstrumentEvaluationScaleControl: View {
                         .font(.body.weight(.semibold))
                         .monospacedDigit()
                         .foregroundStyle(isSelected ? contrastingTextColor(for: value.isEmpty ? .secondary : tint) : .primary)
-                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .background(
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(isSelected ? (value.isEmpty ? Color.secondary.opacity(0.14) : tint) : .clear)
                         )
+                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(value.isEmpty ? "Sin respuesta" : "Nivel \(value)")

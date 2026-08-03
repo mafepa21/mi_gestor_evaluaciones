@@ -357,10 +357,10 @@ struct RubricBulkEvaluationSheet: View {
             Text("Estudiante")
                 .font(.system(size: 11, weight: .black, design: .rounded))
                 .foregroundStyle(.secondary)
-                .frame(width: studentWidth, alignment: .leading)
                 .padding(.leading, 16)
                 .padding(.trailing, 16)
                 .padding(.vertical, 8)
+                .frame(width: studentWidth, alignment: .leading)
                 .background(appCardBackground(for: colorScheme).opacity(0.98))
                 .overlay(alignment: .trailing) {
                     Rectangle()
@@ -428,19 +428,17 @@ struct RubricBulkEvaluationSheet: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
             }
-            .frame(width: studentWidth, alignment: .leading)
             .padding(.leading, 16)
             .padding(.trailing, 16)
             .padding(.vertical, 16)
+            .frame(width: studentWidth, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
                     .fill(appCardBackground(for: colorScheme))
-                    .padding(.trailing, -32)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
                     .stroke(isInjured ? EvaluationDesign.danger.opacity(0.08) : EvaluationDesign.border, lineWidth: 1)
-                    .padding(.trailing, -32)
             )
             .overlay(alignment: .trailing) {
                 Rectangle()
@@ -552,6 +550,7 @@ struct RubricBulkEvaluationSheet: View {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .stroke(isSelected ? tint : EvaluationDesign.border, lineWidth: 1)
                         )
+                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(criterion.criterion.description_), \(level.name), nivel \(index + 1)")

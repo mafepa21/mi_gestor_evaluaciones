@@ -47,6 +47,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Rúbrica individual del Cuaderno: los niveles se muestran siempre en una única
+  fila horizontal con tarjetas rectangulares de ancho estable; la descripción
+  queda visible junto al nivel y toda la tarjeta es pulsable para seleccionar.
 - Instrumentos de evaluación del Cuaderno: se incorpora un chrome compartido de
   evaluación con cabeceras, contexto curricular, estado de guardado y acción
   principal preparados para Liquid Glass; el contenido evaluable mantiene
@@ -94,6 +97,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `xcrun swiftc -frontend -parse` sobre `RubricsStyle.swift` y
+  `RubricEvaluationView.swift`: correcto.
+- `./scripts/verify_apple_builds.sh` (2026-08-03): XcodeGen correcto; macOS
+  Native e iOS Simulator compilados correctamente.
 - `xcrun swiftc -frontend -parse` sobre las vistas y el nuevo chrome de evaluación:
   correcto.
 - `xcodegen generate` desde `kmp/iosApp`: correcto; el proyecto registra

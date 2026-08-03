@@ -197,69 +197,90 @@ struct RubricScoreRing: View {
     }
 }
 
-/// Píldora compacta de nivel de rúbrica en la evaluación individual.
-/// Sustituye a `RubricLevelTile` (PR 3 de
-/// `docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`): solo
-/// nombre + puntos en una línea, sin subtítulo de descripción permanente —
-/// la descripción se pide aparte (botón "i"), nunca se muestra sin pedirla.
-/// Seleccionada = fill con el color **del propio nivel**
-/// (`RubricsStyle.levelColor`, por ratio de puntos) en vez de un acento fijo
-/// para todos los niveles como hacía `RubricLevelTile`; el checkmark acompaña
-/// al color para que la selección no dependa solo de la percepción cromática.
+/// Tarjeta horizontal de nivel de rúbrica en la evaluación individual.
+/// El ancho es estable tanto en reposo como seleccionada para que la fila no
+/// salte de línea. La descripción permanece visible junto al nivel y toda la
+/// tarjeta funciona como una única zona de selección.
 struct RubricLevelPill: View {
     let title: String
     let points: Double
     let maxPoints: Double
     let isSelected: Bool
     let onSelect: () -> Void
-    let onShowDescription: () -> Void
-
-    @State private var isHovered = false
+    let description: String?
 
     private var color: Color { RubricsStyle.levelColor(points: points, maxPoints: maxPoints) }
+    private var trimmedDescription: String {
+        description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+    private var pointsBadgeFill: Color {
+        isSelected ? contrastingTextColor(for: color).opacity(0.18) : RubricsStyle.selectionFill
+    }
+    private var descriptionForeground: Color {
+        isSelected ? contrastingTextColor(for: color).opacity(0.9) : .secondary
+    }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Button(action: onSelect) {
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(.caption2.weight(.black))
-                    }
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(width: 18, height: 18)
 
                     Text(title)
                         .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
 
-                    Text("\(Int(points))")
-                        .font(.caption2.weight(.medium))
-                        .monospacedDigit()
-                        .opacity(0.7)
+                    Spacer(minLength: 0)
+
+                    pointsBadge
                 }
-                .foregroundStyle(isSelected ? contrastingTextColor(for: color) : .primary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule()
-                        .fill(isSelected ? color : (isHovered ? RubricsStyle.hover : Color.clear))
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(isSelected ? Color.clear : RubricsStyle.hairlineStrong, lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
 
-            Button(action: onShowDescription) {
-                Image(systemName: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(isSelected ? contrastingTextColor(for: color).opacity(0.7) : Color.secondary.opacity(0.7))
+                descriptionContent
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Descripción de \(title)")
+            .foregroundStyle(isSelected ? contrastingTextColor(for: color) : .primary)
+            .padding(12)
+            .frame(width: 152, alignment: .topLeading)
+            .frame(minHeight: 112, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? color : Color.clear)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        isSelected ? color : RubricsStyle.hairlineStrong,
+                        lineWidth: isSelected ? 1.5 : 1
+                    )
+            }
         }
-        .onHover { hovering in
-            isHovered = hovering
+        .buttonStyle(.plain)
+        .accessibilityLabel("Nivel \(title), \(Int(points)) puntos")
+        .accessibilityHint(trimmedDescription.isEmpty ? "Pulsa para seleccionar este nivel" : trimmedDescription)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private var pointsBadge: some View {
+        Text("\(Int(points))")
+            .font(.caption.weight(.bold))
+            .monospacedDigit()
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(pointsBadgeFill)
+            )
+    }
+
+    @ViewBuilder
+    private var descriptionContent: some View {
+        if !trimmedDescription.isEmpty {
+            Text(trimmedDescription)
+                .font(.caption)
+                .foregroundStyle(descriptionForeground)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

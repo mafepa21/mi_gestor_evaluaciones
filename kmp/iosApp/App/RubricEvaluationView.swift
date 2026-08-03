@@ -3,7 +3,6 @@ import MiGestorKit
 
 struct RubricEvaluationView: View {
     @EnvironmentObject var bridge: KmpBridge
-    @State private var activePopoverLevel: RubricLevel?
 
     private var state: RubricEvaluationUiState {
         bridge.rubricEvaluationState
@@ -88,13 +87,6 @@ struct RubricEvaluationView: View {
                     }
                     .padding()
                 }
-            }
-            .popover(item: $activePopoverLevel, arrowEdge: .bottom) { level in
-                RubricLevelDescriptionPopover(level: level)
-                    .padding(4)
-            }
-            .onDisappear {
-                activePopoverLevel = nil
             }
         }
     }
@@ -203,7 +195,6 @@ struct RubricEvaluationView: View {
                 RubricCriterionRow(
                     item: criterion,
                     selectedLevelId: state.selectedLevels[KotlinLong(value: criterion.criterion.id)]?.int64Value,
-                    activePopoverLevel: $activePopoverLevel,
                     onSelectLevel: { levelId in
                         bridge.rubricEvaluationViewModel.selectLevel(
                             criterionId: criterion.criterion.id,
@@ -225,9 +216,7 @@ struct RubricCriterionRow: View {
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     let item: RubricCriterionWithLevels
     let selectedLevelId: Int64?
-    @Binding var activePopoverLevel: RubricLevel?
     let onSelectLevel: (Int64) -> Void
-    @State private var hoverTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -235,27 +224,16 @@ struct RubricCriterionRow: View {
                 .font(.system(.body, design: .rounded).weight(.semibold))
                 .foregroundStyle(.primary)
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 8) {
                     ForEach(item.levels, id: \.id) { level in
                         levelPill(level)
                     }
                 }
-
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
-                    spacing: 8
-                ) {
-                    ForEach(item.levels, id: \.id) { level in
-                        levelPill(level)
-                    }
-                }
+                .padding(.vertical, 2)
             }
         }
         .animation(uiFeatureFlags.interactionAnimation, value: selectedLevelId)
-        .onDisappear {
-            hoverTask?.cancel()
-        }
     }
 
     private func levelPill(_ level: RubricLevel) -> some View {
@@ -270,38 +248,7 @@ struct RubricCriterionRow: View {
                 AppleInteractionFeedback.play(.selection)
                 onSelectLevel(level.id)
             },
-            onShowDescription: {
-                activePopoverLevel = level
-            }
+            description: level.description_
         )
-        .onHover { isHovering in
-            if isHovering {
-                schedulePopover(for: level)
-            } else {
-                cancelPopover(for: level)
-            }
-        }
-    }
-
-    private func schedulePopover(for level: RubricLevel) {
-        hoverTask?.cancel()
-        hoverTask = Task {
-            do {
-                try await Task.sleep(nanoseconds: 500_000_000)
-                await MainActor.run {
-                    withAnimation(uiFeatureFlags.popoverOpenAnimation) {
-                        activePopoverLevel = level
-                    }
-                }
-            } catch {}
-        }
-    }
-
-    private func cancelPopover(for level: RubricLevel) {
-        hoverTask?.cancel()
-        guard activePopoverLevel?.id == level.id else { return }
-        withAnimation(uiFeatureFlags.popoverCloseAnimation) {
-            activePopoverLevel = nil
-        }
     }
 }

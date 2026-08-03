@@ -1736,8 +1736,11 @@ struct NotebookModuleView: View {
         )
 
         #if os(macOS)
+        // El presentador Mac es el único propietario de la geometría de la
+        // hoja. Mantener aquí un tamaño único evita que AppKit mida el root con
+        // un ancho y recorte después cabecera, catálogo y footer.
         content
-            .frame(minWidth: 820, idealWidth: 900, maxWidth: 1000, minHeight: 640, idealHeight: 780)
+            .frame(minWidth: 1_040, idealWidth: 1_200, maxWidth: 1_440, minHeight: 760, idealHeight: 860)
         #else
         content
             .presentationDetents([.large])

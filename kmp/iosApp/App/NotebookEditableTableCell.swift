@@ -733,7 +733,7 @@ private struct NotebookStatefulEditableTableCell: View {
                     .transition(.opacity)
             }
         }
-        .frame(width: width, height: 44)
+        .frame(width: width, height: 52)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onAppear(perform: loadDrafts)
@@ -802,28 +802,53 @@ private struct NotebookStatefulEditableTableCell: View {
 
     @ViewBuilder
     private var cellStateOverlay: some View {
-        let states = cellStateBadges
-        if !states.isEmpty {
-            VStack {
-                Spacer()
-                HStack(spacing: 4) {
-                    Spacer()
-                    ForEach(states, id: \.id) { state in
-                        Image(systemName: state.systemImage)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(state.tint)
-                            .frame(width: 16, height: 16)
-                            .background(
-                                Circle()
-                                    .fill(NotebookStyle.surface.opacity(0.96))
-                            )
-                            .help(state.label)
-                            .accessibilityLabel(state.label)
+        if stateStripeColor != nil || column.isLocked {
+            ZStack {
+                if let stateStripeColor {
+                    VStack(spacing: 0) {
+                        Spacer()
+                        Rectangle()
+                            .fill(stateStripeColor)
+                            .frame(height: 3)
+                    }
+                }
+
+                if column.isLocked {
+                    HStack(spacing: 0) {
+                        Rectangle()
+                            .fill(NotebookGridStyle.gridLineStrong)
+                            .frame(width: 3)
+                        Spacer(minLength: 0)
                     }
                 }
             }
-            .padding(5)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(stateStripeLabel)
         }
+    }
+
+    private var stateStripeColor: Color? {
+        if column.isLocked { return NotebookGridStyle.gridLineStrong }
+        if isSelected { return NotebookGridStyle.cellSelectionRing }
+        if formulaDisplay?.isError == true { return NotebookGridStyle.stateError }
+        if saveFeedback == .saving { return NotebookGridStyle.statePending }
+        if saveFeedback == .saved { return NotebookStyle.successTint }
+        if hasPendingDraft { return NotebookGridStyle.statePending }
+        if !column.countsTowardAverage { return NotebookGridStyle.gridLineStrong }
+        return nil
+    }
+
+    private var stateStripeLabel: String {
+        if column.isLocked { return "Celda bloqueada" }
+        if isSelected { return "Celda activa" }
+        if formulaDisplay?.isError == true { return "Error en la fórmula" }
+        if saveFeedback == .saving { return "Guardando" }
+        if saveFeedback == .saved { return "Guardado" }
+        if hasPendingDraft { return "Pendiente de guardar" }
+        if !column.countsTowardAverage { return "No cuenta para la media" }
+        return ""
     }
 
     /// Punto discreto de 6pt en la esquina inferior izquierda: única señal del
@@ -853,29 +878,6 @@ private struct NotebookStatefulEditableTableCell: View {
             }
             .padding(6)
         }
-    }
-
-    private var cellStateBadges: [NotebookCellStateBadge] {
-        if column.isLocked {
-            return [NotebookCellStateBadge(id: "locked", systemImage: "lock.fill", label: "Celda bloqueada", tint: .secondary)]
-        }
-
-        var badges: [NotebookCellStateBadge] = []
-        if !column.countsTowardAverage {
-            badges.append(NotebookCellStateBadge(id: "excluded", systemImage: "slash.circle", label: "No cuenta para media", tint: .secondary))
-        }
-
-        // El feedback transitorio de guardado (saving/saved) se muestra aparte,
-        // como un punto discreto (`saveFeedbackDot`), no como badge.
-        if saveFeedback == .idle, hasPendingDraft {
-            badges.append(NotebookCellStateBadge(id: "pending", systemImage: "circle.dotted", label: "Pendiente de guardar", tint: NotebookStyle.warningTint))
-        }
-
-        if formulaDisplay?.isError == true {
-            badges.append(NotebookCellStateBadge(id: "error", systemImage: "exclamationmark.triangle.fill", label: "Error", tint: NotebookStyle.warningTint))
-        }
-
-        return badges
     }
 
     private var hasPendingDraft: Bool {
@@ -923,6 +925,10 @@ private struct NotebookStatefulEditableTableCell: View {
                                 .monospacedDigit()
                                 .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : (gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary)))
                                 .lineLimit(1)
+                            Image(systemName: "arrow.up.and.down")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("Arrastra para ajustar en décimas")
                             Image(systemName: "keyboard")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(.secondary)
@@ -930,6 +936,7 @@ private struct NotebookStatefulEditableTableCell: View {
                         .frame(maxWidth: .infinity, minHeight: 30)
                     }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(numericDragGesture)
                     .popover(isPresented: $isNumericKeyboardPresented, arrowEdge: .bottom) {
                         cellKeyboardPopover
                     }
@@ -1100,19 +1107,28 @@ private struct NotebookStatefulEditableTableCell: View {
 
     #if os(macOS)
     private var numericMacField: some View {
-        TextField("", text: $numericDraft)
-            .textFieldStyle(.plain)
-            .multilineTextAlignment(.trailing)
-            .font(NotebookGridStyle.cellFont)
-            .foregroundStyle(gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
-            .focused(focusedCellId, equals: cellId)
-            .onSubmit { saveNumericAndNavigate(navigationDirection) }
-            .onKeyPress(.upArrow) { saveNumericAndNavigate(.up); return .handled }
-            .onKeyPress(.downArrow) { saveNumericAndNavigate(.down); return .handled }
-            .onKeyPress(keys: [.tab]) { press in
-                saveNumericAndNavigate(press.modifiers.contains(.shift) ? .left : .right)
-                return .handled
-            }
+        HStack(spacing: 6) {
+            TextField("", text: $numericDraft)
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
+                .font(NotebookGridStyle.cellFont)
+                .foregroundStyle(gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
+                .focused(focusedCellId, equals: cellId)
+                .onSubmit { saveNumericAndNavigate(navigationDirection) }
+                .onKeyPress(.upArrow) { saveNumericAndNavigate(.up); return .handled }
+                .onKeyPress(.downArrow) { saveNumericAndNavigate(.down); return .handled }
+                .onKeyPress(keys: [.tab]) { press in
+                    saveNumericAndNavigate(press.modifiers.contains(.shift) ? .left : .right)
+                    return .handled
+                }
+                .simultaneousGesture(numericDragGesture)
+
+            Image(systemName: "arrow.up.and.down")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+                .help("Arrastra para ajustar en décimas")
+                .accessibilityLabel("Arrastra para ajustar en décimas")
+        }
     }
     #endif
 
@@ -1919,7 +1935,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
 
             cellStateOverlay
         }
-        .frame(width: width, height: 44)
+        .frame(width: width, height: 52)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
     }
@@ -1955,43 +1971,47 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
 
     @ViewBuilder
     private var cellStateOverlay: some View {
-        let states = cellStateBadges
-        if !states.isEmpty {
-            VStack {
-                Spacer()
-                HStack(spacing: 4) {
-                    Spacer()
-                    ForEach(states, id: \.id) { state in
-                        Image(systemName: state.systemImage)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(state.tint)
-                            .frame(width: 16, height: 16)
-                            .background(
-                                Circle()
-                                    .fill(NotebookStyle.surface.opacity(0.96))
-                            )
-                            .help(state.label)
-                            .accessibilityLabel(state.label)
+        if stateStripeColor != nil || column.isLocked {
+            ZStack {
+                if let stateStripeColor {
+                    VStack(spacing: 0) {
+                        Spacer()
+                        Rectangle()
+                            .fill(stateStripeColor)
+                            .frame(height: 3)
+                    }
+                }
+
+                if column.isLocked {
+                    HStack(spacing: 0) {
+                        Rectangle()
+                            .fill(NotebookGridStyle.gridLineStrong)
+                            .frame(width: 3)
+                        Spacer(minLength: 0)
                     }
                 }
             }
-            .padding(5)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(stateStripeLabel)
         }
     }
 
-    private var cellStateBadges: [NotebookCellStateBadge] {
-        if column.isLocked {
-            return [NotebookCellStateBadge(id: "locked", systemImage: "lock.fill", label: "Celda bloqueada", tint: .secondary)]
-        }
+    private var stateStripeColor: Color? {
+        if column.isLocked { return NotebookGridStyle.gridLineStrong }
+        if isSelected { return NotebookGridStyle.cellSelectionRing }
+        if formulaDisplay?.isError == true { return NotebookGridStyle.stateError }
+        if !column.countsTowardAverage { return NotebookGridStyle.gridLineStrong }
+        return nil
+    }
 
-        var badges: [NotebookCellStateBadge] = []
-        if !column.countsTowardAverage {
-            badges.append(NotebookCellStateBadge(id: "excluded", systemImage: "slash.circle", label: "No cuenta para media", tint: .secondary))
-        }
-        if formulaDisplay?.isError == true {
-            badges.append(NotebookCellStateBadge(id: "error", systemImage: "exclamationmark.triangle.fill", label: "Error", tint: NotebookStyle.warningTint))
-        }
-        return badges
+    private var stateStripeLabel: String {
+        if column.isLocked { return "Celda bloqueada" }
+        if isSelected { return "Celda activa" }
+        if formulaDisplay?.isError == true { return "Error en la fórmula" }
+        if !column.countsTowardAverage { return "No cuenta para la media" }
+        return ""
     }
 
     private func hasContextualSignal(in cell: PersistedNotebookCell) -> Bool {
@@ -2031,11 +2051,4 @@ private extension NotebookColumnDefinition {
             dateEpochMs: String(describing: dateEpochMs)
         )
     }
-}
-
-private struct NotebookCellStateBadge: Identifiable {
-    let id: String
-    let systemImage: String
-    let label: String
-    let tint: Color
 }

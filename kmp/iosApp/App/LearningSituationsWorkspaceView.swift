@@ -1842,7 +1842,7 @@ private struct LearningSituationEvaluationSheet: View {
                 })
                 .environmentObject(bridge)
 #if os(macOS)
-                .frame(minWidth: 1200, minHeight: 820)
+                .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
 #else
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .presentationDetents([.large])

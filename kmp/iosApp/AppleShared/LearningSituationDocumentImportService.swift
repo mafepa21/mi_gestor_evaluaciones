@@ -21,6 +21,11 @@ struct LearningSituationImportDraft: Identifiable, Codable {
     var inclusionMeasures: [String]
     var evaluationItems: [LearningSituationEvaluationDraft]
     var warnings: [String]
+    /// Tablas del DOCX original que no encajan en ningún campo estructurado (p.ej. la
+    /// secuenciación de sesiones "Sesión | Contenido | Criterio" o una tabla de adaptaciones
+    /// "Barrera | Adaptación"). Se conservan como tabla para no aplanarlas en líneas sueltas.
+    /// Opcional para poder decodificar situaciones guardadas antes de que existiera este campo.
+    var documentTables: [LearningSituationTableDraft]?
     var selectedClassIds: Set<Int64> = []
     let sourceURL: URL
     let sourceFileName: String
@@ -45,6 +50,7 @@ struct LearningSituationImportDraft: Identifiable, Codable {
         inclusionMeasures: [String],
         evaluationItems: [LearningSituationEvaluationDraft],
         warnings: [String],
+        documentTables: [LearningSituationTableDraft] = [],
         sourceURL: URL,
         sourceFileName: String,
         sha256: String,
@@ -68,6 +74,7 @@ struct LearningSituationImportDraft: Identifiable, Codable {
         self.inclusionMeasures = inclusionMeasures
         self.evaluationItems = evaluationItems
         self.warnings = warnings
+        self.documentTables = documentTables
         self.sourceURL = sourceURL
         self.sourceFileName = sourceFileName
         self.sha256 = sha256
@@ -78,6 +85,21 @@ struct LearningSituationImportDraft: Identifiable, Codable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         return (try? encoder.encode(self)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+    }
+}
+
+/// Tabla del documento fuente que se conserva tal cual (cabecera + filas) en vez de aplanarla.
+struct LearningSituationTableDraft: Identifiable, Codable {
+    let id: UUID
+    var title: String
+    var header: [String]
+    var rows: [[String]]
+
+    init(title: String, header: [String], rows: [[String]]) {
+        self.id = UUID()
+        self.title = title
+        self.header = header
+        self.rows = rows
     }
 }
 
@@ -229,16 +251,55 @@ struct LearningSituationDocumentImportService {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf: url)
-        let paragraphs = try readParagraphs(from: data).filter { !$0.isEmpty }
+        // El lector distingue título real de Word (Heading 1/2/3) de párrafo normal y de tabla,
+        // en vez de aplanar todo el documento a una única lista de "párrafos" (como hacía el
+        // parser SAX anterior, que también convertía cada celda de tabla en un párrafo suelto y
+        // volcaba el resto del documento dentro de la sección anterior cuando esta no encontraba
+        // el sinónimo exacto de encabezado que esperaba).
+        let blocks = try readStyledBlocks(from: data)
+        let paragraphs: [String] = blocks.compactMap {
+            switch $0 {
+            case .heading(let text), .paragraph(let text): return text
+            case .table: return nil
+            }
+        }.filter { !$0.isEmpty }
         guard !paragraphs.isEmpty else { throw LearningSituationImportError.missingDocumentBody }
+        // Texto normalizado de los párrafos que SÍ son un título real de Word: permite a
+        // `sectionText` parar en el siguiente encabezado del documento aunque no use ninguno de
+        // los sinónimos concretos que se le pasan como `untilHeadings`.
+        let headingTexts: Set<String> = Set(blocks.compactMap {
+            if case .heading(let text) = $0 { return normalized(text) } else { return nil }
+        })
         // C1/C3: algunas SA (p.ej. SA 3, SA 5) ponen la ficha técnica y los criterios de
         // evaluación en tablas ("Campo | Dato", "Criterio | Enunciado oficial | Rol en la SA")
-        // en vez de párrafos "Etiqueta: valor". `readParagraphs` ya aplana el texto de las
-        // celdas dentro de `paragraphs` (sin colon, así que `metadataValue`/`criterionDrafts`
-        // no los reconocían); se leen también como bloques para poder emparejar fila a fila.
-        let tables: [[[String]]] = (try? wordDocumentBlocks(from: data))?.compactMap { block in
-            if case .table(let rows) = block { return rows } else { return nil }
-        } ?? []
+        // en vez de párrafos "Etiqueta: valor"; se emparejan fila a fila en `metadataValueFromTables`
+        // y `criterionDraftsFromTables`.
+        let tables: [[[String]]] = blocks.compactMap {
+            if case .table(let rows) = $0 { return rows } else { return nil }
+        }
+        // Tablas que no son la de criterios (esa ya se muestra estructurada) se conservan como
+        // tabla, con el título del encabezado que las precede, para poder pintarlas como tabla en
+        // vez de aplanarlas en líneas sueltas (p.ej. la secuenciación de sesiones o una tabla de
+        // adaptaciones "Barrera | Adaptación").
+        var documentTables: [LearningSituationTableDraft] = []
+        var lastHeading = ""
+        for block in blocks {
+            switch block {
+            case .heading(let text):
+                lastHeading = text
+            case .table(let rows):
+                guard let header = rows.first, rows.count > 1 else { continue }
+                let normalizedHeader = normalized(header.first ?? "")
+                guard !normalizedHeader.contains("criterio"), !normalizedHeader.contains("criteri") else { continue }
+                documentTables.append(LearningSituationTableDraft(
+                    title: lastHeading.isEmpty ? "Tabla del documento" : lastHeading,
+                    header: header,
+                    rows: Array(rows.dropFirst())
+                ))
+            case .paragraph:
+                continue
+            }
+        }
 
         var title = url.deletingPathExtension().lastPathComponent
         if let found = paragraphs.first(where: {
@@ -326,7 +387,7 @@ struct LearningSituationDocumentImportService {
             finalProduct: finalProduct,
             // C2: "2. Justificación y pregunta guía" (SA 5) no matcheaba con ningún sinónimo — la
             // lista solo tenía la forma inglesa "justification".
-            justification: sectionText(afterHeadings: ["JUSTIFICACIÓN Y RETO", "CLIL justification and driving question", "justification", "Justificación"], untilHeadings: ["Pregunta Motriz", "Driving question", "CLIL 4Cs", "4Cs"], paragraphs: paragraphs).first ?? "",
+            justification: sectionText(afterHeadings: ["JUSTIFICACIÓN Y RETO", "CLIL justification and driving question", "justification", "Justificación"], untilHeadings: ["Pregunta Motriz", "Driving question", "CLIL 4Cs", "4Cs"], paragraphs: paragraphs, headingTexts: headingTexts).first ?? "",
             competencies: paragraphs.filter {
                 let clean = cleanBulletPrefix($0)
                 if clean.hasPrefix("CE.") ||
@@ -340,11 +401,12 @@ struct LearningSituationDocumentImportService {
                 return clean.contains(":") || !criterionCodesInText(clean).isEmpty
             },
             criteria: criteria,
-            knowledge: sectionText(afterHeadings: ["Saberes Básicos Implicados", "Saberes Básicos", "Curricular alignment", "Specific competencies"], untilHeadings: ["METODOLOGÍA", "Methodology"], paragraphs: paragraphs),
-            methodology: sectionText(afterHeadings: ["METODOLOGÍA Y ESTRATEGIAS ACTIVAS", "Methodology and scaffolding", "Methodology"], untilHeadings: ["ATENCIÓN A LA DIVERSIDAD", "Inclusion and UDL", "Inclusion"], paragraphs: paragraphs),
+            knowledge: sectionText(afterHeadings: ["Saberes Básicos Implicados", "Saberes Básicos", "Curricular alignment", "Specific competencies"], untilHeadings: ["METODOLOGÍA", "Methodology"], paragraphs: paragraphs, headingTexts: headingTexts),
+            methodology: sectionText(afterHeadings: ["METODOLOGÍA Y ESTRATEGIAS ACTIVAS", "Fundamentación metodológica", "Methodology and scaffolding", "Methodology"], untilHeadings: ["ATENCIÓN A LA DIVERSIDAD", "Inclusion and UDL", "Inclusion"], paragraphs: paragraphs, headingTexts: headingTexts),
             inclusionMeasures: inclusionMeasures(from: paragraphs),
             evaluationItems: evaluationItems,
             warnings: warnings,
+            documentTables: documentTables,
             sourceURL: url,
             sourceFileName: url.lastPathComponent,
             sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
@@ -375,25 +437,42 @@ struct LearningSituationDocumentImportService {
         return LearningSituationDocumentImportBatch(drafts: drafts, failures: failures)
     }
 
-    private func readParagraphs(from data: Data) throws -> [String] {
+    private func readStyledBlocks(from data: Data) throws -> [ImportBlock] {
         let archive = try Archive(data: data, accessMode: .read, pathEncoding: nil)
         guard let entry = archive["word/document.xml"] else {
             throw LearningSituationImportError.unreadableDocument
         }
         var xmlData = Data()
         _ = try archive.extract(entry) { xmlData.append($0) }
-        let reader = WordParagraphReader()
+        let reader = WordStyledParagraphReader()
         guard reader.parse(data: xmlData) else { throw LearningSituationImportError.unreadableDocument }
-        return reader.paragraphs
+        return reader.blocks
     }
 
     private func cleanBulletPrefix(_ text: String) -> String {
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        while result.hasPrefix("•") || result.hasPrefix("-") || result.hasPrefix("*") || result.hasPrefix("◦") || result.hasPrefix("▪") {
+        while result.hasPrefix("•") || result.hasPrefix("-") || result.hasPrefix("*") || result.hasPrefix("◦") || result.hasPrefix("▪") || result.hasPrefix("#") {
             result.removeFirst()
             result = result.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return result
+    }
+
+    /// Encabezado de sección "genérico": un título real de Word (Heading 1/2/3, detectado por
+    /// `headingTexts` a partir del estilo `w:pStyle` del párrafo) o, como red de seguridad para
+    /// documentos sin estilos de título, una numeración de sección de primer nivel ("5. Producto
+    /// final...") o un símbolo Markdown literal ("#"). Permite a `sectionText` parar en el
+    /// siguiente encabezado del documento aunque no use ninguno de los sinónimos concretos que se
+    /// le pasan como `untilHeadings`: sin este corte, una sección seguía leyendo hasta el final
+    /// del documento y volcaba el resto de secciones (metodología, medidas DUA, tabla de
+    /// secuenciación) dentro del bloque anterior.
+    private func isGenericSectionHeading(_ paragraph: String, headingTexts: Set<String>) -> Bool {
+        let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if headingTexts.contains(normalized(trimmed)) { return true }
+        if trimmed.hasPrefix("#") { return true }
+        if trimmed.range(of: #"^\d+\.\s+[A-ZÁÉÍÓÚÑ¿]"#, options: .regularExpression) != nil { return true }
+        return false
     }
 
     private func metadataValue(forPatterns patterns: [String], in paragraphs: [String]) -> String {
@@ -471,7 +550,7 @@ struct LearningSituationDocumentImportService {
         return ""
     }
 
-    private func sectionText(afterHeadings startHeadings: [String], untilHeadings endHeadings: [String], paragraphs: [String]) -> [String] {
+    private func sectionText(afterHeadings startHeadings: [String], untilHeadings endHeadings: [String], paragraphs: [String], headingTexts: Set<String>) -> [String] {
         var start: Int? = nil
         for heading in startHeadings {
             if let index = paragraphs.firstIndex(where: { normalized($0).contains(normalized(heading)) }) {
@@ -484,15 +563,27 @@ struct LearningSituationDocumentImportService {
         let normalizedEndHeadings = endHeadings.map { normalized($0) }
         return Array(tail.prefix { text in
             let normText = normalized(text)
-            return !normalizedEndHeadings.contains(where: { normText.contains($0) })
-        }).filter { !$0.localizedCaseInsensitiveContains("descriptores operativos") }
+            if normalizedEndHeadings.contains(where: { normText.contains($0) }) { return false }
+            return !isGenericSectionHeading(text, headingTexts: headingTexts)
+        })
+        .map(cleanBulletPrefix)
+        .filter { !$0.isEmpty && !$0.localizedCaseInsensitiveContains("descriptores operativos") }
     }
 
     private func criterionDrafts(from paragraphs: [String]) -> [LearningSituationCriterionDraft] {
         var results: [LearningSituationCriterionDraft] = []
         for (index, paragraph) in paragraphs.enumerated() {
             let cleanPara = cleanBulletPrefix(paragraph)
-            guard cleanPara.localizedCaseInsensitiveContains("criterio") || cleanPara.localizedCaseInsensitiveContains("criterion") else { continue }
+            // C4b: "CE 2.1. ..." (SA Floorball y otras) usa solo la sigla, sin la palabra
+            // "criterio"; se acepta también cuando trae un código de criterio y no es una
+            // ponderación de evaluación (esas siempre llevan "%", como en "CE 2.2 Rúbrica...
+            // - 40%: ...", que ya se recoge en `evaluationItems`).
+            // El código debe abrir el párrafo ("CE 2.1. Participar..."): exigir solo un
+            // decimal en cualquier parte del texto capturaba referencias incidentales como
+            // "apartado 5.1".
+            let hasBareCriterionCode = !cleanPara.contains("%") &&
+                cleanPara.range(of: #"^CE\s*[0-9]+\.[0-9]+"#, options: [.regularExpression, .caseInsensitive]) != nil
+            guard cleanPara.localizedCaseInsensitiveContains("criterio") || cleanPara.localizedCaseInsensitiveContains("criterion") || hasBareCriterionCode else { continue }
             // C3: `criterionDrafts` metía como criterio el propio encabezado de sección
             // ("Criterios de evaluación y evidencias") porque solo miraba si el párrafo
             // contenía la palabra "criterio". Se descarta cuando no hay ni código de criterio
@@ -570,7 +661,7 @@ struct LearningSituationDocumentImportService {
                 || norm.contains("explicaciones en pista")
                 || norm.contains("bilingual glossary")
         }
-        return candidates
+        return candidates.map(cleanBulletPrefix)
     }
 
     private func sessionCount(in text: String) -> Int {
@@ -1640,11 +1731,29 @@ struct LearningSituationSessionSequenceDocumentImportService {
     }
 }
 
-private final class WordParagraphReader: NSObject, XMLParserDelegate {
-    private(set) var paragraphs: [String] = []
+enum ImportBlock {
+    case heading(String)
+    case paragraph(String)
+    case table([[String]])
+}
+
+/// Variante de `WordDocumentTableReader` (ver `LearningSituationAssessmentInstrumentsImportService.swift`)
+/// específica de este importador: además de distinguir párrafo de tabla, marca como `.heading`
+/// cualquier párrafo con estilo de Word "Heading 1/2/3..." (`w:pStyle`), para que `sectionText`
+/// pueda parar en el siguiente título real del documento en vez de depender solo de una lista de
+/// sinónimos de encabezado.
+private final class WordStyledParagraphReader: NSObject, XMLParserDelegate {
+    private(set) var blocks: [ImportBlock] = []
     private var inParagraph = false
+    private var inTable = false
+    private var inRow = false
+    private var inCell = false
     private var inText = false
-    private var buffer = ""
+    private var paragraphBuffer = ""
+    private var cellBuffer = ""
+    private var currentRow: [String] = []
+    private var currentTable: [[String]] = []
+    private var currentParagraphIsHeading = false
 
     func parse(data: Data) -> Bool {
         let parser = XMLParser(data: data)
@@ -1653,26 +1762,77 @@ private final class WordParagraphReader: NSObject, XMLParserDelegate {
     }
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName: String?, attributes attributeDict: [String: String] = [:]) {
-        if elementName == "w:p" || elementName.hasSuffix(":p") {
+        if isElement(elementName, "tbl") {
+            inTable = true
+            currentTable = []
+        } else if inTable && isElement(elementName, "tr") {
+            inRow = true
+            currentRow = []
+        } else if inRow && isElement(elementName, "tc") {
+            inCell = true
+            cellBuffer = ""
+        } else if isElement(elementName, "p") {
             inParagraph = true
-            buffer = ""
-        } else if inParagraph && (elementName == "w:t" || elementName.hasSuffix(":t")) {
+            if !inCell {
+                paragraphBuffer = ""
+                currentParagraphIsHeading = false
+            }
+        } else if inParagraph && !inCell && isElement(elementName, "pStyle") {
+            if let styleId = attributeDict["w:val"], styleId.range(of: "^Heading[1-6]$", options: .regularExpression) != nil {
+                currentParagraphIsHeading = true
+            }
+        } else if inParagraph && isElement(elementName, "t") {
             inText = true
+        } else if inParagraph && isElement(elementName, "tab") {
+            append(" ")
+        } else if inParagraph && isElement(elementName, "br") {
+            append(" ")
         }
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-        if inText { buffer += string }
+        if inText { append(string) }
     }
 
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName: String?) {
-        if elementName == "w:t" || elementName.hasSuffix(":t") {
+        if isElement(elementName, "t") {
             inText = false
-        } else if elementName == "w:p" || elementName.hasSuffix(":p") {
-            let value = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !value.isEmpty { paragraphs.append(value) }
+        } else if isElement(elementName, "p") {
+            if !inCell {
+                let value = clean(paragraphBuffer)
+                if !value.isEmpty {
+                    blocks.append(currentParagraphIsHeading ? .heading(value) : .paragraph(value))
+                }
+            }
             inParagraph = false
+        } else if isElement(elementName, "tc") {
+            currentRow.append(clean(cellBuffer))
+            inCell = false
+        } else if isElement(elementName, "tr") {
+            currentTable.append(currentRow)
+            inRow = false
+        } else if isElement(elementName, "tbl") {
+            let rows = currentTable.filter { row in row.contains { !$0.isEmpty } }
+            if !rows.isEmpty { blocks.append(.table(rows)) }
+            inTable = false
         }
+    }
+
+    private func append(_ string: String) {
+        if inCell {
+            cellBuffer += string
+        } else {
+            paragraphBuffer += string
+        }
+    }
+
+    private func clean(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func isElement(_ elementName: String, _ localName: String) -> Bool {
+        elementName == "w:\(localName)" || elementName.hasSuffix(":\(localName)")
     }
 }
 

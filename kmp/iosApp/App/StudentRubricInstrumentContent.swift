@@ -47,6 +47,7 @@ func studentRubricSections(for items: [StructuredInstrumentEvaluationItem]) -> S
 struct StudentRubricInstrumentContent: View {
     @Binding var model: StructuredInstrumentEvaluationModel
     let sections: StudentRubricSections
+    @State private var expandedLevelKeys: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -94,14 +95,7 @@ struct StudentRubricInstrumentContent: View {
             if levels.isEmpty {
                 // Sin descriptores en la plantilla no hay rúbrica que pintar: se deja el
                 // selector 1-4 de siempre para no perder la respuesta.
-                Picker("Nivel", selection: numberBinding(index: index)) {
-                    Text("—").tag("")
-                    ForEach(["1", "2", "3", "4"], id: \.self) { level in
-                        Text(level).tag(level)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                InstrumentEvaluationScaleControl(selection: numberBinding(index: index))
             } else {
                 VStack(spacing: 6) {
                     ForEach(levels) { level in
@@ -114,35 +108,72 @@ struct StudentRubricInstrumentContent: View {
 
     private func levelRow(_ level: RubricLevelOption, index: Int) -> some View {
         let isSelected = model.items[index].numberValue == level.value
-        return Button {
-            // Volver a tocar el nivel elegido lo deselecciona: sin esto no había forma de
-            // dejar un indicador sin responder tras una pulsación accidental.
-            model.items[index].numberValue = isSelected ? "" : level.value
-        } label: {
+        let levelKey = "\(index)-\(level.id)"
+        let isExpanded = expandedLevelKeys.contains(levelKey)
+
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(isSelected ? NotebookStyle.primaryTint : Color.secondary.opacity(0.35))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(level.label)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(isSelected ? .primary : .secondary)
-                    if !level.descriptor.isEmpty {
-                        Text(level.descriptor)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    // Volver a tocar el nivel elegido lo deselecciona: sin esto no había forma de
+                    // dejar un indicador sin responder tras una pulsación accidental.
+                    model.items[index].numberValue = isSelected ? "" : level.value
+                } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(isSelected ? NotebookStyle.primaryTint : Color.secondary.opacity(0.35))
+
+                        Text(level.label)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(isSelected ? .primary : .secondary)
+                            .multilineTextAlignment(.leading)
+
+                        Spacer(minLength: 8)
+
+                        Text(level.value)
+                            .font(.caption.weight(.bold))
+                            .monospacedDigit()
+                            .foregroundStyle(isSelected ? NotebookStyle.primaryTint : .secondary)
                     }
                 }
-                Spacer(minLength: 0)
+                .buttonStyle(.plain)
+
+                if !level.descriptor.isEmpty {
+                    Button {
+                        if isExpanded {
+                            expandedLevelKeys.remove(levelKey)
+                        } else {
+                            expandedLevelKeys.insert(levelKey)
+                        }
+                    } label: {
+                        Image(systemName: isExpanded ? "info.circle.fill" : "info.circle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(isSelected ? NotebookStyle.primaryTint : .secondary)
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Descripción de \(level.label)")
+                }
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: NotebookStyle.innerRadius, style: .continuous)
-                    .fill(isSelected ? NotebookStyle.primaryTint.opacity(0.12) : NotebookStyle.surfaceMuted)
-            )
+
+            if isExpanded, !level.descriptor.isEmpty {
+                Text(level.descriptor)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 28)
+                    .padding(.top, 8)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: NotebookStyle.innerRadius, style: .continuous)
+                .fill(isSelected ? NotebookStyle.primaryTint.opacity(0.12) : NotebookStyle.surfaceMuted)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: NotebookStyle.innerRadius, style: .continuous)
+                .stroke(isSelected ? NotebookStyle.primaryTint.opacity(0.22) : NotebookStyle.border, lineWidth: 1)
+        }
     }
 
     private var openQuestionsSection: some View {

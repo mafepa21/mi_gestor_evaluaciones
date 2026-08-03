@@ -3,7 +3,6 @@ import MiGestorKit
 
 struct RubricEvaluationView: View {
     @EnvironmentObject var bridge: KmpBridge
-    @State private var activePopoverLevel: RubricLevel?
 
     private var state: RubricEvaluationUiState {
         bridge.rubricEvaluationState
@@ -29,12 +28,17 @@ struct RubricEvaluationView: View {
                                 )
                             }
                             criteriaPanel(rubric: rubric)
-                            saveSection(rubric: rubric, score: selectedScore)
                         }
                         .padding(EvaluationDesign.screenPadding)
-                        .frame(maxWidth: 640)
+                        .frame(maxWidth: 760)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        saveSection(rubric: rubric, score: selectedScore)
+                            .frame(maxWidth: 760)
+                            .padding(.horizontal, EvaluationDesign.screenPadding)
+                            .padding(.bottom, 8)
+                    }
                     .appOnChange(of: state.isSaveSuccessful) { saved in
                         guard saved else { return }
                         guard !bridge.isNotebookRubricAutoAdvanceActive else { return }
@@ -84,44 +88,41 @@ struct RubricEvaluationView: View {
                     .padding()
                 }
             }
-            .popover(item: $activePopoverLevel, arrowEdge: .bottom) { level in
-                RubricLevelDescriptionPopover(level: level)
-                    .padding(4)
-            }
-            .onDisappear {
-                activePopoverLevel = nil
-            }
         }
     }
 
     private func headerSection(rubric: RubricDetail, score: Double, progress: Double) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 16) {
-                Button(action: closeRubric) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
+            InstrumentEvaluationChromeSurface(role: .header) {
+                HStack(alignment: .top, spacing: 16) {
+                    Button(action: closeRubric) {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cerrar")
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(state.studentName)
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.primary)
+
+                        Text(rubric.rubric.name)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 16)
+
+                    RubricScoreRing(progress: progress, scoreOutOfTen: score)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Cerrar")
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(state.studentName)
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.primary)
-
-                    Text(rubric.rubric.name)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 16)
-
-                RubricScoreRing(progress: progress, scoreOutOfTen: score)
             }
 
             let criteriaText = rubricCriteriaSummary(rubric: rubric)
-            AssessmentCriteriaDisclosureView(rawText: criteriaText)
+            InstrumentEvaluationChromeSurface(role: .context, padding: 0) {
+                AssessmentCriteriaDisclosureView(rawText: criteriaText, embedded: true)
+            }
         }
     }
 
@@ -140,7 +141,35 @@ struct RubricEvaluationView: View {
             ? "Guardar · \(IosFormatting.scoreOutOfTen(from: score))"
             : "Guardar · \(answeredCriteria) de \(totalCriteria) criterios"
 
-        return PrimaryActionButton(label: labelText, systemImage: "square.and.arrow.down.fill") {
+        return InstrumentEvaluationChromeSurface(role: .action, padding: 12) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) {
+                    saveStatus(answeredCriteria: answeredCriteria, totalCriteria: totalCriteria, isComplete: isComplete)
+                    Spacer(minLength: 8)
+                    saveButton(label: labelText)
+                        .frame(minWidth: 220, maxWidth: 280)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    saveStatus(answeredCriteria: answeredCriteria, totalCriteria: totalCriteria, isComplete: isComplete)
+                    saveButton(label: labelText)
+                }
+            }
+        }
+    }
+
+    private func saveStatus(answeredCriteria: Int, totalCriteria: Int, isComplete: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(isComplete ? "Rúbrica completa" : "Nota provisional")
+                .font(.subheadline.weight(.semibold))
+            Text("\(answeredCriteria) de \(totalCriteria) criterios")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func saveButton(label: String) -> some View {
+        InstrumentEvaluationPrimaryButton(label: label, systemImage: "square.and.arrow.down.fill") {
             bridge.saveRubricEvaluation(
                 manual: true,
                 emitNotebookRefresh: !bridge.isNotebookRubricAutoAdvanceActive,
@@ -152,7 +181,6 @@ struct RubricEvaluationView: View {
                 }
             )
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func criteriaPanel(rubric: RubricDetail) -> some View {
@@ -167,7 +195,6 @@ struct RubricEvaluationView: View {
                 RubricCriterionRow(
                     item: criterion,
                     selectedLevelId: state.selectedLevels[KotlinLong(value: criterion.criterion.id)]?.int64Value,
-                    activePopoverLevel: $activePopoverLevel,
                     onSelectLevel: { levelId in
                         bridge.rubricEvaluationViewModel.selectLevel(
                             criterionId: criterion.criterion.id,
@@ -189,9 +216,7 @@ struct RubricCriterionRow: View {
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     let item: RubricCriterionWithLevels
     let selectedLevelId: Int64?
-    @Binding var activePopoverLevel: RubricLevel?
     let onSelectLevel: (Int64) -> Void
-    @State private var hoverTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -199,27 +224,16 @@ struct RubricCriterionRow: View {
                 .font(.system(.body, design: .rounded).weight(.semibold))
                 .foregroundStyle(.primary)
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 8) {
                     ForEach(item.levels, id: \.id) { level in
                         levelPill(level)
                     }
                 }
-
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
-                    spacing: 8
-                ) {
-                    ForEach(item.levels, id: \.id) { level in
-                        levelPill(level)
-                    }
-                }
+                .padding(.vertical, 2)
             }
         }
         .animation(uiFeatureFlags.interactionAnimation, value: selectedLevelId)
-        .onDisappear {
-            hoverTask?.cancel()
-        }
     }
 
     private func levelPill(_ level: RubricLevel) -> some View {
@@ -234,38 +248,7 @@ struct RubricCriterionRow: View {
                 AppleInteractionFeedback.play(.selection)
                 onSelectLevel(level.id)
             },
-            onShowDescription: {
-                activePopoverLevel = level
-            }
+            description: level.description_
         )
-        .onHover { isHovering in
-            if isHovering {
-                schedulePopover(for: level)
-            } else {
-                cancelPopover(for: level)
-            }
-        }
-    }
-
-    private func schedulePopover(for level: RubricLevel) {
-        hoverTask?.cancel()
-        hoverTask = Task {
-            do {
-                try await Task.sleep(nanoseconds: 500_000_000)
-                await MainActor.run {
-                    withAnimation(uiFeatureFlags.popoverOpenAnimation) {
-                        activePopoverLevel = level
-                    }
-                }
-            } catch {}
-        }
-    }
-
-    private func cancelPopover(for level: RubricLevel) {
-        hoverTask?.cancel()
-        guard activePopoverLevel?.id == level.id else { return }
-        withAnimation(uiFeatureFlags.popoverCloseAnimation) {
-            activePopoverLevel = nil
-        }
     }
 }

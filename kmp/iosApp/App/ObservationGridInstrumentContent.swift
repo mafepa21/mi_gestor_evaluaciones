@@ -63,17 +63,23 @@ struct ObservationGridInstrumentContent: View {
     // (`StructuredInstrumentEvaluationSheet.formContent`), junto al nombre del alumno. Repetirlo
     // aquí lo mostraba dos veces seguidas en la misma pantalla.
     private var instrumentAverageHeader: some View {
-        HStack {
-            Text("Nota final del instrumento")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(instrumentAverageText)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(NotebookStyle.successTint)
+        InstrumentEvaluationChromeSurface(role: .context) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(instrumentAverageText == "—" ? "Nota provisional" : "Nota del instrumento")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text("Media de las sesiones respondidas")
+                        .font(.caption)
+                        .foregroundStyle(.secondary.opacity(0.8))
+                }
+                Spacer()
+                Text(instrumentAverageText)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(instrumentAverageText == "—" ? .secondary : NotebookStyle.successTint)
+                    .monospacedDigit()
+            }
         }
-        .padding(16)
-        .background(NotebookStyle.surfaceMuted, in: RoundedRectangle(cornerRadius: NotebookStyle.innerRadius, style: .continuous))
     }
 
     private func sessionSection(_ group: ObservationSessionGroup) -> some View {
@@ -122,14 +128,7 @@ struct ObservationGridInstrumentContent: View {
     }
 
     private func scalePicker(index: Int) -> some View {
-        Picker("Nivel", selection: itemNumberBinding(index: index)) {
-            Text("—").tag("")
-            ForEach(["1", "2", "3", "4"], id: \.self) { level in
-                Text(level).tag(level)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        InstrumentEvaluationScaleControl(selection: itemNumberBinding(index: index))
     }
 
     private func itemNumberBinding(index: Int) -> Binding<String> {

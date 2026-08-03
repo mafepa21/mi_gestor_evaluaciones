@@ -147,45 +147,56 @@ struct RubricBulkEvaluationSheet: View {
         state: BulkRubricEvaluationUiState,
         cache: BulkRubricEvaluationCache
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 24) {
-                EvaluationIconButton(systemImage: "chevron.left", tint: .primary.opacity(0.8)) {
-                    bridge.closeBulkRubricEvaluation()
-                    dismiss()
-                }
-
-                EvaluationSectionTitle(
-                    eyebrow: "Pulsar para volver",
-                    title: className,
-                    subtitle: rubric.rubric.name
-                )
-
-                Spacer(minLength: 32)
-
-                HStack(spacing: 16) {
-                    EvaluationChip(
-                        label: "\(cache.totalPendingCriteria) pendientes",
-                        systemImage: "clock.badge.exclamationmark",
-                        tint: cache.totalPendingCriteria == 0 ? EvaluationDesign.success : EvaluationDesign.accent
-                    )
-
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(state.isSaving ? EvaluationDesign.accent : EvaluationDesign.success)
-                            .frame(width: 8, height: 8)
-
-                        Text(state.isSaving ? "Guardando…" : "Guardado")
-                            .font(.footnote.weight(.medium))
+        VStack(alignment: .leading, spacing: 8) {
+            InstrumentEvaluationChromeSurface(role: .header) {
+                HStack(alignment: .center, spacing: 16) {
+                    Button {
+                        bridge.closeBulkRubricEvaluation()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.secondary)
+                            .frame(width: 36, height: 36)
                     }
-                    .padding(.trailing, 8)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Volver")
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(className)
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        Text(rubric.rubric.name)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 16) {
+                        Label(
+                            "\(cache.totalPendingCriteria) pendientes",
+                            systemImage: "clock.badge.exclamationmark"
+                        )
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(cache.totalPendingCriteria == 0 ? EvaluationDesign.success : NotebookStyle.warningTint)
+
+                        InstrumentEvaluationStatus(
+                            text: state.isSaving ? "Guardando…" : "Cambios guardados",
+                            tint: state.isSaving ? EvaluationDesign.accent : EvaluationDesign.success
+                        )
+                    }
                 }
             }
 
             let criteriaText = rubricCriteriaSummary(rubric: rubric)
-            AssessmentCriteriaDisclosureView(rawText: criteriaText)
+            InstrumentEvaluationChromeSurface(role: .context, padding: 0) {
+                AssessmentCriteriaDisclosureView(rawText: criteriaText, embedded: true)
+            }
         }
-        .padding(.bottom, 8)
     }
 
     private func rubricCriteriaSummary(rubric: RubricDetail) -> String {
@@ -202,8 +213,8 @@ struct RubricBulkEvaluationSheet: View {
         NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surface, padding: 16) {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 16) {
-                    EvaluationChip(label: "\(state.students.count) alumnos", systemImage: "person.3.fill")
-                    EvaluationChip(label: "\(rubric.criteria.count) criterios", systemImage: "checklist")
+                    InstrumentEvaluationMetadataItem(label: "\(state.students.count) alumnos", systemImage: "person.3.fill")
+                    InstrumentEvaluationMetadataItem(label: "\(rubric.criteria.count) criterios", systemImage: "checklist")
                 }
 
                 ForEach(rubric.criteria, id: \.criterion.id) { criterion in
@@ -265,21 +276,20 @@ struct RubricBulkEvaluationSheet: View {
         return NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surface, padding: 16) {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 16) {
-                    EvaluationChip(
+                    InstrumentEvaluationMetadataItem(
                         label: "\(state.students.count) alumnos",
                         systemImage: "person.3.fill"
                     )
-                    EvaluationChip(
+                    InstrumentEvaluationMetadataItem(
                         label: "\(rubric.criteria.count) criterios",
                         systemImage: "checklist"
                     )
 
                     if !state.injuredStudents.isEmpty {
-                        EvaluationChip(
+                        InstrumentEvaluationMetadataItem(
                             label: "\(state.injuredStudents.count) lesionados",
                             systemImage: "cross.case.fill",
-                            tint: EvaluationDesign.danger,
-                            isDestructive: true
+                            tint: EvaluationDesign.danger
                         )
                     }
                 }
@@ -347,10 +357,10 @@ struct RubricBulkEvaluationSheet: View {
             Text("Estudiante")
                 .font(.system(size: 11, weight: .black, design: .rounded))
                 .foregroundStyle(.secondary)
-                .frame(width: studentWidth, alignment: .leading)
                 .padding(.leading, 16)
                 .padding(.trailing, 16)
                 .padding(.vertical, 8)
+                .frame(width: studentWidth, alignment: .leading)
                 .background(appCardBackground(for: colorScheme).opacity(0.98))
                 .overlay(alignment: .trailing) {
                     Rectangle()
@@ -418,19 +428,17 @@ struct RubricBulkEvaluationSheet: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
             }
-            .frame(width: studentWidth, alignment: .leading)
             .padding(.leading, 16)
             .padding(.trailing, 16)
             .padding(.vertical, 16)
+            .frame(width: studentWidth, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
                     .fill(appCardBackground(for: colorScheme))
-                    .padding(.trailing, -32)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
                     .stroke(isInjured ? EvaluationDesign.danger.opacity(0.08) : EvaluationDesign.border, lineWidth: 1)
-                    .padding(.trailing, -32)
             )
             .overlay(alignment: .trailing) {
                 Rectangle()
@@ -510,10 +518,10 @@ struct RubricBulkEvaluationSheet: View {
 
         return VStack(spacing: 8) {
             HStack(spacing: 6) {
-                ForEach(criterion.levels, id: \.id) { level in
+                ForEach(Array(criterion.levels.enumerated()), id: \.element.id) { index, level in
                     let isSelected = selectedLevelId == level.id
                     let tint = levelColor(for: level, in: criterion)
-                    
+
                     Button {
                         focusedBulkStudentId = studentId
                         focusedBulkCriterionId = criterion.criterion.id
@@ -523,34 +531,30 @@ struct RubricBulkEvaluationSheet: View {
                             levelId: level.id
                         )
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 3) {
                             if isSelected {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .black))
-                                    .foregroundStyle(.white)
+                                    .font(.system(size: 9, weight: .black))
                             }
-                            
-                            Text(levelButtonTitle(level))
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                                .foregroundStyle(isSelected ? .white : .primary.opacity(0.72))
+                            Text("\(index + 1)")
+                                .font(.body.weight(.semibold))
+                                .monospacedDigit()
                         }
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity)
+                        .foregroundStyle(isSelected ? contrastingTextColor(for: tint) : .primary)
+                        .frame(maxWidth: .infinity, minHeight: 36)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(isSelected ? tint : appMutedCardBackground(for: colorScheme).opacity(0.85))
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(isSelected ? tint : Color.clear)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(isSelected ? tint.opacity(0.3) : EvaluationDesign.border, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(isSelected ? tint : EvaluationDesign.border, lineWidth: 1)
                         )
-                        .scaleEffect(isSelected ? 1.05 : 1.0)
-                        .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isSelected)
+                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(criterion.criterion.description_), \(level.name)")
+                    .accessibilityLabel("\(criterion.criterion.description_), \(level.name), nivel \(index + 1)")
+                    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                     .help(levelHelpText(level))
                     .onHover { isHovering in
                         if isHovering {
@@ -573,7 +577,7 @@ struct RubricBulkEvaluationSheet: View {
 
             if let selectedLevel {
                 Text(selectedLevel.name)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(levelColor(for: selectedLevel, in: criterion))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -594,14 +598,6 @@ struct RubricBulkEvaluationSheet: View {
             RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
                 .stroke(isFocused ? EvaluationDesign.accent.opacity(0.65) : Color.clear, lineWidth: 2)
         )
-    }
-
-    private func levelButtonTitle(_ level: RubricLevel) -> String {
-        let trimmed = level.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count <= 10 {
-            return trimmed
-        }
-        return String(trimmed.prefix(9)) + "…"
     }
 
     private func levelHelpText(_ level: RubricLevel) -> String {

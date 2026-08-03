@@ -47,6 +47,19 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Evaluación de rúbricas e instrumentos: la rúbrica individual amplía su área
+  de trabajo para mostrar sus cuatro niveles; los selectores numéricos aceptan
+  pulsaciones en toda su superficie y la primera columna de la evaluación masiva
+  deja de invadir los botones del primer criterio.
+- Rúbrica individual del Cuaderno: los niveles se muestran siempre en una única
+  fila horizontal con tarjetas rectangulares de ancho estable; la descripción
+  queda visible junto al nivel y toda la tarjeta es pulsable para seleccionar.
+- Instrumentos de evaluación del Cuaderno: se incorpora un chrome compartido de
+  evaluación con cabeceras, contexto curricular, estado de guardado y acción
+  principal preparados para Liquid Glass; el contenido evaluable mantiene
+  superficies sólidas para conservar contraste y rapidez. La rúbrica individual,
+  la evaluación masiva, los instrumentos estructurados, la auto/coevaluación y la
+  rejilla de observación comparten controles de escala y jerarquía visual.
 - Rediseño técnico del Cuaderno en SwiftUI: el alta de columnas usa un catálogo
   visible y peso graduado, las celdas hacen descubribles los gestos y estados
   mediante franjas, y el editor y la evaluación masiva de rúbricas comparten
@@ -78,12 +91,32 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- Auditoría y propuesta de rediseño de los instrumentos de evaluación del Cuaderno:
+  shell común `Evaluation Workspace`, Liquid Glass reservado al chrome y superficies
+  sólidas para el contenido evaluable. Incluye rúbrica individual, evaluación masiva,
+  auto/coevaluación y rejilla de observación.
 - ADR `ADR-2026-08-01-entregas-web-centro-mac.md`: Mac como centro de publicación,
   gestión, reparto e importación, con privacidad explícita para SyncLAN y la
   limitación de revocación del manifiesto público firmado.
 
 ### Verification
 
+- `xcrun swiftc -frontend -parse` sobre las tres vistas SwiftUI ajustadas:
+  correcto.
+- `./scripts/verify_apple_builds.sh` (2026-08-03): XcodeGen correcto; macOS
+  Native e iOS Simulator compilados correctamente.
+- `xcrun swiftc -frontend -parse` sobre `RubricsStyle.swift` y
+  `RubricEvaluationView.swift`: correcto.
+- `./scripts/verify_apple_builds.sh` (2026-08-03): XcodeGen correcto; macOS
+  Native e iOS Simulator compilados correctamente.
+- `xcrun swiftc -frontend -parse` sobre las vistas y el nuevo chrome de evaluación:
+  correcto.
+- `xcodegen generate` desde `kmp/iosApp`: correcto; el proyecto registra
+  `InstrumentEvaluationChrome.swift`.
+- `xcodebuild` del scheme `MiGestorKMPiOS` para iPad Pro 11-inch (M5), iOS
+  Simulator: `BUILD SUCCEEDED`.
+- `xcodebuild` del scheme `MiGestorKMPMac` para macOS: `BUILD SUCCEEDED`.
+- `git diff --check`: correcto.
 - `xcrun swiftc -frontend -parse` sobre las cuatro vistas SwiftUI modificadas:
   correcto.
 - `git diff --check`: correcto.

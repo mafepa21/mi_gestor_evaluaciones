@@ -61,6 +61,7 @@ struct StructuredInstrumentEvaluationSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cerrar", action: onClose)
+                        .instrumentEvaluationGlassButton()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -73,6 +74,7 @@ struct StructuredInstrumentEvaluationSheet: View {
                         }
                     }
                     .disabled(isSaving || model == nil)
+                    .instrumentEvaluationGlassButton(isProminent: true)
                 }
             }
         }
@@ -89,19 +91,21 @@ struct StructuredInstrumentEvaluationSheet: View {
     private func formContent(_ model: Binding<StructuredInstrumentEvaluationModel>) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(request.studentName)
-                        .font(.title2.weight(.bold))
-                    HStack(spacing: 8) {
-                        ProgressView(value: progressFraction(for: model.wrappedValue))
-                            .tint(NotebookStyle.successTint)
-                            .frame(maxWidth: 160)
-                        Text(progressText(for: model.wrappedValue))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                InstrumentEvaluationChromeSurface(role: .header) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(request.studentName)
+                            .font(.title2.weight(.bold))
+                        HStack(spacing: 8) {
+                            ProgressView(value: progressFraction(for: model.wrappedValue))
+                                .tint(NotebookStyle.successTint)
+                                .frame(maxWidth: 160)
+                            Text(progressText(for: model.wrappedValue))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        let criteriaText = structuredCriteriaSummary(model: model.wrappedValue)
+                        AssessmentCriteriaDisclosureView(rawText: criteriaText, embedded: true)
                     }
-                    let criteriaText = structuredCriteriaSummary(model: model.wrappedValue)
-                    AssessmentCriteriaDisclosureView(rawText: criteriaText)
                 }
 
                 if !model.wrappedValue.criterionStatements.isEmpty
@@ -256,13 +260,7 @@ struct StructuredInstrumentItemRow: View {
                         .textFieldStyle(.roundedBorder)
                         .appKeyboardType(.decimalPad)
                 case .scale14:
-                    Picker("Nivel", selection: $item.numberValue) {
-                        Text("Sin nivel").tag("")
-                        ForEach(["1", "2", "3", "4"], id: \.self) { level in
-                            Text(level).tag(level)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                    InstrumentEvaluationScaleControl(selection: $item.numberValue)
                 default:
                     TextField("Respuesta", text: $item.textValue, axis: .vertical)
                         .lineLimit(2...5)

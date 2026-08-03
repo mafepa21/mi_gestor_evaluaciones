@@ -47,6 +47,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Instrumentos de evaluación del Cuaderno: se incorpora un chrome compartido de
+  evaluación con cabeceras, contexto curricular, estado de guardado y acción
+  principal preparados para Liquid Glass; el contenido evaluable mantiene
+  superficies sólidas para conservar contraste y rapidez. La rúbrica individual,
+  la evaluación masiva, los instrumentos estructurados, la auto/coevaluación y la
+  rejilla de observación comparten controles de escala y jerarquía visual.
 - Rediseño técnico del Cuaderno en SwiftUI: el alta de columnas usa un catálogo
   visible y peso graduado, las celdas hacen descubribles los gestos y estados
   mediante franjas, y el editor y la evaluación masiva de rúbricas comparten
@@ -88,6 +94,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `xcrun swiftc -frontend -parse` sobre las vistas y el nuevo chrome de evaluación:
+  correcto.
+- `xcodegen generate` desde `kmp/iosApp`: correcto; el proyecto registra
+  `InstrumentEvaluationChrome.swift`.
+- `xcodebuild` del scheme `MiGestorKMPiOS` para iPad Pro 11-inch (M5), iOS
+  Simulator: `BUILD SUCCEEDED`.
+- `xcodebuild` del scheme `MiGestorKMPMac` para macOS: `BUILD SUCCEEDED`.
+- `git diff --check`: correcto.
 - `xcrun swiftc -frontend -parse` sobre las cuatro vistas SwiftUI modificadas:
   correcto.
 - `git diff --check`: correcto.

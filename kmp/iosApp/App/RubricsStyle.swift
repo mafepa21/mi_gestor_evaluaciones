@@ -204,8 +204,8 @@ struct RubricScoreRing: View {
 /// la descripción se pide aparte (botón "i"), nunca se muestra sin pedirla.
 /// Seleccionada = fill con el color **del propio nivel**
 /// (`RubricsStyle.levelColor`, por ratio de puntos) en vez de un acento fijo
-/// para todos los niveles como hacía `RubricLevelTile`; el color ya es la
-/// señal de selección, sin checkmark adicional.
+/// para todos los niveles como hacía `RubricLevelTile`; el checkmark acompaña
+/// al color para que la selección no dependa solo de la percepción cromática.
 struct RubricLevelPill: View {
     let title: String
     let points: Double
@@ -222,6 +222,11 @@ struct RubricLevelPill: View {
         HStack(spacing: 4) {
             Button(action: onSelect) {
                 HStack(spacing: 6) {
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.caption2.weight(.black))
+                    }
+
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)

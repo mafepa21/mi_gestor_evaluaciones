@@ -2,7 +2,7 @@
 
 Fecha: 2026-08-03
 Rama: `codex/audit-cuaderno-instrumentos-evaluacion`
-Estado: propuesta de diseño, sin implementación
+Estado: especificación implementada en SwiftUI; pendiente de QA visual manual
 
 ## Resumen ejecutivo
 

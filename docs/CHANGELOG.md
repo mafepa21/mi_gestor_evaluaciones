@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
   documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro
   archivo no pueda leerse o guardarse.
@@ -101,6 +102,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./scripts/verify_apple_builds.sh` (2026-08-04): XcodeGen correcto; macOS Native e
+  iOS Simulator compilados correctamente.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorPlannerTests
+  -destination 'platform=macOS' test`: 34 tests, 0 fallos.
+- `git diff --check`: correcto.
+
 - `xcrun swiftc -frontend -parse` sobre las tres vistas SwiftUI ajustadas:
   correcto.
 - `./scripts/verify_apple_builds.sh` (2026-08-03): XcodeGen correcto; macOS
@@ -166,6 +173,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Planificador, vista Secuencia/Gantt: la ventana móvil de 13 semanas deja de estar
+  anclada permanentemente a la semana actual; incorpora navegación explícita a la
+  ventana anterior y siguiente, con etiquetas de semanas visibles y continuidad
+  correcta al cruzar años ISO.
 - Hojas de Nueva columna y editor de rúbricas en macOS: se elimina el
   desbordamiento horizontal del contenido y del pie de acciones, se mantiene
   la anchura disponible de la hoja y la matriz deja visible sus controles

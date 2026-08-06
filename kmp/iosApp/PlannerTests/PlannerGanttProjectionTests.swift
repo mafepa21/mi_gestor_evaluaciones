@@ -90,6 +90,18 @@ final class PlannerGanttProjectionTests: XCTestCase {
         XCTAssertEqual(weeks.count, 13)
     }
 
+    func testRollingWindowCanPageAcrossIsoYearBoundary() {
+        let start = PlannerGanttWeek.range(fromIso: "2026-12-21", toIso: "2027-01-17")!.first!
+        let window = PlannerGanttWeek.range(startingAt: start, count: 13)
+
+        XCTAssertEqual(window.count, 13)
+        XCTAssertEqual(window.first, start)
+        XCTAssertEqual(window.dropFirst().first, start.addingWeeks(1))
+        XCTAssertEqual(start.addingWeeks(13), window.last?.addingWeeks(1))
+        XCTAssertEqual(start.addingWeeks(13)?.year, 2027)
+        XCTAssertEqual(Set(window).count, window.count)
+    }
+
     func testSchedulePreviewRemovesExactDuplicateTeacherSlots() {
         let descriptors = [
             LearningSituationScheduleTemplateDescriptor(dayOfWeek: 5, startTime: "13:15", endTime: "14:10"),

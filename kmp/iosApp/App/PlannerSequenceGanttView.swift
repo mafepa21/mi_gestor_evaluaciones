@@ -11,6 +11,7 @@ struct PlannerSequenceGanttView: View {
     @State private var attentionScope: PlannerGanttAttentionScope = .all
     @State private var expandedSituationIds: Set<String> = []
     @State private var didSelectInitialRange = false
+    @State private var rollingWindowStart: PlannerGanttWeek?
     @AppStorage("plannerGanttHintDismissed") private var ganttHintDismissed = false
 
     private var metrics: PlannerGanttMetrics {
@@ -49,6 +50,11 @@ struct PlannerSequenceGanttView: View {
         .appOnChange(of: attentionScope) { _ in
             reconcileExpandedSituations()
         }
+        .appOnChange(of: selectedRange) { _ in
+            if selectedRange == .rolling {
+                resetRollingWindow()
+            }
+        }
     }
 
     private var header: some View {
@@ -80,6 +86,10 @@ struct PlannerSequenceGanttView: View {
                 }
                 .pickerStyle(.menu)
                 .frame(maxWidth: 176)
+
+                if selectedRange == .rolling {
+                    rollingWindowNavigation
+                }
 
                 if showsInlineGroupFilter {
                     Picker(
@@ -492,7 +502,10 @@ struct PlannerSequenceGanttView: View {
     private var visibleWeeks: [PlannerGanttWeek] {
         switch selectedRange {
         case .rolling:
-            return PlannerGanttWeek.range(around: Date(), before: 6, after: 6)
+            return PlannerGanttWeek.range(
+                startingAt: rollingWindowStart ?? defaultRollingWindowStart,
+                count: 13
+            )
         case .period(let periodId):
             guard let period = vm.evaluationPeriods.first(where: { $0.id == periodId }),
                   let weeks = PlannerGanttWeek.range(fromIso: period.startDateIso, toIso: period.endDateIso),
@@ -505,6 +518,45 @@ struct PlannerSequenceGanttView: View {
 
     private var timelineWidth: CGFloat {
         metrics.weekWidth * CGFloat(max(visibleWeeks.count, 1))
+    }
+
+    private var rollingWindowNavigation: some View {
+        HStack(spacing: 8) {
+            Button {
+                shiftRollingWindow(by: -1)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Ventana anterior de 13 semanas")
+            .help("Mostrar las 13 semanas anteriores")
+
+            Text(rollingWindowLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(minWidth: 92)
+                .accessibilityLabel("Semanas visibles: \(rollingWindowLabel)")
+
+            Button {
+                shiftRollingWindow(by: 1)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Ventana siguiente de 13 semanas")
+            .help("Mostrar las 13 semanas siguientes")
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 36)
+        .background(EvaluationDesign.surfaceSoft, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(Color.secondary.opacity(0.14), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private var currentWeek: PlannerGanttWeek {
@@ -566,6 +618,31 @@ struct PlannerSequenceGanttView: View {
         case .period(let periodId):
             return sortedEvaluationPeriods.first(where: { $0.id == periodId })?.name.uppercased() ?? "PERIODO"
         }
+    }
+
+    private var rollingWindowLabel: String {
+        let weeks = visibleWeeks
+        guard let first = weeks.first, let last = weeks.last else { return "13 semanas" }
+        if first.year == last.year {
+            return "S.\(first.week)–S.\(last.week)"
+        }
+        return "S.\(first.week)/\(first.year)–S.\(last.week)/\(last.year)"
+    }
+
+    private var defaultRollingWindowStart: PlannerGanttWeek {
+        PlannerGanttWeek.range(around: Date(), before: 6, after: 6).first ?? currentWeek
+    }
+
+    private func shiftRollingWindow(by pages: Int) {
+        let start = rollingWindowStart ?? defaultRollingWindowStart
+        guard let shiftedStart = start.addingWeeks(pages * 13) else { return }
+        withAnimation(uiFeatureFlags.interactionAnimation) {
+            rollingWindowStart = shiftedStart
+        }
+    }
+
+    private func resetRollingWindow() {
+        rollingWindowStart = defaultRollingWindowStart
     }
 
     private func situationSummary(_ situation: PlannerGanttSituation) -> String {
@@ -746,6 +823,21 @@ struct PlannerGanttWeek: Hashable {
             calendar.date(byAdding: .weekOfYear, value: offset, to: reference)
                 .map(PlannerGanttWeek.init(date:))
         }
+    }
+
+    static func range(startingAt start: PlannerGanttWeek, count: Int) -> [PlannerGanttWeek] {
+        guard count > 0 else { return [] }
+        return (0..<count).compactMap { offset in
+            start.addingWeeks(offset)
+        }
+    }
+
+    func addingWeeks(_ offset: Int) -> PlannerGanttWeek? {
+        guard let mondayDate,
+              let shiftedDate = Self.isoCalendar.date(byAdding: .weekOfYear, value: offset, to: mondayDate) else {
+            return nil
+        }
+        return PlannerGanttWeek(date: shiftedDate)
     }
 
     static func range(fromIso startIso: String, toIso endIso: String) -> [PlannerGanttWeek]? {

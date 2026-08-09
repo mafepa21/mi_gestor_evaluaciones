@@ -210,9 +210,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
-- `MacStudentsView` separa en una propiedad `[Int64]` la lista de alumnado visible
-  observada por `appOnChange`, evitando que Xcode 26.6 agote el type-checker sin
-  cambiar la selección ni los efectos asociados.
+- `MacStudentsView` separa en helpers tipados la lista de alumnado visible y el manejo
+  del cambio de selección observados por `appOnChange`, evitando que Xcode 26.6 agote
+  el type-checker sin cambiar la selección ni los efectos asociados.
 - Planificador, vista Secuencia/Gantt: la ventana móvil de 13 semanas deja de estar
   anclada permanentemente a la semana actual; incorpora navegación explícita a la
   ventana anterior y siguiente, con etiquetas de semanas visibles y continuidad

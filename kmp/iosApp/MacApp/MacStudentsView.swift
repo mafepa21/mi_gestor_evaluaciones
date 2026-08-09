@@ -166,19 +166,7 @@ struct MacStudentsView: View {
             loadProfileForSelection(newValue)
         }
         .appOnChange(of: selectedStudentId) { _, newValue in
-            guard ownsStudentSideEffects else { return }
-            guard store.didBootstrap else { return }
-            guard let newValue else {
-                store.localSelectedStudentId = nil
-                loadProfileForSelection(nil)
-                return
-            }
-            guard store.rows.contains(where: { $0.id == newValue }) else { return }
-            if store.localSelectedStudentId != newValue {
-                store.localSelectedStudentId = newValue
-            } else {
-                loadProfileForSelection(newValue)
-            }
+            handleSelectedStudentIDChange(newValue)
         }
         .appOnChange(of: filteredRowIDs) { _, visibleIds in
             guard ownsStudentSideEffects else { return }
@@ -347,6 +335,22 @@ struct MacStudentsView: View {
             Button("Aceptar", role: .cancel) {}
         } message: {
             Text(importErrorMessage ?? "")
+        }
+    }
+
+    private func handleSelectedStudentIDChange(_ newValue: Int64?) {
+        guard ownsStudentSideEffects else { return }
+        guard store.didBootstrap else { return }
+        guard let newValue else {
+            store.localSelectedStudentId = nil
+            loadProfileForSelection(nil)
+            return
+        }
+        guard store.rows.contains(where: { $0.id == newValue }) else { return }
+        if store.localSelectedStudentId != newValue {
+            store.localSelectedStudentId = newValue
+        } else {
+            loadProfileForSelection(newValue)
         }
     }
 

@@ -107,6 +107,10 @@ struct MacStudentsView: View {
     }
 
     var body: some View {
+        studentsViewWithPresentations
+    }
+
+    private var studentsLayout: some View {
         Group {
             switch presentation {
             case .full:
@@ -140,61 +144,157 @@ struct MacStudentsView: View {
                     .frame(minWidth: 330, idealWidth: 370, maxWidth: 430, maxHeight: .infinity)
             }
         }
+    }
+
+    private var studentsViewWithLifecycle: some View {
+        studentsLayout
         .background(MacAppStyle.pageBackground)
         .task {
-            guard ownsStudentSideEffects else { return }
-            await bootstrapStudents()
+            await bootstrapStudentsIfNeeded()
         }
         .task(id: reloadToken) {
-            guard ownsStudentSideEffects else { return }
-            guard reloadToken > 0 else { return }
-            await reloadRows()
+            await reloadStudentsIfNeeded()
         }
         .appOnChange(of: selectedClassId) { _, newClassId in
-            guard ownsStudentSideEffects else { return }
-            guard store.didBootstrap else { return }
-            Task {
-                await bridge.selectStudentsClass(classId: newClassId)
-                await reloadRows()
-            }
+            handleSelectedClassIDChange(newClassId)
         }
         .appOnChange(of: store.localSelectedStudentId) { _, newValue in
-            guard ownsStudentSideEffects else { return }
-            if selectedStudentId != newValue {
-                selectedStudentId = newValue
-            }
-            loadProfileForSelection(newValue)
+            handleLocalSelectedStudentIDChange(newValue)
         }
         .appOnChange(of: selectedStudentId) { _, newValue in
             handleSelectedStudentIDChange(newValue)
         }
         .appOnChange(of: filteredRowIDs) { _, visibleIds in
-            guard ownsStudentSideEffects else { return }
-            guard !visibleIds.isEmpty else {
-                store.localSelectedStudentId = nil
-                store.profileLoadTask?.cancel()
-                store.isLoadingProfile = false
-                store.profileLoadingStudentId = nil
-                store.profile = nil
-                store.riskPack = nil
-                store.profileErrorMessage = nil
-                return
-            }
-            if store.localSelectedStudentId == nil || !visibleIds.contains(store.localSelectedStudentId ?? -1) {
-                store.localSelectedStudentId = visibleIds.first
-            }
+            handleFilteredRowIDsChange(visibleIds)
         }
-        .appOnChange(of: studentsBridgeStore.allStudents.map { "\($0.id):\($0.isInjured)" }.joined(separator: "|")) { _, _ in
-            guard ownsStudentSideEffects, store.didBootstrap else { return }
-            Task { await reloadRows(preferredStudentId: store.localSelectedStudentId, showsLoading: false) }
+        .appOnChange(of: studentsInjurySignature) { _, _ in
+            handleStudentsInjuryChange()
         }
         .onExitCommand {
-            guard ownsStudentSideEffects else { return }
-            if !store.searchText.isEmpty {
-                store.searchText = ""
-            }
+            handleExitCommand()
         }
         .background {
+            keyboardShortcuts
+        }
+        .onDisappear {
+            handleStudentsViewDisappear()
+        }
+    }
+
+    private var studentsViewWithPresentations: some View {
+        studentsViewWithLifecycle
+        .sheet(item: studentEditorModeBinding) { mode in
+            studentEditorSheet(mode: mode)
+        }
+        .sheet(isPresented: $showTutoringSheet) {
+            tutoringCreationSheet
+        }
+        .sheet(isPresented: editingTutoringSessionBinding) {
+            tutoringEditingSheet
+        }
+        .alert(
+            "¿Borrar esta tutoría?",
+            isPresented: pendingDeleteTutoringSessionBinding
+        ) {
+            tutoringDeletionActions
+        } message: {
+            Text("El acta de la entrevista se elimina de forma permanente.")
+        }
+        .sheet(isPresented: $showSupportMeasureSheet) {
+            supportMeasureCreationSheet
+        }
+        .sheet(isPresented: editingSupportMeasureBinding) {
+            supportMeasureEditingSheet
+        }
+        .sheet(isPresented: $showBulkImportSheet) {
+            supportMeasureBulkImportSheet
+        }
+        .sheet(isPresented: $showGroupOverviewSheet) {
+            supportMeasureGroupOverviewSheet
+        }
+        .confirmationDialog(
+            "Eliminar medida de apoyo",
+            isPresented: pendingDeleteSupportMeasureBinding,
+            presenting: pendingDeleteSupportMeasure
+        ) { measure in
+            supportMeasureDeletionActions(measure: measure)
+        } message: { _ in
+            Text("Se eliminará este registro por completo. Si solo quieres cerrarla, usa \"Retirar\".")
+        }
+        .fileImporter(
+            isPresented: $showingStudentFileImporter,
+            allowedContentTypes: [.xlsx, .commaSeparatedText],
+            allowsMultipleSelection: false
+        ) { result in
+            handleStudentImportResult(result)
+        }
+        .sheet(item: $studentImportPreview) { preview in
+            studentImportSheet(preview: preview)
+        }
+        .alert("No se pudo importar alumnado", isPresented: importErrorBinding) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(importErrorMessage ?? "")
+        }
+    }
+
+    private var studentsInjurySignature: String {
+        studentsBridgeStore.allStudents
+            .map { "\($0.id):\($0.isInjured)" }
+            .joined(separator: "|")
+    }
+
+    private var presentedStudentID: Int64? {
+        store.localSelectedStudentId ?? selectedRow?.id
+    }
+
+    private var editingTutoringSessionBinding: Binding<Bool> {
+        Binding(
+            get: { editingTutoringSession != nil },
+            set: { (isPresented: Bool) in
+                if !isPresented { editingTutoringSession = nil }
+            }
+        )
+    }
+
+    private var pendingDeleteTutoringSessionBinding: Binding<Bool> {
+        Binding(
+            get: { pendingDeleteTutoringSession != nil },
+            set: { (isPresented: Bool) in
+                if !isPresented { pendingDeleteTutoringSession = nil }
+            }
+        )
+    }
+
+    private var editingSupportMeasureBinding: Binding<Bool> {
+        Binding(
+            get: { editingSupportMeasure != nil },
+            set: { (isPresented: Bool) in
+                if !isPresented { editingSupportMeasure = nil }
+            }
+        )
+    }
+
+    private var pendingDeleteSupportMeasureBinding: Binding<Bool> {
+        Binding(
+            get: { pendingDeleteSupportMeasure != nil },
+            set: { (isPresented: Bool) in
+                if !isPresented { pendingDeleteSupportMeasure = nil }
+            }
+        )
+    }
+
+    private var importErrorBinding: Binding<Bool> {
+        Binding(
+            get: { importErrorMessage != nil },
+            set: { (isPresented: Bool) in
+                if !isPresented { importErrorMessage = nil }
+            }
+        )
+    }
+
+    private var keyboardShortcuts: some View {
+        Group {
             Button("") {
                 isSearchFocused = true
             }
@@ -207,135 +307,129 @@ struct MacStudentsView: View {
             .keyboardShortcut(.return, modifiers: [])
             .opacity(0)
         }
-        .onDisappear {
-            guard ownsStudentSideEffects else { return }
-            store.profileLoadTask?.cancel()
+    }
+
+    @ViewBuilder
+    private func studentEditorSheet(mode: MacStudentEditorMode) -> some View {
+        MacStudentEditorSheet(mode: mode) { draft in
+            Task { await saveStudentDraft(draft, mode: mode) }
         }
-        .sheet(item: studentEditorModeBinding) { mode in
-            MacStudentEditorSheet(mode: mode) { draft in
-                Task { await saveStudentDraft(draft, mode: mode) }
+    }
+
+    @ViewBuilder
+    private var tutoringCreationSheet: some View {
+        if let studentID = presentedStudentID {
+            TutoringSessionFormSheet(studentId: studentID) {
+                loadProfileForSelection(studentID)
             }
-        }
-        .sheet(isPresented: $showTutoringSheet) {
-            if let studentId = store.localSelectedStudentId ?? selectedRow?.id {
-                TutoringSessionFormSheet(studentId: studentId) {
-                    loadProfileForSelection(studentId)
-                }
-                .environmentObject(bridge)
-            }
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { editingTutoringSession != nil },
-                set: { if !$0 { editingTutoringSession = nil } }
-            )
-        ) {
-            if let studentId = store.localSelectedStudentId ?? selectedRow?.id, let editingTutoringSession {
-                TutoringSessionFormSheet(studentId: studentId, existingSession: editingTutoringSession) {
-                    loadProfileForSelection(studentId)
-                }
-                .environmentObject(bridge)
-            }
-        }
-        .alert(
-            "¿Borrar esta tutoría?",
-            isPresented: Binding(
-                get: { pendingDeleteTutoringSession != nil },
-                set: { if !$0 { pendingDeleteTutoringSession = nil } }
-            )
-        ) {
-            Button("Cancelar", role: .cancel) { pendingDeleteTutoringSession = nil }
-            Button("Borrar", role: .destructive) {
-                if let session = pendingDeleteTutoringSession {
-                    Task {
-                        try? await bridge.deleteTutoringSession(id: session.id)
-                        loadProfileForSelection(session.studentId)
-                    }
-                }
-                pendingDeleteTutoringSession = nil
-            }
-        } message: {
-            Text("El acta de la entrevista se elimina de forma permanente.")
-        }
-        .sheet(isPresented: $showSupportMeasureSheet) {
-            if let studentId = store.localSelectedStudentId ?? selectedRow?.id {
-                SupportMeasureFormSheet(studentId: studentId) {
-                    loadProfileForSelection(studentId)
-                }
-                .environmentObject(bridge)
-            }
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { editingSupportMeasure != nil },
-                set: { if !$0 { editingSupportMeasure = nil } }
-            )
-        ) {
-            if let studentId = store.localSelectedStudentId ?? selectedRow?.id, let editingSupportMeasure {
-                SupportMeasureFormSheet(studentId: studentId, existingMeasure: editingSupportMeasure) {
-                    loadProfileForSelection(studentId)
-                }
-                .environmentObject(bridge)
-            }
-        }
-        .sheet(isPresented: $showBulkImportSheet) {
-            if let selectedClassId {
-                SupportMeasureBulkImportSheet(
-                    classId: selectedClassId,
-                    roster: studentsBridgeStore.studentsInClass
-                ) {
-                    loadProfileForSelection(store.localSelectedStudentId ?? selectedRow?.id)
-                }
-                .environmentObject(bridge)
-            }
-        }
-        .sheet(isPresented: $showGroupOverviewSheet) {
-            SupportMeasureGroupOverviewSheet(
-                className: studentsBridgeStore.classes.first(where: { $0.id == selectedClassId })?.name ?? "",
-                roster: studentsBridgeStore.studentsInClass
-            )
             .environmentObject(bridge)
         }
-        .confirmationDialog(
-            "Eliminar medida de apoyo",
-            isPresented: Binding(
-                get: { pendingDeleteSupportMeasure != nil },
-                set: { if !$0 { pendingDeleteSupportMeasure = nil } }
-            ),
-            presenting: pendingDeleteSupportMeasure
-        ) { measure in
-            Button("Eliminar \(measure.level.displayName) · \(measure.measureType.displayName)", role: .destructive) {
-                Task { await deleteSupportMeasure(measure) }
+    }
+
+    @ViewBuilder
+    private var tutoringEditingSheet: some View {
+        if let studentID = presentedStudentID, let editingTutoringSession {
+            TutoringSessionFormSheet(studentId: studentID, existingSession: editingTutoringSession) {
+                loadProfileForSelection(studentID)
             }
-            Button("Cancelar", role: .cancel) {
-                pendingDeleteSupportMeasure = nil
+            .environmentObject(bridge)
+        }
+    }
+
+    @ViewBuilder
+    private var tutoringDeletionActions: some View {
+        Button("Cancelar", role: .cancel) {
+            pendingDeleteTutoringSession = nil
+        }
+        Button("Borrar", role: .destructive) {
+            deletePendingTutoringSession()
+        }
+    }
+
+    @ViewBuilder
+    private var supportMeasureCreationSheet: some View {
+        if let studentID = presentedStudentID {
+            SupportMeasureFormSheet(studentId: studentID) {
+                loadProfileForSelection(studentID)
             }
-        } message: { _ in
-            Text("Se eliminará este registro por completo. Si solo quieres cerrarla, usa \"Retirar\".")
+            .environmentObject(bridge)
         }
-        .fileImporter(
-            isPresented: $showingStudentFileImporter,
-            allowedContentTypes: [.xlsx, .commaSeparatedText],
-            allowsMultipleSelection: false
-        ) { result in
-            Task { await handleStudentImportFile(result) }
+    }
+
+    @ViewBuilder
+    private var supportMeasureEditingSheet: some View {
+        if let studentID = presentedStudentID, let editingSupportMeasure {
+            SupportMeasureFormSheet(studentId: studentID, existingMeasure: editingSupportMeasure) {
+                loadProfileForSelection(studentID)
+            }
+            .environmentObject(bridge)
         }
-        .sheet(item: $studentImportPreview) { preview in
-            StudentImportSheet(preview: preview)
-                .environmentObject(bridge)
-                .frame(minWidth: 720, minHeight: 620)
-                .onDisappear {
-                    Task { await reloadRows() }
-                }
+    }
+
+    @ViewBuilder
+    private var supportMeasureBulkImportSheet: some View {
+        if let selectedClassID = selectedClassId {
+            SupportMeasureBulkImportSheet(
+                classId: selectedClassID,
+                roster: studentsBridgeStore.studentsInClass
+            ) {
+                loadProfileForSelection(presentedStudentID)
+            }
+            .environmentObject(bridge)
         }
-        .alert("No se pudo importar alumnado", isPresented: Binding(
-            get: { importErrorMessage != nil },
-            set: { if !$0 { importErrorMessage = nil } }
-        )) {
-            Button("Aceptar", role: .cancel) {}
-        } message: {
-            Text(importErrorMessage ?? "")
+    }
+
+    private var supportMeasureGroupOverviewSheet: some View {
+        SupportMeasureGroupOverviewSheet(
+            className: studentsBridgeStore.classes.first(where: { $0.id == selectedClassId })?.name ?? "",
+            roster: studentsBridgeStore.studentsInClass
+        )
+        .environmentObject(bridge)
+    }
+
+    @ViewBuilder
+    private func supportMeasureDeletionActions(measure: SupportMeasureRow) -> some View {
+        Button("Eliminar \(measure.level.displayName) · \(measure.measureType.displayName)", role: .destructive) {
+            Task { await deleteSupportMeasure(measure) }
         }
+        Button("Cancelar", role: .cancel) {
+            pendingDeleteSupportMeasure = nil
+        }
+    }
+
+    private func studentImportSheet(preview: AppleStudentImportPreview) -> some View {
+        StudentImportSheet(preview: preview)
+            .environmentObject(bridge)
+            .frame(minWidth: 720, minHeight: 620)
+            .onDisappear {
+                Task { await reloadRows() }
+            }
+    }
+
+    private func bootstrapStudentsIfNeeded() async {
+        guard ownsStudentSideEffects else { return }
+        await bootstrapStudents()
+    }
+
+    private func reloadStudentsIfNeeded() async {
+        guard ownsStudentSideEffects, reloadToken > 0 else { return }
+        await reloadRows()
+    }
+
+    private func handleSelectedClassIDChange(_ newClassID: Int64?) {
+        guard ownsStudentSideEffects, store.didBootstrap else { return }
+        Task {
+            await bridge.selectStudentsClass(classId: newClassID)
+            await reloadRows()
+        }
+    }
+
+    private func handleLocalSelectedStudentIDChange(_ newValue: Int64?) {
+        guard ownsStudentSideEffects else { return }
+        if selectedStudentId != newValue {
+            selectedStudentId = newValue
+        }
+        loadProfileForSelection(newValue)
     }
 
     private func handleSelectedStudentIDChange(_ newValue: Int64?) {
@@ -352,6 +446,56 @@ struct MacStudentsView: View {
         } else {
             loadProfileForSelection(newValue)
         }
+    }
+
+    private func handleFilteredRowIDsChange(_ visibleIDs: [Int64]) {
+        guard ownsStudentSideEffects else { return }
+        guard !visibleIDs.isEmpty else {
+            store.localSelectedStudentId = nil
+            store.profileLoadTask?.cancel()
+            store.isLoadingProfile = false
+            store.profileLoadingStudentId = nil
+            store.profile = nil
+            store.riskPack = nil
+            store.profileErrorMessage = nil
+            return
+        }
+        if store.localSelectedStudentId == nil || !visibleIDs.contains(store.localSelectedStudentId ?? -1) {
+            store.localSelectedStudentId = visibleIDs.first
+        }
+    }
+
+    private func handleStudentsInjuryChange() {
+        guard ownsStudentSideEffects, store.didBootstrap else { return }
+        Task {
+            await reloadRows(preferredStudentId: store.localSelectedStudentId, showsLoading: false)
+        }
+    }
+
+    private func handleExitCommand() {
+        guard ownsStudentSideEffects else { return }
+        if !store.searchText.isEmpty {
+            store.searchText = ""
+        }
+    }
+
+    private func handleStudentsViewDisappear() {
+        guard ownsStudentSideEffects else { return }
+        store.profileLoadTask?.cancel()
+    }
+
+    private func deletePendingTutoringSession() {
+        if let session = pendingDeleteTutoringSession {
+            Task {
+                try? await bridge.deleteTutoringSession(id: session.id)
+                loadProfileForSelection(session.studentId)
+            }
+        }
+        pendingDeleteTutoringSession = nil
+    }
+
+    private func handleStudentImportResult(_ result: Result<[URL], Error>) {
+        Task { await handleStudentImportFile(result) }
     }
 
     private var studentEditorModeBinding: Binding<MacStudentEditorMode?> {

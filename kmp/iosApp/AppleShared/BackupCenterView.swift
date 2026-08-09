@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct BackupCenterView: View {
     @StateObject private var service = AppleBackupService.shared
@@ -140,6 +141,9 @@ struct BackupActionsBar: View {
     @ObservedObject var service: AppleBackupService
     @State private var showCreateSheet = false
     @State private var backupNote = ""
+    @State private var showImportPicker = false
+    @State private var importSelection: ApplePortableBackupImportSelection?
+    @State private var importError: String?
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -156,6 +160,17 @@ struct BackupActionsBar: View {
                     showCreateSheet = true
                 }
                 .disabled(service.operationState == .creating)
+
+                BackupActionChip(
+                    label: service.operationState == .importing ? "Importando…" : "Importar copia",
+                    systemImage: "square.and.arrow.down",
+                    tint: IOSAppStyle.info,
+                    style: .secondary,
+                    isLoading: service.operationState == .importing
+                ) {
+                    showImportPicker = true
+                }
+                .disabled(service.operationState == .importing)
 
                 // Verificar todo
                 BackupActionChip(
@@ -191,6 +206,37 @@ struct BackupActionsBar: View {
                     _ = try? await service.createBackup(note: finalNote.isEmpty ? nil : finalNote)
                 }
             }
+        }
+        .sheet(item: $importSelection) { selection in
+            PortableBackupImportSheet(selection: selection) { url, password in
+                _ = try await service.importPortableBackup(from: url, password: password)
+            }
+        }
+        .fileImporter(
+            isPresented: $showImportPicker,
+            allowedContentTypes: [.miGestorEncryptedBackup, .miGestorLegacyBackup, .folder],
+            allowsMultipleSelection: false
+        ) { result in
+            do {
+                guard let url = try result.get().first else { return }
+                let hasSecurityScope = url.startAccessingSecurityScopedResource()
+                defer { if hasSecurityScope { url.stopAccessingSecurityScopedResource() } }
+                let format = try ApplePortableBackupFormat.detect(at: url)
+                importSelection = ApplePortableBackupImportSelection(url: url, format: format)
+            } catch {
+                importError = error.localizedDescription
+            }
+        }
+        .alert(
+            "No se pudo abrir la copia",
+            isPresented: Binding(
+                get: { importError != nil },
+                set: { if !$0 { importError = nil } }
+            )
+        ) {
+            Button("Aceptar", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "Error desconocido")
         }
     }
 }

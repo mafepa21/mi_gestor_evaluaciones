@@ -92,10 +92,11 @@ Prioridad: media-alta.
   Avance: verify/restore Apple exige checksums coherentes e integridad SQLite real,
   integra WAL en una instantánea temporal y aplica base, evidencias y situaciones
   con staging y rollback de filesystem.
-  Pendiente: diseñar exportaciones cifradas y autenticadas con gestión segura de
-  claves/contraseña, compatibilidad explícita con `.migestorbackup` y recuperación;
-  las exportaciones actuales siguen sin cifrar y deben almacenarse/transportarse por
-  un canal seguro.
+  Avance: las exportaciones Apple portables usan `.migestorbackupx`, derivan una
+  clave desde contraseña con PBKDF2-HMAC-SHA256 y cifran por bloques autenticados
+  AES-256-GCM sin cargar la copia completa en memoria; la importación mantiene
+  compatibilidad de lectura con `.migestorbackup` y valida el paquete antes de
+  incorporarlo al historial. La contraseña no se almacena y no es recuperable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
   Avance: el pairing SyncLAN conserva HTTPS, pinning y token, y añade PIN de un solo
   uso con caducidad, limitación temporal por origen, logs sin secretos y límites de

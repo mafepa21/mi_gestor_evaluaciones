@@ -453,6 +453,153 @@ public final class AppleBackupService: ObservableObject {
         }
     }
 
+    /// Exporta una copia portable cifrada. El ZIP intermedio y la salida parcial viven en
+    /// staging y se eliminan incluso si la operación falla; nunca se carga el paquete entero
+    /// en memoria.
+    public func exportEncryptedBackup(
+        _ descriptor: AppleBackupDescriptor,
+        to destinationURL: URL,
+        password: String
+    ) async throws {
+        operationState = .exporting
+        defer { operationState = .idle }
+
+        let temporaryRoot = fileManager.temporaryDirectory
+            .appendingPathComponent("migestor-encrypted-export-\(UUID().uuidString)", isDirectory: true)
+        let archiveURL = temporaryRoot.appendingPathComponent("backup.zip")
+        let stagedDestination = destinationURL.deletingLastPathComponent()
+            .appendingPathComponent(".\(UUID().uuidString).migestorbackupx")
+        defer {
+            if fileManager.fileExists(atPath: temporaryRoot.path) { try? fileManager.removeItem(at: temporaryRoot) }
+            if fileManager.fileExists(atPath: stagedDestination.path) { try? fileManager.removeItem(at: stagedDestination) }
+        }
+
+        do {
+            let verified = await verifyBackup(descriptor)
+            guard verified.isRestorable else {
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 400,
+                    userInfo: [NSLocalizedDescriptionKey: "No se puede exportar una copia que no supera la validación de integridad."]
+                )
+            }
+            operationState = .exporting
+            try fileManager.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+            try await Task.detached(priority: .userInitiated) {
+                try AppleBackupPackageArchive.createArchive(packageURL: descriptor.url, archiveURL: archiveURL)
+                try AppleEncryptedBackupContainer.encrypt(
+                    plaintextURL: archiveURL,
+                    destinationURL: stagedDestination,
+                    password: password
+                )
+            }.value
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                _ = try fileManager.replaceItemAt(destinationURL, withItemAt: stagedDestination)
+            } else {
+                try fileManager.moveItem(at: stagedDestination, to: destinationURL)
+            }
+        } catch {
+            self.lastError = "Error exportando copia cifrada: \(error.localizedDescription)"
+            throw error
+        }
+    }
+
+    /// Incorpora al historial una copia externa. Las copias antiguas en directorio siguen
+    /// siendo legibles; las nuevas se descifran y descomprimen en staging antes de pasar por
+    /// checksum, cabecera SQLite, integrity_check y foreign_key_check.
+    public func importPortableBackup(from sourceURL: URL, password: String?) async throws -> AppleBackupDescriptor {
+        operationState = .importing
+        defer { operationState = .idle }
+
+        let importID = UUID().uuidString
+        let temporaryRoot = fileManager.temporaryDirectory
+            .appendingPathComponent("migestor-encrypted-import-\(importID)", isDirectory: true)
+        let decryptedArchiveURL = temporaryRoot.appendingPathComponent("backup.zip")
+        let legacyArchiveURL = temporaryRoot.appendingPathComponent("legacy.zip")
+        let stagedPackageURL = backupsDirectoryURL
+            .appendingPathComponent(".import-\(importID).migestorbackup", isDirectory: true)
+        var finalPackageURL: URL?
+        defer {
+            if fileManager.fileExists(atPath: temporaryRoot.path) { try? fileManager.removeItem(at: temporaryRoot) }
+            if fileManager.fileExists(atPath: stagedPackageURL.path) { try? fileManager.removeItem(at: stagedPackageURL) }
+        }
+
+        do {
+            try ensureDirectoriesExist()
+            let format = try ApplePortableBackupFormat.detect(at: sourceURL)
+            try fileManager.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+            switch format {
+            case .legacyPackage:
+                try await Task.detached(priority: .userInitiated) {
+                    try AppleBackupPackageArchive.createArchive(packageURL: sourceURL, archiveURL: legacyArchiveURL)
+                    try AppleBackupPackageArchive.extractArchive(
+                        archiveURL: legacyArchiveURL,
+                        destinationURL: stagedPackageURL
+                    )
+                }.value
+            case .encryptedV1:
+                guard let password else { throw AppleEncryptedBackupError.passwordRequired }
+                try await Task.detached(priority: .userInitiated) {
+                    try AppleEncryptedBackupContainer.decrypt(
+                        encryptedURL: sourceURL,
+                        destinationURL: decryptedArchiveURL,
+                        password: password
+                    )
+                    try AppleBackupPackageArchive.extractArchive(
+                        archiveURL: decryptedArchiveURL,
+                        destinationURL: stagedPackageURL
+                    )
+                }.value
+            }
+
+            let stagedDescriptor = try loadBackupDescriptor(at: stagedPackageURL)
+            let verified = await verifyBackup(stagedDescriptor)
+            operationState = .importing
+            guard verified.isRestorable else {
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 400,
+                    userInfo: [NSLocalizedDescriptionKey: "La copia importada no supera la validación: \(verified.verificationError ?? "error desconocido")."]
+                )
+            }
+
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyyMMdd_HHmmss"
+            let timestamp = formatter.string(from: stagedDescriptor.manifest.createdAt)
+            let finalURL = backupsDirectoryURL.appendingPathComponent(
+                "imported_\(timestamp)_\(String(importID.prefix(6))).migestorbackup",
+                isDirectory: true
+            )
+            try fileManager.moveItem(at: stagedPackageURL, to: finalURL)
+            finalPackageURL = finalURL
+            await scanBackups()
+            guard let imported = backups.first(where: { $0.url == finalURL }) else {
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 500,
+                    userInfo: [NSLocalizedDescriptionKey: "La copia se validó pero no pudo añadirse al historial."]
+                )
+            }
+            let verifiedImport = await verifyBackup(imported)
+            operationState = .importing
+            guard verifiedImport.isRestorable else {
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 500,
+                    userInfo: [NSLocalizedDescriptionKey: "La copia se importó pero no conservó su validación de integridad."]
+                )
+            }
+            return verifiedImport
+        } catch {
+            if let finalPackageURL, fileManager.fileExists(atPath: finalPackageURL.path) {
+                try? fileManager.removeItem(at: finalPackageURL)
+                await scanBackups()
+            }
+            self.lastError = "Error importando copia: \(error.localizedDescription)"
+            throw error
+        }
+    }
+
     public func getCurrentDatabaseSummary() -> AppleBackupSummary {
         let classCount = countRows(in: databaseURL.path, table: "classes")
         let studentCount = countRows(in: databaseURL.path, table: "students")

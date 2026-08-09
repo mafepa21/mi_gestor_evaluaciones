@@ -10,7 +10,6 @@ struct BackupHistoryList: View {
     @State private var searchText = ""
     @State private var selectedBackupForRestore: AppleBackupDescriptor?
     @State private var backupToExport: AppleBackupDescriptor?
-    @State private var showingShareSheet = false
     @State private var backupToDelete: AppleBackupDescriptor?
     @State private var showingDeleteAlert = false
     
@@ -72,16 +71,10 @@ struct BackupHistoryList: View {
         .sheet(item: $selectedBackupForRestore) { backup in
             BackupRestorePreviewSheet(service: service, backup: backup)
         }
-        .sheet(isPresented: $showingShareSheet) {
-            #if os(iOS)
-            if let exportUrl = backupToExport?.url {
-                ShareSheet(activityItems: [exportUrl])
-            } else {
-                EmptyView()
+        .sheet(item: $backupToExport) { backup in
+            EncryptedBackupExportSheet(backup: backup) { destinationURL, password in
+                try await service.exportEncryptedBackup(backup, to: destinationURL, password: password)
             }
-            #else
-            EmptyView()
-            #endif
         }
         .alert(isPresented: $showingDeleteAlert) {
             Alert(
@@ -100,20 +93,7 @@ struct BackupHistoryList: View {
     }
     
     private func triggerExport(_ backup: AppleBackupDescriptor) {
-        #if os(iOS)
         self.backupToExport = backup
-        self.showingShareSheet = true
-        #else
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.directory]
-        panel.nameFieldStringValue = backup.url.lastPathComponent
-        panel.canCreateDirectories = true
-        if panel.runModal() == .OK, let targetURL = panel.url {
-            Task {
-                try? await service.exportBackup(backup, to: targetURL)
-            }
-        }
-        #endif
     }
 }
 

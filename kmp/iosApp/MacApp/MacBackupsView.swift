@@ -3,6 +3,9 @@ import AppKit
 
 struct MacBackupsView: View {
     @ObservedObject var store: MacBackupStore
+    @State private var showImportPicker = false
+    @State private var importSelection: ApplePortableBackupImportSelection?
+    @State private var importError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
@@ -17,6 +20,11 @@ struct MacBackupsView: View {
                     handler: { Task { await store.createBackup() } }
                 ),
                 secondaryActions: [
+                    MacPremiumHeaderAction(
+                        title: "Importar copia",
+                        systemImage: "square.and.arrow.down",
+                        handler: { showImportPicker = true }
+                    ),
                     MacPremiumHeaderAction(
                         title: "Ver carpeta",
                         systemImage: "folder",
@@ -34,6 +42,43 @@ struct MacBackupsView: View {
         .padding(MacAppStyle.pagePadding)
         .task {
             await store.loadBackups()
+        }
+        .sheet(item: $importSelection) { selection in
+            PortableBackupImportSheet(
+                selection: selection,
+                onImport: { url, password in
+                    try await store.importPortableBackup(from: url, password: password)
+                },
+                onFinished: { await store.loadBackups() }
+            )
+        }
+        .fileImporter(
+            isPresented: $showImportPicker,
+            allowedContentTypes: [.miGestorEncryptedBackup, .miGestorLegacyBackup, .folder],
+            allowsMultipleSelection: false
+        ) { result in
+            do {
+                guard let url = try result.get().first else { return }
+                let hasSecurityScope = url.startAccessingSecurityScopedResource()
+                defer { if hasSecurityScope { url.stopAccessingSecurityScopedResource() } }
+                importSelection = ApplePortableBackupImportSelection(
+                    url: url,
+                    format: try ApplePortableBackupFormat.detect(at: url)
+                )
+            } catch {
+                importError = error.localizedDescription
+            }
+        }
+        .alert(
+            "No se pudo abrir la copia",
+            isPresented: Binding(
+                get: { importError != nil },
+                set: { if !$0 { importError = nil } }
+            )
+        ) {
+            Button("Aceptar", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "Error desconocido")
         }
     }
 

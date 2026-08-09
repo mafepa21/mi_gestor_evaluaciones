@@ -35,6 +35,7 @@ import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import java.io.File
+import java.io.InputStream
 import java.math.BigInteger
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -59,6 +60,121 @@ import javax.jmdns.ServiceInfo
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
+
+private const val HANDSHAKE_BODY_LIMIT_BYTES = 16 * 1024
+private const val SYNC_BODY_LIMIT_BYTES = 2 * 1024 * 1024
+private const val DOCUMENT_BODY_LIMIT_BYTES = 25 * 1024 * 1024
+private const val PAIRING_PIN_TTL_MS = 10 * 60 * 1000L
+
+internal class RequestBodyTooLargeException : IllegalArgumentException("request_body_too_large")
+
+internal fun InputStream.readBytesLimited(maxBytes: Int): ByteArray {
+    require(maxBytes >= 0)
+    val output = java.io.ByteArrayOutputStream(minOf(maxBytes, DEFAULT_BUFFER_SIZE))
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var total = 0
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) break
+        total += read
+        if (total > maxBytes) throw RequestBodyTooLargeException()
+        output.write(buffer, 0, read)
+    }
+    return output.toByteArray()
+}
+
+internal data class PairingPinSnapshot(
+    val pin: String,
+    val expiresAtEpochMs: Long,
+    val rotated: Boolean,
+)
+
+internal class ExpiringPairingPin(
+    private val ttlMs: Long = PAIRING_PIN_TTL_MS,
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val generator: () -> String = ::generatePairingPin,
+) {
+    private var pin = generator()
+    private var expiresAtEpochMs = clock() + ttlMs
+
+    @Synchronized
+    fun current(): PairingPinSnapshot {
+        val now = clock()
+        val rotated = now >= expiresAtEpochMs
+        if (rotated) rotateAt(now)
+        return PairingPinSnapshot(pin, expiresAtEpochMs, rotated)
+    }
+
+    @Synchronized
+    fun rotate(): PairingPinSnapshot {
+        rotateAt(clock())
+        return PairingPinSnapshot(pin, expiresAtEpochMs, true)
+    }
+
+    private fun rotateAt(now: Long) {
+        pin = generator()
+        expiresAtEpochMs = now + ttlMs
+    }
+}
+
+internal class PairingAttemptLimiter(
+    private val maxFailures: Int = 5,
+    private val failureWindowMs: Long = 60_000L,
+    private val lockoutMs: Long = 60_000L,
+    private val maxTrackedOrigins: Int = 256,
+    private val clock: () -> Long = System::currentTimeMillis,
+) {
+    private data class AttemptState(
+        var windowStartedAtEpochMs: Long,
+        var failures: Int = 0,
+        var lockedUntilEpochMs: Long = 0,
+    )
+
+    private val states = linkedMapOf<String, AttemptState>()
+
+    @Synchronized
+    fun isAllowed(origin: String): Boolean {
+        val now = clock()
+        val state = states[origin] ?: return true
+        if (state.lockedUntilEpochMs > now) return false
+        if (now - state.windowStartedAtEpochMs >= failureWindowMs) {
+            states.remove(origin)
+        }
+        return true
+    }
+
+    @Synchronized
+    fun recordFailure(origin: String) {
+        val now = clock()
+        if (origin !in states && states.size >= maxTrackedOrigins) {
+            states.entries.removeIf { now - it.value.windowStartedAtEpochMs >= failureWindowMs }
+            if (states.size >= maxTrackedOrigins) {
+                states.remove(states.keys.first())
+            }
+        }
+        val state = states.getOrPut(origin) { AttemptState(windowStartedAtEpochMs = now) }
+        if (now - state.windowStartedAtEpochMs >= failureWindowMs) {
+            state.windowStartedAtEpochMs = now
+            state.failures = 0
+            state.lockedUntilEpochMs = 0
+        }
+        if (state.lockedUntilEpochMs > now) return
+        state.failures += 1
+        if (state.failures >= maxFailures) {
+            state.lockedUntilEpochMs = now + lockoutMs
+        }
+    }
+
+    @Synchronized
+    fun recordSuccess(origin: String) {
+        states.remove(origin)
+    }
+}
+
+private val pairingPinRandom = SecureRandom()
+
+private fun generatePairingPin(): String =
+    (pairingPinRandom.nextInt(900_000) + 100_000).toString()
 
 class InMemorySyncAdapter : SyncStoreAdapter {
     private val changes = mutableListOf<SyncChange>()
@@ -169,9 +285,9 @@ class LocalSyncServer(
 
     private val secureStore = DesktopSecureStore(serviceName = "com.migestor.sync.desktop")
     private val tlsIdentity = DesktopTlsIdentity(secureStore)
+    private val pairingPinState = ExpiringPairingPin()
+    private val pairingAttemptLimiter = PairingAttemptLimiter()
 
-    @Volatile
-    private var pairingPin: String = (100000..999999).random().toString()
     @Volatile
     private var hostHint: String = "localhost"
     @Volatile
@@ -197,7 +313,7 @@ class LocalSyncServer(
         return SyncServerStatus(
             isPaired = isPaired(),
             pairedDeviceId = pairedDeviceId,
-            pin = pairingPin,
+            pin = pairingPinState.current().pin,
             serverId = serverId,
             pairingPayload = snapshot.pairingPayload.orEmpty(),
             host = snapshot.host ?: "",
@@ -210,7 +326,7 @@ class LocalSyncServer(
     }
 
 
-    fun currentPin(): String = pairingPin
+    fun currentPin(): String = pairingPinState.current().pin
     fun currentHostHint(): String = hostHint
     fun currentServerId(): String = serverId
     fun currentFingerprint(): String = certFingerprintSha256
@@ -225,7 +341,7 @@ class LocalSyncServer(
         return CommandCenterSnapshot(
             host = validHost,
             port = port,
-            pin = pairingPin,
+            pin = pairingPinState.current().pin,
             serverId = serverId,
             fingerprint = certFingerprintSha256,
             pairedDeviceId = pairedDeviceId,
@@ -251,21 +367,29 @@ class LocalSyncServer(
                 ex.respond(405, """{"error":"method_not_allowed"}""")
                 return@createContext
             }
-            val body = ex.readBody()
+            val origin = ex.remoteAddress?.address?.hostAddress ?: "unknown"
+            if (!pairingAttemptLimiter.isAllowed(origin)) {
+                ex.respond(429, """{"error":"pairing_temporarily_unavailable"}""")
+                return@createContext
+            }
+            val body = ex.readBodyOrReject(HANDSHAKE_BODY_LIMIT_BYTES) ?: return@createContext
             val obj = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
             val pin = obj?.get("pin")?.jsonPrimitive?.contentOrNull
             val deviceId = obj?.get("deviceId")?.jsonPrimitive?.contentOrNull ?: "ios"
+            val activePin = pairingPinState.current()
+            if (activePin.rotated) {
+                notifyStatusChanged()
+            }
 
-            println("🔗 Recibida solicitud de handshake LAN desde $deviceId con PIN: $pin")
-
-            if (pin == null || pin != pairingPin) {
-                println("❌ Handshake fallido: PIN incorrecto (Recibido: $pin, Esperado: $pairingPin)")
+            if (pin == null || pin != activePin.pin) {
+                pairingAttemptLimiter.recordFailure(origin)
+                println("❌ Handshake LAN rechazado por credenciales no válidas.")
                 ex.respond(401, """{"error":"invalid_pin"}""")
                 return@createContext
             }
 
             if (!pairedDeviceId.isNullOrBlank() && pairedDeviceId != deviceId) {
-                println("❌ Handshake fallido: Servidor ya vinculado a '$pairedDeviceId'. Solicitud desde '$deviceId'")
+                println("❌ Handshake LAN rechazado: el servidor ya está vinculado.")
                 ex.respond(409, """{"error":"already_paired"}""")
                 return@createContext
             }
@@ -276,8 +400,10 @@ class LocalSyncServer(
             }
             pairedDeviceId = deviceId
             secureStore.put("paired-device-id", deviceId)
+            pairingAttemptLimiter.recordSuccess(origin)
+            pairingPinState.rotate()
 
-            println("✅ Handshake exitoso para '$deviceId'. Token emitido.")
+            println("✅ Handshake LAN completado. Credenciales rotadas.")
             notifyStatusChanged()
             refreshBonjourService()
 
@@ -301,7 +427,7 @@ class LocalSyncServer(
             val since = query["since"]?.toLongOrNull() ?: 0L
             val requestingDeviceId = query["deviceId"]
             val response = kotlinx.coroutines.runBlocking {
-                println("📥 Recibida solicitud de PULL (desde epoch: $since, deviceId: $requestingDeviceId)")
+                println("📥 Recibida solicitud de PULL (desde epoch: $since)")
                 syncCoordinator.pullChanges(sinceEpochMs = since, serverNowEpochMs = System.currentTimeMillis())
             }
             // Un dispositivo nunca necesita que le devuelvan sus propios cambios: ya
@@ -326,7 +452,7 @@ class LocalSyncServer(
 
             val out = ex.responseBody
             sseConnections.add(ex)
-            println("📡 Conexión SSE abierta desde ${ex.remoteAddress}")
+            println("📡 Conexión SSE abierta.")
 
             try {
                 // `ex` también es el lock usado por broadcastSseEvent para esta misma
@@ -360,7 +486,7 @@ class LocalSyncServer(
             } finally {
                 sseConnections.remove(ex)
                 runCatching { ex.close() }
-                println("📡 Conexión SSE cerrada desde ${ex.remoteAddress}")
+                println("📡 Conexión SSE cerrada.")
             }
         }
 
@@ -370,7 +496,8 @@ class LocalSyncServer(
                 return@createContext
             }
             if (!isAuthorized(ex)) return@createContext
-            val req = decodePushRequest(ex.readBody())
+            val body = ex.readBodyOrReject(SYNC_BODY_LIMIT_BYTES) ?: return@createContext
+            val req = decodePushRequest(body)
             val ack = kotlinx.coroutines.runBlocking {
                 println("📤 Recibida solicitud de PUSH (${req.changes.size} cambios)")
                 syncCoordinator.pushChanges(req, serverNowEpochMs = System.currentTimeMillis())
@@ -392,7 +519,8 @@ class LocalSyncServer(
                 return@createContext
             }
 
-            val changes = decodeLocalChangesRequest(ex.readBody())
+            val body = ex.readBodyOrReject(SYNC_BODY_LIMIT_BYTES) ?: return@createContext
+            val changes = decodeLocalChangesRequest(body)
             val desktopChanges = filterDesktopChangesForSse(changes, pairedDeviceId)
             if (desktopChanges.isNotEmpty()) {
                 broadcastSseEvent(desktopChanges, System.currentTimeMillis())
@@ -423,7 +551,7 @@ class LocalSyncServer(
                     }
                 }
                 "PUT" -> {
-                    val bytes = ex.requestBody.use { it.readBytes() }
+                    val bytes = ex.readBytesOrReject(DOCUMENT_BODY_LIMIT_BYTES) ?: return@createContext
                     val actualHash = MessageDigest.getInstance("SHA-256")
                         .digest(bytes)
                         .joinToString("") { "%02x".format(it) }
@@ -484,7 +612,7 @@ class LocalSyncServer(
         activeToken = null
         secureStore.delete("paired-device-id")
         secureStore.delete("paired-token")
-        pairingPin = (100000..999999).random().toString()
+        pairingPinState.rotate()
         notifyStatusChanged()
         refreshBonjourService()
     }
@@ -572,6 +700,9 @@ class LocalSyncServer(
     }
 
     private fun refreshNetworkBindingIfNeeded() {
+        if (pairingPinState.current().rotated) {
+            notifyStatusChanged()
+        }
         val resolved = resolveLanAddressOrNull()
         if (resolved == null) {
             advertisedLanAddress = null
@@ -761,8 +892,22 @@ class LocalSyncServer(
         }.toString()
     }
 
-    private fun HttpExchange.readBody(): String {
-        return requestBody.bufferedReader().use { it.readText() }
+    private fun HttpExchange.readBodyOrReject(maxBytes: Int): String? {
+        return readBytesOrReject(maxBytes)?.toString(Charsets.UTF_8)
+    }
+
+    private fun HttpExchange.readBytesOrReject(maxBytes: Int): ByteArray? {
+        val declaredLength = requestHeaders.getFirst("Content-Length")?.toLongOrNull()
+        if (declaredLength != null && declaredLength > maxBytes) {
+            respond(413, """{"error":"request_too_large"}""")
+            return null
+        }
+        return try {
+            requestBody.use { it.readBytesLimited(maxBytes) }
+        } catch (_: RequestBodyTooLargeException) {
+            respond(413, """{"error":"request_too_large"}""")
+            null
+        }
     }
 
     private fun HttpExchange.respond(status: Int, body: String) {

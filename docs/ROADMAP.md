@@ -83,10 +83,23 @@ Prioridad: alta.
 Prioridad: media-alta.
 
 - SQLDelight: migraciones seguras y pruebas de repositorio.
+  Avance: la ruta canónica soportada desde el fixture v34 hasta v41 se prueba contra
+  una base recién creada comparando tablas, columnas, índices y claves foráneas sin
+  depender de `RescueMigrations`; el rescate se mantiene solo para drift histórico.
 - Curso escolar activo: `AcademicYear` pasa a ser frontera estructural de trabajo diario y `StudentEnrollment` conserva historico de matriculas sin duplicar alumnado.
 - Multi-asignatura: relación real grupo-asignatura con catálogo visible y presets aplicables por materia; siguiente paso, usarla en filtros y onboarding.
 - Backups: restauracion fiable y trazable.
+  Avance: verify/restore Apple exige checksums coherentes e integridad SQLite real,
+  integra WAL en una instantánea temporal y aplica base, evidencias y situaciones
+  con staging y rollback de filesystem.
+  Pendiente: diseñar exportaciones cifradas y autenticadas con gestión segura de
+  claves/contraseña, compatibilidad explícita con `.migestorbackup` y recuperación;
+  las exportaciones actuales siguen sin cifrar y deben almacenarse/transportarse por
+  un canal seguro.
 - Sync: estrategia clara para LAN/local y futuras opciones.
+  Avance: el pairing SyncLAN conserva HTTPS, pinning y token, y añade PIN de un solo
+  uso con caducidad, limitación temporal por origen, logs sin secretos y límites de
+  carga. El PIN solo circula por la pantalla/QR y por el canal local helper→UI.
   Avance: entregas del alumnado vía web multi-grupo. El Mac mantiene la autoridad de claves, alias, mapas y ledger; la bandeja lista todos los formularios, publica con revisión guiada, permite seleccionar varias tareas y revocarlas, archivarlas o restaurarlas en lote, y reparte los enlaces por correo a partir de la ficha del alumno, de uno en uno o a todo el grupo automatizando Mail (borradores o envío, con confirmación y por tandas). También enruta lotes mixtos por `formInstanceId`: la previsualización separa válidos, asignaciones manuales, conflictos, inválidos y ya importados; la escritura pasa por `saveResponses` y las respuestas resultantes llegan al Cuaderno iPad mediante SyncLAN. Las tablas privadas `web_*` siguen fuera de SyncLAN. Diseño y decisión en `kmp/docs/architecture/ADR-2026-08-01-entregas-web-centro-mac.md`.
   Pendiente: transporte en la nube de archivos originales, QA manual extremo a extremo Mac → lote mixto → SyncLAN → Cuaderno iPad, y prueba real del reparto masivo contra Mail (permiso de automatización y envío efectivo a un grupo).
   Deuda explícita: la revocación local no puede cambiar un manifiesto público ya firmado y desplegado; para bloqueo remoto inmediato hace falta retirar/republicar el manifiesto o añadir un registro de revocación consultable por la web.

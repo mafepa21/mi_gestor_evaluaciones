@@ -9,9 +9,10 @@ import app.cash.sqldelight.db.SqlDriver
  * Schema.create() + la cadena .sqm (drift historico entre .sq/.sqm que
  * quedo parcheado aqui en vez de corregirse en una migracion real).
  *
- * No sustituye a las migraciones .sqm: cada gap que cubre debiera acabar
- * tambien respaldado por una migracion .sqm propia (ver 34.sqm). Vive en
- * commonMain para que desktop y Apple no puedan volver a divergir entre si.
+ * No sustituye a las migraciones .sqm. La fixture mínima soportada (v34) ya
+ * alcanza el esquema actual solo con AppDatabase.Schema.migrate; este código
+ * se conserva para instalaciones históricas anteriores con drift parcial.
+ * Vive en commonMain para que desktop y Apple no diverjan entre sí.
  */
 internal fun runRescueMigrations(driver: SqlDriver) {
     ensureColumns(
@@ -113,10 +114,9 @@ private fun ensureStructuredInstrumentTables(driver: SqlDriver) {
 
 /**
  * centers/academic_years/app_users/stage_cycles/subjects: la estructura
- * multi-centro. app_users, stage_cycles y subjects nunca tuvieron CREATE
- * TABLE en ninguna .sqm (a diferencia de sus hermanas centers/academic_years
- * en 31.sqm), asi que cualquier instalacion que solo migro por la cadena
- * .sqm se quedaba sin ellas. 34.sqm ya lo corrige; esto queda como respaldo.
+ * multi-centro. Algunas instalaciones históricas alcanzaron una versión alta
+ * con solo parte de estas tablas. La fixture mínima soportada ya las contiene;
+ * esto queda como fallback idempotente para esas instalaciones atípicas.
  */
 private fun ensurePrerequisiteTables(driver: SqlDriver) {
     driver.execute(null, """

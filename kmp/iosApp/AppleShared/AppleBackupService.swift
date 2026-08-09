@@ -169,6 +169,7 @@ public final class AppleBackupService: ObservableObject {
                     try fileManager.copyItem(at: sourceSidecar, to: destinationSidecar)
                 }
             }
+            try AppleSQLiteBackupValidator.validateDatabase(at: destinationDBURL)
             
             // 2. Copy attachments
             let destinationAttachmentsURL = packageURL.appendingPathComponent("attachments", isDirectory: true)
@@ -307,9 +308,17 @@ public final class AppleBackupService: ObservableObject {
             
             let checksumsData = try Data(contentsOf: checksumsURL)
             let checksumMap = try JSONDecoder().decode([String: String].self, from: checksumsData)
+            guard let expectedDatabaseChecksum = checksumMap["database.sqlite"],
+                  expectedDatabaseChecksum == descriptor.manifest.checksumSHA256 else {
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 401,
+                    userInfo: [NSLocalizedDescriptionKey: "El checksum principal de la base no coincide con el manifiesto."]
+                )
+            }
             
             for (relPath, expectedChecksum) in checksumMap {
-                let fileURL = packageURL.appendingPathComponent(relPath)
+                let fileURL = try validatedPackageFileURL(relativePath: relPath, packageURL: packageURL)
                 guard fileManager.fileExists(atPath: fileURL.path) else {
                     throw NSError(domain: "AppleBackupService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Falta el archivo: \(relPath)"])
                 }
@@ -319,6 +328,9 @@ public final class AppleBackupService: ObservableObject {
                     throw NSError(domain: "AppleBackupService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Fallo de suma de comprobación (checksum mismatch) en \(relPath)."])
                 }
             }
+            let databaseURL = packageURL.appendingPathComponent("database.sqlite")
+            try validateUsableDatabase(at: databaseURL, context: "la base incluida en la copia")
+            try AppleSQLiteBackupValidator.validateDatabase(at: databaseURL)
             
             verifiedDescriptor.isVerified = true
             verifiedDescriptor.verificationError = nil
@@ -352,6 +364,7 @@ public final class AppleBackupService: ObservableObject {
             let packageURL = descriptor.url
             let sourceDB = packageURL.appendingPathComponent("database.sqlite")
             try validateUsableDatabase(at: sourceDB, context: "la copia seleccionada")
+            try AppleSQLiteBackupValidator.validateDatabase(at: sourceDB)
 
             // 3. Create Emergency Backup
             // Best-effort: si la base activa no es utilizable (vacía o corrupta) no hay nada
@@ -366,80 +379,50 @@ public final class AppleBackupService: ObservableObject {
                 print("[AppleBackupService] Sin copia de emergencia previa a restaurar: \(error.localizedDescription)")
             }
 
-            // 4. Overwrite the database
-            //
-            // El reemplazo es atómico a propósito. La versión anterior hacía
-            // `removeItem` y después `copyItem`, lo que deja una ventana — corta pero
-            // real — en la que la base activa no existe en disco mientras el driver de
-            // SQLDelight la tiene abierta: exactamente la situación que hacía abortar el
-            // proceso en el borrado total (`vnode unlinked while in use` → `SQLITE_IOERR`).
-            // Con `replaceItemAt` la ruta nunca se queda sin fichero, y si la copia falla
-            // a mitad no destruye la base que había.
-            try replaceDatabaseAtomically(with: sourceDB, packageURL: packageURL)
-            
-            // 5. Restore attachments
-            if fileManager.fileExists(atPath: attachmentsURL.path) {
-                try fileManager.removeItem(at: attachmentsURL)
-            }
-            try fileManager.createDirectory(at: attachmentsURL, withIntermediateDirectories: true)
-            
-            let packageAttachments = packageURL.appendingPathComponent("attachments", isDirectory: true)
-            if fileManager.fileExists(atPath: packageAttachments.path) {
-                try copyDirectoryContents(from: packageAttachments, to: attachmentsURL)
+            // 4. Preparar el conjunto completo sin tocar todavía datos activos. La
+            // instantánea SQLite integra cualquier WAL del paquete y vuelve a validarse.
+            let transactionID = UUID().uuidString
+            let stagedDatabaseURL = databaseURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("restore-\(transactionID).sqlite")
+            let stagedAttachmentsURL = attachmentsURL
+                .deletingLastPathComponent()
+                .appendingPathComponent(".restore-\(transactionID)-attachments", isDirectory: true)
+            let stagedLearningSituationsURL = learningSituationsURL
+                .deletingLastPathComponent()
+                .appendingPathComponent(".restore-\(transactionID)-learning-situations", isDirectory: true)
+            let stagedURLs = [stagedDatabaseURL, stagedAttachmentsURL, stagedLearningSituationsURL]
+            defer {
+                stagedURLs.forEach { url in
+                    if fileManager.fileExists(atPath: url.path) {
+                        try? fileManager.removeItem(at: url)
+                    }
+                }
             }
 
-            if fileManager.fileExists(atPath: learningSituationsURL.path) {
-                try fileManager.removeItem(at: learningSituationsURL)
-            }
-            try fileManager.createDirectory(at: learningSituationsURL, withIntermediateDirectories: true)
+            try AppleSQLiteBackupValidator.materializeSnapshot(from: sourceDB, to: stagedDatabaseURL)
+            let packageAttachments = packageURL.appendingPathComponent("attachments", isDirectory: true)
             let packageLearningSituations = packageURL.appendingPathComponent("learning-situations", isDirectory: true)
-            if fileManager.fileExists(atPath: packageLearningSituations.path) {
-                try copyDirectoryContents(from: packageLearningSituations, to: learningSituationsURL)
-            }
+            try stageDirectory(from: packageAttachments, to: stagedAttachmentsURL)
+            try stageDirectory(from: packageLearningSituations, to: stagedLearningSituationsURL)
+
+            // 5. Instalar base + dos árboles como una sola transacción de filesystem.
+            // Si cualquier paso falla, el helper revierte en orden inverso.
+            let activeWalURL = URL(fileURLWithPath: databaseURL.path + "-wal")
+            let activeShmURL = URL(fileURLWithPath: databaseURL.path + "-shm")
+            try AppleBackupRestoreTransaction(fileManager: fileManager).commit([
+                .replace(stagedURL: stagedDatabaseURL, destinationURL: databaseURL),
+                .remove(destinationURL: activeWalURL),
+                .remove(destinationURL: activeShmURL),
+                .replace(stagedURL: stagedAttachmentsURL, destinationURL: attachmentsURL),
+                .replace(stagedURL: stagedLearningSituationsURL, destinationURL: learningSituationsURL),
+            ])
             
             // 6. Trigger restart requirements flag
             self.needsRestart = true
         } catch {
             self.lastError = "Error restaurando copia: \(error.localizedDescription)"
             throw error
-        }
-    }
-
-    /// Sustituye la base activa por `sourceDB` sin que la ruta se quede nunca sin fichero.
-    ///
-    /// `replaceItemAt` consume el elemento de origen, así que primero se hace una copia
-    /// temporal en el mismo directorio (mismo volumen, requisito de la API) y es esa copia
-    /// la que se mueve a su sitio. Los sidecars `-wal`/`-shm` activos se eliminan antes:
-    /// pertenecen a la base anterior y aplicarlos sobre la restaurada la corrompería.
-    private func replaceDatabaseAtomically(with sourceDB: URL, packageURL: URL) throws {
-        let stagingURL = databaseURL
-            .deletingLastPathComponent()
-            .appendingPathComponent("restore-\(UUID().uuidString).sqlite", isDirectory: false)
-
-        try fileManager.copyItem(at: sourceDB, to: stagingURL)
-        defer { try? fileManager.removeItem(at: stagingURL) }
-
-        for suffix in ["-wal", "-shm"] {
-            let activeSidecar = URL(fileURLWithPath: databaseURL.path + suffix)
-            if fileManager.fileExists(atPath: activeSidecar.path) {
-                try fileManager.removeItem(at: activeSidecar)
-            }
-        }
-
-        if fileManager.fileExists(atPath: databaseURL.path) {
-            _ = try fileManager.replaceItemAt(databaseURL, withItemAt: stagingURL)
-        } else {
-            // Primera restauración sobre una instalación sin base: no hay nada que
-            // reemplazar, así que basta con mover la copia a su sitio.
-            try fileManager.moveItem(at: stagingURL, to: databaseURL)
-        }
-
-        for suffix in ["-wal", "-shm"] {
-            let packageSidecar = packageURL.appendingPathComponent("database.sqlite" + suffix)
-            let activeSidecar = URL(fileURLWithPath: databaseURL.path + suffix)
-            if fileManager.fileExists(atPath: packageSidecar.path) {
-                try fileManager.copyItem(at: packageSidecar, to: activeSidecar)
-            }
         }
     }
 
@@ -591,6 +574,56 @@ public final class AppleBackupService: ObservableObject {
                 domain: "AppleBackupService",
                 code: 422,
                 userInfo: [NSLocalizedDescriptionKey: "\(context.prefix(1).uppercased())\(context.dropFirst()) no es una base de datos SQLite válida. Operación cancelada."]
+            )
+        }
+    }
+
+    private func validatedPackageFileURL(relativePath: String, packageURL: URL) throws -> URL {
+        guard !relativePath.hasPrefix("/"),
+              !relativePath.split(separator: "/", omittingEmptySubsequences: false).contains("..") else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: "La copia contiene una ruta no segura: \(relativePath)"]
+            )
+        }
+        let rootURL = packageURL.resolvingSymlinksInPath().standardizedFileURL
+        let root = rootURL.path + "/"
+        let unresolvedCandidate = packageURL.appendingPathComponent(relativePath).standardizedFileURL
+        let candidate = unresolvedCandidate.resolvingSymlinksInPath().standardizedFileURL
+        guard candidate.path.hasPrefix(root) else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: "La copia intenta acceder fuera de su paquete."]
+            )
+        }
+        var componentURL = packageURL
+        for component in relativePath.split(separator: "/") {
+            componentURL.appendPathComponent(String(component))
+            try rejectSymbolicLink(at: componentURL, description: relativePath)
+        }
+        return candidate
+    }
+
+    private func stageDirectory(from source: URL, to destination: URL) throws {
+        try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+        if fileManager.fileExists(atPath: source.path) {
+            try rejectSymbolicLink(at: source, description: source.lastPathComponent)
+            let enumerator = fileManager.enumerator(at: source, includingPropertiesForKeys: nil)
+            while let itemURL = enumerator?.nextObject() as? URL {
+                try rejectSymbolicLink(at: itemURL, description: itemURL.lastPathComponent)
+            }
+            try copyDirectoryContents(from: source, to: destination)
+        }
+    }
+
+    private func rejectSymbolicLink(at url: URL, description: String) throws {
+        guard (try? fileManager.destinationOfSymbolicLink(atPath: url.path)) == nil else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: "La copia contiene un enlace simbólico no admitido: \(description)"]
             )
         }
     }

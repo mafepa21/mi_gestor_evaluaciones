@@ -49,6 +49,27 @@ class UpgradePathRegressionTest {
         return createSharedDesktopDriver(dbPath = copy.absolutePath, dbName = copy.name)
     }
 
+    private fun openFixtureCopyWithCanonicalMigrationsOnly(): JdbcSqliteDriver {
+        val fixture = CanonicalTeacherDataset.ensureFixture()
+        val copy = File(workDir, "canonical_migrations_probe.db")
+        fixture.copyTo(copy)
+        val driver = JdbcSqliteDriver("jdbc:sqlite:${copy.absolutePath}")
+        val currentVersion = driver.scalarLong("PRAGMA user_version")
+        if (currentVersion < AppDatabase.Schema.version) {
+            AppDatabase.Schema.migrate(driver, currentVersion, AppDatabase.Schema.version)
+            driver.execute(null, "PRAGMA user_version = ${AppDatabase.Schema.version}", 0)
+        }
+        return driver
+    }
+
+    private fun openFreshDatabaseWithCanonicalSchemaOnly(): JdbcSqliteDriver {
+        val freshDb = File(workDir, "fresh_without_rescue_comparison.db")
+        val driver = JdbcSqliteDriver("jdbc:sqlite:${freshDb.absolutePath}")
+        AppDatabase.Schema.create(driver)
+        driver.execute(null, "PRAGMA user_version = ${AppDatabase.Schema.version}", 0)
+        return driver
+    }
+
     @Test
     fun `la base de una version anterior migra sin perder ningun dato del curso`() {
         val fixture = CanonicalTeacherDataset.ensureFixture()
@@ -102,13 +123,44 @@ class UpgradePathRegressionTest {
         }
     }
 
-    /** Mapa tabla -> definicion de columnas (nombre, tipo, notnull, default, pk). */
-    private fun schemaSnapshot(driver: JdbcSqliteDriver): Map<String, List<String>> {
+    @Test
+    fun `la fixture soportada alcanza el esquema actual sin depender de rescue migrations`() {
+        // Esta ruta omite deliberadamente createSharedDesktopDriver, por lo que no
+        // ejecuta runRescueMigrations. Protege contra volver a introducir un gap en
+        // la cadena canónica .sqm a partir de la fixture mínima soportada (v34).
+        val fresh = openFreshDatabaseWithCanonicalSchemaOnly()
+        val migratedOnly = openFixtureCopyWithCanonicalMigrationsOnly()
+        try {
+            assertEquals(AppDatabase.Schema.version, migratedOnly.scalarLong("PRAGMA user_version"))
+            assertEquals(schemaSnapshot(fresh), schemaSnapshot(migratedOnly))
+            assertEquals(listOf("ok"), migratedOnly.queryStrings("PRAGMA integrity_check"))
+            assertEquals(
+                emptyList(),
+                migratedOnly.queryStrings("SELECT 'violacion en tabla ' || \"table\" FROM pragma_foreign_key_check"),
+            )
+            CanonicalTeacherDataset.assertSurvived(migratedOnly)
+        } finally {
+            fresh.close()
+            migratedOnly.close()
+        }
+    }
+
+    private data class TableSchemaSnapshot(
+        val columns: List<String>,
+        val indexes: List<String>,
+        val foreignKeys: List<String>,
+    )
+
+    /**
+     * Mapa tabla -> columnas + índices + claves foráneas. Comparar solo columnas
+     * dejaba pasar drift de rendimiento o cascadas distintas entre fresh/upgrade.
+     */
+    private fun schemaSnapshot(driver: JdbcSqliteDriver): Map<String, TableSchemaSnapshot> {
         val tables = driver.queryStrings(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
         )
         return tables.associateWith { table ->
-            driver.executeQuery(
+            val columns = driver.executeQuery(
                 identifier = null,
                 sql = "PRAGMA table_info(\"$table\")",
                 mapper = { cursor ->
@@ -128,6 +180,49 @@ class UpgradePathRegressionTest {
                 },
                 parameters = 0,
             ).value
+            val indexes = driver.executeQuery(
+                identifier = null,
+                sql = "PRAGMA index_list(\"$table\")",
+                mapper = { cursor ->
+                    val values = mutableListOf<String>()
+                    while (cursor.next().value) {
+                        values.add(
+                            listOf(
+                                cursor.getString(1),
+                                cursor.getLong(2)?.toString(),
+                                cursor.getString(3),
+                                cursor.getLong(4)?.toString(),
+                            ).joinToString("|"),
+                        )
+                    }
+                    QueryResult.Value(values.sorted())
+                },
+                parameters = 0,
+            ).value
+            val foreignKeys = driver.executeQuery(
+                identifier = null,
+                sql = "PRAGMA foreign_key_list(\"$table\")",
+                mapper = { cursor ->
+                    val values = mutableListOf<String>()
+                    while (cursor.next().value) {
+                        values.add(
+                            listOf(
+                                cursor.getLong(0)?.toString(),
+                                cursor.getLong(1)?.toString(),
+                                cursor.getString(2),
+                                cursor.getString(3),
+                                cursor.getString(4),
+                                cursor.getString(5),
+                                cursor.getString(6),
+                                cursor.getString(7),
+                            ).joinToString("|"),
+                        )
+                    }
+                    QueryResult.Value(values.sorted())
+                },
+                parameters = 0,
+            ).value
+            TableSchemaSnapshot(columns, indexes, foreignKeys)
         }
     }
 }

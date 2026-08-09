@@ -15,6 +15,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Exportaciones Apple portables `.migestorbackupx` cifradas y autenticadas con
+  contraseña: formato versionado, PBKDF2-HMAC-SHA256, salt y nonces aleatorios,
+  AES-256-GCM por bloques y límites de tamaño. iOS/iPadOS y macOS ofrecen una acción
+  principal de exportación con confirmación de contraseña, no la guardan y pueden
+  importar tanto el formato nuevo como directorios `.migestorbackup` anteriores.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
   documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro

@@ -81,6 +81,10 @@ struct MacStudentsView: View {
         }
     }
 
+    private var filteredRowIDs: [Int64] {
+        filteredRows.map { $0.id }
+    }
+
     private var selectedRow: KmpBridge.MacStudentRowSnapshot? {
         guard let selectedStudentId = store.localSelectedStudentId else { return filteredRows.first }
         return store.rows.first(where: { $0.id == selectedStudentId }) ?? filteredRows.first
@@ -176,7 +180,7 @@ struct MacStudentsView: View {
                 loadProfileForSelection(newValue)
             }
         }
-        .appOnChange(of: filteredRows.map(\.id)) { _, visibleIds in
+        .appOnChange(of: filteredRowIDs) { _, visibleIds in
             guard ownsStudentSideEffects else { return }
             guard !visibleIds.isEmpty else {
                 store.localSelectedStudentId = nil

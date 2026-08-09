@@ -120,6 +120,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./scripts/verify_apple_builds.sh` (2026-08-09, compatibilidad de
+  `MacStudentsView`): XcodeGen correcto; macOS Native e iOS Simulator compilados
+  correctamente.
 - `./scripts/verify_apple_builds.sh` (2026-08-09): XcodeGen correcto; macOS Native
   e iOS Simulator compilados correctamente.
 - `./gradlew :shared:desktopTest :data:desktopTest`: `BUILD SUCCESSFUL`.
@@ -202,6 +205,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- `MacStudentsView` separa en una propiedad `[Int64]` la lista de alumnado visible
+  observada por `appOnChange`, evitando que Xcode 26.6 agote el type-checker sin
+  cambiar la selección ni los efectos asociados.
 - Planificador, vista Secuencia/Gantt: la ventana móvil de 13 semanas deja de estar
   anclada permanentemente a la semana actual; incorpora navegación explícita a la
   ventana anterior y siguiente, con etiquetas de semanas visibles y continuidad

@@ -48,6 +48,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- SyncLAN endurece el emparejamiento local: PIN aleatorio con caducidad de 10 minutos
+  y rotación tras vincular/desvincular, máximo de cinco fallos por origen en una
+  ventana de 60 segundos, bloqueo temporal, contador acotado y respuestas/logs que
+  no exponen PIN, token, dispositivo ni dirección remota. Los cuerpos quedan
+  limitados a 16 KiB en handshake, 2 MiB en cambios y 25 MiB en documentos.
+- Las copias Apple conservan el formato `.migestorbackup`, pero su verificación exige
+  ahora checksum principal coherente, cabecera SQLite, `PRAGMA integrity_check` y
+  `PRAGMA foreign_key_check`. La restauración materializa primero una instantánea
+  SQLite autocontenida y prepara base, evidencias y situaciones antes de instalarlas
+  con rollback inverso si falla cualquier paso.
 - Evaluación de rúbricas e instrumentos: la rúbrica individual amplía su área
   de trabajo para mostrar sus cuatro niveles; los selectores numéricos aceptan
   pulsaciones en toda su superficie y la primera columna de la evaluación masiva
@@ -86,12 +96,20 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- La cadena canónica SQLDelight v34→v41 queda cubierta sin ejecutar
+  `RescueMigrations`: el test compara tablas, columnas, índices y claves foráneas de
+  una base actualizada con una base recién creada. No se añade una migración porque
+  no existe un gap reproducible en el camino soportado; el rescate se conserva como
+  fallback para instalaciones históricas con drift.
 - Se añadió la migración 41 con la marca `archived` de `web_form_instances` y operaciones
   SQLDelight transaccionales por lote. No se crean tablas nuevas ni se sincronizan las
   tablas privadas `web_*`.
 
 ### Docs
 
+- ADRs de endurecimiento del pairing SyncLAN y de restauración transaccional Apple;
+  el cifrado autenticado de exportaciones se mantiene como trabajo futuro explícito
+  para no romper copias existentes ni improvisar una UX de contraseña.
 - Auditoría y propuesta de rediseño de los instrumentos de evaluación del Cuaderno:
   shell común `Evaluation Workspace`, Liquid Glass reservado al chrome y superficies
   sólidas para el contenido evaluable. Incluye rúbrica individual, evaluación masiva,
@@ -102,6 +120,17 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./scripts/verify_apple_builds.sh` (2026-08-09): XcodeGen correcto; macOS Native
+  e iOS Simulator compilados correctamente.
+- `./gradlew :shared:desktopTest :data:desktopTest`: `BUILD SUCCESSFUL`.
+- `./gradlew :data:desktopTest --tests com.migestor.desktop.sync.LocalSyncServerTest`:
+  `BUILD SUCCESSFUL`.
+- `./gradlew :data:desktopTest --tests com.migestor.data.migration.UpgradePathRegressionTest`:
+  `BUILD SUCCESSFUL`.
+- `xcodebuild ... -only-testing:MiGestorPlannerTests/AppleBackupIntegrityTests test`:
+  4 tests, 0 fallos (`TEST SUCCEEDED`).
+- `xcodebuild -quiet ... -scheme MiGestorKMPiOS ... build` tras el ajuste final de
+  rutas: código de salida 0; solo warnings preexistentes en `KmpBridge.swift`.
 - `./scripts/verify_apple_builds.sh` (2026-08-04): XcodeGen correcto; macOS Native e
   iOS Simulator compilados correctamente.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorPlannerTests

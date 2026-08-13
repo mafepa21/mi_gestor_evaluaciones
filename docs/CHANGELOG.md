@@ -118,6 +118,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - Cuaderno: la barra deja de llamar "Sincronizado" a una sesión sin host SyncLAN;
   ahora distingue sincronización inactiva, cambios pendientes, error y estado al día
   a partir de `DashboardBridgeStore`.
+- La bienvenida de primer arranque solicita el dismiss explícito del sheet al
+  pulsar "Ahora no" o "Configurar mi curso", manteniendo la transición guiada
+  hacia la checklist.
 
 ### Verification
 

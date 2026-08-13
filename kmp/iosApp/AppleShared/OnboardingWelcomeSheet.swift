@@ -7,6 +7,7 @@ import SwiftUI
 /// `OnboardingChecklistView`, que se puede dejar a medias y retomar otro día.
 struct OnboardingWelcomeSheet: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
 
     let onStart: () -> Void
     let onSkip: () -> Void
@@ -147,11 +148,17 @@ struct OnboardingWelcomeSheet: View {
 
     private var footer: some View {
         HStack {
-            Button("Ahora no", action: onSkip)
+            Button("Ahora no") {
+                onSkip()
+                dismiss()
+            }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
             Spacer()
-            Button("Configurar mi curso", action: onStart)
+            Button("Configurar mi curso") {
+                onStart()
+                dismiss()
+            }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
         }

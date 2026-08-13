@@ -41,16 +41,25 @@ struct OnboardingHostModifier: ViewModifier {
                 },
                 onSkip: { store.dismiss() }
             )
+#if os(iOS)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+#endif
 
         case .checklist:
             OnboardingChecklistView(
                 store: store,
                 onAction: handleAction(_:_:),
-                onClose: { store.dismiss() }
+                onClose: { store.dismiss() },
+                onFinish: finishOnboarding
             )
             // La lista también se abre desde Ajustes mucho después del primer
             // arranque: se recalcula el progreso al aparecer.
             .task { await store.refresh(bridge: bridge) }
+#if os(iOS)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+#endif
 
         case .scheduleWizard(let startOnSlots, let autoPresentImporter):
             TeacherScheduleWizard(
@@ -91,6 +100,14 @@ struct OnboardingHostModifier: ViewModifier {
             await store.refresh(bridge: bridge)
             replaceRoute(with: .checklist)
         }
+    }
+
+    /// Cerrar el recorrido no debe dejar al docente en el mismo estado de
+    /// configuración: Hoy es la primera superficie operativa y el destino
+    /// común de iPad, iPhone y macOS.
+    private func finishOnboarding() {
+        store.dismiss()
+        onOpenModule(.dashboard)
     }
 
     private func handleAction(_ step: OnboardingStep, _ kind: OnboardingActionKind) {

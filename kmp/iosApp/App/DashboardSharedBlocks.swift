@@ -488,36 +488,94 @@ private func dashboardNowActions(
     context: DashboardSessionContext,
     onAction: @escaping (DashboardNowAction) -> Void
 ) -> some View {
-    // Con el grupo delante solo caben las tres acciones que se usan de verdad.
-    // Fuera de clase, la tarjeta ofrece preparar en vez de ejecutar.
-    let actions: [DashboardNowAction] = context.status == .active
-        ? [.passList, .observation, .evaluate]
-        : [.openPlanner, .openNotebook]
+    // La tarjeta Ahora debe responder una sola pregunta: "¿qué hago ahora?".
+    // El resto de acciones siguen disponibles, pero no compiten con la acción
+    // que corresponde al estado de la franja lectiva.
+    let primaryAction: DashboardNowAction = context.status == .active
+        ? .passList
+        : .openNotebook
+    let secondaryActions: [DashboardNowAction] = context.status == .active
+        ? [.observation, .evaluate, .openNotebook]
+        : [.openPlanner]
 
-    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-        ForEach(actions) { action in
-            Button {
-                onAction(action)
-            } label: {
-                Label(action.title, systemImage: action.systemImage)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .frame(maxWidth: .infinity, minHeight: 44)
+    VStack(alignment: .leading, spacing: 8) {
+        Text(dashboardNowPrimaryHint(for: context))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+        Button {
+            onAction(primaryAction)
+        } label: {
+            HStack(spacing: 12) {
+                Label(
+                    dashboardNowPrimaryTitle(for: primaryAction, context: context),
+                    systemImage: primaryAction.systemImage
+                )
+                .font(.headline)
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "arrow.right")
+                    .font(.subheadline.weight(.bold))
             }
-            .buttonStyle(.bordered)
-            .tint(action == .evaluate ? EvaluationDesign.accent : nil)
-            .disabled(context.classId == nil)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
         }
-        if let sessionId = context.sessionId, context.status == .active {
-            Button {
-                onAction(.openJournal)
-            } label: {
-                Label(DashboardNowAction.openJournal.title, systemImage: DashboardNowAction.openJournal.systemImage)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .frame(maxWidth: .infinity, minHeight: 44)
+        .buttonStyle(.borderedProminent)
+        .tint(EvaluationDesign.accent)
+        .disabled(context.classId == nil)
+        .accessibilityHint(dashboardNowPrimaryHint(for: context))
+
+        Menu {
+            ForEach(secondaryActions) { action in
+                Button {
+                    onAction(action)
+                } label: {
+                    Label(action.title, systemImage: action.systemImage)
+                }
+                .disabled(context.classId == nil)
             }
-            .buttonStyle(.bordered)
-            .accessibilityLabel("Abrir diario de la sesión \(sessionId)")
+
+            if let sessionId = context.sessionId, context.status == .active {
+                Divider()
+                Button {
+                    onAction(.openJournal)
+                } label: {
+                    Label(
+                        DashboardNowAction.openJournal.title,
+                        systemImage: DashboardNowAction.openJournal.systemImage
+                    )
+                }
+                .accessibilityLabel("Abrir diario de la sesión \(sessionId)")
+            }
+        } label: {
+            Label("Más acciones", systemImage: "ellipsis.circle")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 40)
         }
+        .buttonStyle(.bordered)
+    }
+}
+
+private func dashboardNowPrimaryTitle(
+    for action: DashboardNowAction,
+    context: DashboardSessionContext
+) -> String {
+    if action == .openNotebook && context.status != .active {
+        return "Preparar cuaderno"
+    }
+    return action.title
+}
+
+private func dashboardNowPrimaryHint(for context: DashboardSessionContext) -> String {
+    switch context.status {
+    case .active:
+        return "Empieza por registrar la asistencia del grupo."
+    case .nextToday:
+        return "Deja preparado el grupo para la próxima clase de hoy."
+    case .nextOtherDay:
+        return "Deja preparado el grupo para la próxima clase."
+    default:
+        return "Elige la siguiente acción para continuar."
     }
 }
 

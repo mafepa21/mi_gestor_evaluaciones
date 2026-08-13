@@ -100,7 +100,36 @@ El formato sigue una variante practica de Keep a Changelog:
   gestión, reparto e importación, con privacidad explícita para SyncLAN y la
   limitación de revocación del manifiesto público firmado.
 
+### Fixed
+
+- Cuaderno: se elimina el feedback de guardado por celda basado en temporizadores,
+  que podía mostrar "Guardado" aunque la persistencia fallase; la barra de estado
+  queda como fuente visible del estado real publicado por `NotebookViewModel`.
+- Cuaderno: los fallos de persistencia ya no se silencian como guardados; el estado
+  compartido conserva el borrador como pendiente y la barra muestra "Error al guardar"
+  hasta que un nuevo intento termina correctamente.
+- Cuaderno: cuando existe un error de guardado, la barra ofrece un botón contextual
+  "Reintentar" que reutiliza el guardado completo del cuaderno; el control no aparece
+  en el estado normal.
+- Cuaderno: la barra deja de llamar "Sincronizado" a una sesión sin host SyncLAN;
+  ahora distingue sincronización inactiva, cambios pendientes, error y estado al día
+  a partir de `DashboardBridgeStore`.
+
 ### Verification
+
+- `./scripts/verify_apple_builds.sh` (2026-08-13): XcodeGen correcto; macOS Native e
+  iOS Simulator compilados correctamente tras el fix del Cuaderno.
+- `./gradlew :shared:desktopTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest`:
+  BUILD SUCCESSFUL; cubre error visible, conservación de dirty y recuperación tras reintento.
+- `build_run_sim` de XcodeBuildMCP (2026-08-13): build y lanzamiento correctos en
+  iPad Pro 11-inch (M5); el snapshot del Cuaderno conserva el estado normal y no
+  muestra un control de reintento permanente.
+- `git diff --check`: correcto tras conectar el estado real de SyncLAN a la toolbar.
+- El mismo test cubre el camino de `saveCurrentNotebook()` usado por el botón
+  "Reintentar": fallo → `Failed`/`dirty` → segundo intento correcto → `Saved`.
+- `build_run_sim` de XcodeBuildMCP en iPad Pro 11-inch (M5): build y lanzamiento correctos;
+  snapshot UI del Cuaderno en estado normal sin botón de reintento permanente.
+- `git diff --check`: correcto.
 
 - `./scripts/verify_apple_builds.sh` (2026-08-04): XcodeGen correcto; macOS Native e
   iOS Simulator compilados correctamente.

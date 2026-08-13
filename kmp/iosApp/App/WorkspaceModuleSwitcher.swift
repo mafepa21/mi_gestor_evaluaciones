@@ -43,6 +43,7 @@ extension AppWorkspaceShell {
             NotebookModuleView(
                 bridge: bridge,
                 notebookStore: notebookStore,
+                dashboardStore: dashboardStore,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),

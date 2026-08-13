@@ -468,6 +468,57 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-08-13 - El Cuaderno distingue SyncLAN inactiva de sincronizado
+
+Resumen:
+- Se conectó `NotebookModuleView` a `DashboardBridgeStore` y se reutilizó `resolvedSyncStatusBadgeState` para que la toolbar distinga host no emparejado, cambios pendientes, error y estado al día.
+- Importa porque el texto anterior mostraba "Sincronizado" siempre que el contador de pendientes era cero, incluso con SyncLAN inactiva; el guardado local y la sincronización quedan visualmente separados.
+- Dónde vive el cambio: `kmp/iosApp/App/NotebookModuleView.swift`, `NotebookModuleToolbarState.swift`, `WorkspaceModuleSwitcher.swift`, `IOSRootView.swift`, `kmp/iosApp/MacApp/NotebookMacLayout.swift` y `MacRootView.swift`.
+- Validación realizada: `./scripts/verify_apple_builds.sh` regeneró XcodeGen y compiló macOS Native e iOS Simulator; `build_run_sim` arrancó el Cuaderno en iPad Pro 11-inch (M5); `git diff --check` pasó.
+
+Notas para futuras conversaciones:
+- El estado de SyncLAN sigue siendo informativo en la toolbar del Cuaderno; las acciones de emparejado/pull/push permanecen en sus pantallas propias.
+
+### 2026-08-13 - Cobertura del flujo completo de Reintentar del Cuaderno
+
+Resumen:
+- Se añadió a `NotebookViewModelTest.kt` una prueba que reproduce el camino de `saveCurrentNotebook()` usado por la acción `Reintentar`: primer fallo con `Failed` y `dirty`, segundo intento correcto con vuelta a `Saved` y persistencia de la nota.
+- Esto completa la validación automatizada de la recuperación sin introducir un interruptor de fallo artificial en la app.
+- Validación realizada: `./gradlew :shared:desktopTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest` terminó con `BUILD SUCCESSFUL`.
+
+Notas para futuras conversaciones:
+- La QA manual de pulsar `Reintentar` tras una caída real del repositorio no se ejecutó; el simulador solo confirmó que el control no aparece permanentemente en el estado normal.
+
+### 2026-08-13 - Reintento contextual para errores de guardado del Cuaderno
+
+Resumen:
+- Se añadió un botón `Reintentar` en la barra de estado de `NotebookModuleView.swift`, visible solo cuando el estado compartido es `Failed`, y conectado al `saveNotebook()` existente.
+- La acción mantiene la jerarquía del flujo diario: no añade ruido en el estado normal y permite recuperar el borrador sin abandonar la evaluación.
+- Validación realizada: build y lanzamiento con XcodeBuildMCP en iPad Pro 11-inch (M5), snapshot del Cuaderno sin botón permanente; builds macOS/iOS y test KMP previos en verde.
+
+Notas para futuras conversaciones:
+- La acción aún no se ha pulsado tras inyectar un fallo real en el simulador; el comportamiento de error/recuperación está cubierto por el test del ViewModel.
+
+### 2026-08-13 - El Cuaderno expone los errores reales de persistencia
+
+Resumen:
+- Se añadió `NotebookViewModelSaveState.Failed` en `kmp/shared/.../NotebookViewModel.kt`; los guardados directos, por batch y del cuaderno completo ya no limpian `dirty` cuando el repositorio lanza una excepción.
+- La barra de `NotebookModuleToolbarState.swift` muestra "Error al guardar" y el siguiente intento limpia el error; no se modificaron modelos de datos, SQLDelight ni `KmpBridge.swift`.
+- Validación realizada: `./gradlew :shared:desktopTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest` y `./scripts/verify_apple_builds.sh` pasaron en verde para KMP, macOS Native e iOS Simulator.
+
+Notas para futuras conversaciones:
+- Falta QA manual forzando un fallo en dispositivo y una acción de reintento explícita; el error actual se resuelve al iniciar un nuevo guardado correcto.
+
+### 2026-08-13 - El Cuaderno deja de simular el guardado por celda
+
+Resumen:
+- Se eliminó de `kmp/iosApp/App/NotebookEditableTableCell.swift` el estado local basado en temporizadores que pintaba "Guardando" y "Guardado" sin conocer el resultado real de la persistencia.
+- Importa porque una celda podía confirmar visualmente un guardado fallido; la barra del Cuaderno queda como única fuente visible y observa `NotebookViewModel.notebookSaveState`.
+- Validación realizada: `./scripts/verify_apple_builds.sh` regeneró XcodeGen y compiló correctamente macOS Native e iOS Simulator; `git diff --check` también pasó.
+
+Notas para futuras conversaciones:
+- El estado compartido todavía no expone un error de persistencia para la UX del Cuaderno; queda diseñar ese contrato y un reintento explícito sin tocar `KmpBridge.swift` salvo que sea imprescindible.
+
 ### 2026-07-03 - Refactorización y división del shell principal de iPad (IPadWorkspaceShell.swift)
 
 Resumen:

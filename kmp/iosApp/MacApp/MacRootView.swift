@@ -452,6 +452,7 @@ struct MacRootView: View {
             NotebookMacLayout(
                 bridge: session.bridge,
                 notebookStore: notebookStore,
+                dashboardStore: dashboardStore,
                 layoutState: layoutState,
                 toolbarActions: notebookToolbarActions,
                 inspectorState: notebookInspectorState,

@@ -49,6 +49,7 @@ Prioridad: alta.
   Avance: Dashboard macOS "Hoy" prioriza la clase actual o próxima, pendiente principal y acción recomendada antes que los paneles secundarios.
   Avance: Dashboard iOS/iPadOS y macOS fusionan Radar y cockpit diario en una unica entrada "Hoy"; se retira Radar del menu visible y el flujo queda centrado en acciones, sesiones, pendientes, riesgo y agenda.
   Avance: el estado sin horario de "Hoy" en macOS muestra una explicación breve y accesos directos de trabajo diario para que la pantalla no parezca vacía.
+  Avance: la tarjeta compartida "Ahora" fija una única acción primaria contextual (pasar lista en clase o preparar el Cuaderno para la próxima sesión) y agrupa el resto de acciones para reducir carga cognitiva en iPadOS y macOS.
 
 ## Fase 2 - Apple premium
 

@@ -48,6 +48,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Dashboard Hoy: la tarjeta "Ahora" fija una única acción primaria según el
+  contexto (pasar lista durante la clase o preparar el cuaderno para la próxima)
+  y agrupa observación, evaluación, cuaderno, agenda y diario en "Más acciones";
+  el encabezado deja de duplicar esas acciones como botones equivalentes.
 - Evaluación de rúbricas e instrumentos: la rúbrica individual amplía su área
   de trabajo para mostrar sus cuatro niveles; los selectores numéricos aceptan
   pulsaciones en toda su superficie y la primera columna de la evaluación masiva
@@ -117,6 +121,17 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./scripts/verify_apple_builds.sh` (2026-08-13): XcodeGen correcto; macOS
+  Native e iOS Simulator compilados correctamente tras el ajuste compartido de
+  la tarjeta "Ahora".
+- XcodeBuildMCP en iPad Pro 11-inch (M5): build/run correcto; snapshot visual de
+  "Hoy" validado en estado sin horario y checklist de primeros pasos cerrable;
+  con horario de prueba, la tarjeta pasa a "Próxima clase" y muestra "Preparar
+  cuaderno" como acción primaria y "Más acciones" como menú secundario.
+- QA funcional en macOS Native: horario de prueba con 3 ESO A validó "Próxima
+  clase" y, al mover la franja del jueves a 20:40–21:30, "En curso" con
+  "Pasar lista" y "Abrir cuaderno" disponibles. El curso de prueba se fijó
+  del 1/8/2026 al 30/6/2027 para cubrir la fecha de la sesión.
 - `./scripts/verify_apple_builds.sh` (2026-08-13): XcodeGen correcto; macOS Native e
   iOS Simulator compilados correctamente tras el fix del Cuaderno.
 - `./gradlew :shared:desktopTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest`:

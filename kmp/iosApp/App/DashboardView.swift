@@ -245,73 +245,13 @@ struct DashboardView: View {
     private var dashboardHeaderControls: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 16) {
-                dashboardPrimaryActions
                 dashboardModeAndExportControls
             }
 
             VStack(alignment: .leading, spacing: 16) {
-                dashboardPrimaryActions
                 dashboardModeAndExportControls
             }
         }
-    }
-
-    private var dashboardPrimaryActions: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                dashboardPrimaryActionButtons(labelsVisible: true)
-            }
-
-            HStack(spacing: 8) {
-                dashboardPrimaryActionButtons(labelsVisible: false)
-            }
-        }
-        .controlSize(.regular)
-    }
-
-    @ViewBuilder
-    private func dashboardPrimaryActionButtons(labelsVisible: Bool) -> some View {
-        Button {
-            Task { await performPassList() }
-        } label: {
-            if labelsVisible {
-                Label("Pasar lista", systemImage: "checkmark.circle")
-            } else {
-                Label("Pasar lista", systemImage: "checkmark.circle")
-                    .labelStyle(.iconOnly)
-            }
-        }
-        .buttonStyle(.bordered)
-        .disabled(dashboardActionClassId == nil)
-        .accessibilityLabel("Pasar lista")
-
-        Button {
-            Task { await performObservation() }
-        } label: {
-            if labelsVisible {
-                Label("Observación", systemImage: "note.text.badge.plus")
-            } else {
-                Label("Observación", systemImage: "note.text.badge.plus")
-                    .labelStyle(.iconOnly)
-            }
-        }
-        .buttonStyle(.bordered)
-        .disabled(dashboardActionClassId == nil)
-        .accessibilityLabel("Nueva observación")
-
-        Button {
-            performQuickEvaluation()
-        } label: {
-            if labelsVisible {
-                Label("Evaluar", systemImage: "checklist")
-            } else {
-                Label("Evaluar", systemImage: "checklist")
-                    .labelStyle(.iconOnly)
-            }
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(dashboardActionClassId == nil)
-        .accessibilityLabel("Evaluar")
     }
 
     private var dashboardModeAndExportControls: some View {

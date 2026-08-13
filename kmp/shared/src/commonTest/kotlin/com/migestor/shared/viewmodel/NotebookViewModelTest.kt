@@ -703,6 +703,92 @@ class NotebookViewModelTest {
     }
 
     @Test
+    fun `inline save failure is visible and remains dirty until a later save succeeds`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val column = NotebookColumnDefinition(
+            id = "custom_numeric",
+            title = "Proyecto",
+            type = NotebookColumnType.NUMERIC,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(NotebookRow(student = student, cells = emptyList(), weightedAverage = null)),
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+
+            repository.saveErrorMessage = "Persistencia no disponible"
+            viewModel.saveColumnGrade(student.id, column, "8,5")
+            advanceUntilIdle()
+
+            assertEquals(NotebookViewModelSaveState.Failed, viewModel.notebookSaveState.value.state)
+            assertTrue(viewModel.notebookSaveState.value.isDirty)
+            assertFalse(viewModel.notebookSaveState.value.isSaving)
+            assertFalse(viewModel.notebookSaveState.value.isSaved)
+
+            repository.saveErrorMessage = null
+            viewModel.saveColumnGrade(student.id, column, "9")
+            advanceUntilIdle()
+
+            assertEquals(NotebookViewModelSaveState.Saved, viewModel.notebookSaveState.value.state)
+            assertFalse(viewModel.notebookSaveState.value.isDirty)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `retrying full notebook save after failure clears the error and dirty state`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val column = NotebookColumnDefinition(
+            id = "custom_numeric",
+            title = "Proyecto",
+            type = NotebookColumnType.NUMERIC,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(NotebookRow(student = student, cells = emptyList(), weightedAverage = null)),
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+            viewModel.updateDraft(student.id, column.id, NotebookColumnType.NUMERIC, "8,5")
+
+            repository.saveErrorMessage = "Persistencia no disponible"
+            assertFalse(viewModel.saveCurrentNotebook())
+            advanceUntilIdle()
+            assertEquals(NotebookViewModelSaveState.Failed, viewModel.notebookSaveState.value.state)
+            assertTrue(viewModel.notebookSaveState.value.isDirty)
+
+            repository.saveErrorMessage = null
+            assertTrue(viewModel.saveCurrentNotebook())
+            advanceUntilIdle()
+
+            assertEquals(NotebookViewModelSaveState.Saved, viewModel.notebookSaveState.value.state)
+            assertFalse(viewModel.notebookSaveState.value.isDirty)
+            assertEquals(1, repository.saveGradeCalls.size)
+            assertEquals(8.5, repository.saveGradeCalls.single().value)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun `saveCurrentNotebook does not overwrite a grade when the draft fails to parse`() = runTest {
         // Regresion: saveCurrentNotebook llamaba a saveGrade con
         // draft.replace(",", ".").toDoubleOrNull() sin el guard que si tiene
@@ -1040,6 +1126,7 @@ private class FakeNotebookRepository(
     val savedCellCalls = mutableListOf<SaveCellCall>()
     val savedTabs = mutableListOf<NotebookTab>()
     var loadNotebookSnapshotCount = 0
+    var saveErrorMessage: String? = null
 
     val deletedColumnIds = mutableListOf<String>()
     val deletedEvaluationIds = mutableListOf<Long>()
@@ -1063,6 +1150,7 @@ private class FakeNotebookRepository(
     override suspend fun removeStudent(classId: Long, studentId: Long) = Unit
     override suspend fun listStudentsInClass(classId: Long): List<Student> = emptyList()
     override suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?): Long {
+        saveErrorMessage?.let { throw IllegalStateException(it) }
         saveGradeCalls += SaveGradeCall(classId, studentId, columnId, evaluationId, value)
         gradeChanges.value = listOf(Grade(id = 1L, classId = classId, studentId = studentId, columnId = columnId, evaluationId = evaluationId, value = value))
         return 1
@@ -1135,6 +1223,7 @@ private class FakeNotebookRepository(
         authorUserId: Long?,
         associatedGroupId: Long?,
     ) {
+        saveErrorMessage?.let { throw IllegalStateException(it) }
         savedCellCalls += SaveCellCall(
             classId = classId,
             studentId = studentId,

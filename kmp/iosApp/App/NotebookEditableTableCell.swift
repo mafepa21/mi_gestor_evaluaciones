@@ -16,12 +16,6 @@ private enum NotebookCellKeyboardKind {
     case text
 }
 
-private enum NotebookCellSaveFeedback: Equatable {
-    case idle
-    case saving
-    case saved
-}
-
 struct NotebookCellDisplaySnapshot: Equatable {
     let numericText: String
     let text: String
@@ -667,8 +661,6 @@ private struct NotebookStatefulEditableTableCell: View {
     @State private var showTextPopover = false
     @State private var isNumericKeyboardPresented = false
     @State private var hasLoadedDrafts = false
-    @State private var saveFeedback: NotebookCellSaveFeedback = .idle
-    @State private var saveFeedbackTask: Task<Void, Never>?
 
     private var cellId: String {
         "\(item.student.id)|\(column.id)"
@@ -721,7 +713,6 @@ private struct NotebookStatefulEditableTableCell: View {
             }
 
             cellStateOverlay
-            saveFeedbackDot
 
             if isNumericDragging {
                 Text("Desliza para ajustar")
@@ -738,7 +729,6 @@ private struct NotebookStatefulEditableTableCell: View {
         .onTapGesture(perform: onSelect)
         .onAppear(perform: loadDrafts)
         .onDisappear {
-            saveFeedbackTask?.cancel()
             saveFocusedDraftIfNeeded(requireFocusReleased: false)
         }
         .appOnChange(of: reloadToken) { _ in
@@ -833,8 +823,6 @@ private struct NotebookStatefulEditableTableCell: View {
         if column.isLocked { return NotebookGridStyle.gridLineStrong }
         if isSelected { return NotebookGridStyle.cellSelectionRing }
         if formulaDisplay?.isError == true { return NotebookGridStyle.stateError }
-        if saveFeedback == .saving { return NotebookGridStyle.statePending }
-        if saveFeedback == .saved { return NotebookStyle.successTint }
         if hasPendingDraft { return NotebookGridStyle.statePending }
         if !column.countsTowardAverage { return NotebookGridStyle.gridLineStrong }
         return nil
@@ -844,40 +832,9 @@ private struct NotebookStatefulEditableTableCell: View {
         if column.isLocked { return "Celda bloqueada" }
         if isSelected { return "Celda activa" }
         if formulaDisplay?.isError == true { return "Error en la fórmula" }
-        if saveFeedback == .saving { return "Guardando" }
-        if saveFeedback == .saved { return "Guardado" }
         if hasPendingDraft { return "Pendiente de guardar" }
         if !column.countsTowardAverage { return "No cuenta para la media" }
         return ""
-    }
-
-    /// Punto discreto de 6pt en la esquina inferior izquierda: única señal del
-    /// ciclo de guardado transitorio (ámbar mientras guarda, verde con un rebote
-    /// al confirmar). Esquina propia, distinta de la anotación (superior derecha)
-    /// y de los badges persistentes (inferior derecha), para no competir con ellos.
-    @ViewBuilder
-    private var saveFeedbackDot: some View {
-        if saveFeedback == .saving || saveFeedback == .saved {
-            VStack {
-                Spacer()
-                HStack {
-                    Group {
-                        if #available(iOS 18.0, macOS 14.0, *) {
-                            Image(systemName: "circle.fill")
-                                .symbolEffect(.bounce, value: saveFeedback == .saved)
-                        } else {
-                            Image(systemName: "circle.fill")
-                        }
-                    }
-                    .font(.system(size: 6))
-                    .foregroundStyle(saveFeedback == .saving ? NotebookGridStyle.statePending : NotebookStyle.successTint)
-                    .accessibilityHidden(true)
-
-                    Spacer()
-                }
-            }
-            .padding(6)
-        }
     }
 
     private var hasPendingDraft: Bool {
@@ -1499,7 +1456,6 @@ private struct NotebookStatefulEditableTableCell: View {
             } else {
                 actions.saveColumnGradeDebounced(item.student.id, column, numericDraft)
             }
-            markSaveInProgress()
             onCellSaved()
         }
     }
@@ -1523,7 +1479,6 @@ private struct NotebookStatefulEditableTableCell: View {
             } else {
                 actions.saveColumnGradeDebounced(item.student.id, column, textDraft)
             }
-            markSaveInProgress()
             onCellSaved()
         }
     }
@@ -1545,7 +1500,6 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         AppleInteractionFeedback.play(.selection)
         actions.saveColumnGrade(item.student.id, column, option)
-        markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
     }
@@ -1564,7 +1518,6 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         AppleInteractionFeedback.play(.lightImpact)
         actions.saveColumnGrade(item.student.id, column, nextValue)
-        markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
     }
@@ -1582,7 +1535,6 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         AppleInteractionFeedback.play(.selection)
         actions.saveColumnGrade(item.student.id, column, canonicalStatus)
-        markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
 
@@ -1646,18 +1598,6 @@ private struct NotebookStatefulEditableTableCell: View {
         #endif
     }
 
-    private func markSaveInProgress() {
-        saveFeedbackTask?.cancel()
-        saveFeedback = .saving
-        saveFeedbackTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            guard !Task.isCancelled else { return }
-            saveFeedback = .saved
-            try? await Task.sleep(nanoseconds: 1_400_000_000)
-            guard !Task.isCancelled else { return }
-            saveFeedback = .idle
-        }
-    }
 }
 
 private struct NotebookFormulaCell: View, Equatable {

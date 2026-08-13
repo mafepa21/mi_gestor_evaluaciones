@@ -1564,6 +1564,17 @@ struct NotebookModuleView: View {
                                 }
                                 .foregroundStyle(saveBadge.color)
 
+                                if notebookStore.notebookSplitSaveState.state == .failed {
+                                    Button {
+                                        bridge.saveNotebook()
+                                    } label: {
+                                        Label("Reintentar", systemImage: "arrow.clockwise")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                    .accessibilityHint("Vuelve a intentar guardar los cambios pendientes")
+                                }
+
                                 Text("•")
                                     .foregroundStyle(.secondary)
 

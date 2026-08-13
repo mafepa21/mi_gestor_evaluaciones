@@ -15,7 +15,9 @@ extension NotebookModuleView {
     }
 
     var saveBadge: (text: String, icon: String, color: Color) {
-        if bridge.notebookSplitSaveState.isSaved {
+        if bridge.notebookSplitSaveState.state == .failed {
+            return ("Error al guardar", "exclamationmark.triangle.fill", .red)
+        } else if bridge.notebookSplitSaveState.isSaved {
             return ("Guardado", "checkmark.circle.fill", .secondary)
         } else if bridge.notebookSplitSaveState.isSaving {
             return ("Guardando…", "arrow.triangle.2.circlepath", .secondary)

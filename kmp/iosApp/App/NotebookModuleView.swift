@@ -38,6 +38,7 @@ struct NotebookModuleView: View {
     #endif
     let bridge: KmpBridge
     @ObservedObject var notebookStore: NotebookBridgeStore
+    @ObservedObject var dashboardStore: DashboardBridgeStore
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -141,6 +142,7 @@ struct NotebookModuleView: View {
     init(
         bridge: KmpBridge,
         notebookStore: NotebookBridgeStore,
+        dashboardStore: DashboardBridgeStore,
         selectedClassId: Binding<Int64?>,
         selectedStudentId: Binding<Int64?>,
         onOpenModule: @escaping (AppWorkspaceModule, Int64?, Int64?) -> Void,
@@ -151,6 +153,7 @@ struct NotebookModuleView: View {
     ) {
         self.bridge = bridge
         self.notebookStore = notebookStore
+        self.dashboardStore = dashboardStore
         self._selectedClassId = selectedClassId
         self._selectedStudentId = selectedStudentId
         self.onOpenModule = onOpenModule
@@ -1578,14 +1581,14 @@ struct NotebookModuleView: View {
                                 Text("•")
                                     .foregroundStyle(.secondary)
 
-                                // Sincronización
-                                if notebookStore.syncPendingChanges > 0 {
-                                    Text("\(notebookStore.syncPendingChanges) pnd.")
-                                        .foregroundStyle(Color.orange)
-                                } else {
-                                    Text("Sincronizado")
-                                        .foregroundStyle(.secondary)
+                                // Sincronización LAN: no confundir ausencia de host con estado al día.
+                                HStack(spacing: 4) {
+                                    Image(systemName: notebookSyncStatusState.systemImage)
+                                    Text(notebookSyncStatusText)
                                 }
+                                .foregroundStyle(notebookSyncStatusState.tint)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(notebookSyncStatusState.accessibilityLabel)
 
                                 Text("•")
                                     .foregroundStyle(.secondary)

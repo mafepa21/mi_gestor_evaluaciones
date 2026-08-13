@@ -1041,6 +1041,7 @@ struct IOSWorkspaceContent: View {
             NotebookModuleView(
                 bridge: bridge,
                 notebookStore: notebookStore,
+                dashboardStore: dashboardStore,
                 selectedClassId: $selectionStore.selectedClassId,
                 selectedStudentId: $selectionStore.selectedStudentId,
                 onOpenModule: onOpenModule,

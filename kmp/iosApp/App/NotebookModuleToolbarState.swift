@@ -27,6 +27,27 @@ extension NotebookModuleView {
         return ("Estado pendiente", "circle", .secondary)
     }
 
+    var notebookSyncStatusState: SyncStatusBadgeState {
+        resolvedSyncStatusBadgeState(
+            syncStatusMessage: dashboardStore.syncStatusMessage,
+            syncPendingChanges: dashboardStore.syncPendingChanges,
+            pairedSyncHost: dashboardStore.pairedSyncHost
+        )
+    }
+
+    var notebookSyncStatusText: String {
+        switch notebookSyncStatusState {
+        case .inactivo:
+            return "Sync inactiva"
+        case .pendiente(let count):
+            return "\(count) pnd."
+        case .error:
+            return "Sync con error"
+        case .sincronizado:
+            return "Sincronizado"
+        }
+    }
+
     var sortedClasses: [SchoolClass] {
         bridge.classes.sorted {
             if $0.course != $1.course { return $0.course < $1.course }

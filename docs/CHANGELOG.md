@@ -141,10 +141,11 @@ El formato sigue una variante practica de Keep a Changelog:
   la tarjeta "Ahora".
 - XcodeBuildMCP en iPad Pro 11-inch (M5): build/run correcto; snapshot visual de
   "Hoy" validado en estado sin horario y checklist de primeros pasos visible,
-  con progreso 2/5 y pasos bloqueados correctamente representados. Las
-  pulsaciones automatizadas se reportaron como correctas, pero no cambiaron la
-  interfaz ni siquiera al probar "Hide Sidebar"; el cierre interactivo queda
-  pendiente de QA manual con un dispositivo o automatización funcional.
+  con progreso 2/5 y pasos bloqueados correctamente representados.
+- XcodeBuildMCP en iPhone 17 Pro (iOS 27): build/run correcto; tras pulsar
+  "Seguir luego", `wait_for_ui` confirmó que la sheet desaparece y el dashboard
+  queda visible. Al relanzar la app con la base vacía, la checklist reaparece
+  directamente sin repetir la bienvenida, como exige el flujo de reentrada.
 - Con horario de prueba, la tarjeta pasa a "Próxima clase" y muestra "Preparar
   cuaderno" como acción primaria y "Más acciones" como menú secundario.
 - QA funcional en macOS Native: horario de prueba con 3 ESO A validó "Próxima

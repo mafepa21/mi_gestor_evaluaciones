@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.datetime.Clock
 import kotlin.native.ObjCName
 
-enum class NotebookViewModelSaveState { Saved, Unsaved, Saving }
+enum class NotebookViewModelSaveState { Saved, Unsaved, Saving, Failed }
 
 class NotebookViewModel(
     private val notebookRepository: NotebookRepository,
@@ -41,13 +41,15 @@ class NotebookViewModel(
 
     private val _isDirty = MutableStateFlow(false)
     val isDirty: StateFlow<Boolean> = _isDirty.asStateFlow()
+    private val _hasSaveError = MutableStateFlow(false)
     private val _pendingInlineSaves = MutableStateFlow(0)
     private val _pendingInlineCellSaves = MutableStateFlow<Set<Pair<Long, String>>>(emptySet())
     private var lastInlineSaveCompletedAtEpochMs: Long = 0L
 
-    val saveState: StateFlow<NotebookViewModelSaveState> = combine(_isDirty, _isSyncing) { dirty, syncing ->
+    val saveState: StateFlow<NotebookViewModelSaveState> = combine(_isDirty, _isSyncing, _hasSaveError) { dirty, syncing, hasSaveError ->
         when {
             syncing -> NotebookViewModelSaveState.Saving
+            hasSaveError -> NotebookViewModelSaveState.Failed
             dirty -> NotebookViewModelSaveState.Unsaved
             else -> NotebookViewModelSaveState.Saved
         }
@@ -58,8 +60,14 @@ class NotebookViewModel(
     fun setSyncing(syncing: Boolean) { _isSyncing.value = syncing }
 
     private fun beginInlineSave() {
+        _hasSaveError.value = false
         _pendingInlineSaves.update { it + 1 }
         setSyncing(true)
+    }
+
+    private fun markSaveFailed() {
+        _hasSaveError.value = true
+        markDirty()
     }
 
     private fun markCellAsSaving(studentId: Long, columnId: String) {
@@ -771,8 +779,9 @@ class NotebookViewModel(
                 internalSaveGrade(studentId, column, value)
             } catch (e: Exception) {
                 println("Error saving column grade: ${e.message}")
+                markSaveFailed()
             } finally {
-                if (markCellAsSaved(studentId, column.id) == 0) {
+                if (markCellAsSaved(studentId, column.id) == 0 && !_hasSaveError.value) {
                     markClean()
                 }
             }
@@ -850,6 +859,7 @@ class NotebookViewModel(
                 markClean()
             } catch (e: Exception) {
                 println("Error saving queued column grades: ${e.message}")
+                markSaveFailed()
             } finally {
                 endInlineSave()
             }
@@ -861,6 +871,7 @@ class NotebookViewModel(
         val classId = activeClassId ?: return false
         val currentState = _state.value as? NotebookUiState.Data ?: return false
 
+        _hasSaveError.value = false
         setSyncing(true)
         return try {
             currentState.sheet.rows.forEach { row ->
@@ -950,6 +961,8 @@ class NotebookViewModel(
             NotebookRefreshBus.emitRefresh()
             true
         } catch (e: Exception) {
+            println("Error saving notebook: ${e.message}")
+            markSaveFailed()
             false
         } finally {
             setSyncing(false)

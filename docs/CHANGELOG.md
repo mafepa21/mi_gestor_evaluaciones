@@ -124,6 +124,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - La bienvenida de primer arranque solicita el dismiss explícito del sheet al
   pulsar "Ahora no" o "Configurar mi curso", manteniendo la transición guiada
   hacia la checklist.
+- La checklist de primeros pasos usa el dismiss nativo de SwiftUI antes de
+  limpiar su ruta, para que "Cerrar primeros pasos", "Seguir luego" y
+  "Abrir Hoy" cierren visualmente la sheet también en iPad.
 
 ### Verification
 
@@ -137,8 +140,12 @@ El formato sigue una variante practica de Keep a Changelog:
   Native e iOS Simulator compilados correctamente tras el ajuste compartido de
   la tarjeta "Ahora".
 - XcodeBuildMCP en iPad Pro 11-inch (M5): build/run correcto; snapshot visual de
-  "Hoy" validado en estado sin horario y checklist de primeros pasos cerrable;
-  con horario de prueba, la tarjeta pasa a "Próxima clase" y muestra "Preparar
+  "Hoy" validado en estado sin horario y checklist de primeros pasos visible,
+  con progreso 2/5 y pasos bloqueados correctamente representados. Las
+  pulsaciones automatizadas se reportaron como correctas, pero no cambiaron la
+  interfaz ni siquiera al probar "Hide Sidebar"; el cierre interactivo queda
+  pendiente de QA manual con un dispositivo o automatización funcional.
+- Con horario de prueba, la tarjeta pasa a "Próxima clase" y muestra "Preparar
   cuaderno" como acción primaria y "Más acciones" como menú secundario.
 - QA funcional en macOS Native: horario de prueba con 3 ESO A validó "Próxima
   clase" y, al mover la franja del jueves a 20:40–21:30, "En curso" con

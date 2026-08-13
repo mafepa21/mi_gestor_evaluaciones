@@ -20,6 +20,7 @@ enum OnboardingActionKind {
 struct OnboardingChecklistView: View {
     @ObservedObject var store: OnboardingStore
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
 
     let onAction: (OnboardingStep, OnboardingActionKind) -> Void
     let onClose: () -> Void
@@ -64,7 +65,7 @@ struct OnboardingChecklistView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(action: onClose) {
+                Button(action: close) {
                     Label("Cerrar", systemImage: "xmark.circle.fill")
                         .labelStyle(.iconOnly)
                         .font(.title3)
@@ -123,11 +124,27 @@ struct OnboardingChecklistView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button(store.isDone ? "Abrir Hoy" : "Seguir luego", action: store.isDone ? onFinish : onClose)
+            Button(store.isDone ? "Abrir Hoy" : "Seguir luego", action: store.isDone ? finish : close)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
         }
         .padding(20)
+    }
+
+    /// El binding de la ruta actualiza el estado del host, pero el dismiss del
+    /// entorno es la señal que garantiza el cierre visual de la sheet en iPad.
+    private func close() {
+        dismiss()
+        DispatchQueue.main.async {
+            onClose()
+        }
+    }
+
+    private func finish() {
+        dismiss()
+        DispatchQueue.main.async {
+            onFinish()
+        }
     }
 
     private var finishedNote: some View {

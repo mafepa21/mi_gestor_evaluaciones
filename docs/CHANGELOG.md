@@ -55,6 +55,9 @@ El formato sigue una variante practica de Keep a Changelog:
   contexto (pasar lista durante la clase o preparar el cuaderno para la próxima)
   y agrupa observación, evaluación, cuaderno, agenda y diario en "Más acciones";
   el encabezado deja de duplicar esas acciones como botones equivalentes.
+- Activación inicial iPad-first: al completar los cinco pasos de configuración,
+  el onboarding ofrece "Abrir Hoy" y navega al cockpit operativo en iOS/iPadOS y
+  macOS; bienvenida y checklist usan detents nativos y un drag indicator en iOS.
 - Evaluación de rúbricas e instrumentos: la rúbrica individual amplía su área
   de trabajo para mostrar sus cuatro niveles; los selectores numéricos aceptan
   pulsaciones en toda su superficie y la primera columna de la evaluación masiva
@@ -129,6 +132,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - La bienvenida de primer arranque solicita el dismiss explícito del sheet al
   pulsar "Ahora no" o "Configurar mi curso", manteniendo la transición guiada
   hacia la checklist.
+- La checklist de primeros pasos usa el dismiss nativo de SwiftUI antes de
+  limpiar su ruta, para que "Cerrar primeros pasos", "Seguir luego" y
+  "Abrir Hoy" cierren visualmente la sheet también en iPad.
 
 ### Verification
 
@@ -138,12 +144,23 @@ El formato sigue una variante practica de Keep a Changelog:
 - `./scripts/verify_apple_builds.sh` (2026-08-15): XcodeGen correcto; macOS Native, Catalyst e iOS
   Simulator compilados correctamente. `:shared:test` no se pudo ejecutar porque el entorno no tiene
   Android SDK configurado.
+- `swiftc -parse kmp/iosApp/AppleShared/OnboardingChecklistView.swift
+  kmp/iosApp/AppleShared/OnboardingHost.swift`: correcto.
+- `xcodegen generate` y `./scripts/verify_apple_builds.sh` (2026-08-13):
+  macOS Native e iOS Simulator compilados correctamente tras el ajuste del
+  cierre del onboarding; la primera ejecución quedó bloqueada por la red del
+  sandbox al resolver dependencias SPM y se repitió con acceso aprobado.
 - `./scripts/verify_apple_builds.sh` (2026-08-13): XcodeGen correcto; macOS
   Native e iOS Simulator compilados correctamente tras el ajuste compartido de
   la tarjeta "Ahora".
 - XcodeBuildMCP en iPad Pro 11-inch (M5): build/run correcto; snapshot visual de
-  "Hoy" validado en estado sin horario y checklist de primeros pasos cerrable;
-  con horario de prueba, la tarjeta pasa a "Próxima clase" y muestra "Preparar
+  "Hoy" validado en estado sin horario y checklist de primeros pasos visible,
+  con progreso 2/5 y pasos bloqueados correctamente representados.
+- XcodeBuildMCP en iPhone 17 Pro (iOS 27): build/run correcto; tras pulsar
+  "Seguir luego", `wait_for_ui` confirmó que la sheet desaparece y el dashboard
+  queda visible. Al relanzar la app con la base vacía, la checklist reaparece
+  directamente sin repetir la bienvenida, como exige el flujo de reentrada.
+- Con horario de prueba, la tarjeta pasa a "Próxima clase" y muestra "Preparar
   cuaderno" como acción primaria y "Más acciones" como menú secundario.
 - QA funcional en macOS Native: horario de prueba con 3 ESO A validó "Próxima
   clase" y, al mover la franja del jueves a 20:40–21:30, "En curso" con

@@ -104,6 +104,11 @@ Prioridad: media-alta.
 Prioridad: futura, con base documental inicial creada.
 
 - Onboarding y datos de ejemplo.
+  Avance: la activación inicial ya ofrece bienvenida, checklist retomable y una
+  salida directa a Hoy al terminar. QA interactivo en iPhone confirma que
+  "Seguir luego" cierra la sheet y que, al relanzar con la base vacía, la
+  checklist reaparece sin repetir la bienvenida; queda pendiente validar los
+  caminos de datos demo, importación, "Abrir Hoy" y reentrada desde Ajustes.
 - Posicionamiento multi-asignatura: core docente como producto principal y EF como vertical opcional.
 - Guia de uso para docentes.
 - Release notes publicables.

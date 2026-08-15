@@ -48,6 +48,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Navegación Apple: el sidebar iPad adopta la misma jerarquía conceptual que macOS —Hoy, Evaluación,
+  Planificación y Sistema—, elimina el bloque promocional redundante y conserva el contexto de clase
+  como único encabezado operativo. En el shell iPad, la acción primaria queda visible y foco, IA y
+  recargas pasan a un menú secundario; Hoy concentra el peso visual en "Acción principal".
 - Evaluación: la creación desde el estado vacío del iPad abre el flujo real de alta; macOS incorpora
   la sección de Evaluación compartida, acceso directo "Nueva evaluación" y el atajo `⌘N`, manteniendo
   el mismo contexto de grupo entre plataformas.
@@ -138,6 +142,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./scripts/verify_apple_builds.sh` (2026-08-15): XcodeGen correcto; macOS Native/Catalyst e iOS
+  Simulator compilados correctamente tras la reorganización del sidebar y la reducción de acciones
+  visibles del shell iPad.
 - `./gradlew :data:desktopTest --tests com.migestor.data.repository.LearningSituationsRepositorySqlDelightTest`:
   BUILD SUCCESSFUL.
 - `./gradlew :shared:desktopTest`: BUILD SUCCESSFUL.

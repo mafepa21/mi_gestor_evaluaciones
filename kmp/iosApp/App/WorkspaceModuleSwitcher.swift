@@ -93,7 +93,8 @@ extension AppWorkspaceShell {
         case .evaluationHub:
             EvaluationHubView(
                 selectedClassId: $selectedClassId,
-                onOpenModule: open(module:classId:studentId:)
+                onOpenModule: open(module:classId:studentId:),
+                onCreateEvaluation: { createSheet = .evaluation }
             )
                 .environmentObject(bridge)
         case .webSubmissions:

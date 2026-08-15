@@ -991,15 +991,21 @@ interface LearningSituationsRepository {
     @Throws(Throwable::class)
     suspend fun listSessionSequenceVersions(learningSituationId: Long): List<LearningSituationSessionSequenceVersion>
     @Throws(Throwable::class)
+    suspend fun listAllSessionSequenceVersions(): List<LearningSituationSessionSequenceVersion>
+    @Throws(Throwable::class)
     suspend fun saveSessionPlan(plan: LearningSituationSessionPlan): Long
     @Throws(Throwable::class)
     suspend fun listSessionPlans(sequenceVersionId: Long): List<LearningSituationSessionPlan>
+    @Throws(Throwable::class)
+    suspend fun listAllSessionPlans(): List<LearningSituationSessionPlan>
     @Throws(Throwable::class)
     suspend fun getSessionPlan(id: Long): LearningSituationSessionPlan?
     @Throws(Throwable::class)
     suspend fun replaceClassLinks(learningSituationId: Long, classIds: List<Long>)
     @Throws(Throwable::class)
     suspend fun listClassLinks(learningSituationId: Long): List<LearningSituationClassLink>
+    @Throws(Throwable::class)
+    suspend fun listAllClassLinks(): List<LearningSituationClassLink>
     @Throws(Throwable::class)
     suspend fun saveLinkedResource(resource: LearningSituationLinkedResource): Long
     @Throws(Throwable::class)

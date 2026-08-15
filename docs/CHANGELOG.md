@@ -48,6 +48,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Evaluación: la creación desde el estado vacío del iPad abre el flujo real de alta; macOS incorpora
+  la sección de Evaluación compartida, acceso directo "Nueva evaluación" y el atajo `⌘N`, manteniendo
+  el mismo contexto de grupo entre plataformas.
 - Dashboard Hoy: la tarjeta "Ahora" fija una única acción primaria según el
   contexto (pasar lista durante la clase o preparar el cuaderno para la próxima)
   y agrupa observación, evaluación, cuaderno, agenda y diario en "Más acciones";
@@ -93,12 +96,17 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- Situaciones de aprendizaje: se añaden lecturas bulk para enlaces de grupo, versiones de secuencia
+  y planes de sesión, eliminando el patrón N+1 usado por Situaciones, Cuaderno y Planificador sin
+  cambiar el esquema ni requerir migración.
 - Se añadió la migración 41 con la marca `archived` de `web_form_instances` y operaciones
   SQLDelight transaccionales por lote. No se crean tablas nuevas ni se sincronizan las
   tablas privadas `web_*`.
 
 ### Docs
 
+- ADR `ADR-2026-08-15-bulk-learning-situation-reads.md`: decisión de centralizar las lecturas
+  relacionadas con Situaciones en consultas bulk y resolver sus relaciones en memoria en la capa Apple.
 - Auditoría y propuesta de rediseño de los instrumentos de evaluación del Cuaderno:
   shell común `Evaluation Workspace`, Liquid Glass reservado al chrome y superficies
   sólidas para el contenido evaluable. Incluye rúbrica individual, evaluación masiva,
@@ -130,6 +138,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :data:desktopTest --tests com.migestor.data.repository.LearningSituationsRepositorySqlDelightTest`:
+  BUILD SUCCESSFUL.
+- `./gradlew :shared:desktopTest`: BUILD SUCCESSFUL.
+- `./scripts/verify_apple_builds.sh` (2026-08-15): XcodeGen correcto; macOS Native, Catalyst e iOS
+  Simulator compilados correctamente. `:shared:test` no se pudo ejecutar porque el entorno no tiene
+  Android SDK configurado.
 - `swiftc -parse kmp/iosApp/AppleShared/OnboardingChecklistView.swift
   kmp/iosApp/AppleShared/OnboardingHost.swift`: correcto.
 - `xcodegen generate` y `./scripts/verify_apple_builds.sh` (2026-08-13):

@@ -24,6 +24,7 @@ Prioridad: alta.
 
 - Cuaderno: carga rapida, grid estable, columnas ocultas seguras, medias explicables y categorias claras.
   Avance: el grid SwiftUI reduce coste de scroll y actualizacion con filas lazy, fingerprints precomputados por panel y celdas desacopladas del bridge global mediante snapshots/actions.
+  Avance P0: la carga de Situaciones de aprendizaje del Cuaderno usa una lectura bulk de enlaces de grupo y evita una consulta por situación.
   Avance: Media explicable con desglose de columnas incluidas, pendientes, exclusiones y aportaciones ponderadas ya integrada en KMP y SwiftUI.
   Avance: pruebas físicas separan dato bruto (`Marca`/`Nivel`) y nota baremada (`Nota`) para evitar contaminar la Media.
   Avance: inspector convertido en ficha rápida del alumno con Media, pendientes, observaciones, rúbricas y acciones.
@@ -34,6 +35,7 @@ Prioridad: alta.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
   Avance: registro y seguimiento de medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, CV) en la ficha de alumno de iOS/iPadOS y macOS, con badge en el Cuaderno y aviso determinista de revision anual, sin IA generativa ni contenido clinico persistido. Verificado con builds reales macOS e iOS Simulator (BUILD SUCCEEDED en ambos).
 - Planificacion: sesiones, situaciones de aprendizaje y continuidad docente.
+  Avance P0: Situaciones, Secuencia y Planificador cargan enlaces, versiones y planes mediante lecturas bulk; el enriquecimiento resuelve las relaciones en memoria y evita consultas N+1.
   Avance: Planificación inicia su rediseño iPad/macOS con cuatro secciones claras (Semana, Día, Secuencia, Resumen), tab bar flotante en iOS/iPadOS y macOS sin inspector lateral invasivo.
   Avance: Semana de Planificación en iOS/iPadOS usa miniatura semafórica de 200pt con detalle contextual por sesión, franja o día, reduciendo densidad visual sin tocar lógica KMP.
   Avance: Secuencia de Planificación adopta un Gantt horizontal por trimestre con situaciones, grupos colapsables y navegación directa a sesiones planificadas.
@@ -50,6 +52,8 @@ Prioridad: alta.
   Avance: Dashboard iOS/iPadOS y macOS fusionan Radar y cockpit diario en una unica entrada "Hoy"; se retira Radar del menu visible y el flujo queda centrado en acciones, sesiones, pendientes, riesgo y agenda.
   Avance: el estado sin horario de "Hoy" en macOS muestra una explicación breve y accesos directos de trabajo diario para que la pantalla no parezca vacía.
   Avance: la tarjeta compartida "Ahora" fija una única acción primaria contextual (pasar lista en clase o preparar el Cuaderno para la próxima sesión) y agrupa el resto de acciones para reducir carga cognitiva en iPadOS y macOS.
+- Evaluación: el estado vacío del iPad abre el flujo real de creación y macOS ofrece la misma entrada
+  desde la barra lateral y `⌘N`, con contexto de grupo compartido.
 
 ## Fase 2 - Apple premium
 

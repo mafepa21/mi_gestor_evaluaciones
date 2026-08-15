@@ -36,6 +36,7 @@ struct MacRootView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var isInspectorVisible = true
     @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
+    @State private var isEvaluationCreationPresented = false
     @State private var banner: MacRootBanner?
     @State private var selectedPlannerSessionId: Int64? = nil
     @State private var bannerDismissTask: Task<Void, Never>?
@@ -155,6 +156,13 @@ struct MacRootView: View {
         navigationSplitContent
             .toolbar {
                 macToolbar
+            }
+            .sheet(isPresented: $isEvaluationCreationPresented) {
+                CreateEvaluationSheet(
+                    defaultClassId: studentSelection.selectedClassId,
+                    onDismiss: { isEvaluationCreationPresented = false }
+                )
+                .environmentObject(session.bridge)
             }
     }
 
@@ -482,6 +490,13 @@ struct MacRootView: View {
                 presentation: .content,
                 reloadToken: studentsReloadToken
             )
+        case .evaluationHub:
+            EvaluationHubView(
+                selectedClassId: studentSelection.selectedClassBinding,
+                onOpenModule: open(module:classId:studentId:),
+                onCreateEvaluation: { isEvaluationCreationPresented = true }
+            )
+            .environmentObject(session.bridge)
         case .rubrics:
             MacRubricsView(bridge: session.bridge)
         case .physicalTests:
@@ -927,6 +942,17 @@ struct MacRootView: View {
                 }
             }
 
+            if selectedFeature == .evaluationHub {
+                Button {
+                    isEvaluationCreationPresented = true
+                } label: {
+                    Label("Nueva evaluación", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut("n", modifiers: .command)
+                .help("Crear una evaluación para la clase activa (⌘N)")
+            }
+
             if selectedFeature == .physicalTests {
                 Button {
                     physicalTestsToolbarActions.newBattery()
@@ -1110,6 +1136,7 @@ struct MacRootView: View {
         case .webSubmissions: return .mint
         case .meetings: return .brown
         case .students: return .blue
+        case .evaluationHub: return .orange
         case .rubrics: return .teal
         case .physicalTests: return .orange
         case .sync: return .green
@@ -1444,6 +1471,8 @@ struct MacRootView: View {
             selectFeature(.situations)
         case .diary:
             selectFeature(.diary)
+        case .evaluationHub:
+            selectFeature(.evaluationHub)
         default:
             showBanner(
                 "\(module.title) todavía no está disponible en la shell Mac.",

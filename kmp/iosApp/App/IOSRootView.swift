@@ -95,6 +95,7 @@ struct IOSRootView: View {
                         layoutState: layoutState,
                         selectionStore: selectionStore,
                         onSync: { Task { await bridge.pullMissingSyncChanges() } },
+                        onCreateEvaluation: { activeSheet = .create(.evaluation) },
                         onToggleInspector: toggleInspector
                     )
                 }
@@ -1080,7 +1081,8 @@ struct IOSWorkspaceContent: View {
         case .evaluationHub:
             EvaluationHubView(
                 selectedClassId: $selectionStore.selectedClassId,
-                onOpenModule: onOpenModule
+                onOpenModule: onOpenModule,
+                onCreateEvaluation: { activeSheet = .create(.evaluation) }
             )
             .environmentObject(bridge)
         case .meetings:
@@ -1191,6 +1193,7 @@ struct IOSContextualToolbar: ToolbarContent {
     @ObservedObject var layoutState: WorkspaceLayoutState
     @ObservedObject var selectionStore: IOSSelectionStore
     let onSync: () -> Void
+    let onCreateEvaluation: () -> Void
     let onToggleInspector: () -> Void
 
     var body: some ToolbarContent {
@@ -1241,6 +1244,15 @@ struct IOSContextualToolbar: ToolbarContent {
                     }
                     .help("Cerrar la ficha del alumno seleccionado")
                 }
+            }
+        }
+
+        if activeModule == .evaluationHub {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: onCreateEvaluation) {
+                    Label("Nueva evaluación", systemImage: "plus")
+                }
+                .help("Crear una evaluación para la clase activa")
             }
         }
 

@@ -68,6 +68,7 @@ Prioridad: alta.
   Avance: la barra lateral de macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) para una experiencia de escritorio real.
   Avance P1: Sync pasa a acción secundaria y las toolbars de Hoy/Asistencia concentran una acción prominente, agrupando las operaciones auxiliares bajo "Más".
   Avance P1 QA: la sidebar macOS fija 220/248/320 pt (mínimo/ideal/máximo), evitando el estado comprimido de 144 pt; se validaron en runtime la navegación, el overflow "Más" y el foco de teclado básico.
+  Avance P1 QA ampliado: se validaron `⌘N`, `⌘⌥1–4` y la superficie AX de Ajustes → Apariencia; quedan para revisión manual el cambio visual claro/oscuro, VoiceOver real y el resize libre.
   Avance: `Cursos` aparece en la barra lateral macOS y abre la misma gestion de curso escolar activo que iOS/iPadOS.
   Avance: Informes, Backups y Sync LAN pueden abrirse como ventanas auxiliares nativas para trabajar en paralelo con el Cuaderno.
   Avance: la toolbar del Cuaderno macOS queda centrada en acciones diarias y `⌘F` enfoca la búsqueda sin cambiar de módulo inesperadamente.

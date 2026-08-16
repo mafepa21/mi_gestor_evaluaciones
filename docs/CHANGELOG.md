@@ -54,6 +54,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - QA visual macOS: la sidebar fija un ancho mínimo/ideal de 220/248 pt para evitar que la ventana
   recuerde una columna de 144 pt y trunque subtítulos; se validan con AX la selección de módulos,
   los labels de toolbar, el menú "Más" y el foco de teclado en búsquedas.
+- QA de accesibilidad macOS ampliado: `⌘N` abre "Nueva evaluación", `⌘⌥1–4` cambia las cuatro
+  secciones del Planificador y Ajustes → Apariencia expone correctamente "Según el sistema",
+  "Claro", "Oscuro premium", "Reducir movimiento" y "Densidad de tablas compacta" con labels AX.
 - Navegación Apple: el sidebar iPad adopta la misma jerarquía conceptual que macOS —Hoy, Evaluación,
   Planificación y Sistema—, elimina el bloque promocional redundante y conserva el contexto de clase
   como único encabezado operativo. En el shell iPad, la acción primaria queda visible y foco, IA y

@@ -61,8 +61,17 @@ Prioridad: alta.
 
 - iPad: shell de trabajo clara, inspector no invasivo y acciones principales visibles.
   Avance: `Cursos` queda como acceso visible de primer nivel en iOS/iPadOS para gestionar curso escolar activo, grupos e historico.
+  Avance P1: el sidebar del shell iPad se alinea conceptualmente con macOS en cuatro grupos (Hoy, Evaluación, Planificación y Sistema), con contexto de clase compacto y una sola acción primaria visible por pantalla.
+  Avance P1 QA: la misma jerarquía queda aplicada en `IOSRootView`, que es el punto de entrada efectivo
+  del iPad; se validó en iPad Pro 11-inch con navegación a Evaluación y acción contextual "Nueva evaluación".
 - macOS: paridad progresiva con convenciones desktop reales.
   Avance: la barra lateral de macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) para una experiencia de escritorio real.
+  Avance P1: Sync pasa a acción secundaria y las toolbars de Hoy/Asistencia concentran una acción prominente, agrupando las operaciones auxiliares bajo "Más".
+  Avance P1 QA: la sidebar macOS fija 220/248/320 pt (mínimo/ideal/máximo), evitando el estado comprimido de 144 pt; se validaron en runtime la navegación, el overflow "Más" y el foco de teclado básico.
+  Avance P1 QA ampliado: se validaron `⌘N`, `⌘⌥1–4`, la superficie AX de Ajustes → Apariencia,
+  los temas claro/oscuro con restauración a sistema, VoiceOver real y el tile lateral nativo con
+  recuperación mediante Window → Fill. El drag libre del borde queda limitado por el driver, no por
+  una regresión observada del shell.
   Avance: `Cursos` aparece en la barra lateral macOS y abre la misma gestion de curso escolar activo que iOS/iPadOS.
   Avance: Informes, Backups y Sync LAN pueden abrirse como ventanas auxiliares nativas para trabajar en paralelo con el Cuaderno.
   Avance: la toolbar del Cuaderno macOS queda centrada en acciones diarias y `⌘F` enfoca la búsqueda sin cambiar de módulo inesperadamente.
@@ -80,6 +89,7 @@ Prioridad: alta.
   Avance: `AppleAIOrchestrator` completa el router tipado con catálogo de capacidades, trazabilidad y consumo desde Cuaderno/EF sobre servicios estructurados ya implementados.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.
+  Avance P1: foco, IA y recargas dejan de competir con la acción principal en la toolbar iPad y pasan a divulgación progresiva; el Dashboard concentra el peso visual en "Acción principal".
   Avance: Gestión de datos en Ajustes rediseñada con menús colapsables por áreas (Estructura Escolar, Cuaderno, Planificación e Instrumentos) y borrado granular en lote/swipe de Cursos, Asignaturas, Cuadernos por curso, Pestañas, Columnas, Sesiones planificadas del Planner, Situaciones de Aprendizaje y Rúbricas.
 
 

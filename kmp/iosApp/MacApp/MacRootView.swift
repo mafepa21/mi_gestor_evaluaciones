@@ -365,6 +365,7 @@ struct MacRootView: View {
             }
         }
         .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
         .navigationTitle("MiGestor")
         .navigationSubtitle(session.bridge.statsText)
     }
@@ -819,14 +820,16 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder
     private var macDefaultWorkspaceToolbar: some ToolbarContent {
-        ToolbarItemGroup {
+        ToolbarItem(placement: .secondaryAction) {
             Button {
                 Task { await session.bridge.pullMissingSyncChanges() }
             } label: {
                 Label("Sync", systemImage: "arrow.triangle.2.circlepath")
             }
             .help("Sincronizar con desktop")
+        }
 
+        ToolbarItemGroup {
             if selectedFeature == .dashboard, let dashboardToolbarActions {
                 Button {
                     dashboardToolbarActions.passList()
@@ -835,15 +838,20 @@ struct MacRootView: View {
                 }
                 .disabled(!dashboardToolbarActions.canRunActions)
                 .keyboardShortcut("l", modifiers: [.command])
+                .buttonStyle(.borderedProminent)
                 .help("Pasar lista para la clase activa")
 
-                Button {
-                    dashboardToolbarActions.observation()
+                Menu {
+                    Button {
+                        dashboardToolbarActions.observation()
+                    } label: {
+                        Label("Observación", systemImage: "note.text.badge.plus")
+                    }
+                    .disabled(!dashboardToolbarActions.canRunActions)
                 } label: {
-                    Label("Observación", systemImage: "note.text.badge.plus")
+                    Label("Más", systemImage: "ellipsis.circle")
                 }
-                .disabled(!dashboardToolbarActions.canRunActions)
-                .help("Registrar una observación rápida")
+                .help("Más acciones de Hoy")
             }
 
             if selectedFeature == .attendance, let attendanceToolbarActions {
@@ -924,22 +932,25 @@ struct MacRootView: View {
                 .disabled(!attendanceToolbarActions.canMarkAllPresent)
                 .help("Marcar como presentes los alumnos filtrados")
 
-                Button {
-                    attendanceToolbarActions.repeatPattern()
-                } label: {
-                    Label("Repetir patrón", systemImage: "repeat")
-                }
-                .disabled(!attendanceToolbarActions.canRepeatPattern)
-                .help("Repetir el último patrón de asistencia")
-
-                if attendanceToolbarActions.canCloseSelection {
+                Menu {
                     Button {
-                        attendanceToolbarActions.clearSelection()
+                        attendanceToolbarActions.repeatPattern()
                     } label: {
-                        Label("Cerrar ficha", systemImage: "sidebar.right")
+                        Label("Repetir patrón", systemImage: "repeat")
                     }
-                    .help("Cerrar el inspector del alumno")
+                    .disabled(!attendanceToolbarActions.canRepeatPattern)
+
+                    if attendanceToolbarActions.canCloseSelection {
+                        Button {
+                            attendanceToolbarActions.clearSelection()
+                        } label: {
+                            Label("Cerrar ficha", systemImage: "sidebar.right")
+                        }
+                    }
+                } label: {
+                    Label("Más", systemImage: "ellipsis.circle")
                 }
+                .help("Más acciones de asistencia")
             }
 
             if selectedFeature == .evaluationHub {

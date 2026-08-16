@@ -212,6 +212,15 @@ extension AppWorkspaceShell {
         }
     }
 
+    var hasPrimaryWorkspaceAction: Bool {
+        switch activeModule {
+        case .courses, .students, .planner, .diary, .evaluationHub, .rubrics, .peRubrics:
+            return true
+        default:
+            return false
+        }
+    }
+
     var statusLineText: String {
         let rawStatus = bridge.status.trimmingCharacters(in: .whitespacesAndNewlines)
         if !rawStatus.isEmpty, rawStatus != "Inicializando...", rawStatus != "La acción principal de este módulo se gestiona dentro de la vista." {

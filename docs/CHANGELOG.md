@@ -15,7 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
-- Icono nativo para Compose Desktop: nueva identidad minimalista de cuaderno y validación, reutilizada en la ventana en ejecución y en el bundle macOS (`icon-window.png` + `icon.icns`).
+- Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
   documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro

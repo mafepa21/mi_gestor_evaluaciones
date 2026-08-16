@@ -62,6 +62,8 @@ Prioridad: alta.
 - iPad: shell de trabajo clara, inspector no invasivo y acciones principales visibles.
   Avance: `Cursos` queda como acceso visible de primer nivel en iOS/iPadOS para gestionar curso escolar activo, grupos e historico.
   Avance P1: el sidebar del shell iPad se alinea conceptualmente con macOS en cuatro grupos (Hoy, Evaluación, Planificación y Sistema), con contexto de clase compacto y una sola acción primaria visible por pantalla.
+  Avance P1 QA: la misma jerarquía queda aplicada en `IOSRootView`, que es el punto de entrada efectivo
+  del iPad; se validó en iPad Pro 11-inch con navegación a Evaluación y acción contextual "Nueva evaluación".
 - macOS: paridad progresiva con convenciones desktop reales.
   Avance: la barra lateral de macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) para una experiencia de escritorio real.
   Avance P1: Sync pasa a acción secundaria y las toolbars de Hoy/Asistencia concentran una acción prominente, agrupando las operaciones auxiliares bajo "Más".

@@ -55,6 +55,10 @@ El formato sigue una variante practica de Keep a Changelog:
   Planificación y Sistema—, elimina el bloque promocional redundante y conserva el contexto de clase
   como único encabezado operativo. En el shell iPad, la acción primaria queda visible y foco, IA y
   recargas pasan a un menú secundario; Hoy concentra el peso visual en "Acción principal".
+- Shell iPad efectiva (`IOSRootView`): la jerarquía anterior se aplica al flujo que arranca realmente
+  en iPad, con navegación por áreas, `MiGestor` como título único, acción primaria prominente y
+  sincronización/inspector bajo divulgación progresiva; Evaluación expone "Nueva evaluación" como
+  acción contextual principal.
 - Evaluación: la creación desde el estado vacío del iPad abre el flujo real de alta; macOS incorpora
   la sección de Evaluación compartida, acceso directo "Nueva evaluación" y el atajo `⌘N`, manteniendo
   el mismo contexto de grupo entre plataformas.
@@ -147,6 +151,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - `./scripts/verify_apple_builds.sh` (2026-08-16): XcodeGen correcto; macOS Native/Catalyst e iOS
   Simulator compilados correctamente tras la divulgación progresiva de la toolbar macOS.
+- XcodeBuildMCP en iPad Pro 11-inch (M5, iOS 27): build/run correcto; captura visual de `IOSRootView`
+  validó las secciones Hoy/Evaluación/Planificación/Sistema, la acción primaria de Hoy y el acceso
+  contextual "Nueva evaluación" tras navegar a Evaluación. La captura se obtuvo después de cerrar
+  "Seguir luego" del onboarding.
+- `./scripts/verify_apple_builds.sh` (2026-08-16): XcodeGen correcto; macOS Native/Catalyst e iOS
+  Simulator compilados correctamente tras aplicar la jerarquía al shell efectivo `IOSRootView`.
 - `./scripts/verify_apple_builds.sh` (2026-08-15): XcodeGen correcto; macOS Native/Catalyst e iOS
   Simulator compilados correctamente tras la reorganización del sidebar y la reducción de acciones
   visibles del shell iPad.

@@ -57,6 +57,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - QA de accesibilidad macOS ampliado: `⌘N` abre "Nueva evaluación", `⌘⌥1–4` cambia las cuatro
   secciones del Planificador y Ajustes → Apariencia expone correctamente "Según el sistema",
   "Claro", "Oscuro premium", "Reducir movimiento" y "Densidad de tablas compacta" con labels AX.
+- QA final macOS: los temas Claro y Oscuro premium renderizan correctamente y se restaura "Según el
+  sistema"; VoiceOver se activó/desactivó verificando que la app conserva su superficie AX; el tile
+  lateral nativo mantiene la sidebar de 248 pt y el shell se recupera con Window → Fill.
 - Navegación Apple: el sidebar iPad adopta la misma jerarquía conceptual que macOS —Hoy, Evaluación,
   Planificación y Sistema—, elimina el bloque promocional redundante y conserva el contexto de clase
   como único encabezado operativo. En el shell iPad, la acción primaria queda visible y foco, IA y

@@ -51,6 +51,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - Toolbar macOS: Sync pasa a la acción secundaria; Hoy conserva "Pasar lista" como acción
   prominente y Observación queda en "Más"; Asistencia mantiene "Marcar presentes" como acción
   principal y agrupa Repetir patrón/Cerrar ficha para reducir competencia visual.
+- QA visual macOS: la sidebar fija un ancho mínimo/ideal de 220/248 pt para evitar que la ventana
+  recuerde una columna de 144 pt y trunque subtítulos; se validan con AX la selección de módulos,
+  los labels de toolbar, el menú "Más" y el foco de teclado en búsquedas.
 - Navegación Apple: el sidebar iPad adopta la misma jerarquía conceptual que macOS —Hoy, Evaluación,
   Planificación y Sistema—, elimina el bloque promocional redundante y conserva el contexto de clase
   como único encabezado operativo. En el shell iPad, la acción primaria queda visible y foco, IA y
@@ -157,6 +160,12 @@ El formato sigue una variante practica de Keep a Changelog:
   "Seguir luego" del onboarding.
 - `./scripts/verify_apple_builds.sh` (2026-08-16): XcodeGen correcto; macOS Native/Catalyst e iOS
   Simulator compilados correctamente tras aplicar la jerarquía al shell efectivo `IOSRootView`.
+- QA macOS nativo (2026-08-16): build Debug y lanzamiento de `MiGestorKMPMac` correctos; AX confirmó
+  sidebar Hoy/Evaluación/Planificación/Sistema, navegación a Evaluación/Planificación/Situaciones,
+  "Nueva evaluación", menú "Más" y foco Tab en "Buscar situación". Tras fijar el ancho de sidebar,
+  el splitter pasó de 144 a 248 pt y la captura dejó de truncar la navegación principal.
+- `./scripts/verify_apple_builds.sh` (2026-08-16): XcodeGen correcto; macOS Native/Catalyst e iOS
+  Simulator compilados correctamente tras el ajuste de ancho de sidebar macOS.
 - `./scripts/verify_apple_builds.sh` (2026-08-15): XcodeGen correcto; macOS Native/Catalyst e iOS
   Simulator compilados correctamente tras la reorganización del sidebar y la reducción de acciones
   visibles del shell iPad.

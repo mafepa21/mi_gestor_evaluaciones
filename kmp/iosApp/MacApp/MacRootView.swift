@@ -365,6 +365,7 @@ struct MacRootView: View {
             }
         }
         .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
         .navigationTitle("MiGestor")
         .navigationSubtitle(session.bridge.statsText)
     }

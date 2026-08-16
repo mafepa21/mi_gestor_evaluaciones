@@ -16,6 +16,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Added
 
 - Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
+- AppIcon nativo de Apple actualizado para el target KMP de iPadOS y macOS, con variantes claro/oscuro y ranuras específicas de macOS para que el icono se empaquete en ambas aplicaciones.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
   documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro
@@ -126,6 +127,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Verification
 
 - `./gradlew :desktopApp:processResources` (2026-08-16): correcto; `icon-window.png` se procesa desde `src/main/resources`. `./gradlew :desktopApp:createDistributable` queda bloqueado por un fallo preexistente en `AppFeedbackState.kt:20` (`when` no exhaustivo), ajeno al icono.
+- `xcrun actool` y `xcodebuild` (2026-08-16): catálogo AppIcon validado para iOS Simulator y macOS; `MiGestorKMPiOS` y `MiGestorKMPMac` terminan en **BUILD SUCCEEDED** y el bundle iPadOS contiene `AppIcon76x76@2x~ipad.png` con el nuevo diseño.
 - `./scripts/verify_apple_builds.sh` (2026-08-13): XcodeGen correcto; macOS
   Native e iOS Simulator compilados correctamente tras el ajuste compartido de
   la tarjeta "Ahora".

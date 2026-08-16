@@ -48,6 +48,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Toolbar macOS: Sync pasa a la acción secundaria; Hoy conserva "Pasar lista" como acción
+  prominente y Observación queda en "Más"; Asistencia mantiene "Marcar presentes" como acción
+  principal y agrupa Repetir patrón/Cerrar ficha para reducir competencia visual.
 - Navegación Apple: el sidebar iPad adopta la misma jerarquía conceptual que macOS —Hoy, Evaluación,
   Planificación y Sistema—, elimina el bloque promocional redundante y conserva el contexto de clase
   como único encabezado operativo. En el shell iPad, la acción primaria queda visible y foco, IA y
@@ -142,6 +145,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./scripts/verify_apple_builds.sh` (2026-08-16): XcodeGen correcto; macOS Native/Catalyst e iOS
+  Simulator compilados correctamente tras la divulgación progresiva de la toolbar macOS.
 - `./scripts/verify_apple_builds.sh` (2026-08-15): XcodeGen correcto; macOS Native/Catalyst e iOS
   Simulator compilados correctamente tras la reorganización del sidebar y la reducción de acciones
   visibles del shell iPad.

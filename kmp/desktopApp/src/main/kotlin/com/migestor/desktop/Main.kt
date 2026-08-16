@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -175,6 +176,7 @@ fun main() = application {
             exitApplication()
         },
         title = "MiGestor KMP Desktop",
+        icon = painterResource("icon-window.png"),
         onKeyEvent = { event ->
             if (event.isMetaPressed && event.key == Key.Backslash && event.type == KeyEventType.KeyDown) {
                 appLayoutViewModel.toggleSidebar()

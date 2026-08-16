@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Icono nativo para Compose Desktop: nueva identidad minimalista de cuaderno y validación, reutilizada en la ventana en ejecución y en el bundle macOS (`icon-window.png` + `icon.icns`).
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
   documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro
@@ -124,6 +125,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :desktopApp:processResources` (2026-08-16): correcto; `icon-window.png` se procesa desde `src/main/resources`. `./gradlew :desktopApp:createDistributable` queda bloqueado por un fallo preexistente en `AppFeedbackState.kt:20` (`when` no exhaustivo), ajeno al icono.
 - `./scripts/verify_apple_builds.sh` (2026-08-13): XcodeGen correcto; macOS
   Native e iOS Simulator compilados correctamente tras el ajuste compartido de
   la tarjeta "Ahora".

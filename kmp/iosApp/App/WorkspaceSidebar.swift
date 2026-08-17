@@ -8,69 +8,33 @@ extension AppWorkspaceShell {
 
         List {
             Section {
-                VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("MiGestor iPad")
-                            .font(.system(size: 30, weight: .black, design: .rounded))
-                        Text("Evaluación, asistencia y decisiones de clase en una mesa de trabajo.")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Clase activa")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
 
-                    HStack(spacing: 8) {
-                        Image(systemName: "rectangle.3.group")
-                            .font(.caption.weight(.bold))
-                        Text(activeClassLabel)
-                            .font(.caption.weight(.bold))
-                            .lineLimit(1)
-                    }
-                    .foregroundStyle(Color.accentColor)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.accentColor.opacity(0.10), in: Capsule(style: .continuous))
+                    Label(activeClassLabel, systemImage: "rectangle.3.group")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .lineLimit(1)
                 }
-                .padding(.vertical, 16)
+                .padding(.vertical, 8)
             }
 
-            Section("Uso diario") {
-                ForEach(primaryDailyFeatures) { feature in
-                    Button {
-                        open(module: feature.module)
-                    } label: {
-                        WorkspaceSidebarFeatureRow(
-                            feature: feature,
-                            isActive: activeModule == feature.module,
-                            isPrimary: true
-                        )
-                    }
-                }
-            }
-
-            Section("Trabajo lectivo") {
-                ForEach(secondaryDailyFeatures) { feature in
-                    Button {
-                        open(module: feature.module)
-                    } label: {
-                        WorkspaceSidebarFeatureRow(
-                            feature: feature,
-                            isActive: activeModule == feature.module,
-                            isPrimary: false
-                        )
-                    }
-                }
-            }
-
-            Section("Más herramientas") {
-                ForEach(IOSFeatureRegistry.secondary(enabledProfiles: enabledProfiles)) { feature in
-                    Button {
-                        open(module: feature.module)
-                    } label: {
-                        WorkspaceSidebarFeatureRow(
-                            feature: feature,
-                            isActive: activeModule == feature.module,
-                            isPrimary: false
-                        )
+            ForEach(WorkspaceSidebarSection.allCases) { section in
+                let features = features(for: section, enabledProfiles: enabledProfiles)
+                if !features.isEmpty {
+                    Section(section.rawValue) {
+                        ForEach(features) { feature in
+                            Button {
+                                open(module: feature.module)
+                            } label: {
+                                WorkspaceSidebarFeatureRow(
+                                    feature: feature,
+                                    isActive: activeModule == feature.module
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -79,25 +43,48 @@ extension AppWorkspaceShell {
         .navigationTitle("MiGestor")
     }
 
-    private var primaryDailyFeatures: [IOSFeatureDescriptor] {
-        IOSFeatureRegistry.daily.filter { [.dashboard, .notebook, .attendance].contains($0.module) }
+    private func features(
+        for section: WorkspaceSidebarSection,
+        enabledProfiles: Set<TeacherSubjectProfile>
+    ) -> [IOSFeatureDescriptor] {
+        let available = IOSFeatureRegistry.all(enabledProfiles: enabledProfiles)
+        return section.modules.compactMap { module in
+            available.first { $0.module == module }
+        }
     }
+}
 
-    private var secondaryDailyFeatures: [IOSFeatureDescriptor] {
-        IOSFeatureRegistry.daily.filter { ![.dashboard, .notebook, .attendance].contains($0.module) }
+private enum WorkspaceSidebarSection: String, CaseIterable, Identifiable {
+    case today = "Hoy"
+    case evaluation = "Evaluación"
+    case planning = "Planificación"
+    case system = "Sistema"
+
+    var id: String { rawValue }
+
+    var modules: [AppWorkspaceModule] {
+        switch self {
+        case .today:
+            return [.dashboard]
+        case .evaluation:
+            return [.notebook, .attendance, .evaluationHub, .rubrics, .webSubmissions, .peTests, .peRubrics]
+        case .planning:
+            return [.planner, .diary, .situations, .meetings, .students, .peSessions]
+        case .system:
+            return [.reports, .library, .peIncidents, .peMaterial, .peTournaments, .settings, .backups]
+        }
     }
 }
 
 private struct WorkspaceSidebarFeatureRow: View {
     let feature: IOSFeatureDescriptor
     let isActive: Bool
-    let isPrimary: Bool
 
     var body: some View {
         Label {
             VStack(alignment: .leading, spacing: 4) {
                 Text(feature.title)
-                    .font(isPrimary ? .headline : .subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                 Text(feature.subtitle)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -105,10 +92,10 @@ private struct WorkspaceSidebarFeatureRow: View {
             }
         } icon: {
             Image(systemName: feature.systemImage)
-                .font(.system(size: isPrimary ? 17 : 15, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(isActive ? Color.accentColor : .secondary)
         }
         .foregroundStyle(isActive ? Color.accentColor : .primary)
-        .padding(.vertical, isPrimary ? 6 : 4)
+        .padding(.vertical, 4)
     }
 }

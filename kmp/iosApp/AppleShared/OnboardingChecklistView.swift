@@ -10,7 +10,9 @@ enum OnboardingActionKind {
 /// Es una lista y no un asistente lineal a propósito. Un docente no configura
 /// todo esto de una sentada: mete el horario un día, el alumnado cuando le llega
 /// la lista, y las situaciones cuando las tiene escritas. La lista sobrevive al
-/// cierre de la app y se reabre desde Ajustes → General.
+/// cierre de la app y se reabre desde Ajustes → General. Cuando se completa,
+/// ofrece una salida directa al cockpit de Hoy para que la primera sesión de
+/// trabajo no termine en una pantalla de configuración.
 ///
 /// Cada fila ofrece siempre los dos caminos por separado y con nombre propio
 /// ("Importar Excel" / "Escribir nombres"), en vez de esconder el manual detrás
@@ -18,9 +20,11 @@ enum OnboardingActionKind {
 struct OnboardingChecklistView: View {
     @ObservedObject var store: OnboardingStore
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
 
     let onAction: (OnboardingStep, OnboardingActionKind) -> Void
     let onClose: () -> Void
+    let onFinish: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -61,7 +65,7 @@ struct OnboardingChecklistView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(action: onClose) {
+                Button(action: close) {
                     Label("Cerrar", systemImage: "xmark.circle.fill")
                         .labelStyle(.iconOnly)
                         .font(.title3)
@@ -120,11 +124,27 @@ struct OnboardingChecklistView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button(store.isDone ? "Terminar" : "Seguir luego", action: onClose)
+            Button(store.isDone ? "Abrir Hoy" : "Seguir luego", action: store.isDone ? finish : close)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
         }
         .padding(20)
+    }
+
+    /// El binding de la ruta actualiza el estado del host, pero el dismiss del
+    /// entorno es la señal que garantiza el cierre visual de la sheet en iPad.
+    private func close() {
+        dismiss()
+        DispatchQueue.main.async {
+            onClose()
+        }
+    }
+
+    private func finish() {
+        dismiss()
+        DispatchQueue.main.async {
+            onFinish()
+        }
     }
 
     private var finishedNote: some View {
@@ -136,7 +156,7 @@ struct OnboardingChecklistView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Configuración terminada")
                     .font(.subheadline.weight(.semibold))
-                Text("El siguiente sitio al que ir es el Cuaderno: ya tiene tus grupos y tu alumnado dentro.")
+                Text("Ya puedes abrir Hoy: tus grupos y tu alumnado estarán listos para el primer día de trabajo.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

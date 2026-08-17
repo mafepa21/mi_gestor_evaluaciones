@@ -133,13 +133,17 @@ class LearningSituationsRepositorySqlDelightTest {
         assertEquals(listOf(sequenceVersionId), sequenceVersions.map { it.id })
         assertEquals(1, sequenceVersions.first().versionNumber)
 
+        assertEquals(listOf(sequenceVersionId), repository.listAllSessionSequenceVersions().map { it.id })
+
         val plans = repository.listSessionPlans(sequenceVersionId)
         assertEquals(listOf(planId), plans.map { it.id })
         assertEquals("Exploracion del espacio", plans.first().title)
         assertEquals(planId, repository.getSessionPlan(planId)?.id)
+        assertEquals(listOf(planId), repository.listAllSessionPlans().map { it.id })
 
         val classLinks = repository.listClassLinks(situationId)
         assertEquals(listOf(classId), classLinks.map { it.classId })
+        assertEquals(listOf(classId), repository.listAllClassLinks().map { it.classId })
 
         val resources = repository.listLinkedResources(situationId)
         assertEquals(listOf(resourceId), resources.map { it.id })

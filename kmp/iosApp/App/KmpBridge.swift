@@ -5942,6 +5942,13 @@ final class KmpBridge: ObservableObject {
         try await container.learningSituationsRepository.listClassLinks(learningSituationId: id)
     }
 
+    /// Bulk read used by the iPad/Mac Situaciones, Cuaderno and Planner surfaces.
+    /// Keeping the aggregation at repository level avoids one SQLite round-trip per
+    /// situation when a workspace is opened.
+    func learningSituationClassLinksAll() async throws -> [LearningSituationClassLink] {
+        try await container.learningSituationsRepository.listAllClassLinks()
+    }
+
     func addLearningSituationClassLink(situationId: Int64, classId: Int64) async throws {
         let current = try await container.learningSituationsRepository.listClassLinks(learningSituationId: situationId)
         var classIds = Set(current.map { $0.classId })
@@ -5973,6 +5980,11 @@ final class KmpBridge: ObservableObject {
         try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: sequenceVersionId)
     }
 
+    /// Bulk read used by Planner sequence enrichment to avoid one query per session plan.
+    func learningSituationSessionPlansAll() async throws -> [LearningSituationSessionPlan] {
+        try await container.learningSituationsRepository.listAllSessionPlans()
+    }
+
     /// Exposición de solo lectura para que el Planner pueda representar la última
     /// secuencia teórica incluso antes de que exista una sesión en el calendario.
     func learningSituationSessionSequenceVersions(
@@ -5980,6 +5992,11 @@ final class KmpBridge: ObservableObject {
     ) async throws -> [LearningSituationSessionSequenceVersion] {
         try await container.learningSituationsRepository
             .listSessionSequenceVersions(learningSituationId: learningSituationId)
+    }
+
+    /// Bulk read used by Planner sequence enrichment to avoid one query per situation.
+    func learningSituationSessionSequenceVersionsAll() async throws -> [LearningSituationSessionSequenceVersion] {
+        try await container.learningSituationsRepository.listAllSessionSequenceVersions()
     }
 
     func learningSituationSessionSequenceVersion(id: Int64, learningSituationId: Int64) async throws -> LearningSituationSessionSequenceVersion? {

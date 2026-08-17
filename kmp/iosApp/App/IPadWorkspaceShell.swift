@@ -1149,46 +1149,69 @@ struct AppWorkspaceShell: View {
             focusToggleButton
         } else {
             HStack(spacing: 12) {
-                focusToggleButton
-
-                if shouldShowGlobalContextualAIButton {
+                if hasPrimaryWorkspaceAction {
                     Button {
-                        presentContextualAI()
+                        triggerPrimaryAction()
                     } label: {
-                        if isLoadingContextualAI {
-                            ProgressView()
-                                .controlSize(.small)
-                                .frame(minWidth: 24)
-                        } else {
-                            Label("IA", systemImage: "apple.intelligence")
-                        }
+                        Label(primaryActionLabel, systemImage: "plus")
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(isLoadingContextualAI)
+                    .buttonStyle(.borderedProminent)
                 }
 
-                Menu {
-                    Button("Recargar dashboard") { Task { await bridge.refreshDashboard(mode: .office) } }
-                    Button("Recargar alumnado") { Task { try? await bridge.refreshStudentsDirectory() } }
-                    Button("Recargar rúbricas") {
-                        Task {
-                            try? await bridge.refreshRubrics()
-                            try? await bridge.refreshRubricClassLinks()
-                        }
-                    }
-                } label: {
-                    Label("Recargar", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    triggerPrimaryAction()
-                } label: {
-                    Label(primaryActionLabel, systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
+                workspaceSecondaryActionsMenu
             }
         }
+    }
+
+    private var workspaceSecondaryActionsMenu: some View {
+        Menu {
+            Button {
+                layoutState.toggleFocusMode()
+            } label: {
+                Label(
+                    layoutState.isFocusModeEnabled ? "Salir del modo foco" : "Modo foco",
+                    systemImage: "arrow.up.left.and.arrow.down.right"
+                )
+            }
+
+            if shouldShowGlobalContextualAIButton {
+                Button {
+                    presentContextualAI()
+                } label: {
+                    Label(
+                        isLoadingContextualAI ? "Preparando IA…" : "Inteligencia educativa",
+                        systemImage: "apple.intelligence"
+                    )
+                }
+                .disabled(isLoadingContextualAI)
+            }
+
+            Divider()
+
+            Button {
+                Task { await bridge.refreshDashboard(mode: .office) }
+            } label: {
+                Label("Recargar datos", systemImage: "arrow.clockwise")
+            }
+
+            Button {
+                Task { try? await bridge.refreshStudentsDirectory() }
+            } label: {
+                Label("Recargar alumnado", systemImage: "person.2")
+            }
+
+            Button {
+                Task {
+                    try? await bridge.refreshRubrics()
+                    try? await bridge.refreshRubricClassLinks()
+                }
+            } label: {
+                Label("Recargar rúbricas", systemImage: "checklist")
+            }
+        } label: {
+            Label("Más", systemImage: "ellipsis.circle")
+        }
+        .buttonStyle(.bordered)
     }
 
     var dailyContextToolbarRow: some View {
@@ -1479,30 +1502,33 @@ struct AppWorkspaceShell: View {
 
     var dashboardToolbarActions: some View {
         HStack(spacing: 12) {
-            if layoutState.isDashboardInspectorPresented {
+            Menu {
                 Button {
                     layoutState.toggleDashboardInspector()
                 } label: {
-                    Label("Inspector", systemImage: "sidebar.right")
+                    Label(
+                        layoutState.isDashboardInspectorPresented ? "Ocultar inspector" : "Mostrar inspector",
+                        systemImage: "sidebar.right"
+                    )
                 }
-                .buttonStyle(.borderedProminent)
                 .disabled(!layoutState.dashboardInspectorAvailable)
-            } else {
+
                 Button {
-                    layoutState.toggleDashboardInspector()
+                    layoutState.toggleFocusMode()
                 } label: {
-                    Label("Inspector", systemImage: "sidebar.right")
+                    Label(
+                        layoutState.isFocusModeEnabled ? "Salir del modo foco" : "Modo foco",
+                        systemImage: "arrow.up.left.and.arrow.down.right"
+                    )
                 }
-                .buttonStyle(.bordered)
-                .disabled(!layoutState.dashboardInspectorAvailable)
-            }
 
-            focusToggleButton
-
-            Button {
-                layoutState.refreshDashboard()
+                Button {
+                    layoutState.refreshDashboard()
+                } label: {
+                    Label("Recargar", systemImage: "arrow.clockwise")
+                }
             } label: {
-                Label("Recargar", systemImage: "arrow.clockwise")
+                Label("Más", systemImage: "ellipsis.circle")
             }
             .buttonStyle(.bordered)
 
@@ -1517,7 +1543,7 @@ struct AppWorkspaceShell: View {
                     layoutState.dashboardQuickEvaluation()
                 }
             } label: {
-                Label("Acciones", systemImage: "bolt.fill")
+                Label("Acción principal", systemImage: "bolt.fill")
             }
             .buttonStyle(.borderedProminent)
             .disabled(!layoutState.dashboardActionsAvailable)

@@ -673,11 +673,9 @@ struct LearningSituationsWorkspaceView: View {
     private func reload() async {
         do {
             situations = try await bridge.learningSituations()
-            var updatedClassIds: [Int64: Set<Int64>] = [:]
-            for situation in situations {
-                let links = try await bridge.learningSituationClassLinks(id: situation.id)
-                updatedClassIds[situation.id] = Set(links.map(\.classId))
-            }
+            let links = try await bridge.learningSituationClassLinksAll()
+            let updatedClassIds = Dictionary(grouping: links, by: \.learningSituationId)
+                .mapValues { Set($0.map(\.classId)) }
             classIdsBySituation = updatedClassIds
             if selectedSituationId == nil { selectedSituationId = situations.first?.id }
             await reloadDetail()

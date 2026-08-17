@@ -213,6 +213,17 @@ struct MacPhysicalTestsView: View {
         return batteries.first(where: { $0.id == selectedScaleAssignment.batteryId })
     }
 
+    private var persistedScalesForSelectedBattery: [MiGestorKit.PhysicalTestScale] {
+        let batteryId = selectedScaleBattery?.id
+        return physicalScalesByTestId.values
+            .flatMap { $0 }
+            .filter { $0.batteryId == batteryId }
+    }
+
+    private var physicalScaleTestNames: [String: String] {
+        Dictionary(definitions.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
+
     private var selectedScaleTestRow: MacPhysicalScaleTestRow? {
         scaleTestRows.first(where: { $0.id == selectedScaleTestId }) ?? scaleTestRows.first
     }
@@ -765,23 +776,39 @@ struct MacPhysicalTestsView: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 420)
             } else {
-                HStack(alignment: .top, spacing: 0) {
-                    scaleTestsPanel
-                        .frame(width: 270)
-                        .frame(maxHeight: .infinity)
+                VStack(spacing: 16) {
+                    if !persistedScalesForSelectedBattery.isEmpty {
+                        PhysicalScaleCatalogView(
+                            scales: persistedScalesForSelectedBattery,
+                            testNames: physicalScaleTestNames,
+                            onSelect: { persisted in
+                                selectedScaleTestId = persisted.testId
+                                scale = scaleDraft(from: persisted)
+                                bridge.status = "Baremo seleccionado: \(persisted.name)."
+                            }
+                        )
+                        .frame(maxHeight: 300)
+                    }
 
-                    Divider()
+                    HStack(alignment: .top, spacing: 0) {
+                        scaleTestsPanel
+                            .frame(width: 270)
+                            .frame(maxHeight: .infinity)
 
-                    PhysicalTestScaleEditor(
-                        scale: $scale,
-                        context: scaleEditorContext,
-                        canSave: canSaveScale,
-                        onSave: { draft in
-                            Task { await saveScale(draft) }
-                        }
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacAppStyle.pageBackground)
+                        Divider()
+
+                        PhysicalTestScaleEditor(
+                            scale: $scale,
+                            context: scaleEditorContext,
+                            canSave: canSaveScale,
+                            onSave: { draft in
+                                Task { await saveScale(draft) }
+                            }
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(MacAppStyle.pageBackground)
+                    }
+                    .frame(maxHeight: .infinity)
                 }
                 .background(MacAppStyle.cardBackground)
                 .overlay(
@@ -1287,6 +1314,8 @@ struct MacPhysicalTestsView: View {
             sex: persisted.sex ?? "",
             batteryId: persisted.batteryId ?? "",
             direction: persisted.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
+            scoringMode: persisted.scoringMode == .linear ? .linear : .step,
+            scoreRoundTo: persisted.scoreRoundTo?.doubleValue,
             ranges: persisted.ranges.sorted { $0.sortOrder < $1.sortOrder }.map { range in
                 PhysicalTestScaleRange(
                     minValue: range.minValue?.doubleValue,

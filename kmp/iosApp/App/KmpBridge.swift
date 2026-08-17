@@ -6462,7 +6462,7 @@ final class KmpBridge: ObservableObject {
                     course: scale.course.map { KotlinInt(value: Int32($0)) },
                     ageFrom: scale.ageFrom.map { KotlinInt(value: Int32($0)) },
                     ageTo: scale.ageTo.map { KotlinInt(value: Int32($0)) },
-                    sex: scaleLabelOrNil(scale.sex),
+                    sex: scaleLabelOrNil(scale.canonicalSex),
                     batteryId: assignmentTemplate.batteryId,
                     direction: scale.direction == "LOWER_IS_BETTER" ? .lowerIsBetter : .higherIsBetter,
                     ranges: persistedRanges,

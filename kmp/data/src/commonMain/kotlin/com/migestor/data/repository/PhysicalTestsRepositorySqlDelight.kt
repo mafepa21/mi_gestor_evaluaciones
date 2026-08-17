@@ -220,7 +220,9 @@ class PhysicalTestsRepositorySqlDelight(
         val scales = listScalesForTest(testId)
         val requestedSex = normalizedStudentSex(sex)
         val sexMatches: (PhysicalTestScale) -> Boolean = { scale ->
-            scale.sex == null || (requestedSex != StudentSex.UNSPECIFIED && normalizedStudentSex(scale.sex) == requestedSex)
+            val scaleSex = normalizedStudentSex(scale.sex)
+            scale.sex == null || scaleSex == StudentSex.UNSPECIFIED ||
+                (requestedSex != StudentSex.UNSPECIFIED && scaleSex == requestedSex)
         }
         fun PhysicalTestScale.ageMatches(): Boolean {
             if (age == null) return false

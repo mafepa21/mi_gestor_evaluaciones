@@ -77,6 +77,21 @@ struct PhysicalTestsImportScale: Codable, Identifiable {
     let scoring: PhysicalTestsImportScoring?
     let ranges: [PhysicalTestsImportScaleRange]
 
+    /// Canonical value used by KMP. A neutral/unspecified scale is persisted
+    /// without a sex so it can act as the safe fallback when student sex is unknown.
+    var canonicalSex: String? {
+        switch sex?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case nil, "", "UNSPECIFIED", "NEUTRAL", "NONE":
+            return nil
+        case "MALE", "M", "H", "HOMBRE", "MASCULINO", "CHICO", "BOY":
+            return "MALE"
+        case "FEMALE", "F", "MUJER", "FEMENINO", "CHICA", "GIRL":
+            return "FEMALE"
+        default:
+            return sex?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        }
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -174,6 +189,11 @@ struct PhysicalTestsImportService {
         let validResultModes = Set(["BEST", "AVERAGE", "LAST"])
         let validDirections = Set(["HIGHER_IS_BETTER", "LOWER_IS_BETTER"])
         let validScoringModes = Set(["STEP", "LINEAR"])
+        let validSexes = Set([
+            "MALE", "FEMALE", "UNSPECIFIED", "NEUTRAL", "NONE",
+            "M", "F", "H", "HOMBRE", "MUJER", "MASCULINO", "FEMENINO",
+            "CHICO", "CHICA", "BOY", "GIRL"
+        ])
         let definitionIds = Set(manifest.testDefinitions.map(\.id))
 
         if manifest.format != "mi_gestor.physical-tests-import" {
@@ -245,6 +265,7 @@ struct PhysicalTestsImportService {
             issues.append("Los identificadores de referenceScales deben ser únicos.")
         }
         var rangeIds = Set<String>()
+        var scaleScopeKeys = Set<String>()
         for scale in manifest.referenceScales {
             let label = scale.name.isEmpty ? scale.id : scale.name
             if !definitionIds.contains(scale.testId) {
@@ -255,6 +276,21 @@ struct PhysicalTestsImportService {
             }
             if let ageFrom = scale.ageFrom, let ageTo = scale.ageTo, ageFrom > ageTo {
                 issues.append("\(label): ageFrom no puede superar ageTo.")
+            }
+            if let rawSex = scale.sex?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !rawSex.isEmpty,
+               !validSexes.contains(rawSex.uppercased()) {
+                issues.append("\(label): sex debe ser MALE, FEMALE o una variante neutra reconocida.")
+            }
+            let scopeKey = [
+                scale.testId,
+                String(scale.course ?? -1),
+                String(scale.ageFrom ?? -1),
+                String(scale.ageTo ?? -1),
+                scale.canonicalSex ?? "UNSPECIFIED"
+            ].joined(separator: "|")
+            if !scaleScopeKeys.insert(scopeKey).inserted {
+                issues.append("\(label): existe más de un baremo para la misma prueba, curso, edad y sexo.")
             }
             let scoringMode = scale.scoring?.mode.uppercased() ?? "STEP"
             if !validScoringModes.contains(scoringMode) {

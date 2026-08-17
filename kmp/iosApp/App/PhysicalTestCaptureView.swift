@@ -94,6 +94,15 @@ struct PhysicalTestCaptureView: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
+                        if let resolvedScale {
+                            Label(
+                                "Baremo aplicado: \(resolvedScale.name) · \(scaleSexLabel(resolvedScale.sex))",
+                                systemImage: "person.crop.circle.badge.checkmark"
+                            )
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.blue)
+                        }
+
                         Spacer(minLength: 0)
                     }
                     .padding(24)
@@ -179,10 +188,6 @@ struct PhysicalTestCaptureView: View {
     @MainActor
     private func loadResolvedScale() async {
         guard let currentResult else { return }
-        guard recordScore else {
-            resolvedScale = nil
-            return
-        }
         let effectiveAge = ageOnCurrentDate(for: currentResult.student) ?? age
         let effectiveSex = sexForScale(currentResult.student)
         do {
@@ -235,7 +240,9 @@ struct PhysicalTestCaptureView: View {
                 rawValue: rawValue.map { KotlinDouble(value: $0) },
                 rawText: normalizedAttempts.filter { !$0.isEmpty }.joined(separator: " · "),
                 score: score.map { KotlinDouble(value: $0) },
-                scaleId: recordScore ? resolvedScale?.id : nil,
+                // Even in diagnostic mode, keep the selected reference scale for audit.
+                // The score remains nil and the raw column stays outside the average.
+                scaleId: resolvedScale?.id,
                 observedAtEpochMs: nowMs,
                 rawColumnId: rawColumnId,
                 scoreColumnId: scoreColumnId,
@@ -288,6 +295,14 @@ struct PhysicalTestCaptureView: View {
         case .male: return "MALE"
         case .female: return "FEMALE"
         default: return nil
+        }
+    }
+
+    private func scaleSexLabel(_ sex: String?) -> String {
+        switch sex?.uppercased() {
+        case "MALE", "M", "H", "HOMBRE", "MASCULINO": return "baremo masculino"
+        case "FEMALE", "F", "MUJER", "FEMENINO": return "baremo femenino"
+        default: return "baremo neutro"
         }
     }
 

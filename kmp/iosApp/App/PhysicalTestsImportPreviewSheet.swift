@@ -62,7 +62,7 @@ struct PhysicalTestsImportPreviewSheet: View {
                                 let detail = scale.scoring?.mode == "LINEAR"
                                     ? "\(scale.scoring?.points.count ?? 0) puntos · puntuación gradual"
                                     : "\(scale.ranges.count) rangos · puntuación por tramos"
-                                Text("\(detail) · solo referencia diagnóstica")
+                                Text("\(sexLabel(scale.sex)) · \(detail) · solo referencia diagnóstica")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -112,5 +112,13 @@ struct PhysicalTestsImportPreviewSheet: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         #endif
+    }
+
+    private func sexLabel(_ sex: String?) -> String {
+        switch sex?.uppercased() {
+        case "MALE", "M", "H", "HOMBRE", "MASCULINO": return "Hombre"
+        case "FEMALE", "F", "MUJER", "FEMENINO": return "Mujer"
+        default: return "Neutro"
+        }
     }
 }

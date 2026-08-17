@@ -24,8 +24,15 @@ fina para tiempos, distancias y repeticiones.
   reutilizan en la tabla existente de rangos, usando `min_value` como valor de control,
   para no duplicar tablas ni romper copias y repositorios existentes.
 - Las escalas v1 y las escalas sin `LINEAR` siguen resolviéndose por tramos (`STEP`).
+- Cada escala puede declarar `sex` como `MALE`, `FEMALE` o neutro. El resolvedor prioriza
+  la escala específica del sexo del alumno y solo usa la neutra como fallback; si el sexo
+  del alumno no consta, no elige arbitrariamente una escala masculina o femenina.
 - En modo diagnóstico la nota interpolada sigue siendo solo una referencia visual: no
   se guarda como nota evaluable, no participa en media ni ranking.
+- La escala resuelta también se conserva en el resultado diagnóstico mediante `scaleId`,
+  sin convertir la referencia en una nota evaluable. La pantalla de Baremos muestra las
+  escalas guardadas, su sexo, alcance, modelo y puntos/rangos para revisar el manifiesto
+  importado posteriormente.
 
 ## Consecuencias
 
@@ -36,3 +43,5 @@ fina para tiempos, distancias y repeticiones.
 - La captura del Cuaderno, la captura específica de pruebas físicas y la resolución del
   puente Apple comparten el mismo método KMP, evitando que cada pantalla produzca una
   nota distinta.
+- Un manifiesto no puede declarar dos escalas para la misma prueba, curso, edad y sexo;
+  así se evita una resolución ambigua al importar.

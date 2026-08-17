@@ -161,11 +161,22 @@ class PhysicalTestsRepositorySqlDelightTest {
         val fixture = createFixture()
         fixture.seedDefinitionAndBattery()
         fixture.physical.saveScale(scale("male", course = 1, ageFrom = null, ageTo = null, batteryId = null, sex = "Hombre"))
+        fixture.physical.saveScale(scale("female", course = 1, ageFrom = null, ageTo = null, batteryId = null, sex = "Mujer"))
         fixture.physical.saveScale(scale("neutral", course = 1, ageFrom = null, ageTo = null, batteryId = null, sex = null))
 
         assertEquals("male", fixture.physical.resolveScale("speed_30m", 1, null, "male", null)?.id)
-        assertEquals("neutral", fixture.physical.resolveScale("speed_30m", 1, null, "female", null)?.id)
+        assertEquals("female", fixture.physical.resolveScale("speed_30m", 1, null, "female", null)?.id)
         assertEquals("neutral", fixture.physical.resolveScale("speed_30m", 1, null, "UNSPECIFIED", null)?.id)
+    }
+
+    @Test
+    fun `resolveScale treats explicit unspecified sex as neutral fallback`() = runTest {
+        val fixture = createFixture()
+        fixture.seedDefinitionAndBattery()
+        fixture.physical.saveScale(scale("unspecified", course = 1, ageFrom = null, ageTo = null, batteryId = null, sex = "UNSPECIFIED"))
+
+        assertEquals("unspecified", fixture.physical.resolveScale("speed_30m", 1, null, "female", null)?.id)
+        assertEquals("unspecified", fixture.physical.resolveScale("speed_30m", 1, null, null, null)?.id)
     }
 
     @Test

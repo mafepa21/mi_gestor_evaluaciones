@@ -45,4 +45,15 @@ final class PhysicalTestsImportTests: XCTestCase {
         XCTAssertEqual(draft.referenceScales.first?.scoring?.points.count, 3)
         XCTAssertTrue(draft.referenceScales.first?.ranges.isEmpty == true)
     }
+
+    func testPreviewCanonicalizesSexSpecificScales() throws {
+        let json = #"{"format":"mi_gestor.physical-tests-import","version":2,"purpose":"INITIAL_DIAGNOSTIC","learningSituation":{"number":0,"course":"3º ESO","subject":"Educación Física"},"assignmentTemplate":{"batteryId":"battery","batteryName":"Batería","termLabel":"Diagnóstico","rawColumnMode":true,"scoreColumnMode":false,"recordScore":false,"countsTowardAverage":false,"showRankings":false},"testDefinitions":[{"id":"speed","name":"Velocidad","capacity":"SPEED","measurementKind":"TIME","unit":"s","higherIsBetter":false,"attempts":1,"resultMode":"BEST","protocol":"","plausibleMinimum":null,"plausibleMaximum":null,"decimals":2}],"referenceScales":[{"id":"speed_male","testId":"speed","name":"Velocidad chicos","course":3,"ageFrom":13,"ageTo":14,"sex":"hombre","direction":"LOWER_IS_BETTER","diagnosticReferenceOnly":true,"scoring":{"mode":"LINEAR","roundTo":0.1,"points":[{"id":"m0","value":5,"score":10,"sortOrder":0},{"id":"m1","value":7,"score":5,"sortOrder":1}]}},{"id":"speed_female","testId":"speed","name":"Velocidad chicas","course":3,"ageFrom":13,"ageTo":14,"sex":"FEMALE","direction":"LOWER_IS_BETTER","diagnosticReferenceOnly":true,"scoring":{"mode":"LINEAR","roundTo":0.1,"points":[{"id":"f0","value":5,"score":10,"sortOrder":0},{"id":"f1","value":7,"score":5,"sortOrder":1}]}}],"calibrationRequiredTestIds":[],"warnings":[],"sourceNotes":[]}"#
+
+        let draft = try PhysicalTestsImportService().preview(
+            from: URL(fileURLWithPath: "/tmp/pruebas-sexo.json"),
+            data: Data(json.utf8)
+        )
+
+        XCTAssertEqual(draft.referenceScales.map(\.canonicalSex), ["MALE", "FEMALE"])
+    }
 }

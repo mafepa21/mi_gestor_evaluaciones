@@ -15,6 +15,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
+- AppIcon nativo de Apple integrado mediante `AppIcon.icon` de Icon Composer para el target KMP de iPadOS y macOS, con rendiciones `Default` y `Dark` en una única fuente compartida.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
   documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro
@@ -134,6 +136,8 @@ El formato sigue una variante practica de Keep a Changelog:
 - ADR `ADR-2026-08-01-entregas-web-centro-mac.md`: Mac como centro de publicación,
   gestión, reparto e importación, con privacidad explícita para SyncLAN y la
   limitación de revocación del manifiesto público firmado.
+- ADR `ADR-2026-08-17-app-icon-composer-variants.md`: `AppIcon.icon` como fuente
+  canónica compartida para las rendiciones claro/oscuro de iPadOS y macOS.
 
 ### Fixed
 
@@ -158,6 +162,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :desktopApp:processResources` (2026-08-16): correcto; `icon-window.png` se procesa desde `src/main/resources`. `./gradlew :desktopApp:createDistributable` queda bloqueado por un fallo preexistente en `AppFeedbackState.kt:20` (`when` no exhaustivo), ajeno al icono.
+- `ictool`, `xcodegen` y `xcodebuild` (2026-08-17): `AppIcon.icon` exporta las rendiciones `Default`/`Dark`; el proyecto regenerado y los targets `MiGestorKMPiOS` y `MiGestorKMPMac` terminan en **BUILD SUCCEEDED**; el `Assets.car` de iPadOS contiene `UIAppearanceDark` y `AppIcon-1024-dark`.
 - `./scripts/verify_apple_builds.sh` (2026-08-16): XcodeGen correcto; macOS Native/Catalyst e iOS
   Simulator compilados correctamente tras la divulgación progresiva de la toolbar macOS.
 - XcodeBuildMCP en iPad Pro 11-inch (M5, iOS 27): build/run correcto; captura visual de `IOSRootView`

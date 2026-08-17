@@ -1,6 +1,7 @@
 package com.migestor.desktop
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -70,6 +72,7 @@ import com.migestor.desktop.ui.system.LocalUiFeatureFlags
 import com.migestor.desktop.ui.system.ToolbarSearchResult
 import com.migestor.desktop.ui.system.rememberUiFeatureFlags
 import com.migestor.desktop.ui.settings.AppSettings
+import com.migestor.desktop.ui.settings.AppThemeMode
 import com.migestor.desktop.ui.settings.SettingsScreen
 import com.migestor.desktop.ui.settings.rememberAppSettingsState
 import com.migestor.shared.sync.SyncCoordinator
@@ -167,6 +170,11 @@ fun main() = application {
     val appLayoutViewModel = remember {
         AppLayoutViewModel(initialExpanded = !appSettingsState.value.startWithCollapsedSidebar)
     }
+    val windowIconResource = when (appSettingsState.value.themeMode) {
+        AppThemeMode.Light -> "icon-window-light.png"
+        AppThemeMode.DarkPremium -> "icon-window-dark.png"
+        AppThemeMode.System -> if (isSystemInDarkTheme()) "icon-window-dark.png" else "icon-window-light.png"
+    }
 
     Window(
         onCloseRequest = {
@@ -175,6 +183,7 @@ fun main() = application {
             exitApplication()
         },
         title = "MiGestor KMP Desktop",
+        icon = painterResource(windowIconResource),
         onKeyEvent = { event ->
             if (event.isMetaPressed && event.key == Key.Backslash && event.type == KeyEventType.KeyDown) {
                 appLayoutViewModel.toggleSidebar()

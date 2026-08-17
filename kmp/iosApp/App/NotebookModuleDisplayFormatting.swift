@@ -381,7 +381,7 @@ extension NotebookModuleView {
         }
         switch column.type {
         case .numeric, .calculated:
-            return bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+            return bridge.numericGradeText(studentId: item.student.id, column: column)
         case .rubric:
             return bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
         case .check:

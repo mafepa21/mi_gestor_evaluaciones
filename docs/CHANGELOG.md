@@ -17,6 +17,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación directa de manifiestos JSON `mi_gestor.physical-tests-import` desde una Situación de Aprendizaje: valida pruebas personalizadas, escalas, batería y asignación, y crea sus columnas de marca en el Cuaderno de forma idempotente.
+- Captura contextual de pruebas físicas en el Cuaderno: las marcas de tiempo abren cronómetro y entrada manual, y las marcas de distancia o repeticiones usan teclado numérico.
 - Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
   documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro
   archivo no pueda leerse o guardarse.
@@ -50,6 +51,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Changed
 
 - Las pruebas físicas importadas en modo diagnóstico (`recordScore=false`) guardan únicamente la marca bruta: no generan columna de nota ni puntuación, media o ranking.
+- Las celdas de pruebas físicas muestran la nota de referencia calculada desde el baremo del manifiesto junto a la marca, sin convertirla en una nota evaluable ni incluirla en la media; las pruebas sin baremo aplicable lo indican explícitamente.
 - Dashboard Hoy: la tarjeta "Ahora" fija una única acción primaria según el
   contexto (pasar lista durante la clase o preparar el cuaderno para la próxima)
   y agrupa observación, evaluación, cuaderno, agenda y diario en "Más acciones";
@@ -110,6 +112,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - Importación de pruebas físicas diagnósticas: se evita el aborto de Kotlin al crear la evaluación técnica con peso cero; las columnas de marca siguen sin contar para la media.
 - Captura de pruebas físicas: una asignación sin puntuación ya no resuelve ni persiste un baremo accidentalmente.
+- Cuaderno: las marcas de tiempo de pruebas físicas se normalizan como segundos al guardar y se vuelven a mostrar con formato `MM:SS,CC`, evitando que el editor y la persistencia interpreten el valor como una nota decimal.
 - Cuaderno: se elimina el feedback de guardado por celda basado en temporizadores,
   que podía mostrar "Guardado" aunque la persistencia fallase; la barra de estado
   queda como fuente visible del estado real publicado por `NotebookViewModel`.

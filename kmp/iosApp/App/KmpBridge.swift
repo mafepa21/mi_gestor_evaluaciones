@@ -7929,6 +7929,45 @@ final class KmpBridge: ObservableObject {
         try await container.physicalTestsRepository.listNotebookLinksForAssignment(assignmentId: assignmentId)
     }
 
+    /// Resuelve la nota de referencia de una marca física del cuaderno sin crear
+    /// una segunda columna evaluable. Esto permite que los manifiestos
+    /// diagnósticos (`recordScore=false`) sigan guardando solo el dato bruto,
+    /// pero ofrezcan al docente la orientación del baremo al capturarlo.
+    func resolvePhysicalNotebookScore(
+        classId: Int64,
+        student: Student,
+        columnId: String,
+        rawValue: Double
+    ) async -> Double? {
+        guard rawValue.isFinite else { return nil }
+
+        do {
+            let assignments = try await container.physicalTestsRepository.listAssignmentsForClass(classId: classId)
+            for assignment in assignments {
+                let links = try await container.physicalTestsRepository.listNotebookLinksForAssignment(assignmentId: assignment.id)
+                guard let link = links.first(where: { $0.rawColumnId == columnId }) else { continue }
+
+                let scale = try await container.physicalTestsRepository.resolveScale(
+                    testId: link.testId,
+                    course: assignment.course,
+                    age: physicalScaleAge(for: student).map { KotlinInt(value: Int32($0)) },
+                    sex: physicalScaleSex(for: student),
+                    batteryId: assignment.batteryId
+                )
+                return scale?.ranges
+                    .sorted { $0.sortOrder < $1.sortOrder }
+                    .first(where: { range in
+                        let minOK = range.minValue.map { rawValue >= $0.doubleValue } ?? true
+                        let maxOK = range.maxValue.map { rawValue <= $0.doubleValue } ?? true
+                        return minOK && maxOK
+                    })?.score
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
     func savePhysicalResult(_ result: PhysicalTestResult, attempts: [PhysicalTestAttempt]) async throws {
         try await container.physicalTestsRepository.saveResult(result: result, attempts: attempts)
     }
@@ -7939,6 +7978,26 @@ final class KmpBridge: ObservableObject {
 
     func listPhysicalResultsForStudent(studentId: Int64, testId: String) async throws -> [PhysicalTestResult] {
         try await container.physicalTestsRepository.listResultsForStudent(studentId: studentId, testId: testId)
+    }
+
+    private func physicalScaleSex(for student: Student) -> String? {
+        switch student.sex {
+        case .male: return "MALE"
+        case .female: return "FEMALE"
+        default: return nil
+        }
+    }
+
+    private func physicalScaleAge(for student: Student) -> Int? {
+        guard let birthDate = student.birthDate else { return nil }
+        let now = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        guard let year = now.year, let month = now.month, let day = now.day else { return nil }
+        var age = year - Int(birthDate.year)
+        if month < Int(birthDate.monthNumber) ||
+            (month == Int(birthDate.monthNumber) && day < Int(birthDate.dayOfMonth)) {
+            age -= 1
+        }
+        return age >= 0 ? age : nil
     }
 
     func createNotebookPhysicalColumnForClass(
@@ -12448,6 +12507,19 @@ final class KmpBridge: ObservableObject {
             return persistedEval
         }
         return ""
+    }
+
+    func numericGradeText(studentId: Int64, column: NotebookColumnDefinition) -> String {
+        let raw = numericGradeText(studentId: studentId, columnId: column.id)
+        guard column.inputKind == .time else { return raw }
+        guard let seconds = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")) else {
+            return raw
+        }
+        let centiseconds = max(0, Int((seconds * 100.0).rounded()))
+        let minutes = centiseconds / 6000
+        let remainingSeconds = (centiseconds / 100) % 60
+        let fraction = centiseconds % 100
+        return String(format: "%02d:%02d,%02d", minutes, remainingSeconds, fraction)
     }
 
     func numericGradeOnTenText(studentId: Int64, columnId: String) -> String {

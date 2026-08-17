@@ -43,17 +43,20 @@ struct NotebookCellActions {
     let flushPendingColumnGradeSave: @MainActor (_ studentId: Int64, _ columnId: String) -> Void
     let saveColumnGrade: @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void
     let saveColumnGradeDebounced: @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void
+    let resolvePhysicalScore: (@MainActor (_ student: Student, _ classId: Int64, _ columnId: String, _ rawValue: Double) async -> Double?)?
     let saveAttendance: @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Void
 
     init(
         flushPendingColumnGradeSave: @escaping @MainActor (_ studentId: Int64, _ columnId: String) -> Void,
         saveColumnGrade: @escaping @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void,
         saveColumnGradeDebounced: @escaping @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void,
+        resolvePhysicalScore: (@MainActor (_ student: Student, _ classId: Int64, _ columnId: String, _ rawValue: Double) async -> Double?)? = nil,
         saveAttendance: @escaping @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Void
     ) {
         self.flushPendingColumnGradeSave = flushPendingColumnGradeSave
         self.saveColumnGrade = saveColumnGrade
         self.saveColumnGradeDebounced = saveColumnGradeDebounced
+        self.resolvePhysicalScore = resolvePhysicalScore
         self.saveAttendance = saveAttendance
     }
 }
@@ -661,6 +664,9 @@ private struct NotebookStatefulEditableTableCell: View {
     @State private var showTextPopover = false
     @State private var isNumericKeyboardPresented = false
     @State private var hasLoadedDrafts = false
+    @State private var physicalScore: Double?
+    @State private var isResolvingPhysicalScore = false
+    @State private var physicalScoreRequestID = UUID()
 
     private var cellId: String {
         "\(item.student.id)|\(column.id)"
@@ -727,12 +733,16 @@ private struct NotebookStatefulEditableTableCell: View {
         .frame(width: width, height: 52)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
-        .onAppear(perform: loadDrafts)
+        .onAppear {
+            loadDrafts()
+            refreshPhysicalScore()
+        }
         .onDisappear {
             saveFocusedDraftIfNeeded(requireFocusReleased: false)
         }
         .appOnChange(of: reloadToken) { _ in
             loadDraftsUnlessEditing()
+            refreshPhysicalScore()
         }
         .appOnChange(of: focusedCellId.wrappedValue) { newValue in
             if newValue == cellId {
@@ -867,7 +877,11 @@ private struct NotebookStatefulEditableTableCell: View {
             switch column.type {
             case .numeric:
                 #if os(macOS)
-                numericMacField
+                if isPhysicalMeasurementColumn {
+                    physicalMeasurementButton
+                } else {
+                    numericMacField
+                }
                 #else
                 if keyboardKind != .text {
                     Button {
@@ -882,6 +896,13 @@ private struct NotebookStatefulEditableTableCell: View {
                                 .monospacedDigit()
                                 .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : (gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary)))
                                 .lineLimit(1)
+                            if let physicalScore {
+                                Text("· \(IosFormatting.decimal(physicalScore))")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundStyle(tint)
+                                    .lineLimit(1)
+                            }
                             Image(systemName: "arrow.up.and.down")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(.secondary)
@@ -1089,12 +1110,50 @@ private struct NotebookStatefulEditableTableCell: View {
     }
     #endif
 
+    private var physicalMeasurementButton: some View {
+        Button {
+            onSelect()
+            focusedCellId.wrappedValue = nil
+            activeChoiceCellId = nil
+            isNumericKeyboardPresented = true
+        } label: {
+            HStack(spacing: 6) {
+                Text(numericDraft.isEmpty ? "—" : numericDraft)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                    .lineLimit(1)
+                if let physicalScore {
+                    Text("· \(IosFormatting.decimal(physicalScore))")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(tint)
+                        .lineLimit(1)
+                }
+                Image(systemName: keyboardKind == .time ? "stopwatch" : "keyboard")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 30)
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(numericDragGesture)
+        .popover(isPresented: $isNumericKeyboardPresented, arrowEdge: .bottom) {
+            cellKeyboardPopover
+        }
+    }
+
     private var isAttendanceColumn: Bool {
         column.type == .attendance || column.categoryKind == .attendance
     }
 
     private var isStructuredInstrument: Bool {
         column.inputKind.isStructuredInstrument
+    }
+
+    private var isPhysicalMeasurementColumn: Bool {
+        column.instrumentKind == .physicalTest &&
+            [.time, .distance, .repetitions].contains(column.inputKind)
     }
 
     private var isEmptySummaryCell: Bool {
@@ -1127,51 +1186,79 @@ private struct NotebookStatefulEditableTableCell: View {
 
     @ViewBuilder
     private var cellKeyboardPopover: some View {
-        switch keyboardKind {
-        case .numeric010:
-            NotebookNumericCellKeyboard(
-                value: $numericDraft,
-                tint: tint,
-                onSave: { saveNumeric() },
-                onNavigate: { direction in
-                    saveNumericAndNavigate(direction)
-                    isNumericKeyboardPresented = false
-                }
-            )
-        case .time:
-            NotebookTimeCellKeyboard(
-                value: $numericDraft,
-                tint: tint,
-                onSave: { saveNumeric() },
-                onNavigate: { direction in
-                    saveNumericAndNavigate(direction)
-                    isNumericKeyboardPresented = false
-                }
-            )
-        case .distance:
-            NotebookDistanceCellKeyboard(
-                value: $numericDraft,
-                tint: tint,
-                unitLabel: column.unitOrSituation ?? "m",
-                onSave: { saveNumeric() },
-                onNavigate: { direction in
-                    saveNumericAndNavigate(direction)
-                    isNumericKeyboardPresented = false
-                }
-            )
-        case .repetitions:
-            NotebookRepetitionCellKeyboard(
-                value: $numericDraft,
-                tint: tint,
-                onSave: { saveNumeric() },
-                onNavigate: { direction in
-                    saveNumericAndNavigate(direction)
-                    isNumericKeyboardPresented = false
-                }
-            )
-        default:
-            EmptyView()
+        VStack(spacing: 8) {
+            if isPhysicalMeasurementColumn {
+                physicalScoreSummary
+            }
+
+            switch keyboardKind {
+            case .numeric010:
+                NotebookNumericCellKeyboard(
+                    value: $numericDraft,
+                    tint: tint,
+                    onSave: { saveNumeric() },
+                    onNavigate: { direction in
+                        saveNumericAndNavigate(direction)
+                        isNumericKeyboardPresented = false
+                    }
+                )
+            case .time:
+                NotebookTimeCellKeyboard(
+                    value: $numericDraft,
+                    tint: tint,
+                    onSave: { saveNumeric() },
+                    onNavigate: { direction in
+                        saveNumericAndNavigate(direction)
+                        isNumericKeyboardPresented = false
+                    }
+                )
+            case .distance:
+                NotebookDistanceCellKeyboard(
+                    value: $numericDraft,
+                    tint: tint,
+                    unitLabel: column.unitOrSituation ?? "m",
+                    onSave: { saveNumeric() },
+                    onNavigate: { direction in
+                        saveNumericAndNavigate(direction)
+                        isNumericKeyboardPresented = false
+                    }
+                )
+            case .repetitions:
+                NotebookRepetitionCellKeyboard(
+                    value: $numericDraft,
+                    tint: tint,
+                    onSave: { saveNumeric() },
+                    onNavigate: { direction in
+                        saveNumericAndNavigate(direction)
+                        isNumericKeyboardPresented = false
+                    }
+                )
+            default:
+                EmptyView()
+            }
         }
+    }
+
+    @ViewBuilder
+    private var physicalScoreSummary: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "chart.bar.fill")
+                .font(.caption.weight(.bold))
+            if let physicalScore {
+                Text("Nota de referencia: \(IosFormatting.decimal(physicalScore)) / 10")
+                    .font(.caption.weight(.semibold))
+            } else if isResolvingPhysicalScore {
+                Text("Calculando baremo…")
+                    .font(.caption.weight(.semibold))
+            } else if !numericDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("Sin baremo aplicable")
+                    .font(.caption.weight(.semibold))
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(physicalScore == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(tint))
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
     }
 
     private var checkButton: some View {
@@ -1379,6 +1466,44 @@ private struct NotebookStatefulEditableTableCell: View {
         Double(raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
     }
 
+    private func physicalRawValue() -> Double? {
+        if column.inputKind == .time {
+            let normalized = numericDraft.replacingOccurrences(of: ".", with: ",")
+            let minuteParts = normalized.split(separator: ":", omittingEmptySubsequences: false)
+            if minuteParts.count == 2 {
+                let minutes = Double(minuteParts[0]) ?? 0
+                let secondParts = minuteParts[1].split(separator: ",", omittingEmptySubsequences: false)
+                let seconds = Double(secondParts.first ?? "0") ?? 0
+                let fractionText = String(secondParts.dropFirst().first ?? "0")
+                let fraction = Double("0.\(fractionText)") ?? 0
+                return max(0, minutes * 60 + seconds + fraction)
+            }
+        }
+        return parseEditableNumber(numericDraft)
+    }
+
+    private func refreshPhysicalScore() {
+        guard isPhysicalMeasurementColumn,
+              let classId,
+              let resolver = actions.resolvePhysicalScore,
+              let rawValue = physicalRawValue()
+        else {
+            physicalScore = nil
+            isResolvingPhysicalScore = false
+            return
+        }
+
+        let requestID = UUID()
+        physicalScoreRequestID = requestID
+        isResolvingPhysicalScore = true
+        Task { @MainActor in
+            let resolved = await resolver(item.student, classId, column.id, rawValue)
+            guard physicalScoreRequestID == requestID else { return }
+            physicalScore = resolved
+            isResolvingPhysicalScore = false
+        }
+    }
+
     private var ordinalOptions: [String] {
         if !column.ordinalLevels.isEmpty { return column.ordinalLevels }
         switch column.inputKind {
@@ -1450,11 +1575,14 @@ private struct NotebookStatefulEditableTableCell: View {
         if originalNumericDraft != numericDraft {
             onPrepareUndo(originalNumericDraft, originalNumericDraft)
             originalNumericDraft = numericDraft
-            if immediate {
+            if immediate || column.inputKind == .time {
                 actions.flushPendingColumnGradeSave(item.student.id, column.id)
                 actions.saveColumnGrade(item.student.id, column, numericDraft)
             } else {
                 actions.saveColumnGradeDebounced(item.student.id, column, numericDraft)
+            }
+            if isPhysicalMeasurementColumn {
+                refreshPhysicalScore()
             }
             onCellSaved()
         }

@@ -682,6 +682,14 @@ extension NotebookModuleView {
             saveColumnGradeDebounced: { studentId, column, value in
                 bridge.saveColumnGradeDebounced(studentId: studentId, column: column, value: value)
             },
+            resolvePhysicalScore: { student, classId, columnId, rawValue in
+                await bridge.resolvePhysicalNotebookScore(
+                    classId: classId,
+                    student: student,
+                    columnId: columnId,
+                    rawValue: rawValue
+                )
+            },
             saveAttendance: { studentId, classId, date, status in
                 try? await bridge.saveAttendance(
                     studentId: studentId,

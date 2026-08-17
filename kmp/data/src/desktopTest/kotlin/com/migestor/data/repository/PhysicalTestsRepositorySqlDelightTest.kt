@@ -7,6 +7,7 @@ import com.migestor.shared.domain.PhysicalCapacity
 import com.migestor.shared.domain.PhysicalMeasurementKind
 import com.migestor.shared.domain.PhysicalResultMode
 import com.migestor.shared.domain.PhysicalScaleDirection
+import com.migestor.shared.domain.PhysicalScaleScoringMode
 import com.migestor.shared.domain.PhysicalTestAssignment
 import com.migestor.shared.domain.PhysicalTestAttempt
 import com.migestor.shared.domain.PhysicalTestBattery
@@ -88,6 +89,32 @@ class PhysicalTestsRepositorySqlDelightTest {
         assertEquals(4.0, scale.scoreFor(4.0))
         assertEquals(6.0, scale.scoreFor(6.5))
         assertEquals(9.0, scale.scoreFor(9.0))
+    }
+
+    @Test
+    fun `repository persists linear scoring metadata and points`() = runTest {
+        val fixture = createFixture()
+        fixture.seedDefinitionAndBattery()
+        val scale = PhysicalTestScale(
+            id = "linear_speed_scale",
+            testId = "speed_30m",
+            name = "Velocidad gradual",
+            direction = PhysicalScaleDirection.LOWER_IS_BETTER,
+            scoringMode = PhysicalScaleScoringMode.LINEAR,
+            scoreRoundTo = 0.1,
+            ranges = listOf(
+                PhysicalTestScaleRange("linear_5", "linear_speed_scale", 6.0, null, 5.0, sortOrder = 0),
+                PhysicalTestScaleRange("linear_10", "linear_speed_scale", 5.0, null, 10.0, sortOrder = 1),
+            ),
+            trace = trace(),
+        )
+
+        fixture.physical.saveScale(scale)
+
+        val loaded = fixture.physical.listScalesForTest("speed_30m").single()
+        assertEquals(PhysicalScaleScoringMode.LINEAR, loaded.scoringMode)
+        assertEquals(0.1, loaded.scoreRoundTo)
+        assertEquals(7.5, loaded.scoreFor(5.5))
     }
 
     @Test

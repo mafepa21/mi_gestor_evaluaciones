@@ -1,0 +1,10 @@
+-- Migration 42: reservar la version de esquema para el modelo de puntuacion
+-- de los baremos fisicos.
+--
+-- La aplicacion de las columnas se hace de forma idempotente en
+-- runRescueMigrations(), despues de la cadena SQLDelight. Algunas instalaciones
+-- antiguas y fixtures de migracion no contienen todavia physical_test_scales;
+-- SQLite no permite expresar ALTER TABLE ... IF EXISTS. La red de seguridad
+-- puede comprobar la tabla antes de anadir las columnas y la version queda
+-- igualmente registrada para todos los drivers.
+SELECT 1;

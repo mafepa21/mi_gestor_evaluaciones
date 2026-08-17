@@ -32,4 +32,17 @@ final class PhysicalTestsImportTests: XCTestCase {
             XCTAssertTrue(error.localizedDescription.contains("scoreColumnMode"))
         }
     }
+
+    func testPreviewAcceptsLinearCalibrationPointsInVersionTwo() throws {
+        let json = #"{"format":"mi_gestor.physical-tests-import","version":2,"purpose":"INITIAL_DIAGNOSTIC","learningSituation":{"number":0,"course":"3º ESO","subject":"Educación Física"},"assignmentTemplate":{"batteryId":"battery","batteryName":"Batería","termLabel":"Diagnóstico","rawColumnMode":true,"scoreColumnMode":false,"recordScore":false,"countsTowardAverage":false,"showRankings":false},"testDefinitions":[{"id":"jump","name":"Salto","capacity":"STRENGTH","measurementKind":"DISTANCE","unit":"cm","higherIsBetter":true,"attempts":1,"resultMode":"BEST","protocol":"","plausibleMinimum":0,"plausibleMaximum":300,"decimals":0}],"referenceScales":[{"id":"jump_scale","testId":"jump","name":"Salto gradual","course":3,"ageFrom":13,"ageTo":14,"sex":null,"direction":"HIGHER_IS_BETTER","diagnosticReferenceOnly":true,"scoring":{"mode":"LINEAR","roundTo":0.1,"points":[{"id":"p0","value":0,"score":0,"sortOrder":0},{"id":"p1","value":100,"score":5,"sortOrder":1},{"id":"p2","value":200,"score":10,"sortOrder":2}]}}],"calibrationRequiredTestIds":[],"warnings":[],"sourceNotes":[]}"#
+
+        let draft = try PhysicalTestsImportService().preview(
+            from: URL(fileURLWithPath: "/tmp/pruebas-lineales.json"),
+            data: Data(json.utf8)
+        )
+
+        XCTAssertEqual(draft.referenceScales.first?.scoring?.mode, "LINEAR")
+        XCTAssertEqual(draft.referenceScales.first?.scoring?.points.count, 3)
+        XCTAssertTrue(draft.referenceScales.first?.ranges.isEmpty == true)
+    }
 }

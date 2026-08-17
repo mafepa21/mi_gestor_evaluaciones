@@ -54,6 +54,18 @@ internal fun runRescueMigrations(driver: SqlDriver) {
     ensureStructuredInstrumentTables(driver)
     ensurePrerequisiteTables(driver)
     ensurePlannerScheduleTables(driver)
+    ensurePhysicalScaleScoringColumns(driver)
+}
+
+private fun ensurePhysicalScaleScoringColumns(driver: SqlDriver) {
+    ensureColumns(
+        driver = driver,
+        tableName = "physical_test_scales",
+        columnDefinitions = listOf(
+            "scoring_mode TEXT NOT NULL DEFAULT 'STEP'",
+            "score_round_to REAL",
+        )
+    )
 }
 
 private fun ensureStructuredInstrumentTables(driver: SqlDriver) {

@@ -6430,17 +6430,30 @@ final class KmpBridge: ObservableObject {
         )
 
         for scale in draft.referenceScales {
-            let persistedRanges = scale.ranges.map { range in
-                MiGestorKit.PhysicalTestScaleRange(
-                    id: range.id,
-                    scaleId: scale.id,
-                    minValue: range.minValue.map { KotlinDouble(value: $0) },
-                    maxValue: range.maxValue.map { KotlinDouble(value: $0) },
-                    score: range.score,
-                    label: scaleLabelOrNil(range.label),
-                    sortOrder: Int32(range.sortOrder)
-                )
-            }
+            let isLinear = scale.scoring?.mode.uppercased() == "LINEAR"
+            let persistedRanges: [MiGestorKit.PhysicalTestScaleRange] = isLinear
+                ? (scale.scoring?.points ?? []).enumerated().map { index, point in
+                    MiGestorKit.PhysicalTestScaleRange(
+                        id: point.id ?? "\(scale.id)_point_\(index + 1)",
+                        scaleId: scale.id,
+                        minValue: KotlinDouble(value: point.value),
+                        maxValue: nil,
+                        score: point.score,
+                        label: scaleLabelOrNil(point.label),
+                        sortOrder: Int32(point.sortOrder ?? index)
+                    )
+                }
+                : scale.ranges.map { range in
+                    MiGestorKit.PhysicalTestScaleRange(
+                        id: range.id,
+                        scaleId: scale.id,
+                        minValue: range.minValue.map { KotlinDouble(value: $0) },
+                        maxValue: range.maxValue.map { KotlinDouble(value: $0) },
+                        score: range.score,
+                        label: scaleLabelOrNil(range.label),
+                        sortOrder: Int32(range.sortOrder)
+                    )
+                }
             try await container.physicalTestsRepository.saveScale(
                 scale: PhysicalTestScale(
                     id: scale.id,
@@ -6453,6 +6466,8 @@ final class KmpBridge: ObservableObject {
                     batteryId: assignmentTemplate.batteryId,
                     direction: scale.direction == "LOWER_IS_BETTER" ? .lowerIsBetter : .higherIsBetter,
                     ranges: persistedRanges,
+                    scoringMode: isLinear ? .linear : .step,
+                    scoreRoundTo: scale.scoring?.roundTo.map { KotlinDouble(value: $0) },
                     trace: trace
                 )
             )
@@ -7954,13 +7969,9 @@ final class KmpBridge: ObservableObject {
                     sex: physicalScaleSex(for: student),
                     batteryId: assignment.batteryId
                 )
-                return scale?.ranges
-                    .sorted { $0.sortOrder < $1.sortOrder }
-                    .first(where: { range in
-                        let minOK = range.minValue.map { rawValue >= $0.doubleValue } ?? true
-                        let maxOK = range.maxValue.map { rawValue <= $0.doubleValue } ?? true
-                        return minOK && maxOK
-                    })?.score
+                guard let scale else { return nil }
+                let score = scale.scoreFor(rawValue: rawValue)
+                return score?.doubleValue
             }
         } catch {
             return nil

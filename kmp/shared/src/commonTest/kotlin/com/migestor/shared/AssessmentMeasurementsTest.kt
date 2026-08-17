@@ -5,6 +5,7 @@ import com.migestor.shared.domain.PhysicalCapacity
 import com.migestor.shared.domain.PhysicalMeasurementKind
 import com.migestor.shared.domain.PhysicalResultMode
 import com.migestor.shared.domain.PhysicalScaleDirection
+import com.migestor.shared.domain.PhysicalScaleScoringMode
 import com.migestor.shared.domain.PhysicalTestDefinition
 import com.migestor.shared.domain.PhysicalTestResult
 import com.migestor.shared.domain.PhysicalTestScale
@@ -87,6 +88,27 @@ class AssessmentMeasurementsTest {
         assertEquals("jump", genericResult.definitionId)
         assertEquals(1.72, genericResult.rawValue)
         assertEquals(7.0, genericResult.score)
+    }
+
+    @Test
+    fun `linear physical scale interpolates and rounds score`() {
+        val scale = PhysicalTestScale(
+            id = "linear-scale",
+            testId = "speed",
+            name = "Velocidad gradual",
+            direction = PhysicalScaleDirection.LOWER_IS_BETTER,
+            ranges = listOf(
+                PhysicalTestScaleRange("p0", "linear-scale", 5.0, null, 10.0),
+                PhysicalTestScaleRange("p1", "linear-scale", 6.0, null, 7.5),
+                PhysicalTestScaleRange("p2", "linear-scale", 7.0, null, 5.0),
+            ),
+            scoringMode = PhysicalScaleScoringMode.LINEAR,
+            scoreRoundTo = 0.1,
+        )
+
+        assertEquals(8.8, scale.scoreFor(5.5))
+        assertEquals(5.0, scale.scoreFor(7.2))
+        assertEquals(10.0, scale.scoreFor(4.0))
     }
 
     @Test

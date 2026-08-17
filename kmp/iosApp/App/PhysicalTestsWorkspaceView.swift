@@ -1339,6 +1339,8 @@ struct PhysicalTestsWorkspaceView: View {
             batteryId: batteryId,
             direction: draft.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
             ranges: ranges,
+            scoringMode: draft.scoringMode == .linear ? .linear : .step,
+            scoreRoundTo: draft.scoreRoundTo.map { KotlinDouble(value: $0) },
             trace: auditTrace()
         )
         do {
@@ -1400,6 +1402,8 @@ struct PhysicalTestsWorkspaceView: View {
             sex: persisted.sex ?? "",
             batteryId: persisted.batteryId ?? "",
             direction: persisted.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
+            scoringMode: persisted.scoringMode == .linear ? .linear : .step,
+            scoreRoundTo: persisted.scoreRoundTo?.doubleValue,
             ranges: persisted.ranges.map {
                 PhysicalTestScaleRange(
                     minValue: $0.minValue?.doubleValue,

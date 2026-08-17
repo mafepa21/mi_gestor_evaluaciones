@@ -18,6 +18,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación directa de manifiestos JSON `mi_gestor.physical-tests-import` desde una Situación de Aprendizaje: valida pruebas personalizadas, escalas, batería y asignación, y crea sus columnas de marca en el Cuaderno de forma idempotente.
 - Captura contextual de pruebas físicas en el Cuaderno: las marcas de tiempo abren cronómetro y entrada manual, y las marcas de distancia o repeticiones usan teclado numérico.
+- Manifiestos de pruebas físicas v2: admiten puntos de calibración con puntuación lineal y redondeo configurable para baremos graduales.
 - Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
   documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro
   archivo no pueda leerse o guardarse.
@@ -52,6 +53,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - Las pruebas físicas importadas en modo diagnóstico (`recordScore=false`) guardan únicamente la marca bruta: no generan columna de nota ni puntuación, media o ranking.
 - Las celdas de pruebas físicas muestran la nota de referencia calculada desde el baremo del manifiesto junto a la marca, sin convertirla en una nota evaluable ni incluirla en la media; las pruebas sin baremo aplicable lo indican explícitamente.
+- La nota de referencia de un baremo LINEAR se interpola entre sus puntos de calibración y se calcula igual en la captura física y en la celda del Cuaderno; los manifiestos v1 conservan el comportamiento por rangos.
 - Dashboard Hoy: la tarjeta "Ahora" fija una única acción primaria según el
   contexto (pasar lista durante la clase o preparar el cuaderno para la próxima)
   y agrupa observación, evaluación, cuaderno, agenda y diario en "Más acciones";
@@ -97,6 +99,14 @@ El formato sigue una variante practica de Keep a Changelog:
 - Se añadió la migración 41 con la marca `archived` de `web_form_instances` y operaciones
   SQLDelight transaccionales por lote. No se crean tablas nuevas ni se sincronizan las
   tablas privadas `web_*`.
+- Se añadió la migración 42 para guardar el modo de puntuación y el redondeo de las
+  escalas físicas. Las filas existentes reciben `STEP` por defecto.
+
+### Verification
+
+- `:data:compileKotlinDesktop`, `:shared:compileKotlinDesktop` y `:shared:desktopTest`
+  pasan; el build macOS de Xcode compila el nuevo binding Swift con las advertencias
+  preexistentes de uso no consumido.
 
 ### Docs
 

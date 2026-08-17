@@ -2106,6 +2106,8 @@ CREATE TABLE IF NOT EXISTS physical_test_scales (
     sex TEXT,
     battery_id TEXT,
     direction TEXT NOT NULL,
+    scoring_mode TEXT NOT NULL DEFAULT 'STEP',
+    score_round_to REAL,
     created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id TEXT,
@@ -2533,7 +2535,7 @@ WHERE class_id = ?
 ORDER BY date_epoch_ms DESC, id;
 
 selectPhysicalScalesForTest:
-SELECT id, test_id, name, course, age_from, age_to, sex, battery_id, direction, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+SELECT id, test_id, name, course, age_from, age_to, sex, battery_id, direction, scoring_mode, score_round_to, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 FROM physical_test_scales
 WHERE test_id = ?
 ORDER BY battery_id IS NULL, course IS NULL, age_from IS NULL, name;
@@ -2546,9 +2548,9 @@ ORDER BY sort_order, min_value;
 
 upsertPhysicalScale:
 INSERT OR REPLACE INTO physical_test_scales(
-    id, test_id, name, course, age_from, age_to, sex, battery_id, direction, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+    id, test_id, name, course, age_from, age_to, sex, battery_id, direction, scoring_mode, score_round_to, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deletePhysicalScaleRanges:
 DELETE FROM physical_test_scale_ranges

@@ -59,7 +59,10 @@ struct PhysicalTestsImportPreviewSheet: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(scale.name)
                                     .font(.body.weight(.semibold))
-                                Text("\(scale.ranges.count) rangos · solo referencia diagnóstica")
+                                let detail = scale.scoring?.mode == "LINEAR"
+                                    ? "\(scale.scoring?.points.count ?? 0) puntos · puntuación gradual"
+                                    : "\(scale.ranges.count) rangos · puntuación por tramos"
+                                Text("\(detail) · solo referencia diagnóstica")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

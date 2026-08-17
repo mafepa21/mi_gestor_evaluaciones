@@ -46,11 +46,7 @@ struct PhysicalTestCaptureView: View {
 
     private var scorePreview: Double? {
         guard recordScore, let finalValue, let resolvedScale else { return nil }
-        return resolvedScale.ranges.first { range in
-            let minOk = range.minValue.map { finalValue >= $0.doubleValue } ?? true
-            let maxOk = range.maxValue.map { finalValue <= $0.doubleValue } ?? true
-            return minOk && maxOk
-        }?.score
+        return resolvedScale.scoreFor(rawValue: finalValue)?.doubleValue
     }
 
     var body: some View {
@@ -227,13 +223,7 @@ struct PhysicalTestCaptureView: View {
                     batteryId: batteryId
                 )
             }
-            let score = recordScore ? rawValue.flatMap { value in
-                resolvedScale?.ranges.first(where: { range in
-                    let minOk = range.minValue.map { value >= $0.doubleValue } ?? true
-                    let maxOk = range.maxValue.map { value <= $0.doubleValue } ?? true
-                    return minOk && maxOk
-                })?.score
-            } : nil
+            let score = recordScore ? rawValue.flatMap { resolvedScale?.scoreFor(rawValue: $0)?.doubleValue } : nil
             let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
             let resultId = "pe_result_\(assignmentId)_\(testDefinitionId)_\(currentResult.student.id)"
             let result = MiGestorKit.PhysicalTestResult(

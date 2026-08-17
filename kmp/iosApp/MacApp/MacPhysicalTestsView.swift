@@ -1342,6 +1342,8 @@ struct MacPhysicalTestsView: View {
             batteryId: battery.id,
             direction: draft.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
             ranges: ranges,
+            scoringMode: draft.scoringMode == .linear ? .linear : .step,
+            scoreRoundTo: draft.scoreRoundTo.map { KotlinDouble(value: $0) },
             trace: auditTrace()
         )
         do {

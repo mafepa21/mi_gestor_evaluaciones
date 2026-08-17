@@ -74,7 +74,53 @@ struct PhysicalTestsImportScale: Codable, Identifiable {
     let sex: String?
     let direction: String
     let diagnosticReferenceOnly: Bool
+    let scoring: PhysicalTestsImportScoring?
     let ranges: [PhysicalTestsImportScaleRange]
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        testId = try container.decode(String.self, forKey: .testId)
+        name = try container.decode(String.self, forKey: .name)
+        course = try container.decodeIfPresent(Int.self, forKey: .course)
+        ageFrom = try container.decodeIfPresent(Int.self, forKey: .ageFrom)
+        ageTo = try container.decodeIfPresent(Int.self, forKey: .ageTo)
+        sex = try container.decodeIfPresent(String.self, forKey: .sex)
+        direction = try container.decode(String.self, forKey: .direction)
+        diagnosticReferenceOnly = try container.decodeIfPresent(Bool.self, forKey: .diagnosticReferenceOnly) ?? false
+        scoring = try container.decodeIfPresent(PhysicalTestsImportScoring.self, forKey: .scoring)
+        ranges = try container.decodeIfPresent([PhysicalTestsImportScaleRange].self, forKey: .ranges) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, testId, name, course, ageFrom, ageTo, sex, direction
+        case diagnosticReferenceOnly, scoring, ranges
+    }
+}
+
+struct PhysicalTestsImportScoring: Codable {
+    let mode: String
+    let roundTo: Double?
+    let points: [PhysicalTestsImportScorePoint]
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decode(String.self, forKey: .mode)
+        roundTo = try container.decodeIfPresent(Double.self, forKey: .roundTo)
+        points = try container.decodeIfPresent([PhysicalTestsImportScorePoint].self, forKey: .points) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode, roundTo, points
+    }
+}
+
+struct PhysicalTestsImportScorePoint: Codable {
+    let id: String?
+    let value: Double
+    let score: Double
+    let label: String?
+    let sortOrder: Int?
 }
 
 struct PhysicalTestsImportScaleRange: Codable, Identifiable {
@@ -127,13 +173,14 @@ struct PhysicalTestsImportService {
         let validMeasurements = Set(["TIME", "DISTANCE", "REPETITIONS", "LEVEL", "SCORE"])
         let validResultModes = Set(["BEST", "AVERAGE", "LAST"])
         let validDirections = Set(["HIGHER_IS_BETTER", "LOWER_IS_BETTER"])
+        let validScoringModes = Set(["STEP", "LINEAR"])
         let definitionIds = Set(manifest.testDefinitions.map(\.id))
 
         if manifest.format != "mi_gestor.physical-tests-import" {
             issues.append("El campo format no coincide con mi_gestor.physical-tests-import.")
         }
-        if manifest.version != 1 {
-            issues.append("Solo se admite la versión 1 del manifiesto.")
+        if manifest.version != 1 && manifest.version != 2 {
+            issues.append("Solo se admiten las versiones 1 y 2 del manifiesto.")
         }
         if manifest.purpose != "INITIAL_DIAGNOSTIC" {
             issues.append("El propósito \(manifest.purpose) no está soportado; se esperaba INITIAL_DIAGNOSTIC.")
@@ -209,8 +256,43 @@ struct PhysicalTestsImportService {
             if let ageFrom = scale.ageFrom, let ageTo = scale.ageTo, ageFrom > ageTo {
                 issues.append("\(label): ageFrom no puede superar ageTo.")
             }
-            if scale.ranges.isEmpty {
+            let scoringMode = scale.scoring?.mode.uppercased() ?? "STEP"
+            if !validScoringModes.contains(scoringMode) {
+                issues.append("\(label): scoring.mode no reconocido (\(scoringMode)).")
+            }
+            if manifest.version == 2 && scale.scoring == nil {
+                issues.append("\(label): las escalas de la versión 2 deben declarar scoring.")
+            }
+            if let roundTo = scale.scoring?.roundTo,
+               !roundTo.isFinite || roundTo <= 0 {
+                issues.append("\(label): scoring.roundTo debe ser un número mayor que cero.")
+            }
+            if scoringMode == "LINEAR" {
+                if scale.scoring?.points.count ?? 0 < 2 {
+                    issues.append("\(label): una escala LINEAR debe tener al menos dos puntos.")
+                }
+                var previousValue: Double?
+                for (index, point) in (scale.scoring?.points ?? []).enumerated() {
+                    if !point.value.isFinite {
+                        issues.append("\(label): el punto \(index + 1) tiene un valor no finito.")
+                    }
+                    if let previousValue, point.value <= previousValue {
+                        issues.append("\(label): los puntos LINEAR deben estar ordenados y no repetirse.")
+                    }
+                    previousValue = point.value
+                    if !point.score.isFinite || point.score < 0 || point.score > 10 {
+                        issues.append("\(label): el punto \(index + 1) tiene una puntuación fuera de 0-10.")
+                    }
+                    let pointId = point.id ?? "\(scale.id)_point_\(index + 1)"
+                    if !rangeIds.insert(pointId).inserted {
+                        issues.append("El identificador de punto \(pointId) está repetido.")
+                    }
+                }
+            } else if scale.ranges.isEmpty {
                 issues.append("\(label): debe tener al menos un rango.")
+            }
+            if scoringMode == "STEP" && !(scale.scoring?.points.isEmpty ?? true) {
+                issues.append("\(label): una escala STEP no puede declarar puntos LINEAR.")
             }
             for range in scale.ranges {
                 if !rangeIds.insert(range.id).inserted {

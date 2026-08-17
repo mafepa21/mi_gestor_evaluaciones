@@ -21,6 +21,13 @@ enum PhysicalTestScaleDirection: String, CaseIterable, Identifiable {
     }
 }
 
+enum PhysicalTestScoringMode: String, CaseIterable, Identifiable {
+    case step
+    case linear
+
+    var id: String { rawValue }
+}
+
 struct PhysicalTestScaleRange: Identifiable, Hashable {
     let id = UUID()
     var minValue: Double?
@@ -46,6 +53,8 @@ struct PhysicalTestScaleDraft: Identifiable, Hashable {
     var sex: String = ""
     var batteryId: String = ""
     var direction: PhysicalTestScaleDirection
+    var scoringMode: PhysicalTestScoringMode = .step
+    var scoreRoundTo: Double?
     var ranges: [PhysicalTestScaleRange]
 
     static let defaultJump = PhysicalTestScaleDraft(
@@ -73,7 +82,31 @@ struct PhysicalTestScaleDraft: Identifiable, Hashable {
     )
 
     func score(for rawValue: Double) -> Double? {
-        ranges.first(where: { $0.contains(rawValue) })?.score
+        switch scoringMode {
+        case .step:
+            return ranges.first(where: { $0.contains(rawValue) })?.score
+        case .linear:
+            let points = ranges
+                .compactMap { range in range.minValue.map { ($0, range.score) } }
+                .sorted { $0.0 < $1.0 }
+            guard let first = points.first else { return nil }
+            guard points.count > 1 else { return first.1 }
+            let rawScore: Double
+            if rawValue <= first.0 {
+                rawScore = first.1
+            } else if let last = points.last, rawValue >= last.0 {
+                rawScore = last.1
+            } else if let upperIndex = points.firstIndex(where: { rawValue <= $0.0 }) {
+                let lower = points[upperIndex - 1]
+                let upper = points[upperIndex]
+                let fraction = (rawValue - lower.0) / (upper.0 - lower.0)
+                rawScore = lower.1 + (upper.1 - lower.1) * fraction
+            } else {
+                return nil
+            }
+            guard let increment = scoreRoundTo, increment > 0 else { return rawScore }
+            return (rawScore / increment).rounded() * increment
+        }
     }
 
     var validationMessages: [String] {
@@ -89,8 +122,11 @@ struct PhysicalTestScaleDraft: Identifiable, Hashable {
         let normalizedTestId = testId.map(PhysicalScaleProfileCatalog.normalizedTestId) ?? ""
         let profile = PhysicalScaleProfileCatalog.profile(for: normalizedTestId, objective: "mixto")
         let boundaryStep = profile?.precision.boundaryStep ?? inferredBoundaryStep
-        if ranges.count != 5 {
+        if scoringMode == .step && ranges.count != 5 {
             messages.append("El baremo debe tener exactamente 5 rangos.")
+        }
+        if scoringMode == .linear && ranges.count < 2 {
+            messages.append("El baremo lineal debe tener al menos 2 puntos.")
         }
         if let expectedUnit, let profile, !expectedUnit.isEmpty, profile.unit != expectedUnit {
             messages.append("La unidad no coincide con el perfil de la prueba.")
@@ -413,6 +449,18 @@ struct PhysicalTestScaleEditor: View {
                 .pickerStyle(.segmented)
 
                 Text(scale.direction.subtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Picker("Modelo de puntuación", selection: $scale.scoringMode) {
+                    Text("Por rangos").tag(PhysicalTestScoringMode.step)
+                    Text("Gradual").tag(PhysicalTestScoringMode.linear)
+                }
+                .pickerStyle(.segmented)
+
+                Text(scale.scoringMode == .linear
+                     ? "La nota se interpola entre los puntos Desde; Hasta se ignora."
+                     : "Cada marca recibe la nota del rango que la contiene.")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
@@ -786,6 +834,8 @@ struct PhysicalTestScaleEditor: View {
     }
 
     private func applyAIProposal(_ proposal: PhysicalScaleRecommendationDraft) {
+        scale.scoringMode = .step
+        scale.scoreRoundTo = nil
         scale.ranges = proposal.ranges.map {
             PhysicalTestScaleRange(minValue: $0.minValue, maxValue: $0.maxValue, score: $0.score, label: $0.label)
         }

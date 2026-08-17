@@ -108,6 +108,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Importación de pruebas físicas diagnósticas: se evita el aborto de Kotlin al crear la evaluación técnica con peso cero; las columnas de marca siguen sin contar para la media.
 - Captura de pruebas físicas: una asignación sin puntuación ya no resuelve ni persiste un baremo accidentalmente.
 - Cuaderno: se elimina el feedback de guardado por celda basado en temporizadores,
   que podía mostrar "Guardado" aunque la persistencia fallase; la barra de estado

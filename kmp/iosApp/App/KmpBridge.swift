@@ -6388,6 +6388,9 @@ final class KmpBridge: ObservableObject {
         let assignmentTemplate = draft.assignmentTemplate
         let assignmentId = "pe_assignment_sa\(situation.id)_\(classId)_\(assignmentTemplate.batteryId)"
         let scoreColumnMode = assignmentTemplate.scoreColumnMode && assignmentTemplate.recordScore
+        // SaveEvaluationUseCase requires a positive weight. Diagnostic imports
+        // remain excluded from the notebook average through their raw columns.
+        let physicalEvaluationWeight = 1.0
         let tabId = try await resolveNotebookTargetTabId(classId: classId, preferredTabId: targetTabId)
 
         var evaluationsByCode = Dictionary(
@@ -6501,7 +6504,7 @@ final class KmpBridge: ObservableObject {
                     code: code,
                     name: definition.name,
                     kind: definition.measurementKind,
-                    weight: 0,
+                    weight: physicalEvaluationWeight,
                     description: definition.protocolText
                 )
                 evaluationsByCode[code] = evaluationId

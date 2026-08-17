@@ -16,6 +16,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Added
 
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
+- Importación directa de manifiestos JSON `mi_gestor.physical-tests-import` desde una Situación de Aprendizaje: valida pruebas personalizadas, escalas, batería y asignación, y crea sus columnas de marca en el Cuaderno de forma idempotente.
 - Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
   documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro
   archivo no pueda leerse o guardarse.
@@ -48,6 +49,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Las pruebas físicas importadas en modo diagnóstico (`recordScore=false`) guardan únicamente la marca bruta: no generan columna de nota ni puntuación, media o ranking.
 - Dashboard Hoy: la tarjeta "Ahora" fija una única acción primaria según el
   contexto (pasar lista durante la clase o preparar el cuaderno para la próxima)
   y agrupa observación, evaluación, cuaderno, agenda y diario en "Más acciones";
@@ -106,6 +108,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Captura de pruebas físicas: una asignación sin puntuación ya no resuelve ni persiste un baremo accidentalmente.
 - Cuaderno: se elimina el feedback de guardado por celda basado en temporizadores,
   que podía mostrar "Guardado" aunque la persistencia fallase; la barra de estado
   queda como fuente visible del estado real publicado por `NotebookViewModel`.

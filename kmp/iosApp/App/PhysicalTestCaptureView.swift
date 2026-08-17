@@ -12,6 +12,7 @@ struct PhysicalTestCaptureView: View {
     let age: Int?
     let rawColumnId: String?
     let scoreColumnId: String?
+    let recordScore: Bool
     let attemptsCount: Int
     let direction: PhysicalTestScaleDirection
     let resultMode: PhysicalTestResultMode
@@ -44,7 +45,7 @@ struct PhysicalTestCaptureView: View {
     }
 
     private var scorePreview: Double? {
-        guard let finalValue, let resolvedScale else { return nil }
+        guard recordScore, let finalValue, let resolvedScale else { return nil }
         return resolvedScale.ranges.first { range in
             let minOk = range.minValue.map { finalValue >= $0.doubleValue } ?? true
             let maxOk = range.maxValue.map { finalValue <= $0.doubleValue } ?? true
@@ -182,6 +183,10 @@ struct PhysicalTestCaptureView: View {
     @MainActor
     private func loadResolvedScale() async {
         guard let currentResult else { return }
+        guard recordScore else {
+            resolvedScale = nil
+            return
+        }
         let effectiveAge = ageOnCurrentDate(for: currentResult.student) ?? age
         let effectiveSex = sexForScale(currentResult.student)
         do {
@@ -209,7 +214,9 @@ struct PhysicalTestCaptureView: View {
             let effectiveAge = ageOnCurrentDate(for: currentResult.student) ?? age
             let effectiveSex = sexForScale(currentResult.student)
             let resolvedScale: MiGestorKit.PhysicalTestScale?
-            if let loadedScale = self.resolvedScale {
+            if !recordScore {
+                resolvedScale = nil
+            } else if let loadedScale = self.resolvedScale {
                 resolvedScale = loadedScale
             } else {
                 resolvedScale = try await bridge.resolvePhysicalScale(
@@ -220,13 +227,13 @@ struct PhysicalTestCaptureView: View {
                     batteryId: batteryId
                 )
             }
-            let score = rawValue.flatMap { value in
+            let score = recordScore ? rawValue.flatMap { value in
                 resolvedScale?.ranges.first(where: { range in
                     let minOk = range.minValue.map { value >= $0.doubleValue } ?? true
                     let maxOk = range.maxValue.map { value <= $0.doubleValue } ?? true
                     return minOk && maxOk
                 })?.score
-            }
+            } : nil
             let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
             let resultId = "pe_result_\(assignmentId)_\(testDefinitionId)_\(currentResult.student.id)"
             let result = MiGestorKit.PhysicalTestResult(
@@ -238,7 +245,7 @@ struct PhysicalTestCaptureView: View {
                 rawValue: rawValue.map { KotlinDouble(value: $0) },
                 rawText: normalizedAttempts.filter { !$0.isEmpty }.joined(separator: " · "),
                 score: score.map { KotlinDouble(value: $0) },
-                scaleId: resolvedScale?.id,
+                scaleId: recordScore ? resolvedScale?.id : nil,
                 observedAtEpochMs: nowMs,
                 rawColumnId: rawColumnId,
                 scoreColumnId: scoreColumnId,

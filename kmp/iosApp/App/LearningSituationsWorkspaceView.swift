@@ -59,6 +59,50 @@ private struct LearningSituationBatchImportPresentation: Identifiable {
     let failures: [LearningSituationDocumentImportFailure]
 }
 
+private struct LearningSituationPhysicalTestsImportSection: View {
+    let isImporting: Bool
+    let draft: PhysicalTestsImportDraft?
+    let importAction: () -> Void
+    let removeAction: () -> Void
+
+    var body: some View {
+        Section("Pruebas físicas") {
+            Button(action: importAction) {
+                if isImporting {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Validando manifiesto…")
+                    }
+                } else {
+                    Label("Adjuntar manifiesto JSON", systemImage: "figure.run.circle")
+                }
+            }
+            .disabled(isImporting)
+
+            if let draft {
+                Label("Manifiesto validado", systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                Text(verbatim: draft.assignmentTemplate.batteryName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(draft.scoreIsDisabled
+                    ? "Diagnóstico: se crearán columnas de marca sin nota, media ni ranking."
+                    : "Se crearán las columnas configuradas en el manifiesto.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button(role: .destructive, action: removeAction) {
+                    Label("Quitar manifiesto", systemImage: "trash")
+                }
+            } else {
+                Text("Importa la batería, las escalas de referencia y las columnas de marca del JSON preparado para esta SA.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 struct LearningSituationsWorkspaceView: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
@@ -1680,11 +1724,15 @@ private struct LearningSituationEvaluationSheet: View {
     @State private var showingRubricBuilder = false
     @State private var instrumentImportDraft: LearningSituationAssessmentImportDraft?
     @State private var instrumentImportPreview: LearningSituationAssessmentImportDraft?
+    @State private var showingPhysicalTestsImporter = false
+    @State private var physicalTestsImportDraft: PhysicalTestsImportDraft?
+    @State private var physicalTestsImportPreview: PhysicalTestsImportDraft?
     @State private var instrumentTargetTabs: [NotebookTab] = []
     @State private var selectedInstrumentTargetTabId: String?
     @State private var isNewTargetTabAlertPresented = false
     @State private var newTargetTabName = ""
     @State private var isImportingInstrumentDocument = false
+    @State private var isImportingPhysicalTests = false
     @State private var rubricImportPreview: AppleRubricImportPreview?
     @State private var errorMessage = ""
 
@@ -1693,6 +1741,10 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     private var canSave: Bool {
+        if let physicalTestsImportDraft {
+            let hasTargetTab = instrumentTargetTabs.isEmpty || selectedInstrumentTargetTabId != nil
+            return classId != nil && !physicalTestsImportDraft.testDefinitions.isEmpty && hasTargetTab
+        }
         if instrumentImportDraft != nil {
             let hasTargetTab = instrumentTargetTabs.isEmpty || selectedInstrumentTargetTabId != nil
             return classId != nil && !selectedImportedInstruments.isEmpty && hasTargetTab
@@ -1739,7 +1791,13 @@ private struct LearningSituationEvaluationSheet: View {
                             .foregroundStyle(.green)
                     }
                 }
-                if instrumentImportDraft == nil {
+                LearningSituationPhysicalTestsImportSection(
+                    isImporting: isImportingPhysicalTests,
+                    draft: physicalTestsImportDraft,
+                    importAction: { showingPhysicalTestsImporter = true },
+                    removeAction: { physicalTestsImportDraft = nil }
+                )
+                if physicalTestsImportDraft == nil && instrumentImportDraft == nil {
                     Section("Instrumentos propuestos") {
                         ForEach($proposals) { $proposal in
                             VStack(alignment: .leading, spacing: 8) {
@@ -1760,7 +1818,7 @@ private struct LearningSituationEvaluationSheet: View {
                             .padding(.vertical, 4)
                         }
                     }
-                } else {
+                } else if physicalTestsImportDraft == nil {
                     Section("Instrumentos detectados") {
                         HStack {
                             Text("\(selectedImportedInstruments.count) seleccionados")
@@ -1772,6 +1830,28 @@ private struct LearningSituationEvaluationSheet: View {
                         .font(.caption)
                         importedInstrumentRows
                     }
+                    Section("Pestaña del cuaderno") {
+                        if instrumentTargetTabs.isEmpty {
+                            Label("Se creará la pestaña Evaluación si el grupo no tiene pestañas.", systemImage: "folder.badge.plus")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("Añadir en", selection: $selectedInstrumentTargetTabId) {
+                                Text("Selecciona pestaña")
+                                    .tag(nil as String?)
+                                ForEach(instrumentTargetTabs, id: \.id) { tab in
+                                    Text(tab.title).tag(Optional(tab.id))
+                                }
+                            }
+                        }
+                        Button {
+                            newTargetTabName = ""
+                            isNewTargetTabAlertPresented = true
+                        } label: {
+                            Label("Crear pestaña nueva…", systemImage: "folder.badge.plus")
+                        }
+                    }
+                } else {
                     Section("Pestaña del cuaderno") {
                         if instrumentTargetTabs.isEmpty {
                             Label("Se creará la pestaña Evaluación si el grupo no tiene pestañas.", systemImage: "folder.badge.plus")
@@ -1814,6 +1894,13 @@ private struct LearningSituationEvaluationSheet: View {
                 Task { await handleInstrumentImport(result) }
             }
             .fileImporter(
+                isPresented: $showingPhysicalTestsImporter,
+                allowedContentTypes: [.json],
+                allowsMultipleSelection: false
+            ) { result in
+                Task { await handlePhysicalTestsImport(result) }
+            }
+            .fileImporter(
                 isPresented: $showingRubricImporter,
                 allowedContentTypes: [.xlsx, .commaSeparatedText],
                 allowsMultipleSelection: false
@@ -1824,8 +1911,18 @@ private struct LearningSituationEvaluationSheet: View {
                 LearningSituationAssessmentImportPreviewSheet(draft: preview) {
                     instrumentImportPreview = nil
                 } confirm: { accepted in
+                    physicalTestsImportDraft = nil
                     instrumentImportDraft = accepted
                     instrumentImportPreview = nil
+                }
+            }
+            .sheet(item: $physicalTestsImportPreview) { preview in
+                PhysicalTestsImportPreviewSheet(draft: preview) {
+                    physicalTestsImportPreview = nil
+                } confirm: { accepted in
+                    instrumentImportDraft = nil
+                    physicalTestsImportDraft = accepted
+                    physicalTestsImportPreview = nil
                 }
             }
             .sheet(item: $rubricImportPreview) { preview in
@@ -1884,6 +1981,11 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     private var statusMessage: String {
+        if physicalTestsImportDraft != nil {
+            return canSave
+                ? "Se crearán la batería, las referencias, la asignación y las columnas de marca en el Cuaderno."
+                : "Selecciona un grupo y una pestaña válida antes de importar las pruebas físicas."
+        }
         if instrumentImportDraft != nil {
             return canSave
                 ? "Se crearan evaluaciones, columnas y vinculos para los instrumentos seleccionados."
@@ -2045,6 +2147,25 @@ private struct LearningSituationEvaluationSheet: View {
         }
     }
 
+    @MainActor
+    private func handlePhysicalTestsImport(_ result: Result<[URL], Error>) async {
+        do {
+            guard let url = try result.get().first else { return }
+            isImportingPhysicalTests = true
+            defer { isImportingPhysicalTests = false }
+
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            let data = try Data(contentsOf: url)
+            let service = PhysicalTestsImportService()
+            physicalTestsImportPreview = try await withTimeout(seconds: 20) {
+                try service.preview(from: url, data: data)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask { try await operation() }
@@ -2150,7 +2271,14 @@ private struct LearningSituationEvaluationSheet: View {
     private func save() async {
         guard let classId else { return }
         do {
-            if let instrumentImportDraft {
+            if let physicalTestsImportDraft {
+                try await bridge.materializeLearningSituationPhysicalTests(
+                    situation: situation,
+                    classId: classId,
+                    draft: physicalTestsImportDraft,
+                    targetTabId: selectedInstrumentTargetTabId
+                )
+            } else if let instrumentImportDraft {
                 try await bridge.materializeLearningSituationAssessmentInstruments(
                     situation: situation,
                     classId: classId,

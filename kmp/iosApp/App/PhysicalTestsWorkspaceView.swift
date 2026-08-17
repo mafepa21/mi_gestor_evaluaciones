@@ -392,6 +392,7 @@ struct PhysicalTestsWorkspaceView: View {
                         age: activeAssignment.ageFrom?.intValue,
                         rawColumnId: activeNotebookLink?.rawColumnId,
                         scoreColumnId: activeNotebookLink?.scoreColumnId,
+                        recordScore: activeAssignment.scoreColumnMode,
                         attemptsCount: attemptsCount(for: testDefinitionId(for: selectedTest)),
                         direction: direction(for: testDefinitionId(for: selectedTest)),
                         resultMode: resultMode(for: testDefinitionId(for: selectedTest)),

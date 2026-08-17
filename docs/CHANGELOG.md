@@ -105,6 +105,8 @@ El formato sigue una variante practica de Keep a Changelog:
 - ADR `ADR-2026-08-01-entregas-web-centro-mac.md`: Mac como centro de publicación,
   gestión, reparto e importación, con privacidad explícita para SyncLAN y la
   limitación de revocación del manifiesto público firmado.
+- ADR `ADR-2026-08-17-app-icon-composer-variants.md`: `AppIcon.icon` como fuente
+  canónica compartida para las rendiciones claro/oscuro de iPadOS y macOS.
 
 ### Fixed
 

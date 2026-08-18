@@ -122,6 +122,7 @@
 		3DED37E337999E20D43E7C6F /* NotebookAverageExplanationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC46319C44007155F43DDDB /* NotebookAverageExplanationView.swift */; };
 		3E5486419EB17E40023CA271 /* InstrumentEvaluationChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D15F3CCA44B78B5B6598C4E /* InstrumentEvaluationChrome.swift */; };
 		3EB980B5E6F11D4DFD90A1F2 /* NotebookModuleTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D342F2953510BDA01694A6 /* NotebookModuleTypes.swift */; };
+		3F0D4936A71420D9A0652162 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 7DB760443A1EAA2F7DCB8484 /* AppIcon.icon */; };
 		3F94D941976F275287C0CA24 /* NotebookModuleGridCells.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8457F6307147064BDBB54971 /* NotebookModuleGridCells.swift */; };
 		3FA1406F09B961DDDCFC19C0 /* MacRubricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABD5C416DAF2C9F1BB98CB1 /* MacRubricsView.swift */; };
 		3FF1BF0D16BF0F5C1BDD8354 /* SupportMeasureBulkImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E65AEB66C13E89107AA8BA /* SupportMeasureBulkImportSheet.swift */; };
@@ -388,6 +389,7 @@
 		CA6641D6897F1DA8777C9A5B /* CoreXLSX in Frameworks */ = {isa = PBXBuildFile; productRef = 57618C3F5EACACACB54EA28D /* CoreXLSX */; };
 		CAF67FA20CA5E389338EA49A /* DiaryWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */; };
 		CB0E2E7A3AD5055CA273F5E5 /* NotebookAverageEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0BFD8699A1E65C7A09163CF /* NotebookAverageEditorSheet.swift */; };
+		CB68304DC093C13D524BFE1A /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 7DB760443A1EAA2F7DCB8484 /* AppIcon.icon */; };
 		CC8AEDA5D4D172631A66F545 /* OnboardingStudentsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED64B03A28FA13E012596D4E /* OnboardingStudentsSheet.swift */; };
 		CD959B6BD954F2CD55627CD4 /* MeetingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DFC26768A94C315D01AF726 /* MeetingsShared.swift */; };
 		CDCD0F5A2A4A863E62562764 /* NotebookFocusMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3042AD483C9D7A9B0BCE80F8 /* NotebookFocusMode.swift */; };
@@ -660,6 +662,7 @@
 		78E88B21BBD0EF622338678A /* BackupStatusHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupStatusHero.swift; sourceTree = "<group>"; };
 		7B252E2D9B95CDC6CB59B9A3 /* NotebookHiddenColumnsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookHiddenColumnsSheet.swift; sourceTree = "<group>"; };
 		7D47CE5CC1A1F907BFA2E477 /* AppleAIOrchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAIOrchestrator.swift; sourceTree = "<group>"; };
+		7DB760443A1EAA2F7DCB8484 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		7F76DB4753DE05272D6E25A5 /* SettingsNavigationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNavigationStore.swift; sourceTree = "<group>"; };
 		808AE922E0187FD7FAEA5FFC /* NotebookClassPickerComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookClassPickerComponents.swift; sourceTree = "<group>"; };
 		82F349363D7DF9A0AD8CAD85 /* NotebookFormulaEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookFormulaEvaluator.swift; sourceTree = "<group>"; };
@@ -1007,6 +1010,7 @@
 			isa = PBXGroup;
 			children = (
 				583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */,
+				7DB760443A1EAA2F7DCB8484 /* AppIcon.icon */,
 				7D47CE5CC1A1F907BFA2E477 /* AppleAIOrchestrator.swift */,
 				A9A2227E2644C8AFEC65949F /* AppleAIPremiumSupport.swift */,
 				9066EF34A52C09F07E8CFAE7 /* AppleAIReadinessFixtures.swift */,
@@ -1276,6 +1280,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3F0D4936A71420D9A0652162 /* AppIcon.icon in Resources */,
 				3CB4C3CA98572F18CC5D1DA7 /* Assets.xcassets in Resources */,
 				F7E918819272BFAF7EDD8F70 /* NotebookManualVerification.md in Resources */,
 			);
@@ -1285,6 +1290,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CB68304DC093C13D524BFE1A /* AppIcon.icon in Resources */,
 				2E0C1B67E85317A3147416FF /* Assets.xcassets in Resources */,
 				4CD7B2F80D547E190781D9EC /* NotebookManualVerification.md in Resources */,
 			);

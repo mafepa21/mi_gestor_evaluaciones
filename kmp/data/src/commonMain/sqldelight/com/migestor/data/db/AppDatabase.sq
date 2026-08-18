@@ -1752,6 +1752,11 @@ FROM learning_situation_sequence_versions
 WHERE learning_situation_id = ?
 ORDER BY version_number DESC;
 
+selectAllLearningSituationSequenceVersions:
+SELECT id, learning_situation_id, version_number, original_file_name, sha256, local_path, size_bytes, payload_json, warnings_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_sequence_versions
+ORDER BY learning_situation_id, version_number DESC;
+
 upsertLearningSituationSessionPlan:
 INSERT OR REPLACE INTO learning_situation_session_plans(
     id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
@@ -1763,6 +1768,11 @@ SELECT id, learning_situation_id, sequence_version_id, session_number, source_la
 FROM learning_situation_session_plans
 WHERE sequence_version_id = ?
 ORDER BY session_number;
+
+selectAllLearningSituationSessionPlans:
+SELECT id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_session_plans
+ORDER BY sequence_version_id, session_number;
 
 selectLearningSituationSessionPlanById:
 SELECT id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
@@ -1783,6 +1793,11 @@ SELECT learning_situation_id, class_id, created_at_epoch_ms, updated_at_epoch_ms
 FROM learning_situation_classes
 WHERE learning_situation_id = ?
 ORDER BY class_id;
+
+selectAllLearningSituationClassLinks:
+SELECT learning_situation_id, class_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_classes
+ORDER BY learning_situation_id, class_id;
 
 upsertLearningSituationLink:
 INSERT INTO learning_situation_links(

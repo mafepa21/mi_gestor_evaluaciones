@@ -6,6 +6,7 @@ struct EvaluationHubView: View {
     @Environment(\.colorScheme) var colorScheme
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
+    let onCreateEvaluation: () -> Void
     @State var evaluations: [Evaluation] = []
     @State var selectedEvaluationId: Int64?
     @State var searchText = ""
@@ -203,7 +204,7 @@ struct EvaluationHubView: View {
                     )
                     HStack(spacing: 12) {
                         Button("Crear evaluación") {
-                            bridge.status = "Usa el botón superior para crear una evaluación nueva."
+                            onCreateEvaluation()
                         }
                         .buttonStyle(.borderedProminent)
                         Button("Abrir cuaderno") {

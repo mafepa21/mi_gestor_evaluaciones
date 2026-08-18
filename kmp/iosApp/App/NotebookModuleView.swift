@@ -674,13 +674,13 @@ struct NotebookModuleView: View {
         Task {
             do {
                 let situations = try await bridge.learningSituations()
-                var filtered: [LearningSituation] = []
-                for sit in situations {
-                    let links = try await bridge.learningSituationClassLinks(id: sit.id)
-                    if links.contains(where: { $0.classId == classId }) {
-                        filtered.append(sit)
-                    }
-                }
+                let links = try await bridge.learningSituationClassLinksAll()
+                let situationIds = Set(
+                    links.lazy
+                        .filter { $0.classId == classId }
+                        .map(\.learningSituationId)
+                )
+                let filtered = situations.filter { situationIds.contains($0.id) }
                 let finalFiltered = filtered
                 await MainActor.run {
                     self.classSituations = finalFiltered

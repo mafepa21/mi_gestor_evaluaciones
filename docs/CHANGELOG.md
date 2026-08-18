@@ -15,6 +15,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
+- AppIcon nativo de Apple integrado mediante `AppIcon.icon` de Icon Composer para el target KMP de iPadOS y macOS, con rendiciones `Default` y `Dark` en una única fuente compartida.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación directa de manifiestos JSON `mi_gestor.physical-tests-import` desde una Situación de Aprendizaje: valida pruebas personalizadas, escalas, batería y asignación, y crea sus columnas de marca en el Cuaderno de forma idempotente.
 - Captura contextual de pruebas físicas en el Cuaderno: las marcas de tiempo abren cronómetro y entrada manual, y las marcas de distancia o repeticiones usan teclado numérico.
@@ -58,10 +60,36 @@ El formato sigue una variante practica de Keep a Changelog:
 - Las celdas de pruebas físicas muestran la nota de referencia calculada desde el baremo del manifiesto junto a la marca, sin convertirla en una nota evaluable ni incluirla en la media; las pruebas sin baremo aplicable lo indican explícitamente.
 - La nota de referencia de un baremo LINEAR se interpola entre sus puntos de calibración y se calcula igual en la captura física y en la celda del Cuaderno; los manifiestos v1 conservan el comportamiento por rangos.
 - En modo diagnóstico se conserva también el identificador de la escala de referencia aplicada, sin guardar una nota evaluable; si el sexo del alumno no consta, solo se acepta una escala neutra.
+- Toolbar macOS: Sync pasa a la acción secundaria; Hoy conserva "Pasar lista" como acción
+  prominente y Observación queda en "Más"; Asistencia mantiene "Marcar presentes" como acción
+  principal y agrupa Repetir patrón/Cerrar ficha para reducir competencia visual.
+- QA visual macOS: la sidebar fija un ancho mínimo/ideal de 220/248 pt para evitar que la ventana
+  recuerde una columna de 144 pt y trunque subtítulos; se validan con AX la selección de módulos,
+  los labels de toolbar, el menú "Más" y el foco de teclado en búsquedas.
+- QA de accesibilidad macOS ampliado: `⌘N` abre "Nueva evaluación", `⌘⌥1–4` cambia las cuatro
+  secciones del Planificador y Ajustes → Apariencia expone correctamente "Según el sistema",
+  "Claro", "Oscuro premium", "Reducir movimiento" y "Densidad de tablas compacta" con labels AX.
+- QA final macOS: los temas Claro y Oscuro premium renderizan correctamente y se restaura "Según el
+  sistema"; VoiceOver se activó/desactivó verificando que la app conserva su superficie AX; el tile
+  lateral nativo mantiene la sidebar de 248 pt y el shell se recupera con Window → Fill.
+- Navegación Apple: el sidebar iPad adopta la misma jerarquía conceptual que macOS —Hoy, Evaluación,
+  Planificación y Sistema—, elimina el bloque promocional redundante y conserva el contexto de clase
+  como único encabezado operativo. En el shell iPad, la acción primaria queda visible y foco, IA y
+  recargas pasan a un menú secundario; Hoy concentra el peso visual en "Acción principal".
+- Shell iPad efectiva (`IOSRootView`): la jerarquía anterior se aplica al flujo que arranca realmente
+  en iPad, con navegación por áreas, `MiGestor` como título único, acción primaria prominente y
+  sincronización/inspector bajo divulgación progresiva; Evaluación expone "Nueva evaluación" como
+  acción contextual principal.
+- Evaluación: la creación desde el estado vacío del iPad abre el flujo real de alta; macOS incorpora
+  la sección de Evaluación compartida, acceso directo "Nueva evaluación" y el atajo `⌘N`, manteniendo
+  el mismo contexto de grupo entre plataformas.
 - Dashboard Hoy: la tarjeta "Ahora" fija una única acción primaria según el
   contexto (pasar lista durante la clase o preparar el cuaderno para la próxima)
   y agrupa observación, evaluación, cuaderno, agenda y diario en "Más acciones";
   el encabezado deja de duplicar esas acciones como botones equivalentes.
+- Activación inicial iPad-first: al completar los cinco pasos de configuración,
+  el onboarding ofrece "Abrir Hoy" y navega al cockpit operativo en iOS/iPadOS y
+  macOS; bienvenida y checklist usan detents nativos y un drag indicator en iOS.
 - Evaluación de rúbricas e instrumentos: la rúbrica individual amplía su área
   de trabajo para mostrar sus cuatro niveles; los selectores numéricos aceptan
   pulsaciones en toda su superficie y la primera columna de la evaluación masiva
@@ -100,6 +128,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- Situaciones de aprendizaje: se añaden lecturas bulk para enlaces de grupo, versiones de secuencia
+  y planes de sesión, eliminando el patrón N+1 usado por Situaciones, Cuaderno y Planificador sin
+  cambiar el esquema ni requerir migración.
 - Se añadió la migración 41 con la marca `archived` de `web_form_instances` y operaciones
   SQLDelight transaccionales por lote. No se crean tablas nuevas ni se sincronizan las
   tablas privadas `web_*`.
@@ -114,6 +145,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- ADR `ADR-2026-08-15-bulk-learning-situation-reads.md`: decisión de centralizar las lecturas
+  relacionadas con Situaciones en consultas bulk y resolver sus relaciones en memoria en la capa Apple.
 - Auditoría y propuesta de rediseño de los instrumentos de evaluación del Cuaderno:
   shell común `Evaluation Workspace`, Liquid Glass reservado al chrome y superficies
   sólidas para el contenido evaluable. Incluye rúbrica individual, evaluación masiva,
@@ -121,6 +154,8 @@ El formato sigue una variante practica de Keep a Changelog:
 - ADR `ADR-2026-08-01-entregas-web-centro-mac.md`: Mac como centro de publicación,
   gestión, reparto e importación, con privacidad explícita para SyncLAN y la
   limitación de revocación del manifiesto público firmado.
+- ADR `ADR-2026-08-17-app-icon-composer-variants.md`: `AppIcon.icon` como fuente
+  canónica compartida para las rendiciones claro/oscuro de iPadOS y macOS.
 
 ### Fixed
 
@@ -142,15 +177,54 @@ El formato sigue una variante practica de Keep a Changelog:
 - La bienvenida de primer arranque solicita el dismiss explícito del sheet al
   pulsar "Ahora no" o "Configurar mi curso", manteniendo la transición guiada
   hacia la checklist.
+- La checklist de primeros pasos usa el dismiss nativo de SwiftUI antes de
+  limpiar su ruta, para que "Cerrar primeros pasos", "Seguir luego" y
+  "Abrir Hoy" cierren visualmente la sheet también en iPad.
 
 ### Verification
 
+- `./gradlew :desktopApp:processResources` (2026-08-16): correcto; `icon-window.png` se procesa desde `src/main/resources`. `./gradlew :desktopApp:createDistributable` queda bloqueado por un fallo preexistente en `AppFeedbackState.kt:20` (`when` no exhaustivo), ajeno al icono.
+- `ictool`, `xcodegen` y `xcodebuild` (2026-08-17): `AppIcon.icon` exporta las rendiciones `Default`/`Dark`; el proyecto regenerado y los targets `MiGestorKMPiOS` y `MiGestorKMPMac` terminan en **BUILD SUCCEEDED**; el `Assets.car` de iPadOS contiene `UIAppearanceDark` y `AppIcon-1024-dark`.
+- `./scripts/verify_apple_builds.sh` (2026-08-16): XcodeGen correcto; macOS Native/Catalyst e iOS
+  Simulator compilados correctamente tras la divulgación progresiva de la toolbar macOS.
+- XcodeBuildMCP en iPad Pro 11-inch (M5, iOS 27): build/run correcto; captura visual de `IOSRootView`
+  validó las secciones Hoy/Evaluación/Planificación/Sistema, la acción primaria de Hoy y el acceso
+  contextual "Nueva evaluación" tras navegar a Evaluación. La captura se obtuvo después de cerrar
+  "Seguir luego" del onboarding.
+- `./scripts/verify_apple_builds.sh` (2026-08-16): XcodeGen correcto; macOS Native/Catalyst e iOS
+  Simulator compilados correctamente tras aplicar la jerarquía al shell efectivo `IOSRootView`.
+- QA macOS nativo (2026-08-16): build Debug y lanzamiento de `MiGestorKMPMac` correctos; AX confirmó
+  sidebar Hoy/Evaluación/Planificación/Sistema, navegación a Evaluación/Planificación/Situaciones,
+  "Nueva evaluación", menú "Más" y foco Tab en "Buscar situación". Tras fijar el ancho de sidebar,
+  el splitter pasó de 144 a 248 pt y la captura dejó de truncar la navegación principal.
+- `./scripts/verify_apple_builds.sh` (2026-08-16): XcodeGen correcto; macOS Native/Catalyst e iOS
+  Simulator compilados correctamente tras el ajuste de ancho de sidebar macOS.
+- `./scripts/verify_apple_builds.sh` (2026-08-15): XcodeGen correcto; macOS Native/Catalyst e iOS
+  Simulator compilados correctamente tras la reorganización del sidebar y la reducción de acciones
+  visibles del shell iPad.
+- `./gradlew :data:desktopTest --tests com.migestor.data.repository.LearningSituationsRepositorySqlDelightTest`:
+  BUILD SUCCESSFUL.
+- `./gradlew :shared:desktopTest`: BUILD SUCCESSFUL.
+- `./scripts/verify_apple_builds.sh` (2026-08-15): XcodeGen correcto; macOS Native, Catalyst e iOS
+  Simulator compilados correctamente. `:shared:test` no se pudo ejecutar porque el entorno no tiene
+  Android SDK configurado.
+- `swiftc -parse kmp/iosApp/AppleShared/OnboardingChecklistView.swift
+  kmp/iosApp/AppleShared/OnboardingHost.swift`: correcto.
+- `xcodegen generate` y `./scripts/verify_apple_builds.sh` (2026-08-13):
+  macOS Native e iOS Simulator compilados correctamente tras el ajuste del
+  cierre del onboarding; la primera ejecución quedó bloqueada por la red del
+  sandbox al resolver dependencias SPM y se repitió con acceso aprobado.
 - `./scripts/verify_apple_builds.sh` (2026-08-13): XcodeGen correcto; macOS
   Native e iOS Simulator compilados correctamente tras el ajuste compartido de
   la tarjeta "Ahora".
 - XcodeBuildMCP en iPad Pro 11-inch (M5): build/run correcto; snapshot visual de
-  "Hoy" validado en estado sin horario y checklist de primeros pasos cerrable;
-  con horario de prueba, la tarjeta pasa a "Próxima clase" y muestra "Preparar
+  "Hoy" validado en estado sin horario y checklist de primeros pasos visible,
+  con progreso 2/5 y pasos bloqueados correctamente representados.
+- XcodeBuildMCP en iPhone 17 Pro (iOS 27): build/run correcto; tras pulsar
+  "Seguir luego", `wait_for_ui` confirmó que la sheet desaparece y el dashboard
+  queda visible. Al relanzar la app con la base vacía, la checklist reaparece
+  directamente sin repetir la bienvenida, como exige el flujo de reentrada.
+- Con horario de prueba, la tarjeta pasa a "Próxima clase" y muestra "Preparar
   cuaderno" como acción primaria y "Más acciones" como menú secundario.
 - QA funcional en macOS Native: horario de prueba con 3 ESO A validó "Próxima
   clase" y, al mover la franja del jueves a 20:40–21:30, "En curso" con

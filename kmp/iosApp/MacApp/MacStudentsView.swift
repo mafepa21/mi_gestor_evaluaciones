@@ -4,7 +4,6 @@ import MiGestorKit
 import UniformTypeIdentifiers
 
 enum MacStudentsPresentation {
-    case full
     case content
     case inspector
 }
@@ -24,7 +23,6 @@ final class MacStudentsStore: ObservableObject {
     @Published var errorMessage: String?
     @Published var profileErrorMessage: String?
     @Published var riskPack: TeachingEvidencePack?
-    @Published var isInspectorPresented = true
     @Published var didBootstrap = false
     @Published var isBootstrapping = false
     var profileLoadTask: Task<Void, Never>?
@@ -44,7 +42,7 @@ struct MacStudentsView: View {
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
-    var presentation: MacStudentsPresentation = .full
+    var presentation: MacStudentsPresentation = .content
     var reloadToken: Int = 0
 
     @State private var showingStudentFileImporter = false
@@ -106,31 +104,13 @@ struct MacStudentsView: View {
     var body: some View {
         Group {
             switch presentation {
-            case .full:
-                // HStack con anchos fijos + Divider en vez de HSplitView: el NSSplitView
-                // que respalda a HSplitView, anidado dentro del NavigationSplitView raíz,
-                // entra en un bucle de "Update Constraints in Window pass" de AppKit y tumba
-                // la app (mismo crash ya corregido en el módulo de reuniones). Toggling el
-                // panel de inspector dentro del split era el disparador exacto del bucle.
-                HStack(spacing: 0) {
-                    studentsFilters
-                        .frame(width: 250)
-                    Divider()
-                    studentsList
-                        .frame(minWidth: 480, maxWidth: .infinity)
-                    if store.isInspectorPresented {
-                        Divider()
-                        studentInspector
-                            .frame(width: 360)
-                    }
-                }
             case .content:
                 HStack(spacing: 0) {
                     studentsFilters
-                        .frame(width: 250)
+                        .frame(minWidth: 200, idealWidth: 240, maxWidth: 280)
                     Divider()
                     studentsList
-                        .frame(minWidth: 480, maxWidth: .infinity)
+                        .frame(minWidth: 360, maxWidth: .infinity)
                 }
             case .inspector:
                 studentInspector
@@ -382,37 +362,9 @@ struct MacStudentsView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Clase")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if selectedClassId != nil {
-                        Button {
-                            showBulkImportSheet = true
-                        } label: {
-                            Image(systemName: "tablecells.badge.ellipsis")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Importar medidas Nivel III desde Excel")
-
-                        Button {
-                            showGroupOverviewSheet = true
-                        } label: {
-                            Image(systemName: "list.bullet.clipboard")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Ver medidas del grupo")
-
-                        Button {
-                            showSexInferenceSheet = true
-                        } label: {
-                            Image(systemName: "person.2.badge.gearshape")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Sugerir sexo por nombre")
-                    }
-                }
+                Text("Clase")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
                 Picker("Clase", selection: $selectedClassId) {
                     Text("Todas").tag(Optional<Int64>.none)
                     ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in
@@ -482,6 +434,27 @@ struct MacStudentsView: View {
                 store.studentEditorMode = .create(classId: classId)
             },
             secondaryActions: [
+                MacPremiumHeaderAction(
+                    title: "Importar medidas Nivel III",
+                    systemImage: "tablecells.badge.ellipsis",
+                    isDisabled: selectedClassId == nil
+                ) {
+                    showBulkImportSheet = true
+                },
+                MacPremiumHeaderAction(
+                    title: "Ver medidas del grupo",
+                    systemImage: "list.bullet.clipboard",
+                    isDisabled: selectedClassId == nil
+                ) {
+                    showGroupOverviewSheet = true
+                },
+                MacPremiumHeaderAction(
+                    title: "Sugerir sexo por nombre",
+                    systemImage: "person.2.badge.gearshape",
+                    isDisabled: selectedClassId == nil
+                ) {
+                    showSexInferenceSheet = true
+                },
                 MacPremiumHeaderAction(title: "Importar Excel", systemImage: "square.and.arrow.down") {
                     showingStudentFileImporter = true
                 },
@@ -489,16 +462,7 @@ struct MacStudentsView: View {
                     Task { await reloadRows() }
                 }
             ]
-        ) {
-            if presentation == .full {
-                Button {
-                    store.isInspectorPresented.toggle()
-                } label: {
-                    Label(store.isInspectorPresented ? "Ocultar ficha" : "Mostrar ficha", systemImage: "sidebar.trailing")
-                }
-                .buttonStyle(.bordered)
-            }
-        }
+        )
     }
 
     private var studentsOperationState: MacPremiumOperationStateKind? {

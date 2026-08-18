@@ -34,6 +34,7 @@ struct MacRootView: View {
     @StateObject private var plannerDiaryLayoutState = WorkspaceLayoutState()
     @State private var studentsReloadToken = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var windowWidth: CGFloat = 0
     @State private var isInspectorVisible = true
     @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
     @State private var isEvaluationCreationPresented = false
@@ -190,7 +191,7 @@ struct MacRootView: View {
         // duplicaba la reserva de ancho con una segunda instancia de NotebookMacLayout, y al
         // navegar fuera de Cuaderno ambas instancias se destruían a la vez en plena animación,
         // provocando el mismo bucle de constraints de AppKit que crasheaba la app.
-        if !usesShellInspector(selectedFeature) {
+        if !usesShellInspector(selectedFeature) || !shouldRenderShellInspector {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
                 .transition(uiFeatureFlags.contentSwitchTransition)
@@ -219,6 +220,18 @@ struct MacRootView: View {
         }
     }
 
+    /// El inspector del shell solo se materializa cuando la ventana puede
+    /// conservar una columna de trabajo utilizable junto a la sidebar global.
+    /// La preferencia del usuario permanece en `isInspectorVisible`; este
+    /// umbral solo evita que un layout estrecho recorte el contenido.
+    private var shouldRenderShellInspector: Bool {
+        guard isInspectorVisible else { return false }
+        if columnVisibility == .detailOnly {
+            return true
+        }
+        return windowWidth >= 1_200
+    }
+
     @ViewBuilder
     private var bannerOverlay: some View {
         if let banner {
@@ -239,6 +252,12 @@ struct MacRootView: View {
         .scrollEdgeEffectStyle(.soft, for: .top)
         .overlay(alignment: .topTrailing) { bannerOverlay }
         .animation(uiFeatureFlags.interactionAnimation, value: banner?.id)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { newWidth in
+            guard abs(windowWidth - newWidth) > 1 else { return }
+            windowWidth = newWidth
+        }
     }
 
     private var navigationSplitContent: some View {

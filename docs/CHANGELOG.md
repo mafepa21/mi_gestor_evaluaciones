@@ -56,6 +56,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Layout macOS de Alumnado e Informes: el shell deja de materializar el inspector cuando la ventana no conserva espacio útil, Alumnado reduce sus mínimos y agrupa las acciones secundarias en un único menú, e Informes adapta sus tres zonas para llevar la exportación a un menú compacto o mantenerla como panel plegable en ventanas amplias.
 - Las pruebas físicas importadas en modo diagnóstico (`recordScore=false`) guardan únicamente la marca bruta: no generan columna de nota ni puntuación, media o ranking.
 - Las celdas de pruebas físicas muestran la nota de referencia calculada desde el baremo del manifiesto junto a la marca, sin convertirla en una nota evaluable ni incluirla en la media; las pruebas sin baremo aplicable lo indican explícitamente.
 - La nota de referencia de un baremo LINEAR se interpola entre sus puntos de calibración y se calcula igual en la captura física y en la celda del Cuaderno; los manifiestos v1 conservan el comportamiento por rangos.
@@ -139,6 +140,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `xcodegen generate` y `./scripts/verify_apple_builds.sh`; el build macOS termina correctamente y el target `MiGestorKMPiOS` se repite de forma aislada con `BUILD SUCCEEDED` tras liberar artefactos temporales que agotaban el disco durante la ejecución conjunta. La verificación se ejecuta en la rama `codex/fix-ui-mac-alumnado-informes`.
 - `:data:compileKotlinDesktop`, `:shared:compileKotlinDesktop` y `:shared:desktopTest`
   pasan; el build macOS de Xcode compila el nuevo binding Swift con las advertencias
   preexistentes de uso no consumido.

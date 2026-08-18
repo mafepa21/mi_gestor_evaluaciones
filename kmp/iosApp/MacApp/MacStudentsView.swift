@@ -56,6 +56,7 @@ struct MacStudentsView: View {
     @State private var pendingDeleteSupportMeasure: SupportMeasureRow?
     @State private var showBulkImportSheet = false
     @State private var showGroupOverviewSheet = false
+    @State private var showSexInferenceSheet = false
     @State private var studentImportPreview: AppleStudentImportPreview?
     @State private var importErrorMessage: String?
     @FocusState private var isSearchFocused: Bool
@@ -304,6 +305,11 @@ struct MacStudentsView: View {
             )
             .environmentObject(bridge)
         }
+        .sheet(isPresented: $showSexInferenceSheet) {
+            StudentSexInferenceSheet(students: studentsBridgeStore.studentsInClass) { assignments in
+                Task { await applyStudentSexInference(assignments) }
+            }
+        }
         .confirmationDialog(
             "Eliminar medida de apoyo",
             isPresented: Binding(
@@ -397,6 +403,14 @@ struct MacStudentsView: View {
                         }
                         .buttonStyle(.borderless)
                         .help("Ver medidas del grupo")
+
+                        Button {
+                            showSexInferenceSheet = true
+                        } label: {
+                            Image(systemName: "person.2.badge.gearshape")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Sugerir sexo por nombre")
                     }
                 }
                 Picker("Clase", selection: $selectedClassId) {
@@ -1042,6 +1056,22 @@ struct MacStudentsView: View {
             loadProfileForSelection(store.localSelectedStudentId)
         } catch {
             store.errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func applyStudentSexInference(_ assignments: [StudentSexInferenceAssignment]) async {
+        guard !assignments.isEmpty else { return }
+        store.isLoadingRows = true
+        store.errorMessage = nil
+        defer { store.isLoadingRows = false }
+
+        do {
+            try await bridge.applyStudentSexInference(assignments)
+            await bridge.selectStudentsClass(classId: selectedClassId)
+            await reloadRows(preferredStudentId: store.localSelectedStudentId, showsLoading: false)
+        } catch {
+            store.errorMessage = "No se pudo aplicar la sugerencia: \(error.localizedDescription)"
         }
     }
 

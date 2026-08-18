@@ -3,6 +3,7 @@ package com.migestor.shared.domain
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
+import kotlin.math.round
 
 data class AuditTrace(
     val authorUserId: Long? = null,
@@ -131,6 +132,7 @@ enum class StudentSex {
 
 enum class StudentSexSource {
     MANUAL,
+    NAME_INFERRED,
     AI_INFERRED,
     IMPORTED,
     UNKNOWN,
@@ -385,12 +387,36 @@ data class PhysicalTestScale(
     val batteryId: String? = null,
     val direction: PhysicalScaleDirection,
     val ranges: List<PhysicalTestScaleRange>,
+    val scoringMode: PhysicalScaleScoringMode = PhysicalScaleScoringMode.STEP,
+    val scoreRoundTo: Double? = null,
     val trace: AuditTrace = AuditTrace(),
-)
+) {
+    fun scoreFor(rawValue: Double): Double? {
+        if (!rawValue.isFinite()) return null
+        return when (scoringMode) {
+            PhysicalScaleScoringMode.STEP -> ranges
+                .sortedBy { it.sortOrder }
+                .firstOrNull { range ->
+                    val minOk = range.minValue?.let { rawValue >= it } ?: true
+                    val maxOk = range.maxValue?.let { rawValue <= it } ?: true
+                    minOk && maxOk
+                }
+                ?.score
+                ?.coerceIn(0.0, 10.0)
+
+            PhysicalScaleScoringMode.LINEAR -> scoreForLinearPoints(rawValue)
+        }
+    }
+}
 
 enum class PhysicalScaleDirection {
     HIGHER_IS_BETTER,
     LOWER_IS_BETTER,
+}
+
+enum class PhysicalScaleScoringMode {
+    STEP,
+    LINEAR,
 }
 
 data class PhysicalTestScaleRange(
@@ -435,17 +461,37 @@ data class PhysicalTestNotebookLink(
     val trace: AuditTrace = AuditTrace(),
 )
 
-fun PhysicalTestScale.scoreFor(rawValue: Double): Double? {
-    if (!rawValue.isFinite()) return null
-    val range = ranges
-        .sortedBy { it.sortOrder }
-        .firstOrNull { range ->
-            val minOk = range.minValue?.let { rawValue >= it } ?: true
-            val maxOk = range.maxValue?.let { rawValue <= it } ?: true
-            minOk && maxOk
-        } ?: return null
-    return range.score.coerceIn(0.0, 10.0)
+private fun PhysicalTestScale.scoreForLinearPoints(rawValue: Double): Double? {
+    val points = ranges
+        .mapNotNull { range -> range.minValue?.let { it to range.score } }
+        .sortedBy { it.first }
+        .distinctBy { it.first }
+    if (points.isEmpty()) return null
+    if (points.size == 1) return points.first().second.coerceIn(0.0, 10.0)
+
+    val rawScore = when {
+        rawValue <= points.first().first -> points.first().second
+        rawValue >= points.last().first -> points.last().second
+        else -> {
+            val upperIndex = points.indexOfFirst { rawValue <= it.first }
+            val lower = points[upperIndex - 1]
+            val upper = points[upperIndex]
+            val fraction = (rawValue - lower.first) / (upper.first - lower.first)
+            lower.second + (upper.second - lower.second) * fraction
+        }
+    }.coerceIn(0.0, 10.0)
+
+    val increment = scoreRoundTo?.takeIf { it.isFinite() && it > 0.0 }
+    return if (increment == null) {
+        rawScore
+    } else {
+        (round(rawScore / increment) * increment).coerceIn(0.0, 10.0)
+    }
 }
+
+// Mantiene el símbolo de extensión que consumían los tests y otros módulos
+// mientras Swift usa el método miembro exportado por Kotlin/Native.
+fun PhysicalTestScale.scoreFor(rawValue: Double): Double? = this.scoreFor(rawValue)
 
 fun resolvedPhysicalResult(
     attempts: List<Double>,

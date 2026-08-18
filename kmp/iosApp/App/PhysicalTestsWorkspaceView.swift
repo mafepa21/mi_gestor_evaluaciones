@@ -170,6 +170,7 @@ struct PhysicalTestsWorkspaceView: View {
     @State private var pendingDeleteTest: KmpBridge.PhysicalTestSnapshot?
     @State private var editingTest: KmpBridge.PhysicalTestSnapshot?
     @State private var definitions: [MiGestorKit.PhysicalTestDefinition] = []
+    @State private var physicalScalesByTestId: [String: [MiGestorKit.PhysicalTestScale]] = [:]
     @State private var batteries: [MiGestorKit.PhysicalTestBattery] = []
     @State private var batteryName = "Condición física inicial"
     @State private var batteryDate = Date()
@@ -205,6 +206,14 @@ struct PhysicalTestsWorkspaceView: View {
 
     private var selectedSchoolClass: SchoolClass? {
         selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id }) }
+    }
+
+    private var persistedPhysicalScales: [MiGestorKit.PhysicalTestScale] {
+        physicalScalesByTestId.values.flatMap { $0 }
+    }
+
+    private var physicalScaleTestNames: [String: String] {
+        Dictionary(definitions.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
     }
 
     private var selectedTest: KmpBridge.PhysicalTestSnapshot? {
@@ -392,6 +401,7 @@ struct PhysicalTestsWorkspaceView: View {
                         age: activeAssignment.ageFrom?.intValue,
                         rawColumnId: activeNotebookLink?.rawColumnId,
                         scoreColumnId: activeNotebookLink?.scoreColumnId,
+                        recordScore: activeAssignment.scoreColumnMode,
                         attemptsCount: attemptsCount(for: testDefinitionId(for: selectedTest)),
                         direction: direction(for: testDefinitionId(for: selectedTest)),
                         resultMode: resultMode(for: testDefinitionId(for: selectedTest)),
@@ -923,12 +933,26 @@ struct PhysicalTestsWorkspaceView: View {
     }
 
     private var scalesView: some View {
-        NavigationStack {
-            PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext) { draft in
-                Task { await saveScale(draft) }
+        VStack(spacing: 16) {
+            if !persistedPhysicalScales.isEmpty {
+                PhysicalScaleCatalogView(
+                    scales: persistedPhysicalScales,
+                    testNames: physicalScaleTestNames,
+                    onSelect: { persisted in
+                        scale = scaleDraft(from: persisted)
+                        bridge.status = "Baremo seleccionado: \(persisted.name)."
+                    }
+                )
+                .frame(maxHeight: 320)
             }
+
+            NavigationStack {
+                PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext) { draft in
+                    Task { await saveScale(draft) }
+                }
                 .navigationTitle("Baremos")
                 .onAppear { resetScaleDraftForActiveTest() }
+            }
         }
     }
 
@@ -1059,6 +1083,7 @@ struct PhysicalTestsWorkspaceView: View {
             tests = []
             selectedTestId = nil
             selectedStudentId = nil
+            physicalScalesByTestId = [:]
             assignments = []
             notebookLinks = []
             assignmentNotebookTabs = []
@@ -1071,6 +1096,12 @@ struct PhysicalTestsWorkspaceView: View {
         let loadedDefinitions = (try? await bridge.listPhysicalDefinitions()) ?? []
         guard generation == reloadGeneration else { return }
         definitions = loadedDefinitions
+        var loadedScales: [String: [MiGestorKit.PhysicalTestScale]] = [:]
+        for definition in loadedDefinitions {
+            loadedScales[definition.id] = (try? await bridge.listPhysicalScalesForTest(testId: definition.id)) ?? []
+            guard generation == reloadGeneration else { return }
+        }
+        physicalScalesByTestId = loadedScales
         let loadedBatteries = (try? await bridge.listPhysicalBatteries()) ?? []
         guard generation == reloadGeneration else { return }
         batteries = loadedBatteries
@@ -1338,6 +1369,8 @@ struct PhysicalTestsWorkspaceView: View {
             batteryId: batteryId,
             direction: draft.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
             ranges: ranges,
+            scoringMode: draft.scoringMode == .linear ? .linear : .step,
+            scoreRoundTo: draft.scoreRoundTo.map { KotlinDouble(value: $0) },
             trace: auditTrace()
         )
         do {
@@ -1399,6 +1432,8 @@ struct PhysicalTestsWorkspaceView: View {
             sex: persisted.sex ?? "",
             batteryId: persisted.batteryId ?? "",
             direction: persisted.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
+            scoringMode: persisted.scoringMode == .linear ? .linear : .step,
+            scoreRoundTo: persisted.scoreRoundTo?.doubleValue,
             ranges: persisted.ranges.map {
                 PhysicalTestScaleRange(
                     minValue: $0.minValue?.doubleValue,

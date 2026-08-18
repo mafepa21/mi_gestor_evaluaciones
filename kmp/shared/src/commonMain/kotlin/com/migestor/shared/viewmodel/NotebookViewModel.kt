@@ -793,7 +793,7 @@ class NotebookViewModel(
         when (column.type) {
             NotebookColumnType.NUMERIC -> {
                 val raw = value.trim()
-                val numericValue = raw.replace(",", ".").toDoubleOrNull()
+                val numericValue = parseNotebookNumericValue(column, raw)
                 if (raw.isNotEmpty() && numericValue == null) return
                 notebookRepository.saveGrade(
                     classId = classId,
@@ -883,7 +883,7 @@ class NotebookViewModel(
                             val draft = currentState.numericDrafts[key]
                             if (draft != null) {
                                 val raw = draft.trim()
-                                val numericValue = raw.replace(",", ".").toDoubleOrNull()
+                                val numericValue = parseNotebookNumericValue(column, raw)
                                 // Mismo guard que internalSaveGrade: un draft no vacio que no
                                 // parsea (p. ej. "7,,5") no debe guardarse como null, pisando
                                 // la nota ya existente en BD con un valor vacio.
@@ -996,12 +996,12 @@ class NotebookViewModel(
         updateDataState { currentState ->
             val updatedRows = currentState.sheet.rows.map { row ->
                 if (row.student.id == studentId) {
+                    val column = currentState.sheet.columns.firstOrNull { it.id == columnId }
                     val updatedCells = row.cells.map { cell ->
                         if (cell.evaluationId != null && columnId == "eval_${cell.evaluationId}") {
-                            cell.copy(value = valStr.toDoubleOrNull())
+                            cell.copy(value = parseNotebookNumericValue(column?.inputKind, valStr))
                         } else cell
                     }
-                    val column = currentState.sheet.columns.firstOrNull { it.id == columnId }
                     row.copy(
                         cells = updatedCells,
                         persistedGrades = row.persistedGrades.upsertLocalGrade(
@@ -1012,6 +1012,7 @@ class NotebookViewModel(
                             type = type,
                             value = valStr,
                             rubricSelections = null,
+                            inputKind = column?.inputKind,
                         ),
                         persistedCells = row.persistedCells.upsertLocalCell(
                             classId = currentState.sheet.classId,
@@ -1076,9 +1077,10 @@ class NotebookViewModel(
         type: NotebookColumnType,
         value: String,
         rubricSelections: String?,
+        inputKind: NotebookCellInputKind? = null,
     ): List<Grade> {
         if (type != NotebookColumnType.NUMERIC && type != NotebookColumnType.RUBRIC) return this
-        val numericValue = value.trim().replace(",", ".").toDoubleOrNull()
+        val numericValue = parseNotebookNumericValue(inputKind, value)
         fun Grade.matchesTarget(): Boolean {
             return columnId == targetColumnId || (targetEvaluationId != null && evaluationId == targetEvaluationId)
         }
@@ -1104,6 +1106,34 @@ class NotebookViewModel(
             value = numericValue,
             rubricSelections = rubricSelections,
         )
+    }
+
+    private fun parseNotebookNumericValue(
+        column: NotebookColumnDefinition,
+        value: String,
+    ): Double? = parseNotebookNumericValue(column.inputKind, value)
+
+    private fun parseNotebookNumericValue(
+        inputKind: NotebookCellInputKind?,
+        value: String,
+    ): Double? {
+        val raw = value.trim()
+        if (raw.isEmpty()) return null
+        if (inputKind != NotebookCellInputKind.TIME) {
+            return raw.replace(",", ".").toDoubleOrNull()
+        }
+
+        val normalized = raw.replace('.', ',')
+        val minuteParts = normalized.split(':')
+        if (minuteParts.size == 2) {
+            val minutes = minuteParts[0].replace(',', '.').toDoubleOrNull() ?: return null
+            val secondParts = minuteParts[1].split(',')
+            val seconds = secondParts.firstOrNull()?.toDoubleOrNull() ?: return null
+            val fraction = secondParts.drop(1).firstOrNull()?.let { "0.$it".toDoubleOrNull() } ?: 0.0
+            return (minutes * 60.0 + seconds + fraction).takeIf { it.isFinite() && it >= 0.0 }
+        }
+
+        return raw.replace(',', '.').toDoubleOrNull()
     }
 
     private fun List<PersistedNotebookCell>.upsertLocalCell(

@@ -6,6 +6,7 @@ import com.migestor.shared.domain.PhysicalCapacity
 import com.migestor.shared.domain.PhysicalMeasurementKind
 import com.migestor.shared.domain.PhysicalResultMode
 import com.migestor.shared.domain.PhysicalScaleDirection
+import com.migestor.shared.domain.PhysicalScaleScoringMode
 import com.migestor.shared.domain.PhysicalTestAssignment
 import com.migestor.shared.domain.PhysicalTestAttempt
 import com.migestor.shared.domain.PhysicalTestBattery
@@ -154,6 +155,8 @@ class PhysicalTestsRepositorySqlDelight(
                 sex = row.sex,
                 batteryId = row.battery_id,
                 direction = enumValueOrDefault(row.direction, PhysicalScaleDirection.HIGHER_IS_BETTER),
+                scoringMode = enumValueOrDefault(row.scoring_mode, PhysicalScaleScoringMode.STEP),
+                scoreRoundTo = row.score_round_to,
                 ranges = db.appDatabaseQueries.selectPhysicalScaleRanges(row.id).executeAsList().map { range ->
                     PhysicalTestScaleRange(
                         id = range.id,
@@ -182,6 +185,8 @@ class PhysicalTestsRepositorySqlDelight(
                 sex = scale.sex,
                 battery_id = scale.batteryId,
                 direction = scale.direction.name,
+                scoring_mode = scale.scoringMode.name,
+                score_round_to = scale.scoreRoundTo,
                 created_at_epoch_ms = scale.trace.createdAt.toEpochMilliseconds(),
                 updated_at_epoch_ms = scale.trace.updatedAt.toEpochMilliseconds(),
                 device_id = scale.trace.deviceId,
@@ -215,7 +220,9 @@ class PhysicalTestsRepositorySqlDelight(
         val scales = listScalesForTest(testId)
         val requestedSex = normalizedStudentSex(sex)
         val sexMatches: (PhysicalTestScale) -> Boolean = { scale ->
-            scale.sex == null || (requestedSex != StudentSex.UNSPECIFIED && normalizedStudentSex(scale.sex) == requestedSex)
+            val scaleSex = normalizedStudentSex(scale.sex)
+            scale.sex == null || scaleSex == StudentSex.UNSPECIFIED ||
+                (requestedSex != StudentSex.UNSPECIFIED && scaleSex == requestedSex)
         }
         fun PhysicalTestScale.ageMatches(): Boolean {
             if (age == null) return false

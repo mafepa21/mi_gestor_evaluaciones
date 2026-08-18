@@ -7,6 +7,7 @@ import com.migestor.shared.domain.PhysicalCapacity
 import com.migestor.shared.domain.PhysicalMeasurementKind
 import com.migestor.shared.domain.PhysicalResultMode
 import com.migestor.shared.domain.PhysicalScaleDirection
+import com.migestor.shared.domain.PhysicalScaleScoringMode
 import com.migestor.shared.domain.PhysicalTestAssignment
 import com.migestor.shared.domain.PhysicalTestAttempt
 import com.migestor.shared.domain.PhysicalTestBattery
@@ -91,6 +92,32 @@ class PhysicalTestsRepositorySqlDelightTest {
     }
 
     @Test
+    fun `repository persists linear scoring metadata and points`() = runTest {
+        val fixture = createFixture()
+        fixture.seedDefinitionAndBattery()
+        val scale = PhysicalTestScale(
+            id = "linear_speed_scale",
+            testId = "speed_30m",
+            name = "Velocidad gradual",
+            direction = PhysicalScaleDirection.LOWER_IS_BETTER,
+            scoringMode = PhysicalScaleScoringMode.LINEAR,
+            scoreRoundTo = 0.1,
+            ranges = listOf(
+                PhysicalTestScaleRange("linear_5", "linear_speed_scale", 6.0, null, 5.0, sortOrder = 0),
+                PhysicalTestScaleRange("linear_10", "linear_speed_scale", 5.0, null, 10.0, sortOrder = 1),
+            ),
+            trace = trace(),
+        )
+
+        fixture.physical.saveScale(scale)
+
+        val loaded = fixture.physical.listScalesForTest("speed_30m").single()
+        assertEquals(PhysicalScaleScoringMode.LINEAR, loaded.scoringMode)
+        assertEquals(0.1, loaded.scoreRoundTo)
+        assertEquals(7.5, loaded.scoreFor(5.5))
+    }
+
+    @Test
     fun `resolvedPhysicalResult selects best attempt for higher and lower directions`() {
         assertEquals(
             1.82,
@@ -134,11 +161,22 @@ class PhysicalTestsRepositorySqlDelightTest {
         val fixture = createFixture()
         fixture.seedDefinitionAndBattery()
         fixture.physical.saveScale(scale("male", course = 1, ageFrom = null, ageTo = null, batteryId = null, sex = "Hombre"))
+        fixture.physical.saveScale(scale("female", course = 1, ageFrom = null, ageTo = null, batteryId = null, sex = "Mujer"))
         fixture.physical.saveScale(scale("neutral", course = 1, ageFrom = null, ageTo = null, batteryId = null, sex = null))
 
         assertEquals("male", fixture.physical.resolveScale("speed_30m", 1, null, "male", null)?.id)
-        assertEquals("neutral", fixture.physical.resolveScale("speed_30m", 1, null, "female", null)?.id)
+        assertEquals("female", fixture.physical.resolveScale("speed_30m", 1, null, "female", null)?.id)
         assertEquals("neutral", fixture.physical.resolveScale("speed_30m", 1, null, "UNSPECIFIED", null)?.id)
+    }
+
+    @Test
+    fun `resolveScale treats explicit unspecified sex as neutral fallback`() = runTest {
+        val fixture = createFixture()
+        fixture.seedDefinitionAndBattery()
+        fixture.physical.saveScale(scale("unspecified", course = 1, ageFrom = null, ageTo = null, batteryId = null, sex = "UNSPECIFIED"))
+
+        assertEquals("unspecified", fixture.physical.resolveScale("speed_30m", 1, null, "female", null)?.id)
+        assertEquals("unspecified", fixture.physical.resolveScale("speed_30m", 1, null, null, null)?.id)
     }
 
     @Test

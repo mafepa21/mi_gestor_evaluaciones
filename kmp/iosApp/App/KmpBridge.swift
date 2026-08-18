@@ -4246,7 +4246,55 @@ final class KmpBridge: ObservableObject {
     }
 
     func updateStudentSex(_ student: Student, sex: StudentSex) async throws {
+        try await updateStudentSex(
+            student,
+            sex: sex,
+            source: sex == .unspecified ? .unknown : .manual
+        )
+    }
+
+    /// Persists a sex value while keeping its provenance explicit for sync and audit.
+    /// Name-based inference is deliberately guarded here as well as in the UI, so a
+    /// stale suggestion cannot overwrite a value that has since been entered/imported.
+    func updateStudentSex(
+        _ student: Student,
+        sex: StudentSex,
+        source: StudentSexSource
+    ) async throws {
+        try await persistStudentSex(student, sex: sex, source: source, refreshDirectory: true)
+    }
+
+    func applyStudentSexInference(_ assignments: [StudentSexInferenceAssignment]) async throws {
+        var appliedCount = 0
+        for assignment in assignments {
+            guard assignment.sex != .unspecified else { continue }
+            guard let current = try await container.studentsRepository.getStudent(studentId: assignment.student.id),
+                  current.sex == .unspecified,
+                  current.sexSource == .unknown else { continue }
+
+            try await persistStudentSex(
+                current,
+                sex: assignment.sex,
+                source: .nameInferred,
+                refreshDirectory: false
+            )
+            appliedCount += 1
+        }
+
+        if appliedCount > 0 {
+            try await refreshStudentsDirectory()
+            try await refreshDashboard()
+        }
+    }
+
+    private func persistStudentSex(
+        _ student: Student,
+        sex: StudentSex,
+        source: StudentSexSource,
+        refreshDirectory: Bool
+    ) async throws {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let persistedSource = sex == .unspecified ? StudentSexSource.unknown : source
         _ = try await container.studentsRepository.saveStudent(
             id: KotlinLong(value: student.id),
             firstName: student.firstName,
@@ -4255,13 +4303,16 @@ final class KmpBridge: ObservableObject {
             photoPath: student.photoPath,
             isInjured: student.isInjured,
             sex: sex,
-            sexSource: sex == .unspecified ? .unknown : .manual,
+            sexSource: persistedSource,
             birthDate: student.birthDate,
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
             syncVersion: student.trace.syncVersion + 1
         )
-        try await refreshStudentsDirectory()
+        if refreshDirectory {
+            try await refreshStudentsDirectory()
+            try await refreshDashboard()
+        }
         enqueueLocalChange(
             entity: "student",
             id: "\(student.id)",
@@ -4274,7 +4325,7 @@ final class KmpBridge: ObservableObject {
                 "photoPath": student.photoPath ?? NSNull(),
                 "isInjured": student.isInjured,
                 "sex": sex.name,
-                "sexSource": sex == .unspecified ? StudentSexSource.unknown.name : StudentSexSource.manual.name,
+                "sexSource": persistedSource.name,
                 "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
             ]
         )
@@ -6386,6 +6437,324 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    func materializeLearningSituationPhysicalTests(
+        situation: LearningSituation,
+        classId: Int64,
+        draft: PhysicalTestsImportDraft,
+        targetTabId: String? = nil
+    ) async throws {
+        guard !draft.testDefinitions.isEmpty else {
+            throw NSError(
+                domain: "LearningSituations",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "El manifiesto no contiene pruebas físicas."]
+            )
+        }
+
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let trace = physicalImportTrace(classId: classId, epochMs: nowMs)
+        let assignmentTemplate = draft.assignmentTemplate
+        let assignmentId = "pe_assignment_sa\(situation.id)_\(classId)_\(assignmentTemplate.batteryId)"
+        let scoreColumnMode = assignmentTemplate.scoreColumnMode && assignmentTemplate.recordScore
+        // SaveEvaluationUseCase requires a positive weight. Diagnostic imports
+        // remain excluded from the notebook average through their raw columns.
+        let physicalEvaluationWeight = 1.0
+        let tabId = try await resolveNotebookTargetTabId(classId: classId, preferredTabId: targetTabId)
+
+        var evaluationsByCode = Dictionary(
+            (try await container.evaluationsRepository.listClassEvaluations(classId: classId)).map { ($0.code, $0.id) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        for definition in draft.testDefinitions {
+            try await container.physicalTestsRepository.saveDefinition(
+                definition: PhysicalTestDefinition(
+                    id: definition.id,
+                    name: definition.name,
+                    capacity: importedPhysicalCapacity(definition.capacity),
+                    measurementKind: importedPhysicalMeasurement(definition.measurementKind),
+                    unit: definition.unit,
+                    higherIsBetter: definition.higherIsBetter,
+                    protocol: definition.protocolText,
+                    material: "",
+                    attempts: Int32(definition.attempts),
+                    resultMode: importedPhysicalResultMode(definition.resultMode),
+                    trace: trace
+                )
+            )
+        }
+
+        try await container.physicalTestsRepository.saveBattery(
+            battery: PhysicalTestBattery(
+                id: assignmentTemplate.batteryId,
+                name: assignmentTemplate.batteryName,
+                description: "Importada desde \(draft.sourceFileName) · \(draft.purpose)",
+                defaultCourse: draft.courseNumber.map { KotlinInt(value: Int32($0)) },
+                defaultAgeFrom: draft.referenceScales.compactMap(\.ageFrom).min().map { KotlinInt(value: Int32($0)) },
+                defaultAgeTo: draft.referenceScales.compactMap(\.ageTo).max().map { KotlinInt(value: Int32($0)) },
+                testIds: draft.testDefinitions.map(\.id),
+                trace: trace
+            )
+        )
+
+        for scale in draft.referenceScales {
+            let isLinear = scale.scoring?.mode.uppercased() == "LINEAR"
+            let persistedRanges: [MiGestorKit.PhysicalTestScaleRange] = isLinear
+                ? (scale.scoring?.points ?? []).enumerated().map { index, point in
+                    MiGestorKit.PhysicalTestScaleRange(
+                        id: point.id ?? "\(scale.id)_point_\(index + 1)",
+                        scaleId: scale.id,
+                        minValue: KotlinDouble(value: point.value),
+                        maxValue: nil,
+                        score: point.score,
+                        label: scaleLabelOrNil(point.label),
+                        sortOrder: Int32(point.sortOrder ?? index)
+                    )
+                }
+                : scale.ranges.map { range in
+                    MiGestorKit.PhysicalTestScaleRange(
+                        id: range.id,
+                        scaleId: scale.id,
+                        minValue: range.minValue.map { KotlinDouble(value: $0) },
+                        maxValue: range.maxValue.map { KotlinDouble(value: $0) },
+                        score: range.score,
+                        label: scaleLabelOrNil(range.label),
+                        sortOrder: Int32(range.sortOrder)
+                    )
+                }
+            try await container.physicalTestsRepository.saveScale(
+                scale: PhysicalTestScale(
+                    id: scale.id,
+                    testId: scale.testId,
+                    name: scale.name,
+                    course: scale.course.map { KotlinInt(value: Int32($0)) },
+                    ageFrom: scale.ageFrom.map { KotlinInt(value: Int32($0)) },
+                    ageTo: scale.ageTo.map { KotlinInt(value: Int32($0)) },
+                    sex: scaleLabelOrNil(scale.canonicalSex),
+                    batteryId: assignmentTemplate.batteryId,
+                    direction: scale.direction == "LOWER_IS_BETTER" ? .lowerIsBetter : .higherIsBetter,
+                    ranges: persistedRanges,
+                    scoringMode: isLinear ? .linear : .step,
+                    scoreRoundTo: scale.scoring?.roundTo.map { KotlinDouble(value: $0) },
+                    trace: trace
+                )
+            )
+        }
+
+        let assignment = PhysicalTestAssignment(
+            id: assignmentId,
+            batteryId: assignmentTemplate.batteryId,
+            classId: classId,
+            course: draft.courseNumber.map { KotlinInt(value: Int32($0)) },
+            ageFrom: draft.referenceScales.compactMap(\.ageFrom).min().map { KotlinInt(value: Int32($0)) },
+            ageTo: draft.referenceScales.compactMap(\.ageTo).max().map { KotlinInt(value: Int32($0)) },
+            termLabel: scaleLabelOrNil(assignmentTemplate.termLabel),
+            dateEpochMs: nowMs,
+            rawColumnMode: assignmentTemplate.rawColumnMode,
+            scoreColumnMode: scoreColumnMode,
+            trace: trace
+        )
+        try await container.physicalTestsRepository.assignBatteryToClass(assignment: assignment)
+
+        let categories = try await container.notebookRepository.listColumnCategories(classId: classId, tabId: tabId)
+        if !categories.contains(where: { $0.id == assignmentId }) {
+            let categoryOrder = (categories.map(\.order).max() ?? -1) + 1
+            try await container.notebookRepository.saveColumnCategory(
+                classId: classId,
+                category: NotebookColumnCategory(
+                    id: assignmentId,
+                    classId: classId,
+                    tabId: tabId,
+                    name: "\(assignmentTemplate.batteryName) · \(assignmentTemplate.termLabel)",
+                    order: categoryOrder,
+                    isCollapsed: false,
+                    trace: trace
+                )
+            )
+        }
+
+        let existingLinks = try await container.physicalTestsRepository.listNotebookLinksForAssignment(assignmentId: assignmentId)
+        let existingColumns = try await container.notebookConfigRepository.listColumns(classId: classId)
+
+        for definition in draft.testDefinitions {
+            let code = "EF_\(definition.id.uppercased())"
+            let evaluationId: Int64
+            if let existingEvaluationId = evaluationsByCode[code] {
+                evaluationId = existingEvaluationId
+            } else {
+                evaluationId = try await createPhysicalTest(
+                    classId: classId,
+                    code: code,
+                    name: definition.name,
+                    kind: definition.measurementKind,
+                    weight: physicalEvaluationWeight,
+                    description: definition.protocolText
+                )
+                evaluationsByCode[code] = evaluationId
+            }
+
+            let existingLink = existingLinks.first { $0.testId == definition.id }
+            let rawTitle = "\(definition.name) · Marca"
+            let scoreTitle = "\(definition.name) · Nota"
+            let rawColumnId: String?
+            if assignmentTemplate.rawColumnMode {
+                if let existingColumnId = existingLink?.rawColumnId
+                    ?? existingColumns.first(where: { $0.title == rawTitle && $0.categoryId == assignmentId })?.id {
+                    rawColumnId = existingColumnId
+                } else {
+                    rawColumnId = try await createNotebookPhysicalColumnForClass(
+                        classId: classId,
+                        name: rawTitle,
+                        categoryId: assignmentId,
+                        inputKind: importedPhysicalInputKind(definition.measurementKind),
+                        unitOrSituation: "Dato bruto · \(definition.unit)",
+                        scaleKind: importedPhysicalScaleKind(definition.measurementKind),
+                        iconName: "stopwatch.fill",
+                        weight: 0,
+                        countsTowardAverage: false,
+                        dateEpochMs: nowMs,
+                        targetTabId: tabId
+                    )
+                }
+            } else {
+                rawColumnId = nil
+            }
+
+            let scoreColumnId: String?
+            if scoreColumnMode {
+                if let existingColumnId = existingLink?.scoreColumnId
+                    ?? existingColumns.first(where: { $0.title == scoreTitle && $0.categoryId == assignmentId })?.id {
+                    scoreColumnId = existingColumnId
+                } else {
+                    scoreColumnId = try await createNotebookPhysicalColumnForClass(
+                        classId: classId,
+                        name: scoreTitle,
+                        categoryId: assignmentId,
+                        inputKind: .numeric010,
+                        unitOrSituation: "Nota baremada",
+                        scaleKind: .tenPoint,
+                        iconName: "chart.bar.fill",
+                        weight: 10,
+                        countsTowardAverage: assignmentTemplate.countsTowardAverage && assignmentTemplate.recordScore,
+                        dateEpochMs: nowMs,
+                        targetTabId: tabId
+                    )
+                }
+            } else {
+                scoreColumnId = nil
+            }
+
+            if existingLink?.rawColumnId != rawColumnId || existingLink?.scoreColumnId != scoreColumnId {
+                try await container.physicalTestsRepository.saveNotebookLink(
+                    link: PhysicalTestNotebookLink(
+                        assignmentId: assignmentId,
+                        testId: definition.id,
+                        rawColumnId: rawColumnId,
+                        scoreColumnId: scoreColumnId,
+                        trace: trace
+                    )
+                )
+            }
+
+            try await saveLearningSituationLinkedResource(
+                situationId: situation.id,
+                kind: .evaluation,
+                resourceId: "\(evaluationId)",
+                classId: classId,
+                label: definition.name,
+                trace: situation.trace
+            )
+            if let rawColumnId {
+                try await saveLearningSituationLinkedResource(
+                    situationId: situation.id,
+                    kind: .notebookColumn,
+                    resourceId: rawColumnId,
+                    classId: classId,
+                    label: definition.name,
+                    trace: situation.trace
+                )
+            }
+            if let scoreColumnId {
+                try await saveLearningSituationLinkedResource(
+                    situationId: situation.id,
+                    kind: .notebookColumn,
+                    resourceId: scoreColumnId,
+                    classId: classId,
+                    label: "\(definition.name) · Nota",
+                    trace: situation.trace
+                )
+            }
+        }
+
+        refreshCurrentNotebook()
+        scheduleNotebookSnapshotSync(forClassId: classId)
+    }
+
+    private func physicalImportTrace(classId: Int64, epochMs: Int64) -> AuditTrace {
+        let instant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: epochMs)
+        return AuditTrace(
+            authorUserId: nil,
+            createdAt: instant,
+            updatedAt: instant,
+            associatedGroupId: KotlinLong(value: classId),
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+    }
+
+    private func scaleLabelOrNil(_ value: String?) -> String? {
+        let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return clean.isEmpty ? nil : clean
+    }
+
+    private func importedPhysicalCapacity(_ value: String) -> PhysicalCapacity {
+        switch value {
+        case "RESISTANCE": return .resistance
+        case "STRENGTH": return .strength
+        case "SPEED": return .speed
+        case "FLEXIBILITY": return .flexibility
+        case "COORDINATION": return .coordination
+        case "AGILITY": return .agility
+        default: return .custom
+        }
+    }
+
+    private func importedPhysicalMeasurement(_ value: String) -> PhysicalMeasurementKind {
+        switch value {
+        case "TIME": return .time
+        case "DISTANCE": return .distance
+        case "REPETITIONS": return .repetitions
+        case "LEVEL": return .level
+        default: return .score
+        }
+    }
+
+    private func importedPhysicalResultMode(_ value: String) -> PhysicalResultMode {
+        switch value {
+        case "AVERAGE": return .average
+        case "LAST": return .last
+        default: return .best
+        }
+    }
+
+    private func importedPhysicalInputKind(_ value: String) -> NotebookCellInputKind {
+        switch value {
+        case "TIME": return .time
+        case "DISTANCE": return .distance
+        case "REPETITIONS": return .repetitions
+        default: return .numeric010
+        }
+    }
+
+    private func importedPhysicalScaleKind(_ value: String) -> NotebookScaleKind {
+        switch value {
+        case "TIME": return .time
+        case "DISTANCE": return .distance
+        case "REPETITIONS": return .repetitions
+        default: return .tenPoint
+        }
+    }
+
     func materializeLearningSituationAssessmentInstruments(
         situation: LearningSituation,
         classId: Int64,
@@ -7643,6 +8012,41 @@ final class KmpBridge: ObservableObject {
         try await container.physicalTestsRepository.listNotebookLinksForAssignment(assignmentId: assignmentId)
     }
 
+    /// Resuelve la nota de referencia de una marca física del cuaderno sin crear
+    /// una segunda columna evaluable. Esto permite que los manifiestos
+    /// diagnósticos (`recordScore=false`) sigan guardando solo el dato bruto,
+    /// pero ofrezcan al docente la orientación del baremo al capturarlo.
+    func resolvePhysicalNotebookScore(
+        classId: Int64,
+        student: Student,
+        columnId: String,
+        rawValue: Double
+    ) async -> Double? {
+        guard rawValue.isFinite else { return nil }
+
+        do {
+            let assignments = try await container.physicalTestsRepository.listAssignmentsForClass(classId: classId)
+            for assignment in assignments {
+                let links = try await container.physicalTestsRepository.listNotebookLinksForAssignment(assignmentId: assignment.id)
+                guard let link = links.first(where: { $0.rawColumnId == columnId }) else { continue }
+
+                let scale = try await container.physicalTestsRepository.resolveScale(
+                    testId: link.testId,
+                    course: assignment.course,
+                    age: physicalScaleAge(for: student).map { KotlinInt(value: Int32($0)) },
+                    sex: physicalScaleSex(for: student),
+                    batteryId: assignment.batteryId
+                )
+                guard let scale else { return nil }
+                let score = scale.scoreFor(rawValue: rawValue)
+                return score?.doubleValue
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
     func savePhysicalResult(_ result: PhysicalTestResult, attempts: [PhysicalTestAttempt]) async throws {
         try await container.physicalTestsRepository.saveResult(result: result, attempts: attempts)
     }
@@ -7655,6 +8059,26 @@ final class KmpBridge: ObservableObject {
         try await container.physicalTestsRepository.listResultsForStudent(studentId: studentId, testId: testId)
     }
 
+    private func physicalScaleSex(for student: Student) -> String? {
+        switch student.sex {
+        case .male: return "MALE"
+        case .female: return "FEMALE"
+        default: return nil
+        }
+    }
+
+    private func physicalScaleAge(for student: Student) -> Int? {
+        guard let birthDate = student.birthDate else { return nil }
+        let now = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        guard let year = now.year, let month = now.month, let day = now.day else { return nil }
+        var age = year - Int(birthDate.year)
+        if month < Int(birthDate.monthNumber) ||
+            (month == Int(birthDate.monthNumber) && day < Int(birthDate.dayOfMonth)) {
+            age -= 1
+        }
+        return age >= 0 ? age : nil
+    }
+
     func createNotebookPhysicalColumnForClass(
         classId: Int64,
         name: String,
@@ -7665,7 +8089,8 @@ final class KmpBridge: ObservableObject {
         iconName: String,
         weight: Double,
         countsTowardAverage: Bool,
-        dateEpochMs: Int64
+        dateEpochMs: Int64,
+        targetTabId: String? = nil
     ) async throws -> String {
         let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
@@ -7683,7 +8108,7 @@ final class KmpBridge: ObservableObject {
             syncVersion: 0
         )
         let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
-        let tabIds = selectedNotebookTabId.map { [$0] } ?? tabs.first.map { [$0.id] } ?? []
+        let tabIds = targetTabId.map { [$0] } ?? selectedNotebookTabId.map { [$0] } ?? tabs.first.map { [$0.id] } ?? []
         let column = NotebookColumnDefinition(
             id: columnId,
             title: normalized,
@@ -8281,9 +8706,9 @@ final class KmpBridge: ObservableObject {
         kind: String,
         weight: Double,
         description: String?
-    ) async throws {
+    ) async throws -> Int64 {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        _ = try await container.saveEvaluation.invoke(
+        let evaluationId = try await container.saveEvaluation.invoke(
             id: nil,
             classId: classId,
             code: code,
@@ -8313,6 +8738,7 @@ final class KmpBridge: ObservableObject {
                 "description": description ?? NSNull()
             ]
         )
+        return evaluationId.int64Value
     }
 
     func updatePhysicalTest(
@@ -12162,6 +12588,19 @@ final class KmpBridge: ObservableObject {
         return ""
     }
 
+    func numericGradeText(studentId: Int64, column: NotebookColumnDefinition) -> String {
+        let raw = numericGradeText(studentId: studentId, columnId: column.id)
+        guard column.inputKind == .time else { return raw }
+        guard let seconds = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")) else {
+            return raw
+        }
+        let centiseconds = max(0, Int((seconds * 100.0).rounded()))
+        let minutes = centiseconds / 6000
+        let remainingSeconds = (centiseconds / 100) % 60
+        let fraction = centiseconds % 100
+        return String(format: "%02d:%02d,%02d", minutes, remainingSeconds, fraction)
+    }
+
     func numericGradeOnTenText(studentId: Int64, columnId: String) -> String {
         formatGradeOnTen(numericGradeText(studentId: studentId, columnId: columnId))
     }
@@ -12287,6 +12726,8 @@ final class KmpBridge: ObservableObject {
         switch value {
         case "MANUAL":
             return .manual
+        case "NAME_INFERRED", "NAMEINFERRED", "NOMBRE":
+            return .nameInferred
         case "AI_INFERRED", "AIINFERRED", "IA":
             return .aiInferred
         case "IMPORTED":

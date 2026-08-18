@@ -270,59 +270,136 @@ struct NotebookTimeCellKeyboard: View {
     let onSave: () -> Void
     let onNavigate: (NotebookNavigationDirection) -> Void
 
+    @State private var stopwatchStartedAt: Date?
+    @State private var stopwatchBaseCentiseconds = 0
+
     var body: some View {
-        steppedKeyboard(
-            title: value.isEmpty ? "00:00,00" : value,
-            actions: [
-                ("-1 s", { adjustSeconds(-1) }),
-                ("+1 s", { adjustSeconds(1) }),
-                ("+10 s", { adjustSeconds(10) }),
-                ("Limpiar", { value = ""; onSave() })
-            ]
-        )
-    }
-
-    private func steppedKeyboard(title: String, actions: [(String, () -> Void)]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.24)))
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach(actions, id: \.0) { label, action in
-                    Button(label, action: action)
-                        .buttonStyle(.bordered)
-                }
+            TimelineView(.periodic(from: .now, by: 0.05)) { context in
+                Text(formattedTime(centiseconds: liveCentiseconds(at: context.date)))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.24)))
             }
 
-            Button("Guardar y siguiente") { onNavigate(.down) }
+            TextField("mm:ss,cc o segundos", text: $value)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+                .appKeyboardType(.decimalPad)
+
+            HStack(spacing: 8) {
+                Button(stopwatchStartedAt == nil ? "Iniciar" : "Parar") {
+                    if stopwatchStartedAt == nil {
+                        startStopwatch()
+                    } else {
+                        stopStopwatch()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
+
+                Button("Aplicar") {
+                    normalizeManualTime()
+                    onSave()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                Button("-1 s") { adjustSeconds(-1) }.buttonStyle(.bordered)
+                Button("+1 s") { adjustSeconds(1) }.buttonStyle(.bordered)
+                Button("+10 s") { adjustSeconds(10) }.buttonStyle(.bordered)
+                Button("Limpiar") {
+                    stopwatchStartedAt = nil
+                    stopwatchBaseCentiseconds = 0
+                    value = ""
+                    onSave()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Button("Guardar y siguiente") { saveAndNavigate() }
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
         }
         .padding(12)
-        .frame(width: 260)
+        .frame(width: 280)
+        .onDisappear {
+            if stopwatchStartedAt != nil {
+                stopStopwatch()
+            }
+        }
+    }
+
+    private func startStopwatch() {
+        normalizeManualTime()
+        stopwatchBaseCentiseconds = parsedCentiseconds()
+        stopwatchStartedAt = Date()
+    }
+
+    private func stopStopwatch() {
+        let elapsed = liveCentiseconds(at: Date())
+        stopwatchStartedAt = nil
+        stopwatchBaseCentiseconds = elapsed
+        value = formattedTime(centiseconds: elapsed)
+        onSave()
+    }
+
+    private func saveAndNavigate() {
+        if stopwatchStartedAt != nil {
+            stopStopwatch()
+        } else {
+            normalizeManualTime()
+            onSave()
+        }
+        onNavigate(.down)
+    }
+
+    private func liveCentiseconds(at date: Date) -> Int {
+        guard let start = stopwatchStartedAt else { return parsedCentiseconds() }
+        return stopwatchBaseCentiseconds + max(0, Int((date.timeIntervalSince(start) * 100.0).rounded()))
+    }
+
+    private func formattedTime(centiseconds: Int) -> String {
+        let safe = max(0, centiseconds)
+        return String(format: "%02d:%02d,%02d", safe / 6000, (safe / 100) % 60, safe % 100)
+    }
+
+    private func normalizeManualTime() {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ".", with: ",")
+        let parts = normalized.split(separator: ":", omittingEmptySubsequences: false)
+        if parts.count == 2 {
+            let minutes = Int(parts[0]) ?? 0
+            let secondParts = parts[1].split(separator: ",", omittingEmptySubsequences: false)
+            let seconds = Int(secondParts.first ?? "0") ?? 0
+            let fractionText = String(secondParts.dropFirst().first ?? "0")
+            let fraction = Int(String(fractionText.prefix(2)).padding(toLength: 2, withPad: "0", startingAt: 0)) ?? 0
+            value = formattedTime(centiseconds: max(0, minutes * 6000 + seconds * 100 + fraction))
+        } else if let seconds = Double(normalized.replacingOccurrences(of: ",", with: ".")) {
+            value = formattedTime(centiseconds: max(0, Int((seconds * 100.0).rounded())))
+        }
     }
 
     private func adjustSeconds(_ delta: Int) {
         let next = max(0, parsedCentiseconds() + delta * 100)
-        let minutes = next / 6000
-        let seconds = (next / 100) % 60
-        let centiseconds = next % 100
-        value = String(format: "%02d:%02d,%02d", minutes, seconds, centiseconds)
+        value = formattedTime(centiseconds: next)
         onSave()
     }
 
     private func parsedCentiseconds() -> Int {
         let normalized = value.replacingOccurrences(of: ".", with: ",")
         let minuteParts = normalized.split(separator: ":", omittingEmptySubsequences: false)
-        guard minuteParts.count == 2 else { return 0 }
+        guard minuteParts.count == 2 else {
+            let seconds = Double(normalized.replacingOccurrences(of: ",", with: ".")) ?? 0
+            return max(0, Int((seconds * 100.0).rounded()))
+        }
         let minutes = Int(minuteParts[0]) ?? 0
         let secondParts = minuteParts[1].split(separator: ",", omittingEmptySubsequences: false)
         let seconds = Int(secondParts.first ?? "0") ?? 0
-        let centiseconds = Int(secondParts.dropFirst().first ?? "0") ?? 0
+        let centiseconds = Int(String(secondParts.dropFirst().first ?? "0").prefix(2)) ?? 0
         return max(0, minutes * 6000 + seconds * 100 + centiseconds)
     }
 }
@@ -334,8 +411,15 @@ struct NotebookDistanceCellKeyboard: View {
     let onSave: () -> Void
     let onNavigate: (NotebookNavigationDirection) -> Void
 
+    private let rows = [
+        ["7", "8", "9"],
+        ["4", "5", "6"],
+        ["1", "2", "3"],
+        [",", "0", "delete.left"]
+    ]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(value.isEmpty ? "0" : value)
                     .font(.system(size: 22, weight: .bold, design: .rounded))
@@ -355,12 +439,54 @@ struct NotebookDistanceCellKeyboard: View {
                 Button("+1") { adjustValue(1) }.buttonStyle(.bordered)
             }
 
-            Button("Guardar y siguiente") { onNavigate(.down) }
-                .buttonStyle(.borderedProminent)
-                .tint(tint)
+            VStack(spacing: 8) {
+                ForEach(rows, id: \.self) { row in
+                    HStack(spacing: 8) {
+                        ForEach(row, id: \.self) { key in
+                            Button {
+                                press(key)
+                            } label: {
+                                if key == "delete.left" {
+                                    Image(systemName: key)
+                                        .font(.system(size: 16, weight: .bold))
+                                        .frame(maxWidth: .infinity, minHeight: 36)
+                                } else {
+                                    Text(key)
+                                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                                        .frame(maxWidth: .infinity, minHeight: 36)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button("Limpiar") { value = ""; onSave() }.buttonStyle(.bordered)
+                Spacer(minLength: 0)
+                Button("Guardar y siguiente") { onNavigate(.down) }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+            }
         }
         .padding(12)
-        .frame(width: 260)
+        .frame(width: 280)
+    }
+
+    private func press(_ key: String) {
+        if key == "delete.left" {
+            if !value.isEmpty { value.removeLast() }
+            onSave()
+            return
+        }
+        if key == "," {
+            guard !value.contains(",") && !value.contains(".") else { return }
+            value = value.isEmpty ? "0," : value + ","
+        } else {
+            if value == "0" { value = key } else { value += key }
+        }
+        onSave()
     }
 
     private func adjustValue(_ delta: Double) {
@@ -379,8 +505,15 @@ struct NotebookRepetitionCellKeyboard: View {
     let onSave: () -> Void
     let onNavigate: (NotebookNavigationDirection) -> Void
 
+    private let rows = [
+        ["7", "8", "9"],
+        ["4", "5", "6"],
+        ["1", "2", "3"],
+        ["delete.left", "0", ""]
+    ]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(value.isEmpty ? "0" : value)
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .monospacedDigit()
@@ -395,12 +528,50 @@ struct NotebookRepetitionCellKeyboard: View {
                 Button("+5") { adjustValue(5) }.buttonStyle(.bordered)
             }
 
-            Button("Guardar y siguiente") { onNavigate(.down) }
-                .buttonStyle(.borderedProminent)
-                .tint(tint)
+            VStack(spacing: 8) {
+                ForEach(rows, id: \.self) { row in
+                    HStack(spacing: 8) {
+                        ForEach(row, id: \.self) { key in
+                            Button {
+                                if !key.isEmpty { press(key) }
+                            } label: {
+                                if key == "delete.left" {
+                                    Image(systemName: key)
+                                        .font(.system(size: 16, weight: .bold))
+                                        .frame(maxWidth: .infinity, minHeight: 36)
+                                } else {
+                                    Text(key.isEmpty ? " " : key)
+                                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                                        .frame(maxWidth: .infinity, minHeight: 36)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(key.isEmpty)
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button("Limpiar") { value = ""; onSave() }.buttonStyle(.bordered)
+                Spacer(minLength: 0)
+                Button("Guardar y siguiente") { onNavigate(.down) }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+            }
         }
         .padding(12)
-        .frame(width: 260)
+        .frame(width: 280)
+    }
+
+    private func press(_ key: String) {
+        if key == "delete.left" {
+            if !value.isEmpty { value.removeLast() }
+            onSave()
+            return
+        }
+        if value == "0" { value = key } else { value += key }
+        onSave()
     }
 
     private func adjustValue(_ delta: Int) {

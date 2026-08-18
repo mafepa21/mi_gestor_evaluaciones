@@ -47,6 +47,7 @@ struct StudentProfilesWorkspaceView: View {
     @State private var showBulkImportSheet = false
     @State private var showGroupOverviewSheet = false
     @State private var showWeeklyEmailSheet = false
+    @State private var showSexInferenceSheet = false
     @State private var selectedEmailStudent: Student?
     @State private var pendingDeleteStudent: Student?
     @State private var pendingDeleteSupportMeasure: SupportMeasureRow?
@@ -395,6 +396,13 @@ struct StudentProfilesWorkspaceView: View {
                         Image(systemName: "envelope.sparkles")
                     }
                     .help("Generar correos semanales de evaluación")
+
+                    Button {
+                        showSexInferenceSheet = true
+                    } label: {
+                        Image(systemName: "person.2.badge.gearshape")
+                    }
+                    .help("Sugerir sexo por nombre")
                 }
             }
         }
@@ -421,6 +429,11 @@ struct StudentProfilesWorkspaceView: View {
         .sheet(isPresented: $showWeeklyEmailSheet) {
             WeeklyStudentEmailWorkspaceView(classId: selectedClassId)
                 .environmentObject(bridge)
+        }
+        .sheet(isPresented: $showSexInferenceSheet) {
+            StudentSexInferenceSheet(students: studentsBridgeStore.studentsInClass) { assignments in
+                Task { await applyStudentSexInference(assignments) }
+            }
         }
     }
 
@@ -1044,6 +1057,24 @@ struct StudentProfilesWorkspaceView: View {
             AppleInteractionFeedback.play(.success)
         } catch {
             bridge.status = "No se pudo actualizar el alumno: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func applyStudentSexInference(_ assignments: [StudentSexInferenceAssignment]) async {
+        guard !assignments.isEmpty else { return }
+        updatingStudentIds.formUnion(assignments.map(\.student.id))
+        defer { assignments.forEach { updatingStudentIds.remove($0.student.id) } }
+
+        do {
+            try await bridge.applyStudentSexInference(assignments)
+            await bridge.selectStudentsClass(classId: selectedClassId)
+            await reloadProfile()
+            bridge.status = "Se han asignado \(assignments.count) alumnos por nombre. Revisa los casos ambiguos."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo aplicar la sugerencia: \(error.localizedDescription)"
             AppleInteractionFeedback.play(.error)
         }
     }

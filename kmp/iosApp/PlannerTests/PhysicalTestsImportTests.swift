@@ -56,4 +56,27 @@ final class PhysicalTestsImportTests: XCTestCase {
 
         XCTAssertEqual(draft.referenceScales.map(\.canonicalSex), ["MALE", "FEMALE"])
     }
+
+    func testNameInferenceOnlySuggestsConservativeHighConfidenceMatches() {
+        let male = StudentSexNameInference.infer(firstName: "Javier")
+        let female = StudentSexNameInference.infer(firstName: "María")
+        let ambiguous = StudentSexNameInference.infer(firstName: "Alex")
+
+        XCTAssertEqual(male.sex, .male)
+        XCTAssertEqual(male.confidence, .high)
+        XCTAssertEqual(female.sex, .female)
+        XCTAssertEqual(female.confidence, .high)
+        XCTAssertNil(ambiguous.sex)
+        XCTAssertEqual(ambiguous.confidence, .review)
+    }
+
+    func testNameInferenceNormalizesDiacriticsAndRejectsContradictoryCompounds() {
+        let normalized = StudentSexNameInference.infer(firstName: "Álvaro")
+        let contradictory = StudentSexNameInference.infer(firstName: "José María")
+
+        XCTAssertEqual(normalized.sex, .male)
+        XCTAssertEqual(normalized.confidence, .high)
+        XCTAssertNil(contradictory.sex)
+        XCTAssertEqual(contradictory.confidence, .review)
+    }
 }

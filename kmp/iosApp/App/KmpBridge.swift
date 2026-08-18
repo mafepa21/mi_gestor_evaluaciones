@@ -4246,7 +4246,55 @@ final class KmpBridge: ObservableObject {
     }
 
     func updateStudentSex(_ student: Student, sex: StudentSex) async throws {
+        try await updateStudentSex(
+            student,
+            sex: sex,
+            source: sex == .unspecified ? .unknown : .manual
+        )
+    }
+
+    /// Persists a sex value while keeping its provenance explicit for sync and audit.
+    /// Name-based inference is deliberately guarded here as well as in the UI, so a
+    /// stale suggestion cannot overwrite a value that has since been entered/imported.
+    func updateStudentSex(
+        _ student: Student,
+        sex: StudentSex,
+        source: StudentSexSource
+    ) async throws {
+        try await persistStudentSex(student, sex: sex, source: source, refreshDirectory: true)
+    }
+
+    func applyStudentSexInference(_ assignments: [StudentSexInferenceAssignment]) async throws {
+        var appliedCount = 0
+        for assignment in assignments {
+            guard assignment.sex != .unspecified else { continue }
+            guard let current = try await container.studentsRepository.getStudent(studentId: assignment.student.id),
+                  current.sex == .unspecified,
+                  current.sexSource == .unknown else { continue }
+
+            try await persistStudentSex(
+                current,
+                sex: assignment.sex,
+                source: .nameInferred,
+                refreshDirectory: false
+            )
+            appliedCount += 1
+        }
+
+        if appliedCount > 0 {
+            try await refreshStudentsDirectory()
+            try await refreshDashboard()
+        }
+    }
+
+    private func persistStudentSex(
+        _ student: Student,
+        sex: StudentSex,
+        source: StudentSexSource,
+        refreshDirectory: Bool
+    ) async throws {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let persistedSource = sex == .unspecified ? StudentSexSource.unknown : source
         _ = try await container.studentsRepository.saveStudent(
             id: KotlinLong(value: student.id),
             firstName: student.firstName,
@@ -4255,13 +4303,16 @@ final class KmpBridge: ObservableObject {
             photoPath: student.photoPath,
             isInjured: student.isInjured,
             sex: sex,
-            sexSource: sex == .unspecified ? .unknown : .manual,
+            sexSource: persistedSource,
             birthDate: student.birthDate,
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
             syncVersion: student.trace.syncVersion + 1
         )
-        try await refreshStudentsDirectory()
+        if refreshDirectory {
+            try await refreshStudentsDirectory()
+            try await refreshDashboard()
+        }
         enqueueLocalChange(
             entity: "student",
             id: "\(student.id)",
@@ -4274,7 +4325,7 @@ final class KmpBridge: ObservableObject {
                 "photoPath": student.photoPath ?? NSNull(),
                 "isInjured": student.isInjured,
                 "sex": sex.name,
-                "sexSource": sex == .unspecified ? StudentSexSource.unknown.name : StudentSexSource.manual.name,
+                "sexSource": persistedSource.name,
                 "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
             ]
         )
@@ -12658,6 +12709,8 @@ final class KmpBridge: ObservableObject {
         switch value {
         case "MANUAL":
             return .manual
+        case "NAME_INFERRED", "NAMEINFERRED", "NOMBRE":
+            return .nameInferred
         case "AI_INFERRED", "AIINFERRED", "IA":
             return .aiInferred
         case "IMPORTED":

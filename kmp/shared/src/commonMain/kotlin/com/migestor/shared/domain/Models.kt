@@ -132,6 +132,7 @@ enum class StudentSex {
 
 enum class StudentSexSource {
     MANUAL,
+    NAME_INFERRED,
     AI_INFERRED,
     IMPORTED,
     UNKNOWN,

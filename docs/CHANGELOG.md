@@ -21,6 +21,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - Manifiestos de pruebas físicas v2: admiten puntos de calibración con puntuación lineal y redondeo configurable para baremos graduales.
 - Baremos físicos específicos por sexo: los manifiestos pueden declarar escalas `MALE` y `FEMALE`, que se seleccionan automáticamente según la ficha del alumno.
 - Catálogo auditable de baremos importados: Baremos muestra sexo, alcance, modelo y puntos/rangos persistidos.
+- Sugerencia masiva de sexo por nombre: propone coincidencias de confianza alta, separa los casos ambiguos para revisión y conserva el origen `NAME_INFERRED` sin modificar valores manuales o importados.
 - Importación múltiple de situaciones de aprendizaje: se pueden seleccionar varios
   documentos DOCX, revisar cada borrador y guardar las situaciones válidas aunque otro
   archivo no pueda leerse o guardarse.

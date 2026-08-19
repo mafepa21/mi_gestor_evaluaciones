@@ -177,6 +177,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- La shell macOS nativa vuelve a escanear las bases apartadas y avisa cuando
+  existe una cuarentena recuperable, incluso si el marcador de rescate ya se había
+  descartado; así una base activa vacía no oculta el camino de recuperación.
 - macOS ya no presenta "Primeros pasos" mientras existe un rescate de base de datos
   pendiente; el aviso de recuperación conserva la única acción primaria hasta que la
   base original pueda reabrirse.

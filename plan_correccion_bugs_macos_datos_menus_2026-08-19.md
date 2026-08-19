@@ -20,6 +20,8 @@ los menús de Alumnado e Informes sin tocar datos reales ni `KmpBridge.swift`.
   de camino de actualización y bloqueo del onboarding mientras hay rescate.
 - Integrado PR208 como `fix(mac)`: inspector condicional por ancho, Alumnado con
   acciones agrupadas y layout compacto/expandido de Informes.
+- Añadido el escaneo de cuarentenas al shell macOS nativo para que una base
+  apartada siga siendo visible y recuperable aunque ya no quede `rescue_marker`.
 - Conservado el ADR de migración y actualizado el changelog con evidencias reales.
 
 ## Validación

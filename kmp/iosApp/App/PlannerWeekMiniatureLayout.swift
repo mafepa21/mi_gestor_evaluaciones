@@ -18,6 +18,7 @@ struct PlannerWeekMiniatureLayout: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
+    @State private var isDetailPaneVisible = true
 
     private var isRegularWidth: Bool {
         #if os(iOS)
@@ -40,23 +41,52 @@ struct PlannerWeekMiniatureLayout: View {
     /// iPad apaisado y Mac: grid a la izquierda, detalle como panel lateral
     /// persistente (estilo inspector) para poder ver ambos a la vez.
     private var regularLayout: some View {
-        HStack(alignment: .top, spacing: 16) {
-            grid
-                .frame(height: gridHeight)
-                .padding(16)
-                .plannerGlassPanel(.content, cornerRadius: 24)
-                .frame(maxWidth: .infinity, alignment: .top)
-
-            ScrollView(.vertical) {
-                detailPane
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+        VStack(spacing: 8) {
+            HStack {
+                Text("Semana")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                detailPaneToggle
             }
-            .frame(width: 400)
-            .plannerGlassPanel(.content, cornerRadius: 24)
+
+            HStack(alignment: .top, spacing: 16) {
+                grid
+                    .frame(height: gridHeight)
+                    .padding(16)
+                    .plannerGlassPanel(.content, cornerRadius: 24)
+                    .frame(maxWidth: .infinity, alignment: .top)
+
+                if isDetailPaneVisible {
+                    ScrollView(.vertical) {
+                        detailPane
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .frame(width: 400)
+                    .plannerGlassPanel(.content, cornerRadius: 24)
+                }
+            }
         }
         .padding(.horizontal, EvaluationDesign.screenPadding)
         .padding(.top, 8)
         .padding(.bottom, 24)
+    }
+
+    private var detailPaneToggle: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isDetailPaneVisible.toggle()
+            }
+        } label: {
+            Label(
+                isDetailPaneVisible ? "Ocultar detalle" : "Mostrar detalle",
+                systemImage: "sidebar.right"
+            )
+        }
+        .buttonStyle(.bordered)
+        .tint(.secondary)
+        .controlSize(.small)
+        .accessibilityHint("Amplía o recupera el inspector lateral del grid semanal")
     }
 
     /// iPhone y iPad en vertical: grid arriba, detalle debajo en un único scroll.

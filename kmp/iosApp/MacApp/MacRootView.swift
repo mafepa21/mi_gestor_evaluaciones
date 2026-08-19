@@ -23,6 +23,7 @@ struct MacRootView: View {
     @StateObject private var studentSelection = StudentSelectionStore()
     @SceneStorage("mac.root.columnVisibility") private var storedColumnVisibility = MacRootColumnVisibilityValue.all
     @SceneStorage("mac.root.inspectorVisible") private var storedInspectorVisible = true
+    @AppStorage("diagnostics.quarantine.acknowledged") private var acknowledgedQuarantineId = ""
     @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var isAttendanceFilterPopoverPresented = false
@@ -42,6 +43,13 @@ struct MacRootView: View {
     @State private var selectedPlannerSessionId: Int64? = nil
     @State private var bannerDismissTask: Task<Void, Never>?
     @State private var didRequestCommandCenterStart = false
+
+    private var pendingQuarantinedDatabase: AppleQuarantinedDatabase? {
+        guard rescueService.pendingRescue == nil else { return nil }
+        return backupService.quarantinedDatabases.first {
+            $0.looksRecoverable && $0.id != acknowledgedQuarantineId
+        }
+    }
 
     init(session: MacAppSessionController) {
         self.session = session
@@ -89,6 +97,11 @@ struct MacRootView: View {
         }
         .task {
             rescueService.checkForPendingRescue()
+            // La app macOS nativa entra por MacApplicationRootView y no pasa por
+            // AppleAppRootView, que es quien escaneaba las cuarentenas. Sin este
+            // escaneo, una base apartada cuyo marcador ya se había descartado
+            // seguía pareciendo una base vacía sin explicación.
+            backupService.scanQuarantinedDatabases()
             notebookStore.bind(to: session.bridge)
             dashboardStore.bind(to: session.bridge)
             studentsBridgeStore.bind(to: session.bridge)
@@ -127,6 +140,25 @@ struct MacRootView: View {
             }
         } message: { marker in
             Text(marker.displayMessage)
+        }
+        .alert(
+            "Se encontraron datos apartados",
+            isPresented: .constant(pendingQuarantinedDatabase != nil),
+            presenting: pendingQuarantinedDatabase
+        ) { item in
+            Button("Entendido") {
+                acknowledgedQuarantineId = item.id
+            }
+            Button("Mostrar en Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+                acknowledgedQuarantineId = item.id
+            }
+        } message: { item in
+            let counts = item.summary.map {
+                "\($0.classCount) clases y \($0.studentCount) alumnos"
+            } ?? "contenido no legible"
+            let date = item.quarantinedAt.formatted(date: .abbreviated, time: .shortened)
+            Text("El \(date) la aplicación no pudo abrir su base de datos y arrancó con una vacía. La anterior no se ha borrado: contiene \(counts) y ocupa \(item.sizeText).\n\nEstá en:\n\(item.url.path)\n\nPuedes recuperarla desde Ajustes › Copias de seguridad.")
         }
     }
 

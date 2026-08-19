@@ -168,6 +168,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- La shell macOS nativa vuelve a escanear las bases apartadas y avisa cuando
+  existe una cuarentena recuperable, incluso si el marcador de rescate ya se había
+  descartado; así una base activa vacía no oculta el camino de recuperación.
+- macOS ya no presenta "Primeros pasos" mientras existe un rescate de base de datos
+  pendiente; el aviso de recuperación conserva la única acción primaria hasta que la
+  base original pueda reabrirse.
 - Importación de pruebas físicas diagnósticas: se evita el aborto de Kotlin al crear la evaluación técnica con peso cero; las columnas de marca siguen sin contar para la media.
 - Captura de pruebas físicas: una asignación sin puntuación ya no resuelve ni persiste un baremo accidentalmente.
 - Cuaderno: las marcas de tiempo de pruebas físicas se normalizan como segundos al guardar y se vuelven a mostrar con formato `MM:SS,CC`, evitando que el editor y la persistencia interpreten el valor como una nota decimal.

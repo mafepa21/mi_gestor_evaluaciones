@@ -141,6 +141,13 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Verification
 
 - `xcodegen generate` y `./scripts/verify_apple_builds.sh`; el build macOS termina correctamente y el target `MiGestorKMPiOS` se repite de forma aislada con `BUILD SUCCEEDED` tras liberar artefactos temporales que agotaban el disco durante la ejecución conjunta. La verificación se ejecuta en la rama `codex/fix-ui-mac-alumnado-informes`.
+- `cd kmp && ./gradlew :data:desktopTest`: `BUILD SUCCESSFUL` en la rama
+   de correcciones macOS.
+- `cd kmp && ./gradlew :shared:desktopTest`: `BUILD SUCCESSFUL`.
+- `./scripts/verify_apple_builds.sh`: XcodeGen correcto; macOS Native e iOS
+   Simulator terminan en `BUILD SUCCEEDED`.
+- `./gradlew :shared:test` no pudo ejecutarse porque el entorno no tiene Android SDK
+   configurado (`ANDROID_HOME`/`kmp/local.properties`); la variante desktop sí pasó.
 - `:data:compileKotlinDesktop`, `:shared:compileKotlinDesktop` y `:shared:desktopTest`
   pasan; el build macOS de Xcode compila el nuevo binding Swift con las advertencias
   preexistentes de uso no consumido.

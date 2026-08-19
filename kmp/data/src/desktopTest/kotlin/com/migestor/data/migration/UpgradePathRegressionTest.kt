@@ -79,6 +79,15 @@ class UpgradePathRegressionTest {
                 driver.queryStrings("SELECT 'violacion en tabla ' || \"table\" FROM pragma_foreign_key_check"),
                 "no puede haber claves foraneas rotas tras migrar",
             )
+            val physicalScaleColumns = schemaSnapshot(driver)["physical_test_scales"].orEmpty()
+            assertTrue(
+                physicalScaleColumns.any { it.startsWith("scoring_mode|") },
+                "la migracion 42 debe conservar la columna scoring_mode",
+            )
+            assertTrue(
+                physicalScaleColumns.any { it.startsWith("score_round_to|") },
+                "la migracion 42 debe conservar la columna score_round_to",
+            )
             CanonicalTeacherDataset.assertSurvived(driver)
         } finally {
             driver.close()

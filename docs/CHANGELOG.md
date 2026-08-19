@@ -131,6 +131,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- La migración 42 de baremos físicos deja de ejecutar una consulta `SELECT 1` como
+  supuesto no-op y usa DDL idempotente compatible con los drivers Apple/Android;
+  las instalaciones en versión 42 pueden actualizarse sin caer en una base vacía.
 - Situaciones de aprendizaje: se añaden lecturas bulk para enlaces de grupo, versiones de secuencia
   y planes de sesión, eliminando el patrón N+1 usado por Situaciones, Cuaderno y Planificador sin
   cambiar el esquema ni requerir migración.
@@ -142,6 +145,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `cd kmp && ./gradlew :data:desktopTest` pasa con 100 tests en verde.
+- `./scripts/verify_apple_builds.sh` regenera XcodeGen y compila correctamente
+  macOS Native e iOS Simulator.
 - `:data:compileKotlinDesktop`, `:shared:compileKotlinDesktop` y `:shared:desktopTest`
   pasan; el build macOS de Xcode compila el nuevo binding Swift con las advertencias
   preexistentes de uso no consumido.
@@ -162,6 +168,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- macOS ya no presenta "Primeros pasos" mientras existe un rescate de base de datos
+  pendiente; el aviso de recuperación conserva la única acción primaria hasta que la
+  base original pueda reabrirse.
 - Importación de pruebas físicas diagnósticas: se evita el aborto de Kotlin al crear la evaluación técnica con peso cero; las columnas de marca siguen sin contar para la media.
 - Captura de pruebas físicas: una asignación sin puntuación ya no resuelve ni persiste un baremo accidentalmente.
 - Cuaderno: las marcas de tiempo de pruebas físicas se normalizan como segundos al guardar y se vuelven a mostrar con formato `MM:SS,CC`, evitando que el editor y la persistencia interpreten el valor como una nota decimal.

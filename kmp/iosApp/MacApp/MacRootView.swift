@@ -83,7 +83,10 @@ struct MacRootView: View {
         .appOnChange(of: session.bootstrapState) { state in
             // Sólo con la shell lista tiene sentido preguntar si la base está
             // vacía; antes lo parecería siempre.
-            guard state == .ready else { return }
+            // Si hay un rescate pendiente, el aviso de recuperación es la única
+            // superficie primaria: no debemos superponerle el onboarding de una
+            // base vacía de fallback.
+            guard state == .ready, rescueService.pendingRescue == nil else { return }
             Task { await OnboardingStore.shared.bootstrap(bridge: session.bridge) }
         }
         .task {

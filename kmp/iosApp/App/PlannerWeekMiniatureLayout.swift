@@ -138,7 +138,7 @@ struct PlannerWeekMiniatureLayout: View {
         guard !vm.effectiveScheduleSlots.isEmpty else { return 280 }
         let slotsCount = weekBoard.weekRenderModel.visibleSlots.count
         guard slotsCount > 0 else { return 40 }
-        let rowHeight: CGFloat = 36
+        let rowHeight: CGFloat = vm.density == .compact ? 44 : 56
         let spacing: CGFloat = 4
         return 40 + CGFloat(slotsCount) * (rowHeight + spacing) + spacing
     }

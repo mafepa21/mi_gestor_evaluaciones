@@ -35,6 +35,7 @@ struct PlannerWeekMiniatureGrid: View {
             let slots = weekBoard.weekRenderModel.visibleSlots
             let columnWidth = gridWidth(proxy.size.width, days: days.count)
             let rowHeight = gridHeight(proxy.size.height, rows: slots.count)
+            let isCompact = vm.density == .compact
 
             // El grid tiene celdas de tamaño fijo calculado geométricamente; a partir de
             // tamaños de accesibilidad grandes el texto rompería el layout, así que se
@@ -123,6 +124,7 @@ struct PlannerWeekMiniatureGrid: View {
                                 isSelected: selectedCell == key,
                                 isToday: day == todayDayIndex,
                                 vm: vm,
+                                isCompact: isCompact,
                                 onTap: {
                                     withAnimation(uiFeatureFlags.interactionAnimation) {
                                         selectedCell = key
@@ -199,7 +201,8 @@ struct PlannerWeekMiniatureGrid: View {
     private func gridHeight(_ totalHeight: CGFloat, rows: Int) -> CGFloat {
         guard rows > 0 else { return 0 }
         let spacing = gridSpacing * CGFloat(rows)
-        return max((totalHeight - headerHeight - spacing) / CGFloat(rows), 36)
+        let minimumRowHeight: CGFloat = vm.density == .compact ? 44 : 56
+        return max((totalHeight - headerHeight - spacing) / CGFloat(rows), minimumRowHeight)
     }
 
     private func dateLabel(for day: Int) -> String? {
@@ -213,7 +216,20 @@ struct PlannerWeekMiniatureGrid: View {
     private func accessibilityLabel(day: Int, slot: PlannerVisibleSlot, entries: [PlannerWeekCellEntry]) -> String {
         let dayLabel = vm.dayHeaderLabel(for: day)
         guard !entries.isEmpty else { return "\(dayLabel), \(slot.label), sin sesión" }
-        return "\(dayLabel), \(slot.label), \(entries.count) sesiones"
+        let details = entries.prefix(3).map { entry in
+            var parts = [entry.className]
+            if let glance = entry.sessionGlance {
+                parts.append(glance.sessionTitle)
+                if let objective = glance.objective?.nilIfBlank ?? glance.activity?.nilIfBlank {
+                    parts.append(objective)
+                }
+            } else {
+                parts.append(entry.title)
+            }
+            return parts.joined(separator: ", ")
+        }.joined(separator: "; ")
+        let suffix = entries.count > 3 ? "; más sesiones: \(entries.count - 3)" : ""
+        return "\(dayLabel), \(slot.label), \(details)\(suffix)"
     }
 }
 
@@ -256,6 +272,7 @@ private struct PlannerWeekMiniatureCell: View {
     let isSelected: Bool
     let isToday: Bool
     let vm: PlannerWorkspaceViewModel
+    let isCompact: Bool
     let onTap: () -> Void
     let onOpenSession: (PlanningSession) -> Void
     var onOpenDiary: ((PlanningSession) -> Void)? = nil
@@ -315,13 +332,12 @@ private struct PlannerWeekMiniatureCell: View {
                     .foregroundStyle(Color.red.opacity(0.7))
                 }
 
-                if let entry = primaryEntry, !isHoliday {
-                    Text(abbreviation(for: entry))
-                        .font(.system(size: 11, weight: .heavy, design: .rounded))
-                        .foregroundStyle(groupTint(for: entry))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                        .padding(.horizontal, 2)
+                if !isHoliday {
+                    if entries.count == 1, let entry = primaryEntry {
+                        singleEntryContent(entry)
+                    } else if entries.count > 1 {
+                        multipleEntriesContent
+                    }
                 }
 
                 if !isHoliday, let entry = primaryEntry, entries.count == 1 {
@@ -345,24 +361,6 @@ private struct PlannerWeekMiniatureCell: View {
                     }
                 }
 
-                if entries.count > 1 {
-                    VStack {
-                        Spacer()
-                        HStack(spacing: 2) {
-                            ForEach(entries.prefix(3)) { entry in
-                                Circle()
-                                    .fill(groupTint(for: entry))
-                                    .frame(width: 5, height: 5)
-                            }
-                            if entries.count > 3 {
-                                Text("+\(entries.count - 3)")
-                                    .font(.system(size: 7, weight: .bold))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.bottom, 3)
-                    }
-                }
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -452,6 +450,96 @@ private struct PlannerWeekMiniatureCell: View {
     }
 
     private var primaryEntry: PlannerWeekCellEntry? { entries.first }
+
+    @ViewBuilder
+    private func singleEntryContent(_ entry: PlannerWeekCellEntry) -> some View {
+        VStack(alignment: .leading, spacing: isCompact ? 1 : 3) {
+            HStack(spacing: 4) {
+                Text(abbreviation(for: entry))
+                    .font(.system(size: isCompact ? 9 : 9.5, weight: .heavy, design: .rounded))
+                    .foregroundStyle(groupTint(for: entry))
+                    .lineLimit(1)
+
+                if let sessionBadge = compactSessionBadge(for: entry) {
+                    Text(sessionBadge)
+                        .font(.system(size: isCompact ? 8 : 8.5, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Text(entryTitle(for: entry))
+                .font(.system(size: isCompact ? 8.5 : 9.5, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(isCompact ? 1 : 2)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !isCompact, let summary = entrySummary(for: entry) {
+                Text(summary)
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(isCompact ? 4 : 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var multipleEntriesContent: some View {
+        let visibleEntries = Array(entries.prefix(isCompact ? 2 : 3))
+        VStack(alignment: .leading, spacing: isCompact ? 2 : 3) {
+            ForEach(visibleEntries) { entry in
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(groupTint(for: entry))
+                        .frame(width: 5, height: 5)
+                    Text(compactEntryLabel(for: entry))
+                        .font(.system(size: isCompact ? 8 : 8.5, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+            if entries.count > visibleEntries.count {
+                Text("+\(entries.count - visibleEntries.count) más")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(isCompact ? 4 : 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func entryTitle(for entry: PlannerWeekCellEntry) -> String {
+        entry.sessionGlance?.sessionTitle.nilIfBlank ?? entry.title
+    }
+
+    private func entrySummary(for entry: PlannerWeekCellEntry) -> String? {
+        entry.sessionGlance?.objective?.nilIfBlank
+            ?? entry.sessionGlance?.activity?.nilIfBlank
+            ?? entry.preview.nilIfBlank
+    }
+
+    private func compactSessionBadge(for entry: PlannerWeekCellEntry) -> String? {
+        guard let badge = entry.sessionGlance?.badges.first(where: { $0.hasPrefix("Sesión ") }) else {
+            return nil
+        }
+        return badge.replacingOccurrences(of: "Sesión ", with: "S")
+    }
+
+    private func compactEntryLabel(for entry: PlannerWeekCellEntry) -> String {
+        let group = abbreviation(for: entry)
+        let session = compactSessionBadge(for: entry)
+        let title = entryTitle(for: entry)
+        if let session { return "\(group) · \(session) · \(title)" }
+        return "\(group) · \(title)"
+    }
 
     /// Solo las celdas con exactamente una sesión real se pueden arrastrar;
     /// con varias entradas el origen sería ambiguo.

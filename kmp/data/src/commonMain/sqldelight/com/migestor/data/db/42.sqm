@@ -2,9 +2,10 @@
 -- de los baremos fisicos.
 --
 -- La aplicacion de las columnas se hace de forma idempotente en
--- runRescueMigrations(), despues de la cadena SQLDelight. Algunas instalaciones
--- antiguas y fixtures de migracion no contienen todavia physical_test_scales;
--- SQLite no permite expresar ALTER TABLE ... IF EXISTS. La red de seguridad
--- puede comprobar la tabla antes de anadir las columnas y la version queda
--- igualmente registrada para todos los drivers.
-SELECT 1;
+-- runRescueMigrations(), despues de la cadena SQLDelight. Esta sentencia es un
+-- no-op DDL deliberado: conserva la migracion ejecutable por los drivers Apple
+-- y Android, que no aceptan una consulta de solo lectura en este punto de la
+-- cadena. La tabla temporal evita depender de que una fixture parcial contenga
+-- ya physical_test_scales y no deja ningun objeto persistente en el esquema.
+CREATE TEMP TABLE IF NOT EXISTS __migestor_schema_migration_42 (marker INTEGER);
+DROP TABLE IF EXISTS __migestor_schema_migration_42;

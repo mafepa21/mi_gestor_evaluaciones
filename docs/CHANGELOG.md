@@ -56,6 +56,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Planificación: las vistas Semana y Día muestran el contexto de la Situación de Aprendizaje, el título de la sesión, objetivo, actividad y material; el detalle incorpora una reconstrucción enriquecida del DOCX con tablas e imágenes y conserva QuickLook como respaldo nativo.
 - Las pruebas físicas importadas en modo diagnóstico (`recordScore=false`) guardan únicamente la marca bruta: no generan columna de nota ni puntuación, media o ranking.
 - Las celdas de pruebas físicas muestran la nota de referencia calculada desde el baremo del manifiesto junto a la marca, sin convertirla en una nota evaluable ni incluirla en la media; las pruebas sin baremo aplicable lo indican explícitamente.
 - La nota de referencia de un baremo LINEAR se interpola entre sus puntos de calibración y se calcula igual en la captura física y en la celda del Cuaderno; los manifiestos v1 conservan el comportamiento por rangos.

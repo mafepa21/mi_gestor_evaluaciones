@@ -31,6 +31,8 @@ struct PlannerSessionDetailSheet: View {
     @State private var detailedPlan: LearningSituationSessionPlan?
     @State private var sequenceVersion: LearningSituationSessionSequenceVersion?
     @State private var sourceDocumentURL: URL?
+    @State private var renderedDocument: PlannerDocxRenderResult?
+    @State private var isLoadingRenderedDocument = false
     @State private var isDeleteConfirmationPresented = false
 
     private var tint: Color {
@@ -121,6 +123,7 @@ struct PlannerSessionDetailSheet: View {
                     if let detailedPlan {
                         teacherAtAGlanceSection(detailedPlan)
                         developmentTimeline(detailedPlan)
+                        renderedDocumentSection
                         sourceDocumentSection(detailedPlan)
                     } else {
                         fallbackSessionSections
@@ -486,6 +489,47 @@ struct PlannerSessionDetailSheet: View {
         .plannerGlassPanel(.content, cornerRadius: 20)
     }
 
+    @ViewBuilder
+    private var renderedDocumentSection: some View {
+        if isLoadingRenderedDocument {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Preparando el documento de sesión", systemImage: "doc.richtext")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(tint)
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Se están reconstruyendo las tablas e imágenes del DOCX.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(20)
+            .plannerGlassPanel(.content, cornerRadius: 20)
+        } else if let renderedDocument {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Label("Documento de sesión", systemImage: "doc.richtext")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(tint)
+                    Spacer()
+                    if !renderedDocument.featureSummary.isEmpty {
+                        Text(renderedDocument.featureSummary)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(tint)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(tint.opacity(0.10), in: Capsule())
+                    }
+                }
+                Text("Vista reconstruida del bloque de esta sesión, manteniendo el orden del documento original.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                PlannerDocxWebView(html: renderedDocument.html)
+            }
+            .padding(20)
+            .plannerGlassPanel(.content, cornerRadius: 20)
+        }
+    }
+
     private var sourceDocumentFileURL: URL? {
         guard let path = sequenceVersion?.localPath, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let url = URL(fileURLWithPath: path)
@@ -628,13 +672,33 @@ struct PlannerSessionDetailSheet: View {
 
     @MainActor
     private func loadDetailedPlan() async {
+        renderedDocument = nil
+        isLoadingRenderedDocument = false
         guard let planId = session.learningSituationSessionPlanId?.int64Value else { return }
         guard let plan = try? await bridge.learningSituationSessionPlan(id: planId) else { return }
         detailedPlan = plan
-        sequenceVersion = try? await bridge.learningSituationSessionSequenceVersion(
+        let loadedSequenceVersion = try? await bridge.learningSituationSessionSequenceVersion(
             id: plan.sequenceVersionId,
             learningSituationId: plan.learningSituationId
         )
+        sequenceVersion = loadedSequenceVersion
+
+        guard let path = loadedSequenceVersion?.localPath,
+              !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let sourceURL = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else { return }
+
+        isLoadingRenderedDocument = true
+        let sourceLabel = plan.sourceLabel
+        let sessionNumber = Int(plan.sessionNumber)
+        renderedDocument = await Task.detached(priority: .userInitiated) {
+            try? PlannerSessionDocxRenderer().render(
+                from: sourceURL,
+                sourceLabel: sourceLabel,
+                sessionNumber: sessionNumber
+            )
+        }.value
+        isLoadingRenderedDocument = false
     }
     
     private var instrumentsSection: some View {

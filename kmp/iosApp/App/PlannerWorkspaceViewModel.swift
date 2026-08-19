@@ -20,6 +20,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var classColorHexById: [Int64: String] = [:]
     @Published var sessions: [PlanningSession] = []
     @Published var filteredSessions: [PlanningSession] = []
+    @Published var sessionPlansById: [Int64: LearningSituationSessionPlan] = [:]
     @Published var sequenceGroupsEnriched: [PlannerSequenceGroup] = []
     @Published var isLoadingSequences = false
     @Published var sequenceLoadErrorMessage: String?
@@ -188,6 +189,14 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         scheduleFormGroupId = await calendarStore.reloadBootstrap(bridge: bridge, scheduleFormGroupId: scheduleFormGroupId)
         groups = calendarStore.groups
         classColorHexById = calendarStore.classColorHexById
+        do {
+            let plans = try await bridge.learningSituationSessionPlansAll()
+            sessionPlansById = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
+        } catch {
+            // Los metadatos enriquecidos son opcionales: la sesión sigue siendo
+            // utilizable con los campos estructurados del PlanningSession.
+            sessionPlansById = [:]
+        }
     }
 
     func reloadWeekSessions(keepSelection: Bool = true) async {

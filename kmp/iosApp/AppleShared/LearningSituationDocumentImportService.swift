@@ -1265,10 +1265,10 @@ struct LearningSituationSessionSequenceDocumentImportService {
             case "purpose", "proposito", "proposito de la actividad": return "purpose"
             case "organisation", "organization", "organizacion", "grouping": return "organisation"
             case "set-up", "setup", "preparation", "preparacion": return "setup"
-            case "teacher instructions", "teacher actions", "instrucciones del profesor", "acciones del docente": return "teacherActions"
-            case "instructions for students", "student instructions", "instrucciones para el alumnado": return "studentInstructions"
-            case "student actions", "student output", "acciones del alumnado": return "studentActions"
-            case "timing breakdown", "timing", "desglose temporal": return "timingBreakdown"
+            case "teacher instructions", "teacher actions", "teacher narrative", "teacher script", "instrucciones del profesor", "acciones del docente", "narrativa del profesor": return "teacherActions"
+            case "instructions for students", "student instructions", "student narrative", "learner narrative", "instrucciones para el alumnado", "narrativa del alumnado": return "studentInstructions"
+            case "student actions", "student output", "what students do", "acciones del alumnado": return "studentActions"
+            case "timing breakdown", "timing", "transition cue", "transition", "desglose temporal", "transicion": return "timingBreakdown"
             case "clil focus", "clil language", "enfoque clil": return "clilFocus"
             case "materials", "materiales": return "materials"
             case "evidence", "evidencia": return "evidence"
@@ -1714,8 +1714,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let timeIndex = columnIndex(["time", "hora", "tiempo"])
         let phaseIndex = columnIndex(["phase", "fase"])
         let activityIndex = columnIndex(["activity", "actividad"])
-        let teacherIndex = columnIndex(["teacher", "profesor", "docente"])
-        let studentIndex = columnIndex(["student", "alumno"])
+        let teacherIndex = columnIndex(["teacher narrative", "teacher script", "teacher role", "teacher", "profesor", "docente"])
+        let studentIndex = columnIndex(["student narrative", "learner narrative", "student role", "student", "alumno"])
         let evidenceIndex = columnIndex(["evidence", "evidencia"])
         let clilIndex = columnIndex(["clil", "language", "lengua", "scaffolding", "andamiaje"])
         let materialsIndex = columnIndex(["material", "materials", "materiales"])
@@ -1774,10 +1774,10 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let purposeIndex = columnIndex(["purpose", "propósito", "proposito"])
         let organisationIndex = columnIndex(["organisation", "organization", "organizacion", "grouping"])
         let studentOutputIndex = columnIndex(["student output", "student instructions", "output alumno"])
-        let teacherIndex = columnIndex(["teacher", "profesor", "docente"])
-        let studentIndex = columnIndex(["student actions", "student role", "student does", "student", "alumno", "learner", "alumnado"])
+        let teacherIndex = columnIndex(["teacher narrative", "teacher script", "teacher role", "teacher", "profesor", "docente"])
+        let studentIndex = columnIndex(["student actions", "student narrative", "learner narrative", "student role", "student does", "student", "alumno", "learner", "alumnado"])
         let setupIndex = columnIndex(["set-up", "setup", "preparation", "preparacion"])
-        let timingIndex = columnIndex(["timing breakdown", "desglose temporal", "timing"])
+        let timingIndex = columnIndex(["timing breakdown", "transition cue", "transition", "desglose temporal", "timing"])
         let clilIndex = columnIndex(["clil", "language", "lengua", "scaffolding", "andamiaje"])
         let evidenceIndex = columnIndex(["evidence", "evidencia", "assessment", "evaluacion"])
         let materialsIndex = columnIndex(["material", "materials", "materiales"])

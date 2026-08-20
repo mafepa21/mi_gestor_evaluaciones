@@ -89,6 +89,28 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.plans[1].activities.first?.activity, "Exit response")
     }
 
+    func testNarrativeActivityDetailsImportIntoOperationalFields() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("WEEK 2 - Building Health"),
+            .paragraph("LONG BLOCK (90 effective minutes)"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity", "Organisation", "Teacher narrative", "Student narrative", "Transition cue", "Evidence"],
+                ["0′–12′", "W02-L-01", "entry", "12", "Entry", "Arrival and readiness check", "Pairs", "Welcome the group at the door and explain why the first check protects the quality of the training data.", "Students enter, collect one passport per pair and quietly agree who records first.", "At minute 10, give the two-minute warning and ask pairs to leave the passport open on the floor.", "Completed readiness check"]
+            ])
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("narrative-fixture".utf8),
+            url: URL(fileURLWithPath: "/tmp/narrative-fixture.docx")
+        )
+
+        let activity = try XCTUnwrap(draft.plans.first?.activities.first)
+        XCTAssertEqual(activity.teacherActions, "Welcome the group at the door and explain why the first check protects the quality of the training data.")
+        XCTAssertEqual(activity.studentActions, "Students enter, collect one passport per pair and quietly agree who records first.")
+        XCTAssertEqual(activity.timingBreakdown, "At minute 10, give the two-minute warning and ask pairs to leave the passport open on the floor.")
+    }
+
     func testActivityNavigatorKeepsTimelineAndMenuAtStableBoundaries() {
         var navigator = PlannerSessionActivityNavigator(activityKeys: ["W01-L-01", "W01-L-02", "W01-L-03"])
 

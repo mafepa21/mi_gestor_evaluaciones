@@ -57,6 +57,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Changed
 
 - Planificación: las vistas Semana y Día muestran el contexto de la Situación de Aprendizaje, el título de la sesión, objetivo, actividad y material; el grid semanal muestra además grupo, número y título de sesión, resumen operativo y colisiones resumidas; el detalle incorpora una reconstrucción enriquecida del DOCX con tablas e imágenes y conserva QuickLook como respaldo nativo.
+- Planificación: la ficha de detalle de sesión convierte el guion importado en una vista docente operativa, con objetivo, métricas de tiempo, criterios, evidencias, material, saberes básicos, adaptaciones, bloques, pausas, roles de profesorado/alumnado y contexto desplegable; mantiene el DOCX reconstruido y el documento original como respaldo.
 - Planificación: la vista Semana permite ocultar el inspector lateral para ampliar el grid y elimina el aviso azul de ayuda del drag & drop, manteniendo el movimiento de sesiones operativo.
 - Planificación: el encabezado de Semana se compacta a una sola franja con semana, fechas y recuento de sesiones; las métricas completas siguen disponibles mediante expansión y el grid gana espacio vertical.
 - Las pruebas físicas importadas en modo diagnóstico (`recordScore=false`) guardan únicamente la marca bruta: no generan columna de nota ni puntuación, media o ranking.
@@ -151,6 +152,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - `:data:compileKotlinDesktop`, `:shared:compileKotlinDesktop` y `:shared:desktopTest`
   pasan; el build macOS de Xcode compila el nuevo binding Swift con las advertencias
   preexistentes de uso no consumido.
+- `./scripts/verify_apple_builds.sh` pasa para macOS Native/Catalyst e iOS Simulator; los
+  tests `MiGestorPlannerTests` pasan en macOS con la proyección de la ficha semanal y el
+  fallback de planes históricos.
 
 ### Docs
 

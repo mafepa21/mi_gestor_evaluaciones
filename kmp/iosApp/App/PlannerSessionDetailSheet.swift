@@ -39,6 +39,11 @@ struct PlannerSessionDetailSheet: View {
         Color(hex: session.teachingUnitColor)
     }
 
+    private var detailProjection: PlannerSessionDetailProjection? {
+        guard let detailedPlan else { return nil }
+        return PlannerSessionDetailProjection(plan: detailedPlan)
+    }
+
     var body: some View {
         Group {
             switch presentation {
@@ -119,18 +124,22 @@ struct PlannerSessionDetailSheet: View {
             sessionBriefHeader
             quickActionBar
             ScrollView {
-                VStack(spacing: 16) {
-                    if let detailedPlan {
-                        teacherAtAGlanceSection(detailedPlan)
-                        developmentTimeline(detailedPlan)
+                VStack(alignment: .leading, spacing: 24) {
+                    if let projection = detailProjection {
+                        teacherAtAGlanceSection(projection)
+                        developmentTimeline(projection)
+                        supportSections(projection.supportSections)
                         renderedDocumentSection
-                        sourceDocumentSection(detailedPlan)
+                        if let detailedPlan {
+                            sourceDocumentSection(detailedPlan)
+                        }
                     } else {
                         fallbackSessionSections
                     }
                     instrumentsSection
                 }
-                .padding(24)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 24)
             }
         }
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
@@ -248,27 +257,33 @@ struct PlannerSessionDetailSheet: View {
         }
     }
 
-    private func teacherAtAGlanceSection(_ plan: LearningSituationSessionPlan) -> some View {
-        VStack(spacing: 16) {
-            let objective = plan.objective.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !objective.isEmpty {
-                teacherCard(title: "Objetivo de hoy", icon: "target", text: objective, prominence: .hero)
+    private func teacherAtAGlanceSection(_ projection: PlannerSessionDetailProjection) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if !projection.objective.isEmpty {
+                teacherCard(title: "Objetivo de hoy", icon: "target", text: projection.objective, prominence: .hero)
             }
 
-            let criteria = decodedCriteria(plan)
-            let evidence = evidenceText(from: decodedDevelopment(plan))
-            if !criteria.isEmpty || !evidence.isEmpty {
-                evaluationCard(criteria: criteria, evidence: evidence)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 12)], spacing: 12) {
+                summaryMetric(value: "\(projection.activityCount)", label: "momentos", icon: "list.number")
+                summaryMetric(value: "\(projection.evidence.count)", label: "evidencias", icon: "checkmark.seal")
+                summaryMetric(value: "\(projection.criteria.count)", label: "criterios", icon: "scope")
+                if let detailedPlan, detailedPlan.effectiveMinutes > 0 {
+                    summaryMetric(value: "\(detailedPlan.effectiveMinutes)′", label: "tiempo útil", icon: "timer")
+                }
             }
 
-            let material = plan.material.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !material.isEmpty {
-                materialCard(material)
+            if !projection.criteria.isEmpty || !projection.evidence.isEmpty {
+                evaluationCard(criteria: projection.criteria, evidence: projection.evidence)
             }
 
-            let adaptations = decodedAdaptations(plan)
-            if !adaptations.isEmpty {
-                teacherCard(title: "Adaptaciones y contexto", icon: "person.crop.rectangle", text: adaptations.joined(separator: "\n"))
+            if !projection.materials.isEmpty {
+                materialCard(items: projection.materials, basicKnowledge: projection.basicKnowledge)
+            } else if !projection.basicKnowledge.isEmpty {
+                informationCard(title: "Saberes básicos", icon: "book.closed", lines: projection.basicKnowledge)
+            }
+
+            if !projection.adaptations.isEmpty {
+                informationCard(title: "Adaptaciones y roles inclusivos", icon: "person.crop.rectangle.badge.plus", lines: projection.adaptations)
             }
         }
     }
@@ -288,9 +303,26 @@ struct PlannerSessionDetailSheet: View {
         .plannerGlassPanel(prominence == .hero ? .hero : .content, cornerRadius: 20)
     }
 
-    private func evaluationCard(criteria: [String], evidence: String) -> some View {
+    private func summaryMetric(value: String, label: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: icon)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(value)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.primary)
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .plannerGlassPanel(.control, cornerRadius: 16)
+    }
+
+    private func evaluationCard(criteria: [String], evidence: [String]) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Evaluación", systemImage: "checkmark.seal")
+            Label("Qué observar y recoger", systemImage: "checkmark.seal")
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(tint)
             if !criteria.isEmpty {
@@ -306,16 +338,17 @@ struct PlannerSessionDetailSheet: View {
                 }
             }
             if !evidence.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Evidencia")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Evidencia prevista")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text(evidence)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                        .lineSpacing(4)
+                    ForEach(evidence, id: \.self) { item in
+                        Label(item, systemImage: "checkmark.circle")
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
                 .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
@@ -324,13 +357,13 @@ struct PlannerSessionDetailSheet: View {
         .plannerGlassPanel(.content, cornerRadius: 20)
     }
 
-    private func materialCard(_ material: String) -> some View {
+    private func materialCard(items: [String], basicKnowledge: [String]) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Label("Material preparado", systemImage: "shippingbox")
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(tint)
             WorkspaceFlowLayout(spacing: 8) {
-                ForEach(materialItems(from: material), id: \.self) { item in
+                ForEach(items, id: \.self) { item in
                     Text(item)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
@@ -339,34 +372,55 @@ struct PlannerSessionDetailSheet: View {
                         .background(EvaluationDesign.surfaceSoft, in: Capsule())
                 }
             }
+            if !basicKnowledge.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Saberes básicos")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(basicKnowledge.joined(separator: " · "))
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .padding(20)
         .plannerGlassPanel(.content, cornerRadius: 20)
     }
 
-    private func developmentTimeline(_ plan: LearningSituationSessionPlan) -> some View {
-        let sections = timelineSections(from: decodedDevelopment(plan))
+    private func informationCard(title: String, icon: String, lines: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: icon)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(tint)
+            ForEach(lines, id: \.self) { line in
+                Text(line)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(20)
+        .plannerGlassPanel(.content, cornerRadius: 20)
+    }
+
+    private func developmentTimeline(_ projection: PlannerSessionDetailProjection) -> some View {
         return Group {
-            if !sections.isEmpty {
+            if !projection.timeline.isEmpty {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 8) {
-                        Label("Desarrollo de la clase", systemImage: "list.bullet.rectangle.portrait")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Guion de la clase", systemImage: "list.bullet.rectangle.portrait")
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(tint)
-                        Spacer()
-                        if plan.effectiveMinutes > 0 {
-                            Text("\(plan.effectiveMinutes) min útiles")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(tint)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(tint.opacity(0.10), in: Capsule())
-                        }
+                        Text("Sigue el orden, los roles y las evidencias sin volver al documento original.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     VStack(spacing: 12) {
-                        ForEach(sections) { section in
-                            timelineBlock(section)
+                        ForEach(projection.timeline) { block in
+                            timelineBlock(block)
                         }
                     }
                 }
@@ -376,81 +430,154 @@ struct PlannerSessionDetailSheet: View {
         }
     }
 
-    private func timelineBlock(_ section: LearningSituationSessionSectionDraft) -> some View {
-        let marker = timelineMarker(from: section.title)
-        return HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 8) {
-                Circle()
-                    .fill(tint)
-                    .frame(width: 10, height: 10)
-                Capsule()
-                    .fill(tint.opacity(0.16))
-                    .frame(width: 2, height: 44)
-            }
-            .padding(.top, 8)
-            .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    if let marker {
-                        Text(marker)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(tint)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(tint.opacity(0.10), in: Capsule())
-                    }
-                    Text(cleanTimelineTitle(section.title))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                VStack(spacing: 8) {
-                    ForEach(Array(section.lines.enumerated()), id: \.offset) { _, line in
-                        timelineStep(line)
-                    }
+    private func timelineBlock(_ block: PlannerSessionTimelineBlock) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: blockIcon(block.kind))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(block.kind == .breakTime ? .secondary : tint)
+                Text(block.title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                if let durationLabel = block.durationLabel {
+                    Text(durationLabel)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(block.kind == .breakTime ? .secondary : tint)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background((block.kind == .breakTime ? Color.secondary : tint).opacity(0.10), in: Capsule())
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-    }
 
-    private func timelineStep(_ line: String) -> some View {
-        let parts = developmentLineParts(line)
-        return HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 5))
-                .foregroundStyle(tint.opacity(0.72))
-                .padding(.top, 7)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                if let title = parts.title {
-                    Text(title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
-                Text(parts.detail)
+            if block.kind == .breakTime {
+                Text(block.steps.map(\.activity).joined(separator: " · "))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(block.steps) { step in
+                        timelineStep(step)
+                    }
+                }
             }
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(block.kind == .breakTime ? EvaluationDesign.surfaceSoft : EvaluationDesign.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(block.kind == .breakTime ? EvaluationDesign.border : tint.opacity(0.18), lineWidth: 1)
+        )
     }
 
-    private func developmentLineParts(_ line: String) -> (title: String?, detail: String) {
-        guard let separator = line.firstIndex(of: ":") else {
-            return (nil, line)
+    private func timelineStep(_ step: PlannerSessionTimelineStep) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if let timeLabel = step.timeLabel {
+                    Text(timeLabel)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(tint)
+                        .frame(minWidth: 52, alignment: .leading)
+                }
+                if let phase = step.phase {
+                    Text(phase)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                }
+                Spacer(minLength: 0)
+            }
+            Text(step.activity)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                if let teacherRole = step.teacherRole {
+                    roleLine("Profesorado", teacherRole, icon: "person.crop.circle.badge.checkmark")
+                }
+                if let studentRole = step.studentRole {
+                    roleLine("Alumnado", studentRole, icon: "person.2")
+                }
+                if let evidence = step.evidence {
+                    roleLine("Evidencia", evidence, icon: "checkmark.seal")
+                }
+            }
         }
-        let title = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
-        let detail = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, !detail.isEmpty else { return (nil, line) }
-        return (title, detail)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func roleLine(_ label: String, _ text: String, icon: String) -> some View {
+        Label {
+            Text("\(label): \(text)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+        }
+    }
+
+    private func supportSections(_ sections: [PlannerSessionSupportSection]) -> some View {
+        Group {
+            if !sections.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Contexto docente", systemImage: "note.text")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(tint)
+                    ForEach(sections) { section in
+                        DisclosureGroup {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(section.lines, id: \.self) { line in
+                                    Text(line)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.primary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                            .padding(.top, 8)
+                        } label: {
+                            Label(section.title, systemImage: supportIcon(for: section.title))
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                        }
+                        .tint(tint)
+                        if section.id != sections.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+                .padding(20)
+                .plannerGlassPanel(.content, cornerRadius: 20)
+            }
+        }
+    }
+
+    private func blockIcon(_ kind: PlannerSessionTimelineBlock.Kind) -> String {
+        switch kind {
+        case .activity: return "figure.run"
+        case .breakTime: return "cup.and.saucer"
+        case .prepare: return "arrow.down.right.and.arrow.up.left"
+        case .consolidate: return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    private func supportIcon(for title: String) -> String {
+        let value = title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        if value.contains("antes") || value.contains("before") || value.contains("prepar") { return "checklist" }
+        if value.contains("espacio") || value.contains("space") || value.contains("rotac") { return "square.grid.2x2" }
+        if value.contains("clil") || value.contains("vocab") || value.contains("language") { return "character.book.closed" }
+        if value.contains("pregunta") || value.contains("guiding") { return "questionmark.bubble" }
+        if value.contains("cierre") || value.contains("closure") { return "flag.checkered" }
+        return "text.alignleft"
     }
 
     private func sourceDocumentSection(_ plan: LearningSituationSessionPlan) -> some View {
@@ -561,113 +688,6 @@ struct PlannerSessionDetailSheet: View {
     private enum TeacherCardProminence {
         case standard
         case hero
-    }
-
-    private func decodedCriteria(_ plan: LearningSituationSessionPlan) -> [String] {
-        ((try? JSONDecoder().decode([String].self, from: Data(plan.criteriaJson.utf8))) ?? [])
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
-    private func decodedDevelopment(_ plan: LearningSituationSessionPlan) -> [LearningSituationSessionSectionDraft] {
-        (try? JSONDecoder().decode([LearningSituationSessionSectionDraft].self, from: Data(plan.developmentJson.utf8))) ?? []
-    }
-
-    private func decodedAdaptations(_ plan: LearningSituationSessionPlan) -> [String] {
-        ((try? JSONDecoder().decode([String].self, from: Data(plan.adaptationsJson.utf8))) ?? [])
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
-    private func evidenceText(from sections: [LearningSituationSessionSectionDraft]) -> String {
-        sections
-            .filter { isEvidenceSection($0) }
-            .flatMap { section in
-                section.lines.isEmpty ? [metadataValue(from: section.title) ?? section.title] : section.lines
-            }
-            .map { metadataValue(from: $0) ?? $0 }
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
-    }
-
-    private func timelineSections(from sections: [LearningSituationSessionSectionDraft]) -> [LearningSituationSessionSectionDraft] {
-        sections.compactMap { section in
-            guard !isEvidenceSection(section), !isMetadataLine(section.title) else { return nil }
-            let filteredLines = section.lines
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty && !isMetadataLine($0) }
-            if filteredLines.isEmpty, !looksLikeTimelineTitle(section.title) { return nil }
-            return LearningSituationSessionSectionDraft(title: section.title, lines: filteredLines)
-        }
-    }
-
-    private func isEvidenceSection(_ section: LearningSituationSessionSectionDraft) -> Bool {
-        let title = normalizedSessionText(section.title)
-        return title.hasPrefix("evidencia") || title.hasPrefix("evidence")
-    }
-
-    private func isMetadataLine(_ text: String) -> Bool {
-        let value = normalizedSessionText(text)
-        return value.hasPrefix("objective:")
-            || value.hasPrefix("objectives:")
-            || value.hasPrefix("objetivo:")
-            || value.hasPrefix("objetivos:")
-            || value.hasPrefix("criterion:")
-            || value.hasPrefix("criteria:")
-            || value.hasPrefix("criterio:")
-            || value.hasPrefix("criterios:")
-            || value.hasPrefix("materials:")
-            || value.hasPrefix("material:")
-            || value.hasPrefix("materiales:")
-            || value.hasPrefix("evidence:")
-            || value.hasPrefix("evidencia:")
-    }
-
-    private func metadataValue(from text: String) -> String? {
-        guard let separator = text.firstIndex(of: ":") else { return nil }
-        let prefix = normalizedSessionText(String(text[..<separator]))
-        guard ["evidence", "evidencia"].contains(prefix) else { return nil }
-        return String(text[text.index(after: separator)...]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func materialItems(from material: String) -> [String] {
-        let items = material
-            .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: ".")) }
-            .filter { !$0.isEmpty }
-        return items.isEmpty ? [material] : items
-    }
-
-    private func timelineMarker(from title: String) -> String? {
-        if let range = title.range(of: #"^[0-9]{1,3}\s*(?:'|’|min)?\s*[-–—]\s*[0-9]{1,3}\s*(?:'|’|min)?"#, options: .regularExpression) {
-            return String(title[range])
-        }
-        if let range = title.range(of: #"\([0-9]{1,3}\s*(?:'|’|min)\)"#, options: .regularExpression) {
-            return String(title[range]).trimmingCharacters(in: CharacterSet(charactersIn: "()"))
-        }
-        return nil
-    }
-
-    private func cleanTimelineTitle(_ title: String) -> String {
-        var result = title
-            .replacingOccurrences(of: #"^[0-9]{1,3}\s*(?:'|’|min)?\s*[-–—]\s*[0-9]{1,3}\s*(?:'|’|min)?\s*:?\s*"#, with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if result.isEmpty { result = title }
-        return result
-    }
-
-    private func looksLikeTimelineTitle(_ title: String) -> Bool {
-        timelineMarker(from: title) != nil ||
-            normalizedSessionText(title).hasPrefix("block ") ||
-            normalizedSessionText(title).hasPrefix("bloque ") ||
-            normalizedSessionText(title).hasPrefix("break") ||
-            normalizedSessionText(title).hasPrefix("descanso")
-    }
-
-    private func normalizedSessionText(_ value: String) -> String {
-        value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     @MainActor

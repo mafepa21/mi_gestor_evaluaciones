@@ -144,6 +144,75 @@ struct LearningSituationSessionSectionDraft: Identifiable, Codable {
     }
 }
 
+/// Una actividad ejecutable por el docente. Se mantiene separada de las secciones
+/// narrativas para que la ficha de sesión pueda mostrar una secuencia accionable
+/// sin perder la compatibilidad con documentos antiguos.
+struct LearningSituationSessionActivityDraft: Identifiable, Codable {
+    let id: UUID
+    var timeLabel: String
+    var phase: String
+    var activity: String
+    var teacherActions: String
+    var studentActions: String
+    var clilFocus: String
+    var evidence: String
+    var materials: String
+    var adaptations: String
+
+    init(
+        timeLabel: String,
+        phase: String = "",
+        activity: String,
+        teacherActions: String = "",
+        studentActions: String = "",
+        clilFocus: String = "",
+        evidence: String = "",
+        materials: String = "",
+        adaptations: String = ""
+    ) {
+        self.id = UUID()
+        self.timeLabel = timeLabel
+        self.phase = phase
+        self.activity = activity
+        self.teacherActions = teacherActions
+        self.studentActions = studentActions
+        self.clilFocus = clilFocus
+        self.evidence = evidence
+        self.materials = materials
+        self.adaptations = adaptations
+    }
+}
+
+/// Payload versionado que vive en `developmentJson`. La forma antigua era un
+/// array de secciones, por lo que el lector ofrece fallback para no romper planes
+/// ya guardados.
+struct LearningSituationSessionDevelopmentPayload: Codable {
+    var schemaVersion: Int
+    var sections: [LearningSituationSessionSectionDraft]
+    var activities: [LearningSituationSessionActivityDraft]
+
+    init(
+        schemaVersion: Int = 2,
+        sections: [LearningSituationSessionSectionDraft],
+        activities: [LearningSituationSessionActivityDraft]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.sections = sections
+        self.activities = activities
+    }
+
+    static func decode(from json: String) -> Self? {
+        guard let data = json.data(using: .utf8) else { return nil }
+        if let payload = try? JSONDecoder().decode(Self.self, from: data) {
+            return payload
+        }
+        guard let sections = try? JSONDecoder().decode([LearningSituationSessionSectionDraft].self, from: data) else {
+            return nil
+        }
+        return Self(schemaVersion: 1, sections: sections, activities: [])
+    }
+}
+
 struct LearningSituationSessionPlanDraft: Identifiable, Codable {
     let id: UUID
     var sessionNumber: Int
@@ -155,6 +224,7 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
     var criteria: [String]
     var material: String
     var development: [LearningSituationSessionSectionDraft]
+    var activities: [LearningSituationSessionActivityDraft]
     var adaptations: [String]
 
     init(
@@ -167,6 +237,7 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         criteria: [String],
         material: String,
         development: [LearningSituationSessionSectionDraft],
+        activities: [LearningSituationSessionActivityDraft] = [],
         adaptations: [String]
     ) {
         self.id = UUID()
@@ -179,13 +250,46 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         self.criteria = criteria
         self.material = material
         self.development = development
+        self.activities = activities
         self.adaptations = adaptations
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case id, sessionNumber, sourceLabel, title, sessionType, effectiveMinutes,
+             objective, criteria, material, development, activities, adaptations
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        sessionNumber = try container.decode(Int.self, forKey: .sessionNumber)
+        sourceLabel = try container.decode(String.self, forKey: .sourceLabel)
+        title = try container.decode(String.self, forKey: .title)
+        sessionType = try container.decode(String.self, forKey: .sessionType)
+        effectiveMinutes = try container.decode(Int.self, forKey: .effectiveMinutes)
+        objective = try container.decode(String.self, forKey: .objective)
+        criteria = try container.decode([String].self, forKey: .criteria)
+        material = try container.decode(String.self, forKey: .material)
+        development = try container.decode([LearningSituationSessionSectionDraft].self, forKey: .development)
+        activities = try container.decodeIfPresent([LearningSituationSessionActivityDraft].self, forKey: .activities) ?? []
+        adaptations = try container.decode([String].self, forKey: .adaptations)
+    }
+
     var developmentSummary: String {
-        development.map { section in
+        let sectionSummary = development.map { section in
             ([section.title] + section.lines).joined(separator: "\n")
         }.joined(separator: "\n\n")
+        let activitySummary = activities.map { activity in
+            [
+                [activity.timeLabel, activity.phase].filter { !$0.isEmpty }.joined(separator: " · "),
+                activity.activity,
+                activity.teacherActions.isEmpty ? nil : "Teacher: \(activity.teacherActions)",
+                activity.studentActions.isEmpty ? nil : "Students: \(activity.studentActions)",
+                activity.clilFocus.isEmpty ? nil : "CLIL: \(activity.clilFocus)",
+                activity.evidence.isEmpty ? nil : "Evidence: \(activity.evidence)"
+            ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+        }.joined(separator: "\n\n")
+        return [sectionSummary, activitySummary].filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
 }
 
@@ -686,6 +790,7 @@ private struct ParsedSessionPlan {
     let criteria: [String]
     let material: String
     let development: [LearningSituationSessionSectionDraft]
+    let activities: [LearningSituationSessionActivityDraft]
     let adaptations: [String]
 }
 
@@ -788,6 +893,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
                     criteria: parsed.criteria,
                     material: parsed.material,
                     development: parsed.development,
+                    activities: parsed.activities,
                     adaptations: parsed.adaptations
                 )
             })
@@ -932,10 +1038,13 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let criteria: [String]
         let material: String
         let longSections: [LearningSituationSessionSectionDraft]
+        let longActivities: [LearningSituationSessionActivityDraft]
         let longMinutes: Int?
         let shortSections: [LearningSituationSessionSectionDraft]
+        let shortActivities: [LearningSituationSessionActivityDraft]
         let shortMinutes: Int?
         let sharedSections: [LearningSituationSessionSectionDraft]
+        let sharedActivities: [LearningSituationSessionActivityDraft]
         let adaptations: [String]
     }
 
@@ -989,6 +1098,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 criteria: week.criteria,
                 material: week.material,
                 development: week.longSections + week.sharedSections,
+                activities: week.longActivities + week.sharedActivities,
                 adaptations: week.adaptations
             ))
             plans.append(LearningSituationSessionPlanDraft(
@@ -1001,15 +1111,15 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 criteria: week.criteria,
                 material: week.material,
                 development: week.shortSections + week.sharedSections,
+                activities: week.shortActivities + week.sharedActivities,
                 adaptations: week.adaptations
             ))
         }
 
         // El documento es el mismo para los dos grupos: lo que cambia es el orden dentro de la
-        // semana (el bloque largo cae en el día de sesión doble del grupo). La app todavía no
-        // ubica las sesiones automáticamente contra el horario, así que se avisa en vez de
-        // decidir por el docente.
-        warnings.append("Formato semanal: cada semana se importa como dos sesiones (bloque largo de 90′ y bloque corto de 30′). Al ubicarlas, el bloque largo va en el día de sesión doble del grupo y el corto en el simple; el orden dentro de la semana cambia entre grupos.")
+        // semana. La pantalla de programación usará la etiqueta del bloque para ubicar el largo
+        // sobre dos franjas consecutivas y el corto sobre una franja simple.
+        warnings.append("Formato semanal: cada semana se importa como dos sesiones (bloque largo y bloque corto). La previsualización ubicará el bloque largo en dos franjas consecutivas y el corto en una franja simple; si el horario no permite distinguirlas, mostrará un aviso para revisión docente.")
         let missingObjective = plans.filter { $0.objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
         if missingObjective > 0 {
             warnings.append("\(missingObjective) bloques no tienen objetivo reconocido.")
@@ -1042,8 +1152,11 @@ struct LearningSituationSessionSequenceDocumentImportService {
         var fichaTitle = ""
 
         var longSections: [LearningSituationSessionSectionDraft] = []
+        var longActivities: [LearningSituationSessionActivityDraft] = []
         var shortSections: [LearningSituationSessionSectionDraft] = []
+        var shortActivities: [LearningSituationSessionActivityDraft] = []
         var sharedSections: [LearningSituationSessionSectionDraft] = []
+        var sharedActivities: [LearningSituationSessionActivityDraft] = []
         var adaptations: [String] = []
 
         // Destino actual: antes del primer "BLOQUE …" y después de la última tabla del bloque
@@ -1176,6 +1289,14 @@ struct LearningSituationSessionSequenceDocumentImportService {
                     continue
                 }
                 if isTimeTable(rows) {
+                    let activities = timeTableActivities(rows)
+                    if reachedFinalSections || target == nil {
+                        sharedActivities.append(contentsOf: activities)
+                    } else if target == .long {
+                        longActivities.append(contentsOf: activities)
+                    } else {
+                        shortActivities.append(contentsOf: activities)
+                    }
                     for line in timeTableLines(rows) { appendLine(line) }
                     continue
                 }
@@ -1212,10 +1333,13 @@ struct LearningSituationSessionSequenceDocumentImportService {
             criteria: criterionCodes(in: criteriaRaw),
             material: material,
             longSections: longSections,
+            longActivities: longActivities,
             longMinutes: longMinutes,
             shortSections: shortSections,
+            shortActivities: shortActivities,
             shortMinutes: shortMinutes,
             sharedSections: sharedSections,
+            sharedActivities: sharedActivities,
             adaptations: adaptations
         )
     }
@@ -1266,7 +1390,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
             ?? inferredMinutes(from: development)
         return ParsedSessionPlan(
             title: title, sessionType: type, effectiveMinutes: minutes, objective: objective,
-            criteria: criteria, material: material, development: development, adaptations: adaptations
+            criteria: criteria, material: material, development: development, activities: [],
+            adaptations: adaptations
         )
     }
 
@@ -1412,6 +1537,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let teacherIndex = columnIndex(["teacher", "profesor", "docente"])
         let studentIndex = columnIndex(["student", "alumno"])
         let evidenceIndex = columnIndex(["evidence", "evidencia"])
+        let clilIndex = columnIndex(["clil", "language", "lengua", "scaffolding", "andamiaje"])
+        let materialsIndex = columnIndex(["material", "materials", "materiales"])
+        let adaptationsIndex = columnIndex(["adaptation", "adaptaciones", "inclusion", "inclusion"])
         func cell(_ row: [String], _ index: Int?) -> String? {
             guard let index, index < row.count else { return nil }
             let value = row[index].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1431,7 +1559,57 @@ struct LearningSituationSessionSequenceDocumentImportService {
             if let teacher { extras.append("Profesorado: \(teacher)") }
             if let student { extras.append("Alumnado: \(student)") }
             if let evidence { extras.append("Evidencia: \(evidence)") }
+            if let clil = cell(row, clilIndex) { extras.append("CLIL: \(clil)") }
+            if let materials = cell(row, materialsIndex) { extras.append("Material: \(materials)") }
+            if let adaptations = cell(row, adaptationsIndex) { extras.append("Adaptaciones: \(adaptations)") }
             return extras.isEmpty ? head : "\(head) (\(extras.joined(separator: "; ")))"
+        }
+    }
+
+    /// Convierte una tabla horaria en actividades tipadas. Las columnas son tolerantes
+    /// a español/inglés para que el documento sea legible por el profesor y estable
+    /// para el importador.
+    private func timeTableActivities(_ rows: [[String]]) -> [LearningSituationSessionActivityDraft] {
+        guard let header = rows.first else { return [] }
+        let normalizedHeader = header.map(normalized)
+        func columnIndex(_ candidates: [String]) -> Int? {
+            normalizedHeader.firstIndex { column in
+                candidates.contains { column.contains($0) }
+            }
+        }
+        func cell(_ row: [String], _ index: Int?) -> String {
+            guard let index, index < row.count else { return "" }
+            let value = row[index].trimmingCharacters(in: .whitespacesAndNewlines)
+            return value == "—" || value == "-" ? "" : value
+        }
+        let timeIndex = columnIndex(["time", "hora", "tiempo"])
+        let phaseIndex = columnIndex(["phase", "fase"])
+        let activityIndex = columnIndex(["activity", "actividad", "task", "tarea"])
+        let teacherIndex = columnIndex(["teacher", "profesor", "docente"])
+        let studentIndex = columnIndex(["student", "alumno", "learner", "alumnado"])
+        let clilIndex = columnIndex(["clil", "language", "lengua", "scaffolding", "andamiaje"])
+        let evidenceIndex = columnIndex(["evidence", "evidencia", "assessment", "evaluacion"])
+        let materialsIndex = columnIndex(["material", "materials", "materiales"])
+        let adaptationsIndex = columnIndex(["adaptation", "adaptaciones", "inclusion", "inclusion"])
+
+        return rows.dropFirst().compactMap { row in
+            let activity = cell(row, activityIndex)
+            let fallback = row.dropFirst().map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && $0 != "—" && $0 != "-" }
+                .joined(separator: " · ")
+            let resolvedActivity = activity.isEmpty ? fallback : activity
+            guard !resolvedActivity.isEmpty else { return nil }
+            return LearningSituationSessionActivityDraft(
+                timeLabel: cell(row, timeIndex),
+                phase: cell(row, phaseIndex),
+                activity: resolvedActivity,
+                teacherActions: cell(row, teacherIndex),
+                studentActions: cell(row, studentIndex),
+                clilFocus: cell(row, clilIndex),
+                evidence: cell(row, evidenceIndex),
+                materials: cell(row, materialsIndex),
+                adaptations: cell(row, adaptationsIndex)
+            )
         }
     }
 
@@ -1457,6 +1635,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
         var evidenceFromFicha = ""
 
         var development: [LearningSituationSessionSectionDraft] = []
+        var activities: [LearningSituationSessionActivityDraft] = []
         var adaptations: [String] = []
         var currentSectionTitle: String?
         var currentLines: [String] = []
@@ -1551,6 +1730,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
                     .filter { row in row.contains { !$0.isEmpty } }
                 guard !rows.isEmpty else { continue }
                 if isTimeTable(rows) {
+                    activities.append(contentsOf: timeTableActivities(rows))
                     for line in timeTableLines(rows) { appendLine(line) }
                 } else if let header = rows.first, header.count >= 2 {
                     // Tabla "ficha" etiqueta|valor (p.ej. "Item | Detail" + filas "Specific
@@ -1609,7 +1789,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let criteria = criterionCodes(in: criteriaRaw)
         return ParsedSessionPlan(
             title: title, sessionType: sessionType, effectiveMinutes: minutes, objective: objective,
-            criteria: criteria, material: material, development: development, adaptations: adaptations
+            criteria: criteria, material: material, development: development, activities: activities,
+            adaptations: adaptations
         )
     }
 

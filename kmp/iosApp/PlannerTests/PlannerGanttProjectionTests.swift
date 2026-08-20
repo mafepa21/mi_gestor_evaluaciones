@@ -1,4 +1,5 @@
 import XCTest
+import MiGestorKit
 @testable import MiGestorKMPMac
 
 final class PlannerGanttProjectionTests: XCTestCase {
@@ -136,6 +137,57 @@ final class PlannerGanttProjectionTests: XCTestCase {
         ]
 
         XCTAssertTrue(LearningSituationScheduleProjection.hasDuplicateDestinations(slots))
+    }
+
+    func testScheduleProjectionMapsLongAndShortPlansToTheirOwnWeekdayPattern() {
+        let calendar = Calendar(identifier: .iso8601)
+        let monday = calendar.date(from: DateComponents(year: 2026, month: 3, day: 23))!
+        let scheduleSlots = [
+            TeacherScheduleSlot(id: 1, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 1, startTime: "09:00", endTime: "09:55", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 2, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 1, startTime: "09:55", endTime: "10:50", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 3, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 5, startTime: "12:00", endTime: "12:30", weeklyTemplateId: nil)
+        ]
+        let plans = [
+            LearningSituationSessionPlanDraft(
+                sessionNumber: 1,
+                sourceLabel: "WEEK 1 · LONG BLOCK",
+                title: "Long block",
+                sessionType: "Long block",
+                effectiveMinutes: 90,
+                objective: "Objective",
+                criteria: [],
+                material: "",
+                development: [],
+                adaptations: []
+            ),
+            LearningSituationSessionPlanDraft(
+                sessionNumber: 2,
+                sourceLabel: "WEEK 1 · SHORT BLOCK",
+                title: "Short block",
+                sessionType: "Short block",
+                effectiveMinutes: 30,
+                objective: "Objective",
+                criteria: [],
+                material: "",
+                development: [],
+                adaptations: []
+            )
+        ]
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: plans,
+            startDate: monday,
+            template: scheduleSlots,
+            periodForSlot: { slot in Int(slot.id) }
+        )
+
+        XCTAssertTrue(projection.warnings.isEmpty)
+        XCTAssertEqual(projection.slots.map { $0.planSessionNumber }, [1, 2])
+        XCTAssertEqual(projection.slots[0].occupiedPeriods, [1, 2])
+        XCTAssertEqual(projection.slots[0].startTime, "09:00")
+        XCTAssertEqual(projection.slots[0].endTime, "10:50")
+        XCTAssertEqual(projection.slots[1].occupiedPeriods, [3])
+        XCTAssertFalse(LearningSituationScheduleProjection.hasDuplicateDestinations(projection.slots))
     }
 
     func testIdenticalSequenceHashesShareOneGanttProjection() {

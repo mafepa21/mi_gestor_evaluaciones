@@ -11,10 +11,41 @@ struct LearningSituationScheduledSlot: Identifiable {
     let teacherScheduleSlotId: Int64?
     let startTime: String
     let endTime: String
+    let planSessionNumber: Int?
+    let blockKind: String?
+    let occupiedPeriods: [Int]
     var isSelected = true
 
+    init(
+        date: Date,
+        period: Int,
+        teacherScheduleSlotId: Int64?,
+        startTime: String,
+        endTime: String,
+        planSessionNumber: Int? = nil,
+        blockKind: String? = nil,
+        occupiedPeriods: [Int] = [],
+        isSelected: Bool = true
+    ) {
+        self.date = date
+        self.period = period
+        self.teacherScheduleSlotId = teacherScheduleSlotId
+        self.startTime = startTime
+        self.endTime = endTime
+        self.planSessionNumber = planSessionNumber
+        self.blockKind = blockKind
+        self.occupiedPeriods = occupiedPeriods
+        self.isSelected = isSelected
+    }
+
     var label: String {
-        "\(date.formatted(date: .abbreviated, time: .omitted)) · \(startTime)-\(endTime)"
+        let planLabel = planSessionNumber.map { "Sesión \($0) · " } ?? ""
+        let blockLabel = blockKind.map { "\($0) · " } ?? ""
+        return "\(planLabel)\(blockLabel)\(date.formatted(date: .abbreviated, time: .omitted)) · \(startTime)-\(endTime)"
+    }
+
+    var destinationPeriods: [Int] {
+        occupiedPeriods.isEmpty ? [period] : occupiedPeriods
     }
 }
 
@@ -36,21 +67,222 @@ enum LearningSituationScheduleProjection {
         let calendar = Calendar(identifier: .iso8601)
         var seen = Set<ScheduledDestination>()
         for slot in slots {
-            let destination = ScheduledDestination(
-                date: calendar.startOfDay(for: slot.date),
-                period: slot.period
-            )
-            if !seen.insert(destination).inserted {
-                return true
+            for period in slot.destinationPeriods {
+                let destination = ScheduledDestination(
+                    date: calendar.startOfDay(for: slot.date),
+                    period: period
+                )
+                if !seen.insert(destination).inserted {
+                    return true
+                }
             }
         }
         return false
+    }
+
+    static func planAwareSlots(
+        plans: [LearningSituationSessionPlanDraft],
+        startDate: Date,
+        template: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> (slots: [LearningSituationScheduledSlot], warnings: [String]) {
+        let orderedPlans = plans.sorted { $0.sessionNumber < $1.sessionNumber }
+        guard !orderedPlans.isEmpty, !template.isEmpty else { return ([], []) }
+        let calendar = Calendar(identifier: .iso8601)
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        let firstWeekday = calendar.component(.weekday, from: normalizedStart)
+        let daysFromMonday = (firstWeekday + 5) % 7
+        let firstWeekStart = calendar.date(byAdding: .day, value: -daysFromMonday, to: normalizedStart) ?? normalizedStart
+        let sortedTemplate = template.sorted {
+            Int($0.dayOfWeek) == Int($1.dayOfWeek) ? $0.startTime < $1.startTime : $0.dayOfWeek < $1.dayOfWeek
+        }
+
+        let weeklyPlans = orderedPlans.contains(where: isWeeklyBlockPlan)
+        guard weeklyPlans else {
+            var sequential: [LearningSituationScheduledSlot] = []
+            var date = normalizedStart
+            var templateOffset = 0
+            while sequential.count < orderedPlans.count {
+                let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+                for slot in sortedTemplate where Int(slot.dayOfWeek) == weekday {
+                    let period = periodForSlot(slot)
+                    sequential.append(LearningSituationScheduledSlot(
+                        date: date,
+                        period: period,
+                        teacherScheduleSlotId: slot.id,
+                        startTime: slot.startTime,
+                        endTime: slot.endTime,
+                        planSessionNumber: orderedPlans[templateOffset].sessionNumber,
+                        blockKind: orderedPlans[templateOffset].sessionType,
+                        occupiedPeriods: [period]
+                    ))
+                    templateOffset += 1
+                    if sequential.count == orderedPlans.count { break }
+                }
+                guard let nextDate = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+                date = nextDate
+            }
+            return (sequential, sequential.count == orderedPlans.count ? [] : ["No hay suficientes franjas para todas las sesiones importadas."])
+        }
+
+        let groupedPlans = Dictionary(grouping: orderedPlans) { max(($0.sessionNumber + 1) / 2, 1) }
+        var assignments: [LearningSituationScheduledSlot] = []
+        var warnings: [String] = []
+        for weekIndex in groupedPlans.keys.sorted() {
+            let weekPlans = groupedPlans[weekIndex, default: []].sorted { $0.sessionNumber < $1.sessionNumber }
+            let weekStart = calendar.date(byAdding: .day, value: (weekIndex - 1) * 7, to: firstWeekStart) ?? firstWeekStart
+            let longPlans = weekPlans.filter { isWeeklyBlockPlan($0) && isLongPlan($0) }
+            let shortPlans = weekPlans.filter { isWeeklyBlockPlan($0) && isShortPlan($0) }
+            let genericPlans = weekPlans.filter { !isWeeklyBlockPlan($0) }
+            var usedDestinations = Set<ScheduledDestination>()
+
+            let dayCandidates = (0..<7).compactMap { dayOffset -> DayCandidates? in
+                guard let date = calendar.date(byAdding: .day, value: dayOffset, to: weekStart), date >= normalizedStart else { return nil }
+                let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+                let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
+                return DayCandidates(
+                    date: date,
+                    long: longCandidate(on: date, slots: daySlots, periodForSlot: periodForSlot),
+                    short: shortCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+                )
+            }
+
+            for plan in longPlans {
+                guard let candidate = dayCandidates.lazy.compactMap({ $0.long }).first(where: { !collides($0, with: usedDestinations) }) else {
+                    warnings.append("La sesión \(plan.sessionNumber) requiere un bloque largo, pero el horario de esta semana no tiene dos franjas consecutivas.")
+                    continue
+                }
+                let assigned = withPlan(candidate, plan: plan)
+                assignments.append(assigned)
+                addDestinations(assigned, to: &usedDestinations)
+            }
+
+            for plan in shortPlans {
+                guard let candidate = dayCandidates.lazy.flatMap({ $0.short }).first(where: { !collides($0, with: usedDestinations) }) else {
+                    warnings.append("La sesión \(plan.sessionNumber) requiere un bloque corto, pero no hay una franja simple disponible en la semana.")
+                    continue
+                }
+                let assigned = withPlan(candidate, plan: plan)
+                assignments.append(assigned)
+                addDestinations(assigned, to: &usedDestinations)
+            }
+
+            for plan in genericPlans {
+                guard let candidate = dayCandidates.lazy.flatMap({ $0.short }).first(where: { !collides($0, with: usedDestinations) }) else {
+                    warnings.append("La sesión \(plan.sessionNumber) no se pudo ubicar automáticamente en esta semana.")
+                    continue
+                }
+                let assigned = withPlan(candidate, plan: plan)
+                assignments.append(assigned)
+                addDestinations(assigned, to: &usedDestinations)
+            }
+        }
+
+        return (assignments.sorted { $0.planSessionNumber ?? .max < $1.planSessionNumber ?? .max }, warnings)
+    }
+
+    private struct DayCandidates {
+        let date: Date
+        let long: LearningSituationScheduledSlot?
+        let short: [LearningSituationScheduledSlot]
     }
 
     private struct ScheduledDestination: Hashable {
         let date: Date
         let period: Int
     }
+
+    private static func isLongPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        return value.contains("long") || value.contains("largo") || value.contains("double") || value.contains("doble") || plan.effectiveMinutes >= 75
+    }
+
+    private static func isWeeklyBlockPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        let value = "\(plan.sessionType) \(plan.sourceLabel)".folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        return value.contains("long block") || value.contains("short block") || value.contains("bloque largo") || value.contains("bloque corto")
+    }
+
+    private static func isShortPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        return value.contains("short") || value.contains("corto") || value.contains("simple") || plan.effectiveMinutes > 0 && plan.effectiveMinutes < 75
+    }
+
+    private static func minutes(_ value: String) -> Int? {
+        let parts = value.split(separator: ":")
+        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return nil }
+        return hour * 60 + minute
+    }
+
+    private static func longCandidate(
+        on date: Date,
+        slots: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> LearningSituationScheduledSlot? {
+        let ordered = slots.sorted { $0.startTime < $1.startTime }
+        for slot in ordered {
+            guard let start = minutes(slot.startTime), let end = minutes(slot.endTime), end - start >= 75 else { continue }
+            let period = periodForSlot(slot)
+            return LearningSituationScheduledSlot(
+                date: date, period: period, teacherScheduleSlotId: slot.id,
+                startTime: slot.startTime, endTime: slot.endTime,
+                occupiedPeriods: [period]
+            )
+        }
+        for pair in zip(ordered, ordered.dropFirst()) {
+            guard let start = minutes(pair.0.startTime), let firstEnd = minutes(pair.0.endTime),
+                  let secondStart = minutes(pair.1.startTime), let end = minutes(pair.1.endTime),
+                  secondStart >= firstEnd, secondStart - firstEnd <= 10, end - start >= 75 else { continue }
+            let firstPeriod = periodForSlot(pair.0)
+            let secondPeriod = periodForSlot(pair.1)
+            return LearningSituationScheduledSlot(
+                date: date, period: firstPeriod, teacherScheduleSlotId: pair.0.id,
+                startTime: pair.0.startTime, endTime: pair.1.endTime,
+                occupiedPeriods: [firstPeriod, secondPeriod]
+            )
+        }
+        return nil
+    }
+
+    private static func shortCandidates(
+        on date: Date,
+        slots: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> [LearningSituationScheduledSlot] {
+        let longPeriods = longCandidate(on: date, slots: slots, periodForSlot: periodForSlot)?.destinationPeriods ?? []
+        return slots.sorted { $0.startTime < $1.startTime }.compactMap { slot in
+            let period = periodForSlot(slot)
+            guard !longPeriods.contains(period) else { return nil }
+            return LearningSituationScheduledSlot(
+                date: date, period: period, teacherScheduleSlotId: slot.id,
+                startTime: slot.startTime, endTime: slot.endTime,
+                occupiedPeriods: [period]
+            )
+        }
+    }
+
+    private static func collides(_ slot: LearningSituationScheduledSlot, with destinations: Set<ScheduledDestination>) -> Bool {
+        let date = Calendar(identifier: .iso8601).startOfDay(for: slot.date)
+        return slot.destinationPeriods.contains { destinations.contains(ScheduledDestination(date: date, period: $0)) }
+    }
+
+    private static func addDestinations(_ slot: LearningSituationScheduledSlot, to destinations: inout Set<ScheduledDestination>) {
+        let date = Calendar(identifier: .iso8601).startOfDay(for: slot.date)
+        slot.destinationPeriods.forEach { destinations.insert(ScheduledDestination(date: date, period: $0)) }
+    }
+
+    private static func withPlan(_ slot: LearningSituationScheduledSlot, plan: LearningSituationSessionPlanDraft) -> LearningSituationScheduledSlot {
+        LearningSituationScheduledSlot(
+            date: slot.date,
+            period: slot.period,
+            teacherScheduleSlotId: slot.teacherScheduleSlotId,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            planSessionNumber: plan.sessionNumber,
+            blockKind: plan.sessionType,
+            occupiedPeriods: slot.destinationPeriods
+        )
+    }
+
 }
 
 private struct LearningSituationBatchImportPresentation: Identifiable {
@@ -1242,8 +1474,16 @@ private struct LearningSituationScheduleSheet: View {
                 guard let url = urls.first else { return }
                 do {
                     var draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
-                    if situation.sessionCount > 0 && draft.plans.count != Int(situation.sessionCount) {
-                        draft.warnings.append("La situación indica \(situation.sessionCount) sesiones y el documento contiene \(draft.plans.count).")
+                    let weeklyPlanCount = draft.plans.filter { plan in
+                        let value = "\(plan.sessionType) \(plan.sourceLabel)".folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                        return value.contains("long block") || value.contains("short block") || value.contains("bloque largo") || value.contains("bloque corto")
+                    }.count
+                    let expectedPlanCount = weeklyPlanCount > 0 && weeklyPlanCount == draft.plans.count
+                        ? Int(situation.sessionCount) * 2
+                        : Int(situation.sessionCount)
+                    if situation.sessionCount > 0 && draft.plans.count != expectedPlanCount {
+                        let expectedLabel = expectedPlanCount == Int(situation.sessionCount) ? "sesiones" : "bloques (largo + corto por semana)"
+                        draft.warnings.append("La situación indica \(situation.sessionCount) semanas/sesiones y el documento contiene \(draft.plans.count) \(expectedLabel).")
                     }
                     sequenceDraft = draft
                     expandedPlanNumbers = Set(draft.plans.prefix(3).map(\.sessionNumber))
@@ -1531,6 +1771,37 @@ private struct LearningSituationScheduleSheet: View {
                             }
                         }
                     }
+                    if !plan.activities.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Actividades ejecutables", systemImage: "figure.run.square.stack")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(plan.activities) { activity in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                        if !activity.timeLabel.isEmpty {
+                                            Text(activity.timeLabel)
+                                                .font(.caption2.weight(.bold).monospacedDigit())
+                                                .foregroundStyle(EvaluationDesign.accent)
+                                        }
+                                        if !activity.phase.isEmpty {
+                                            Text(activity.phase)
+                                                .font(.caption.weight(.semibold))
+                                        }
+                                    }
+                                    Text(activity.activity)
+                                        .font(.caption.weight(.semibold))
+                                    activityDetail("Teacher", activity.teacherActions)
+                                    activityDetail("Students", activity.studentActions)
+                                    activityDetail("CLIL", activity.clilFocus)
+                                    activityDetail("Evidence", activity.evidence)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(EvaluationDesign.accentSoft.opacity(0.45), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                        }
+                    }
                     if !plan.adaptations.isEmpty {
                         Text(plan.adaptations.joined(separator: "\n"))
                             .font(.caption)
@@ -1566,6 +1837,15 @@ private struct LearningSituationScheduleSheet: View {
             .padding(16)
             .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+        }
+    }
+
+    @ViewBuilder
+    private func activityDetail(_ label: String, _ value: String) -> some View {
+        if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text("\(label): \(value)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -1629,24 +1909,37 @@ private struct LearningSituationScheduleSheet: View {
                 return
             }
             let ignoredDuplicates = rawTemplate.count - template.count
-            scheduleNotice = ignoredDuplicates > 0
-                ? "Se \(ignoredDuplicates == 1 ? "ha ignorado 1 franja duplicada" : "han ignorado \(ignoredDuplicates) franjas duplicadas") del horario para evitar sustituir sesiones."
-                : ""
-            var candidates: [LearningSituationScheduledSlot] = []
-            var date = startDate
-            let calendar = Calendar.current
-            while candidates.count < targetSessionCount {
-                let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
-                for slot in template.filter({ Int($0.dayOfWeek) == weekday }).sorted(by: { $0.startTime < $1.startTime }) {
-                    candidates.append(LearningSituationScheduledSlot(
-                        date: date, period: plannerPeriod(for: slot, allScheduleSlots: allScheduleSlots),
-                        teacherScheduleSlotId: slot.id, startTime: slot.startTime, endTime: slot.endTime
-                    ))
-                    if candidates.count == targetSessionCount { break }
-                }
-                date = calendar.date(byAdding: .day, value: 1, to: date) ?? date
+            var notices: [String] = []
+            if ignoredDuplicates > 0 {
+                notices.append("Se \(ignoredDuplicates == 1 ? "ha ignorado 1 franja duplicada" : "han ignorado \(ignoredDuplicates) franjas duplicadas") del horario.")
             }
-            slots = candidates
+            if let sequenceDraft {
+                let projection = LearningSituationScheduleProjection.planAwareSlots(
+                    plans: sequenceDraft.plans,
+                    startDate: startDate,
+                    template: template,
+                    periodForSlot: { self.plannerPeriod(for: $0, allScheduleSlots: allScheduleSlots) }
+                )
+                slots = projection.slots
+                notices.append(contentsOf: projection.warnings)
+            } else {
+                var candidates: [LearningSituationScheduledSlot] = []
+                var date = startDate
+                let calendar = Calendar.current
+                while candidates.count < targetSessionCount {
+                    let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+                    for slot in template.filter({ Int($0.dayOfWeek) == weekday }).sorted(by: { $0.startTime < $1.startTime }) {
+                        candidates.append(LearningSituationScheduledSlot(
+                            date: date, period: plannerPeriod(for: slot, allScheduleSlots: allScheduleSlots),
+                            teacherScheduleSlotId: slot.id, startTime: slot.startTime, endTime: slot.endTime
+                        ))
+                        if candidates.count == targetSessionCount { break }
+                    }
+                    date = calendar.date(byAdding: .day, value: 1, to: date) ?? date
+                }
+                slots = candidates
+            }
+            scheduleNotice = notices.joined(separator: " ")
         } catch {
             errorMessage = error.localizedDescription
         }

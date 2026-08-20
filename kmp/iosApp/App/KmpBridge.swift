@@ -6277,7 +6277,12 @@ final class KmpBridge: ObservableObject {
         )
         let calendar = Calendar(identifier: .iso8601)
         for (index, slot) in scheduledSlots.enumerated() {
-            let detailedDraft = index < orderedDraftPlans.count ? orderedDraftPlans[index] : nil
+            let detailedDraft: LearningSituationSessionPlanDraft?
+            if let planSessionNumber = slot.planSessionNumber {
+                detailedDraft = orderedDraftPlans.first(where: { $0.sessionNumber == planSessionNumber })
+            } else {
+                detailedDraft = index < orderedDraftPlans.count ? orderedDraftPlans[index] : nil
+            }
             let components = calendar.dateComponents([.weekOfYear, .yearForWeekOfYear, .weekday], from: slot.date)
             let weekday = ((components.weekday ?? 2) + 5) % 7 + 1
             let weekNumber = components.weekOfYear ?? 1
@@ -6362,7 +6367,11 @@ final class KmpBridge: ObservableObject {
         var planIds: [Int: Int64] = [:]
         for plan in draft.plans {
             let criteriaJSON = String(data: try JSONEncoder().encode(plan.criteria), encoding: .utf8) ?? "[]"
-            let developmentJSON = String(data: try JSONEncoder().encode(plan.development), encoding: .utf8) ?? "[]"
+            let developmentPayload = LearningSituationSessionDevelopmentPayload(
+                sections: plan.development,
+                activities: plan.activities
+            )
+            let developmentJSON = String(data: try JSONEncoder().encode(developmentPayload), encoding: .utf8) ?? "{}"
             let adaptationsJSON = String(data: try JSONEncoder().encode(plan.adaptations), encoding: .utf8) ?? "[]"
             let planId = try await container.learningSituationsRepository.saveSessionPlan(
                 plan: LearningSituationSessionPlan(

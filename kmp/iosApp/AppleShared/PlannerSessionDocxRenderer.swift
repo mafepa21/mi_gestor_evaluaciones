@@ -76,35 +76,84 @@ struct PlannerSessionDocxRenderer {
         sessionNumber: Int
     ) -> [PlannerDocxXMLNode] {
         let wanted = normalize(sourceLabel)
-        let startIndex = blocks.firstIndex { block in
+        let sectionStartIndex = blocks.firstIndex { block in
             guard block.localName == "p" else { return false }
             let text = normalize(block.textContent)
             if !wanted.isEmpty, text == wanted || text.hasPrefix(wanted) || wanted.hasPrefix(text) {
                 return true
             }
-            return sessionNumber > 0 && isSessionHeader(text, number: sessionNumber)
+            return sessionNumber > 0 && isSectionHeader(text, number: sessionNumber)
         }
 
-        guard let startIndex else {
+        guard let sectionStartIndex else {
             // A hand-authored session can omit the canonical header. Rendering the
             // complete document keeps the original material available through the
             // in-app viewer; QuickLook remains available for the exact source file.
             return blocks
         }
 
-        let endIndex = blocks[(startIndex + 1)...].firstIndex { block in
+        let sectionEndIndex = blocks[(sectionStartIndex + 1)...].firstIndex { block in
             guard block.localName == "p" else { return false }
-            return isAnySessionHeader(normalize(block.textContent))
+            return isAnySectionHeader(normalize(block.textContent))
         } ?? blocks.count
+        let blockKind = requestedBlockKind(wanted)
+        let startIndex: Int
+        if let blockKind {
+            startIndex = blocks[sectionStartIndex..<sectionEndIndex].firstIndex { block in
+                guard block.localName == "p" else { return false }
+                return isBlockHeader(normalize(block.textContent), kind: blockKind)
+            } ?? sectionStartIndex
+        } else {
+            startIndex = sectionStartIndex
+        }
+
+        let endIndex = blocks[(startIndex + 1)..<sectionEndIndex].firstIndex { block in
+            guard block.localName == "p" else { return false }
+            guard let blockKind else { return false }
+            return isBlockHeader(normalize(block.textContent), kind: blockKind.opposite)
+        } ?? sectionEndIndex
         return Array(blocks[startIndex..<endIndex])
     }
 
-    private func isSessionHeader(_ text: String, number: Int) -> Bool {
-        let pattern = #"^(?:sesion|sesiones|session|sessions)\s+#?"# + String(number) + #"\b"#
-        return text.range(of: pattern, options: .regularExpression) != nil
+    private enum BlockKind {
+        case long
+        case short
+
+        var opposite: BlockKind {
+            switch self {
+            case .long: return .short
+            case .short: return .long
+            }
+        }
     }
 
-    private func isAnySessionHeader(_ text: String) -> Bool {
+    private func requestedBlockKind(_ text: String) -> BlockKind? {
+        if text.contains("long block") || text.contains("bloque largo") || text.contains("double version") || text.contains("version doble") {
+            return .long
+        }
+        if text.contains("short block") || text.contains("bloque corto") || text.contains("simple version") || text.contains("version simple") {
+            return .short
+        }
+        return nil
+    }
+
+    private func isBlockHeader(_ text: String, kind: BlockKind) -> Bool {
+        switch kind {
+        case .long:
+            return text.hasPrefix("long block") || text.hasPrefix("bloque largo") || text.hasPrefix("double version") || text.hasPrefix("version doble")
+        case .short:
+            return text.hasPrefix("short block") || text.hasPrefix("bloque corto") || text.hasPrefix("simple version") || text.hasPrefix("version simple")
+        }
+    }
+
+    private func isSectionHeader(_ text: String, number: Int) -> Bool {
+        let pattern = #"^(?:sesion|sesiones|session|sessions)\s+#?"# + String(number) + #"\b"#
+        let weekPattern = #"^(?:semana|setmana|week)\s+#?"# + String(number) + #"\b"#
+        return text.range(of: pattern, options: .regularExpression) != nil
+            || text.range(of: weekPattern, options: .regularExpression) != nil
+    }
+
+    private func isAnySectionHeader(_ text: String) -> Bool {
         text.range(of: #"^(?:sesion|sesiones|session|sessions)\s+[0-9]+"#, options: .regularExpression) != nil
             || text.range(of: #"^(?:semana|setmana|week)\s+[0-9]+"#, options: .regularExpression) != nil
     }

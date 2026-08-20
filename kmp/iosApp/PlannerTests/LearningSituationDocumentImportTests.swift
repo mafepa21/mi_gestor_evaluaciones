@@ -19,6 +19,36 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(batch.failures.count, urls.count)
     }
 
+    func testWeeklyTableImportsExecutableActivitiesAndClilFields() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("WEEK 1 - Cooperative challenge"),
+            .paragraph("Objective: Build a safe cooperative routine."),
+            .paragraph("LONG BLOCK (90 minutes)"),
+            .table([
+                ["Time", "Phase", "Activity", "Teacher instructions", "Student actions", "CLIL", "Evidence"],
+                ["0-10", "Warm-up", "Traffic lights", "Model stop and go.", "Move and freeze.", "Use: stop, go, freeze.", "Safe response"]
+            ]),
+            .paragraph("SHORT BLOCK (30 minutes)"),
+            .table([
+                ["Time", "Phase", "Activity", "Teacher instructions", "Student actions", "CLIL", "Evidence"],
+                ["0-30", "Practice", "Peer coaching", "Ask one open question.", "Give one feedback point.", "Sentence stem: I noticed...", "Peer note"]
+            ])
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("fixture".utf8),
+            url: URL(fileURLWithPath: "/tmp/weekly-session-fixture.docx")
+        )
+
+        XCTAssertEqual(draft.plans.count, 2)
+        XCTAssertEqual(draft.plans[0].effectiveMinutes, 90)
+        XCTAssertEqual(draft.plans[1].effectiveMinutes, 30)
+        XCTAssertEqual(draft.plans[0].activities.first?.teacherActions, "Model stop and go.")
+        XCTAssertEqual(draft.plans[0].activities.first?.clilFocus, "Use: stop, go, freeze.")
+        XCTAssertEqual(draft.plans[1].activities.first?.evidence, "Peer note")
+    }
+
     func testSessionDocxRendererKeepsTablesAndImagesInSessionOrder() throws {
         let docxURL = try makeMinimalDocx()
         defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
@@ -35,6 +65,27 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertTrue(result.html.contains("<table>"))
         XCTAssertTrue(result.html.contains("data:image/png;base64,"))
         XCTAssertLessThan(result.html.range(of: "<h1>")!.lowerBound, result.html.range(of: "<table>")!.lowerBound)
+    }
+
+    func testSessionDocxRendererSelectsOnlyRequestedWeeklyBlock() throws {
+        let docxURL = try makeWeeklyDocx()
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let longResult = try PlannerSessionDocxRenderer().render(
+            from: docxURL,
+            sourceLabel: "WEEK 1 · BLOQUE LARGO (90′)",
+            sessionNumber: 1
+        )
+        let shortResult = try PlannerSessionDocxRenderer().render(
+            from: docxURL,
+            sourceLabel: "WEEK 1 · BLOQUE CORTO (30′)",
+            sessionNumber: 1
+        )
+
+        XCTAssertTrue(longResult.html.contains("Long-only activity"))
+        XCTAssertFalse(longResult.html.contains("Short-only activity"))
+        XCTAssertTrue(shortResult.html.contains("Short-only activity"))
+        XCTAssertFalse(shortResult.html.contains("Long-only activity"))
     }
 
     private func makeMinimalDocx() throws -> URL {
@@ -65,6 +116,34 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         try Data(relationships.utf8).write(to: relationshipsDirectory.appendingPathComponent("document.xml.rels"))
         try Data([0x89, 0x50, 0x4E, 0x47]).write(to: mediaDirectory.appendingPathComponent("image1.png"))
 
+        let archiveURL = root.appendingPathComponent("session.docx")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.currentDirectoryURL = root
+        process.arguments = ["-q", "-r", archiveURL.path, "word"]
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+        return archiveURL
+    }
+
+    private func makeWeeklyDocx() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("planner-weekly-docx-\(UUID().uuidString)", isDirectory: true)
+        let wordDirectory = root.appendingPathComponent("word", isDirectory: true)
+        try FileManager.default.createDirectory(at: wordDirectory, withIntermediateDirectories: true)
+        let document = """
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+          <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>WEEK 1 - Sample week</w:t></w:r></w:p>
+          <w:p><w:r><w:t>LONG BLOCK | 90 effective minutes</w:t></w:r></w:p>
+          <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Long-only activity</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+          <w:p><w:r><w:t>SHORT BLOCK | 30 effective minutes</w:t></w:r></w:p>
+          <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Short-only activity</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+          <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>WEEK 2 - Next week</w:t></w:r></w:p>
+          <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Next-week activity</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+        </w:body></w:document>
+        """
+        try Data(document.utf8).write(to: wordDirectory.appendingPathComponent("document.xml"))
         let archiveURL = root.appendingPathComponent("session.docx")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")

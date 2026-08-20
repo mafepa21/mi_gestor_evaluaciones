@@ -52,13 +52,14 @@ extension PlannerWorkspaceViewModel {
     }
 
     private func firstDevelopmentPreview(from json: String?) -> String? {
-        guard let json, let data = json.data(using: .utf8),
-              let sections = try? JSONDecoder().decode([LearningSituationSessionSectionDraft].self, from: data) else {
-            return nil
-        }
+        guard let json, let payload = LearningSituationSessionDevelopmentPayload.decode(from: json) else { return nil }
 
         let ignoredPrefixes = ["evidencia", "evidence", "objetivo", "objectives", "criterio", "criteria", "material", "materials"]
-        for section in sections {
+        for activity in payload.activities {
+            let value = activity.activity.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty { return value }
+        }
+        for section in payload.sections {
             let title = section.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let normalizedTitle = title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
             guard !ignoredPrefixes.contains(where: { normalizedTitle.hasPrefix($0) }) else { continue }

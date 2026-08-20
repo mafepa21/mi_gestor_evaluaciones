@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Secuenciación de sesiones CLIL: contrato semanal importable con bloques `LONG BLOCK` y `SHORT BLOCK`, actividades estructuradas en inglés, evidencias, materiales, adaptaciones y comentarios CLIL; corpus normalizado en 55 Markdown y 55 DOCX.
 - Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
 - AppIcon nativo de Apple integrado mediante `AppIcon.icon` de Icon Composer para el target KMP de iPadOS y macOS, con rendiciones `Default` y `Dark` en una única fuente compartida.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
@@ -56,6 +57,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Planificación de sesiones: la importación conserva actividades ejecutables dentro de un sobre versionado, la preview muestra Teacher/Students/CLIL/Evidence y la ficha de ejecución presenta una línea temporal ampliada con materiales y adaptaciones.
+- Planificación de bloques: una secuencia semanal asigna el bloque largo a dos franjas consecutivas y el corto a una franja simple aunque los días del grupo estén invertidos; las ambigüedades quedan visibles como warning.
 - Planificación: las vistas Semana y Día muestran el contexto de la Situación de Aprendizaje, el título de la sesión, objetivo, actividad y material; el grid semanal muestra además grupo, número y título de sesión, resumen operativo y colisiones resumidas; el detalle incorpora una reconstrucción enriquecida del DOCX con tablas e imágenes y conserva QuickLook como respaldo nativo.
 - Planificación: la ficha de detalle de sesión convierte el guion importado en una vista docente operativa, con objetivo, métricas de tiempo, criterios, evidencias, material, saberes básicos, adaptaciones, bloques, pausas, roles de profesorado/alumnado y contexto desplegable; mantiene el DOCX reconstruido y el documento original como respaldo.
 - Planificación: la vista Semana permite ocultar el inspector lateral para ampliar el grid y elimina el aviso azul de ayuda del drag & drop, manteniendo el movimiento de sesiones operativo.

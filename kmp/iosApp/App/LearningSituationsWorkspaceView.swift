@@ -4,6 +4,13 @@ import MiGestorKit
 
 extension LearningSituation: @retroactive Identifiable {}
 
+struct LearningSituationScheduledDestination: Hashable {
+    let period: Int
+    let teacherScheduleSlotId: Int64?
+    let startTime: String
+    let endTime: String
+}
+
 struct LearningSituationScheduledSlot: Identifiable {
     let id = UUID()
     let date: Date
@@ -14,6 +21,7 @@ struct LearningSituationScheduledSlot: Identifiable {
     let planSessionNumber: Int?
     let blockKind: String?
     let occupiedPeriods: [Int]
+    let occupiedScheduleSlots: [LearningSituationScheduledDestination]
     var isSelected = true
 
     init(
@@ -25,6 +33,7 @@ struct LearningSituationScheduledSlot: Identifiable {
         planSessionNumber: Int? = nil,
         blockKind: String? = nil,
         occupiedPeriods: [Int] = [],
+        occupiedScheduleSlots: [LearningSituationScheduledDestination] = [],
         isSelected: Bool = true
     ) {
         self.date = date
@@ -35,6 +44,7 @@ struct LearningSituationScheduledSlot: Identifiable {
         self.planSessionNumber = planSessionNumber
         self.blockKind = blockKind
         self.occupiedPeriods = occupiedPeriods
+        self.occupiedScheduleSlots = occupiedScheduleSlots
         self.isSelected = isSelected
     }
 
@@ -45,7 +55,22 @@ struct LearningSituationScheduledSlot: Identifiable {
     }
 
     var destinationPeriods: [Int] {
-        occupiedPeriods.isEmpty ? [period] : occupiedPeriods
+        destinationSlots.map(\.period)
+    }
+
+    var destinationSlots: [LearningSituationScheduledDestination] {
+        if !occupiedScheduleSlots.isEmpty {
+            return occupiedScheduleSlots
+        }
+        let periods = occupiedPeriods.isEmpty ? [period] : occupiedPeriods
+        return periods.map {
+            LearningSituationScheduledDestination(
+                period: $0,
+                teacherScheduleSlotId: $0 == period ? teacherScheduleSlotId : nil,
+                startTime: $0 == period ? startTime : "",
+                endTime: $0 == period ? endTime : ""
+            )
+        }
     }
 }
 
@@ -114,7 +139,13 @@ enum LearningSituationScheduleProjection {
                         endTime: slot.endTime,
                         planSessionNumber: orderedPlans[templateOffset].sessionNumber,
                         blockKind: orderedPlans[templateOffset].sessionType,
-                        occupiedPeriods: [period]
+                        occupiedPeriods: [period],
+                        occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                            period: period,
+                            teacherScheduleSlotId: slot.id,
+                            startTime: slot.startTime,
+                            endTime: slot.endTime
+                        )]
                     ))
                     templateOffset += 1
                     if sequential.count == orderedPlans.count { break }
@@ -225,7 +256,13 @@ enum LearningSituationScheduleProjection {
             return LearningSituationScheduledSlot(
                 date: date, period: period, teacherScheduleSlotId: slot.id,
                 startTime: slot.startTime, endTime: slot.endTime,
-                occupiedPeriods: [period]
+                occupiedPeriods: [period],
+                occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                    period: period,
+                    teacherScheduleSlotId: slot.id,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime
+                )]
             )
         }
         for pair in zip(ordered, ordered.dropFirst()) {
@@ -237,7 +274,21 @@ enum LearningSituationScheduleProjection {
             return LearningSituationScheduledSlot(
                 date: date, period: firstPeriod, teacherScheduleSlotId: pair.0.id,
                 startTime: pair.0.startTime, endTime: pair.1.endTime,
-                occupiedPeriods: [firstPeriod, secondPeriod]
+                occupiedPeriods: [firstPeriod, secondPeriod],
+                occupiedScheduleSlots: [
+                    LearningSituationScheduledDestination(
+                        period: firstPeriod,
+                        teacherScheduleSlotId: pair.0.id,
+                        startTime: pair.0.startTime,
+                        endTime: pair.0.endTime
+                    ),
+                    LearningSituationScheduledDestination(
+                        period: secondPeriod,
+                        teacherScheduleSlotId: pair.1.id,
+                        startTime: pair.1.startTime,
+                        endTime: pair.1.endTime
+                    )
+                ]
             )
         }
         return nil
@@ -255,7 +306,13 @@ enum LearningSituationScheduleProjection {
             return LearningSituationScheduledSlot(
                 date: date, period: period, teacherScheduleSlotId: slot.id,
                 startTime: slot.startTime, endTime: slot.endTime,
-                occupiedPeriods: [period]
+                occupiedPeriods: [period],
+                occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                    period: period,
+                    teacherScheduleSlotId: slot.id,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime
+                )]
             )
         }
     }
@@ -279,7 +336,8 @@ enum LearningSituationScheduleProjection {
             endTime: slot.endTime,
             planSessionNumber: plan.sessionNumber,
             blockKind: plan.sessionType,
-            occupiedPeriods: slot.destinationPeriods
+            occupiedPeriods: slot.destinationPeriods,
+            occupiedScheduleSlots: slot.destinationSlots
         )
     }
 
@@ -1931,7 +1989,13 @@ private struct LearningSituationScheduleSheet: View {
                     for slot in template.filter({ Int($0.dayOfWeek) == weekday }).sorted(by: { $0.startTime < $1.startTime }) {
                         candidates.append(LearningSituationScheduledSlot(
                             date: date, period: plannerPeriod(for: slot, allScheduleSlots: allScheduleSlots),
-                            teacherScheduleSlotId: slot.id, startTime: slot.startTime, endTime: slot.endTime
+                            teacherScheduleSlotId: slot.id, startTime: slot.startTime, endTime: slot.endTime,
+                            occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                                period: plannerPeriod(for: slot, allScheduleSlots: allScheduleSlots),
+                                teacherScheduleSlotId: slot.id,
+                                startTime: slot.startTime,
+                                endTime: slot.endTime
+                            )]
                         ))
                         if candidates.count == targetSessionCount { break }
                     }

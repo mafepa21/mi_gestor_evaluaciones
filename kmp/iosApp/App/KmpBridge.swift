@@ -6287,38 +6287,41 @@ final class KmpBridge: ObservableObject {
             let weekday = ((components.weekday ?? 2) + 5) % 7 + 1
             let weekNumber = components.weekOfYear ?? 1
             let year = components.yearForWeekOfYear ?? Calendar.current.component(.year, from: slot.date)
-            let occupiedSession = try await plannerListSessions(weekNumber: weekNumber, year: year, classId: classId)
-                .first {
-                    Int($0.dayOfWeek) == weekday && Int($0.period) == slot.period
+            let existingSessions = try await plannerListSessions(weekNumber: weekNumber, year: year, classId: classId)
+            for (destinationIndex, destination) in slot.destinationSlots.enumerated() {
+                let occupiedSession = existingSessions.first {
+                    Int($0.dayOfWeek) == weekday && Int($0.period) == destination.period
                 }
-            let sessionId = try await plannerUpsertSession(
-                id: occupiedSession?.id ?? 0,
-                teachingUnitId: unitId,
-                teachingUnitName: situation.title,
-                teachingUnitColor: plannerCourseColor(for: classId),
-                groupId: classId,
-                groupName: groupName,
-                dayOfWeek: weekday,
-                period: slot.period,
-                weekNumber: weekNumber,
-                year: year,
-                objectives: detailedDraft?.objective ?? situation.challenge,
-                activities: detailedDraft?.developmentSummary ?? "Sesión vinculada a \(situation.title)",
-                evaluation: detailedDraft?.criteria.joined(separator: ", ") ?? "",
-                teacherScheduleSlotId: slot.teacherScheduleSlotId,
-                startTime: slot.startTime,
-                endTime: slot.endTime,
-                learningSituationSessionPlanId: detailedDraft.flatMap { detailedPlanIds[$0.sessionNumber] },
-                status: .planned
-            )
-            try await saveLearningSituationLinkedResource(
-                situationId: situation.id,
-                kind: .planningSession,
-                resourceId: "\(sessionId)",
-                classId: classId,
-                label: slot.label,
-                trace: situation.trace
-            )
+                let sessionId = try await plannerUpsertSession(
+                    id: occupiedSession?.id ?? 0,
+                    teachingUnitId: unitId,
+                    teachingUnitName: situation.title,
+                    teachingUnitColor: plannerCourseColor(for: classId),
+                    groupId: classId,
+                    groupName: groupName,
+                    dayOfWeek: weekday,
+                    period: destination.period,
+                    weekNumber: weekNumber,
+                    year: year,
+                    objectives: detailedDraft?.objective ?? situation.challenge,
+                    activities: detailedDraft?.developmentSummary ?? "Sesión vinculada a \(situation.title)",
+                    evaluation: detailedDraft?.criteria.joined(separator: ", ") ?? "",
+                    teacherScheduleSlotId: destination.teacherScheduleSlotId,
+                    startTime: destination.startTime.isEmpty ? slot.startTime : destination.startTime,
+                    endTime: destination.endTime.isEmpty ? slot.endTime : destination.endTime,
+                    learningSituationSessionPlanId: detailedDraft.flatMap { detailedPlanIds[$0.sessionNumber] },
+                    status: .planned
+                )
+                let resourceLabel = destinationIndex == 0 ? slot.label : "\(slot.label) · continuación"
+                try await saveLearningSituationLinkedResource(
+                    situationId: situation.id,
+                    kind: .planningSession,
+                    resourceId: "\(sessionId)",
+                    classId: classId,
+                    label: resourceLabel,
+                    trace: situation.trace
+                )
+            }
         }
     }
 

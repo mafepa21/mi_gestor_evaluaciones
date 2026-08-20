@@ -16,6 +16,13 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Added
 
 - Secuenciación de sesiones CLIL: contrato semanal importable con bloques `LONG BLOCK` y `SHORT BLOCK`, actividades estructuradas en inglés, evidencias, materiales, adaptaciones y comentarios CLIL; corpus normalizado en 55 Markdown y 55 DOCX.
+- Fichas de sesión operativas: cada bloque separa `QUICK VIEW` y `ACTIVITY DETAILS`, usa `Activity ID` estable (`Wnn-L/S-nn`) y permite abrir una actividad concreta desde timeline, desplegable o botones Anterior/Siguiente.
+
+### Fixed
+
+- El importador semanal ya no duplica las actividades al leer el detalle: fusiona los campos ampliados por `Activity ID`, valida IDs vacíos/duplicados/malformados y mantiene compatibilidad con payloads antiguos.
+- La navegación macOS hacia la ejecución desde la ficha de sesión cierra primero el inspector y conserva la transición diferida al Diario.
+- La programación de un bloque largo persiste todas sus franjas consecutivas, incluyendo el segundo período del par horario, y enlaza cada ocupación con su sesión planificada.
 - Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
 - AppIcon nativo de Apple integrado mediante `AppIcon.icon` de Icon Composer para el target KMP de iPadOS y macOS, con rendiciones `Default` y `Dark` en una única fuente compartida.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).

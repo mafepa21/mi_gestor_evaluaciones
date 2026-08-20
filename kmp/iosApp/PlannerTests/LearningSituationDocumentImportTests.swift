@@ -49,6 +49,65 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.plans[1].activities.first?.evidence, "Peer note")
     }
 
+    func testQuickViewAndActivityDetailsMergeByStableActivityID() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("WEEK 1 - Building Health"),
+            .paragraph("LONG BLOCK (90 effective minutes)"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity", "Organisation", "Student output", "Materials", "Evidence"],
+                ["0′–20′", "W01-L-01", "core", "20", "Practice", "Partner diagnosis", "Pairs of two", "Complete the record.", "Health Passport", "Completed record"]
+            ]),
+            .paragraph("ACTIVITY DETAILS"),
+            .paragraph("ACTIVITY W01-L-01"),
+            .paragraph("Purpose: Establish a safe baseline."),
+            .paragraph("Set-up: Place one sheet per pair before students enter."),
+            .paragraph("Teacher instructions: Model the pulse count and check the first pair."),
+            .paragraph("Instructions for students: Count, record and swap roles."),
+            .paragraph("Timing breakdown: 5 minutes model, 12 minutes practice, 3 minutes check."),
+            .paragraph("CLIL focus: Use the stem: Our evidence shows…"),
+            .paragraph("If the group is slow: Keep the first test only."),
+            .paragraph("SHORT BLOCK (30 effective minutes)"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity", "Organisation", "Student output", "Materials", "Evidence"],
+                ["0′–30′", "W01-S-01", "closure", "30", "Closure", "Exit response", "Pairs", "Submit one sentence.", "Passport", "Exit ticket"]
+            ])
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("quick-view-fixture".utf8),
+            url: URL(fileURLWithPath: "/tmp/quick-view-fixture.docx")
+        )
+
+        XCTAssertEqual(draft.plans.count, 2)
+        XCTAssertEqual(draft.plans[0].activities.map(\.activityKey), ["W01-L-01"])
+        XCTAssertEqual(draft.plans[0].activities.first?.purpose, "Establish a safe baseline.")
+        XCTAssertEqual(draft.plans[0].activities.first?.teacherActions, "Model the pulse count and check the first pair.")
+        XCTAssertEqual(draft.plans[0].activities.first?.studentInstructions, "Count, record and swap roles.")
+        XCTAssertEqual(draft.plans[0].activities.first?.timingBreakdown, "5 minutes model, 12 minutes practice, 3 minutes check.")
+        XCTAssertEqual(draft.plans[1].activities.map(\.activityKey), ["W01-S-01"])
+        XCTAssertEqual(draft.plans[1].activities.first?.activity, "Exit response")
+    }
+
+    func testActivityNavigatorKeepsTimelineAndMenuAtStableBoundaries() {
+        var navigator = PlannerSessionActivityNavigator(activityKeys: ["W01-L-01", "W01-L-02", "W01-L-03"])
+
+        XCTAssertEqual(navigator.selectedKey, "W01-L-01")
+        XCTAssertFalse(navigator.canMovePrevious)
+        XCTAssertTrue(navigator.canMoveNext)
+
+        navigator.movePrevious()
+        XCTAssertEqual(navigator.selectedKey, "W01-L-01")
+        navigator.select("W01-L-02")
+        navigator.moveNext()
+        XCTAssertEqual(navigator.selectedKey, "W01-L-03")
+        XCTAssertFalse(navigator.canMoveNext)
+        navigator.moveNext()
+        XCTAssertEqual(navigator.selectedKey, "W01-L-03")
+        navigator.select("W01-L-01")
+        XCTAssertEqual(navigator.selectedIndex, 0)
+    }
+
     func testSessionDocxRendererKeepsTablesAndImagesInSessionOrder() throws {
         let docxURL = try makeMinimalDocx()
         defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }

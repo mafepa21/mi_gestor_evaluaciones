@@ -149,37 +149,101 @@ struct LearningSituationSessionSectionDraft: Identifiable, Codable {
 /// sin perder la compatibilidad con documentos antiguos.
 struct LearningSituationSessionActivityDraft: Identifiable, Codable {
     let id: UUID
+    /// Stable identity from the planning document (for example W01-L-01). The UUID remains
+    /// the SwiftUI identity for backwards compatibility, but joins between quick view and
+    /// activity detail must use this key.
+    var activityKey: String
+    var activityType: String
+    var plannedMinutes: Int?
     var timeLabel: String
     var phase: String
     var activity: String
+    var purpose: String
+    var organisation: String
+    var setup: String
     var teacherActions: String
+    var studentInstructions: String
     var studentActions: String
+    var timingBreakdown: String
     var clilFocus: String
     var evidence: String
     var materials: String
     var adaptations: String
+    var slowGroupPlan: String
+    var fastGroupExtension: String
 
     init(
+        activityKey: String = "",
+        activityType: String = "core",
+        plannedMinutes: Int? = nil,
         timeLabel: String,
         phase: String = "",
         activity: String,
+        purpose: String = "",
+        organisation: String = "",
+        setup: String = "",
         teacherActions: String = "",
+        studentInstructions: String = "",
         studentActions: String = "",
+        timingBreakdown: String = "",
         clilFocus: String = "",
         evidence: String = "",
         materials: String = "",
-        adaptations: String = ""
+        adaptations: String = "",
+        slowGroupPlan: String = "",
+        fastGroupExtension: String = ""
     ) {
         self.id = UUID()
+        self.activityKey = activityKey
+        self.activityType = activityType
+        self.plannedMinutes = plannedMinutes
         self.timeLabel = timeLabel
         self.phase = phase
         self.activity = activity
+        self.purpose = purpose
+        self.organisation = organisation
+        self.setup = setup
         self.teacherActions = teacherActions
+        self.studentInstructions = studentInstructions
         self.studentActions = studentActions
+        self.timingBreakdown = timingBreakdown
         self.clilFocus = clilFocus
         self.evidence = evidence
         self.materials = materials
         self.adaptations = adaptations
+        self.slowGroupPlan = slowGroupPlan
+        self.fastGroupExtension = fastGroupExtension
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, activityKey, activityType, plannedMinutes, timeLabel, phase, activity,
+             purpose, organisation, setup, teacherActions, studentInstructions, studentActions,
+             timingBreakdown, clilFocus, evidence, materials, adaptations, slowGroupPlan,
+             fastGroupExtension
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.activityKey = try container.decodeIfPresent(String.self, forKey: .activityKey) ?? ""
+        self.activityType = try container.decodeIfPresent(String.self, forKey: .activityType) ?? "core"
+        self.plannedMinutes = try container.decodeIfPresent(Int.self, forKey: .plannedMinutes)
+        self.timeLabel = try container.decodeIfPresent(String.self, forKey: .timeLabel) ?? ""
+        self.phase = try container.decodeIfPresent(String.self, forKey: .phase) ?? ""
+        self.activity = try container.decodeIfPresent(String.self, forKey: .activity) ?? ""
+        self.purpose = try container.decodeIfPresent(String.self, forKey: .purpose) ?? ""
+        self.organisation = try container.decodeIfPresent(String.self, forKey: .organisation) ?? ""
+        self.setup = try container.decodeIfPresent(String.self, forKey: .setup) ?? ""
+        self.teacherActions = try container.decodeIfPresent(String.self, forKey: .teacherActions) ?? ""
+        self.studentInstructions = try container.decodeIfPresent(String.self, forKey: .studentInstructions) ?? ""
+        self.studentActions = try container.decodeIfPresent(String.self, forKey: .studentActions) ?? ""
+        self.timingBreakdown = try container.decodeIfPresent(String.self, forKey: .timingBreakdown) ?? ""
+        self.clilFocus = try container.decodeIfPresent(String.self, forKey: .clilFocus) ?? ""
+        self.evidence = try container.decodeIfPresent(String.self, forKey: .evidence) ?? ""
+        self.materials = try container.decodeIfPresent(String.self, forKey: .materials) ?? ""
+        self.adaptations = try container.decodeIfPresent(String.self, forKey: .adaptations) ?? ""
+        self.slowGroupPlan = try container.decodeIfPresent(String.self, forKey: .slowGroupPlan) ?? ""
+        self.fastGroupExtension = try container.decodeIfPresent(String.self, forKey: .fastGroupExtension) ?? ""
     }
 }
 
@@ -192,7 +256,7 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
     var activities: [LearningSituationSessionActivityDraft]
 
     init(
-        schemaVersion: Int = 2,
+        schemaVersion: Int = 3,
         sections: [LearningSituationSessionSectionDraft],
         activities: [LearningSituationSessionActivityDraft]
     ) {
@@ -1116,6 +1180,27 @@ struct LearningSituationSessionSequenceDocumentImportService {
             ))
         }
 
+        let activityIDPattern = try! NSRegularExpression(pattern: #"^W[0-9]{2}-[LS]-[0-9]{2}$"#)
+        for plan in plans {
+            let expectedBlock = plan.sessionNumber.isMultiple(of: 2) ? "S" : "L"
+            var seen: Set<String> = []
+            for activity in plan.activities {
+                let key = activity.activityKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                if key.isEmpty {
+                    warnings.append("\(plan.sourceLabel): actividad sin Activity ID.")
+                    continue
+                }
+                if seen.contains(key) {
+                    warnings.append("\(plan.sourceLabel): Activity ID duplicado \(key).")
+                }
+                seen.insert(key)
+                let range = NSRange(key.startIndex..., in: key)
+                if activityIDPattern.firstMatch(in: key, range: range) == nil || !key.contains("-\(expectedBlock)-") {
+                    warnings.append("\(plan.sourceLabel): Activity ID no válido para este bloque (\(key)).")
+                }
+            }
+        }
+
         // El documento es el mismo para los dos grupos: lo que cambia es el orden dentro de la
         // semana. La pantalla de programación usará la etiqueta del bloque para ubicar el largo
         // sobre dos franjas consecutivas y el corto sobre una franja simple.
@@ -1171,6 +1256,59 @@ struct LearningSituationSessionSequenceDocumentImportService {
         var longMinutes: Int?
         var shortMinutes: Int?
         var pendingLabel: FichaField?
+        var activityDetailKey: String?
+        var activityDetails: [String: [String: String]] = [:]
+
+        func detailField(_ raw: String) -> String? {
+            let value = normalized(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+            switch value {
+            case "purpose", "proposito", "proposito de la actividad": return "purpose"
+            case "organisation", "organization", "organizacion", "grouping": return "organisation"
+            case "set-up", "setup", "preparation", "preparacion": return "setup"
+            case "teacher instructions", "teacher actions", "instrucciones del profesor", "acciones del docente": return "teacherActions"
+            case "instructions for students", "student instructions", "instrucciones para el alumnado": return "studentInstructions"
+            case "student actions", "student output", "acciones del alumnado": return "studentActions"
+            case "timing breakdown", "timing", "desglose temporal": return "timingBreakdown"
+            case "clil focus", "clil language", "enfoque clil": return "clilFocus"
+            case "materials", "materiales": return "materials"
+            case "evidence", "evidencia": return "evidence"
+            case "adaptations", "adaptaciones": return "adaptations"
+            case "if the group is slow", "slow group plan", "si el grupo va lento": return "slowGroupPlan"
+            case "if the group is ahead", "fast group extension", "si el grupo termina antes": return "fastGroupExtension"
+            default: return nil
+            }
+        }
+
+        func storeDetail(_ key: String, field: String, value: String) {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            activityDetails[key, default: [:]][field] = trimmed
+        }
+
+        func mergeDetails(into activity: LearningSituationSessionActivityDraft) -> LearningSituationSessionActivityDraft {
+            guard let values = activityDetails[activity.activityKey] else { return activity }
+            return LearningSituationSessionActivityDraft(
+                activityKey: activity.activityKey,
+                activityType: activity.activityType,
+                plannedMinutes: activity.plannedMinutes,
+                timeLabel: activity.timeLabel,
+                phase: activity.phase,
+                activity: activity.activity,
+                purpose: values["purpose"] ?? activity.purpose,
+                organisation: values["organisation"] ?? activity.organisation,
+                setup: values["setup"] ?? activity.setup,
+                teacherActions: values["teacherActions"] ?? activity.teacherActions,
+                studentInstructions: values["studentInstructions"] ?? activity.studentInstructions,
+                studentActions: values["studentActions"] ?? activity.studentActions,
+                timingBreakdown: values["timingBreakdown"] ?? activity.timingBreakdown,
+                clilFocus: values["clilFocus"] ?? activity.clilFocus,
+                evidence: values["evidence"] ?? activity.evidence,
+                materials: values["materials"] ?? activity.materials,
+                adaptations: values["adaptations"] ?? activity.adaptations,
+                slowGroupPlan: values["slowGroupPlan"] ?? activity.slowGroupPlan,
+                fastGroupExtension: values["fastGroupExtension"] ?? activity.fastGroupExtension
+            )
+        }
 
         func assign(_ field: FichaField, _ rawValue: String) {
             let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1233,6 +1371,35 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 guard !text.isEmpty else { continue }
                 if isDocumentTailHeading(text) { reachedDocumentTail = true }
                 if reachedDocumentTail { continue }
+                if let blockHeading = weekBlockHeading(text) {
+                    activityDetailKey = nil
+                    flushSection()
+                    reachedFinalSections = false
+                    target = blockHeading.kind
+                    switch blockHeading.kind {
+                    case .long: longMinutes = blockHeading.minutes
+                    case .short: shortMinutes = blockHeading.minutes
+                    }
+                    continue
+                }
+                if normalized(text) == "activity details" || normalized(text) == "detalle de actividades" {
+                    activityDetailKey = nil
+                    continue
+                }
+                if let match = text.range(of: #"^ACTIVITY\s+([A-Z0-9][A-Z0-9_-]*)$"#, options: [.regularExpression, .caseInsensitive]) {
+                    let heading = String(text[match])
+                    activityDetailKey = heading.replacingOccurrences(
+                        of: #"^ACTIVITY\s+"#, with: "", options: [.regularExpression, .caseInsensitive]
+                    ).trimmingCharacters(in: .whitespacesAndNewlines)
+                    continue
+                }
+                if let activityDetailKey,
+                   let separator = text.firstIndex(of: ":"),
+                   let field = detailField(String(text[..<separator])) {
+                    storeDetail(activityDetailKey, field: field, value: String(text[text.index(after: separator)...]))
+                    continue
+                }
+                if activityDetailKey != nil { continue }
                 if let waiting = pendingLabel {
                     assign(waiting, text)
                     pendingLabel = nil
@@ -1317,6 +1484,10 @@ struct LearningSituationSessionSequenceDocumentImportService {
             }
         }
         flushSection()
+
+        longActivities = longActivities.map(mergeDetails)
+        shortActivities = shortActivities.map(mergeDetails)
+        sharedActivities = sharedActivities.map(mergeDetails)
 
         if !evidence.isEmpty {
             sharedSections.insert(LearningSituationSessionSectionDraft(title: "Evaluación", lines: [evidence]), at: 0)
@@ -1519,8 +1690,17 @@ struct LearningSituationSessionSequenceDocumentImportService {
 
     private func isTimeTable(_ rows: [[String]]) -> Bool {
         guard let header = rows.first, let first = header.first else { return false }
-        let value = normalized(first)
-        return value == "time" || value == "hora" || value == "horario" || value == "tiempo"
+        let firstValue = normalized(first)
+        let hasTime = header.contains { value in
+            let normalizedValue = normalized(value)
+            return normalizedValue == "time" || normalizedValue == "hora" ||
+                normalizedValue == "horario" || normalizedValue == "tiempo"
+        }
+        let hasActivityID = header.contains { normalized($0).contains("activity id") || normalized($0).contains("activity key") }
+        // New documents keep Time first for compatibility. The relaxed branch also accepts
+        // hand-authored fixtures where Activity ID is the first column.
+        return firstValue == "time" || firstValue == "hora" || firstValue == "horario" ||
+            firstValue == "tiempo" || (hasTime && hasActivityID)
     }
 
     /// B1: convierte una tabla horaria (Time | Phase | Activity | Teacher role | Student role |
@@ -1574,6 +1754,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let normalizedHeader = header.map(normalized)
         func columnIndex(_ candidates: [String]) -> Int? {
             normalizedHeader.firstIndex { column in
+                if candidates.contains("activity") || candidates.contains("actividad") {
+                    if column.contains("activity id") || column.contains("activity key") { return false }
+                }
                 candidates.contains { column.contains($0) }
             }
         }
@@ -1582,33 +1765,56 @@ struct LearningSituationSessionSequenceDocumentImportService {
             let value = row[index].trimmingCharacters(in: .whitespacesAndNewlines)
             return value == "—" || value == "-" ? "" : value
         }
+        let activityIDIndex = columnIndex(["activity id", "activity key", "id actividad", "clave actividad"])
+        let typeIndex = columnIndex(["type", "activity type", "tipo"])
         let timeIndex = columnIndex(["time", "hora", "tiempo"])
+        let minutesIndex = columnIndex(["minutes", "minutos", "duration", "duracion"])
         let phaseIndex = columnIndex(["phase", "fase"])
         let activityIndex = columnIndex(["activity", "actividad", "task", "tarea"])
+        let purposeIndex = columnIndex(["purpose", "propósito", "proposito"])
+        let organisationIndex = columnIndex(["organisation", "organization", "organizacion", "grouping"])
+        let studentOutputIndex = columnIndex(["student output", "student instructions", "output alumno"])
         let teacherIndex = columnIndex(["teacher", "profesor", "docente"])
-        let studentIndex = columnIndex(["student", "alumno", "learner", "alumnado"])
+        let studentIndex = columnIndex(["student actions", "student role", "student does", "student", "alumno", "learner", "alumnado"])
+        let setupIndex = columnIndex(["set-up", "setup", "preparation", "preparacion"])
+        let timingIndex = columnIndex(["timing breakdown", "desglose temporal", "timing"])
         let clilIndex = columnIndex(["clil", "language", "lengua", "scaffolding", "andamiaje"])
         let evidenceIndex = columnIndex(["evidence", "evidencia", "assessment", "evaluacion"])
         let materialsIndex = columnIndex(["material", "materials", "materiales"])
         let adaptationsIndex = columnIndex(["adaptation", "adaptaciones", "inclusion", "inclusion"])
+        let slowGroupIndex = columnIndex(["slow group", "if the group is slow", "grupo lento"])
+        let fastGroupIndex = columnIndex(["fast group", "if the group is ahead", "grupo adelantado", "extension"])
 
-        return rows.dropFirst().compactMap { row in
+        return rows.dropFirst().enumerated().compactMap { offset, row in
             let activity = cell(row, activityIndex)
             let fallback = row.dropFirst().map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty && $0 != "—" && $0 != "-" }
                 .joined(separator: " · ")
             let resolvedActivity = activity.isEmpty ? fallback : activity
             guard !resolvedActivity.isEmpty else { return nil }
+            let legacyKey = String(format: "LEGACY-%02d", offset + 1)
+            let key = cell(row, activityIDIndex).isEmpty ? legacyKey : cell(row, activityIDIndex)
+            let minutes = Int(cell(row, minutesIndex).filter { $0.isNumber })
             return LearningSituationSessionActivityDraft(
+                activityKey: key,
+                activityType: cell(row, typeIndex).isEmpty ? "core" : cell(row, typeIndex),
+                plannedMinutes: minutes,
                 timeLabel: cell(row, timeIndex),
                 phase: cell(row, phaseIndex),
                 activity: resolvedActivity,
+                purpose: cell(row, purposeIndex),
+                organisation: cell(row, organisationIndex),
+                setup: cell(row, setupIndex),
                 teacherActions: cell(row, teacherIndex),
+                studentInstructions: cell(row, studentOutputIndex),
                 studentActions: cell(row, studentIndex),
+                timingBreakdown: cell(row, timingIndex),
                 clilFocus: cell(row, clilIndex),
                 evidence: cell(row, evidenceIndex),
                 materials: cell(row, materialsIndex),
-                adaptations: cell(row, adaptationsIndex)
+                adaptations: cell(row, adaptationsIndex),
+                slowGroupPlan: cell(row, slowGroupIndex),
+                fastGroupExtension: cell(row, fastGroupIndex)
             )
         }
     }

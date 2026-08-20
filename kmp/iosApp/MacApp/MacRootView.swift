@@ -603,7 +603,11 @@ struct MacRootView: View {
             if let plannerSession = plannerInspectorSession {
                 PlannerSessionDetailSheet(
                     session: plannerSession,
-                    onOpenDiary: { plannerToolbarActions?.onOpenDiary(plannerSession) },
+                    onOpenDiary: {
+                        plannerToolbarActions?.onOpenDiary(plannerSession)
+                        pendingPlannerDiarySession = plannerSession
+                        plannerInspectorSession = nil
+                    },
                     onEdit: { plannerToolbarActions?.onEditSession(plannerSession) },
                     onDelete: { plannerToolbarActions?.onDeleteSession(plannerSession) },
                     presentation: .inspector,

@@ -13,6 +13,42 @@ enum PlannerSessionDetailPresentation {
     case inspector
 }
 
+/// Small, platform-independent state machine for the activity controls in the session card.
+/// The UI uses Activity ID keys rather than titles or array indexes so reordering the document
+/// cannot open the wrong activity.
+struct PlannerSessionActivityNavigator: Equatable {
+    let activityKeys: [String]
+    private(set) var selectedKey: String?
+
+    init(activityKeys: [String], selectedKey: String? = nil) {
+        self.activityKeys = activityKeys
+        self.selectedKey = activityKeys.contains(selectedKey ?? "") ? selectedKey : activityKeys.first
+    }
+
+    var selectedIndex: Int? {
+        guard let selectedKey else { return nil }
+        return activityKeys.firstIndex(of: selectedKey)
+    }
+
+    var canMovePrevious: Bool { (selectedIndex ?? 0) > 0 }
+    var canMoveNext: Bool { (selectedIndex ?? -1) >= 0 && (selectedIndex ?? -1) < activityKeys.count - 1 }
+
+    mutating func select(_ key: String) {
+        guard activityKeys.contains(key) else { return }
+        selectedKey = key
+    }
+
+    mutating func movePrevious() {
+        guard let index = selectedIndex, index > 0 else { return }
+        selectedKey = activityKeys[index - 1]
+    }
+
+    mutating func moveNext() {
+        guard let index = selectedIndex, index + 1 < activityKeys.count else { return }
+        selectedKey = activityKeys[index + 1]
+    }
+}
+
 struct PlannerSessionDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var bridge: KmpBridge
@@ -34,6 +70,17 @@ struct PlannerSessionDetailSheet: View {
     @State private var renderedDocument: PlannerDocxRenderResult?
     @State private var isLoadingRenderedDocument = false
     @State private var isDeleteConfirmationPresented = false
+    @State private var selectedSection: PlannerSessionDetailSection = .summary
+    @State private var selectedActivityKey: String?
+
+    private enum PlannerSessionDetailSection: String, CaseIterable, Identifiable {
+        case summary
+        case activity
+
+        var id: Self { self }
+        var label: String { self == .summary ? "Resumen" : "Actividades" }
+        var icon: String { self == .summary ? "rectangle.inset.filled" : "list.number" }
+    }
 
     private var tint: Color {
         Color(hex: session.teachingUnitColor)
@@ -72,6 +119,8 @@ struct PlannerSessionDetailSheet: View {
             }
         }
         .task(id: session.id) {
+            selectedSection = .summary
+            selectedActivityKey = nil
             await loadDetailedPlan()
             await loadLinkedInstruments()
         }
@@ -118,17 +167,21 @@ struct PlannerSessionDetailSheet: View {
         VStack(spacing: 0) {
             sessionBriefHeader
             quickActionBar
+            detailSectionPicker
             ScrollView {
                 VStack(spacing: 16) {
-                    if let detailedPlan {
-                        teacherAtAGlanceSection(detailedPlan)
-                        developmentTimeline(detailedPlan)
-                        renderedDocumentSection
-                        sourceDocumentSection(detailedPlan)
+                    if selectedSection == .summary {
+                        if let detailedPlan {
+                            teacherAtAGlanceSection(detailedPlan)
+                            renderedDocumentSection
+                            sourceDocumentSection(detailedPlan)
+                        } else {
+                            fallbackSessionSections
+                        }
+                        instrumentsSection
                     } else {
-                        fallbackSessionSections
+                        activityDetailContent
                     }
-                    instrumentsSection
                 }
                 .padding(24)
             }
@@ -173,6 +226,46 @@ struct PlannerSessionDetailSheet: View {
             Rectangle()
                 .fill(EvaluationDesign.border)
                 .frame(height: 1)
+        }
+    }
+
+    private var detailSectionPicker: some View {
+        Picker("Vista de la sesión", selection: $selectedSection) {
+            ForEach(PlannerSessionDetailSection.allCases) { section in
+                Label(section.label, systemImage: section.icon).tag(section)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("Vista de la sesión")
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+        .background(EvaluationDesign.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(EvaluationDesign.border)
+                .frame(height: 1)
+        }
+    }
+
+    @ViewBuilder
+    private var activityDetailContent: some View {
+        if let detailedPlan {
+            let activities = decodedActivities(detailedPlan)
+            if activities.isEmpty {
+                teacherCard(
+                    title: "Detalle de actividades",
+                    icon: "list.number",
+                    text: "Esta ficha todavía no tiene actividades con Activity ID. Reimporta el documento con el formato QUICK VIEW + ACTIVITY DETAILS para activar la vista operativa."
+                )
+            } else {
+                activityNavigatorContent(activities, minutes: Int(detailedPlan.effectiveMinutes))
+            }
+        } else {
+            teacherCard(
+                title: "Detalle de actividades",
+                icon: "list.number",
+                text: "Cargando la ficha operativa de la sesión…"
+            )
         }
     }
 
@@ -326,6 +419,159 @@ struct PlannerSessionDetailSheet: View {
         }
         .padding(20)
         .plannerGlassPanel(.content, cornerRadius: 20)
+    }
+
+    private func activityNavigatorContent(_ activities: [LearningSituationSessionActivityDraft], minutes: Int) -> some View {
+        let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
+        let selectedKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys.first!
+        let selectedIndex = keys.firstIndex(of: selectedKey) ?? 0
+        let selected = activities[selectedIndex]
+        return VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Label("Estructura de la sesión", systemImage: "timeline.selection")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(tint)
+                    Spacer()
+                    if minutes > 0 {
+                        Text("\(minutes) min útiles")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(tint)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(tint.opacity(0.10), in: Capsule())
+                    }
+                }
+                Text("Selecciona una actividad para abrir su ficha operativa. El Activity ID mantiene la correspondencia entre resumen y detalle.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(Array(activities.enumerated()), id: \.offset) { index, activity in
+                            let key = activityIdentity(activity, index: index)
+                            Button {
+                                selectedActivityKey = key
+                            } label: {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(activity.activityKey.isEmpty ? "A\(index + 1)" : activity.activityKey)
+                                        .font(.caption.weight(.bold).monospacedDigit())
+                                    Text(activity.activity)
+                                        .font(.caption.weight(.semibold))
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                .frame(width: 150, alignment: .leading)
+                                .padding(12)
+                                .foregroundStyle(key == selectedKey ? .white : .primary)
+                                .background(key == selectedKey ? tint : EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Actividad \(activity.activityKey.isEmpty ? "\(index + 1)" : activity.activityKey): \(activity.activity)")
+                            .accessibilityHint("Abre el detalle de esta actividad")
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                Picker("Actividad seleccionada", selection: Binding(
+                    get: { selectedKey },
+                    set: { selectedActivityKey = $0 }
+                )) {
+                    ForEach(Array(activities.enumerated()), id: \.offset) { index, activity in
+                        Text("\(activity.activityKey.isEmpty ? "A\(index + 1)" : activity.activityKey) · \(activity.activity)")
+                            .tag(activityIdentity(activity, index: index))
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityLabel("Escoger actividad")
+
+                HStack(spacing: 12) {
+                    Button {
+                        selectedActivityKey = keys[max(0, selectedIndex - 1)]
+                    } label: {
+                        Label("Anterior", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(selectedIndex == 0)
+
+                    Text("Actividad \(selectedIndex + 1) de \(activities.count)")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+
+                    Button {
+                        selectedActivityKey = keys[min(keys.count - 1, selectedIndex + 1)]
+                    } label: {
+                        Label("Siguiente", systemImage: "chevron.right")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(selectedIndex == activities.count - 1)
+                }
+            }
+            .padding(20)
+            .plannerGlassPanel(.content, cornerRadius: 20)
+
+            activityDetailCard(selected, index: selectedIndex)
+        }
+        .onAppear {
+            if selectedActivityKey == nil || !keys.contains(selectedActivityKey!) {
+                selectedActivityKey = keys.first
+            }
+        }
+    }
+
+    private func activityDetailCard(_ activity: LearningSituationSessionActivityDraft, index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(activity.activityKey.isEmpty ? "A\(index + 1)" : activity.activityKey)
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundStyle(tint)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(tint.opacity(0.12), in: Capsule())
+                if !activity.activityType.isEmpty {
+                    Text(activity.activityType.capitalized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                if let plannedMinutes = activity.plannedMinutes {
+                    Text("\(plannedMinutes) min")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(tint)
+                }
+            }
+            Text(activity.activity)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.primary)
+            if !activity.timeLabel.isEmpty || !activity.phase.isEmpty {
+                Label([activity.timeLabel, activity.phase].filter { !$0.isEmpty }.joined(separator: " · "), systemImage: "clock")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+            }
+            activityDetailRow("Purpose", activity.purpose)
+            activityDetailRow("Organisation", activity.organisation)
+            activityDetailRow("Set-up", activity.setup)
+            activityDetailRow("Teacher instructions", activity.teacherActions)
+            activityDetailRow("Instructions for students", activity.studentInstructions)
+            activityDetailRow("Student actions", activity.studentActions)
+            activityDetailRow("Timing breakdown", activity.timingBreakdown)
+            activityDetailRow("CLIL focus", activity.clilFocus)
+            activityDetailRow("Evidence", activity.evidence)
+            activityDetailRow("Materials", activity.materials)
+            activityDetailRow("Adaptations", activity.adaptations)
+            activityDetailRow("If the group is slow", activity.slowGroupPlan)
+            activityDetailRow("If the group is ahead", activity.fastGroupExtension)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .plannerGlassPanel(.hero, cornerRadius: 20)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Detalle de actividad \(activity.activityKey.isEmpty ? "\(index + 1)" : activity.activityKey)")
+    }
+
+    private func activityIdentity(_ activity: LearningSituationSessionActivityDraft, index: Int) -> String {
+        activity.activityKey.isEmpty ? "LEGACY-\(index + 1)" : activity.activityKey
     }
 
     private func materialCard(_ material: String) -> some View {
@@ -760,6 +1006,7 @@ struct PlannerSessionDetailSheet: View {
         guard let planId = session.learningSituationSessionPlanId?.int64Value else { return }
         guard let plan = try? await bridge.learningSituationSessionPlan(id: planId) else { return }
         detailedPlan = plan
+        selectedActivityKey = nil
         let loadedSequenceVersion = try? await bridge.learningSituationSessionSequenceVersion(
             id: plan.sequenceVersionId,
             learningSituationId: plan.learningSituationId

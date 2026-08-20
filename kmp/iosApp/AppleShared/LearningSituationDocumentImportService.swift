@@ -1757,7 +1757,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 if candidates.contains("activity") || candidates.contains("actividad") {
                     if column.contains("activity id") || column.contains("activity key") { return false }
                 }
-                candidates.contains { column.contains($0) }
+                return candidates.contains { column.contains($0) }
             }
         }
         func cell(_ row: [String], _ index: Int?) -> String {

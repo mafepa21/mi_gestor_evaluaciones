@@ -144,7 +144,7 @@ final class PlannerGanttProjectionTests: XCTestCase {
         let monday = calendar.date(from: DateComponents(year: 2026, month: 3, day: 23))!
         let scheduleSlots = [
             TeacherScheduleSlot(id: 1, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 1, startTime: "09:00", endTime: "09:55", weeklyTemplateId: nil),
-            TeacherScheduleSlot(id: 2, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 1, startTime: "09:55", endTime: "10:50", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 2, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 1, startTime: "10:10", endTime: "11:05", weeklyTemplateId: nil),
             TeacherScheduleSlot(id: 3, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 5, startTime: "12:00", endTime: "12:30", weeklyTemplateId: nil)
         ]
         let plans = [
@@ -185,12 +185,46 @@ final class PlannerGanttProjectionTests: XCTestCase {
         XCTAssertEqual(projection.slots.map { $0.planSessionNumber }, [1, 2])
         XCTAssertEqual(projection.slots[0].occupiedPeriods, [1, 2])
         XCTAssertEqual(projection.slots[0].destinationSlots.map(\.teacherScheduleSlotId), [1, 2])
-        XCTAssertEqual(projection.slots[0].destinationSlots.map(\.startTime), ["09:00", "09:55"])
-        XCTAssertEqual(projection.slots[0].destinationSlots.map(\.endTime), ["09:55", "10:50"])
+        XCTAssertEqual(projection.slots[0].destinationSlots.map(\.startTime), ["09:00", "10:10"])
+        XCTAssertEqual(projection.slots[0].destinationSlots.map(\.endTime), ["09:55", "11:05"])
         XCTAssertEqual(projection.slots[0].startTime, "09:00")
-        XCTAssertEqual(projection.slots[0].endTime, "10:50")
+        XCTAssertEqual(projection.slots[0].endTime, "11:05")
         XCTAssertEqual(projection.slots[1].occupiedPeriods, [3])
         XCTAssertFalse(LearningSituationScheduleProjection.hasDuplicateDestinations(projection.slots))
+    }
+
+    func testScheduleProjectionAcceptsTwentyMinuteLegalTransitionGap() {
+        let calendar = Calendar(identifier: .iso8601)
+        let monday = calendar.date(from: DateComponents(year: 2026, month: 3, day: 23))!
+        let scheduleSlots = [
+            TeacherScheduleSlot(id: 11, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 1, startTime: "09:00", endTime: "09:55", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 12, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 1, startTime: "10:15", endTime: "11:10", weeklyTemplateId: nil)
+        ]
+        let plans = [
+            LearningSituationSessionPlanDraft(
+                sessionNumber: 1,
+                sourceLabel: "WEEK 1 · LONG BLOCK",
+                title: "Long block",
+                sessionType: "Long block",
+                effectiveMinutes: 90,
+                objective: "Objective",
+                criteria: [],
+                material: "",
+                development: [],
+                adaptations: []
+            )
+        ]
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: plans,
+            startDate: monday,
+            template: scheduleSlots,
+            periodForSlot: { slot in Int(slot.id) }
+        )
+
+        XCTAssertTrue(projection.warnings.isEmpty)
+        XCTAssertEqual(projection.slots.first?.occupiedPeriods, [11, 12])
+        XCTAssertEqual(projection.slots.first?.endTime, "11:10")
     }
 
     func testIdenticalSequenceHashesShareOneGanttProjection() {

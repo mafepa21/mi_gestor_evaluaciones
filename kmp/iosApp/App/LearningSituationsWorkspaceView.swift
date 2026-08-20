@@ -265,10 +265,15 @@ enum LearningSituationScheduleProjection {
                 )]
             )
         }
+        // A legal transition/recess can separate two consecutive timetable periods.
+        // Treat up to 20 minutes as one continuous long-block opportunity.
+        let maximumTransitionMinutes = 20
         for pair in zip(ordered, ordered.dropFirst()) {
             guard let start = minutes(pair.0.startTime), let firstEnd = minutes(pair.0.endTime),
                   let secondStart = minutes(pair.1.startTime), let end = minutes(pair.1.endTime),
-                  secondStart >= firstEnd, secondStart - firstEnd <= 10, end - start >= 75 else { continue }
+                  secondStart >= firstEnd,
+                  secondStart - firstEnd <= maximumTransitionMinutes,
+                  end - start >= 75 else { continue }
             let firstPeriod = periodForSlot(pair.0)
             let secondPeriod = periodForSlot(pair.1)
             return LearningSituationScheduledSlot(

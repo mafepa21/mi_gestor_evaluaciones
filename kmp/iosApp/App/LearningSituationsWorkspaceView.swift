@@ -115,9 +115,6 @@ enum LearningSituationScheduleProjection {
         guard !orderedPlans.isEmpty, !template.isEmpty else { return ([], []) }
         let calendar = Calendar(identifier: .iso8601)
         let normalizedStart = calendar.startOfDay(for: startDate)
-        let firstWeekday = calendar.component(.weekday, from: normalizedStart)
-        let daysFromMonday = (firstWeekday + 5) % 7
-        let firstWeekStart = calendar.date(byAdding: .day, value: -daysFromMonday, to: normalizedStart) ?? normalizedStart
         let sortedTemplate = template.sorted {
             Int($0.dayOfWeek) == Int($1.dayOfWeek) ? $0.startTime < $1.startTime : $0.dayOfWeek < $1.dayOfWeek
         }
@@ -156,57 +153,56 @@ enum LearningSituationScheduleProjection {
             return (sequential, sequential.count == orderedPlans.count ? [] : ["No hay suficientes franjas para todas las sesiones importadas."])
         }
 
-        let groupedPlans = Dictionary(grouping: orderedPlans) { max(($0.sessionNumber + 1) / 2, 1) }
         var assignments: [LearningSituationScheduledSlot] = []
         var warnings: [String] = []
-        for weekIndex in groupedPlans.keys.sorted() {
-            let weekPlans = groupedPlans[weekIndex, default: []].sorted { $0.sessionNumber < $1.sessionNumber }
-            let weekStart = calendar.date(byAdding: .day, value: (weekIndex - 1) * 7, to: firstWeekStart) ?? firstWeekStart
-            let longPlans = weekPlans.filter { isWeeklyBlockPlan($0) && isLongPlan($0) }
-            let shortPlans = weekPlans.filter { isWeeklyBlockPlan($0) && isShortPlan($0) }
-            let genericPlans = weekPlans.filter { !isWeeklyBlockPlan($0) }
-            var usedDestinations = Set<ScheduledDestination>()
+        var usedDestinations = Set<ScheduledDestination>()
+        var lastAssignedDate: Date?
+        var lastAssignedEndMinutes: Int?
+        let searchDays = max(orderedPlans.count * 7 + 14, 42)
 
-            let dayCandidates = (0..<7).compactMap { dayOffset -> DayCandidates? in
-                guard let date = calendar.date(byAdding: .day, value: dayOffset, to: weekStart), date >= normalizedStart else { return nil }
+        // Weekly documents describe a pedagogical sequence (long, short, long, short),
+        // not a fixed calendar-week bucket. Assign each plan to the next compatible
+        // timetable opportunity so a partial first week can roll into the next one.
+        for plan in orderedPlans {
+            var candidate: LearningSituationScheduledSlot?
+            for dayOffset in 0...searchDays {
+                guard let date = calendar.date(byAdding: .day, value: dayOffset, to: normalizedStart) else { continue }
                 let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
                 let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
-                return DayCandidates(
+                let dayCandidates = DayCandidates(
                     date: date,
                     long: longCandidate(on: date, slots: daySlots, periodForSlot: periodForSlot),
                     short: shortCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
                 )
+                let candidates = isWeeklyBlockPlan(plan) && isLongPlan(plan)
+                    ? dayCandidates.long.map { [$0] } ?? []
+                    : dayCandidates.short
+
+                if let match = candidates.first(where: { slot in
+                    guard !collides(slot, with: usedDestinations) else { return false }
+                    guard let lastAssignedDate else { return true }
+                    let normalizedDate = calendar.startOfDay(for: slot.date)
+                    let previousDate = calendar.startOfDay(for: lastAssignedDate)
+                    guard normalizedDate >= previousDate else { return false }
+                    guard normalizedDate == previousDate else { return true }
+                    guard let previousEnd = lastAssignedEndMinutes, let currentStart = minutes(slot.startTime) else { return false }
+                    return currentStart >= previousEnd
+                }) {
+                    candidate = match
+                    break
+                }
             }
 
-            for plan in longPlans {
-                guard let candidate = dayCandidates.lazy.compactMap({ $0.long }).first(where: { !collides($0, with: usedDestinations) }) else {
-                    warnings.append("La sesión \(plan.sessionNumber) requiere un bloque largo, pero el horario de esta semana no tiene dos franjas consecutivas.")
-                    continue
-                }
-                let assigned = withPlan(candidate, plan: plan)
-                assignments.append(assigned)
-                addDestinations(assigned, to: &usedDestinations)
+            guard let candidate else {
+                let requirement = isWeeklyBlockPlan(plan) && isLongPlan(plan) ? "bloque largo" : "bloque corto"
+                warnings.append("La sesión \(plan.sessionNumber) requiere un \(requirement), pero no hay una franja compatible desde la fecha de inicio.")
+                continue
             }
-
-            for plan in shortPlans {
-                guard let candidate = dayCandidates.lazy.flatMap({ $0.short }).first(where: { !collides($0, with: usedDestinations) }) else {
-                    warnings.append("La sesión \(plan.sessionNumber) requiere un bloque corto, pero no hay una franja simple disponible en la semana.")
-                    continue
-                }
-                let assigned = withPlan(candidate, plan: plan)
-                assignments.append(assigned)
-                addDestinations(assigned, to: &usedDestinations)
-            }
-
-            for plan in genericPlans {
-                guard let candidate = dayCandidates.lazy.flatMap({ $0.short }).first(where: { !collides($0, with: usedDestinations) }) else {
-                    warnings.append("La sesión \(plan.sessionNumber) no se pudo ubicar automáticamente en esta semana.")
-                    continue
-                }
-                let assigned = withPlan(candidate, plan: plan)
-                assignments.append(assigned)
-                addDestinations(assigned, to: &usedDestinations)
-            }
+            let assigned = withPlan(candidate, plan: plan)
+            assignments.append(assigned)
+            addDestinations(assigned, to: &usedDestinations)
+            lastAssignedDate = assigned.date
+            lastAssignedEndMinutes = minutes(assigned.endTime)
         }
 
         return (assignments.sorted { $0.planSessionNumber ?? .max < $1.planSessionNumber ?? .max }, warnings)

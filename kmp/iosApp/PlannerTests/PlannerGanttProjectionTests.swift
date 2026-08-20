@@ -227,6 +227,83 @@ final class PlannerGanttProjectionTests: XCTestCase {
         XCTAssertEqual(projection.slots.first?.endTime, "11:10")
     }
 
+    func testWeeklyBlockProjectionCarriesSequenceAcrossPartialStartWeek() {
+        let calendar = Calendar(identifier: .iso8601)
+        let friday = calendar.date(from: DateComponents(year: 2026, month: 9, day: 25))!
+        let scheduleSlots = [
+            TeacherScheduleSlot(id: 3, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 3, startTime: "12:20", endTime: "13:15", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 6, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 5, startTime: "13:15", endTime: "14:10", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 7, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 5, startTime: "14:25", endTime: "15:20", weeklyTemplateId: nil)
+        ]
+        let plans = [
+            LearningSituationSessionPlanDraft(
+                sessionNumber: 1,
+                sourceLabel: "WEEK 1 · LONG BLOCK",
+                title: "Long block 1",
+                sessionType: "Long block",
+                effectiveMinutes: 90,
+                objective: "Objective",
+                criteria: [],
+                material: "",
+                development: [],
+                activities: [],
+                adaptations: []
+            ),
+            LearningSituationSessionPlanDraft(
+                sessionNumber: 2,
+                sourceLabel: "WEEK 1 · SHORT BLOCK",
+                title: "Short block 1",
+                sessionType: "Short block",
+                effectiveMinutes: 30,
+                objective: "Objective",
+                criteria: [],
+                material: "",
+                development: [],
+                activities: [],
+                adaptations: []
+            ),
+            LearningSituationSessionPlanDraft(
+                sessionNumber: 3,
+                sourceLabel: "WEEK 2 · LONG BLOCK",
+                title: "Long block 2",
+                sessionType: "Long block",
+                effectiveMinutes: 90,
+                objective: "Objective",
+                criteria: [],
+                material: "",
+                development: [],
+                activities: [],
+                adaptations: []
+            ),
+            LearningSituationSessionPlanDraft(
+                sessionNumber: 4,
+                sourceLabel: "WEEK 2 · SHORT BLOCK",
+                title: "Short block 2",
+                sessionType: "Short block",
+                effectiveMinutes: 30,
+                objective: "Objective",
+                criteria: [],
+                material: "",
+                development: [],
+                activities: [],
+                adaptations: []
+            )
+        ]
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: plans,
+            startDate: friday,
+            template: scheduleSlots,
+            periodForSlot: { Int($0.id) }
+        )
+
+        XCTAssertTrue(projection.warnings.isEmpty)
+        XCTAssertEqual(projection.slots.map { $0.planSessionNumber }, [1, 2, 3, 4])
+        XCTAssertEqual(projection.slots.map { calendar.component(.day, from: $0.date) }, [25, 30, 2, 7])
+        XCTAssertEqual(projection.slots.map { $0.occupiedPeriods }, [[6, 7], [3], [6, 7], [3]])
+        XCTAssertEqual(projection.slots.map { $0.startTime }, ["13:15", "12:20", "13:15", "12:20"])
+    }
+
     func testIdenticalSequenceHashesShareOneGanttProjection() {
         let equivalent = PlannerSequenceVersionProjection.equivalentVersionIds(
             latestSha256: "same-document",

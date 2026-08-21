@@ -221,10 +221,7 @@ struct MacStudentsView: View {
             .keyboardShortcut(.return, modifiers: [])
             .opacity(0)
         }
-        .onDisappear {
-            guard ownsStudentSideEffects else { return }
-            store.profileLoadTask?.cancel()
-        }
+        .onDisappear(perform: cancelProfileLoadOnDisappear)
         .sheet(item: studentEditorModeBinding) { mode in
             MacStudentEditorSheet(mode: mode) { draft in
                 Task { await saveStudentDraft(draft, mode: mode) }
@@ -355,9 +352,7 @@ struct MacStudentsView: View {
             StudentImportSheet(preview: preview)
                 .environmentObject(bridge)
                 .frame(minWidth: 720, minHeight: 620)
-                .onDisappear {
-                    Task { await reloadRows() }
-                }
+                .onDisappear(perform: reloadRowsAfterStudentImportPreview)
         }
         .alert("No se pudo importar alumnado", isPresented: Binding(
             get: { importErrorMessage != nil },
@@ -380,6 +375,15 @@ struct MacStudentsView: View {
                 store.studentEditorMode = newValue
             }
         )
+    }
+
+    private func cancelProfileLoadOnDisappear() {
+        guard ownsStudentSideEffects else { return }
+        store.profileLoadTask?.cancel()
+    }
+
+    private func reloadRowsAfterStudentImportPreview() {
+        Task { await reloadRows() }
     }
 
     private var studentsList: some View {

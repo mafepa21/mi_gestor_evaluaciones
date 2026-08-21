@@ -29,6 +29,17 @@ jobs:
       - name: Verify Apple builds
         run: scripts/verify_apple_builds.sh
 
+      - name: Run planner tests
+        run: |
+          set -o pipefail
+          xcodebuild -quiet \
+            -project kmp/iosApp/MiGestorKMPiOS.xcodeproj \
+            -scheme MiGestorPlannerTests \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath /tmp/MiGestorPlannerTestsDerivedData \
+            test 2>&1 | tee /tmp/planner_tests.log
+
       - name: Upload Apple build logs
         if: failure()
         uses: actions/upload-artifact@v4
@@ -37,3 +48,4 @@ jobs:
           path: |
             /tmp/mac_build_*.log
             /tmp/ios_build_*.log
+            /tmp/planner_tests.log

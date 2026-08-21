@@ -189,7 +189,12 @@ struct MacStudentsView: View {
                 store.profileErrorMessage = nil
                 return
             }
-            if store.localSelectedStudentId == nil || !visibleIds.contains(store.localSelectedStudentId ?? -1) {
+            if let selectedStudentId = store.localSelectedStudentId {
+                guard visibleIds.contains(selectedStudentId) else {
+                    store.localSelectedStudentId = visibleIds.first
+                    return
+                }
+            } else {
                 store.localSelectedStudentId = visibleIds.first
             }
         }

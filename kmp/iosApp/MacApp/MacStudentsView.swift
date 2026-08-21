@@ -241,7 +241,10 @@ struct MacStudentsView: View {
         .sheet(
             isPresented: Binding(
                 get: { editingTutoringSession != nil },
-                set: { if !$0 { editingTutoringSession = nil } }
+                set: { newValue in
+                    guard !newValue else { return }
+                    editingTutoringSession = nil
+                }
             )
         ) {
             if let studentId = store.localSelectedStudentId ?? selectedRow?.id, let editingTutoringSession {
@@ -255,7 +258,10 @@ struct MacStudentsView: View {
             "¿Borrar esta tutoría?",
             isPresented: Binding(
                 get: { pendingDeleteTutoringSession != nil },
-                set: { if !$0 { pendingDeleteTutoringSession = nil } }
+                set: { newValue in
+                    guard !newValue else { return }
+                    pendingDeleteTutoringSession = nil
+                }
             )
         ) {
             Button("Cancelar", role: .cancel) { pendingDeleteTutoringSession = nil }
@@ -282,7 +288,10 @@ struct MacStudentsView: View {
         .sheet(
             isPresented: Binding(
                 get: { editingSupportMeasure != nil },
-                set: { if !$0 { editingSupportMeasure = nil } }
+                set: { newValue in
+                    guard !newValue else { return }
+                    editingSupportMeasure = nil
+                }
             )
         ) {
             if let studentId = store.localSelectedStudentId ?? selectedRow?.id, let editingSupportMeasure {
@@ -319,7 +328,10 @@ struct MacStudentsView: View {
             "Eliminar medida de apoyo",
             isPresented: Binding(
                 get: { pendingDeleteSupportMeasure != nil },
-                set: { if !$0 { pendingDeleteSupportMeasure = nil } }
+                set: { newValue in
+                    guard !newValue else { return }
+                    pendingDeleteSupportMeasure = nil
+                }
             ),
             presenting: pendingDeleteSupportMeasure
         ) { measure in
@@ -349,7 +361,10 @@ struct MacStudentsView: View {
         }
         .alert("No se pudo importar alumnado", isPresented: Binding(
             get: { importErrorMessage != nil },
-            set: { if !$0 { importErrorMessage = nil } }
+            set: { newValue in
+                guard !newValue else { return }
+                importErrorMessage = nil
+            }
         )) {
             Button("Aceptar", role: .cancel) {}
         } message: {

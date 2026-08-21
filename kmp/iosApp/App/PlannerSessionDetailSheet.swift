@@ -380,7 +380,7 @@ struct PlannerSessionDetailSheet: View {
 
     private func teacherAtAGlanceSection(_ plan: LearningSituationSessionPlan) -> some View {
         let projection = PlannerSessionDetailProjection(plan: plan)
-        VStack(spacing: 16) {
+        return VStack(spacing: 16) {
             let objective = projection.objective.isEmpty
                 ? plan.objective.trimmingCharacters(in: .whitespacesAndNewlines)
                 : projection.objective

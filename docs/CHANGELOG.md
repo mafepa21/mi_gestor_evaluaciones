@@ -56,6 +56,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Layout macOS de Alumnado e Informes: el shell deja de materializar el inspector cuando la ventana no conserva espacio útil, Alumnado reduce sus mínimos y agrupa las acciones secundarias en un único menú, e Informes adapta sus tres zonas para llevar la exportación a un menú compacto o mantenerla como panel plegable en ventanas amplias.
 - Planificación: las vistas Semana y Día muestran el contexto de la Situación de Aprendizaje, el título de la sesión, objetivo, actividad y material; el grid semanal muestra además grupo, número y título de sesión, resumen operativo y colisiones resumidas; el detalle incorpora una reconstrucción enriquecida del DOCX con tablas e imágenes y conserva QuickLook como respaldo nativo.
 - Planificación: la ficha de detalle de sesión convierte el guion importado en una vista docente operativa, con objetivo, métricas de tiempo, criterios, evidencias, material, saberes básicos, adaptaciones, bloques, pausas, roles de profesorado/alumnado y contexto desplegable; mantiene el DOCX reconstruido y el documento original como respaldo.
 - Planificación: la vista Semana permite ocultar el inspector lateral para ampliar el grid y elimina el aviso azul de ayuda del drag & drop, manteniendo el movimiento de sesiones operativo.
@@ -146,6 +147,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `xcodegen generate` y `./scripts/verify_apple_builds.sh`; el build macOS termina correctamente y el target `MiGestorKMPiOS` se repite de forma aislada con `BUILD SUCCEEDED` tras liberar artefactos temporales que agotaban el disco durante la ejecución conjunta. La verificación se ejecuta en la rama `codex/fix-ui-mac-alumnado-informes`.
+- `cd kmp && ./gradlew :data:desktopTest`: `BUILD SUCCESSFUL` en la rama
+   de correcciones macOS.
+- `cd kmp && ./gradlew :shared:desktopTest`: `BUILD SUCCESSFUL`.
+- `./scripts/verify_apple_builds.sh`: XcodeGen correcto; macOS Native e iOS
+   Simulator terminan en `BUILD SUCCEEDED`.
+- `./gradlew :shared:test` no pudo ejecutarse porque el entorno no tiene Android SDK
+   configurado (`ANDROID_HOME`/`kmp/local.properties`); la variante desktop sí pasó.
 - `cd kmp && ./gradlew :data:desktopTest` pasa con 100 tests en verde.
 - `./scripts/verify_apple_builds.sh` regenera XcodeGen y compila correctamente
   macOS Native e iOS Simulator.
@@ -172,6 +181,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- La shell macOS nativa vuelve a escanear las bases apartadas y avisa cuando
+  existe una cuarentena recuperable, incluso si el marcador de rescate ya se había
+  descartado; así una base activa vacía no oculta el camino de recuperación.
 - macOS ya no presenta "Primeros pasos" mientras existe un rescate de base de datos
   pendiente; el aviso de recuperación conserva la única acción primaria hasta que la
   base original pueda reabrirse.

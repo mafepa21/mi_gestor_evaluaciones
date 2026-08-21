@@ -6371,8 +6371,13 @@ final class KmpBridge: ObservableObject {
         for plan in draft.plans {
             let criteriaJSON = String(data: try JSONEncoder().encode(plan.criteria), encoding: .utf8) ?? "[]"
             let developmentPayload = LearningSituationSessionDevelopmentPayload(
+                organisation: plan.organisation,
+                coreKnowledge: plan.coreKnowledge,
+                assessment: plan.assessment,
                 sections: plan.development,
-                activities: plan.activities
+                activities: plan.activities,
+                guidingQuestions: plan.guidingQuestions,
+                closure: plan.closure
             )
             let developmentJSON = String(data: try JSONEncoder().encode(developmentPayload), encoding: .utf8) ?? "{}"
             let adaptationsJSON = String(data: try JSONEncoder().encode(plan.adaptations), encoding: .utf8) ?? "[]"

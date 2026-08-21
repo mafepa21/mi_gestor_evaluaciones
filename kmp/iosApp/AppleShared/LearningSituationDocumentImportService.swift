@@ -220,30 +220,78 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
              purpose, organisation, setup, teacherActions, studentInstructions, studentActions,
              timingBreakdown, clilFocus, evidence, materials, adaptations, slowGroupPlan,
              fastGroupExtension
+        // session-plan-v2 keys. The legacy keys above remain accepted on decode.
+        case v2Time = "time", v2Minutes = "minutes", v2Kind = "kind", v2Title = "title"
+        case v2TeacherNarrative = "teacherNarrative", v2StudentOutput = "studentOutput"
+        case v2Clil = "clil", v2Timing = "timing", v2IfSlow = "ifSlow", v2IfAhead = "ifAhead"
+    }
+
+    /// Encodes the stable, document-facing shape used by `session-plan-v2`. Keeping the
+    /// Swift draft type means old callers and saved import previews do not need a migration.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        let stableKey = activityKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        try container.encode(stableKey.isEmpty ? id.uuidString : stableKey, forKey: .id)
+        try container.encode(timeLabel, forKey: .v2Time)
+        try container.encodeIfPresent(plannedMinutes, forKey: .v2Minutes)
+        try container.encode(activityType, forKey: .v2Kind)
+        try container.encode(activity, forKey: .v2Title)
+        try container.encode(phase, forKey: .phase)
+        try container.encode(purpose, forKey: .purpose)
+        try container.encode(setup, forKey: .setup)
+        try container.encode(teacherActions, forKey: .v2TeacherNarrative)
+        try container.encode(studentInstructions, forKey: .studentInstructions)
+        try container.encode(studentActions, forKey: .v2StudentOutput)
+        try container.encode(organisation, forKey: .organisation)
+        try container.encode(materials, forKey: .materials)
+        try container.encode(evidence, forKey: .evidence)
+        try container.encode(clilFocus, forKey: .v2Clil)
+        try container.encode(timingBreakdown, forKey: .v2Timing)
+        try container.encode(adaptations, forKey: .adaptations)
+        try container.encode(slowGroupPlan, forKey: .v2IfSlow)
+        try container.encode(fastGroupExtension, forKey: .v2IfAhead)
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        self.activityKey = try container.decodeIfPresent(String.self, forKey: .activityKey) ?? ""
-        self.activityType = try container.decodeIfPresent(String.self, forKey: .activityType) ?? "core"
-        self.plannedMinutes = try container.decodeIfPresent(Int.self, forKey: .plannedMinutes)
-        self.timeLabel = try container.decodeIfPresent(String.self, forKey: .timeLabel) ?? ""
+        let encodedID = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        if let uuid = UUID(uuidString: encodedID) {
+            self.id = uuid
+            self.activityKey = try container.decodeIfPresent(String.self, forKey: .activityKey) ?? ""
+        } else {
+            self.id = UUID()
+            self.activityKey = encodedID.isEmpty
+                ? (try container.decodeIfPresent(String.self, forKey: .activityKey) ?? "")
+                : encodedID
+        }
+        self.activityType = try container.decodeIfPresent(String.self, forKey: .v2Kind)
+            ?? (try container.decodeIfPresent(String.self, forKey: .activityType)) ?? "core"
+        self.plannedMinutes = try container.decodeIfPresent(Int.self, forKey: .v2Minutes)
+            ?? (try container.decodeIfPresent(Int.self, forKey: .plannedMinutes))
+        self.timeLabel = try container.decodeIfPresent(String.self, forKey: .v2Time)
+            ?? (try container.decodeIfPresent(String.self, forKey: .timeLabel)) ?? ""
         self.phase = try container.decodeIfPresent(String.self, forKey: .phase) ?? ""
-        self.activity = try container.decodeIfPresent(String.self, forKey: .activity) ?? ""
+        self.activity = try container.decodeIfPresent(String.self, forKey: .v2Title)
+            ?? (try container.decodeIfPresent(String.self, forKey: .activity)) ?? ""
         self.purpose = try container.decodeIfPresent(String.self, forKey: .purpose) ?? ""
         self.organisation = try container.decodeIfPresent(String.self, forKey: .organisation) ?? ""
         self.setup = try container.decodeIfPresent(String.self, forKey: .setup) ?? ""
-        self.teacherActions = try container.decodeIfPresent(String.self, forKey: .teacherActions) ?? ""
+        self.teacherActions = try container.decodeIfPresent(String.self, forKey: .v2TeacherNarrative)
+            ?? (try container.decodeIfPresent(String.self, forKey: .teacherActions)) ?? ""
         self.studentInstructions = try container.decodeIfPresent(String.self, forKey: .studentInstructions) ?? ""
-        self.studentActions = try container.decodeIfPresent(String.self, forKey: .studentActions) ?? ""
-        self.timingBreakdown = try container.decodeIfPresent(String.self, forKey: .timingBreakdown) ?? ""
-        self.clilFocus = try container.decodeIfPresent(String.self, forKey: .clilFocus) ?? ""
+        self.studentActions = try container.decodeIfPresent(String.self, forKey: .v2StudentOutput)
+            ?? (try container.decodeIfPresent(String.self, forKey: .studentActions)) ?? ""
+        self.timingBreakdown = try container.decodeIfPresent(String.self, forKey: .v2Timing)
+            ?? (try container.decodeIfPresent(String.self, forKey: .timingBreakdown)) ?? ""
+        self.clilFocus = try container.decodeIfPresent(String.self, forKey: .v2Clil)
+            ?? (try container.decodeIfPresent(String.self, forKey: .clilFocus)) ?? ""
         self.evidence = try container.decodeIfPresent(String.self, forKey: .evidence) ?? ""
         self.materials = try container.decodeIfPresent(String.self, forKey: .materials) ?? ""
         self.adaptations = try container.decodeIfPresent(String.self, forKey: .adaptations) ?? ""
-        self.slowGroupPlan = try container.decodeIfPresent(String.self, forKey: .slowGroupPlan) ?? ""
-        self.fastGroupExtension = try container.decodeIfPresent(String.self, forKey: .fastGroupExtension) ?? ""
+        self.slowGroupPlan = try container.decodeIfPresent(String.self, forKey: .v2IfSlow)
+            ?? (try container.decodeIfPresent(String.self, forKey: .slowGroupPlan)) ?? ""
+        self.fastGroupExtension = try container.decodeIfPresent(String.self, forKey: .v2IfAhead)
+            ?? (try container.decodeIfPresent(String.self, forKey: .fastGroupExtension)) ?? ""
     }
 }
 
@@ -251,29 +299,67 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
 /// array de secciones, por lo que el lector ofrece fallback para no romper planes
 /// ya guardados.
 struct LearningSituationSessionDevelopmentPayload: Codable {
+    var schema: String
     var schemaVersion: Int
+    var organisation: String
+    var coreKnowledge: String
+    var assessment: String
     var sections: [LearningSituationSessionSectionDraft]
     var activities: [LearningSituationSessionActivityDraft]
+    var guidingQuestions: [String]
+    var closure: String
 
     init(
-        schemaVersion: Int = 3,
+        schema: String = "session-plan-v2",
+        schemaVersion: Int = 2,
+        organisation: String = "",
+        coreKnowledge: String = "",
+        assessment: String = "",
         sections: [LearningSituationSessionSectionDraft],
-        activities: [LearningSituationSessionActivityDraft]
+        activities: [LearningSituationSessionActivityDraft],
+        guidingQuestions: [String] = [],
+        closure: String = ""
     ) {
+        self.schema = schema
         self.schemaVersion = schemaVersion
+        self.organisation = organisation
+        self.coreKnowledge = coreKnowledge
+        self.assessment = assessment
         self.sections = sections
         self.activities = activities
+        self.guidingQuestions = guidingQuestions
+        self.closure = closure
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schema, schemaVersion, organisation, coreKnowledge, assessment
+        case sections, activities, guidingQuestions, closure
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schema = try container.decodeIfPresent(String.self, forKey: .schema) ?? "legacy"
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        organisation = try container.decodeIfPresent(String.self, forKey: .organisation) ?? ""
+        coreKnowledge = try container.decodeIfPresent(String.self, forKey: .coreKnowledge) ?? ""
+        assessment = try container.decodeIfPresent(String.self, forKey: .assessment) ?? ""
+        sections = try container.decodeIfPresent([LearningSituationSessionSectionDraft].self, forKey: .sections) ?? []
+        activities = try container.decodeIfPresent([LearningSituationSessionActivityDraft].self, forKey: .activities) ?? []
+        guidingQuestions = try container.decodeIfPresent([String].self, forKey: .guidingQuestions) ?? []
+        closure = try container.decodeIfPresent(String.self, forKey: .closure) ?? ""
     }
 
     static func decode(from json: String) -> Self? {
         guard let data = json.data(using: .utf8) else { return nil }
-        if let payload = try? JSONDecoder().decode(Self.self, from: data) {
+        if let payload = try? JSONDecoder().decode(Self.self, from: data),
+           payload.schema == "session-plan-v2" || payload.schemaVersion >= 2 ||
+           !payload.sections.isEmpty || !payload.activities.isEmpty {
             return payload
         }
         guard let sections = try? JSONDecoder().decode([LearningSituationSessionSectionDraft].self, from: data) else {
             return nil
         }
-        return Self(schemaVersion: 1, sections: sections, activities: [])
+        return Self(schema: "legacy", schemaVersion: 1, sections: sections, activities: [])
     }
 }
 
@@ -290,6 +376,11 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
     var development: [LearningSituationSessionSectionDraft]
     var activities: [LearningSituationSessionActivityDraft]
     var adaptations: [String]
+    var organisation: String
+    var coreKnowledge: String
+    var assessment: String
+    var guidingQuestions: [String]
+    var closure: String
 
     init(
         sessionNumber: Int,
@@ -302,7 +393,12 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         material: String,
         development: [LearningSituationSessionSectionDraft],
         activities: [LearningSituationSessionActivityDraft] = [],
-        adaptations: [String]
+        adaptations: [String],
+        organisation: String = "",
+        coreKnowledge: String = "",
+        assessment: String = "",
+        guidingQuestions: [String] = [],
+        closure: String = ""
     ) {
         self.id = UUID()
         self.sessionNumber = sessionNumber
@@ -316,11 +412,17 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         self.development = development
         self.activities = activities
         self.adaptations = adaptations
+        self.organisation = organisation
+        self.coreKnowledge = coreKnowledge
+        self.assessment = assessment
+        self.guidingQuestions = guidingQuestions
+        self.closure = closure
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, sessionNumber, sourceLabel, title, sessionType, effectiveMinutes,
-             objective, criteria, material, development, activities, adaptations
+             objective, criteria, material, development, activities, adaptations,
+             organisation, coreKnowledge, assessment, guidingQuestions, closure
     }
 
     init(from decoder: Decoder) throws {
@@ -337,6 +439,11 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         development = try container.decode([LearningSituationSessionSectionDraft].self, forKey: .development)
         activities = try container.decodeIfPresent([LearningSituationSessionActivityDraft].self, forKey: .activities) ?? []
         adaptations = try container.decode([String].self, forKey: .adaptations)
+        organisation = try container.decodeIfPresent(String.self, forKey: .organisation) ?? ""
+        coreKnowledge = try container.decodeIfPresent(String.self, forKey: .coreKnowledge) ?? ""
+        assessment = try container.decodeIfPresent(String.self, forKey: .assessment) ?? ""
+        guidingQuestions = try container.decodeIfPresent([String].self, forKey: .guidingQuestions) ?? []
+        closure = try container.decodeIfPresent(String.self, forKey: .closure) ?? ""
     }
 
     var developmentSummary: String {
@@ -856,6 +963,11 @@ private struct ParsedSessionPlan {
     let development: [LearningSituationSessionSectionDraft]
     let activities: [LearningSituationSessionActivityDraft]
     let adaptations: [String]
+    let organisation: String
+    let coreKnowledge: String
+    let assessment: String
+    let guidingQuestions: [String]
+    let closure: String
 }
 
 struct LearningSituationSessionSequenceDocumentImportService {
@@ -881,6 +993,13 @@ struct LearningSituationSessionSequenceDocumentImportService {
     /// extraídos (documentos de prueba) sin pasar por la descompresión del `.docx`.
     func preview(blocks: [WordDocumentBlock], data: Data, url: URL) throws -> LearningSituationSessionSequenceImportDraft {
         guard !blocks.isEmpty else { throw LearningSituationImportError.missingDocumentBody }
+
+        // Formato C (ficha + QUICK VIEW + ACTIVITY DETAILS) must win over the generic
+        // paragraph/table parser. Its detail paragraphs are not session development and
+        // flattening them would duplicate every activity in the legacy timeline.
+        if isFormatC(blocks) {
+            return parseFormatC(blocks: blocks, data: data, url: url)
+        }
 
         // `defaultMinutesByType` (B6) sigue operando sobre el texto plano de todo el documento
         // (incluido el de dentro de tablas), que es donde suele ir la frase introductoria
@@ -958,7 +1077,12 @@ struct LearningSituationSessionSequenceDocumentImportService {
                     material: parsed.material,
                     development: parsed.development,
                     activities: parsed.activities,
-                    adaptations: parsed.adaptations
+                    adaptations: parsed.adaptations,
+                    organisation: parsed.organisation,
+                    coreKnowledge: parsed.coreKnowledge,
+                    assessment: parsed.assessment,
+                    guidingQuestions: parsed.guidingQuestions,
+                    closure: parsed.closure
                 )
             })
         }
@@ -998,6 +1122,338 @@ struct LearningSituationSessionSequenceDocumentImportService {
             sourceFileName: url.lastPathComponent,
             sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
             sizeBytes: Int64(data.count)
+        )
+    }
+
+    // MARK: - C: ficha + QUICK VIEW + ACTIVITY DETAILS
+
+    private func isFormatC(_ blocks: [WordDocumentBlock]) -> Bool {
+        let hasQuickView = blocks.contains { block in
+            guard case .paragraph(let value) = block else { return false }
+            let text = normalized(value)
+            return text == "quick view" || text == "vista rapida" || text.hasPrefix("quick view ")
+        }
+        let hasActivityTable = blocks.contains { block in
+            guard case .table(let rows) = block, let header = rows.first else { return false }
+            return header.contains { value in
+                let text = normalized(value)
+                return text.contains("activity id") || text.contains("id actividad") || text.contains("activity key")
+            }
+        }
+        let hasSession = blocks.contains { block in
+            guard case .paragraph(let value) = block else { return false }
+            return Self.headerPattern.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil
+        }
+        return hasQuickView && hasActivityTable && hasSession
+    }
+
+    private func parseFormatC(
+        blocks: [WordDocumentBlock],
+        data: Data,
+        url: URL
+    ) -> LearningSituationSessionSequenceImportDraft {
+        struct Header {
+            let index: Int
+            let value: String
+            let number: Int
+        }
+
+        var headers: [Header] = []
+        for (index, block) in blocks.enumerated() {
+            guard case .paragraph(let value) = block,
+                  let match = Self.headerPattern.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
+                  let range = Range(match.range(at: 1), in: value),
+                  let number = Int(value[range]) else { continue }
+            headers.append(Header(index: index, value: value, number: number))
+        }
+
+        var plans: [LearningSituationSessionPlanDraft] = []
+        var warnings: [String] = []
+        var seenSessionNumbers = Set<Int>()
+        for (position, header) in headers.enumerated() {
+            guard seenSessionNumbers.insert(header.number).inserted else {
+                warnings.append("Formato C: la sesión \(header.number) aparece repetida; se conserva la primera ficha y se omite la duplicada.")
+                continue
+            }
+            let end = position + 1 < headers.count ? headers[position + 1].index : blocks.count
+            let parsed = parseFormatCSession(header: header.value, body: Array(blocks[(header.index + 1)..<end]), warnings: &warnings)
+            plans.append(LearningSituationSessionPlanDraft(
+                sessionNumber: header.number,
+                sourceLabel: header.value,
+                title: parsed.title,
+                sessionType: parsed.sessionType,
+                effectiveMinutes: parsed.effectiveMinutes,
+                objective: parsed.objective,
+                criteria: parsed.criteria,
+                material: parsed.material,
+                development: parsed.development,
+                activities: parsed.activities,
+                adaptations: parsed.adaptations,
+                organisation: parsed.organisation,
+                coreKnowledge: parsed.coreKnowledge,
+                assessment: parsed.assessment,
+                guidingQuestions: parsed.guidingQuestions,
+                closure: parsed.closure
+            ))
+        }
+
+        plans.sort { $0.sessionNumber < $1.sessionNumber }
+        if plans.isEmpty { warnings.append("Formato C detectado pero no se reconocieron sesiones.") }
+        let numbers = plans.map(\.sessionNumber)
+        if let maximum = numbers.max(), numbers != Array(1...maximum) {
+            warnings.append("La numeración de las sesiones no es consecutiva.")
+        }
+        let missingTitleCount = plans.filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+        if missingTitleCount > 0 {
+            warnings.append("\(missingTitleCount) sesiones no tienen título reconocido.")
+        }
+        let missingObjectiveCount = plans.filter { $0.objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+        if missingObjectiveCount > 0 {
+            warnings.append("\(missingObjectiveCount) sesiones no tienen objetivo reconocido.")
+        }
+        let missingDevelopmentCount = plans.filter { $0.development.isEmpty }.count
+        if missingDevelopmentCount > 0 {
+            warnings.append("\(missingDevelopmentCount) sesiones no tienen desarrollo reconocido.")
+        }
+        return LearningSituationSessionSequenceImportDraft(
+            plans: plans,
+            warnings: warnings,
+            sourceURL: url,
+            sourceFileName: url.lastPathComponent,
+            sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
+            sizeBytes: Int64(data.count)
+        )
+    }
+
+    private func parseFormatCSession(
+        header: String,
+        body: [WordDocumentBlock],
+        warnings: inout [String]
+    ) -> ParsedSessionPlan {
+        var title = cleanRestTitle(sessionTypeAndTitle(from: header).title)
+        var sessionType = sessionTypeAndTitle(from: header).type
+        let minutes = integerMatch(in: header, pattern: #"([0-9]+)\s*(?:minutos|minutes|min|')"#) ?? 0
+        var objective = ""
+        var criteriaRaw = ""
+        var material = ""
+        var organisation = ""
+        var coreKnowledge = ""
+        var assessment = ""
+        var activities: [LearningSituationSessionActivityDraft] = []
+        var details: [String: [String: String]] = [:]
+        var detailIDs: [String] = []
+        var seenDetailIDs = Set<String>()
+        var guidingQuestions: [String] = []
+        var closureLines: [String] = []
+        var section: String?
+        var detailKey: String?
+        var discardingDuplicateDetail = false
+        var pendingFichaField: String?
+        var pendingDetailField: String?
+        var seenIDs = Set<String>()
+
+        func field(_ raw: String) -> String? {
+            switch normalized(raw).trimmingCharacters(in: CharacterSet(charactersIn: " :\t")) {
+            case "titulo", "title": return "title"
+            case "objetivo", "objetivo especifico", "objetivo principal", "objective", "specific objective", "main objective": return "objective"
+            case "criterio", "criterios", "criterios trabajados", "criterios de evaluacion", "criteria", "criteria worked", "evaluation criteria addressed": return "criteria"
+            case "material", "materiales", "materials", "materials needed", "required materials": return "material"
+            case "organizacion del grupo", "organización del grupo", "group organisation", "student grouping": return "organisation"
+            case "saberes basicos", "saberes basicos trabajados", "core knowledge addressed", "basic knowledge addressed": return "coreKnowledge"
+            case "evaluacion", "evaluation", "assessment", "evidencia", "evidence": return "assessment"
+            default: return nil
+            }
+        }
+
+        func detailField(_ raw: String) -> String? {
+            switch normalized(raw).trimmingCharacters(in: CharacterSet(charactersIn: " :\t")) {
+            case "purpose", "proposito", "proposito de la actividad": return "purpose"
+            case "organisation", "organization", "organizacion", "grouping": return "organisation"
+            case "set-up", "setup", "preparation", "preparacion", "montaje": return "setup"
+            case "teacher narrative", "teacher instructions", "teacher actions", "teacher script", "what the teacher says", "instrucciones del profesor", "acciones del docente", "narrativa del profesor": return "teacherActions"
+            case "student instructions", "instructions for students", "learner narrative", "instrucciones para el alumnado", "consignas": return "studentInstructions"
+            case "student output", "what students do", "student actions", "student narrative", "acciones del alumnado", "resultado del alumnado": return "studentActions"
+            case "timing", "timing breakdown", "timing and transition", "transition cue", "transition", "desglose temporal", "transicion", "temporizacion y transiciones": return "timingBreakdown"
+            case "clil", "clil focus", "clil language", "enfoque clil": return "clilFocus"
+            case "materials", "materiales": return "materials"
+            case "evidence", "evidencia": return "evidence"
+            case "adaptations", "adaptaciones": return "adaptations"
+            case "if the group is slow", "slow group plan", "si el grupo va lento": return "slowGroupPlan"
+            case "if the group is ahead", "fast group extension", "si el grupo termina antes": return "fastGroupExtension"
+            default: return nil
+            }
+        }
+
+        func store(_ key: String, _ name: String, _ value: String) {
+            let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { return }
+            // A repeated detail card is a warning condition, not permission to let the
+            // later narrative silently replace the first one.
+            if details[key]?[name] == nil {
+                details[key, default: [:]][name] = value
+            }
+        }
+
+        func assignFicha(_ name: String, _ value: String) {
+            let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { return }
+            switch name {
+            case "title": if title.isEmpty { title = value }
+            case "objective": if objective.isEmpty { objective = value }
+            case "criteria": criteriaRaw = criteriaRaw.isEmpty ? value : "\(criteriaRaw), \(value)"
+            case "material": if material.isEmpty { material = value }
+            case "organisation": if organisation.isEmpty { organisation = value }
+            case "coreKnowledge": if coreKnowledge.isEmpty { coreKnowledge = value }
+            case "assessment": if assessment.isEmpty { assessment = value }
+            default: break
+            }
+        }
+
+        for block in body {
+            switch block {
+            case .paragraph(let raw):
+                let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                let norm = normalized(text)
+                if norm == "quick view" || norm == "vista rapida" { section = "quick"; detailKey = nil; pendingFichaField = nil; pendingDetailField = nil; discardingDuplicateDetail = false; continue }
+                if norm == "activity details" || norm == "detalle de actividades" { section = "details"; detailKey = nil; pendingFichaField = nil; pendingDetailField = nil; discardingDuplicateDetail = false; continue }
+                if norm == "guiding questions" || norm == "preguntas guia" || norm == "preguntas guía" { section = "guiding"; detailKey = nil; pendingFichaField = nil; pendingDetailField = nil; discardingDuplicateDetail = false; continue }
+                if norm == "guiding questions and closure" || norm == "preguntas guia y cierre" || norm == "preguntas guía y cierre" { section = "guidingClosure"; detailKey = nil; pendingFichaField = nil; pendingDetailField = nil; discardingDuplicateDetail = false; continue }
+                if norm == "closure" || norm == "cierre" { section = "closure"; detailKey = nil; pendingFichaField = nil; pendingDetailField = nil; discardingDuplicateDetail = false; continue }
+                if let regex = try? NSRegularExpression(pattern: #"^ACTIVITY\s+([A-Z0-9][A-Z0-9_-]*)(?:\s*[—–-].*)?$"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                   let keyRange = Range(match.range(at: 1), in: text) {
+                    let candidateKey = String(text[keyRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if seenDetailIDs.insert(candidateKey).inserted {
+                        detailKey = candidateKey
+                        detailIDs.append(candidateKey)
+                        discardingDuplicateDetail = false
+                    } else {
+                        detailKey = nil
+                        discardingDuplicateDetail = true
+                        warnings.append("\(header): Activity ID duplicado en ACTIVITY DETAILS (\(candidateKey)); se conserva la primera ficha.")
+                    }
+                    pendingFichaField = nil
+                    pendingDetailField = nil
+                    section = "details"
+                    continue
+                }
+                if discardingDuplicateDetail { continue }
+                if section == "guiding" {
+                    let value = text.replacingOccurrences(of: #"^[-•]\s*"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !value.isEmpty { guidingQuestions.append(value) }
+                    continue
+                }
+                if section == "guidingClosure" {
+                    let value = text.replacingOccurrences(of: #"^[-•]\s*"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if guidingQuestions.isEmpty { guidingQuestions.append(value) } else { closureLines.append(value) }
+                    continue
+                }
+                if section == "closure" { closureLines.append(text); continue }
+
+                // C documents sometimes put a ficha/detail label on its own line and the
+                // value in the following paragraph. Keep that state explicitly, matching
+                // the tolerant A/B parser instead of treating the label as prose.
+                if let detailName = pendingDetailField, let detailKey {
+                    store(detailKey, detailName, text)
+                    pendingDetailField = nil
+                    continue
+                }
+                if let fichaName = pendingFichaField {
+                    assignFicha(fichaName, text)
+                    pendingFichaField = nil
+                    continue
+                }
+                if let separator = text.firstIndex(of: ":") {
+                    let label = String(text[..<separator])
+                    let value = String(text[text.index(after: separator)...])
+                    if let detailKey, let detail = detailField(label) {
+                        if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            pendingDetailField = detail
+                        } else {
+                            store(detailKey, detail, value)
+                        }
+                        continue
+                    }
+                    if let ficha = field(label) {
+                        if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            pendingFichaField = ficha
+                        } else {
+                            assignFicha(ficha, value)
+                        }
+                        continue
+                    }
+                }
+                if detailKey != nil, let detail = detailField(text) {
+                    section = "details"
+                    pendingDetailField = detail
+                    continue
+                }
+                if let ficha = field(text) {
+                    pendingFichaField = ficha
+                    continue
+                }
+            case .table(let rawRows):
+                if discardingDuplicateDetail { continue }
+                let rows = rawRows.map { $0.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } }.filter { $0.contains { !$0.isEmpty } }
+                guard !rows.isEmpty else { continue }
+                if isTimeTable(rows) && section == "quick" {
+                    for activity in timeTableActivities(rows) {
+                        let key = activity.activityKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !key.isEmpty else { continue }
+                        if seenIDs.insert(key).inserted { activities.append(activity) }
+                        else { warnings.append("\(header): Activity ID duplicado \(key); se conserva una sola fila.") }
+                    }
+                    continue
+                }
+                if let first = rows.first, first.count >= 2 {
+                    let firstRowIsLabel = (detailKey != nil && detailField(first[0]) != nil) ||
+                        (detailKey == nil && field(first[0]) != nil)
+                    let dataRows = firstRowIsLabel ? rows : Array(rows.dropFirst())
+                    for row in dataRows where row.count >= 2 {
+                        if let detailKey, let detail = detailField(row[0]) { store(detailKey, detail, row.dropFirst().joined(separator: " ")); continue }
+                        if let ficha = field(row[0]) { assignFicha(ficha, row.dropFirst().joined(separator: " ")) }
+                    }
+                }
+            }
+        }
+
+        let mergedActivities = activities.map { activity -> LearningSituationSessionActivityDraft in
+            guard let values = details[activity.activityKey] else { return activity }
+            return LearningSituationSessionActivityDraft(
+                activityKey: activity.activityKey, activityType: activity.activityType,
+                plannedMinutes: activity.plannedMinutes, timeLabel: activity.timeLabel,
+                phase: activity.phase, activity: activity.activity, purpose: values["purpose"] ?? activity.purpose,
+                organisation: values["organisation"] ?? activity.organisation, setup: values["setup"] ?? activity.setup,
+                teacherActions: values["teacherActions"] ?? activity.teacherActions,
+                studentInstructions: values["studentInstructions"] ?? activity.studentInstructions,
+                studentActions: values["studentActions"] ?? activity.studentActions,
+                timingBreakdown: values["timingBreakdown"] ?? activity.timingBreakdown,
+                clilFocus: values["clilFocus"] ?? activity.clilFocus, evidence: values["evidence"] ?? activity.evidence,
+                materials: values["materials"] ?? activity.materials, adaptations: values["adaptations"] ?? activity.adaptations,
+                slowGroupPlan: values["slowGroupPlan"] ?? activity.slowGroupPlan,
+                fastGroupExtension: values["fastGroupExtension"] ?? activity.fastGroupExtension
+            )
+        }
+        let quickIDs = Set(activities.map(\.activityKey))
+        for id in detailIDs where !quickIDs.contains(id) {
+            warnings.append("\(header): Activity ID \(id) aparece en ACTIVITY DETAILS pero no en QUICK VIEW; se conserva solo la fila QUICK VIEW.")
+        }
+        for id in quickIDs where !detailIDs.contains(id) {
+            warnings.append("\(header): Activity ID \(id) no tiene ficha en ACTIVITY DETAILS; se conserva la fila QUICK VIEW.")
+        }
+        let expectedBlock = normalized(sessionType).contains("simple") || normalized(sessionType).contains("short") ? "-S-" : "-L-"
+        for activity in mergedActivities where !activity.activityKey.contains(expectedBlock) {
+            warnings.append("\(header): Activity ID \(activity.activityKey) no corresponde al bloque \(sessionType).")
+        }
+        sessionType = normalized(sessionType).contains("simple") || normalized(sessionType).contains("short") ? "Simple" : "Doble"
+        let sections = mergedActivities.isEmpty ? [] : [LearningSituationSessionSectionDraft(title: "QUICK VIEW", lines: mergedActivities.map { [$0.timeLabel, $0.activity].filter { !$0.isEmpty }.joined(separator: " · ") })]
+        return ParsedSessionPlan(
+            title: title, sessionType: sessionType, effectiveMinutes: minutes, objective: objective,
+            criteria: criterionCodes(in: criteriaRaw), material: material, development: sections,
+            activities: mergedActivities, adaptations: [], organisation: organisation,
+            coreKnowledge: coreKnowledge, assessment: assessment, guidingQuestions: guidingQuestions,
+            closure: closureLines.joined(separator: "\n")
         )
     }
 
@@ -1562,7 +2018,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
         return ParsedSessionPlan(
             title: title, sessionType: type, effectiveMinutes: minutes, objective: objective,
             criteria: criteria, material: material, development: development, activities: [],
-            adaptations: adaptations
+            adaptations: adaptations, organisation: "", coreKnowledge: "", assessment: evidence,
+            guidingQuestions: [], closure: ""
         )
     }
 
@@ -1806,8 +2263,14 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 organisation: cell(row, organisationIndex),
                 setup: cell(row, setupIndex),
                 teacherActions: cell(row, teacherIndex),
-                studentInstructions: cell(row, studentOutputIndex),
-                studentActions: cell(row, studentIndex),
+                // QUICK VIEW's Student output is an expected artefact, not the teacher's
+                // full instruction script. Keep it in the v2 studentOutput projection;
+                // ACTIVITY DETAILS/Instructions for students populates studentInstructions
+                // later without overwriting this value.
+                studentInstructions: "",
+                studentActions: cell(row, studentOutputIndex).isEmpty
+                    ? cell(row, studentIndex)
+                    : cell(row, studentOutputIndex),
                 timingBreakdown: cell(row, timingIndex),
                 clilFocus: cell(row, clilIndex),
                 evidence: cell(row, evidenceIndex),
@@ -1996,7 +2459,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
         return ParsedSessionPlan(
             title: title, sessionType: sessionType, effectiveMinutes: minutes, objective: objective,
             criteria: criteria, material: material, development: development, activities: activities,
-            adaptations: adaptations
+            adaptations: adaptations, organisation: "", coreKnowledge: saberes, assessment: evidenceFromFicha,
+            guidingQuestions: [], closure: ""
         )
     }
 

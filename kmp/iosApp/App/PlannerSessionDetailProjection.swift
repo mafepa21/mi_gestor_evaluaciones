@@ -14,12 +14,19 @@ struct PlannerSessionDetailProjection {
     let basicKnowledge: [String]
     let evidence: [String]
     let adaptations: [String]
+    let organisation: String
+    let coreKnowledge: String
+    let assessment: String
+    let guidingQuestions: [String]
+    let closure: String
+    let activities: [LearningSituationSessionActivityDraft]
     let timeline: [PlannerSessionTimelineBlock]
     let supportSections: [PlannerSessionSupportSection]
     let activityCount: Int
 
     init(plan: LearningSituationSessionPlan) {
-        let sections = Self.decodeSections(plan.developmentJson)
+        let payload = Self.decodePayload(plan.developmentJson)
+        let sections = payload.sections
         let timelineSections = sections.filter(Self.isTimelineSection)
         let timeline = timelineSections.map(PlannerSessionTimelineBlock.init)
 
@@ -37,9 +44,15 @@ struct PlannerSessionDetailProjection {
         self.objective = Self.cleaned(plan.objective)
         self.criteria = Self.decodeStrings(plan.criteriaJson)
         self.materials = materialParts.materials
-        self.basicKnowledge = materialParts.basicKnowledge
-        self.evidence = Self.unique(sectionEvidence + stepEvidence)
+        self.basicKnowledge = Self.unique(materialParts.basicKnowledge + Self.splitList(payload.coreKnowledge))
+        self.evidence = Self.unique(sectionEvidence + stepEvidence + Self.splitList(payload.assessment))
         self.adaptations = Self.decodeStrings(plan.adaptationsJson)
+        self.organisation = Self.cleaned(payload.organisation)
+        self.coreKnowledge = Self.cleaned(payload.coreKnowledge)
+        self.assessment = Self.cleaned(payload.assessment)
+        self.guidingQuestions = Self.unique(payload.guidingQuestions.map(Self.cleaned).filter { !$0.isEmpty })
+        self.closure = Self.cleaned(payload.closure)
+        self.activities = payload.activities
         self.timeline = timeline
         self.supportSections = sections
             .filter { !Self.isTimelineSection($0) && !Self.isEvidenceSection($0) }
@@ -51,9 +64,11 @@ struct PlannerSessionDetailProjection {
         !objective.isEmpty || !criteria.isEmpty || !evidence.isEmpty || !materials.isEmpty || !basicKnowledge.isEmpty
     }
 
-    private static func decodeSections(_ json: String) -> [LearningSituationSessionSectionDraft] {
-        guard let data = json.data(using: .utf8) else { return [] }
-        return (try? JSONDecoder().decode([LearningSituationSessionSectionDraft].self, from: data)) ?? []
+    private static func decodePayload(_ json: String) -> LearningSituationSessionDevelopmentPayload {
+        if let payload = LearningSituationSessionDevelopmentPayload.decode(from: json) {
+            return payload
+        }
+        return LearningSituationSessionDevelopmentPayload(schema: "legacy", schemaVersion: 1, sections: [], activities: [])
     }
 
     private static func decodeStrings(_ json: String) -> [String] {
@@ -256,6 +271,58 @@ struct PlannerSessionTimelineBlock: Identifiable {
         self.steps = section.lines
             .map(PlannerSessionDetailProjection.parseStep)
             .filter { !$0.activity.isEmpty }
+    }
+}
+
+/// Projects v1 section/line payloads into executable rows only. Evidence, questions, closure
+/// and adaptation prose remain contextual sections and must not appear as activities in QUICK VIEW.
+enum PlannerSessionLegacyActivityProjection {
+    static func executableActivities(from sections: [LearningSituationSessionSectionDraft]) -> [LearningSituationSessionActivityDraft] {
+        let timelineSections = sections.enumerated().filter { _, section in
+            let title = section.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            guard !title.contains("evidencia") && !title.contains("evidence") &&
+                !title.contains("evaluacion") && !title.contains("assessment") &&
+                !title.contains("pregunta") && !title.contains("guiding") &&
+                !title.contains("cierre") && !title.contains("closure") &&
+                !title.contains("adaptacion") && !title.contains("adaptation") else { return false }
+            let timelineTitle = title.hasPrefix("bloque") || title.hasPrefix("block") ||
+                title.hasPrefix("desarrollo") || title.hasPrefix("development") ||
+                title.hasPrefix("break") || title.hasPrefix("descanso") ||
+                title.contains("prepara") || title.contains("consolida")
+            let hasTimedLine = section.lines.contains { PlannerSessionDetailProjection.parseStep($0).timeLabel != nil }
+            return timelineTitle || hasTimedLine
+        }
+        let activities = timelineSections.flatMap { sectionIndex, section in
+            section.lines.enumerated().compactMap { lineIndex, line -> LearningSituationSessionActivityDraft? in
+                let parsed = PlannerSessionDetailProjection.parseStep(line)
+                let title = parsed.activity.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !title.isEmpty else { return nil }
+                return LearningSituationSessionActivityDraft(
+                    activityKey: "LEGACY-\(sectionIndex + 1)-\(lineIndex + 1)",
+                    activityType: "legacy",
+                    timeLabel: parsed.timeLabel ?? "",
+                    phase: parsed.phase ?? section.title,
+                    activity: title,
+                    teacherActions: parsed.teacherRole ?? "",
+                    studentActions: parsed.studentRole ?? "",
+                    evidence: parsed.evidence ?? ""
+                )
+            }
+        }
+        return stableActivities(activities)
+    }
+
+    static func stableActivities(_ activities: [LearningSituationSessionActivityDraft]) -> [LearningSituationSessionActivityDraft] {
+        var occurrences: [String: Int] = [:]
+        return activities.enumerated().map { index, activity in
+            var copy = activity
+            let rawKey = activity.activityKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            let baseKey = rawKey.isEmpty ? "LEGACY-\(index + 1)" : rawKey
+            let occurrence = occurrences[baseKey, default: 0]
+            occurrences[baseKey] = occurrence + 1
+            copy.activityKey = occurrence == 0 ? baseKey : "\(baseKey)#\(occurrence + 1)"
+            return copy
+        }
     }
 }
 

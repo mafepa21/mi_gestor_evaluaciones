@@ -64,6 +64,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Planificación: el contenido operativo de una sesión se serializa como `session-plan-v2` dentro de `developmentJson`, con decoder dual para arrays v1; el importador reconoce el formato C de ficha + QUICK VIEW + ACTIVITY DETAILS y la ficha separa Resumen, Actividad y Anexos.
 - Planificación de sesiones: la importación conserva actividades ejecutables dentro de un sobre versionado, la preview muestra Teacher/Students/CLIL/Evidence y la ficha de ejecución presenta una línea temporal ampliada con materiales y adaptaciones.
 - Planificación de bloques: una secuencia semanal asigna el bloque largo a dos franjas consecutivas y el corto a una franja simple aunque los días del grupo estén invertidos; las ambigüedades quedan visibles como warning.
 - Layout macOS de Alumnado e Informes: el shell deja de materializar el inspector cuando la ventana no conserva espacio útil, Alumnado reduce sus mínimos y agrupa las acciones secundarias en un único menú, e Informes adapta sus tres zonas para llevar la exportación a un menú compacto o mantenerla como panel plegable en ventanas amplias.
@@ -157,6 +158,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Planificación `session-plan-v2` (#215): `MiGestorPlannerTests` pasa completo con 55/55 antes del endurecimiento final y las 16 pruebas focalizadas del importador/proyección pasan después; el DOCX real importa 10 sesiones y 35 actividades; `verify_apple_builds.sh` finaliza con macOS Native e iOS Simulator en verde.
 - `xcodegen generate` y `./scripts/verify_apple_builds.sh`; el build macOS termina correctamente y el target `MiGestorKMPiOS` se repite de forma aislada con `BUILD SUCCEEDED` tras liberar artefactos temporales que agotaban el disco durante la ejecución conjunta. La verificación se ejecuta en la rama `codex/fix-ui-mac-alumnado-informes`.
 - `cd kmp && ./gradlew :data:desktopTest`: `BUILD SUCCESSFUL` en la rama
    de correcciones macOS.
@@ -177,6 +179,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- ADR `ADR-2026-08-21-session-plan-v2-quick-view.md`: contrato versionado para QUICK VIEW, compatibilidad legacy y persistencia sin migración SQLDelight.
 - ADR `ADR-2026-08-15-bulk-learning-situation-reads.md`: decisión de centralizar las lecturas
   relacionadas con Situaciones en consultas bulk y resolver sus relaciones en memoria en la capa Apple.
 - Auditoría y propuesta de rediseño de los instrumentos de evaluación del Cuaderno:

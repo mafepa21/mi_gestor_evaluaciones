@@ -3,6 +3,137 @@ import XCTest
 @testable import MiGestorKMPMac
 
 final class LearningSituationDocumentImportTests: XCTestCase {
+    func testDevelopmentPayloadDecodesV1V2AndCorruptInputWithoutCrashing() throws {
+        let section = LearningSituationSessionSectionDraft(title: "Bloque", lines: ["0'-10' · Entrada · Actividad"])
+        let legacy = String(data: try JSONEncoder().encode([section]), encoding: .utf8)!
+        let v1 = LearningSituationSessionDevelopmentPayload.decode(from: legacy)
+        XCTAssertEqual(v1?.schemaVersion, 1)
+        XCTAssertEqual(v1?.sections.first?.title, "Bloque")
+
+        let legacyObject = #"{"schemaVersion":3,"sections":[{"id":"00000000-0000-0000-0000-000000000001","title":"Legacy block","lines":["Legacy line"]}],"activities":[{"id":"00000000-0000-0000-0000-000000000002","activityKey":"W01-L-01","activityType":"core","plannedMinutes":10,"timeLabel":"0'-10'","phase":"Entry","activity":"Legacy activity","studentInstructions":"Legacy instruction","studentActions":"Legacy output"}]}"#
+        let v3 = LearningSituationSessionDevelopmentPayload.decode(from: legacyObject)
+        XCTAssertEqual(v3?.schemaVersion, 3)
+        XCTAssertEqual(v3?.activities.first?.activityKey, "W01-L-01")
+        XCTAssertEqual(v3?.activities.first?.studentActions, "Legacy output")
+
+        let activity = LearningSituationSessionActivityDraft(
+            activityKey: "W01-L-03", plannedMinutes: 50, timeLabel: "25′–75′", phase: "Main",
+            activity: "Training principles jigsaw", purpose: "Purpose", organisation: "Groups", setup: "Set-up",
+            teacherActions: "Teacher narrative", studentInstructions: "Instructions",
+            studentActions: "Student output", timingBreakdown: "Timing",
+            clilFocus: "CLIL", evidence: "Evidence", materials: "Materials",
+            adaptations: "Adaptations", slowGroupPlan: "If slow", fastGroupExtension: "If ahead"
+        )
+        let payload = LearningSituationSessionDevelopmentPayload(
+            organisation: "Eight groups", coreKnowledge: "FITT-PV", assessment: "Health Passport",
+            sections: [], activities: [activity], guidingQuestions: ["What changed?"], closure: "Exit note"
+        )
+        let v2JSON = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        XCTAssertTrue(v2JSON.contains("session-plan-v2"))
+        XCTAssertTrue(v2JSON.contains("\"teacherNarrative\""))
+        let v2 = LearningSituationSessionDevelopmentPayload.decode(from: v2JSON)
+        XCTAssertEqual(v2?.activities.first?.activityKey, "W01-L-03")
+        XCTAssertEqual(v2?.guidingQuestions, ["What changed?"])
+        XCTAssertNil(LearningSituationSessionDevelopmentPayload.decode(from: "{not-json"))
+    }
+
+    func testFormatCActivityMismatchWarnsAndKeepsQuickViewRows() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Session 1 - Double (90 minutes) — Week 1"),
+            .paragraph("Specific objective: Keep the task safe."),
+            .paragraph("QUICK VIEW"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity", "Student output"],
+                ["0′–10′", "W01-L-01", "setup", "10", "Entry", "Briefing", "Quick View output"]
+            ]),
+            .paragraph("ACTIVITY DETAILS"),
+            .paragraph("Activity W01-L-01 — Briefing"),
+            .paragraph("Purpose: First detail must win."),
+            .paragraph("Activity W01-L-01 — Briefing duplicate"),
+            .paragraph("Student output: Injected duplicate output."),
+            .paragraph("Activity W01-L-99 — Unknown"),
+            .paragraph("Purpose: Must not create a second row."),
+            .paragraph("GUIDING QUESTIONS AND CLOSURE"),
+            .paragraph("Ask one question."),
+            .paragraph("Close with one evidence note.")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks, data: Data("mismatch".utf8), url: URL(fileURLWithPath: "/tmp/format-c-mismatch.docx")
+        )
+        XCTAssertEqual(draft.plans.count, 1)
+        XCTAssertEqual(draft.plans.first?.activities.map(\.activityKey), ["W01-L-01"])
+        XCTAssertEqual(draft.plans.first?.activities.first?.purpose, "First detail must win.")
+        XCTAssertEqual(draft.plans.first?.activities.first?.studentActions, "Quick View output")
+        XCTAssertTrue(draft.warnings.contains { $0.contains("W01-L-99") })
+        XCTAssertTrue(draft.warnings.contains { $0.contains("duplicado en ACTIVITY DETAILS") })
+        XCTAssertEqual(draft.plans.first?.guidingQuestions, ["Ask one question."])
+        XCTAssertEqual(draft.plans.first?.closure, "Close with one evidence note.")
+    }
+
+    func testFormatCAcceptsMultilineLabelsAndHeaderlessFichaTables() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Session 1 - Double (90 minutes) — Week 1"),
+            .paragraph("Specific objective"),
+            .paragraph("Keep the task safe."),
+            .table([
+                ["Materials", "Cones and passports"],
+                ["Group organisation", "Pairs"],
+                ["Assessment", "Health Passport record"]
+            ]),
+            .paragraph("QUICK VIEW"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity", "Student output"],
+                ["0′–10′", "W01-L-01", "setup", "10", "Entry", "Briefing", "One completed record"]
+            ]),
+            .paragraph("ACTIVITY DETAILS"),
+            .paragraph("Activity W01-L-01"),
+            .paragraph("Purpose"),
+            .paragraph("Establish a safe baseline."),
+            .paragraph("Instructions for students:"),
+            .paragraph("Listen, record and swap roles.")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks, data: Data("format-c-multiline".utf8), url: URL(fileURLWithPath: "/tmp/format-c-multiline.docx")
+        )
+        let plan = try XCTUnwrap(draft.plans.first)
+        XCTAssertEqual(plan.objective, "Keep the task safe.")
+        XCTAssertEqual(plan.material, "Cones and passports")
+        XCTAssertEqual(plan.organisation, "Pairs")
+        XCTAssertEqual(plan.assessment, "Health Passport record")
+        XCTAssertEqual(plan.activities.first?.studentActions, "One completed record")
+        XCTAssertEqual(plan.activities.first?.studentInstructions, "Listen, record and swap roles.")
+        XCTAssertEqual(plan.activities.first?.purpose, "Establish a safe baseline.")
+    }
+
+    func testFormatCDuplicateSessionNumberKeepsFirstPlanAndWarns() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Session 1 - Double (90 minutes) — First session"),
+            .paragraph("QUICK VIEW"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity"],
+                ["0′–10′", "W01-L-01", "setup", "10", "Entry", "First activity"]
+            ]),
+            .paragraph("Session 1 - Double (90 minutes) — Duplicate session"),
+            .paragraph("QUICK VIEW"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity"],
+                ["0′–10′", "W01-L-02", "setup", "10", "Entry", "Duplicate activity"]
+            ])
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks, data: Data("duplicate-session".utf8), url: URL(fileURLWithPath: "/tmp/format-c-duplicate-session.docx")
+        )
+
+        XCTAssertEqual(draft.plans.count, 1)
+        XCTAssertTrue(draft.plans.first?.title.contains("First session") == true)
+        XCTAssertFalse(draft.plans.first?.title.contains("Duplicate session") == true)
+        XCTAssertEqual(draft.plans.first?.activities.map(\.activityKey), ["W01-L-01"])
+        XCTAssertTrue(draft.warnings.contains { $0.contains("sesión 1 aparece repetida") })
+    }
+
     func testBatchPreviewKeepsEveryUnreadableFileAsAnIndependentFailure() {
         let urls = [
             URL(fileURLWithPath: "/tmp/primera-situacion.docx"),
@@ -116,6 +247,7 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.plans[0].activities.first?.purpose, "Establish a safe baseline.")
         XCTAssertEqual(draft.plans[0].activities.first?.teacherActions, "Model the pulse count and check the first pair.")
         XCTAssertEqual(draft.plans[0].activities.first?.studentInstructions, "Count, record and swap roles.")
+        XCTAssertEqual(draft.plans[0].activities.first?.studentActions, "Complete the record.")
         XCTAssertEqual(draft.plans[0].activities.first?.timingBreakdown, "5 minutes model, 12 minutes practice, 3 minutes check.")
         XCTAssertEqual(draft.plans[1].activities.map(\.activityKey), ["W01-S-01"])
         XCTAssertEqual(draft.plans[1].activities.first?.activity, "Exit response")

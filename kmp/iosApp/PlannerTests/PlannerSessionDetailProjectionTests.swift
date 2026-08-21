@@ -63,6 +63,51 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
         XCTAssertNil(step.studentRole)
     }
 
+    func testV2ObjectPayloadProjectsQuickViewActivitiesAndAnnexes() throws {
+        let activity = LearningSituationSessionActivityDraft(
+            activityKey: "W01-L-03", plannedMinutes: 50, timeLabel: "25′–75′", phase: "Main",
+            activity: "Jigsaw", purpose: "Build evidence", teacherActions: "Cue the transition."
+        )
+        let payload = LearningSituationSessionDevelopmentPayload(
+            organisation: "Groups of four", coreKnowledge: "FITT-PV", assessment: "Health Passport",
+            sections: [], activities: [activity], guidingQuestions: ["What changed?"], closure: "Exit note"
+        )
+        let json = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        let plan = try makePlan(material: "Cones", criteria: ["CE 1.1"], sections: [])
+            .withDevelopment(json)
+
+        let projection = PlannerSessionDetailProjection(plan: plan)
+        XCTAssertEqual(projection.activities.first?.activityKey, "W01-L-03")
+        XCTAssertEqual(projection.organisation, "Groups of four")
+        XCTAssertEqual(projection.basicKnowledge, ["FITT-PV"])
+        XCTAssertEqual(projection.guidingQuestions, ["What changed?"])
+        XCTAssertEqual(projection.closure, "Exit note")
+    }
+
+    func testLegacyActivityProjectionExcludesContextSectionsAndUsesStableKeys() {
+        let sections = [
+            LearningSituationSessionSectionDraft(title: "Bloque 1", lines: ["0'-10' · Entry · Preparación"]),
+            LearningSituationSessionSectionDraft(title: "Evaluación", lines: ["Evidence collected"]),
+            LearningSituationSessionSectionDraft(title: "Preguntas guía", lines: ["What changed?"]),
+            LearningSituationSessionSectionDraft(title: "Cierre", lines: ["Exit note"]),
+            LearningSituationSessionSectionDraft(title: "Adaptaciones", lines: ["Reduce distance."])
+        ]
+
+        let activities = PlannerSessionLegacyActivityProjection.executableActivities(from: sections)
+        XCTAssertEqual(activities.map(\.activity), ["Preparación"])
+        XCTAssertEqual(activities.map(\.activityKey), ["LEGACY-1-1"])
+
+        let duplicateInput = [
+            LearningSituationSessionActivityDraft(activityKey: "W01-L-01", timeLabel: "0'-5'", activity: "First"),
+            LearningSituationSessionActivityDraft(activityKey: "W01-L-01", timeLabel: "5'-10'", activity: "Second"),
+            LearningSituationSessionActivityDraft(timeLabel: "10'-15'", activity: "Fallback")
+        ]
+        XCTAssertEqual(
+            PlannerSessionLegacyActivityProjection.stableActivities(duplicateInput).map(\.activityKey),
+            ["W01-L-01", "W01-L-01#2", "LEGACY-3"]
+        )
+    }
+
     private func makePlan(
         material: String,
         criteria: [String],
@@ -94,6 +139,27 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
                 deviceId: nil,
                 syncVersion: 0
             )
+        )
+    }
+}
+
+private extension LearningSituationSessionPlan {
+    func withDevelopment(_ developmentJSON: String) -> LearningSituationSessionPlan {
+        LearningSituationSessionPlan(
+            id: id,
+            learningSituationId: learningSituationId,
+            sequenceVersionId: sequenceVersionId,
+            sessionNumber: sessionNumber,
+            sourceLabel: sourceLabel,
+            title: title,
+            sessionType: sessionType,
+            effectiveMinutes: effectiveMinutes,
+            objective: objective,
+            criteriaJson: criteriaJson,
+            material: material,
+            developmentJson: developmentJSON,
+            adaptationsJson: adaptationsJson,
+            trace: trace
         )
     }
 }

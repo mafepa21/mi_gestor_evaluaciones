@@ -38,6 +38,8 @@ jobs:
             -configuration Debug \
             -destination 'platform=macOS' \
             -derivedDataPath /tmp/MiGestorPlannerTestsDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
             test 2>&1 | tee /tmp/planner_tests.log
 
       - name: Upload Apple build logs

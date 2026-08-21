@@ -145,6 +145,50 @@ instrument`/`Instrumento(s) de evaluación` → "Instrumento de evaluación"; `C
 `Cierre` → "Cierre". Cualquier otro párrafo o tabla no reconocido se conserva como
 línea de una sección de desarrollo genérica ("Desarrollo"), nunca se descarta.
 
+### Ficha operativa de actividad: autoría narrativa
+
+Para que la ficha de sesión se pueda utilizar durante la clase, cada actividad debe
+estar redactada como una instrucción operativa completa, no como una etiqueta o una
+lista de palabras clave. El contenido se muestra en inglés en el detalle de la
+actividad, mientras que las etiquetas de navegación de la app se mantienen en
+español para que el docente encuentre rápidamente cada apartado.
+
+La forma recomendada es una tabla `Activity Details` con una entrada por actividad.
+El identificador estable (`Activity ID`, por ejemplo `W02-L-01`) debe coincidir con
+la columna `Activity ID` de la tabla horaria. El importador combina ambos registros;
+por tanto, la tabla horaria puede ser esquemática y la ficha de detalle puede llevar
+la explicación completa.
+
+Campos operativos admitidos (con sinónimos en inglés y español):
+
+- `Purpose`: explica qué aprendizaje o evidencia se busca y por qué la actividad va
+  en ese momento.
+- `Organisation`: indica parejas, grupos, estaciones, roles y cómo se hacen los
+  cambios con una clase numerosa.
+- `Set-up`: describe qué deja preparado el docente antes de empezar y cómo se
+  distribuyen espacio y materiales.
+- `Teacher instructions`, `Teacher narrative` o `Teacher script`: redacta la
+  secuencia docente en presente, incluyendo la señal de inicio, el modelado, las
+  comprobaciones de seguridad y las intervenciones durante la práctica.
+- `Instructions for students`, `Student narrative` o `Student actions`: explica lo
+  que hace el alumnado paso a paso y qué debe producir o comunicar.
+- `Timing breakdown`, `Transition cue` o `Transition`: reparte el tiempo real,
+  incluyendo cambios de estación, entrega/recogida de material, desplazamientos y
+  la señal para pasar a la siguiente actividad.
+- `CLIL focus`: aporta objetivo lingüístico, vocabulario y estructuras modelo.
+- `Evidence`, `Materials`, `Adaptations`, `If the group is slow` y `If the group is
+  ahead`: completan la toma de decisiones y permiten ajustar la sesión sin inventar
+  instrucciones en el momento.
+
+Cada campo narrativo debería contener frases completas y observables. Por ejemplo,
+`Teacher narrative` debe decir qué hace y qué comprueba el profesor, mientras que
+`Student narrative` debe permitir que otro docente ejecute la actividad sin conocer
+la intención original. La temporización debe ser conservadora para grupos de hasta
+35 alumnos: se reserva tiempo explícito para formar parejas, repartir material,
+escuchar la consigna y recoger evidencias. El importador conserva el texto completo,
+incluidas las frases largas, sin resumirlo ni sustituirlo por una descripción
+genérica.
+
 ### Minutos por tipo (`defaultMinutesByType`)
 
 Se buscan en todo el documento (incluidas las celdas de tabla) frases como `Simple

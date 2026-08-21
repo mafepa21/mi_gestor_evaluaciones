@@ -4,6 +4,13 @@ import MiGestorKit
 
 extension LearningSituation: @retroactive Identifiable {}
 
+struct LearningSituationScheduledDestination: Hashable {
+    let period: Int
+    let teacherScheduleSlotId: Int64?
+    let startTime: String
+    let endTime: String
+}
+
 struct LearningSituationScheduledSlot: Identifiable {
     let id = UUID()
     let date: Date
@@ -11,10 +18,59 @@ struct LearningSituationScheduledSlot: Identifiable {
     let teacherScheduleSlotId: Int64?
     let startTime: String
     let endTime: String
+    let planSessionNumber: Int?
+    let blockKind: String?
+    let occupiedPeriods: [Int]
+    let occupiedScheduleSlots: [LearningSituationScheduledDestination]
     var isSelected = true
 
+    init(
+        date: Date,
+        period: Int,
+        teacherScheduleSlotId: Int64?,
+        startTime: String,
+        endTime: String,
+        planSessionNumber: Int? = nil,
+        blockKind: String? = nil,
+        occupiedPeriods: [Int] = [],
+        occupiedScheduleSlots: [LearningSituationScheduledDestination] = [],
+        isSelected: Bool = true
+    ) {
+        self.date = date
+        self.period = period
+        self.teacherScheduleSlotId = teacherScheduleSlotId
+        self.startTime = startTime
+        self.endTime = endTime
+        self.planSessionNumber = planSessionNumber
+        self.blockKind = blockKind
+        self.occupiedPeriods = occupiedPeriods
+        self.occupiedScheduleSlots = occupiedScheduleSlots
+        self.isSelected = isSelected
+    }
+
     var label: String {
-        "\(date.formatted(date: .abbreviated, time: .omitted)) · \(startTime)-\(endTime)"
+        let planLabel = planSessionNumber.map { "Sesión \($0) · " } ?? ""
+        let blockLabel = blockKind.map { "\($0) · " } ?? ""
+        return "\(planLabel)\(blockLabel)\(date.formatted(date: .abbreviated, time: .omitted)) · \(startTime)-\(endTime)"
+    }
+
+    var destinationPeriods: [Int] {
+        destinationSlots.map(\.period)
+    }
+
+    var destinationSlots: [LearningSituationScheduledDestination] {
+        if !occupiedScheduleSlots.isEmpty {
+            return occupiedScheduleSlots
+        }
+        let periods = occupiedPeriods.isEmpty ? [period] : occupiedPeriods
+        return periods.map {
+            LearningSituationScheduledDestination(
+                period: $0,
+                teacherScheduleSlotId: $0 == period ? teacherScheduleSlotId : nil,
+                startTime: $0 == period ? startTime : "",
+                endTime: $0 == period ? endTime : ""
+            )
+        }
     }
 }
 
@@ -36,21 +92,256 @@ enum LearningSituationScheduleProjection {
         let calendar = Calendar(identifier: .iso8601)
         var seen = Set<ScheduledDestination>()
         for slot in slots {
-            let destination = ScheduledDestination(
-                date: calendar.startOfDay(for: slot.date),
-                period: slot.period
-            )
-            if !seen.insert(destination).inserted {
-                return true
+            for period in slot.destinationPeriods {
+                let destination = ScheduledDestination(
+                    date: calendar.startOfDay(for: slot.date),
+                    period: period
+                )
+                if !seen.insert(destination).inserted {
+                    return true
+                }
             }
         }
         return false
+    }
+
+    static func planAwareSlots(
+        plans: [LearningSituationSessionPlanDraft],
+        startDate: Date,
+        template: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> (slots: [LearningSituationScheduledSlot], warnings: [String]) {
+        let orderedPlans = plans.sorted { $0.sessionNumber < $1.sessionNumber }
+        guard !orderedPlans.isEmpty, !template.isEmpty else { return ([], []) }
+        let calendar = Calendar(identifier: .iso8601)
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        let sortedTemplate = template.sorted {
+            Int($0.dayOfWeek) == Int($1.dayOfWeek) ? $0.startTime < $1.startTime : $0.dayOfWeek < $1.dayOfWeek
+        }
+
+        let weeklyPlans = orderedPlans.contains(where: isWeeklyBlockPlan)
+        guard weeklyPlans else {
+            var sequential: [LearningSituationScheduledSlot] = []
+            var date = normalizedStart
+            var templateOffset = 0
+            while sequential.count < orderedPlans.count {
+                let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+                for slot in sortedTemplate where Int(slot.dayOfWeek) == weekday {
+                    let period = periodForSlot(slot)
+                    sequential.append(LearningSituationScheduledSlot(
+                        date: date,
+                        period: period,
+                        teacherScheduleSlotId: slot.id,
+                        startTime: slot.startTime,
+                        endTime: slot.endTime,
+                        planSessionNumber: orderedPlans[templateOffset].sessionNumber,
+                        blockKind: orderedPlans[templateOffset].sessionType,
+                        occupiedPeriods: [period],
+                        occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                            period: period,
+                            teacherScheduleSlotId: slot.id,
+                            startTime: slot.startTime,
+                            endTime: slot.endTime
+                        )]
+                    ))
+                    templateOffset += 1
+                    if sequential.count == orderedPlans.count { break }
+                }
+                guard let nextDate = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+                date = nextDate
+            }
+            return (sequential, sequential.count == orderedPlans.count ? [] : ["No hay suficientes franjas para todas las sesiones importadas."])
+        }
+
+        var assignments: [LearningSituationScheduledSlot] = []
+        var warnings: [String] = []
+        var usedDestinations = Set<ScheduledDestination>()
+        var lastAssignedDate: Date?
+        var lastAssignedEndMinutes: Int?
+        let searchDays = max(orderedPlans.count * 7 + 14, 42)
+
+        // Weekly documents describe a pedagogical sequence (long, short, long, short),
+        // not a fixed calendar-week bucket. Assign each plan to the next compatible
+        // timetable opportunity so a partial first week can roll into the next one.
+        for plan in orderedPlans {
+            var candidate: LearningSituationScheduledSlot?
+            for dayOffset in 0...searchDays {
+                guard let date = calendar.date(byAdding: .day, value: dayOffset, to: normalizedStart) else { continue }
+                let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+                let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
+                let dayCandidates = DayCandidates(
+                    date: date,
+                    long: longCandidate(on: date, slots: daySlots, periodForSlot: periodForSlot),
+                    short: shortCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+                )
+                let candidates = isWeeklyBlockPlan(plan) && isLongPlan(plan)
+                    ? dayCandidates.long.map { [$0] } ?? []
+                    : dayCandidates.short
+
+                if let match = candidates.first(where: { slot in
+                    guard !collides(slot, with: usedDestinations) else { return false }
+                    guard let lastAssignedDate else { return true }
+                    let normalizedDate = calendar.startOfDay(for: slot.date)
+                    let previousDate = calendar.startOfDay(for: lastAssignedDate)
+                    guard normalizedDate >= previousDate else { return false }
+                    guard normalizedDate == previousDate else { return true }
+                    guard let previousEnd = lastAssignedEndMinutes, let currentStart = minutes(slot.startTime) else { return false }
+                    return currentStart >= previousEnd
+                }) {
+                    candidate = match
+                    break
+                }
+            }
+
+            guard let candidate else {
+                let requirement = isWeeklyBlockPlan(plan) && isLongPlan(plan) ? "bloque largo" : "bloque corto"
+                warnings.append("La sesión \(plan.sessionNumber) requiere un \(requirement), pero no hay una franja compatible desde la fecha de inicio.")
+                continue
+            }
+            let assigned = withPlan(candidate, plan: plan)
+            assignments.append(assigned)
+            addDestinations(assigned, to: &usedDestinations)
+            lastAssignedDate = assigned.date
+            lastAssignedEndMinutes = minutes(assigned.endTime)
+        }
+
+        return (assignments.sorted { $0.planSessionNumber ?? .max < $1.planSessionNumber ?? .max }, warnings)
+    }
+
+    private struct DayCandidates {
+        let date: Date
+        let long: LearningSituationScheduledSlot?
+        let short: [LearningSituationScheduledSlot]
     }
 
     private struct ScheduledDestination: Hashable {
         let date: Date
         let period: Int
     }
+
+    private static func isLongPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        return value.contains("long") || value.contains("largo") || value.contains("double") || value.contains("doble") || plan.effectiveMinutes >= 75
+    }
+
+    private static func isWeeklyBlockPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        let value = "\(plan.sessionType) \(plan.sourceLabel)".folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        return value.contains("long block") || value.contains("short block") || value.contains("bloque largo") || value.contains("bloque corto")
+    }
+
+    private static func isShortPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        return value.contains("short") || value.contains("corto") || value.contains("simple") || plan.effectiveMinutes > 0 && plan.effectiveMinutes < 75
+    }
+
+    private static func minutes(_ value: String) -> Int? {
+        let parts = value.split(separator: ":")
+        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return nil }
+        return hour * 60 + minute
+    }
+
+    private static func longCandidate(
+        on date: Date,
+        slots: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> LearningSituationScheduledSlot? {
+        let ordered = slots.sorted { $0.startTime < $1.startTime }
+        for slot in ordered {
+            guard let start = minutes(slot.startTime), let end = minutes(slot.endTime), end - start >= 75 else { continue }
+            let period = periodForSlot(slot)
+            return LearningSituationScheduledSlot(
+                date: date, period: period, teacherScheduleSlotId: slot.id,
+                startTime: slot.startTime, endTime: slot.endTime,
+                occupiedPeriods: [period],
+                occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                    period: period,
+                    teacherScheduleSlotId: slot.id,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime
+                )]
+            )
+        }
+        // A legal transition/recess can separate two consecutive timetable periods.
+        // Treat up to 20 minutes as one continuous long-block opportunity.
+        let maximumTransitionMinutes = 20
+        for pair in zip(ordered, ordered.dropFirst()) {
+            guard let start = minutes(pair.0.startTime), let firstEnd = minutes(pair.0.endTime),
+                  let secondStart = minutes(pair.1.startTime), let end = minutes(pair.1.endTime),
+                  secondStart >= firstEnd,
+                  secondStart - firstEnd <= maximumTransitionMinutes,
+                  end - start >= 75 else { continue }
+            let firstPeriod = periodForSlot(pair.0)
+            let secondPeriod = periodForSlot(pair.1)
+            return LearningSituationScheduledSlot(
+                date: date, period: firstPeriod, teacherScheduleSlotId: pair.0.id,
+                startTime: pair.0.startTime, endTime: pair.1.endTime,
+                occupiedPeriods: [firstPeriod, secondPeriod],
+                occupiedScheduleSlots: [
+                    LearningSituationScheduledDestination(
+                        period: firstPeriod,
+                        teacherScheduleSlotId: pair.0.id,
+                        startTime: pair.0.startTime,
+                        endTime: pair.0.endTime
+                    ),
+                    LearningSituationScheduledDestination(
+                        period: secondPeriod,
+                        teacherScheduleSlotId: pair.1.id,
+                        startTime: pair.1.startTime,
+                        endTime: pair.1.endTime
+                    )
+                ]
+            )
+        }
+        return nil
+    }
+
+    private static func shortCandidates(
+        on date: Date,
+        slots: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> [LearningSituationScheduledSlot] {
+        let longPeriods = longCandidate(on: date, slots: slots, periodForSlot: periodForSlot)?.destinationPeriods ?? []
+        return slots.sorted { $0.startTime < $1.startTime }.compactMap { slot in
+            let period = periodForSlot(slot)
+            guard !longPeriods.contains(period) else { return nil }
+            return LearningSituationScheduledSlot(
+                date: date, period: period, teacherScheduleSlotId: slot.id,
+                startTime: slot.startTime, endTime: slot.endTime,
+                occupiedPeriods: [period],
+                occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                    period: period,
+                    teacherScheduleSlotId: slot.id,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime
+                )]
+            )
+        }
+    }
+
+    private static func collides(_ slot: LearningSituationScheduledSlot, with destinations: Set<ScheduledDestination>) -> Bool {
+        let date = Calendar(identifier: .iso8601).startOfDay(for: slot.date)
+        return slot.destinationPeriods.contains { destinations.contains(ScheduledDestination(date: date, period: $0)) }
+    }
+
+    private static func addDestinations(_ slot: LearningSituationScheduledSlot, to destinations: inout Set<ScheduledDestination>) {
+        let date = Calendar(identifier: .iso8601).startOfDay(for: slot.date)
+        slot.destinationPeriods.forEach { destinations.insert(ScheduledDestination(date: date, period: $0)) }
+    }
+
+    private static func withPlan(_ slot: LearningSituationScheduledSlot, plan: LearningSituationSessionPlanDraft) -> LearningSituationScheduledSlot {
+        LearningSituationScheduledSlot(
+            date: slot.date,
+            period: slot.period,
+            teacherScheduleSlotId: slot.teacherScheduleSlotId,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            planSessionNumber: plan.sessionNumber,
+            blockKind: plan.sessionType,
+            occupiedPeriods: slot.destinationPeriods,
+            occupiedScheduleSlots: slot.destinationSlots
+        )
+    }
+
 }
 
 private struct LearningSituationBatchImportPresentation: Identifiable {
@@ -1242,8 +1533,16 @@ private struct LearningSituationScheduleSheet: View {
                 guard let url = urls.first else { return }
                 do {
                     var draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
-                    if situation.sessionCount > 0 && draft.plans.count != Int(situation.sessionCount) {
-                        draft.warnings.append("La situación indica \(situation.sessionCount) sesiones y el documento contiene \(draft.plans.count).")
+                    let weeklyPlanCount = draft.plans.filter { plan in
+                        let value = "\(plan.sessionType) \(plan.sourceLabel)".folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                        return value.contains("long block") || value.contains("short block") || value.contains("bloque largo") || value.contains("bloque corto")
+                    }.count
+                    let expectedPlanCount = weeklyPlanCount > 0 && weeklyPlanCount == draft.plans.count
+                        ? Int(situation.sessionCount) * 2
+                        : Int(situation.sessionCount)
+                    if situation.sessionCount > 0 && draft.plans.count != expectedPlanCount {
+                        let expectedLabel = expectedPlanCount == Int(situation.sessionCount) ? "sesiones" : "bloques (largo + corto por semana)"
+                        draft.warnings.append("La situación indica \(situation.sessionCount) semanas/sesiones y el documento contiene \(draft.plans.count) \(expectedLabel).")
                     }
                     sequenceDraft = draft
                     expandedPlanNumbers = Set(draft.plans.prefix(3).map(\.sessionNumber))
@@ -1531,6 +1830,37 @@ private struct LearningSituationScheduleSheet: View {
                             }
                         }
                     }
+                    if !plan.activities.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Actividades ejecutables", systemImage: "figure.run.square.stack")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(plan.activities) { activity in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                        if !activity.timeLabel.isEmpty {
+                                            Text(activity.timeLabel)
+                                                .font(.caption2.weight(.bold).monospacedDigit())
+                                                .foregroundStyle(EvaluationDesign.accent)
+                                        }
+                                        if !activity.phase.isEmpty {
+                                            Text(activity.phase)
+                                                .font(.caption.weight(.semibold))
+                                        }
+                                    }
+                                    Text(activity.activity)
+                                        .font(.caption.weight(.semibold))
+                                    activityDetail("Teacher", activity.teacherActions)
+                                    activityDetail("Students", activity.studentActions)
+                                    activityDetail("CLIL", activity.clilFocus)
+                                    activityDetail("Evidence", activity.evidence)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(EvaluationDesign.accentSoft.opacity(0.45), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                        }
+                    }
                     if !plan.adaptations.isEmpty {
                         Text(plan.adaptations.joined(separator: "\n"))
                             .font(.caption)
@@ -1566,6 +1896,15 @@ private struct LearningSituationScheduleSheet: View {
             .padding(16)
             .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+        }
+    }
+
+    @ViewBuilder
+    private func activityDetail(_ label: String, _ value: String) -> some View {
+        if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text("\(label): \(value)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -1629,24 +1968,43 @@ private struct LearningSituationScheduleSheet: View {
                 return
             }
             let ignoredDuplicates = rawTemplate.count - template.count
-            scheduleNotice = ignoredDuplicates > 0
-                ? "Se \(ignoredDuplicates == 1 ? "ha ignorado 1 franja duplicada" : "han ignorado \(ignoredDuplicates) franjas duplicadas") del horario para evitar sustituir sesiones."
-                : ""
-            var candidates: [LearningSituationScheduledSlot] = []
-            var date = startDate
-            let calendar = Calendar.current
-            while candidates.count < targetSessionCount {
-                let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
-                for slot in template.filter({ Int($0.dayOfWeek) == weekday }).sorted(by: { $0.startTime < $1.startTime }) {
-                    candidates.append(LearningSituationScheduledSlot(
-                        date: date, period: plannerPeriod(for: slot, allScheduleSlots: allScheduleSlots),
-                        teacherScheduleSlotId: slot.id, startTime: slot.startTime, endTime: slot.endTime
-                    ))
-                    if candidates.count == targetSessionCount { break }
-                }
-                date = calendar.date(byAdding: .day, value: 1, to: date) ?? date
+            var notices: [String] = []
+            if ignoredDuplicates > 0 {
+                notices.append("Se \(ignoredDuplicates == 1 ? "ha ignorado 1 franja duplicada" : "han ignorado \(ignoredDuplicates) franjas duplicadas") del horario.")
             }
-            slots = candidates
+            if let sequenceDraft {
+                let projection = LearningSituationScheduleProjection.planAwareSlots(
+                    plans: sequenceDraft.plans,
+                    startDate: startDate,
+                    template: template,
+                    periodForSlot: { self.plannerPeriod(for: $0, allScheduleSlots: allScheduleSlots) }
+                )
+                slots = projection.slots
+                notices.append(contentsOf: projection.warnings)
+            } else {
+                var candidates: [LearningSituationScheduledSlot] = []
+                var date = startDate
+                let calendar = Calendar.current
+                while candidates.count < targetSessionCount {
+                    let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+                    for slot in template.filter({ Int($0.dayOfWeek) == weekday }).sorted(by: { $0.startTime < $1.startTime }) {
+                        candidates.append(LearningSituationScheduledSlot(
+                            date: date, period: plannerPeriod(for: slot, allScheduleSlots: allScheduleSlots),
+                            teacherScheduleSlotId: slot.id, startTime: slot.startTime, endTime: slot.endTime,
+                            occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                                period: plannerPeriod(for: slot, allScheduleSlots: allScheduleSlots),
+                                teacherScheduleSlotId: slot.id,
+                                startTime: slot.startTime,
+                                endTime: slot.endTime
+                            )]
+                        ))
+                        if candidates.count == targetSessionCount { break }
+                    }
+                    date = calendar.date(byAdding: .day, value: 1, to: date) ?? date
+                }
+                slots = candidates
+            }
+            scheduleNotice = notices.joined(separator: " ")
         } catch {
             errorMessage = error.localizedDescription
         }

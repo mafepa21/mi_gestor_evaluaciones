@@ -17,6 +17,58 @@ extension PlannerWorkspaceViewModel {
         journalSummaryBySessionId[sessionId]
     }
 
+    func sessionPlan(for session: PlanningSession) -> LearningSituationSessionPlan? {
+        guard let planId = session.learningSituationSessionPlanId?.int64Value else { return nil }
+        return sessionPlansById[planId]
+    }
+
+    func sessionGlance(for session: PlanningSession) -> PlannerSessionGlanceData {
+        let plan = sessionPlan(for: session)
+        let situationTitle = session.teachingUnitName.nilIfBlank ?? "Situación sin título"
+        let sessionTitle = plan?.title.nilIfBlank ?? situationTitle
+        let objective = plan?.objective.nilIfBlank ?? session.objectives.nilIfBlank
+        let activity = firstDevelopmentPreview(from: plan?.developmentJson) ?? session.activities.nilIfBlank
+        let material = plan?.material.nilIfBlank
+
+        var badges: [String] = []
+        if let plan {
+            badges.append("Sesión \(plan.sessionNumber)")
+            if let sessionType = plan.sessionType.nilIfBlank {
+                badges.append(sessionType)
+            }
+            if plan.effectiveMinutes > 0 {
+                badges.append("\(plan.effectiveMinutes) min")
+            }
+        }
+
+        return PlannerSessionGlanceData(
+            situationTitle: situationTitle,
+            sessionTitle: sessionTitle,
+            badges: badges,
+            objective: objective,
+            activity: activity,
+            material: material
+        )
+    }
+
+    private func firstDevelopmentPreview(from json: String?) -> String? {
+        guard let json, let data = json.data(using: .utf8),
+              let sections = try? JSONDecoder().decode([LearningSituationSessionSectionDraft].self, from: data) else {
+            return nil
+        }
+
+        let ignoredPrefixes = ["evidencia", "evidence", "objetivo", "objectives", "criterio", "criteria", "material", "materials"]
+        for section in sections {
+            let title = section.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedTitle = title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            guard !ignoredPrefixes.contains(where: { normalizedTitle.hasPrefix($0) }) else { continue }
+            if let line = section.lines.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+                return line.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return nil
+    }
+
     func situationProgress(for session: PlanningSession?) -> PlannerSituationProgress? {
         guard let session else { return nil }
         let situationTitle = normalizedSituationTitle(session.teachingUnitName)

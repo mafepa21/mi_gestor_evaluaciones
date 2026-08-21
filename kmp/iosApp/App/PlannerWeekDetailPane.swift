@@ -182,16 +182,27 @@ private struct PlannerWeekDetailEntryCard: View {
                     .padding(.top, 6)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(entry.className)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(tint)
-                    Text(entryTitle)
-                        .font(.headline.weight(.semibold))
-                        .lineLimit(2)
-                    Text(entry.preview)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
+                    if let session {
+                        Text(entry.className)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(tint)
+                        PlannerSessionGlanceContent(
+                            data: vm.sessionGlance(for: session),
+                            tint: tint,
+                            style: .expanded
+                        )
+                    } else {
+                        Text(entry.className)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(tint)
+                        Text(entryTitle)
+                            .font(.headline.weight(.semibold))
+                            .lineLimit(2)
+                        Text(entry.preview)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
                 }
 
                 Spacer(minLength: 8)
@@ -234,6 +245,11 @@ private struct PlannerWeekDetailEntryCard: View {
         let title = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return title.isEmpty ? "Sesión sin título" : title
     }
+
+    private var session: PlanningSession? {
+        guard let sessionId = entry.sessionId else { return nil }
+        return vm.sessions.first(where: { $0.id == sessionId })
+    }
 }
 
 private struct PlannerWeekDayEntryRow: View {
@@ -256,14 +272,25 @@ private struct PlannerWeekDayEntryRow: View {
                     .frame(width: 10, height: 10)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(entry.className) · \(entry.title)")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(statusLabel)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if let session {
+                        Text("\(entry.className) · \(vm.sessionGlance(for: session).sessionTitle)")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(vm.sessionGlance(for: session).objective ?? statusLabel)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    } else {
+                        Text("\(entry.className) · \(entry.title)")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(statusLabel)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
 
                 Spacer()
@@ -281,5 +308,10 @@ private struct PlannerWeekDayEntryRow: View {
     private var statusLabel: String {
         if entry.kind == .scheduledSlot { return "Pendiente de concretar" }
         return vm.sessionStateLabel(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
+    }
+
+    private var session: PlanningSession? {
+        guard let sessionId = entry.sessionId else { return nil }
+        return vm.sessions.first(where: { $0.id == sessionId })
     }
 }

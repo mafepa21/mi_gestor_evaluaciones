@@ -303,52 +303,15 @@ struct PlannerToolbar: View {
     var showsNavigationControls: Bool = true
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @AppStorage("planner_toolbar_progress_expanded") private var isProgressExpanded = true
+    @AppStorage("planner_week_toolbar_progress_expanded") private var isWeekProgressExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 16) {
-                Button(action: {
-                    withAnimation(uiFeatureFlags.interactionAnimation) {
-                        isProgressExpanded.toggle()
-                    }
-                }) {
-                    HStack(alignment: .center, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(toolbarTitle)
-                                .font(.system(size: 20, weight: .bold, design: .rounded))
-                                .lineLimit(1)
-                                .foregroundStyle(.primary)
-                            Text(toolbarSubtitle)
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
-                        }
-                        
-                        Spacer(minLength: 8)
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(isProgressExpanded ? 90 : 0))
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if isProgressExpanded {
-                    Group {
-                        if let progress = vm.situationProgress(for: vm.selectedSession) {
-                            PlannerSituationProgressStrip(progress: progress)
-                        } else {
-                            PlannerWeekProgressStrip(vm: vm)
-                        }
-                    }
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)).animation(.easeOut(duration: 0.2)),
-                        removal: .opacity.animation(.easeIn(duration: 0.15))
-                    ))
-                }
+            if vm.activeSection == .week {
+                compactWeekHeader
+            } else {
+                expandedProgressHeader
             }
-            .padding(16)
-            .plannerGlassPanel(.hero, cornerRadius: 24)
 
             if showsNavigationControls {
                 HStack(spacing: 8) {
@@ -388,6 +351,108 @@ struct PlannerToolbar: View {
         .padding(.horizontal, EvaluationDesign.screenPadding)
         .padding(.top, 8)
         .padding(.bottom, 4)
+    }
+
+    private var compactWeekHeader: some View {
+        VStack(alignment: .leading, spacing: isWeekProgressExpanded ? 8 : 0) {
+            Button {
+                withAnimation(uiFeatureFlags.interactionAnimation) {
+                    isWeekProgressExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 8) {
+                    Text(vm.weekLabel)
+                        .font(.headline.weight(.bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    Text(vm.dateRangeLabel)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 8)
+
+                    if !isWeekProgressExpanded {
+                        Text("\(vm.filteredSessions.count) sesiones")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isWeekProgressExpanded ? 90 : 0))
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(vm.weekLabel), \(vm.dateRangeLabel)")
+            .accessibilityHint("Mostrar u ocultar las métricas de progreso de la semana")
+
+            if isWeekProgressExpanded {
+                Group {
+                    if let progress = vm.situationProgress(for: vm.selectedSession) {
+                        PlannerSituationProgressStrip(progress: progress)
+                    } else {
+                        PlannerWeekProgressStrip(vm: vm)
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)).animation(.easeOut(duration: 0.2)),
+                    removal: .opacity.animation(.easeIn(duration: 0.15))
+                ))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .plannerGlassPanel(.content, cornerRadius: 16)
+    }
+
+    private var expandedProgressHeader: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Button {
+                withAnimation(uiFeatureFlags.interactionAnimation) {
+                    isProgressExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(toolbarTitle)
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .lineLimit(1)
+                            .foregroundStyle(.primary)
+                        Text(toolbarSubtitle)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isProgressExpanded ? 90 : 0))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isProgressExpanded {
+                Group {
+                    if let progress = vm.situationProgress(for: vm.selectedSession) {
+                        PlannerSituationProgressStrip(progress: progress)
+                    } else {
+                        PlannerWeekProgressStrip(vm: vm)
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)).animation(.easeOut(duration: 0.2)),
+                    removal: .opacity.animation(.easeIn(duration: 0.15))
+                ))
+            }
+        }
+        .padding(16)
+        .plannerGlassPanel(.hero, cornerRadius: 24)
     }
 
     private var weekNavigationCluster: some View {

@@ -201,10 +201,7 @@ struct MacStudentsView: View {
             .keyboardShortcut(.return, modifiers: [])
             .opacity(0)
         }
-        .onDisappear {
-            guard ownsStudentSideEffects else { return }
-            store.profileLoadTask?.cancel()
-        }
+        .onDisappear(perform: cancelProfileLoadOnDisappear)
         .sheet(item: studentEditorModeBinding) { mode in
             MacStudentEditorSheet(mode: mode) { draft in
                 Task { await saveStudentDraft(draft, mode: mode) }
@@ -221,7 +218,7 @@ struct MacStudentsView: View {
         .sheet(
             isPresented: Binding(
                 get: { editingTutoringSession != nil },
-                set: { if !$0 { editingTutoringSession = nil } }
+                set: setEditingTutoringPresented
             )
         ) {
             if let studentId = store.localSelectedStudentId ?? selectedRow?.id, let editingTutoringSession {
@@ -235,7 +232,7 @@ struct MacStudentsView: View {
             "¿Borrar esta tutoría?",
             isPresented: Binding(
                 get: { pendingDeleteTutoringSession != nil },
-                set: { if !$0 { pendingDeleteTutoringSession = nil } }
+                set: setPendingDeleteTutoringPresented
             )
         ) {
             Button("Cancelar", role: .cancel) { pendingDeleteTutoringSession = nil }
@@ -262,7 +259,7 @@ struct MacStudentsView: View {
         .sheet(
             isPresented: Binding(
                 get: { editingSupportMeasure != nil },
-                set: { if !$0 { editingSupportMeasure = nil } }
+                set: setEditingSupportMeasurePresented
             )
         ) {
             if let studentId = store.localSelectedStudentId ?? selectedRow?.id, let editingSupportMeasure {
@@ -299,7 +296,7 @@ struct MacStudentsView: View {
             "Eliminar medida de apoyo",
             isPresented: Binding(
                 get: { pendingDeleteSupportMeasure != nil },
-                set: { if !$0 { pendingDeleteSupportMeasure = nil } }
+                set: setPendingDeleteSupportMeasurePresented
             ),
             presenting: pendingDeleteSupportMeasure
         ) { measure in
@@ -323,13 +320,11 @@ struct MacStudentsView: View {
             StudentImportSheet(preview: preview)
                 .environmentObject(bridge)
                 .frame(minWidth: 720, minHeight: 620)
-                .onDisappear {
-                    Task { await reloadRows() }
-                }
+                .onDisappear(perform: reloadRowsAfterStudentImportPreview)
         }
         .alert("No se pudo importar alumnado", isPresented: Binding(
             get: { importErrorMessage != nil },
-            set: { if !$0 { importErrorMessage = nil } }
+            set: setImportErrorPresented
         )) {
             Button("Aceptar", role: .cancel) {}
         } message: {
@@ -345,6 +340,35 @@ struct MacStudentsView: View {
                 store.studentEditorMode = newValue
             }
         )
+    }
+
+    private func cancelProfileLoadOnDisappear() {
+        guard ownsStudentSideEffects else { return }
+        store.profileLoadTask?.cancel()
+    }
+
+    private func reloadRowsAfterStudentImportPreview() {
+        Task { await reloadRows() }
+    }
+
+    private func setEditingTutoringPresented(_ isPresented: Bool) {
+        if !isPresented { editingTutoringSession = nil }
+    }
+
+    private func setPendingDeleteTutoringPresented(_ isPresented: Bool) {
+        if !isPresented { pendingDeleteTutoringSession = nil }
+    }
+
+    private func setEditingSupportMeasurePresented(_ isPresented: Bool) {
+        if !isPresented { editingSupportMeasure = nil }
+    }
+
+    private func setPendingDeleteSupportMeasurePresented(_ isPresented: Bool) {
+        if !isPresented { pendingDeleteSupportMeasure = nil }
+    }
+
+    private func setImportErrorPresented(_ isPresented: Bool) {
+        if !isPresented { importErrorMessage = nil }
     }
 
     private var studentsList: some View {

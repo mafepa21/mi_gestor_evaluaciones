@@ -273,6 +273,20 @@ struct PlannerSectionPreview: Identifiable, Hashable {
     var id: String { title }
 }
 
+struct PlannerSessionGlanceData: Hashable {
+    let situationTitle: String
+    let sessionTitle: String
+    let badges: [String]
+    let objective: String?
+    let activity: String?
+    let material: String?
+}
+
+enum PlannerSessionGlanceStyle: Equatable {
+    case compact
+    case expanded
+}
+
 struct PlannerVisibleSlot: Identifiable, Hashable {
     let period: Int
     let startTime: String
@@ -300,6 +314,7 @@ struct PlannerWeekCellEntry: Identifiable, Hashable {
     let period: Int
     let title: String
     let preview: String
+    let sessionGlance: PlannerSessionGlanceData?
     let sectionPreviews: [PlannerSectionPreview]
     let sessionId: Int64?
     let sessionStatus: SessionStatus?

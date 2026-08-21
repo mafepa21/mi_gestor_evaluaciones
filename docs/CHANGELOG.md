@@ -57,6 +57,10 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Changed
 
 - Layout macOS de Alumnado e Informes: el shell deja de materializar el inspector cuando la ventana no conserva espacio útil, Alumnado reduce sus mínimos y agrupa las acciones secundarias en un único menú, e Informes adapta sus tres zonas para llevar la exportación a un menú compacto o mantenerla como panel plegable en ventanas amplias.
+- Planificación: las vistas Semana y Día muestran el contexto de la Situación de Aprendizaje, el título de la sesión, objetivo, actividad y material; el grid semanal muestra además grupo, número y título de sesión, resumen operativo y colisiones resumidas; el detalle incorpora una reconstrucción enriquecida del DOCX con tablas e imágenes y conserva QuickLook como respaldo nativo.
+- Planificación: la ficha de detalle de sesión convierte el guion importado en una vista docente operativa, con objetivo, métricas de tiempo, criterios, evidencias, material, saberes básicos, adaptaciones, bloques, pausas, roles de profesorado/alumnado y contexto desplegable; mantiene el DOCX reconstruido y el documento original como respaldo.
+- Planificación: la vista Semana permite ocultar el inspector lateral para ampliar el grid y elimina el aviso azul de ayuda del drag & drop, manteniendo el movimiento de sesiones operativo.
+- Planificación: el encabezado de Semana se compacta a una sola franja con semana, fechas y recuento de sesiones; las métricas completas siguen disponibles mediante expansión y el grid gana espacio vertical.
 - Las pruebas físicas importadas en modo diagnóstico (`recordScore=false`) guardan únicamente la marca bruta: no generan columna de nota ni puntuación, media o ranking.
 - Las celdas de pruebas físicas muestran la nota de referencia calculada desde el baremo del manifiesto junto a la marca, sin convertirla en una nota evaluable ni incluirla en la media; las pruebas sin baremo aplicable lo indican explícitamente.
 - La nota de referencia de un baremo LINEAR se interpola entre sus puntos de calibración y se calcula igual en la captura física y en la celda del Cuaderno; los manifiestos v1 conservan el comportamiento por rangos.
@@ -129,6 +133,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- La migración 42 de baremos físicos deja de ejecutar una consulta `SELECT 1` como
+  supuesto no-op y usa DDL idempotente compatible con los drivers Apple/Android;
+  las instalaciones en versión 42 pueden actualizarse sin caer en una base vacía.
 - Situaciones de aprendizaje: se añaden lecturas bulk para enlaces de grupo, versiones de secuencia
   y planes de sesión, eliminando el patrón N+1 usado por Situaciones, Cuaderno y Planificador sin
   cambiar el esquema ni requerir migración.
@@ -148,9 +155,15 @@ El formato sigue una variante practica de Keep a Changelog:
    Simulator terminan en `BUILD SUCCEEDED`.
 - `./gradlew :shared:test` no pudo ejecutarse porque el entorno no tiene Android SDK
    configurado (`ANDROID_HOME`/`kmp/local.properties`); la variante desktop sí pasó.
+- `cd kmp && ./gradlew :data:desktopTest` pasa con 100 tests en verde.
+- `./scripts/verify_apple_builds.sh` regenera XcodeGen y compila correctamente
+  macOS Native e iOS Simulator.
 - `:data:compileKotlinDesktop`, `:shared:compileKotlinDesktop` y `:shared:desktopTest`
   pasan; el build macOS de Xcode compila el nuevo binding Swift con las advertencias
   preexistentes de uso no consumido.
+- `./scripts/verify_apple_builds.sh` pasa para macOS Native/Catalyst e iOS Simulator; los
+  tests `MiGestorPlannerTests` pasan en macOS con la proyección de la ficha semanal y el
+  fallback de planes históricos.
 
 ### Docs
 

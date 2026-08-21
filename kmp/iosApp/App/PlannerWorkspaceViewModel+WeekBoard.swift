@@ -151,13 +151,14 @@ extension PlannerWorkspaceViewModel {
             }
             .map { session in
                 let summary = summary(for: session.id)
+                let glance = sessionGlance(for: session)
                 let sections = previewSections(
                     teachingUnitName: session.teachingUnitName,
                     objective: session.objectives,
                     activity: session.activities,
                     evaluation: session.evaluation
                 )
-                let preview = sections.first?.value ?? preferredPreviewText(
+                let preview = glance.objective ?? glance.activity ?? sections.first?.value ?? preferredPreviewText(
                     objective: session.objectives,
                     activity: session.activities,
                     evaluation: session.evaluation
@@ -171,8 +172,9 @@ extension PlannerWorkspaceViewModel {
                     classColorHex: classColorHex(for: session.groupId),
                     dayOfWeek: Int(session.dayOfWeek),
                     period: Int(session.period),
-                    title: session.teachingUnitName,
+                    title: glance.sessionTitle,
                     preview: preview,
+                    sessionGlance: glance,
                     sectionPreviews: sections,
                     sessionId: session.id,
                     sessionStatus: session.status,
@@ -206,6 +208,7 @@ extension PlannerWorkspaceViewModel {
                     period: period,
                     title: slot.unitLabel?.nilIfBlank ?? slot.subjectLabel.nilIfBlank ?? "Franja preparada",
                     preview: slot.subjectLabel.nilIfBlank ?? "Pendiente de concretar",
+                    sessionGlance: nil,
                     sectionPreviews: [
                         PlannerSectionPreview(title: "Curso", value: groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)"),
                         PlannerSectionPreview(title: "Bloque", value: slot.unitLabel?.nilIfBlank ?? slot.subjectLabel.nilIfBlank ?? "Pendiente")

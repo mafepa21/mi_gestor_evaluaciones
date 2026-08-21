@@ -461,16 +461,11 @@ private struct PlannerDaySessionRow: View {
                     )
                 }
 
-                Text(session.teachingUnitName.nilIfBlank ?? "Sesión sin título")
-                    .font(.headline.weight(.semibold))
-                    .lineLimit(2)
-
-                if let objective = session.objectives.nilIfBlank ?? session.activities.nilIfBlank {
-                    Text(objective)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(isCurrent ? 4 : 2)
-                }
+                PlannerSessionGlanceContent(
+                    data: vm.sessionGlance(for: session),
+                    tint: tint,
+                    style: .expanded
+                )
 
                 HStack(spacing: 8) {
                     Button("Abrir ficha", action: onOpen)

@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import argparse
 import html
+import os
 import re
+import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -23,7 +26,6 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 
-ROOT = Path("/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje")
 HEADING_RE = re.compile(r"^(#{2,4})\s+(.+?)\s*$")
 WEEK_RE = re.compile(r"^(?:SEMANA|SETMANA|WEEK)\s+(\d+)(?:\s*[.\-–—:]\s*(.*))?$", re.I)
 SESSION_RE = re.compile(
@@ -950,17 +952,88 @@ def write_docx(path: Path, title: str, weeks: list[Week], source: Path) -> None:
         add_text(document, "Inclusion and teacher adaptations", style="Heading 3", size=12, color="1F4D78", bold=True)
         add_text(document, "Offer a visual model, reduced space or distance, lighter or larger equipment, peer support, and an opt-in intensity level. Keep the evidence target stable while changing the route to success.", size=9)
 
+    atomic_write_docx(path, document)
+
+
+def atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    document.save(path)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def atomic_write_docx(path: Path, document: Document) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+        document.save(temporary_path)
+        os.replace(temporary_path, path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def backup_file(path: Path, root: Path, backup_dir: Path) -> None:
+    if not path.exists():
+        return
+    relative_path = path.relative_to(root)
+    destination = backup_dir / relative_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, destination)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument(
+        "--root",
+        type=Path,
+        required=True,
+        help="Root folder containing the Situaciones de aprendizaje corpus.",
+    )
     parser.add_argument("--start", type=int, default=0)
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Parse and render the corpus without changing Markdown or DOCX files.",
+    )
+    parser.add_argument(
+        "--backup-dir",
+        type=Path,
+        help="Copy each existing source and DOCX here before replacing it.",
+    )
     args = parser.parse_args()
-    sources = sorted(path for path in args.root.rglob("*.md") if path.parent.name == "02_SESIONES" and "99_FUENTES" not in path.parts)
+    root = args.root.expanduser().resolve()
+    if not root.is_dir():
+        parser.error(f"--root is not a directory: {root}")
+    if not any(path.is_dir() for path in root.rglob("02_SESIONES")):
+        parser.error(f"--root does not contain a 02_SESIONES corpus: {root}")
+    backup_dir = args.backup_dir.expanduser().resolve() if args.backup_dir else None
+    sources = sorted(path for path in root.rglob("*.md") if path.parent.name == "02_SESIONES" and "99_FUENTES" not in path.parts)
     if args.start:
         sources = sources[args.start :]
     if args.limit:
@@ -972,10 +1045,15 @@ def main() -> None:
         title = re.sub(r"(?:\s*-\s*Weekly Session Sequence)+\s*$", "", title, flags=re.I)
         weeks = make_weeks(text)
         markdown = render_markdown(source, title, weeks)
-        source.write_text(markdown, encoding="utf-8")
         docx_path = source.with_suffix(".docx")
-        write_docx(docx_path, title, weeks, source)
-    print(f"rewritten={len(sources)}")
+        if not args.dry_run:
+            if backup_dir:
+                backup_file(source, root, backup_dir)
+                backup_file(docx_path, root, backup_dir)
+            atomic_write_text(source, markdown)
+            write_docx(docx_path, title, weeks, source)
+    action = "would_rewrite" if args.dry_run else "rewritten"
+    print(f"{action}={len(sources)}")
 
 
 if __name__ == "__main__":

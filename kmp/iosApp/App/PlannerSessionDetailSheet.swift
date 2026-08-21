@@ -379,30 +379,79 @@ struct PlannerSessionDetailSheet: View {
     }
 
     private func teacherAtAGlanceSection(_ plan: LearningSituationSessionPlan) -> some View {
+        let projection = PlannerSessionDetailProjection(plan: plan)
         VStack(spacing: 16) {
-            let objective = plan.objective.trimmingCharacters(in: .whitespacesAndNewlines)
+            let objective = projection.objective.isEmpty
+                ? plan.objective.trimmingCharacters(in: .whitespacesAndNewlines)
+                : projection.objective
             if !objective.isEmpty {
                 teacherCard(title: "Objetivo de hoy", icon: "target", text: objective, prominence: .hero)
             }
 
             developmentTimeline(plan)
 
-            let criteria = decodedCriteria(plan)
-            let evidence = evidenceItems(from: plan)
+            let criteria = projection.criteria.isEmpty ? decodedCriteria(plan) : projection.criteria
+            let evidence = (projection.evidence + evidenceItems(from: plan))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .reduce(into: [String]()) { result, item in
+                    if !result.contains(item) { result.append(item) }
+                }
             if !criteria.isEmpty || !evidence.isEmpty {
                 evaluationCard(criteria: criteria, evidence: evidence)
             }
 
-            let material = plan.material.trimmingCharacters(in: .whitespacesAndNewlines)
+            let material = projection.materials.isEmpty
+                ? plan.material.trimmingCharacters(in: .whitespacesAndNewlines)
+                : projection.materials.joined(separator: ", ")
             if !material.isEmpty {
                 materialCard(material)
             }
+            if !projection.basicKnowledge.isEmpty {
+                teacherCard(
+                    title: "Saberes básicos",
+                    icon: "book.closed",
+                    text: projection.basicKnowledge.joined(separator: "\n")
+                )
+            }
 
-            let adaptations = decodedAdaptations(plan)
+            let adaptations = projection.adaptations.isEmpty ? decodedAdaptations(plan) : projection.adaptations
             if !adaptations.isEmpty {
                 teacherCard(title: "Adaptaciones y contexto", icon: "person.crop.rectangle", text: adaptations.joined(separator: "\n"))
             }
+            if !projection.supportSections.isEmpty {
+                supportContextCard(projection.supportSections)
+            }
         }
+    }
+
+    private func supportContextCard(_ sections: [PlannerSessionSupportSection]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Contexto docente", systemImage: "note.text")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(tint)
+            ForEach(sections) { section in
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(section.lines, id: \.self) { line in
+                            Text(line)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Label(section.title, systemImage: "text.alignleft")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+                .tint(tint)
+            }
+        }
+        .padding(20)
+        .plannerGlassPanel(.content, cornerRadius: 20)
     }
 
     private func teacherCard(title: String, icon: String, text: String, prominence: TeacherCardProminence = .standard) -> some View {
@@ -817,6 +866,7 @@ struct PlannerSessionDetailSheet: View {
 
     private func timelineStep(_ line: String) -> some View {
         let parts = developmentLineParts(line)
+        let parsed = PlannerSessionDetailProjection.parseStep(line)
         return HStack(alignment: .top, spacing: 8) {
             Image(systemName: "circle.fill")
                 .font(.system(size: 5))
@@ -834,10 +884,26 @@ struct PlannerSessionDetailSheet: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineSpacing(3)
+                if let teacherRole = parsed.teacherRole {
+                    timelineRoleLine("Profesorado", teacherRole)
+                }
+                if let studentRole = parsed.studentRole {
+                    timelineRoleLine("Alumnado", studentRole)
+                }
+                if let evidence = parsed.evidence {
+                    timelineRoleLine("Evidencia", evidence)
+                }
             }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func timelineRoleLine(_ label: String, _ value: String) -> some View {
+        Text("\(label): \(value)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func developmentLineParts(_ line: String) -> (title: String?, detail: String) {

@@ -116,7 +116,7 @@ struct PlannerSessionDetailProjection {
         }
     }
 
-    fileprivate static func parseStep(_ rawLine: String) -> PlannerSessionTimelineStep {
+    static func parseStep(_ rawLine: String) -> PlannerSessionTimelineStep {
         var line = cleaned(rawLine)
         var teacherRole: String?
         var studentRole: String?

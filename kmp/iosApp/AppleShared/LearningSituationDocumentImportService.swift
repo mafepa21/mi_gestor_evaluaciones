@@ -865,7 +865,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
     /// panel and starts planning the final event." (00d - Cierre de Curso) matcheaba igual que
     /// un encabezado real y generaba una sesión 3 fantasma duplicada.
     private static let headerPattern = try! NSRegularExpression(
-        pattern: #"^(?:SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+([0-9]+)(?:\s+(?:y|and|\&)\s+([0-9]+))?(?:\s*\([^)]*\))?(?:\s*[.:\-–—]\s*(.*))?$"#,
+        pattern: #"^(?:SESSION|SESSIONS|SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+([0-9]+)(?:\s+(?:y|and|\&)\s+([0-9]+))?(?:\s*\([^)]*\))?(?:\s*[.:\-–—]\s*(.*))?$"#,
         options: [.caseInsensitive]
     )
 
@@ -2006,6 +2006,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
         rest
             .replacingOccurrences(of: #"^\s*\([^)]*\)\s*"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"^(Simples?|Doubles?|Dobles?)\s*[:\-–—]?\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"^\s*\([^)]*\)\s*[-–—:]?\s*"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -2056,7 +2057,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
         // B2: el separador tras el número también puede ser "." (no solo "-:–—"), el tipo puede
         // ir en plural ("Sesiones 3 y 5 - Dobles: ..."), y puede haber una anotación entre
         // paréntesis tipo "(NEW)"/"(nueva)" que no debe colarse en el título.
-        let pattern = #"^(?:SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+[0-9]+(?:\s+(?:y|and|\&)\s+[0-9]+)?\s*(?:\([^)]*\)\s*)?(?:[.:\-–—]\s*)?(?:(?:Simples?|Doubles?|Dobles?)\s*[.:\-–—]?\s*)?(?:\([^)]*\)\s*)?(.*)$"#
+        let pattern = #"^(?:SESSION|SESSIONS|SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+[0-9]+(?:\s+(?:y|and|\&)\s+[0-9]+)?\s*(?:\([^)]*\)\s*)?(?:[.:\-–—]\s*)?(?:(?:Simples?|Doubles?|Dobles?)\s*[.:\-–—]?\s*)?(?:\([^)]*\)\s*)?(.*)$"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
               let match = regex.firstMatch(in: header, range: NSRange(header.startIndex..., in: header)),
               let titleRange = Range(match.range(at: 1), in: header) else {

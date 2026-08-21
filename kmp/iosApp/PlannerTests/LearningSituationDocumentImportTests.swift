@@ -49,6 +49,38 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.plans[1].activities.first?.evidence, "Peer note")
     }
 
+    func testEnglishSessionHeadingImportsAsOnePlan() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Session 1 - Double (90 minutes) — Week 1: training principles — Long block"),
+            .table([
+                ["Field", "Detail"],
+                ["Specific objective", "Understand the training principles and record a safe baseline."],
+                ["Criteria worked", "CE 1.1 · CE 1.2"],
+                ["Materials needed", "Health Passport, cones and stopwatches"],
+                ["Assessment", "Baseline record"]
+            ]),
+            .table([
+                ["Time", "Phase", "Activity", "Organisation", "Student output", "Evidence"],
+                ["0′–15′", "Entry", "Safety and readiness check", "Eight groups", "Agree roles and begin the record.", "Completed readiness check"]
+            ])
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("english-session-heading".utf8),
+            url: URL(fileURLWithPath: "/tmp/english-session-heading.docx")
+        )
+
+        XCTAssertEqual(draft.plans.count, 1)
+        XCTAssertEqual(draft.plans.first?.sessionNumber, 1)
+        XCTAssertEqual(draft.plans.first?.sessionType, "Doble")
+        XCTAssertEqual(draft.plans.first?.effectiveMinutes, 90)
+        XCTAssertEqual(draft.plans.first?.title, "Week 1: training principles — Long block")
+        XCTAssertEqual(draft.plans.first?.objective, "Understand the training principles and record a safe baseline.")
+        XCTAssertFalse(draft.plans.first?.development.isEmpty ?? true)
+        XCTAssertTrue(draft.warnings.isEmpty)
+    }
+
     func testQuickViewAndActivityDetailsMergeByStableActivityID() throws {
         let blocks: [WordDocumentBlock] = [
             .paragraph("WEEK 1 - Building Health"),

@@ -64,10 +64,11 @@ HELPER_APP="$ROOT_DIR/commandCenterHelper/build/compose/binaries/main/app/MiGest
 HELPER_BIN="$HELPER_APP/Contents/MacOS/MiGestorCommandCenter"
 LOCAL_GRADLE_BIN="$(find "$GRADLE_USER_HOME/wrapper/dists/gradle-8.6-all" -path '*/gradle-8.6/bin/gradle' -type f -print -quit 2>/dev/null || true)"
 BUILD_LOG="$(mktemp "${TMPDIR:-/tmp}/migestor-command-center-helper.XXXXXX")"
+STALE_APP=""
 
 echo "Building macOS command center helper..."
 echo "Using Gradle task $GRADLE_TASK with JAVA_HOME=${JAVA_HOME:-<unset>}"
-if [ -d "$HELPER_APP" ] && [ ! -x "$HELPER_BIN" ]; then
+if [ -e "$HELPER_APP" ]; then
     STALE_APP="${HELPER_APP}.stale"
     rm -rf "$STALE_APP" 2>/dev/null || true
     mv "$HELPER_APP" "$STALE_APP"
@@ -93,15 +94,15 @@ if [ "$BUILD_STATUS" -ne 0 ]; then
         echo "WARNING: jpackage created the helper but codesign rejected bundle metadata; repairing the app image..."
         xattr -cr "$HELPER_APP" 2>/dev/null || true
         sign_output=""
-        if sign_output="$(codesign --deep --force --sign - "$HELPER_APP" 2>&1)"; then
+        verify_output=""
+        if sign_output="$(codesign --deep --force --sign - "$HELPER_APP" 2>&1)" \
+            && verify_output="$(codesign --verify --deep --strict "$HELPER_APP" 2>&1)"; then
             xattr -cr "$HELPER_APP" 2>/dev/null || true
             echo "SUCCESS: Repaired helper app image after jpackage codesign metadata failure."
             BUILD_STATUS=0
-        elif printf '%s' "$sign_output" | grep -Eiq "FinderInfo|Finder information|resource fork|similar detritus not allowed"; then
-            echo "WARNING: codesign reported only File Provider metadata; keeping the executable helper image for Xcode embedding."
-            BUILD_STATUS=0
         else
-            echo "$sign_output" >&2
+            echo "error: codesign repair or verification failed." >&2
+            printf '%s\n' "$sign_output" "$verify_output" >&2
         fi
     fi
 fi
@@ -115,6 +116,17 @@ if [ ! -d "$HELPER_APP" ] || [ ! -x "$HELPER_BIN" ]; then
     echo "error: Gradle completed but the expected helper was not generated: $HELPER_BIN" >&2
     echo "error: Full Gradle output was saved to $BUILD_LOG" >&2
     exit 1
+fi
+
+if command -v codesign >/dev/null 2>&1; then
+    if ! codesign --verify --deep --strict "$HELPER_APP"; then
+        echo "error: generated helper failed codesign verification: $HELPER_APP" >&2
+        exit 1
+    fi
+fi
+
+if [ -n "$STALE_APP" ]; then
+    rm -rf "$STALE_APP" 2>/dev/null || true
 fi
 
 echo "SUCCESS: Command center helper disponible en $HELPER_BIN"

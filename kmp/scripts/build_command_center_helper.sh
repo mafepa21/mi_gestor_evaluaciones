@@ -100,6 +100,9 @@ if [ "$BUILD_STATUS" -ne 0 ]; then
             xattr -cr "$HELPER_APP" 2>/dev/null || true
             echo "SUCCESS: Repaired helper app image after jpackage codesign metadata failure."
             BUILD_STATUS=0
+        elif printf '%s\n' "$sign_output" "$verify_output" | grep -Eiq "FinderInfo|Finder information|resource fork|similar detritus not allowed"; then
+            echo "WARNING: codesign reported only File Provider metadata; keeping the executable helper image for Xcode embedding."
+            BUILD_STATUS=0
         else
             echo "error: codesign repair or verification failed." >&2
             printf '%s\n' "$sign_output" "$verify_output" >&2

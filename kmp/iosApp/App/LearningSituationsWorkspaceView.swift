@@ -80,7 +80,53 @@ struct LearningSituationScheduleTemplateDescriptor: Hashable {
     let endTime: String
 }
 
+struct LearningSituationScheduleProjectionResult {
+    let slots: [LearningSituationScheduledSlot]
+    let warnings: [String]
+    let route: LearningSituationWeeklySequenceRoute?
+}
+
+enum LearningSituationSessionSequenceKind: Equatable {
+    case canonicalWeekly
+    case legacyWeekly
+    case linear
+}
+
 enum LearningSituationScheduleProjection {
+    static func canonicalBlockCount(forAnnualSessionCount annualSessionCount: Int) -> Int {
+        guard annualSessionCount > 0 else { return 0 }
+        return ((annualSessionCount + 1) / 2) * 2
+    }
+
+    static func targetSessionCount(
+        plans: [LearningSituationSessionPlanDraft],
+        annualSessionCount: Int,
+        sequenceKind: LearningSituationSessionSequenceKind
+    ) -> Int {
+        guard !plans.isEmpty else { return max(annualSessionCount, 1) }
+        guard sequenceKind == .canonicalWeekly, annualSessionCount > 0 else { return plans.count }
+        return annualSessionCount
+    }
+
+    static func hasExpectedCanonicalBlockCount(
+        plans: [LearningSituationSessionPlanDraft],
+        annualSessionCount: Int
+    ) -> Bool {
+        guard annualSessionCount > 0 else { return true }
+        return plans.count == canonicalBlockCount(forAnnualSessionCount: annualSessionCount)
+    }
+
+    static func sequenceKind(
+        for plans: [LearningSituationSessionPlanDraft]
+    ) -> LearningSituationSessionSequenceKind {
+        guard !plans.isEmpty else { return .linear }
+        let canonical = plans.allSatisfy {
+            $0.blockRole != nil && $0.cycleIndex != nil && $0.weekKey != nil && $0.sequenceFormat != nil
+        }
+        if canonical { return .canonicalWeekly }
+        return plans.contains(where: isWeeklyBlockPlan) ? .legacyWeekly : .linear
+    }
+
     static func uniqueTemplateIndices(
         for descriptors: [LearningSituationScheduleTemplateDescriptor]
     ) -> [Int] {
@@ -109,22 +155,36 @@ enum LearningSituationScheduleProjection {
         plans: [LearningSituationSessionPlanDraft],
         startDate: Date,
         template: [TeacherScheduleSlot],
-        periodForSlot: (TeacherScheduleSlot) -> Int
-    ) -> (slots: [LearningSituationScheduledSlot], warnings: [String]) {
-        let orderedPlans = plans.sorted { $0.sessionNumber < $1.sessionNumber }
-        guard !orderedPlans.isEmpty, !template.isEmpty else { return ([], []) }
+        periodForSlot: (TeacherScheduleSlot) -> Int,
+        targetSessionCount: Int? = nil,
+        excludedDates: Set<Date> = []
+    ) -> LearningSituationScheduleProjectionResult {
+        let orderedPlans = plans.sorted {
+            if $0.sessionNumber != $1.sessionNumber { return $0.sessionNumber < $1.sessionNumber }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        guard !orderedPlans.isEmpty, !template.isEmpty else {
+            return LearningSituationScheduleProjectionResult(slots: [], warnings: [], route: nil)
+        }
         let calendar = Calendar(identifier: .iso8601)
         let normalizedStart = calendar.startOfDay(for: startDate)
+        let normalizedExcludedDates = Set(excludedDates.map { calendar.startOfDay(for: $0) })
         let sortedTemplate = template.sorted {
             Int($0.dayOfWeek) == Int($1.dayOfWeek) ? $0.startTime < $1.startTime : $0.dayOfWeek < $1.dayOfWeek
         }
+        let requestedCount = max(targetSessionCount ?? orderedPlans.count, 0)
+        let targetCount = min(requestedCount, orderedPlans.count)
 
-        let weeklyPlans = orderedPlans.contains(where: isWeeklyBlockPlan)
+        let weeklyPlans = sequenceKind(for: orderedPlans) != .linear
         guard weeklyPlans else {
             var sequential: [LearningSituationScheduledSlot] = []
             var date = normalizedStart
-            var templateOffset = 0
-            while sequential.count < orderedPlans.count {
+            while sequential.count < targetCount {
+                if normalizedExcludedDates.contains(calendar.startOfDay(for: date)) {
+                    guard let nextDate = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+                    date = nextDate
+                    continue
+                }
                 let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
                 for slot in sortedTemplate where Int(slot.dayOfWeek) == weekday {
                     let period = periodForSlot(slot)
@@ -134,8 +194,8 @@ enum LearningSituationScheduleProjection {
                         teacherScheduleSlotId: slot.id,
                         startTime: slot.startTime,
                         endTime: slot.endTime,
-                        planSessionNumber: orderedPlans[templateOffset].sessionNumber,
-                        blockKind: orderedPlans[templateOffset].sessionType,
+                        planSessionNumber: orderedPlans[sequential.count].sessionNumber,
+                        blockKind: orderedPlans[sequential.count].sessionType,
                         occupiedPeriods: [period],
                         occupiedScheduleSlots: [LearningSituationScheduledDestination(
                             period: period,
@@ -144,74 +204,83 @@ enum LearningSituationScheduleProjection {
                             endTime: slot.endTime
                         )]
                     ))
-                    templateOffset += 1
-                    if sequential.count == orderedPlans.count { break }
+                    if sequential.count == targetCount { break }
                 }
                 guard let nextDate = calendar.date(byAdding: .day, value: 1, to: date) else { break }
                 date = nextDate
             }
-            return (sequential, sequential.count == orderedPlans.count ? [] : ["No hay suficientes franjas para todas las sesiones importadas."])
+            return LearningSituationScheduleProjectionResult(
+                slots: sequential,
+                warnings: sequential.count == targetCount ? [] : ["No hay suficientes franjas para todas las sesiones importadas."],
+                route: nil
+            )
         }
 
         var assignments: [LearningSituationScheduledSlot] = []
         var warnings: [String] = []
         var usedDestinations = Set<ScheduledDestination>()
-        var lastAssignedDate: Date?
-        var lastAssignedEndMinutes: Int?
-        let searchDays = max(orderedPlans.count * 7 + 14, 42)
+        var previousAssignment: LearningSituationScheduledSlot?
+        var route: LearningSituationWeeklySequenceRoute?
+        let searchDays = max(orderedPlans.count * 14 + 14, 84)
+        let cycleGroups = Dictionary(grouping: orderedPlans) { cycleIndex(for: $0) }
 
-        // Weekly documents describe a pedagogical sequence (long, short, long, short),
-        // not a fixed calendar-week bucket. Assign each plan to the next compatible
-        // timetable opportunity so a partial first week can roll into the next one.
-        for plan in orderedPlans {
-            var candidate: LearningSituationScheduledSlot?
-            for dayOffset in 0...searchDays {
-                guard let date = calendar.date(byAdding: .day, value: dayOffset, to: normalizedStart) else { continue }
-                let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
-                let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
-                let dayCandidates = DayCandidates(
-                    date: date,
-                    long: longCandidate(on: date, slots: daySlots, periodForSlot: periodForSlot),
-                    short: shortCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
-                )
-                let candidates = isWeeklyBlockPlan(plan) && isLongPlan(plan)
-                    ? dayCandidates.long.map { [$0] } ?? []
-                    : dayCandidates.short
+        // The document order (usually LONG session 1, SHORT session 2) is not a
+        // calendar order. Each cycle is therefore resolved independently from the
+        // next real compatible opportunities, which also handles a partial first
+        // week and lets a valid SHORT opportunity precede the first LONG one.
+        for cycleIndex in cycleGroups.keys.sorted() {
+            var pending = cycleGroups[cycleIndex, default: []]
+                .sorted { $0.sessionNumber < $1.sessionNumber }
+                .map { WeeklyPendingPlan(plan: $0, role: blockRole(for: $0)) }
 
-                if let match = candidates.first(where: { slot in
-                    guard !collides(slot, with: usedDestinations) else { return false }
-                    guard let lastAssignedDate else { return true }
-                    let normalizedDate = calendar.startOfDay(for: slot.date)
-                    let previousDate = calendar.startOfDay(for: lastAssignedDate)
-                    guard normalizedDate >= previousDate else { return false }
-                    guard normalizedDate == previousDate else { return true }
-                    guard let previousEnd = lastAssignedEndMinutes, let currentStart = minutes(slot.startTime) else { return false }
-                    return currentStart >= previousEnd
-                }) {
-                    candidate = match
+            while !pending.isEmpty && assignments.count < targetCount {
+                let candidates = pending.compactMap { pendingPlan -> WeeklyCandidate? in
+                    guard let candidate = nextCandidate(
+                        for: pendingPlan.role,
+                        startDate: normalizedStart,
+                        after: previousAssignment,
+                        sortedTemplate: sortedTemplate,
+                        periodForSlot: periodForSlot,
+                        usedDestinations: usedDestinations,
+                        searchDays: searchDays,
+                        excludedDates: normalizedExcludedDates
+                    ) else { return nil }
+                    return WeeklyCandidate(pendingPlan: pendingPlan, slot: candidate)
+                }
+
+                guard let next = candidates.min(by: { isChronologicallyBefore($0.slot, $1.slot) }) else {
+                    for pendingPlan in pending {
+                        let requirement = pendingPlan.role == .long ? "bloque largo" : "bloque corto"
+                        warnings.append("La sesión \(pendingPlan.plan.sessionNumber) requiere un \(requirement), pero no hay una franja compatible desde la fecha de inicio.")
+                    }
                     break
                 }
+
+                let assigned = withPlan(next.slot, plan: next.pendingPlan.plan)
+                assignments.append(assigned)
+                addDestinations(assigned, to: &usedDestinations)
+                previousAssignment = assigned
+                if route == nil {
+                    route = next.pendingPlan.role == .short ? .shortFirst : .longFirst
+                }
+                pending.removeAll { $0.plan.id == next.pendingPlan.plan.id }
             }
 
-            guard let candidate else {
-                let requirement = isWeeklyBlockPlan(plan) && isLongPlan(plan) ? "bloque largo" : "bloque corto"
-                warnings.append("La sesión \(plan.sessionNumber) requiere un \(requirement), pero no hay una franja compatible desde la fecha de inicio.")
-                continue
-            }
-            let assigned = withPlan(candidate, plan: plan)
-            assignments.append(assigned)
-            addDestinations(assigned, to: &usedDestinations)
-            lastAssignedDate = assigned.date
-            lastAssignedEndMinutes = minutes(assigned.endTime)
+            if assignments.count == targetCount { break }
         }
 
-        return (assignments.sorted { $0.planSessionNumber ?? .max < $1.planSessionNumber ?? .max }, warnings)
+        let orderedAssignments = assignments.sorted(by: isChronologicallyBefore)
+        return LearningSituationScheduleProjectionResult(slots: orderedAssignments, warnings: warnings, route: route)
     }
 
-    private struct DayCandidates {
-        let date: Date
-        let long: LearningSituationScheduledSlot?
-        let short: [LearningSituationScheduledSlot]
+    private struct WeeklyPendingPlan {
+        let plan: LearningSituationSessionPlanDraft
+        let role: LearningSituationWeeklyBlockRole
+    }
+
+    private struct WeeklyCandidate {
+        let pendingPlan: WeeklyPendingPlan
+        let slot: LearningSituationScheduledSlot
     }
 
     private struct ScheduledDestination: Hashable {
@@ -219,17 +288,89 @@ enum LearningSituationScheduleProjection {
         let period: Int
     }
 
+    private static func nextCandidate(
+        for role: LearningSituationWeeklyBlockRole,
+        startDate: Date,
+        after previous: LearningSituationScheduledSlot?,
+        sortedTemplate: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int,
+        usedDestinations: Set<ScheduledDestination>,
+        searchDays: Int,
+        excludedDates: Set<Date>
+    ) -> LearningSituationScheduledSlot? {
+        let calendar = Calendar(identifier: .iso8601)
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        for dayOffset in 0...searchDays {
+            guard let date = calendar.date(byAdding: .day, value: dayOffset, to: normalizedStart) else { continue }
+            guard !excludedDates.contains(calendar.startOfDay(for: date)) else { continue }
+            let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+            let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
+            let candidates = role == .long
+                ? longCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+                : shortCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+            for candidate in candidates {
+                guard !collides(candidate, with: usedDestinations), follows(candidate, after: previous) else { continue }
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private static func follows(_ slot: LearningSituationScheduledSlot, after previous: LearningSituationScheduledSlot?) -> Bool {
+        guard let previous else { return true }
+        let calendar = Calendar(identifier: .iso8601)
+        let currentDate = calendar.startOfDay(for: slot.date)
+        let previousDate = calendar.startOfDay(for: previous.date)
+        guard currentDate >= previousDate else { return false }
+        guard currentDate == previousDate else { return true }
+        guard let previousEnd = minutes(previous.endTime), let currentStart = minutes(slot.startTime) else { return false }
+        return currentStart >= previousEnd
+    }
+
+    private static func isChronologicallyBefore(_ lhs: LearningSituationScheduledSlot, _ rhs: LearningSituationScheduledSlot) -> Bool {
+        let calendar = Calendar(identifier: .iso8601)
+        let lhsDate = calendar.startOfDay(for: lhs.date)
+        let rhsDate = calendar.startOfDay(for: rhs.date)
+        if lhsDate != rhsDate { return lhsDate < rhsDate }
+        let lhsStart = minutes(lhs.startTime) ?? .max
+        let rhsStart = minutes(rhs.startTime) ?? .max
+        if lhsStart != rhsStart { return lhsStart < rhsStart }
+        return (lhs.planSessionNumber ?? .max) < (rhs.planSessionNumber ?? .max)
+    }
+
+    private static func cycleIndex(for plan: LearningSituationSessionPlanDraft) -> Int {
+        if let cycleIndex = plan.cycleIndex, cycleIndex > 0 { return cycleIndex }
+        if let weekKey = plan.weekKey, let parsed = Int(weekKey.filter { $0.isNumber }), parsed > 0 { return parsed }
+        return max((plan.sessionNumber + 1) / 2, 1)
+    }
+
+    private static func blockRole(for plan: LearningSituationSessionPlanDraft) -> LearningSituationWeeklyBlockRole {
+        if let blockRole = plan.blockRole { return blockRole }
+        if isLongPlan(plan) && !isShortPlan(plan) { return .long }
+        if isShortPlan(plan) && !isLongPlan(plan) { return .short }
+        return plan.sessionNumber.isMultiple(of: 2) ? .short : .long
+    }
+
     private static func isLongPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        if plan.blockRole == .long { return true }
+        if plan.blockRole == .short { return false }
         let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
         return value.contains("long") || value.contains("largo") || value.contains("double") || value.contains("doble") || plan.effectiveMinutes >= 75
     }
 
     private static func isWeeklyBlockPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        if plan.blockRole != nil || plan.cycleIndex != nil || plan.weekKey != nil || plan.sequenceFormat != nil { return true }
         let value = "\(plan.sessionType) \(plan.sourceLabel)".folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-        return value.contains("long block") || value.contains("short block") || value.contains("bloque largo") || value.contains("bloque corto")
+        if value.contains("long block") || value.contains("short block") || value.contains("bloque largo") || value.contains("bloque corto") {
+            return true
+        }
+        let hasWeekMarker = value.contains("week") || value.contains("semana")
+        return hasWeekMarker && (value.contains("simple") || value.contains("double") || value.contains("doble") || value.contains("long") || value.contains("short"))
     }
 
     private static func isShortPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        if plan.blockRole == .short { return true }
+        if plan.blockRole == .long { return false }
         let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
         return value.contains("short") || value.contains("corto") || value.contains("simple") || plan.effectiveMinutes > 0 && plan.effectiveMinutes < 75
     }
@@ -240,16 +381,17 @@ enum LearningSituationScheduleProjection {
         return hour * 60 + minute
     }
 
-    private static func longCandidate(
+    private static func longCandidates(
         on date: Date,
         slots: [TeacherScheduleSlot],
         periodForSlot: (TeacherScheduleSlot) -> Int
-    ) -> LearningSituationScheduledSlot? {
+    ) -> [LearningSituationScheduledSlot] {
         let ordered = slots.sorted { $0.startTime < $1.startTime }
+        var candidates: [LearningSituationScheduledSlot] = []
         for slot in ordered {
             guard let start = minutes(slot.startTime), let end = minutes(slot.endTime), end - start >= 75 else { continue }
             let period = periodForSlot(slot)
-            return LearningSituationScheduledSlot(
+            candidates.append(LearningSituationScheduledSlot(
                 date: date, period: period, teacherScheduleSlotId: slot.id,
                 startTime: slot.startTime, endTime: slot.endTime,
                 occupiedPeriods: [period],
@@ -259,7 +401,7 @@ enum LearningSituationScheduleProjection {
                     startTime: slot.startTime,
                     endTime: slot.endTime
                 )]
-            )
+            ))
         }
         // A legal transition/recess can separate two consecutive timetable periods.
         // Treat up to 20 minutes as one continuous long-block opportunity.
@@ -272,7 +414,7 @@ enum LearningSituationScheduleProjection {
                   end - start >= 75 else { continue }
             let firstPeriod = periodForSlot(pair.0)
             let secondPeriod = periodForSlot(pair.1)
-            return LearningSituationScheduledSlot(
+            candidates.append(LearningSituationScheduledSlot(
                 date: date, period: firstPeriod, teacherScheduleSlotId: pair.0.id,
                 startTime: pair.0.startTime, endTime: pair.1.endTime,
                 occupiedPeriods: [firstPeriod, secondPeriod],
@@ -290,9 +432,9 @@ enum LearningSituationScheduleProjection {
                         endTime: pair.1.endTime
                     )
                 ]
-            )
+            ))
         }
-        return nil
+        return candidates.sorted(by: isChronologicallyBefore)
     }
 
     private static func shortCandidates(
@@ -300,10 +442,8 @@ enum LearningSituationScheduleProjection {
         slots: [TeacherScheduleSlot],
         periodForSlot: (TeacherScheduleSlot) -> Int
     ) -> [LearningSituationScheduledSlot] {
-        let longPeriods = longCandidate(on: date, slots: slots, periodForSlot: periodForSlot)?.destinationPeriods ?? []
         return slots.sorted { $0.startTime < $1.startTime }.compactMap { slot in
             let period = periodForSlot(slot)
-            guard !longPeriods.contains(period) else { return nil }
             return LearningSituationScheduledSlot(
                 date: date, period: period, teacherScheduleSlotId: slot.id,
                 startTime: slot.startTime, endTime: slot.endTime,
@@ -1494,6 +1634,7 @@ private struct LearningSituationScheduleSheet: View {
     @State private var sequenceDraft: LearningSituationSessionSequenceImportDraft?
     @State private var expandedPlanNumbers: Set<Int> = []
     @State private var scheduleNotice = ""
+    @State private var weeklyRoute: LearningSituationWeeklySequenceRoute?
     @State private var errorMessage = ""
 
     var body: some View {
@@ -1533,16 +1674,14 @@ private struct LearningSituationScheduleSheet: View {
                 guard let url = urls.first else { return }
                 do {
                     var draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
-                    let weeklyPlanCount = draft.plans.filter { plan in
-                        let value = "\(plan.sessionType) \(plan.sourceLabel)".folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-                        return value.contains("long block") || value.contains("short block") || value.contains("bloque largo") || value.contains("bloque corto")
-                    }.count
-                    let expectedPlanCount = weeklyPlanCount > 0 && weeklyPlanCount == draft.plans.count
-                        ? Int(situation.sessionCount) * 2
-                        : Int(situation.sessionCount)
+                    let isWeekly = sequenceKind(draft.plans) == .canonicalWeekly
+                    let annualSessionCount = Int(situation.sessionCount)
+                    let expectedPlanCount = isWeekly
+                        ? LearningSituationScheduleProjection.canonicalBlockCount(forAnnualSessionCount: annualSessionCount)
+                        : annualSessionCount
                     if situation.sessionCount > 0 && draft.plans.count != expectedPlanCount {
-                        let expectedLabel = expectedPlanCount == Int(situation.sessionCount) ? "sesiones" : "bloques (largo + corto por semana)"
-                        draft.warnings.append("La situación indica \(situation.sessionCount) semanas/sesiones y el documento contiene \(draft.plans.count) \(expectedLabel).")
+                        let expectedLabel = isWeekly ? "bloques canónicos para \(annualSessionCount) sesiones lectivas" : "sesiones"
+                        draft.warnings.append("La programación anual exige \(annualSessionCount) sesiones y se esperaban \(expectedPlanCount) \(expectedLabel), pero el documento contiene \(draft.plans.count).")
                     }
                     sequenceDraft = draft
                     expandedPlanNumbers = Set(draft.plans.prefix(3).map(\.sessionNumber))
@@ -1561,8 +1700,24 @@ private struct LearningSituationScheduleSheet: View {
     }
 
     private var targetSessionCount: Int {
-        if let sequenceDraft, !sequenceDraft.plans.isEmpty { return sequenceDraft.plans.count }
-        return max(Int(situation.sessionCount), 1)
+        let plans = sequenceDraft?.plans ?? []
+        return LearningSituationScheduleProjection.targetSessionCount(
+            plans: plans,
+            annualSessionCount: Int(situation.sessionCount),
+            sequenceKind: sequenceKind(plans)
+        )
+    }
+
+    private func sequenceKind(_ plans: [LearningSituationSessionPlanDraft]) -> LearningSituationSessionSequenceKind {
+        LearningSituationScheduleProjection.sequenceKind(for: plans)
+    }
+
+    private func hasValidCanonicalBlockCount(_ plans: [LearningSituationSessionPlanDraft]) -> Bool {
+        guard sequenceKind(plans) == .canonicalWeekly else { return true }
+        return LearningSituationScheduleProjection.hasExpectedCanonicalBlockCount(
+            plans: plans,
+            annualSessionCount: Int(situation.sessionCount)
+        )
     }
 
     private var validImportedSessionCount: Int {
@@ -1575,6 +1730,9 @@ private struct LearningSituationScheduleSheet: View {
 
     private var statusText: String {
         if let sequenceDraft {
+            if sequenceKind(sequenceDraft.plans) == .canonicalWeekly {
+                return "\(targetSessionCount) sesiones · \(sequenceDraft.plans.count) bloques · \(selectedSlotCount) programadas"
+            }
             return "\(sequenceDraft.plans.count) detectadas · \(validImportedSessionCount) listas · \(selectedSlotCount) franjas"
         }
         return "\(selectedSlotCount) franjas seleccionadas"
@@ -1584,7 +1742,8 @@ private struct LearningSituationScheduleSheet: View {
         let selectedCount = slots.filter(\.isSelected).count
         guard selectedCount > 0 else { return false }
         guard let sequenceDraft else { return true }
-        return sequenceDraft.plans.count == selectedCount
+        return targetSessionCount == selectedCount
+            && hasValidCanonicalBlockCount(sequenceDraft.plans)
             && !sequenceDraft.plans.contains(where: { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
     }
 
@@ -1617,7 +1776,14 @@ private struct LearningSituationScheduleSheet: View {
             if let draft = sequenceDraft {
                 HStack(spacing: 8) {
                     metricChip(title: "Documento", value: draft.sourceFileName, systemImage: "doc.text")
-                    metricChip(title: "Sesiones", value: "\(draft.plans.count)", systemImage: "number")
+                    metricChip(
+                        title: sequenceKind(draft.plans) == .canonicalWeekly ? "Bloques" : "Sesiones",
+                        value: "\(draft.plans.count)",
+                        systemImage: "number"
+                    )
+                    if sequenceKind(draft.plans) == .canonicalWeekly {
+                        metricChip(title: "Clases", value: "\(targetSessionCount)", systemImage: "calendar")
+                    }
                     metricChip(title: "Listas", value: "\(validImportedSessionCount)", systemImage: "checkmark.seal")
                     if !draft.warnings.isEmpty {
                         metricChip(title: "Avisos", value: "\(draft.warnings.count)", systemImage: "exclamationmark.triangle")
@@ -1673,6 +1839,7 @@ private struct LearningSituationScheduleSheet: View {
                     Button(role: .destructive) {
                         sequenceDraft = nil
                         expandedPlanNumbers.removeAll()
+                        weeklyRoute = nil
                     } label: {
                         Label("Quitar", systemImage: "trash")
                     }
@@ -1731,6 +1898,14 @@ private struct LearningSituationScheduleSheet: View {
                     .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else {
                 VStack(alignment: .leading, spacing: 8) {
+                    if let weeklyRoute {
+                        Label("Ruta automática: \(weeklyRoute.displayName)", systemImage: "arrow.triangle.branch")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(EvaluationDesign.accent)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(EvaluationDesign.accentSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
                     if !scheduleNotice.isEmpty {
                         Label(scheduleNotice, systemImage: "checkmark.shield")
                             .font(.caption.weight(.medium))
@@ -1781,8 +1956,14 @@ private struct LearningSituationScheduleSheet: View {
 
     private var footerMessage: String {
         if slots.isEmpty { return "Previsualiza el horario antes de programar." }
-        if let sequenceDraft, sequenceDraft.plans.count != selectedSlotCount {
-            return "El documento contiene \(sequenceDraft.plans.count) sesiones y hay \(selectedSlotCount) franjas seleccionadas."
+        if let sequenceDraft, !hasValidCanonicalBlockCount(sequenceDraft.plans) {
+            let expected = LearningSituationScheduleProjection.canonicalBlockCount(
+                forAnnualSessionCount: Int(situation.sessionCount)
+            )
+            return "El documento canónico debe contener exactamente \(expected) bloques; corrígelo antes de programar."
+        }
+        if sequenceDraft != nil, targetSessionCount != selectedSlotCount {
+            return "La programación requiere \(targetSessionCount) sesiones y hay \(selectedSlotCount) franjas seleccionadas."
         }
         if let sequenceDraft, sequenceDraft.plans.contains(where: { !planHasRequiredFields($0) }) {
             return "Completa título y objetivo en todas las sesiones importadas."
@@ -1969,6 +2150,23 @@ private struct LearningSituationScheduleSheet: View {
             }
             let ignoredDuplicates = rawTemplate.count - template.count
             var notices: [String] = []
+            let globalNonTeachingEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
+            let classNonTeachingEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: classId)
+            let calendar = Calendar(identifier: .iso8601)
+            var excludedDates = Set<Date>()
+            for event in globalNonTeachingEvents + classNonTeachingEvents {
+                var date = calendar.startOfDay(for: Date(
+                    timeIntervalSince1970: Double(event.startAt.toEpochMilliseconds()) / 1_000
+                ))
+                let endDate = calendar.startOfDay(for: Date(
+                    timeIntervalSince1970: Double(event.endAt.toEpochMilliseconds()) / 1_000
+                ))
+                while date <= endDate {
+                    excludedDates.insert(date)
+                    guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+                    date = next
+                }
+            }
             if ignoredDuplicates > 0 {
                 notices.append("Se \(ignoredDuplicates == 1 ? "ha ignorado 1 franja duplicada" : "han ignorado \(ignoredDuplicates) franjas duplicadas") del horario.")
             }
@@ -1977,15 +2175,22 @@ private struct LearningSituationScheduleSheet: View {
                     plans: sequenceDraft.plans,
                     startDate: startDate,
                     template: template,
-                    periodForSlot: { self.plannerPeriod(for: $0, allScheduleSlots: allScheduleSlots) }
+                    periodForSlot: { self.plannerPeriod(for: $0, allScheduleSlots: allScheduleSlots) },
+                    targetSessionCount: targetSessionCount,
+                    excludedDates: excludedDates
                 )
                 slots = projection.slots
+                weeklyRoute = projection.route
                 notices.append(contentsOf: projection.warnings)
             } else {
+                weeklyRoute = nil
                 var candidates: [LearningSituationScheduledSlot] = []
                 var date = startDate
-                let calendar = Calendar.current
                 while candidates.count < targetSessionCount {
+                    if excludedDates.contains(calendar.startOfDay(for: date)) {
+                        date = calendar.date(byAdding: .day, value: 1, to: date) ?? date
+                        continue
+                    }
                     let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
                     for slot in template.filter({ Int($0.dayOfWeek) == weekday }).sorted(by: { $0.startTime < $1.startTime }) {
                         candidates.append(LearningSituationScheduledSlot(

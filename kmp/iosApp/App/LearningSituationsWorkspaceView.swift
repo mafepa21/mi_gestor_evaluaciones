@@ -112,7 +112,8 @@ enum LearningSituationScheduleProjection {
         plans: [LearningSituationSessionPlanDraft],
         annualSessionCount: Int
     ) -> Bool {
-        plans.count == canonicalBlockCount(forAnnualSessionCount: annualSessionCount)
+        guard annualSessionCount > 0 else { return true }
+        return plans.count == canonicalBlockCount(forAnnualSessionCount: annualSessionCount)
     }
 
     static func sequenceKind(

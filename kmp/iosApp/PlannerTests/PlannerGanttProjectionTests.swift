@@ -39,6 +39,20 @@ final class PlannerGanttProjectionTests: XCTestCase {
                 annualSessionCount: 3
             )
         )
+        XCTAssertTrue(
+            LearningSituationScheduleProjection.hasExpectedCanonicalBlockCount(
+                plans: plans,
+                annualSessionCount: 0
+            )
+        )
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.targetSessionCount(
+                plans: plans,
+                annualSessionCount: 0,
+                sequenceKind: .canonicalWeekly
+            ),
+            plans.count
+        )
         XCTAssertEqual(LearningSituationScheduleProjection.sequenceKind(for: plans), .canonicalWeekly)
     }
 

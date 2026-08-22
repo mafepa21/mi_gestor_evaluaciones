@@ -108,6 +108,36 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
         )
     }
 
+    func testLegacyActivityProjectionRejectsUntimedProseAndKeepsTimedRows() {
+        let sections = [
+            LearningSituationSessionSectionDraft(
+                title: "Block 1 (45')",
+                lines: [
+                    "Group organisation: Pairs",
+                    "0'-10' · Entry · Timed warm-up",
+                    "Teacher note: Check the first response."
+                ]
+            ),
+            LearningSituationSessionSectionDraft(
+                title: "PREPARES",
+                lines: ["Activate prior knowledge before the long block."]
+            ),
+            LearningSituationSessionSectionDraft(
+                title: "Additional notes",
+                lines: [
+                    "10'-20' · Practice · Timed relay",
+                    "Assessment metadata: Health Passport"
+                ]
+            )
+        ]
+
+        let activities = PlannerSessionLegacyActivityProjection.executableActivities(from: sections)
+
+        XCTAssertEqual(activities.map(\.activityKey), ["LEGACY-1-2", "LEGACY-3-1"])
+        XCTAssertEqual(activities.map(\.timeLabel), ["0'-10'", "10'-20'"])
+        XCTAssertEqual(activities.map(\.activity), ["Timed warm-up", "Timed relay"])
+    }
+
     private func makePlan(
         material: String,
         criteria: [String],

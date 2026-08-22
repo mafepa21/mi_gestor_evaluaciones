@@ -186,6 +186,106 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.plans[1].activities.first?.evidence, "Peer note")
     }
 
+    func testWeeklyShortQuickViewWithVariantColumnsImportsActivitiesByID() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("WEEK 1 - Cooperative challenge"),
+            .paragraph("LONG BLOCK (90 effective minutes)"),
+            .table([
+                ["Time", "Activity ID", "Activity"],
+                ["0′–90′", "W01-L-01", "Long-only challenge"]
+            ]),
+            .paragraph("SHORT BLOCK (30 effective minutes)"),
+            .paragraph("SHORT QUICK VIEW"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity", "Organisation", "Student output", "PREPARES", "CONSOLIDATES", "Evidence"],
+                ["0′–10′", "W01-S-01", "entry", "10", "Entry", "Short retrieval launch", "Pairs", "One recalled idea.", "Activate prior knowledge.", "Retrieve the long-block learning.", "Recall note"],
+                ["10′–30′", "W01-S-02", "closure", "20", "Closure", "Short evidence check", "Pairs", "One completed check.", "Rehearse the challenge roles.", "Consolidate the evidence record.", "Checked passport"]
+            ])
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("short-quick-view-variants".utf8),
+            url: URL(fileURLWithPath: "/tmp/short-quick-view-variants.docx")
+        )
+
+        let shortPlan = try XCTUnwrap(draft.plans.first { $0.blockRole == .short })
+        XCTAssertEqual(shortPlan.activities.map(\.activityKey), ["W01-S-01", "W01-S-02"])
+        XCTAssertEqual(shortPlan.activities.map(\.activity), ["Short retrieval launch", "Short evidence check"])
+        XCTAssertEqual(shortPlan.activities.map(\.plannedMinutes), [10, 20])
+        XCTAssertEqual(shortPlan.activities.map(\.evidence), ["Recall note", "Checked passport"])
+        XCTAssertTrue(shortPlan.activities.allSatisfy { !$0.activityKey.hasPrefix("LEGACY-") })
+        XCTAssertTrue(shortPlan.activities.allSatisfy { !$0.activityKey.contains("-L-") })
+        XCTAssertEqual(shortPlan.effectiveMinutes, 30)
+        XCTAssertFalse(shortPlan.activities.contains { $0.activity == "Long-only challenge" })
+    }
+
+    func testWeeklyActivityDetailHeadingWithTitleSuffixMergesByActivityID() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("WEEK 1 - Cooperative challenge"),
+            .paragraph("LONG BLOCK (90 effective minutes)"),
+            .table([
+                ["Time", "Activity ID", "Activity"],
+                ["0′–90′", "W01-L-01", "Long-block challenge"]
+            ]),
+            .paragraph("SHORT BLOCK (30 effective minutes)"),
+            .table([
+                ["Time", "Activity ID", "Activity"],
+                ["0′–30′", "W01-S-01", "Retrieval relay"]
+            ]),
+            .paragraph("ACTIVITY DETAILS"),
+            .paragraph("ACTIVITY W01-S-01 — Retrieval relay"),
+            .paragraph("Purpose: Consolidate the evidence from the long block."),
+            .paragraph("Teacher instructions: Model one retrieval prompt before pairs begin.")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("weekly-detail-title-suffix".utf8),
+            url: URL(fileURLWithPath: "/tmp/weekly-detail-title-suffix.docx")
+        )
+
+        let shortPlan = try XCTUnwrap(draft.plans.first { $0.blockRole == .short })
+        let activity = try XCTUnwrap(shortPlan.activities.first { $0.activityKey == "W01-S-01" })
+        XCTAssertEqual(activity.purpose, "Consolidate the evidence from the long block.")
+        XCTAssertEqual(activity.teacherActions, "Model one retrieval prompt before pairs begin.")
+    }
+
+    func testWeeklyVariantOnlyTimeTableKeepsSeparateSectionsWithoutSyntheticActivities() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("WEEK 1 - Cooperative challenge"),
+            .paragraph("LONG BLOCK (90 effective minutes)"),
+            .table([
+                ["Time", "Activity ID", "Activity"],
+                ["0′–90′", "W01-L-01", "Long-block challenge"]
+            ]),
+            .paragraph("SHORT BLOCK (30 effective minutes)"),
+            .table([
+                ["Time", "Phase", "Variante PREPARA", "Variante CONSOLIDA"],
+                ["0′–15′", "Entry", "Activate prior knowledge.", "Retrieve the long-block learning."],
+                ["15′–30′", "Closure", "Rehearse the roles.", "Consolidate the evidence record."]
+            ])
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("variant-only-time-table".utf8),
+            url: URL(fileURLWithPath: "/tmp/variant-only-time-table.docx")
+        )
+
+        let shortPlan = try XCTUnwrap(draft.plans.first { $0.blockRole == .short })
+        XCTAssertTrue(shortPlan.activities.isEmpty)
+        XCTAssertEqual(shortPlan.development.map(\.title), ["Variante PREPARA", "Variante CONSOLIDA"])
+        XCTAssertEqual(shortPlan.development[0].lines, [
+            "0′–15′ · Entry · Activate prior knowledge.",
+            "15′–30′ · Closure · Rehearse the roles."
+        ])
+        XCTAssertEqual(shortPlan.development[1].lines, [
+            "0′–15′ · Entry · Retrieve the long-block learning.",
+            "15′–30′ · Closure · Consolidate the evidence record."
+        ])
+    }
+
     func testEnglishSessionHeadingImportsAsOnePlan() throws {
         let blocks: [WordDocumentBlock] = [
             .paragraph("Session 1 - Double (90 minutes) — Week 1: training principles — Long block"),

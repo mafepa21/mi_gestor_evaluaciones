@@ -87,6 +87,21 @@ struct LearningSituationScheduleProjectionResult {
 }
 
 enum LearningSituationScheduleProjection {
+    static func canonicalBlockCount(forAnnualSessionCount annualSessionCount: Int) -> Int {
+        guard annualSessionCount > 0 else { return 0 }
+        return ((annualSessionCount + 1) / 2) * 2
+    }
+
+    static func targetSessionCount(
+        plans: [LearningSituationSessionPlanDraft],
+        annualSessionCount: Int,
+        isCanonicalWeekly: Bool
+    ) -> Int {
+        guard !plans.isEmpty else { return max(annualSessionCount, 1) }
+        guard isCanonicalWeekly, annualSessionCount > 0 else { return plans.count }
+        return min(annualSessionCount, plans.count)
+    }
+
     static func uniqueTemplateIndices(
         for descriptors: [LearningSituationScheduleTemplateDescriptor]
     ) -> [Int] {
@@ -1634,16 +1649,14 @@ private struct LearningSituationScheduleSheet: View {
                 guard let url = urls.first else { return }
                 do {
                     var draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
-                    let weeklyPlanCount = draft.plans.filter { plan in
-                        let value = "\(plan.sessionType) \(plan.sourceLabel)".folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-                        return value.contains("long block") || value.contains("short block") || value.contains("bloque largo") || value.contains("bloque corto")
-                    }.count
-                    let expectedPlanCount = weeklyPlanCount > 0 && weeklyPlanCount == draft.plans.count
-                        ? Int(situation.sessionCount) * 2
-                        : Int(situation.sessionCount)
+                    let isWeekly = isCanonicalWeeklySequence(draft.plans)
+                    let annualSessionCount = Int(situation.sessionCount)
+                    let expectedPlanCount = isWeekly
+                        ? LearningSituationScheduleProjection.canonicalBlockCount(forAnnualSessionCount: annualSessionCount)
+                        : annualSessionCount
                     if situation.sessionCount > 0 && draft.plans.count != expectedPlanCount {
-                        let expectedLabel = expectedPlanCount == Int(situation.sessionCount) ? "sesiones" : "bloques (largo + corto por semana)"
-                        draft.warnings.append("La situación indica \(situation.sessionCount) semanas/sesiones y el documento contiene \(draft.plans.count) \(expectedLabel).")
+                        let expectedLabel = isWeekly ? "bloques canónicos para \(annualSessionCount) sesiones lectivas" : "sesiones"
+                        draft.warnings.append("La programación anual exige \(annualSessionCount) sesiones y se esperaban \(expectedPlanCount) \(expectedLabel), pero el documento contiene \(draft.plans.count).")
                     }
                     sequenceDraft = draft
                     expandedPlanNumbers = Set(draft.plans.prefix(3).map(\.sessionNumber))
@@ -1662,8 +1675,27 @@ private struct LearningSituationScheduleSheet: View {
     }
 
     private var targetSessionCount: Int {
-        if let sequenceDraft, !sequenceDraft.plans.isEmpty { return sequenceDraft.plans.count }
-        return max(Int(situation.sessionCount), 1)
+        let plans = sequenceDraft?.plans ?? []
+        return LearningSituationScheduleProjection.targetSessionCount(
+            plans: plans,
+            annualSessionCount: Int(situation.sessionCount),
+            isCanonicalWeekly: isCanonicalWeeklySequence(plans)
+        )
+    }
+
+    private func isCanonicalWeeklySequence(_ plans: [LearningSituationSessionPlanDraft]) -> Bool {
+        guard !plans.isEmpty else { return false }
+        return plans.allSatisfy { plan in
+            if plan.blockRole != nil || plan.cycleIndex != nil || plan.weekKey != nil || plan.sequenceFormat != nil {
+                return true
+            }
+            let value = "\(plan.sessionType) \(plan.sourceLabel)".folding(
+                options: [.diacriticInsensitive, .caseInsensitive],
+                locale: .current
+            )
+            return value.contains("long block") || value.contains("short block") ||
+                value.contains("bloque largo") || value.contains("bloque corto")
+        }
     }
 
     private var validImportedSessionCount: Int {
@@ -1676,6 +1708,9 @@ private struct LearningSituationScheduleSheet: View {
 
     private var statusText: String {
         if let sequenceDraft {
+            if isCanonicalWeeklySequence(sequenceDraft.plans) {
+                return "\(targetSessionCount) sesiones · \(sequenceDraft.plans.count) bloques · \(selectedSlotCount) programadas"
+            }
             return "\(sequenceDraft.plans.count) detectadas · \(validImportedSessionCount) listas · \(selectedSlotCount) franjas"
         }
         return "\(selectedSlotCount) franjas seleccionadas"
@@ -1685,7 +1720,7 @@ private struct LearningSituationScheduleSheet: View {
         let selectedCount = slots.filter(\.isSelected).count
         guard selectedCount > 0 else { return false }
         guard let sequenceDraft else { return true }
-        return sequenceDraft.plans.count == selectedCount
+        return targetSessionCount == selectedCount
             && !sequenceDraft.plans.contains(where: { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
     }
 
@@ -1718,7 +1753,14 @@ private struct LearningSituationScheduleSheet: View {
             if let draft = sequenceDraft {
                 HStack(spacing: 8) {
                     metricChip(title: "Documento", value: draft.sourceFileName, systemImage: "doc.text")
-                    metricChip(title: "Sesiones", value: "\(draft.plans.count)", systemImage: "number")
+                    metricChip(
+                        title: isCanonicalWeeklySequence(draft.plans) ? "Bloques" : "Sesiones",
+                        value: "\(draft.plans.count)",
+                        systemImage: "number"
+                    )
+                    if isCanonicalWeeklySequence(draft.plans) {
+                        metricChip(title: "Clases", value: "\(targetSessionCount)", systemImage: "calendar")
+                    }
                     metricChip(title: "Listas", value: "\(validImportedSessionCount)", systemImage: "checkmark.seal")
                     if !draft.warnings.isEmpty {
                         metricChip(title: "Avisos", value: "\(draft.warnings.count)", systemImage: "exclamationmark.triangle")
@@ -1891,8 +1933,8 @@ private struct LearningSituationScheduleSheet: View {
 
     private var footerMessage: String {
         if slots.isEmpty { return "Previsualiza el horario antes de programar." }
-        if let sequenceDraft, sequenceDraft.plans.count != selectedSlotCount {
-            return "El documento contiene \(sequenceDraft.plans.count) sesiones y hay \(selectedSlotCount) franjas seleccionadas."
+        if sequenceDraft != nil, targetSessionCount != selectedSlotCount {
+            return "La programación requiere \(targetSessionCount) sesiones y hay \(selectedSlotCount) franjas seleccionadas."
         }
         if let sequenceDraft, sequenceDraft.plans.contains(where: { !planHasRequiredFields($0) }) {
             return "Completa título y objetivo en todas las sesiones importadas."

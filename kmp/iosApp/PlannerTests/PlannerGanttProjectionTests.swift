@@ -3,6 +3,32 @@ import MiGestorKit
 @testable import MiGestorKMPMac
 
 final class PlannerGanttProjectionTests: XCTestCase {
+    func testCanonicalWeeklyCountsKeepOddTerminalAlternativeOutOfScheduledTotal() {
+        let plans = [
+            weeklyPlan(1, role: .long, cycleIndex: 1),
+            weeklyPlan(2, role: .short, cycleIndex: 1),
+            weeklyPlan(3, role: .long, cycleIndex: 2),
+            weeklyPlan(4, role: .short, cycleIndex: 2)
+        ]
+
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.canonicalBlockCount(forAnnualSessionCount: 3),
+            4
+        )
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.targetSessionCount(
+                plans: plans,
+                annualSessionCount: 3,
+                isCanonicalWeekly: true
+            ),
+            3
+        )
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.canonicalBlockCount(forAnnualSessionCount: 10),
+            10
+        )
+    }
+
     func testSequenceStatusesRemainDistinctAndActionable() {
         XCTAssertEqual(PlannerSequenceStatus.unlocated.label, "Pendiente de ubicar")
         XCTAssertTrue(PlannerSequenceStatus.unlocated.requiresAttention)

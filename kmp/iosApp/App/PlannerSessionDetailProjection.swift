@@ -285,18 +285,14 @@ enum PlannerSessionLegacyActivityProjection {
                 !title.contains("pregunta") && !title.contains("guiding") &&
                 !title.contains("cierre") && !title.contains("closure") &&
                 !title.contains("adaptacion") && !title.contains("adaptation") else { return false }
-            let timelineTitle = title.hasPrefix("bloque") || title.hasPrefix("block") ||
-                title.hasPrefix("desarrollo") || title.hasPrefix("development") ||
-                title.hasPrefix("break") || title.hasPrefix("descanso") ||
-                title.contains("prepara") || title.contains("consolida")
             let hasTimedLine = section.lines.contains { PlannerSessionDetailProjection.parseStep($0).timeLabel != nil }
-            return timelineTitle || hasTimedLine
+            return hasTimedLine
         }
         let activities = timelineSections.flatMap { sectionIndex, section in
             section.lines.enumerated().compactMap { lineIndex, line -> LearningSituationSessionActivityDraft? in
                 let parsed = PlannerSessionDetailProjection.parseStep(line)
                 let title = parsed.activity.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !title.isEmpty else { return nil }
+                guard parsed.timeLabel != nil, !title.isEmpty else { return nil }
                 return LearningSituationSessionActivityDraft(
                     activityKey: "LEGACY-\(sectionIndex + 1)-\(lineIndex + 1)",
                     activityType: "legacy",

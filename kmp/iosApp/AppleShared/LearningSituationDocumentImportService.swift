@@ -363,6 +363,23 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
     }
 }
 
+enum LearningSituationWeeklyBlockRole: String, Codable, CaseIterable, Hashable {
+    case long
+    case short
+}
+
+enum LearningSituationWeeklySequenceRoute: String, Codable, CaseIterable, Hashable {
+    case shortFirst
+    case longFirst
+
+    var displayName: String {
+        switch self {
+        case .shortFirst: return "SHORT primero"
+        case .longFirst: return "LONG primero"
+        }
+    }
+}
+
 struct LearningSituationSessionPlanDraft: Identifiable, Codable {
     let id: UUID
     var sessionNumber: Int
@@ -381,6 +398,10 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
     var assessment: String
     var guidingQuestions: [String]
     var closure: String
+    var cycleIndex: Int?
+    var weekKey: String?
+    var blockRole: LearningSituationWeeklyBlockRole?
+    var sequenceFormat: String?
 
     init(
         sessionNumber: Int,
@@ -398,7 +419,11 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         coreKnowledge: String = "",
         assessment: String = "",
         guidingQuestions: [String] = [],
-        closure: String = ""
+        closure: String = "",
+        cycleIndex: Int? = nil,
+        weekKey: String? = nil,
+        blockRole: LearningSituationWeeklyBlockRole? = nil,
+        sequenceFormat: String? = nil
     ) {
         self.id = UUID()
         self.sessionNumber = sessionNumber
@@ -417,12 +442,17 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         self.assessment = assessment
         self.guidingQuestions = guidingQuestions
         self.closure = closure
+        self.cycleIndex = cycleIndex
+        self.weekKey = weekKey
+        self.blockRole = blockRole
+        self.sequenceFormat = sequenceFormat
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, sessionNumber, sourceLabel, title, sessionType, effectiveMinutes,
              objective, criteria, material, development, activities, adaptations,
-             organisation, coreKnowledge, assessment, guidingQuestions, closure
+             organisation, coreKnowledge, assessment, guidingQuestions, closure,
+             cycleIndex, weekKey, blockRole, sequenceFormat
     }
 
     init(from decoder: Decoder) throws {
@@ -444,6 +474,10 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         assessment = try container.decodeIfPresent(String.self, forKey: .assessment) ?? ""
         guidingQuestions = try container.decodeIfPresent([String].self, forKey: .guidingQuestions) ?? []
         closure = try container.decodeIfPresent(String.self, forKey: .closure) ?? ""
+        cycleIndex = try container.decodeIfPresent(Int.self, forKey: .cycleIndex)
+        weekKey = try container.decodeIfPresent(String.self, forKey: .weekKey)
+        blockRole = try container.decodeIfPresent(LearningSituationWeeklyBlockRole.self, forKey: .blockRole)
+        sequenceFormat = try container.decodeIfPresent(String.self, forKey: .sequenceFormat)
     }
 
     var developmentSummary: String {
@@ -1619,7 +1653,11 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 material: week.material,
                 development: week.longSections + week.sharedSections,
                 activities: week.longActivities + week.sharedActivities,
-                adaptations: week.adaptations
+                adaptations: week.adaptations,
+                cycleIndex: week.number,
+                weekKey: "week-\(week.number)",
+                blockRole: .long,
+                sequenceFormat: "weekly-long-short-v1"
             ))
             plans.append(LearningSituationSessionPlanDraft(
                 sessionNumber: week.number * 2,
@@ -1632,13 +1670,17 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 material: week.material,
                 development: week.shortSections + week.sharedSections,
                 activities: week.shortActivities + week.sharedActivities,
-                adaptations: week.adaptations
+                adaptations: week.adaptations,
+                cycleIndex: week.number,
+                weekKey: "week-\(week.number)",
+                blockRole: .short,
+                sequenceFormat: "weekly-long-short-v1"
             ))
         }
 
         let activityIDPattern = try! NSRegularExpression(pattern: #"^W[0-9]{2}-[LS]-[0-9]{2}$"#)
         for plan in plans {
-            let expectedBlock = plan.sessionNumber.isMultiple(of: 2) ? "S" : "L"
+            let expectedBlock = plan.blockRole == .short ? "S" : "L"
             var seen: Set<String> = []
             for activity in plan.activities {
                 let key = activity.activityKey.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -175,6 +175,12 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.plans.count, 2)
         XCTAssertEqual(draft.plans[0].effectiveMinutes, 90)
         XCTAssertEqual(draft.plans[1].effectiveMinutes, 30)
+        XCTAssertEqual(draft.plans[0].cycleIndex, 1)
+        XCTAssertEqual(draft.plans[0].weekKey, "week-1")
+        XCTAssertEqual(draft.plans[0].blockRole, .long)
+        XCTAssertEqual(draft.plans[1].cycleIndex, 1)
+        XCTAssertEqual(draft.plans[1].blockRole, .short)
+        XCTAssertEqual(draft.plans[0].sequenceFormat, "weekly-long-short-v1")
         XCTAssertEqual(draft.plans[0].activities.first?.teacherActions, "Model stop and go.")
         XCTAssertEqual(draft.plans[0].activities.first?.clilFocus, "Use: stop, go, freeze.")
         XCTAssertEqual(draft.plans[1].activities.first?.evidence, "Peer note")
@@ -207,9 +213,42 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.plans.first?.sessionType, "Doble")
         XCTAssertEqual(draft.plans.first?.effectiveMinutes, 90)
         XCTAssertEqual(draft.plans.first?.title, "Week 1: training principles — Long block")
+        XCTAssertNil(draft.plans.first?.cycleIndex)
+        XCTAssertNil(draft.plans.first?.blockRole)
         XCTAssertEqual(draft.plans.first?.objective, "Understand the training principles and record a safe baseline.")
         XCTAssertFalse(draft.plans.first?.development.isEmpty ?? true)
         XCTAssertTrue(draft.warnings.isEmpty)
+    }
+
+    func testLegacyPlanPayloadDecodesWithoutWeeklyMetadata() throws {
+        let plan = LearningSituationSessionPlanDraft(
+            sessionNumber: 1,
+            sourceLabel: "Session 1 - Legacy",
+            title: "Legacy",
+            sessionType: "Simple",
+            effectiveMinutes: 30,
+            objective: "Objective",
+            criteria: [],
+            material: "",
+            development: [],
+            adaptations: []
+        )
+        let encoded = try JSONEncoder().encode(plan)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "cycleIndex")
+        object.removeValue(forKey: "weekKey")
+        object.removeValue(forKey: "blockRole")
+        object.removeValue(forKey: "sequenceFormat")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(LearningSituationSessionPlanDraft.self, from: legacyData)
+
+        XCTAssertEqual(decoded.sessionNumber, 1)
+        XCTAssertEqual(decoded.title, "Legacy")
+        XCTAssertNil(decoded.cycleIndex)
+        XCTAssertNil(decoded.weekKey)
+        XCTAssertNil(decoded.blockRole)
+        XCTAssertNil(decoded.sequenceFormat)
     }
 
     func testQuickViewAndActivityDetailsMergeByStableActivityID() throws {

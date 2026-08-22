@@ -19,7 +19,7 @@ final class PlannerGanttProjectionTests: XCTestCase {
             LearningSituationScheduleProjection.targetSessionCount(
                 plans: plans,
                 annualSessionCount: 3,
-                isCanonicalWeekly: true
+                sequenceKind: .canonicalWeekly
             ),
             3
         )
@@ -27,6 +27,19 @@ final class PlannerGanttProjectionTests: XCTestCase {
             LearningSituationScheduleProjection.canonicalBlockCount(forAnnualSessionCount: 10),
             10
         )
+        XCTAssertTrue(
+            LearningSituationScheduleProjection.hasExpectedCanonicalBlockCount(
+                plans: plans,
+                annualSessionCount: 3
+            )
+        )
+        XCTAssertFalse(
+            LearningSituationScheduleProjection.hasExpectedCanonicalBlockCount(
+                plans: Array(plans.dropLast()),
+                annualSessionCount: 3
+            )
+        )
+        XCTAssertEqual(LearningSituationScheduleProjection.sequenceKind(for: plans), .canonicalWeekly)
     }
 
     func testSequenceStatusesRemainDistinctAndActionable() {
@@ -465,10 +478,11 @@ final class PlannerGanttProjectionTests: XCTestCase {
         }
     }
 
-    func testWeeklyProjectionSkipsHolidayLikeStartDayAndKeepsPartialWeekChronology() {
+    func testWeeklyProjectionSkipsExplicitHolidayAndKeepsPartialWeekChronology() {
         let calendar = Calendar(identifier: .iso8601)
         let mondayHoliday = calendar.date(from: DateComponents(year: 2026, month: 9, day: 28))!
         let scheduleSlots = [
+            TeacherScheduleSlot(id: 1, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 1, startTime: "09:00", endTime: "09:55", weeklyTemplateId: nil),
             TeacherScheduleSlot(id: 2, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 2, startTime: "12:00", endTime: "12:55", weeklyTemplateId: nil),
             TeacherScheduleSlot(id: 3, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 3, startTime: "09:00", endTime: "09:55", weeklyTemplateId: nil),
             TeacherScheduleSlot(id: 4, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 3, startTime: "10:15", endTime: "11:10", weeklyTemplateId: nil)
@@ -478,7 +492,8 @@ final class PlannerGanttProjectionTests: XCTestCase {
             plans: [weeklyPlan(1, role: .long), weeklyPlan(2, role: .short)],
             startDate: mondayHoliday,
             template: scheduleSlots,
-            periodForSlot: { Int($0.id) }
+            periodForSlot: { Int($0.id) },
+            excludedDates: [mondayHoliday]
         )
 
         XCTAssertTrue(projection.warnings.isEmpty)
@@ -486,6 +501,32 @@ final class PlannerGanttProjectionTests: XCTestCase {
         XCTAssertEqual(projection.slots.map { $0.planSessionNumber }, [2, 1])
         XCTAssertEqual(projection.slots.map { calendar.component(.day, from: $0.date) }, [29, 30])
         XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[2], [3, 4]])
+    }
+
+    func testLongProjectionTriesLaterOverlappingWindowAfterShortUsesFirstPeriod() {
+        let calendar = Calendar(identifier: .iso8601)
+        let friday = calendar.date(from: DateComponents(year: 2026, month: 9, day: 25))!
+        let scheduleSlots = [
+            TeacherScheduleSlot(id: 1, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 5, startTime: "13:00", endTime: "13:55", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 2, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 5, startTime: "14:10", endTime: "15:05", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 3, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 5, startTime: "15:20", endTime: "16:15", weeklyTemplateId: nil)
+        ]
+        let plans = [
+            weeklyPlan(2, role: .short, cycleIndex: 1),
+            weeklyPlan(3, role: .long, cycleIndex: 2)
+        ]
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: plans,
+            startDate: friday,
+            template: scheduleSlots,
+            periodForSlot: { Int($0.id) }
+        )
+
+        XCTAssertTrue(projection.warnings.isEmpty)
+        XCTAssertEqual(projection.route, .shortFirst)
+        XCTAssertEqual(projection.slots.map(\.planSessionNumber), [2, 3])
+        XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[1], [2, 3]])
     }
 
     func testLegacyWeeklyPlansInferOddEvenPairsWithoutMetadata() {
@@ -513,6 +554,15 @@ final class PlannerGanttProjectionTests: XCTestCase {
         XCTAssertEqual(projection.slots.map { $0.planSessionNumber }, [2, 1])
         XCTAssertNil(plans[0].blockRole)
         XCTAssertNil(plans[0].cycleIndex)
+        XCTAssertEqual(LearningSituationScheduleProjection.sequenceKind(for: plans), .legacyWeekly)
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.targetSessionCount(
+                plans: plans + [legacyWeeklyPlan(3, type: "Doble", minutes: 90), legacyWeeklyPlan(4, type: "Simple", minutes: 30)],
+                annualSessionCount: 3,
+                sequenceKind: .legacyWeekly
+            ),
+            4
+        )
     }
 
     private func weeklyPlan(

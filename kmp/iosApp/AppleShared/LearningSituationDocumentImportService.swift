@@ -1884,10 +1884,15 @@ struct LearningSituationSessionSequenceDocumentImportService {
                     activityDetailKey = nil
                     continue
                 }
-                if let match = text.range(of: #"^ACTIVITY\s+([A-Z0-9][A-Z0-9_-]*)$"#, options: [.regularExpression, .caseInsensitive]) {
+                if let match = text.range(
+                    of: #"^ACTIVITY\s+[A-Z0-9][A-Z0-9_-]*(?:(?:\s+[-–—]\s*|\s*:\s*).*)?$"#,
+                    options: [.regularExpression, .caseInsensitive]
+                ) {
                     let heading = String(text[match])
                     activityDetailKey = heading.replacingOccurrences(
                         of: #"^ACTIVITY\s+"#, with: "", options: [.regularExpression, .caseInsensitive]
+                    ).replacingOccurrences(
+                        of: #"(?:\s+[-–—]\s*|\s*:\s*).*$"#, with: "", options: .regularExpression
                     ).trimmingCharacters(in: .whitespacesAndNewlines)
                     continue
                 }
@@ -1941,19 +1946,12 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 let rows = rawRows.map { row in row.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } }
                     .filter { row in row.contains { !$0.isEmpty } }
                 guard !rows.isEmpty else { continue }
-                if let tableHeader = rows.first, !variantColumnIndexes(tableHeader).isEmpty {
-                    flushSection()
-                    let sections = variantSections(rows)
-                    if sections.isEmpty {
-                        for row in rows.dropFirst() { appendLine(row.joined(separator: " · ")) }
-                    } else if target == .long {
-                        longSections.append(contentsOf: sections)
-                    } else {
-                        shortSections.append(contentsOf: sections)
-                    }
-                    continue
-                }
-                if isTimeTable(rows) {
+                let tableHeader = rows[0]
+                let variantColumns = variantColumnIndexes(tableHeader)
+                // A canonical SHORT QUICK VIEW includes PREPARES and CONSOLIDATES columns,
+                // but it is still an executable time table because it also carries Time and
+                // Activity ID. Legacy variant-only tables must keep their two-section projection.
+                if isTimeTable(rows) && (variantColumns.isEmpty || hasActivityIDColumn(tableHeader)) {
                     let activities = timeTableActivities(rows)
                     if reachedFinalSections || target == nil {
                         sharedActivities.append(contentsOf: activities)
@@ -1963,6 +1961,18 @@ struct LearningSituationSessionSequenceDocumentImportService {
                         shortActivities.append(contentsOf: activities)
                     }
                     for line in timeTableLines(rows) { appendLine(line) }
+                    continue
+                }
+                if !variantColumns.isEmpty {
+                    flushSection()
+                    let sections = variantSections(rows)
+                    if sections.isEmpty {
+                        for row in rows.dropFirst() { appendLine(row.joined(separator: " · ")) }
+                    } else if target == .long {
+                        longSections.append(contentsOf: sections)
+                    } else {
+                        shortSections.append(contentsOf: sections)
+                    }
                     continue
                 }
                 if let tableHeader = rows.first, tableHeader.count >= 2 {
@@ -2195,11 +2205,19 @@ struct LearningSituationSessionSequenceDocumentImportService {
             return normalizedValue == "time" || normalizedValue == "hora" ||
                 normalizedValue == "horario" || normalizedValue == "tiempo"
         }
-        let hasActivityID = header.contains { normalized($0).contains("activity id") || normalized($0).contains("activity key") }
+        let hasActivityID = hasActivityIDColumn(header)
         // New documents keep Time first for compatibility. The relaxed branch also accepts
         // hand-authored fixtures where Activity ID is the first column.
         return firstValue == "time" || firstValue == "hora" || firstValue == "horario" ||
             firstValue == "tiempo" || (hasTime && hasActivityID)
+    }
+
+    private func hasActivityIDColumn(_ header: [String]) -> Bool {
+        header.contains {
+            let value = normalized($0)
+            return value.contains("activity id") || value.contains("activity key") ||
+                value.contains("id actividad") || value.contains("clave actividad")
+        }
     }
 
     /// B1: convierte una tabla horaria (Time | Phase | Activity | Teacher role | Student role |

@@ -68,6 +68,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Changed
 
 - La normalización de planes persistidos repara `developmentJson` de forma idempotente al leer o reimportar el mismo SHA, conservando los IDs de versión, plan y sesión agendada; recupera el DOCX por hash cuando la sincronización llega en modo metadata-first y no persiste un v2 incompleto mientras falta el binario.
+- Planificación: `PlannerSessionDetailSheet` adopta una cabecera sólida y compacta, un guion operativo por filas, una ficha plana con secciones docentes no vacías y tabs integrados; conserva la selección por `Activity ID`, la navegación de teclado, VoiceOver y el layout regular/compacto para macOS, iPad y iPhone.
 - Planificación: la ficha de sesión usa una política adaptativa explícita; en macOS e iPad horizontal muestra el resumen y la actividad seleccionada en dos columnas con scroll independiente, mientras iPhone y anchos compactos conservan Resumen, Actividad y Anexos. La cabecera reúne metadatos, ejecución, acciones, cierre y navegación accesible por actividades.
 - Planificación: el contenido operativo de una sesión se serializa como `session-plan-v2` dentro de `developmentJson`, con decoder dual para arrays v1; el importador reconoce el formato C de ficha + QUICK VIEW + ACTIVITY DETAILS y la ficha separa Resumen, Actividad y Anexos.
 - Planificación de sesiones: la importación conserva actividades ejecutables dentro de un sobre versionado, la preview muestra Teacher/Students/CLIL/Evidence y la ficha de ejecución presenta una línea temporal ampliada con materiales y adaptaciones.
@@ -163,7 +164,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
-- Este ticket: `MiGestorPlannerTests` completo pasa con 81/81; la batería dirigida de importación/proyección pasa con 25/25; `./scripts/verify_apple_builds.sh` regenera XcodeGen y compila macOS Native e iOS Simulator correctamente.
+- Este ticket: `MiGestorPlannerTests` completo pasa con 80 tests aprobados, 2 omitidos y 0 fallos (82 totales); la batería dirigida de importación/proyección pasa con 25/25; `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran XcodeGen y compilan macOS Native e iOS Simulator correctamente.
 - El DOCX real del workspace se comprobó end-to-end con SHA-256 `d0ee52ff904256208063f23efb84ea5fd881a754f09dc93ec6dcd9d280dab70a`: produce W01 LONG=4, W01 SHORT=3, W02 LONG=4 y W02 SHORT=3, sin `LEGACY-*` ni títulos-ID. Los conteos 6/4 solicitados no están presentes en este binario y quedan pendientes de un artefacto corregido.
 - Ficha adaptativa de sesión (#221): `MiGestorPlannerTests` pasa en macOS; `scripts/verify_apple_builds.sh` regenera XcodeGen y compila correctamente macOS Native e iOS Simulator.
 - Planificación `session-plan-v2` (#215): `MiGestorPlannerTests` pasa completo con 55/55 antes del endurecimiento final y las 16 pruebas focalizadas del importador/proyección pasan después; el DOCX real importa 10 sesiones y 35 actividades; `verify_apple_builds.sh` finaliza con macOS Native e iOS Simulator en verde.

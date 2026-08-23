@@ -32,6 +32,44 @@ struct PlannerSessionDetailLayoutPolicy {
     }
 }
 
+private enum PlannerSessionDetailSection: String, CaseIterable, Identifiable {
+    case activity
+    case annexes
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .activity: return "Actividad"
+        case .annexes: return "Anexos"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .activity: return "timeline.selection"
+        case .annexes: return "paperclip"
+        }
+    }
+}
+
+enum PlannerSessionDetailSessionType {
+    static func label(for rawValue: String) -> String {
+        let normalized = rawValue
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        if normalized.contains("simple") && normalized.contains("doble") {
+            return "LONG / SHORT"
+        }
+        if normalized.contains("short") || normalized.contains("simple") || normalized.contains("corto") {
+            return "SHORT"
+        }
+        if normalized.contains("long") || normalized.contains("double") || normalized.contains("doble") || normalized.contains("largo") {
+            return "LONG"
+        }
+        return rawValue.uppercased()
+    }
+}
+
 /// Small, platform-independent state machine for the activity controls in the session card.
 /// The UI uses Activity ID keys rather than titles or array indexes so reordering the document
 /// cannot open the wrong activity.
@@ -68,6 +106,80 @@ struct PlannerSessionActivityNavigator: Equatable {
     }
 }
 
+private struct PlannerSessionRunSheetRow: View {
+    let index: Int
+    let activity: LearningSituationSessionActivityDraft
+    let isSelected: Bool
+    let tint: Color
+    let action: () -> Void
+
+    private var hasEvidence: Bool {
+        !activity.evidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 10) {
+                Text("\(index + 1)")
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundStyle(isSelected ? tint : .secondary)
+                    .frame(width: 24, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        if !activity.timeLabel.isEmpty {
+                            Text(activity.timeLabel)
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(isSelected ? tint : .secondary)
+                        }
+                        if !activity.phase.isEmpty {
+                            Text(activity.phase.uppercased())
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    Text(activity.activity)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+
+                if hasEvidence {
+                    Image(systemName: "checkmark.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(tint)
+                        .accessibilityLabel("Tiene evidencia definida")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, isSelected ? 9 : 12)
+            .padding(.trailing, 12)
+            .padding(.vertical, 10)
+            .background(isSelected ? tint.opacity(0.10) : EvaluationDesign.surface)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(isSelected ? tint : Color.clear)
+                    .frame(width: 3)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(EvaluationDesign.border)
+                    .frame(height: 1)
+                    .padding(.leading, 36)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityLabel("Actividad \(index + 1): \(activity.activity)")
+        .accessibilityValue(isSelected ? "Seleccionada" : "No seleccionada")
+        .accessibilityHint("Abre el detalle de esta actividad")
+    }
+}
+
 struct PlannerSessionDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var bridge: KmpBridge
@@ -89,30 +201,8 @@ struct PlannerSessionDetailSheet: View {
     @State private var renderedDocument: PlannerDocxRenderResult?
     @State private var isLoadingRenderedDocument = false
     @State private var isDeleteConfirmationPresented = false
-    @State private var selectedSection: PlannerSessionDetailSection = .summary
+    @State private var selectedSection: PlannerSessionDetailSection = .activity
     @State private var selectedActivityKey: String?
-
-    private enum PlannerSessionDetailSection: String, CaseIterable, Identifiable {
-        case summary
-        case activity
-        case annexes
-
-        var id: Self { self }
-        var label: String {
-            switch self {
-            case .summary: return "Resumen"
-            case .activity: return "Actividad"
-            case .annexes: return "Anexos"
-            }
-        }
-        var icon: String {
-            switch self {
-            case .summary: return "rectangle.inset.filled"
-            case .activity: return "timeline.selection"
-            case .annexes: return "paperclip"
-            }
-        }
-    }
 
     private var tint: Color {
         Color(hex: session.teachingUnitColor)
@@ -133,7 +223,7 @@ struct PlannerSessionDetailSheet: View {
             }
         }
         .task(id: session.id) {
-            selectedSection = .summary
+            selectedSection = .activity
             selectedActivityKey = nil
             await loadDetailedPlan()
             await loadLinkedInstruments()
@@ -177,35 +267,25 @@ struct PlannerSessionDetailSheet: View {
         VStack(spacing: 0) {
             sessionHeader(layout: .compact)
             ScrollView {
-                if let detailedPlan {
-                    teacherAtAGlanceSection(detailedPlan)
-                } else {
-                    fallbackSessionSections
-                }
+                runSheetContent
+                    .padding(16)
             }
-            .padding(16)
         }
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
     }
 
-    /// Regular iPad/macOS sheet: the left side is the session map and the right side is
-    /// deliberately only the selected activity. The map buttons update `selectedActivityKey`.
+    /// Regular iPad/macOS sheet: the left side is an operational run sheet and the right side
+    /// is the selected activity or its annexes.
     private var regularSheetContent: some View {
         VStack(spacing: 0) {
             sessionHeader(layout: .regular)
             HStack(alignment: .top, spacing: 0) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if let detailedPlan {
-                            teacherAtAGlanceSection(detailedPlan)
-                        } else {
-                            fallbackSessionSections
-                        }
-                    }
-                    .padding(24)
+                    runSheetContent
+                        .padding(16)
                 }
-                .frame(idealWidth: 360, maxWidth: .infinity, alignment: .topLeading)
-                .layoutPriority(1)
+                .frame(minWidth: 300, idealWidth: 360, maxWidth: 380, alignment: .topLeading)
+                .background(EvaluationDesign.surface)
 
                 Rectangle()
                     .fill(EvaluationDesign.border)
@@ -221,11 +301,11 @@ struct PlannerSessionDetailSheet: View {
                                 regularActivityDetailContent
                             }
                         }
-                        .padding(24)
+                        .padding(16)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(idealWidth: 440, maxWidth: .infinity, alignment: .topLeading)
+                .frame(minWidth: 500, idealWidth: 680, maxWidth: .infinity, alignment: .topLeading)
                 .layoutPriority(1)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -234,27 +314,25 @@ struct PlannerSessionDetailSheet: View {
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
     }
 
-    /// Compact iPhone/iPad split fallback: all three modes remain reachable through the
-    /// segmented control and the selected activity is shown progressively.
+    /// Compact iPhone/iPad fallback: the run sheet stays above the detail tabs so the
+    /// selected activity remains anchored to an operational sequence.
     private var compactSheetContent: some View {
         VStack(spacing: 0) {
             sessionHeader(layout: .compact)
-            detailSectionPicker
             ScrollView {
-                VStack(spacing: 16) {
-                    if selectedSection == .summary {
-                        if let detailedPlan {
-                            teacherAtAGlanceSection(detailedPlan)
-                        } else {
-                            fallbackSessionSections
-                        }
-                    } else if selectedSection == .activity {
-                        activityDetailContent
-                    } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    runSheetContent
+                    detailSectionPicker
+                    if selectedSection == .annexes {
                         annexesContent
+                            .padding(.horizontal, 16)
+                    } else {
+                        compactActivityNavigation
+                            .padding(.horizontal, 16)
+                        activityDetailContent
+                            .padding(.horizontal, 16)
                     }
                 }
-                .padding(24)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -272,7 +350,7 @@ struct PlannerSessionDetailSheet: View {
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
-            .background(.thinMaterial)
+            .background(EvaluationDesign.surface)
             .overlay(alignment: .bottom) {
                 Rectangle()
                     .fill(EvaluationDesign.border)
@@ -284,7 +362,7 @@ struct PlannerSessionDetailSheet: View {
                 sessionHeaderActions(expandsPrimaryAction: true)
             }
             .padding(16)
-            .background(.thinMaterial)
+            .background(EvaluationDesign.surface)
             .overlay(alignment: .bottom) {
                 Rectangle()
                     .fill(EvaluationDesign.border)
@@ -300,22 +378,33 @@ struct PlannerSessionDetailSheet: View {
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-            Label(dateAndTimeLabel, systemImage: "calendar")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            WorkspaceFlowLayout(spacing: 8) {
-                sessionChip(session.groupName, systemImage: "person.3.fill")
-                sessionChip("Planificada", systemImage: "checkmark.circle.fill")
+            WorkspaceFlowLayout(spacing: 12) {
+                Label(dateAndTimeLabel, systemImage: "calendar")
+                Label(session.groupName, systemImage: "person.3.fill")
+                PlannerStatusBadge(label: "Planificada", systemImage: "checkmark.circle.fill", tint: tint)
                 if let detailedPlan {
-                    sessionChip("Sesión \(detailedPlan.sessionNumber)", systemImage: "number")
-                    sessionChip("\(detailedPlan.sessionType) · \(detailedPlan.effectiveMinutes) min", systemImage: "timer")
+                    headerMetadataItem("Sesión \(detailedPlan.sessionNumber)")
+                    headerMetadataItem(sessionTypeLabel(for: detailedPlan))
+                    headerMetadataItem("\(detailedPlan.effectiveMinutes) min efectivos")
                 }
             }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Sesión \(detailedPlan?.title ?? session.teachingUnitName)")
         .accessibilityValue(sessionAccessibilityMetadata)
+    }
+
+    private func headerMetadataItem(_ value: String) -> some View {
+        Text(value)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+    }
+
+    private func sessionTypeLabel(for plan: LearningSituationSessionPlan) -> String {
+        PlannerSessionDetailSessionType.label(for: plan.sessionType)
     }
 
     private var sessionAccessibilityMetadata: String {
@@ -336,8 +425,9 @@ struct PlannerSessionDetailSheet: View {
                     .padding(.horizontal, 16)
                     .frame(maxWidth: expandsPrimaryAction ? .infinity : nil)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(tint)
+            .foregroundStyle(.white)
+            .background(tint, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .buttonStyle(.plain)
             .keyboardShortcut(.defaultAction)
             .accessibilityLabel("Abrir ejecución de la sesión")
 
@@ -346,9 +436,9 @@ struct PlannerSessionDetailSheet: View {
             Button(action: closeSessionDetail) {
                 Image(systemName: "xmark")
                     .font(.headline.weight(.semibold))
-                    .frame(width: 30, height: 30)
+                    .frame(width: 32, height: 32)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
             .help("Cerrar la ficha de sesión")
             .accessibilityLabel("Cerrar la ficha de sesión")
@@ -370,10 +460,81 @@ struct PlannerSessionDetailSheet: View {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.headline.weight(.semibold))
-                .frame(width: 44, height: 44)
+                .frame(width: 32, height: 32)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.plain)
         .accessibilityLabel("Más acciones de la sesión")
+    }
+
+    @ViewBuilder
+    private var runSheetContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label("Guion de la sesión", systemImage: "list.number")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(tint)
+                Spacer(minLength: 8)
+                if let detailedPlan {
+                    Text("\(decodedActivities(detailedPlan).count) actividades")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.bottom, 4)
+
+            Text("Selecciona una actividad para abrir su ficha operativa.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 12)
+
+            if let detailedPlan {
+                let activities = decodedActivities(detailedPlan)
+                if activities.isEmpty {
+                    runSheetEmptyState(
+                        "Esta sesión no tiene actividades seleccionables. El detalle contextual sigue disponible en Anexos."
+                    )
+                } else {
+                    let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
+                    let activeKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
+                    ForEach(Array(activities.enumerated()), id: \.element.activityKey) { index, activity in
+                        let key = activityIdentity(activity, index: index)
+                        PlannerSessionRunSheetRow(
+                            index: index,
+                            activity: activity,
+                            isSelected: key == activeKey,
+                            tint: tint
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                selectedActivityKey = key
+                                selectedSection = .activity
+                            }
+                        }
+                    }
+                    .onAppear {
+                        if selectedActivityKey == nil || !keys.contains(selectedActivityKey!) {
+                            selectedActivityKey = keys.first
+                        }
+                    }
+                }
+            } else {
+                let activities = session.activities.trimmingCharacters(in: .whitespacesAndNewlines)
+                runSheetEmptyState(
+                    activities.isEmpty
+                        ? "Esta sesión no tiene una ficha operativa importada."
+                        : activities
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func runSheetEmptyState(_ message: String) -> some View {
+        Text(message)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 16)
     }
 
     private func closeSessionDetail() {
@@ -386,7 +547,34 @@ struct PlannerSessionDetailSheet: View {
     }
 
     private var detailSectionPicker: some View {
-        HStack(spacing: 4) {
+        sessionTabs
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+    }
+
+    private var regularDetailControls: some View {
+        VStack(spacing: 0) {
+            sessionTabs
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, selectedSection == .annexes ? 8 : 4)
+
+            if selectedSection != .annexes {
+                regularActivityNavigation
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
+        }
+        .background(EvaluationDesign.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(EvaluationDesign.border)
+                .frame(height: 1)
+        }
+    }
+
+    private var sessionTabs: some View {
+        HStack(spacing: 20) {
             ForEach(PlannerSessionDetailSection.allCases) { section in
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -395,89 +583,22 @@ struct PlannerSessionDetailSheet: View {
                 } label: {
                     Label(section.label, systemImage: section.icon)
                         .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .foregroundStyle(selectedSection == section ? .white : .secondary)
-                        .background(
-                            selectedSection == section ? tint : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        )
+                        .foregroundStyle(selectedSection == section ? .primary : .secondary)
+                        .padding(.vertical, 8)
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(selectedSection == section ? tint : Color.clear)
+                                .frame(height: 2)
+                        }
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
                 .accessibilityLabel(section.label)
                 .accessibilityValue(selectedSection == section ? "Seleccionado" : "No seleccionado")
             }
+            Spacer(minLength: 0)
         }
-        .padding(4)
-        .frame(maxWidth: 440)
-        .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 24)
-        .padding(.vertical, 10)
-        .background(EvaluationDesign.surface)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(EvaluationDesign.border)
-                .frame(height: 1)
-        }
-    }
-
-    private var regularDetailControls: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                regularDetailModeButton(
-                    title: "Actividad",
-                    systemImage: "timeline.selection",
-                    isSelected: selectedSection != .annexes
-                ) {
-                    selectedSection = .activity
-                }
-                regularDetailModeButton(
-                    title: "Anexos",
-                    systemImage: "paperclip",
-                    isSelected: selectedSection == .annexes
-                ) {
-                    selectedSection = .annexes
-                }
-            }
-
-            if selectedSection != .annexes {
-                regularActivityNavigation
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
-        .background(EvaluationDesign.surface)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(EvaluationDesign.border)
-                .frame(height: 1)
-        }
-    }
-
-    private func regularDetailModeButton(
-        title: String,
-        systemImage: String,
-        isSelected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.18), action)
-        } label: {
-            Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .foregroundStyle(isSelected ? .white : .secondary)
-                .background(
-                    isSelected ? tint : EvaluationDesign.surfaceSoft,
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                )
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityValue(isSelected ? "Seleccionado" : "No seleccionado")
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -489,15 +610,13 @@ struct PlannerSessionDetailSheet: View {
                 let selectedKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
                 let selectedIndex = keys.firstIndex(of: selectedKey) ?? 0
                 HStack(spacing: 8) {
-                    Button {
+                    activityNavigationButton(
+                        title: "Anterior",
+                        systemImage: "chevron.left",
+                        isDisabled: selectedIndex == 0
+                    ) {
                         moveActivityPrevious(in: keys)
-                    } label: {
-                        Label("Anterior", systemImage: "chevron.left")
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(selectedIndex == 0)
-                    .keyboardShortcut(.leftArrow, modifiers: .command)
-                    .accessibilityLabel("Actividad anterior")
 
                     Text("Actividad \(selectedIndex + 1) de \(keys.count)")
                         .font(.caption.weight(.semibold).monospacedDigit())
@@ -506,15 +625,13 @@ struct PlannerSessionDetailSheet: View {
                         .accessibilityLabel("Actividad seleccionada")
                         .accessibilityValue("\(selectedIndex + 1) de \(keys.count)")
 
-                    Button {
+                    activityNavigationButton(
+                        title: "Siguiente",
+                        systemImage: "chevron.right",
+                        isDisabled: selectedIndex == keys.count - 1
+                    ) {
                         moveActivityNext(in: keys)
-                    } label: {
-                        Label("Siguiente", systemImage: "chevron.right")
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(selectedIndex == keys.count - 1)
-                    .keyboardShortcut(.rightArrow, modifiers: .command)
-                    .accessibilityLabel("Actividad siguiente")
                 }
                 .onAppear {
                     if selectedActivityKey == nil || !keys.contains(selectedActivityKey!) {
@@ -523,6 +640,59 @@ struct PlannerSessionDetailSheet: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var compactActivityNavigation: some View {
+        if let detailedPlan {
+            let activities = decodedActivities(detailedPlan)
+            let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
+            if !keys.isEmpty {
+                let selectedKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
+                let selectedIndex = keys.firstIndex(of: selectedKey) ?? 0
+                HStack(spacing: 8) {
+                    activityNavigationButton(
+                        title: "Anterior",
+                        systemImage: "chevron.left",
+                        isDisabled: selectedIndex == 0
+                    ) {
+                        moveActivityPrevious(in: keys)
+                    }
+                    Text("Actividad \(selectedIndex + 1) de \(keys.count)")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                    activityNavigationButton(
+                        title: "Siguiente",
+                        systemImage: "chevron.right",
+                        isDisabled: selectedIndex == keys.count - 1
+                    ) {
+                        moveActivityNext(in: keys)
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+        }
+    }
+
+    private func activityNavigationButton(
+        title: String,
+        systemImage: String,
+        isDisabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isDisabled ? .tertiary : .primary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .keyboardShortcut(systemImage == "chevron.left" ? .leftArrow : .rightArrow, modifiers: .command)
+        .accessibilityLabel(title == "Anterior" ? "Actividad anterior" : "Actividad siguiente")
     }
 
     @ViewBuilder
@@ -533,49 +703,35 @@ struct PlannerSessionDetailSheet: View {
                 teacherCard(
                     title: "Detalle de actividades",
                     icon: "list.number",
-                    text: "Esta ficha todavía no tiene actividades con Activity ID. Reimporta el documento con el formato QUICK VIEW + ACTIVITY DETAILS para activar la vista operativa."
-                )
-            } else {
-                activityNavigatorContent(activities, minutes: Int(detailedPlan.effectiveMinutes))
-            }
-        } else {
-            teacherCard(
-                title: "Detalle de actividades",
-                icon: "list.number",
-                text: "Cargando la ficha operativa de la sesión…"
-            )
-        }
-    }
-
-    @ViewBuilder
-    private var regularActivityDetailContent: some View {
-        if let detailedPlan {
-            let activities = decodedActivities(detailedPlan)
-            if activities.isEmpty {
-                teacherCard(
-                    title: "Actividad",
-                    icon: "list.number",
-                    text: "Esta sesión no tiene una actividad seleccionable."
+                    text: "Esta ficha no tiene actividades seleccionables. Revisa los Anexos para consultar el contenido contextual o el documento original."
                 )
             } else {
                 let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
                 let selectedKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys.first!
                 let selectedIndex = keys.firstIndex(of: selectedKey) ?? 0
-                VStack(alignment: .leading, spacing: 16) {
-                    Label("Actividad seleccionada", systemImage: "timeline.selection")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(tint)
-                    activityDetailCard(activities[selectedIndex], index: selectedIndex)
-                }
-                .onAppear {
-                    if selectedActivityKey == nil || !keys.contains(selectedActivityKey!) {
-                        selectedActivityKey = keys.first
+                activityDetailCard(activities[selectedIndex], index: selectedIndex)
+                    .onAppear {
+                        if selectedActivityKey == nil || !keys.contains(selectedActivityKey!) {
+                            selectedActivityKey = keys.first
+                        }
                     }
-                }
             }
         } else {
-            teacherCard(title: "Actividad", icon: "list.number", text: "Cargando la ficha operativa de la sesión…")
+            if session.learningSituationSessionPlanId == nil {
+                fallbackSessionSections
+            } else {
+                teacherCard(
+                    title: "Detalle de actividades",
+                    icon: "list.number",
+                    text: "Cargando la ficha operativa de la sesión…"
+                )
+            }
         }
+    }
+
+    @ViewBuilder
+    private var regularActivityDetailContent: some View {
+        activityDetailContent
     }
 
     private var fallbackSessionSections: some View {
@@ -617,90 +773,6 @@ struct PlannerSessionDetailSheet: View {
         }
     }
 
-    private func teacherAtAGlanceSection(_ plan: LearningSituationSessionPlan) -> some View {
-        let projection = PlannerSessionDetailProjection(plan: plan)
-        return VStack(spacing: 16) {
-            let objective = projection.objective.isEmpty
-                ? plan.objective.trimmingCharacters(in: .whitespacesAndNewlines)
-                : projection.objective
-            if !objective.isEmpty {
-                teacherCard(title: "Objetivo de hoy", icon: "target", text: objective, prominence: .hero)
-            }
-
-            developmentTimeline(plan)
-
-            let criteria = projection.criteria.isEmpty ? decodedCriteria(plan) : projection.criteria
-            let evidence = (projection.evidence + evidenceItems(from: plan))
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .reduce(into: [String]()) { result, item in
-                    if !result.contains(item) { result.append(item) }
-                }
-            if !criteria.isEmpty || !evidence.isEmpty {
-                evaluationCard(criteria: criteria, evidence: evidence)
-            }
-
-            let material = projection.materials.isEmpty
-                ? plan.material.trimmingCharacters(in: .whitespacesAndNewlines)
-                : projection.materials.joined(separator: ", ")
-            if !material.isEmpty {
-                materialCard(material)
-            }
-            let organisation = projection.organisation.isEmpty ? "" : projection.organisation
-            if !organisation.isEmpty {
-                teacherCard(title: "Organización", icon: "person.3", text: organisation)
-            }
-            let assessment = projection.assessment.isEmpty ? "" : projection.assessment
-            if !assessment.isEmpty && evidence.isEmpty {
-                teacherCard(title: "Evaluación", icon: "checkmark.seal", text: assessment)
-            }
-            if !projection.basicKnowledge.isEmpty {
-                teacherCard(
-                    title: "Saberes básicos",
-                    icon: "book.closed",
-                    text: projection.basicKnowledge.joined(separator: "\n")
-                )
-            }
-
-            let adaptations = projection.adaptations.isEmpty ? decodedAdaptations(plan) : projection.adaptations
-            if !adaptations.isEmpty {
-                teacherCard(title: "Adaptaciones y contexto", icon: "person.crop.rectangle", text: adaptations.joined(separator: "\n"))
-            }
-            if !projection.supportSections.isEmpty {
-                supportContextCard(projection.supportSections)
-            }
-        }
-    }
-
-    private func supportContextCard(_ sections: [PlannerSessionSupportSection]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Contexto docente", systemImage: "note.text")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(tint)
-            ForEach(sections) { section in
-                DisclosureGroup {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(section.lines, id: \.self) { line in
-                            Text(line)
-                                .font(.subheadline)
-                                .foregroundStyle(.primary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    .padding(.top, 8)
-                } label: {
-                    Label(section.title, systemImage: "text.alignleft")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
-                .tint(tint)
-            }
-        }
-        .padding(20)
-        .plannerGlassPanel(.content, cornerRadius: 20)
-    }
-
     private func teacherCard(title: String, icon: String, text: String, prominence: TeacherCardProminence = .standard) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(title, systemImage: icon)
@@ -712,222 +784,61 @@ struct PlannerSessionDetailSheet: View {
                 .lineSpacing(4)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(prominence == .hero ? 24 : 20)
-        .plannerGlassPanel(prominence == .hero ? .hero : .content, cornerRadius: 20)
-    }
-
-    private func evaluationCard(criteria: [String], evidence: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label("Evaluación", systemImage: "checkmark.seal")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(tint)
-            if !criteria.isEmpty {
-                WorkspaceFlowLayout(spacing: 8) {
-                    ForEach(criteria, id: \.self) { criterion in
-                        Text(criterion)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(tint)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(tint.opacity(0.10), in: Capsule())
-                    }
-                }
-            }
-            if !evidence.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Evidencia")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    ForEach(evidence, id: \.self) { item in
-                        Label {
-                            Text(item)
-                                .font(.body)
-                                .foregroundStyle(.primary)
-                                .lineSpacing(3)
-                        } icon: {
-                            Image(systemName: "checkmark.circle")
-                                .foregroundStyle(tint)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-        }
-        .padding(20)
-        .plannerGlassPanel(.content, cornerRadius: 20)
-    }
-
-    private func activityNavigatorContent(_ activities: [LearningSituationSessionActivityDraft], minutes: Int) -> some View {
-        let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
-        let selectedKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys.first!
-        let selectedIndex = keys.firstIndex(of: selectedKey) ?? 0
-        let selected = activities[selectedIndex]
-        return VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Label("Guion de la sesión", systemImage: "timeline.selection")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(tint)
-                    Spacer()
-                    if minutes > 0 {
-                        Text("\(minutes) min útiles")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(tint)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(tint.opacity(0.10), in: Capsule())
-                    }
-                }
-                Text("Selecciona una actividad para abrir su ficha operativa.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                VStack(spacing: 8) {
-                    ForEach(Array(activities.enumerated()), id: \.element.activityKey) { index, activity in
-                        let key = activityIdentity(activity, index: index)
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.16)) {
-                                selectedActivityKey = key
-                            }
-                        } label: {
-                            HStack(alignment: .top, spacing: 12) {
-                                VStack(spacing: 3) {
-                                    Circle()
-                                        .fill(key == selectedKey ? tint : tint.opacity(0.35))
-                                        .frame(width: 10, height: 10)
-                                    if index < activities.count - 1 {
-                                        Rectangle()
-                                            .fill(tint.opacity(0.18))
-                                            .frame(width: 2, height: 24)
-                                    }
-                                }
-                                .frame(width: 12)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack(spacing: 8) {
-                                        Text("Actividad \(index + 1)")
-                                            .font(.caption.weight(.bold))
-                                        if !activity.timeLabel.isEmpty {
-                                            Text(activity.timeLabel)
-                                                .font(.caption.weight(.semibold).monospacedDigit())
-                                                .foregroundStyle(key == selectedKey ? .white.opacity(0.9) : tint)
-                                        }
-                                    }
-                                    Text(activity.activity)
-                                        .font(.subheadline.weight(.semibold))
-                                        .multilineTextAlignment(.leading)
-                                        .lineLimit(2)
-                                }
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(key == selectedKey ? .white.opacity(0.9) : .secondary)
-                                    .padding(.top, 4)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .foregroundStyle(key == selectedKey ? .white : .primary)
-                            .background(
-                                key == selectedKey ? tint : EvaluationDesign.surfaceSoft,
-                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(key == selectedKey ? .isSelected : [])
-                        .accessibilityLabel("Actividad \(index + 1): \(activity.activity)")
-                        .accessibilityHint("Abre el detalle de esta actividad")
-                    }
-                }
-
-                HStack(spacing: 12) {
-                    Button {
-                        moveActivityPrevious(in: keys)
-                    } label: {
-                        Label("Anterior", systemImage: "chevron.left")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(selectedIndex == 0)
-                    .keyboardShortcut(.leftArrow, modifiers: .command)
-                    .accessibilityLabel("Actividad anterior")
-
-                    Text("Actividad \(selectedIndex + 1) de \(activities.count)")
-                        .font(.caption.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-
-                    Button {
-                        moveActivityNext(in: keys)
-                    } label: {
-                        Label("Siguiente", systemImage: "chevron.right")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(selectedIndex == activities.count - 1)
-                    .keyboardShortcut(.rightArrow, modifiers: .command)
-                    .accessibilityLabel("Actividad siguiente")
-                }
-            }
-            .padding(20)
-            .plannerGlassPanel(.content, cornerRadius: 20)
-
-            activityDetailCard(selected, index: selectedIndex)
-        }
-        .onAppear {
-            if selectedActivityKey == nil || !keys.contains(selectedActivityKey!) {
-                selectedActivityKey = keys.first
-            }
+        .padding(.vertical, prominence == .hero ? 16 : 12)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(EvaluationDesign.border)
+                .frame(height: 1)
         }
     }
 
     private func activityDetailCard(_ activity: LearningSituationSessionActivityDraft, index: Int) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(activity.activityKey.isEmpty ? "A\(index + 1)" : activity.activityKey)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(activity.activityKey.isEmpty ? "Actividad \(index + 1)" : activity.activityKey)
                     .font(.caption.weight(.bold).monospacedDigit())
                     .foregroundStyle(tint)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(tint.opacity(0.12), in: Capsule())
                 if !activity.activityType.isEmpty {
                     Text(activity.activityType.capitalized)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
                 if let plannedMinutes = activity.plannedMinutes {
-                    Text("\(plannedMinutes) min")
+                    Text("· \(plannedMinutes) min")
                         .font(.caption.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(tint)
+                        .foregroundStyle(.secondary)
                 }
             }
+
             Text(activity.activity)
                 .font(.title3.weight(.bold))
                 .foregroundStyle(.primary)
+                .padding(.top, 8)
+
             if !activity.timeLabel.isEmpty || !activity.phase.isEmpty {
-                Label([activity.timeLabel, activity.phase].filter { !$0.isEmpty }.joined(separator: " · "), systemImage: "clock")
+                Text([activity.timeLabel, activity.phase].filter { !$0.isEmpty }.joined(separator: " · "))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(tint)
+                    .padding(.top, 4)
             }
-            activityDetailRow("Propósito", activity.purpose)
-            activityDetailRow("Organización", activity.organisation)
-            activityDetailRow("Preparación", activity.setup)
-            activityDetailRow("Qué hace el profesor", activity.teacherActions)
-            activityDetailRow("Qué se dice al alumnado", activity.studentInstructions)
-            activityDetailRow("Qué hace el alumnado", activity.studentActions)
-            activityDetailRow("Temporización y transiciones", activity.timingBreakdown)
-            activityDetailRow("CLIL", activity.clilFocus)
-            activityDetailRow("Evidencia que se recoge", activity.evidence)
-            activityDetailRow("Materiales", activity.materials)
-            activityDetailRow("Adaptaciones", activity.adaptations)
-            activityDetailRow("Si el grupo va lento", activity.slowGroupPlan)
-            activityDetailRow("Si el grupo termina antes", activity.fastGroupExtension)
-            activityDetailRow("Prepara el bloque largo", activity.prepares)
-            activityDetailRow("Consolida el bloque largo", activity.consolidates)
+
+            VStack(alignment: .leading, spacing: 0) {
+                activityDetailSection("Propósito", activity.purpose)
+                activityDetailSection("Organización y preparación", [activity.organisation, activity.setup].filter { !$0.isEmpty }.joined(separator: "\n"))
+                activityDetailSection("Profesorado", activity.teacherActions)
+                activityDetailSection("Alumnado", [activity.studentInstructions, activity.studentActions].filter { !$0.isEmpty }.joined(separator: "\n"))
+                activityDetailSection("Temporización y transiciones", activity.timingBreakdown)
+                activityDetailSection("CLIL", activity.clilFocus)
+                activityDetailSection("Evidencia", activity.evidence)
+                activityDetailSection("Material", activity.materials)
+                activityDetailSection("Adaptaciones", activity.adaptations)
+                activityDetailSection("Si el grupo va lento", activity.slowGroupPlan)
+                activityDetailSection("Extensión si termina antes", activity.fastGroupExtension)
+                activityDetailSection("Continuidad LONG", [activity.prepares, activity.consolidates].filter { !$0.isEmpty }.joined(separator: "\n"))
+            }
+            .padding(.top, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .plannerGlassPanel(.hero, cornerRadius: 20)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Detalle de actividad \(activity.activityKey.isEmpty ? "\(index + 1)" : activity.activityKey)")
     }
@@ -950,147 +861,11 @@ struct PlannerSessionDetailSheet: View {
         selectedSection = .activity
     }
 
-    private func materialCard(_ material: String) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label("Material preparado", systemImage: "shippingbox")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(tint)
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(materialItems(from: material), id: \.self) { item in
-                    Label(item, systemImage: "square")
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-                }
-            }
-        }
-        .padding(20)
-        .plannerGlassPanel(.content, cornerRadius: 20)
-    }
-
-    private func developmentTimeline(_ plan: LearningSituationSessionPlan) -> some View {
-        let activities = decodedActivities(plan)
-        let sections = timelineSections(from: decodedDevelopment(plan))
-        return Group {
-            if !activities.isEmpty {
-                activityTimeline(activities, minutes: Int(plan.effectiveMinutes))
-            } else if !sections.isEmpty {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 8) {
-                        Label("Desarrollo de la clase", systemImage: "list.bullet.rectangle.portrait")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(tint)
-                        Spacer()
-                        if plan.effectiveMinutes > 0 {
-                            Text("\(plan.effectiveMinutes) min útiles")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(tint)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(tint.opacity(0.10), in: Capsule())
-                        }
-                    }
-
-                    VStack(spacing: 12) {
-                        ForEach(sections) { section in
-                            timelineBlock(section)
-                        }
-                    }
-                }
-                .padding(20)
-                .plannerGlassPanel(.content, cornerRadius: 20)
-            }
-        }
-    }
-
-    private func activityTimeline(_ activities: [LearningSituationSessionActivityDraft], minutes: Int) -> some View {
-        let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
-        let activeKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys.first
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 8) {
-                Label("Guion de la clase", systemImage: "figure.run.square.stack")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(tint)
-                Spacer()
-                if minutes > 0 {
-                    Text("\(minutes) min útiles")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(tint)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(tint.opacity(0.10), in: Capsule())
-                }
-            }
-
-            VStack(spacing: 12) {
-                ForEach(Array(activities.enumerated()), id: \.element.activityKey) { index, activity in
-                    let key = activityIdentity(activity, index: index)
-                    let isSelected = key == activeKey
-                    Button {
-                        selectedActivityKey = key
-                        selectedSection = .activity
-                    } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            Text("\(index + 1)")
-                                .font(.caption.weight(.bold).monospacedDigit())
-                                .foregroundStyle(tint)
-                                .frame(width: 26, height: 26)
-                                .background(tint.opacity(0.12), in: Circle())
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(spacing: 8) {
-                                    if !activity.timeLabel.isEmpty {
-                                        Text(activity.timeLabel)
-                                            .font(.caption.weight(.bold).monospacedDigit())
-                                            .foregroundStyle(tint)
-                                    }
-                                    if !activity.phase.isEmpty {
-                                        Text(activity.phase)
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Text(activity.activity)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            Spacer(minLength: 0)
-                            if !activity.evidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Image(systemName: "checkmark.circle")
-                                    .foregroundStyle(tint)
-                                    .help("Tiene evidencia definida")
-                            }
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(isSelected ? tint : .secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                        .background(
-                            isSelected ? tint.opacity(0.12) : EvaluationDesign.surfaceSoft,
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        )
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(isSelected ? tint : Color.clear, lineWidth: 1)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                    .accessibilityLabel("Actividad \(index + 1): \(activity.activity)")
-                    .accessibilityValue(isSelected ? "Seleccionada" : "No seleccionada")
-                    .accessibilityHint("Abre el detalle operativo de esta actividad")
-                }
-            }
-        }
-        .padding(20)
-        .plannerGlassPanel(.content, cornerRadius: 20)
-    }
-
     @ViewBuilder
-    private func activityDetailRow(_ label: String, _ value: String) -> some View {
+    private func activityDetailSection(_ label: String, _ value: String) -> some View {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(label)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -1098,102 +873,16 @@ struct PlannerSessionDetailSheet: View {
                     .font(.subheadline)
                     .foregroundStyle(.primary)
                     .lineSpacing(2)
-            }
-        }
-    }
-
-    private func timelineBlock(_ section: LearningSituationSessionSectionDraft) -> some View {
-        let marker = timelineMarker(from: section.title)
-        return HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 8) {
-                Circle()
-                    .fill(tint)
-                    .frame(width: 10, height: 10)
-                Capsule()
-                    .fill(tint.opacity(0.16))
-                    .frame(width: 2, height: 44)
-            }
-            .padding(.top, 8)
-            .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    if let marker {
-                        Text(marker)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(tint)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(tint.opacity(0.10), in: Capsule())
-                    }
-                    Text(cleanTimelineTitle(section.title))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                VStack(spacing: 8) {
-                    ForEach(Array(section.lines.enumerated()), id: \.offset) { _, line in
-                        timelineStep(line)
-                    }
-                }
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-    }
-
-    private func timelineStep(_ line: String) -> some View {
-        let parts = developmentLineParts(line)
-        let parsed = PlannerSessionDetailProjection.parseStep(line)
-        return HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 5))
-                .foregroundStyle(tint.opacity(0.72))
-                .padding(.top, 7)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                if let title = parts.title {
-                    Text(title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
-                Text(parts.detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineSpacing(3)
-                if let teacherRole = parsed.teacherRole {
-                    timelineRoleLine("Profesorado", teacherRole)
-                }
-                if let studentRole = parsed.studentRole {
-                    timelineRoleLine("Alumnado", studentRole)
-                }
-                if let evidence = parsed.evidence {
-                    timelineRoleLine("Evidencia", evidence)
-                }
+            .padding(.vertical, 12)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(EvaluationDesign.border)
+                    .frame(height: 1)
             }
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func timelineRoleLine(_ label: String, _ value: String) -> some View {
-        Text("\(label): \(value)")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func developmentLineParts(_ line: String) -> (title: String?, detail: String) {
-        guard let separator = line.firstIndex(of: ":") else {
-            return (nil, line)
-        }
-        let title = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
-        let detail = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, !detail.isEmpty else { return (nil, line) }
-        return (title, detail)
     }
 
     private func sourceDocumentSection(_ plan: LearningSituationSessionPlan) -> some View {
@@ -1202,8 +891,6 @@ struct PlannerSessionDetailSheet: View {
                 Image(systemName: "doc.text.magnifyingglass")
                     .font(.title3)
                     .foregroundStyle(tint)
-                    .frame(width: 32, height: 32)
-                    .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Documento original")
@@ -1220,7 +907,12 @@ struct PlannerSessionDetailSheet: View {
                     } label: {
                         Label("Ver documento", systemImage: "eye")
                     }
-                    .buttonStyle(.bordered)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -1234,8 +926,12 @@ struct PlannerSessionDetailSheet: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(20)
-        .plannerGlassPanel(.content, cornerRadius: 20)
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(EvaluationDesign.border)
+                .frame(height: 1)
+        }
     }
 
     @ViewBuilder
@@ -1251,8 +947,7 @@ struct PlannerSessionDetailSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .padding(20)
-            .plannerGlassPanel(.content, cornerRadius: 20)
+            .padding(.vertical, 12)
         } else if let renderedDocument {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -1264,9 +959,6 @@ struct PlannerSessionDetailSheet: View {
                         Text(renderedDocument.featureSummary)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(tint)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
-                            .background(tint.opacity(0.10), in: Capsule())
                     }
                 }
                 Text("Vista reconstruida del bloque de esta sesión, manteniendo el orden del documento original.")
@@ -1274,8 +966,12 @@ struct PlannerSessionDetailSheet: View {
                     .foregroundStyle(.secondary)
                 PlannerDocxWebView(html: renderedDocument.html)
             }
-            .padding(20)
-            .plannerGlassPanel(.content, cornerRadius: 20)
+            .padding(.vertical, 12)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(EvaluationDesign.border)
+                    .frame(height: 1)
+            }
         }
     }
 
@@ -1302,40 +998,14 @@ struct PlannerSessionDetailSheet: View {
         return "\(dateString) · Periodo \(session.period)"
     }
 
-    private func sessionChip(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(tint)
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(tint.opacity(0.10), in: Capsule())
-    }
-
     private enum TeacherCardProminence {
         case standard
         case hero
     }
 
-    private func decodedCriteria(_ plan: LearningSituationSessionPlan) -> [String] {
-        ((try? JSONDecoder().decode([String].self, from: Data(plan.criteriaJson.utf8))) ?? [])
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
-    private func decodedDevelopment(_ plan: LearningSituationSessionPlan) -> [LearningSituationSessionSectionDraft] {
-        LearningSituationSessionDevelopmentPayload.decode(from: plan.developmentJson)?.sections ?? []
-    }
-
     private func decodedActivities(_ plan: LearningSituationSessionPlan) -> [LearningSituationSessionActivityDraft] {
         let payload = LearningSituationSessionDevelopmentPayload.decode(from: plan.developmentJson)
         return payload.map(PlannerSessionPlanPayloadNormalizer.activities(from:)) ?? []
-    }
-
-    private func decodedAdaptations(_ plan: LearningSituationSessionPlan) -> [String] {
-        ((try? JSONDecoder().decode([String].self, from: Data(plan.adaptationsJson.utf8))) ?? [])
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
     }
 
     private func decodedGuidingQuestions(_ plan: LearningSituationSessionPlan) -> [String] {
@@ -1345,107 +1015,6 @@ struct PlannerSessionDetailSheet: View {
     private func decodedClosure(_ plan: LearningSituationSessionPlan) -> String {
         LearningSituationSessionDevelopmentPayload.decode(from: plan.developmentJson)?.closure ?? ""
     }
-
-    private func evidenceItems(from plan: LearningSituationSessionPlan) -> [String] {
-        let sectionItems = decodedDevelopment(plan)
-            .filter { isEvidenceSection($0) }
-            .flatMap { section in
-                section.lines.isEmpty ? [metadataValue(from: section.title) ?? section.title] : section.lines
-            }
-            .map { metadataValue(from: $0) ?? $0 }
-
-        let activityItems = decodedActivities(plan).map(\.evidence)
-        return (sectionItems + activityItems)
-            .map { value in
-                value
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .replacingOccurrences(of: "^[•–—-]\\s*", with: "", options: .regularExpression)
-            }
-            .filter { !$0.isEmpty }
-            .reduce(into: [String]()) { result, item in
-                if !result.contains(item) { result.append(item) }
-            }
-    }
-
-    private func timelineSections(from sections: [LearningSituationSessionSectionDraft]) -> [LearningSituationSessionSectionDraft] {
-        sections.compactMap { section in
-            guard !isEvidenceSection(section), !isMetadataLine(section.title) else { return nil }
-            let filteredLines = section.lines
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty && !isMetadataLine($0) }
-            if filteredLines.isEmpty, !looksLikeTimelineTitle(section.title) { return nil }
-            return LearningSituationSessionSectionDraft(title: section.title, lines: filteredLines)
-        }
-    }
-
-    private func isEvidenceSection(_ section: LearningSituationSessionSectionDraft) -> Bool {
-        let title = normalizedSessionText(section.title)
-        return title.hasPrefix("evidencia") || title.hasPrefix("evidence")
-    }
-
-    private func isMetadataLine(_ text: String) -> Bool {
-        let value = normalizedSessionText(text)
-        return value.hasPrefix("objective:")
-            || value.hasPrefix("objectives:")
-            || value.hasPrefix("objetivo:")
-            || value.hasPrefix("objetivos:")
-            || value.hasPrefix("criterion:")
-            || value.hasPrefix("criteria:")
-            || value.hasPrefix("criterio:")
-            || value.hasPrefix("criterios:")
-            || value.hasPrefix("materials:")
-            || value.hasPrefix("material:")
-            || value.hasPrefix("materiales:")
-            || value.hasPrefix("evidence:")
-            || value.hasPrefix("evidencia:")
-    }
-
-    private func metadataValue(from text: String) -> String? {
-        guard let separator = text.firstIndex(of: ":") else { return nil }
-        let prefix = normalizedSessionText(String(text[..<separator]))
-        guard ["evidence", "evidencia"].contains(prefix) else { return nil }
-        return String(text[text.index(after: separator)...]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func materialItems(from material: String) -> [String] {
-        let items = material
-            .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: ".")) }
-            .filter { !$0.isEmpty }
-        return items.isEmpty ? [material] : items
-    }
-
-    private func timelineMarker(from title: String) -> String? {
-        if let range = title.range(of: #"^[0-9]{1,3}\s*(?:'|’|min)?\s*[-–—]\s*[0-9]{1,3}\s*(?:'|’|min)?"#, options: .regularExpression) {
-            return String(title[range])
-        }
-        if let range = title.range(of: #"\([0-9]{1,3}\s*(?:'|’|min)\)"#, options: .regularExpression) {
-            return String(title[range]).trimmingCharacters(in: CharacterSet(charactersIn: "()"))
-        }
-        return nil
-    }
-
-    private func cleanTimelineTitle(_ title: String) -> String {
-        var result = title
-            .replacingOccurrences(of: #"^[0-9]{1,3}\s*(?:'|’|min)?\s*[-–—]\s*[0-9]{1,3}\s*(?:'|’|min)?\s*:?\s*"#, with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if result.isEmpty { result = title }
-        return result
-    }
-
-    private func looksLikeTimelineTitle(_ title: String) -> Bool {
-        timelineMarker(from: title) != nil ||
-            normalizedSessionText(title).hasPrefix("block ") ||
-            normalizedSessionText(title).hasPrefix("bloque ") ||
-            normalizedSessionText(title).hasPrefix("break") ||
-            normalizedSessionText(title).hasPrefix("descanso")
-    }
-
-    private func normalizedSessionText(_ value: String) -> String {
-        value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     @MainActor
     private func loadDetailedPlan() async {
         renderedDocument = nil
@@ -1498,7 +1067,7 @@ struct PlannerSessionDetailSheet: View {
         Group {
             if isLoadingInstruments {
                 ProgressView()
-                    .padding()
+                    .padding(.vertical, 12)
             } else if !linkedInstruments.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
@@ -1517,9 +1086,6 @@ struct PlannerSessionDetailSheet: View {
                                 Image(systemName: instrument.kind == .rubric ? "tablecells" : "doc.text.magnifyingglass")
                                     .foregroundColor(tint)
                                     .font(.subheadline)
-                                    .padding(8)
-                                    .background(tint.opacity(0.1))
-                                    .clipShape(Circle())
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(instrument.title)
@@ -1531,21 +1097,16 @@ struct PlannerSessionDetailSheet: View {
                                 }
                                 Spacer()
                             }
-                            .padding(12)
-                            .background(Color.primary.opacity(0.03))
-                            .cornerRadius(12)
+                            .padding(.vertical, 8)
+                            .overlay(alignment: .bottom) {
+                                Rectangle()
+                                    .fill(EvaluationDesign.border)
+                                    .frame(height: 1)
+                            }
                         }
                     }
                 }
-                .padding(20)
-                .background(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(EvaluationDesign.surfaceSoft)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(EvaluationDesign.border, lineWidth: 1)
-                )
+                .padding(.vertical, 12)
             }
         }
     }

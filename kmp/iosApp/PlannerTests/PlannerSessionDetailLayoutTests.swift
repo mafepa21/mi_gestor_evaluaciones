@@ -67,4 +67,10 @@ final class PlannerSessionDetailLayoutTests: XCTestCase {
         navigator.select("unknown")
         XCTAssertEqual(navigator.selectedKey, "W01-L-03")
     }
+
+    func testSessionTypeLabelKeepsLongAndShortOperationallyDistinct() {
+        XCTAssertEqual(PlannerSessionDetailSessionType.label(for: "Bloque largo"), "LONG")
+        XCTAssertEqual(PlannerSessionDetailSessionType.label(for: "SHORT"), "SHORT")
+        XCTAssertEqual(PlannerSessionDetailSessionType.label(for: "Simple y Doble"), "LONG / SHORT")
+    }
 }

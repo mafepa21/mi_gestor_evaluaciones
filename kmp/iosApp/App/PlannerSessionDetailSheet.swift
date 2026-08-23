@@ -3,7 +3,11 @@ import PhotosUI
 import AVFoundation
 import UniformTypeIdentifiers
 import QuickLook
+import CryptoKit
 import MiGestorKit
+#if os(macOS)
+import AppKit
+#endif
 
 enum PlannerSessionDetailPresentation {
     /// Modal clásico (iPad, y Mac cuando no hay inspector disponible).
@@ -918,6 +922,8 @@ struct PlannerSessionDetailSheet: View {
             activityDetailRow("Adaptaciones", activity.adaptations)
             activityDetailRow("Si el grupo va lento", activity.slowGroupPlan)
             activityDetailRow("Si el grupo termina antes", activity.fastGroupExtension)
+            activityDetailRow("Prepara el bloque largo", activity.prepares)
+            activityDetailRow("Consolida el bloque largo", activity.consolidates)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
@@ -927,7 +933,7 @@ struct PlannerSessionDetailSheet: View {
     }
 
     private func activityIdentity(_ activity: LearningSituationSessionActivityDraft, index: Int) -> String {
-        activity.activityKey.isEmpty ? "LEGACY-\(index + 1)" : activity.activityKey
+        activity.activityKey.isEmpty ? "Actividad \(index + 1)" : activity.activityKey
     }
 
     private func moveActivityPrevious(in keys: [String]) {
@@ -1274,14 +1280,19 @@ struct PlannerSessionDetailSheet: View {
     }
 
     private var sourceDocumentFileURL: URL? {
-        guard let path = sequenceVersion?.localPath, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        let url = URL(fileURLWithPath: path)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        resolvedSourceDocumentURL(for: sequenceVersion)
     }
 
     private func openSourceDocumentPreview() {
         guard let url = sourceDocumentFileURL else { return }
+#if os(macOS)
+        // QuickLook is not consistently presented from a macOS inspector. Opening the
+        // cached original through the system workspace keeps the visible button useful
+        // while the sheet still uses QuickLook on iOS/iPadOS.
+        _ = NSWorkspace.shared.open(url)
+#else
         sourceDocumentURL = url
+#endif
     }
 
     private var dateAndTimeLabel: String {
@@ -1318,12 +1329,7 @@ struct PlannerSessionDetailSheet: View {
 
     private func decodedActivities(_ plan: LearningSituationSessionPlan) -> [LearningSituationSessionActivityDraft] {
         let payload = LearningSituationSessionDevelopmentPayload.decode(from: plan.developmentJson)
-        if let activities = payload?.activities, !activities.isEmpty {
-            return PlannerSessionLegacyActivityProjection.stableActivities(activities)
-        }
-        // v1 had only sections/lines. Project executable timeline lines into synthetic rows;
-        // evidence, questions, closure and adaptation prose must never become activities.
-        return PlannerSessionLegacyActivityProjection.executableActivities(from: payload?.sections ?? [])
+        return payload.map(PlannerSessionPlanPayloadNormalizer.activities(from:)) ?? []
     }
 
     private func decodedAdaptations(_ plan: LearningSituationSessionPlan) -> [String] {
@@ -1453,11 +1459,12 @@ struct PlannerSessionDetailSheet: View {
             learningSituationId: plan.learningSituationId
         )
         sequenceVersion = loadedSequenceVersion
+        _ = await bridge.ensureLearningSituationSessionSequenceDocument(version: loadedSequenceVersion)
+        // Re-evaluate the computed URL after a metadata-first sync has downloaded the
+        // binary into the hash-addressed document store.
+        sequenceVersion = loadedSequenceVersion
 
-        guard let path = loadedSequenceVersion?.localPath,
-              !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let sourceURL = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: sourceURL.path) else { return }
+        guard let sourceURL = resolvedSourceDocumentURL(for: loadedSequenceVersion) else { return }
 
         isLoadingRenderedDocument = true
         let sourceLabel = plan.sourceLabel
@@ -1470,6 +1477,21 @@ struct PlannerSessionDetailSheet: View {
             )
         }.value
         isLoadingRenderedDocument = false
+    }
+
+    private func resolvedSourceDocumentURL(for version: LearningSituationSessionSequenceVersion?) -> URL? {
+        guard let sha256 = version?.sha256.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sha256.isEmpty else {
+            guard let path = version?.localPath,
+                  !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            let url = URL(fileURLWithPath: path)
+            return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        }
+        let cachedURL = LearningSituationDocumentStore().directoryURL
+            .appendingPathComponent("\(sha256).docx")
+        guard let data = try? Data(contentsOf: cachedURL) else { return nil }
+        let actualHash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return actualHash == sha256 ? cachedURL : nil
     }
     
     private var instrumentsSection: some View {

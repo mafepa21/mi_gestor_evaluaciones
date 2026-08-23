@@ -66,7 +66,8 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
     func testV2ObjectPayloadProjectsQuickViewActivitiesAndAnnexes() throws {
         let activity = LearningSituationSessionActivityDraft(
             activityKey: "W01-L-03", plannedMinutes: 50, timeLabel: "25′–75′", phase: "Main",
-            activity: "Jigsaw", purpose: "Build evidence", teacherActions: "Cue the transition."
+            activity: "Jigsaw", purpose: "Build evidence", teacherActions: "Cue the transition.",
+            prepares: "Activate prior learning.", consolidates: "Retrieve the evidence."
         )
         let payload = LearningSituationSessionDevelopmentPayload(
             organisation: "Groups of four", coreKnowledge: "FITT-PV", assessment: "Health Passport",
@@ -78,10 +79,53 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
 
         let projection = PlannerSessionDetailProjection(plan: plan)
         XCTAssertEqual(projection.activities.first?.activityKey, "W01-L-03")
+        XCTAssertEqual(projection.activities.first?.prepares, "Activate prior learning.")
+        XCTAssertEqual(projection.activities.first?.consolidates, "Retrieve the evidence.")
         XCTAssertEqual(projection.organisation, "Groups of four")
         XCTAssertEqual(projection.basicKnowledge, ["FITT-PV"])
         XCTAssertEqual(projection.guidingQuestions, ["What changed?"])
         XCTAssertEqual(projection.closure, "Exit note")
+    }
+
+    func testPayloadNormalizerHidesLegacyIDsAndIDTitlesWithoutChangingActivityCount() throws {
+        let payload = LearningSituationSessionDevelopmentPayload(
+            schema: "legacy",
+            schemaVersion: 1,
+            sections: [LearningSituationSessionSectionDraft(
+                title: "Bloque 1",
+                lines: ["0'-10' · Entry · W01-L-01"]
+            )],
+            activities: [LearningSituationSessionActivityDraft(
+                activityKey: "LEGACY-3-6",
+                timeLabel: "0'-10'",
+                phase: "Entry",
+                activity: "LEGACY-unparsed-title"
+            )]
+        )
+
+        let activities = PlannerSessionPlanPayloadNormalizer.activities(from: payload)
+        XCTAssertEqual(activities.count, 1)
+        XCTAssertFalse(activities[0].activityKey.hasPrefix("LEGACY-"))
+        XCTAssertFalse(activities[0].activity.hasPrefix("LEGACY-"))
+        XCTAssertFalse(activities[0].activity.hasPrefix("W01-L-"))
+
+        let json = try XCTUnwrap(PlannerSessionPlanPayloadNormalizer.normalizedJSON(
+            from: String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        ))
+        let normalized = try XCTUnwrap(LearningSituationSessionDevelopmentPayload.decode(from: json))
+        XCTAssertEqual(normalized.schema, "session-plan-v2")
+        XCTAssertEqual(normalized.activities.count, 1)
+
+        let contextual = LearningSituationSessionDevelopmentPayload(
+            sections: [],
+            activities: [LearningSituationSessionActivityDraft(
+                activityKey: "W01-L-02",
+                timeLabel: "0'-10'",
+                activity: "Revisar W01-L-02 antes del cambio de parejas"
+            )]
+        )
+        let contextualActivity = PlannerSessionPlanPayloadNormalizer.activities(from: contextual).first
+        XCTAssertEqual(contextualActivity?.activity, "Revisar W01-L-02 antes del cambio de parejas")
     }
 
     func testLegacyActivityProjectionExcludesContextSectionsAndUsesStableKeys() {

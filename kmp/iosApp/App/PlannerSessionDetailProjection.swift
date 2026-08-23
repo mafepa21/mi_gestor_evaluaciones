@@ -52,12 +52,15 @@ struct PlannerSessionDetailProjection {
         self.assessment = Self.cleaned(payload.assessment)
         self.guidingQuestions = Self.unique(payload.guidingQuestions.map(Self.cleaned).filter { !$0.isEmpty })
         self.closure = Self.cleaned(payload.closure)
-        self.activities = payload.activities
+        let normalizedActivities = PlannerSessionPlanPayloadNormalizer.activities(from: payload)
+        self.activities = normalizedActivities
         self.timeline = timeline
         self.supportSections = sections
             .filter { !Self.isTimelineSection($0) && !Self.isEvidenceSection($0) }
             .compactMap(PlannerSessionSupportSection.init)
-        self.activityCount = timeline.reduce(0) { $0 + $1.steps.count }
+        self.activityCount = normalizedActivities.isEmpty
+            ? timeline.reduce(0) { $0 + $1.steps.count }
+            : normalizedActivities.count
     }
 
     var hasTeacherBrief: Bool {
@@ -245,6 +248,71 @@ struct PlannerSessionDetailProjection {
 
     private static func normalized(_ value: String) -> String {
         cleaned(value).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+    }
+}
+
+/// Compatibilidad de lectura/escritura para planes que se guardaron antes de que el
+/// importador tuviera un contrato tipado. La reparación es deliberadamente idempotente:
+/// conserva actividades v2 válidas, convierte las líneas legacy a v2 y nunca expone un
+/// identificador técnico como si fuera el título docente.
+enum PlannerSessionPlanPayloadNormalizer {
+    private static let activityIDPattern = try! NSRegularExpression(
+        pattern: #"^W[0-9]{2}-[LS]-[0-9]{2}$"#,
+        options: .caseInsensitive
+    )
+
+    static func activities(from payload: LearningSituationSessionDevelopmentPayload) -> [LearningSituationSessionActivityDraft] {
+        let source = payload.activities.isEmpty
+            ? PlannerSessionLegacyActivityProjection.executableActivities(from: payload.sections)
+            : payload.activities
+        return normalizedActivities(source)
+    }
+
+    static func normalizedJSON(from json: String) -> String? {
+        guard let payload = LearningSituationSessionDevelopmentPayload.decode(from: json) else { return nil }
+        let normalizedPayload = LearningSituationSessionDevelopmentPayload(
+            schema: "session-plan-v2",
+            schemaVersion: max(payload.schemaVersion, 2),
+            organisation: payload.organisation,
+            coreKnowledge: payload.coreKnowledge,
+            assessment: payload.assessment,
+            sections: payload.sections,
+            activities: activities(from: payload),
+            guidingQuestions: payload.guidingQuestions,
+            closure: payload.closure,
+            sourceDocumentSHA256: payload.sourceDocumentSHA256
+        )
+        guard let data = try? JSONEncoder().encode(normalizedPayload) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func normalizedActivities(_ source: [LearningSituationSessionActivityDraft]) -> [LearningSituationSessionActivityDraft] {
+        var seenKeys = Set<String>()
+        return source.enumerated().map { index, activity in
+            var copy = activity
+            let rawKey = activity.activityKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            let displayKey: String
+            if rawKey.isEmpty || rawKey.uppercased().hasPrefix("LEGACY-") {
+                displayKey = "Actividad \(index + 1)"
+            } else {
+                displayKey = rawKey
+            }
+            let uniqueKey = seenKeys.insert(displayKey).inserted
+                ? displayKey
+                : "\(displayKey) \(index + 1)"
+            copy.activityKey = uniqueKey
+
+            let title = activity.activity.trimmingCharacters(in: .whitespacesAndNewlines)
+            if title.isEmpty || title.uppercased().hasPrefix("LEGACY-") || matchesActivityIdentifier(title) {
+                copy.activity = "Actividad \(index + 1)"
+            }
+            return copy
+        }
+    }
+
+    private static func matchesActivityIdentifier(_ value: String) -> Bool {
+        let range = NSRange(value.startIndex..., in: value)
+        return activityIDPattern.firstMatch(in: value, range: range) != nil
     }
 }
 

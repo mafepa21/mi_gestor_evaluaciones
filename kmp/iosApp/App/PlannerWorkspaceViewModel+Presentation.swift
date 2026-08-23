@@ -55,7 +55,7 @@ extension PlannerWorkspaceViewModel {
         guard let json, let payload = LearningSituationSessionDevelopmentPayload.decode(from: json) else { return nil }
 
         let ignoredPrefixes = ["evidencia", "evidence", "objetivo", "objectives", "criterio", "criteria", "material", "materials"]
-        for activity in payload.activities {
+        for activity in PlannerSessionPlanPayloadNormalizer.activities(from: payload) {
             let value = activity.activity.trimmingCharacters(in: .whitespacesAndNewlines)
             if !value.isEmpty { return value }
         }

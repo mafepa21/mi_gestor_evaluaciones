@@ -2031,6 +2031,7 @@ private struct LearningSituationScheduleSheet: View {
                                     }
                                     Text(activity.activity)
                                         .font(.caption.weight(.semibold))
+                                    routeContext(for: activity)
                                     activityDetail("Teacher", activity.teacherActions)
                                     activityDetail("Students", activity.studentActions)
                                     activityDetail("CLIL", activity.clilFocus)
@@ -2086,6 +2087,20 @@ private struct LearningSituationScheduleSheet: View {
             Text("\(label): \(value)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func routeContext(for activity: LearningSituationSessionActivityDraft) -> some View {
+        if let weeklyRoute {
+            switch weeklyRoute {
+            case .shortFirst:
+                activityDetail("Ruta primaria · Prepares", activity.prepares)
+                activityDetail("Contexto secundario · Consolidates", activity.consolidates)
+            case .longFirst:
+                activityDetail("Ruta primaria · Consolidates", activity.consolidates)
+                activityDetail("Contexto secundario · Prepares", activity.prepares)
+            }
         }
     }
 

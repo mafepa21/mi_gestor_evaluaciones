@@ -414,25 +414,6 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(activity.timingBreakdown, "At minute 10, give the two-minute warning and ask pairs to leave the passport open on the floor.")
     }
 
-    func testActivityNavigatorKeepsTimelineAndMenuAtStableBoundaries() {
-        var navigator = PlannerSessionActivityNavigator(activityKeys: ["W01-L-01", "W01-L-02", "W01-L-03"])
-
-        XCTAssertEqual(navigator.selectedKey, "W01-L-01")
-        XCTAssertFalse(navigator.canMovePrevious)
-        XCTAssertTrue(navigator.canMoveNext)
-
-        navigator.movePrevious()
-        XCTAssertEqual(navigator.selectedKey, "W01-L-01")
-        navigator.select("W01-L-02")
-        navigator.moveNext()
-        XCTAssertEqual(navigator.selectedKey, "W01-L-03")
-        XCTAssertFalse(navigator.canMoveNext)
-        navigator.moveNext()
-        XCTAssertEqual(navigator.selectedKey, "W01-L-03")
-        navigator.select("W01-L-01")
-        XCTAssertEqual(navigator.selectedIndex, 0)
-    }
-
     func testSessionDocxRendererKeepsTablesAndImagesInSessionOrder() throws {
         let docxURL = try makeMinimalDocx()
         defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }

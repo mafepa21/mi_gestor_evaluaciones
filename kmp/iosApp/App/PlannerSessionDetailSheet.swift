@@ -13,6 +13,21 @@ enum PlannerSessionDetailPresentation {
     case inspector
 }
 
+enum PlannerSessionDetailLayout: Equatable {
+    case regular
+    case compact
+}
+
+struct PlannerSessionDetailLayoutPolicy {
+    /// Keeps two useful reading columns on full-size iPad landscape and macOS while
+    /// falling back before either pane becomes cramped in portrait or split view.
+    static let regularMinimumWidth: CGFloat = 900
+
+    static func layout(for width: CGFloat) -> PlannerSessionDetailLayout {
+        width >= regularMinimumWidth ? .regular : .compact
+    }
+}
+
 /// Small, platform-independent state machine for the activity controls in the session card.
 /// The UI uses Activity ID keys rather than titles or array indexes so reordering the document
 /// cannot open the wrong activity.
@@ -103,32 +118,14 @@ struct PlannerSessionDetailSheet: View {
         Group {
             switch presentation {
             case .sheet:
-                NavigationStack {
-                    detailContent
-                        .navigationTitle("Sesión")
-                        #if os(iOS)
-                        .navigationBarTitleDisplayMode(.inline)
-                        #endif
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarLeading) {
-                                Button("Cerrar") {
-                                    dismiss()
-                                }
-                            }
-                        }
-                }
+                detailContent
                 #if os(macOS)
-                .frame(minWidth: 760, idealWidth: 860, minHeight: 720, idealHeight: 820)
+                .frame(minWidth: 900, idealWidth: 1_080, minHeight: 640, idealHeight: 800)
                 #else
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
                 #endif
             case .inspector:
-                VStack(spacing: 0) {
-                    inspectorHeader
-                    detailContent
-                }
+                detailContent
             }
         }
         .task(id: session.id) {
@@ -152,37 +149,18 @@ struct PlannerSessionDetailSheet: View {
         }
     }
 
-    private var inspectorHeader: some View {
-        HStack {
-            Text("Sesión")
-                .font(.headline.weight(.bold))
-            Spacer()
-            Button {
-                onClose?()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Cerrar el inspector de la sesión")
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(EvaluationDesign.border)
-                .frame(height: 1)
-        }
-    }
-
     @ViewBuilder
     private var detailContent: some View {
         switch presentation {
         case .sheet:
-            ViewThatFits(in: .horizontal) {
-                regularSheetContent
-                compactSheetContent
+            GeometryReader { proxy in
+                let layout = PlannerSessionDetailLayoutPolicy.layout(for: proxy.size.width)
+                switch layout {
+                case .regular:
+                    regularSheetContent
+                case .compact:
+                    compactSheetContent
+                }
             }
         case .inspector:
             inspectorContent
@@ -193,8 +171,7 @@ struct PlannerSessionDetailSheet: View {
     /// sheet, so selecting a session never turns the narrow rail into a second document view.
     private var inspectorContent: some View {
         VStack(spacing: 0) {
-            sessionBriefHeader
-            quickActionBar
+            sessionHeader(layout: .compact)
             ScrollView {
                 if let detailedPlan {
                     teacherAtAGlanceSection(detailedPlan)
@@ -211,8 +188,7 @@ struct PlannerSessionDetailSheet: View {
     /// deliberately only the selected activity. The map buttons update `selectedActivityKey`.
     private var regularSheetContent: some View {
         VStack(spacing: 0) {
-            sessionBriefHeader
-            quickActionBar
+            sessionHeader(layout: .regular)
             HStack(alignment: .top, spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
@@ -221,13 +197,6 @@ struct PlannerSessionDetailSheet: View {
                         } else {
                             fallbackSessionSections
                         }
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.18)) { selectedSection = .annexes }
-                        } label: {
-                            Label("Anexos", systemImage: "paperclip")
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        .buttonStyle(.bordered)
                     }
                     .padding(24)
                 }
@@ -238,22 +207,26 @@ struct PlannerSessionDetailSheet: View {
                     .fill(EvaluationDesign.border)
                     .frame(width: 1)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if selectedSection == .annexes {
-                            annexesContent
-                        } else {
-                            regularActivityDetailContent
+                VStack(spacing: 0) {
+                    regularDetailControls
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            if selectedSection == .annexes {
+                                annexesContent
+                            } else {
+                                regularActivityDetailContent
+                            }
                         }
+                        .padding(24)
                     }
-                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(idealWidth: 440, maxWidth: .infinity, alignment: .topLeading)
                 .layoutPriority(1)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(idealWidth: 820, alignment: .topLeading)
-        .fixedSize(horizontal: true, vertical: false)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
     }
 
@@ -261,8 +234,7 @@ struct PlannerSessionDetailSheet: View {
     /// segmented control and the selected activity is shown progressively.
     private var compactSheetContent: some View {
         VStack(spacing: 0) {
-            sessionBriefHeader
-            quickActionBar
+            sessionHeader(layout: .compact)
             detailSectionPicker
             ScrollView {
                 VStack(spacing: 16) {
@@ -280,55 +252,132 @@ struct PlannerSessionDetailSheet: View {
                 }
                 .padding(24)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
     }
 
-    private var sessionBriefHeader: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        sessionChip(session.groupName, systemImage: "person.3.fill")
-                        sessionChip("Planificada", systemImage: "checkmark.circle.fill")
-                        if let detailedPlan {
-                            sessionChip("Sesión \(detailedPlan.sessionNumber)", systemImage: "number")
-                            sessionChip("\(detailedPlan.sessionType) · \(detailedPlan.effectiveMinutes) min", systemImage: "timer")
-                        }
-                    }
-                    Text(detailedPlan?.title ?? session.teachingUnitName)
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Label(dateAndTimeLabel, systemImage: "calendar")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                HStack(spacing: 8) {
-                    if case .sheet = presentation {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.headline.weight(.semibold))
-                                .frame(width: 30, height: 30)
-                        }
-                        .buttonStyle(.bordered)
-                        .keyboardShortcut(.cancelAction)
-                        .help("Cerrar la ficha de sesión")
-                        .accessibilityLabel("Cerrar la ficha de sesión")
-                    }
+    @ViewBuilder
+    private func sessionHeader(layout: PlannerSessionDetailLayout) -> some View {
+        if layout == .regular {
+            HStack(alignment: .center, spacing: 24) {
+                sessionHeaderMetadata
+                Spacer(minLength: 24)
+                sessionHeaderActions(expandsPrimaryAction: false)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+            .background(.thinMaterial)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(EvaluationDesign.border)
+                    .frame(height: 1)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                sessionHeaderMetadata
+                sessionHeaderActions(expandsPrimaryAction: true)
+            }
+            .padding(16)
+            .background(.thinMaterial)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(EvaluationDesign.border)
+                    .frame(height: 1)
+            }
+        }
+    }
+
+    private var sessionHeaderMetadata: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(detailedPlan?.title ?? session.teachingUnitName)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Label(dateAndTimeLabel, systemImage: "calendar")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            WorkspaceFlowLayout(spacing: 8) {
+                sessionChip(session.groupName, systemImage: "person.3.fill")
+                sessionChip("Planificada", systemImage: "checkmark.circle.fill")
+                if let detailedPlan {
+                    sessionChip("Sesión \(detailedPlan.sessionNumber)", systemImage: "number")
+                    sessionChip("\(detailedPlan.sessionType) · \(detailedPlan.effectiveMinutes) min", systemImage: "timer")
                 }
             }
         }
-        .padding(24)
-        .background(.thinMaterial)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(EvaluationDesign.border)
-                .frame(height: 1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Sesión \(detailedPlan?.title ?? session.teachingUnitName)")
+        .accessibilityValue(sessionAccessibilityMetadata)
+    }
+
+    private var sessionAccessibilityMetadata: String {
+        var values = [session.groupName, "Planificada", dateAndTimeLabel]
+        if let detailedPlan {
+            values.append("Sesión \(detailedPlan.sessionNumber)")
+            values.append("\(detailedPlan.sessionType), \(detailedPlan.effectiveMinutes) minutos")
+        }
+        return values.joined(separator: ", ")
+    }
+
+    private func sessionHeaderActions(expandsPrimaryAction: Bool) -> some View {
+        HStack(spacing: 8) {
+            Button(action: onOpenDiary) {
+                Label("Abrir ejecución", systemImage: "play.rectangle.fill")
+                    .font(.headline.weight(.semibold))
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: expandsPrimaryAction ? .infinity : nil)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(tint)
+            .keyboardShortcut(.defaultAction)
+            .accessibilityLabel("Abrir ejecución de la sesión")
+
+            sessionActionsMenu
+
+            Button(action: closeSessionDetail) {
+                Image(systemName: "xmark")
+                    .font(.headline.weight(.semibold))
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.bordered)
+            .keyboardShortcut(.cancelAction)
+            .help("Cerrar la ficha de sesión")
+            .accessibilityLabel("Cerrar la ficha de sesión")
+        }
+    }
+
+    private var sessionActionsMenu: some View {
+        Menu {
+            Button(action: onEdit) { Label("Editar", systemImage: "pencil") }
+            if onCopyToNextWeek != nil {
+                Button { onCopyToNextWeek?() } label: { Label("Duplicar", systemImage: "doc.on.doc") }
+            }
+            if sourceDocumentFileURL != nil {
+                Button { openSourceDocumentPreview() } label: { Label("Ver DOCX", systemImage: "doc.text.magnifyingglass") }
+            }
+            if onDelete != nil {
+                Button(role: .destructive) { isDeleteConfirmationPresented = true } label: { Label("Eliminar", systemImage: "trash") }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.headline.weight(.semibold))
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel("Más acciones de la sesión")
+    }
+
+    private func closeSessionDetail() {
+        switch presentation {
+        case .sheet:
+            dismiss()
+        case .inspector:
+            onClose?()
         }
     }
 
@@ -353,6 +402,7 @@ struct PlannerSessionDetailSheet: View {
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
                 .accessibilityLabel(section.label)
+                .accessibilityValue(selectedSection == section ? "Seleccionado" : "No seleccionado")
             }
         }
         .padding(4)
@@ -366,6 +416,108 @@ struct PlannerSessionDetailSheet: View {
             Rectangle()
                 .fill(EvaluationDesign.border)
                 .frame(height: 1)
+        }
+    }
+
+    private var regularDetailControls: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                regularDetailModeButton(
+                    title: "Actividad",
+                    systemImage: "timeline.selection",
+                    isSelected: selectedSection != .annexes
+                ) {
+                    selectedSection = .activity
+                }
+                regularDetailModeButton(
+                    title: "Anexos",
+                    systemImage: "paperclip",
+                    isSelected: selectedSection == .annexes
+                ) {
+                    selectedSection = .annexes
+                }
+            }
+
+            if selectedSection != .annexes {
+                regularActivityNavigation
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .background(EvaluationDesign.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(EvaluationDesign.border)
+                .frame(height: 1)
+        }
+    }
+
+    private func regularDetailModeButton(
+        title: String,
+        systemImage: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18), action)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .foregroundStyle(isSelected ? .white : .secondary)
+                .background(
+                    isSelected ? tint : EvaluationDesign.surfaceSoft,
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityValue(isSelected ? "Seleccionado" : "No seleccionado")
+    }
+
+    @ViewBuilder
+    private var regularActivityNavigation: some View {
+        if let detailedPlan {
+            let activities = decodedActivities(detailedPlan)
+            let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
+            if !keys.isEmpty {
+                let selectedKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
+                let selectedIndex = keys.firstIndex(of: selectedKey) ?? 0
+                HStack(spacing: 8) {
+                    Button {
+                        moveActivityPrevious(in: keys)
+                    } label: {
+                        Label("Anterior", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(selectedIndex == 0)
+                    .keyboardShortcut(.leftArrow, modifiers: .command)
+                    .accessibilityLabel("Actividad anterior")
+
+                    Text("Actividad \(selectedIndex + 1) de \(keys.count)")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel("Actividad seleccionada")
+                        .accessibilityValue("\(selectedIndex + 1) de \(keys.count)")
+
+                    Button {
+                        moveActivityNext(in: keys)
+                    } label: {
+                        Label("Siguiente", systemImage: "chevron.right")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(selectedIndex == keys.count - 1)
+                    .keyboardShortcut(.rightArrow, modifiers: .command)
+                    .accessibilityLabel("Actividad siguiente")
+                }
+                .onAppear {
+                    if selectedActivityKey == nil || !keys.contains(selectedActivityKey!) {
+                        selectedActivityKey = keys.first
+                    }
+                }
+            }
         }
     }
 
@@ -419,49 +571,6 @@ struct PlannerSessionDetailSheet: View {
             }
         } else {
             teacherCard(title: "Actividad", icon: "list.number", text: "Cargando la ficha operativa de la sesión…")
-        }
-    }
-
-    private var quickActionBar: some View {
-        HStack(spacing: 16) {
-            Button(action: onOpenDiary) {
-                Label("Abrir ejecución", systemImage: "play.rectangle.fill")
-                    .font(.headline.weight(.semibold))
-                    .padding(.vertical, 14)
-                    .padding(.horizontal, 22)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(tint)
-            .keyboardShortcut(.defaultAction)
-
-            Spacer(minLength: 0)
-
-            Menu {
-                Button(action: onEdit) { Label("Editar", systemImage: "pencil") }
-                if onCopyToNextWeek != nil {
-                    Button { onCopyToNextWeek?() } label: { Label("Duplicar", systemImage: "doc.on.doc") }
-                }
-                if sourceDocumentFileURL != nil {
-                    Button { openSourceDocumentPreview() } label: { Label("Ver DOCX", systemImage: "doc.text.magnifyingglass") }
-                }
-                if onDelete != nil {
-                    Button(role: .destructive) { isDeleteConfirmationPresented = true } label: { Label("Eliminar", systemImage: "trash") }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.headline.weight(.semibold))
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.bordered)
-            .accessibilityLabel("Más acciones de la sesión")
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
-        .background(EvaluationDesign.surface)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(EvaluationDesign.border)
-                .frame(height: 1)
         }
     }
 
@@ -731,12 +840,14 @@ struct PlannerSessionDetailSheet: View {
 
                 HStack(spacing: 12) {
                     Button {
-                        selectedActivityKey = keys[max(0, selectedIndex - 1)]
+                        moveActivityPrevious(in: keys)
                     } label: {
                         Label("Anterior", systemImage: "chevron.left")
                     }
                     .buttonStyle(.bordered)
                     .disabled(selectedIndex == 0)
+                    .keyboardShortcut(.leftArrow, modifiers: .command)
+                    .accessibilityLabel("Actividad anterior")
 
                     Text("Actividad \(selectedIndex + 1) de \(activities.count)")
                         .font(.caption.weight(.semibold).monospacedDigit())
@@ -744,12 +855,14 @@ struct PlannerSessionDetailSheet: View {
                         .frame(maxWidth: .infinity)
 
                     Button {
-                        selectedActivityKey = keys[min(keys.count - 1, selectedIndex + 1)]
+                        moveActivityNext(in: keys)
                     } label: {
                         Label("Siguiente", systemImage: "chevron.right")
                     }
                     .buttonStyle(.bordered)
                     .disabled(selectedIndex == activities.count - 1)
+                    .keyboardShortcut(.rightArrow, modifiers: .command)
+                    .accessibilityLabel("Actividad siguiente")
                 }
             }
             .padding(20)
@@ -817,6 +930,20 @@ struct PlannerSessionDetailSheet: View {
         activity.activityKey.isEmpty ? "LEGACY-\(index + 1)" : activity.activityKey
     }
 
+    private func moveActivityPrevious(in keys: [String]) {
+        var navigator = PlannerSessionActivityNavigator(activityKeys: keys, selectedKey: selectedActivityKey)
+        navigator.movePrevious()
+        selectedActivityKey = navigator.selectedKey
+        selectedSection = .activity
+    }
+
+    private func moveActivityNext(in keys: [String]) {
+        var navigator = PlannerSessionActivityNavigator(activityKeys: keys, selectedKey: selectedActivityKey)
+        navigator.moveNext()
+        selectedActivityKey = navigator.selectedKey
+        selectedSection = .activity
+    }
+
     private func materialCard(_ material: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Label("Material preparado", systemImage: "shippingbox")
@@ -870,7 +997,9 @@ struct PlannerSessionDetailSheet: View {
     }
 
     private func activityTimeline(_ activities: [LearningSituationSessionActivityDraft], minutes: Int) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
+        let activeKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys.first
+        return VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Label("Guion de la clase", systemImage: "figure.run.square.stack")
                     .font(.headline.weight(.semibold))
@@ -888,8 +1017,10 @@ struct PlannerSessionDetailSheet: View {
 
             VStack(spacing: 12) {
                 ForEach(Array(activities.enumerated()), id: \.element.activityKey) { index, activity in
+                    let key = activityIdentity(activity, index: index)
+                    let isSelected = key == activeKey
                     Button {
-                        selectedActivityKey = activityIdentity(activity, index: index)
+                        selectedActivityKey = key
                         selectedSection = .activity
                     } label: {
                         HStack(alignment: .top, spacing: 12) {
@@ -924,14 +1055,23 @@ struct PlannerSessionDetailSheet: View {
                             }
                             Image(systemName: "chevron.right")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(isSelected ? tint : .secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(14)
-                        .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(
+                            isSelected ? tint.opacity(0.12) : EvaluationDesign.surfaceSoft,
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(isSelected ? tint : Color.clear, lineWidth: 1)
+                        }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                     .accessibilityLabel("Actividad \(index + 1): \(activity.activity)")
+                    .accessibilityValue(isSelected ? "Seleccionada" : "No seleccionada")
                     .accessibilityHint("Abre el detalle operativo de esta actividad")
                 }
             }

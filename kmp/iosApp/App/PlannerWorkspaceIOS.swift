@@ -86,7 +86,7 @@ struct PlannerWorkspaceIOS: View {
                 onClose: { showingScheduleSettings = false }
             )
         }
-        .sheet(
+        .appFullScreenCover(
             isPresented: Binding(
                 get: { selectedDetailSession != nil },
                 set: { if !$0 { selectedDetailSession = nil } }

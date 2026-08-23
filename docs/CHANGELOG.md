@@ -17,10 +17,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - Secuenciación de sesiones CLIL: contrato semanal importable con bloques `LONG BLOCK` y `SHORT BLOCK`, actividades estructuradas en inglés, evidencias, materiales, adaptaciones y comentarios CLIL; corpus normalizado en 55 Markdown y 55 DOCX.
 - Fichas de sesión operativas: cada bloque separa `QUICK VIEW` y `ACTIVITY DETAILS`, usa `Activity ID` estable (`Wnn-L/S-nn`) y permite abrir una actividad concreta desde timeline, desplegable o botones Anterior/Siguiente.
+- `session-plan-v2` conserva por actividad los contextos explícitos `prepares` y `consolidates`, disponibles tanto en la previsualización de importación como en la ficha operativa.
 
 ### Fixed
 
 - El importador semanal ya no duplica las actividades al leer el detalle: fusiona los campos ampliados por `Activity ID`, valida IDs vacíos/duplicados/malformados y mantiene compatibilidad con payloads antiguos.
+- Las tablas horarias ya no pueden seleccionar `Activity ID` como título de `Activity`; la proyección histórica tampoco muestra claves `LEGACY-*` ni IDs como títulos.
+- La ficha de sesión resuelve el DOCX por su ruta almacenada o por su caché direccionada por SHA-256; en macOS abre el original con la aplicación del sistema y en iOS/iPadOS mantiene QuickLook.
 - La navegación macOS hacia la ejecución desde la ficha de sesión cierra primero el inspector y conserva la transición diferida al Diario.
 - La programación de un bloque largo persiste todas sus franjas consecutivas, incluyendo el segundo período del par horario, y enlaza cada ocupación con su sesión planificada.
 - Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
@@ -64,6 +67,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- La normalización de planes persistidos repara `developmentJson` de forma idempotente al leer o reimportar el mismo SHA, conservando los IDs de versión, plan y sesión agendada; recupera el DOCX por hash cuando la sincronización llega en modo metadata-first y no persiste un v2 incompleto mientras falta el binario.
 - Planificación: la ficha de sesión usa una política adaptativa explícita; en macOS e iPad horizontal muestra el resumen y la actividad seleccionada en dos columnas con scroll independiente, mientras iPhone y anchos compactos conservan Resumen, Actividad y Anexos. La cabecera reúne metadatos, ejecución, acciones, cierre y navegación accesible por actividades.
 - Planificación: el contenido operativo de una sesión se serializa como `session-plan-v2` dentro de `developmentJson`, con decoder dual para arrays v1; el importador reconoce el formato C de ficha + QUICK VIEW + ACTIVITY DETAILS y la ficha separa Resumen, Actividad y Anexos.
 - Planificación de sesiones: la importación conserva actividades ejecutables dentro de un sobre versionado, la preview muestra Teacher/Students/CLIL/Evidence y la ficha de ejecución presenta una línea temporal ampliada con materiales y adaptaciones.
@@ -159,6 +163,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Este ticket: `MiGestorPlannerTests` completo pasa con 81/81; la batería dirigida de importación/proyección pasa con 25/25; `./scripts/verify_apple_builds.sh` regenera XcodeGen y compila macOS Native e iOS Simulator correctamente.
+- El DOCX real del workspace se comprobó end-to-end con SHA-256 `d0ee52ff904256208063f23efb84ea5fd881a754f09dc93ec6dcd9d280dab70a`: produce W01 LONG=4, W01 SHORT=3, W02 LONG=4 y W02 SHORT=3, sin `LEGACY-*` ni títulos-ID. Los conteos 6/4 solicitados no están presentes en este binario y quedan pendientes de un artefacto corregido.
 - Ficha adaptativa de sesión (#221): `MiGestorPlannerTests` pasa en macOS; `scripts/verify_apple_builds.sh` regenera XcodeGen y compila correctamente macOS Native e iOS Simulator.
 - Planificación `session-plan-v2` (#215): `MiGestorPlannerTests` pasa completo con 55/55 antes del endurecimiento final y las 16 pruebas focalizadas del importador/proyección pasan después; el DOCX real importa 10 sesiones y 35 actividades; `verify_apple_builds.sh` finaliza con macOS Native e iOS Simulator en verde.
 - `xcodegen generate` y `./scripts/verify_apple_builds.sh`; el build macOS termina correctamente y el target `MiGestorKMPiOS` se repite de forma aislada con `BUILD SUCCEEDED` tras liberar artefactos temporales que agotaban el disco durante la ejecución conjunta. La verificación se ejecuta en la rama `codex/fix-ui-mac-alumnado-informes`.

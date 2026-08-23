@@ -171,6 +171,10 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
     var adaptations: String
     var slowGroupPlan: String
     var fastGroupExtension: String
+    /// Contexto de continuidad entre los bloques SHORT y LONG. No forma parte del
+    /// título de la actividad: la ruta de la semana decide cuál es el texto primario.
+    var prepares: String
+    var consolidates: String
 
     init(
         activityKey: String = "",
@@ -191,7 +195,9 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
         materials: String = "",
         adaptations: String = "",
         slowGroupPlan: String = "",
-        fastGroupExtension: String = ""
+        fastGroupExtension: String = "",
+        prepares: String = "",
+        consolidates: String = ""
     ) {
         self.id = UUID()
         self.activityKey = activityKey
@@ -213,13 +219,15 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
         self.adaptations = adaptations
         self.slowGroupPlan = slowGroupPlan
         self.fastGroupExtension = fastGroupExtension
+        self.prepares = prepares
+        self.consolidates = consolidates
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, activityKey, activityType, plannedMinutes, timeLabel, phase, activity,
              purpose, organisation, setup, teacherActions, studentInstructions, studentActions,
              timingBreakdown, clilFocus, evidence, materials, adaptations, slowGroupPlan,
-             fastGroupExtension
+             fastGroupExtension, prepares, consolidates
         // session-plan-v2 keys. The legacy keys above remain accepted on decode.
         case v2Time = "time", v2Minutes = "minutes", v2Kind = "kind", v2Title = "title"
         case v2TeacherNarrative = "teacherNarrative", v2StudentOutput = "studentOutput"
@@ -250,6 +258,8 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
         try container.encode(adaptations, forKey: .adaptations)
         try container.encode(slowGroupPlan, forKey: .v2IfSlow)
         try container.encode(fastGroupExtension, forKey: .v2IfAhead)
+        try container.encode(prepares, forKey: .prepares)
+        try container.encode(consolidates, forKey: .consolidates)
     }
 
     init(from decoder: Decoder) throws {
@@ -292,6 +302,8 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
             ?? (try container.decodeIfPresent(String.self, forKey: .slowGroupPlan)) ?? ""
         self.fastGroupExtension = try container.decodeIfPresent(String.self, forKey: .v2IfAhead)
             ?? (try container.decodeIfPresent(String.self, forKey: .fastGroupExtension)) ?? ""
+        self.prepares = try container.decodeIfPresent(String.self, forKey: .prepares) ?? ""
+        self.consolidates = try container.decodeIfPresent(String.self, forKey: .consolidates) ?? ""
     }
 }
 
@@ -308,6 +320,8 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
     var activities: [LearningSituationSessionActivityDraft]
     var guidingQuestions: [String]
     var closure: String
+    /// SHA-256 del DOCX que produjo este payload. Es opcional para leer payloads históricos.
+    var sourceDocumentSHA256: String?
 
     init(
         schema: String = "session-plan-v2",
@@ -318,7 +332,8 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
         sections: [LearningSituationSessionSectionDraft],
         activities: [LearningSituationSessionActivityDraft],
         guidingQuestions: [String] = [],
-        closure: String = ""
+        closure: String = "",
+        sourceDocumentSHA256: String? = nil
     ) {
         self.schema = schema
         self.schemaVersion = schemaVersion
@@ -329,11 +344,12 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
         self.activities = activities
         self.guidingQuestions = guidingQuestions
         self.closure = closure
+        self.sourceDocumentSHA256 = sourceDocumentSHA256
     }
 
     private enum CodingKeys: String, CodingKey {
         case schema, schemaVersion, organisation, coreKnowledge, assessment
-        case sections, activities, guidingQuestions, closure
+        case sections, activities, guidingQuestions, closure, sourceDocumentSHA256
     }
 
     init(from decoder: Decoder) throws {
@@ -347,6 +363,7 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
         activities = try container.decodeIfPresent([LearningSituationSessionActivityDraft].self, forKey: .activities) ?? []
         guidingQuestions = try container.decodeIfPresent([String].self, forKey: .guidingQuestions) ?? []
         closure = try container.decodeIfPresent(String.self, forKey: .closure) ?? ""
+        sourceDocumentSHA256 = try container.decodeIfPresent(String.self, forKey: .sourceDocumentSHA256)
     }
 
     static func decode(from json: String) -> Self? {
@@ -1314,6 +1331,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
             case "adaptations", "adaptaciones": return "adaptations"
             case "if the group is slow", "slow group plan", "si el grupo va lento": return "slowGroupPlan"
             case "if the group is ahead", "fast group extension", "si el grupo termina antes": return "fastGroupExtension"
+            case "prepares", "prepares the long block", "prepares for the long block", "prepara", "prepara el bloque largo", "prepara el largo": return "prepares"
+            case "consolidates", "consolidates the long block", "consolidates for the long block", "consolida", "consolida el bloque largo", "consolida el largo": return "consolidates"
             default: return nil
             }
         }
@@ -1454,19 +1473,24 @@ struct LearningSituationSessionSequenceDocumentImportService {
 
         let mergedActivities = activities.map { activity -> LearningSituationSessionActivityDraft in
             guard let values = details[activity.activityKey] else { return activity }
+            func quickViewValue(_ current: String, _ detail: String?) -> String {
+                current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (detail ?? current) : current
+            }
             return LearningSituationSessionActivityDraft(
                 activityKey: activity.activityKey, activityType: activity.activityType,
                 plannedMinutes: activity.plannedMinutes, timeLabel: activity.timeLabel,
                 phase: activity.phase, activity: activity.activity, purpose: values["purpose"] ?? activity.purpose,
-                organisation: values["organisation"] ?? activity.organisation, setup: values["setup"] ?? activity.setup,
+                organisation: quickViewValue(activity.organisation, values["organisation"]), setup: values["setup"] ?? activity.setup,
                 teacherActions: values["teacherActions"] ?? activity.teacherActions,
                 studentInstructions: values["studentInstructions"] ?? activity.studentInstructions,
-                studentActions: values["studentActions"] ?? activity.studentActions,
+                studentActions: quickViewValue(activity.studentActions, values["studentActions"]),
                 timingBreakdown: values["timingBreakdown"] ?? activity.timingBreakdown,
-                clilFocus: values["clilFocus"] ?? activity.clilFocus, evidence: values["evidence"] ?? activity.evidence,
-                materials: values["materials"] ?? activity.materials, adaptations: values["adaptations"] ?? activity.adaptations,
+                clilFocus: values["clilFocus"] ?? activity.clilFocus, evidence: quickViewValue(activity.evidence, values["evidence"]),
+                materials: quickViewValue(activity.materials, values["materials"]), adaptations: quickViewValue(activity.adaptations, values["adaptations"]),
                 slowGroupPlan: values["slowGroupPlan"] ?? activity.slowGroupPlan,
-                fastGroupExtension: values["fastGroupExtension"] ?? activity.fastGroupExtension
+                fastGroupExtension: values["fastGroupExtension"] ?? activity.fastGroupExtension,
+                prepares: quickViewValue(activity.prepares, values["prepares"]),
+                consolidates: quickViewValue(activity.consolidates, values["consolidates"])
             )
         }
         let quickIDs = Set(activities.map(\.activityKey))
@@ -1773,6 +1797,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
             case "adaptations", "adaptaciones": return "adaptations"
             case "if the group is slow", "slow group plan", "si el grupo va lento": return "slowGroupPlan"
             case "if the group is ahead", "fast group extension", "si el grupo termina antes": return "fastGroupExtension"
+            case "prepares", "prepares the long block", "prepares for the long block", "prepara", "prepara el bloque largo", "prepara el largo": return "prepares"
+            case "consolidates", "consolidates the long block", "consolidates for the long block", "consolida", "consolida el bloque largo", "consolida el largo": return "consolidates"
             default: return nil
             }
         }
@@ -1785,6 +1811,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
 
         func mergeDetails(into activity: LearningSituationSessionActivityDraft) -> LearningSituationSessionActivityDraft {
             guard let values = activityDetails[activity.activityKey] else { return activity }
+            func quickViewValue(_ current: String, _ detail: String?) -> String {
+                current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (detail ?? current) : current
+            }
             return LearningSituationSessionActivityDraft(
                 activityKey: activity.activityKey,
                 activityType: activity.activityType,
@@ -1793,18 +1822,20 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 phase: activity.phase,
                 activity: activity.activity,
                 purpose: values["purpose"] ?? activity.purpose,
-                organisation: values["organisation"] ?? activity.organisation,
+                organisation: quickViewValue(activity.organisation, values["organisation"]),
                 setup: values["setup"] ?? activity.setup,
                 teacherActions: values["teacherActions"] ?? activity.teacherActions,
                 studentInstructions: values["studentInstructions"] ?? activity.studentInstructions,
-                studentActions: values["studentActions"] ?? activity.studentActions,
+                studentActions: quickViewValue(activity.studentActions, values["studentActions"]),
                 timingBreakdown: values["timingBreakdown"] ?? activity.timingBreakdown,
                 clilFocus: values["clilFocus"] ?? activity.clilFocus,
-                evidence: values["evidence"] ?? activity.evidence,
-                materials: values["materials"] ?? activity.materials,
-                adaptations: values["adaptations"] ?? activity.adaptations,
+                evidence: quickViewValue(activity.evidence, values["evidence"]),
+                materials: quickViewValue(activity.materials, values["materials"]),
+                adaptations: quickViewValue(activity.adaptations, values["adaptations"]),
                 slowGroupPlan: values["slowGroupPlan"] ?? activity.slowGroupPlan,
-                fastGroupExtension: values["fastGroupExtension"] ?? activity.fastGroupExtension
+                fastGroupExtension: values["fastGroupExtension"] ?? activity.fastGroupExtension,
+                prepares: quickViewValue(activity.prepares, values["prepares"]),
+                consolidates: quickViewValue(activity.consolidates, values["consolidates"])
             )
         }
 
@@ -2213,11 +2244,14 @@ struct LearningSituationSessionSequenceDocumentImportService {
     }
 
     private func hasActivityIDColumn(_ header: [String]) -> Bool {
-        header.contains {
-            let value = normalized($0)
-            return value.contains("activity id") || value.contains("activity key") ||
-                value.contains("id actividad") || value.contains("clave actividad")
-        }
+        header.contains { isActivityIDHeader($0) }
+    }
+
+    private func isActivityIDHeader(_ raw: String) -> Bool {
+        let value = normalized(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.contains("activity id") || value.contains("activity key") ||
+            value.contains("activity identifier") || value.contains("id actividad") ||
+            value.contains("clave actividad") || value.contains("identificador de actividad")
     }
 
     /// B1: convierte una tabla horaria (Time | Phase | Activity | Teacher role | Student role |
@@ -2225,18 +2259,24 @@ struct LearningSituationSessionSequenceDocumentImportService {
     private func timeTableLines(_ rows: [[String]]) -> [String] {
         guard let header = rows.first else { return [] }
         let normalizedHeader = header.map(normalized)
-        func columnIndex(_ candidates: [String]) -> Int? {
-            normalizedHeader.firstIndex { column in candidates.contains { column.contains($0) } }
+        func columnIndex(_ candidates: [String], excludingActivityID: Bool = false) -> Int? {
+            normalizedHeader.firstIndex { column in
+                if excludingActivityID && isActivityIDHeader(column) { return false }
+                return candidates.contains { column.contains($0) }
+            }
         }
         let timeIndex = columnIndex(["time", "hora", "tiempo"])
         let phaseIndex = columnIndex(["phase", "fase"])
-        let activityIndex = columnIndex(["activity", "actividad"])
+        let activityIDIndex = normalizedHeader.firstIndex(where: isActivityIDHeader)
+        let activityIndex = columnIndex(["activity", "actividad"], excludingActivityID: true)
         let teacherIndex = columnIndex(["teacher narrative", "teacher script", "teacher role", "teacher", "profesor", "docente"])
         let studentIndex = columnIndex(["student narrative", "learner narrative", "student role", "student", "alumno"])
         let evidenceIndex = columnIndex(["evidence", "evidencia"])
         let clilIndex = columnIndex(["clil", "language", "lengua", "scaffolding", "andamiaje"])
         let materialsIndex = columnIndex(["material", "materials", "materiales"])
         let adaptationsIndex = columnIndex(["adaptation", "adaptaciones", "inclusion", "inclusion"])
+        let preparesIndex = columnIndex(["prepares", "prepara"])
+        let consolidatesIndex = columnIndex(["consolidates", "consolida"])
         func cell(_ row: [String], _ index: Int?) -> String? {
             guard let index, index < row.count else { return nil }
             let value = row[index].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2251,7 +2291,13 @@ struct LearningSituationSessionSequenceDocumentImportService {
             let student = cell(row, studentIndex)
             let evidence = cell(row, evidenceIndex)
             var head = [time, phase, activity].compactMap { $0 }.joined(separator: " · ")
-            if head.isEmpty { head = row.joined(separator: " · ") }
+            if head.isEmpty {
+                head = row.enumerated()
+                    .filter { $0.offset != activityIDIndex }
+                    .map(\.element)
+                    .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    .joined(separator: " · ")
+            }
             var extras: [String] = []
             if let teacher { extras.append("Profesorado: \(teacher)") }
             if let student { extras.append("Alumnado: \(student)") }
@@ -2259,6 +2305,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
             if let clil = cell(row, clilIndex) { extras.append("CLIL: \(clil)") }
             if let materials = cell(row, materialsIndex) { extras.append("Material: \(materials)") }
             if let adaptations = cell(row, adaptationsIndex) { extras.append("Adaptaciones: \(adaptations)") }
+            if let prepares = cell(row, preparesIndex) { extras.append("Prepares: \(prepares)") }
+            if let consolidates = cell(row, consolidatesIndex) { extras.append("Consolidates: \(consolidates)") }
             return extras.isEmpty ? head : "\(head) (\(extras.joined(separator: "; ")))"
         }
     }
@@ -2272,7 +2320,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
         func columnIndex(_ candidates: [String]) -> Int? {
             normalizedHeader.firstIndex { column in
                 if candidates.contains("activity") || candidates.contains("actividad") {
-                    if column.contains("activity id") || column.contains("activity key") { return false }
+                    if isActivityIDHeader(column) { return false }
                 }
                 return candidates.contains { column.contains($0) }
             }
@@ -2282,7 +2330,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
             let value = row[index].trimmingCharacters(in: .whitespacesAndNewlines)
             return value == "—" || value == "-" ? "" : value
         }
-        let activityIDIndex = columnIndex(["activity id", "activity key", "id actividad", "clave actividad"])
+        let activityIDIndex = normalizedHeader.firstIndex(where: isActivityIDHeader)
         let typeIndex = columnIndex(["type", "activity type", "tipo"])
         let timeIndex = columnIndex(["time", "hora", "tiempo"])
         let minutesIndex = columnIndex(["minutes", "minutos", "duration", "duracion"])
@@ -2301,10 +2349,15 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let adaptationsIndex = columnIndex(["adaptation", "adaptaciones", "inclusion", "inclusion"])
         let slowGroupIndex = columnIndex(["slow group", "if the group is slow", "grupo lento"])
         let fastGroupIndex = columnIndex(["fast group", "if the group is ahead", "grupo adelantado", "extension"])
+        let preparesIndex = columnIndex(["prepares", "prepara"])
+        let consolidatesIndex = columnIndex(["consolidates", "consolida"])
 
         return rows.dropFirst().enumerated().compactMap { offset, row in
             let activity = cell(row, activityIndex)
-            let fallback = row.dropFirst().map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let fallback = row.enumerated()
+                .filter { $0.offset != activityIDIndex }
+                .map(\.element)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty && $0 != "—" && $0 != "-" }
                 .joined(separator: " · ")
             let resolvedActivity = activity.isEmpty ? fallback : activity
@@ -2337,7 +2390,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 materials: cell(row, materialsIndex),
                 adaptations: cell(row, adaptationsIndex),
                 slowGroupPlan: cell(row, slowGroupIndex),
-                fastGroupExtension: cell(row, fastGroupIndex)
+                fastGroupExtension: cell(row, fastGroupIndex),
+                prepares: cell(row, preparesIndex),
+                consolidates: cell(row, consolidatesIndex)
             )
         }
     }

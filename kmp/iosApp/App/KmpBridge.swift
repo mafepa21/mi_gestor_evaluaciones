@@ -984,6 +984,9 @@ final class KmpBridge: ObservableObject {
     private var syncToken: String? = nil
     private var pairedServerId: String? = nil
     private var pairedServerFingerprint: String? = nil
+    /// Canonical JSON por SHA y número de sesión. Evita volver a parsear el mismo DOCX una vez
+    /// por plan al abrir el Planner o al reparar una planificación histórica.
+    private var sessionPlanJSONCacheBySource: [String: [Int: String]] = [:]
     private var discoveredPeersByHost: [String: LanDiscoveredPeer] = [:]
     private var autoSyncLoopTask: Task<Void, Never>? = nil
     private var autoSyncDebounceTask: Task<Void, Never>? = nil
@@ -6025,16 +6028,205 @@ final class KmpBridge: ObservableObject {
     }
 
     func learningSituationSessionPlan(id: Int64) async throws -> LearningSituationSessionPlan? {
-        try await container.learningSituationsRepository.getSessionPlan(id: id)
+        guard let plan = try await container.learningSituationsRepository.getSessionPlan(id: id) else { return nil }
+        return try await repairPersistedSessionPlanIfNeeded(plan)
     }
 
     func learningSituationSessionPlans(sequenceVersionId: Int64) async throws -> [LearningSituationSessionPlan] {
-        try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: sequenceVersionId)
+        let plans = try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: sequenceVersionId)
+        var repaired: [LearningSituationSessionPlan] = []
+        repaired.reserveCapacity(plans.count)
+        for plan in plans {
+            repaired.append(try await repairPersistedSessionPlanIfNeeded(plan))
+        }
+        return repaired
     }
 
     /// Bulk read used by Planner sequence enrichment to avoid one query per session plan.
     func learningSituationSessionPlansAll() async throws -> [LearningSituationSessionPlan] {
-        try await container.learningSituationsRepository.listAllSessionPlans()
+        let plans = try await container.learningSituationsRepository.listAllSessionPlans()
+        var repaired: [LearningSituationSessionPlan] = []
+        repaired.reserveCapacity(plans.count)
+        for plan in plans {
+            repaired.append(try await repairPersistedSessionPlanIfNeeded(plan))
+        }
+        return repaired
+    }
+
+    /// Repara planes históricos sin cambiar sus IDs ni exigir borrar la planificación.
+    /// Primero se recupera el DOCX original (incluida la descarga metadata-first por hash).
+    /// Si el binario aún no está disponible, se deja el registro intacto: la proyección v2
+    /// puede representar el plan mientras tanto, pero no se persiste un v2 incompleto que
+    /// impida recuperar PREPARES/CONSOLIDATES cuando llegue el documento.
+    private func repairPersistedSessionPlanIfNeeded(
+        _ plan: LearningSituationSessionPlan
+    ) async throws -> LearningSituationSessionPlan {
+        let versions = try await container.learningSituationsRepository
+            .listSessionSequenceVersions(learningSituationId: plan.learningSituationId)
+        let version = versions.first { $0.id == plan.sequenceVersionId }
+        let payload = LearningSituationSessionDevelopmentPayload.decode(from: plan.developmentJson)
+        let expectedHash = version?.sha256.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let storedHash = payload?.sourceDocumentSHA256?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasSyntheticProjection = payload?.activities.contains { activity in
+            let key = activity.activityKey.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            return key.hasPrefix("LEGACY-") || key.hasPrefix("ACTIVIDAD ")
+        } ?? false
+        let alreadyCanonical = payload?.schema == "session-plan-v2"
+            && plan.developmentJson.contains("\"prepares\":")
+            && plan.developmentJson.contains("\"consolidates\":")
+            && !hasSyntheticProjection
+            && (expectedHash.isEmpty || storedHash == expectedHash)
+        guard !alreadyCanonical else { return plan }
+
+        if let sourceURL = await ensureLearningSituationSessionSequenceDocument(version: version),
+           let repairedJSON = await canonicalDevelopmentJSON(
+               from: sourceURL,
+               sessionNumber: Int(plan.sessionNumber),
+               sourceSHA256: expectedHash.isEmpty ? nil : expectedHash
+           ) {
+            return try await persistDerivedDevelopmentJSON(repairedJSON, for: plan)
+        }
+
+        return plan
+    }
+
+    private nonisolated static func canonicalDevelopmentJSON(
+        for draft: LearningSituationSessionPlanDraft,
+        sourceSHA256: String? = nil
+    ) -> String? {
+        let payload = LearningSituationSessionDevelopmentPayload(
+            organisation: draft.organisation,
+            coreKnowledge: draft.coreKnowledge,
+            assessment: draft.assessment,
+            sections: draft.development,
+            activities: draft.activities,
+            guidingQuestions: draft.guidingQuestions,
+            closure: draft.closure,
+            sourceDocumentSHA256: sourceSHA256
+        )
+        guard let data = try? JSONEncoder().encode(payload) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func canonicalDevelopmentJSON(
+        from sourceURL: URL,
+        sessionNumber: Int,
+        sourceSHA256: String?
+    ) async -> String? {
+        let trimmedSourceHash = sourceSHA256?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cacheKey = trimmedSourceHash?.isEmpty == false ? trimmedSourceHash! : sourceURL.path
+        if let cached = sessionPlanJSONCacheBySource[cacheKey]?[sessionNumber] {
+            return cached
+        }
+
+        let result: String? = await Task.detached(priority: .utility) { () -> String? in
+            guard let imported = try? LearningSituationSessionSequenceDocumentImportService().preview(from: sourceURL),
+                  let draft = imported.plans.first(where: { $0.sessionNumber == sessionNumber }) else {
+                return nil
+            }
+            return KmpBridge.canonicalDevelopmentJSON(for: draft, sourceSHA256: sourceSHA256)
+        }.value
+        if let result {
+            var plans = sessionPlanJSONCacheBySource[cacheKey] ?? [:]
+            plans[sessionNumber] = result
+            sessionPlanJSONCacheBySource[cacheKey] = plans
+        }
+        return result
+    }
+
+    private func persistDerivedDevelopmentJSON(
+        _ repairedJSON: String,
+        for plan: LearningSituationSessionPlan
+    ) async throws -> LearningSituationSessionPlan {
+        guard repairedJSON != plan.developmentJson,
+              !semanticallyEquivalentDevelopmentJSON(plan.developmentJson, repairedJSON) else {
+            return plan
+        }
+        let repairedPlan = LearningSituationSessionPlan(
+            id: plan.id,
+            learningSituationId: plan.learningSituationId,
+            sequenceVersionId: plan.sequenceVersionId,
+            sessionNumber: plan.sessionNumber,
+            sourceLabel: plan.sourceLabel,
+            title: plan.title,
+            sessionType: plan.sessionType,
+            effectiveMinutes: plan.effectiveMinutes,
+            objective: plan.objective,
+            criteriaJson: plan.criteriaJson,
+            material: plan.material,
+            developmentJson: repairedJSON,
+            adaptationsJson: plan.adaptationsJson,
+            trace: plan.trace
+        )
+        _ = try await container.learningSituationsRepository.saveSessionPlan(plan: repairedPlan)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        enqueueLocalChange(
+            entity: "learning_situation_session_plan",
+            id: "\(plan.learningSituationId)-\(plan.sequenceVersionId)-\(plan.sessionNumber)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": plan.id, "learningSituationId": plan.learningSituationId,
+                "sequenceVersionId": plan.sequenceVersionId, "sessionNumber": plan.sessionNumber,
+                "sourceLabel": plan.sourceLabel, "title": plan.title,
+                "sessionType": plan.sessionType, "effectiveMinutes": plan.effectiveMinutes,
+                "objective": plan.objective, "criteriaJson": plan.criteriaJson,
+                "material": plan.material, "developmentJson": repairedJSON,
+                "adaptationsJson": plan.adaptationsJson
+            ]
+        )
+        return repairedPlan
+    }
+
+    /// Los drafts del importador llevan UUIDs de UI que se regeneran al volver a leer el mismo
+    /// DOCX. No deben provocar una escritura ni una notificación de sync si el contenido docente
+    /// y la procedencia son iguales.
+    private func semanticallyEquivalentDevelopmentJSON(_ lhs: String, _ rhs: String) -> Bool {
+        func canonicalData(_ json: String) -> Data? {
+            guard let data = json.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) else { return nil }
+            func removingRuntimeIDs(_ value: Any) -> Any {
+                if let dictionary = value as? [String: Any] {
+                    var result: [String: Any] = [:]
+                    for (key, nested) in dictionary {
+                        if key == "id", let string = nested as? String, UUID(uuidString: string) != nil {
+                            continue
+                        }
+                        result[key] = removingRuntimeIDs(nested)
+                    }
+                    return result
+                }
+                if let array = value as? [Any] {
+                    return array.map(removingRuntimeIDs)
+                }
+                return value
+            }
+            return try? JSONSerialization.data(
+                withJSONObject: removingRuntimeIDs(object),
+                options: [.sortedKeys]
+            )
+        }
+        guard let lhsData = canonicalData(lhs), let rhsData = canonicalData(rhs) else { return false }
+        return lhsData == rhsData
+    }
+
+    private func localSequenceSourceURL(_ version: LearningSituationSessionSequenceVersion?) -> URL? {
+        if let path = version?.localPath,
+           !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let url = URL(fileURLWithPath: path)
+            if let expectedHash = version?.sha256,
+               !expectedHash.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let data = try? Data(contentsOf: url) {
+                let actualHash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                if actualHash == expectedHash { return url }
+            }
+        }
+        guard let sha256 = version?.sha256.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sha256.isEmpty else { return nil }
+        let url = LearningSituationDocumentStore().directoryURL
+            .appendingPathComponent("\(sha256).docx")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let actualHash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return actualHash == sha256 ? url : nil
     }
 
     /// Exposición de solo lectura para que el Planner pueda representar la última
@@ -6055,6 +6247,20 @@ final class KmpBridge: ObservableObject {
         try await container.learningSituationsRepository
             .listSessionSequenceVersions(learningSituationId: learningSituationId)
             .first { $0.id == id }
+    }
+
+    /// Makes the original DOCX available to the Planner when the metadata arrived by
+    /// sync before the binary did. The download is cache-by-hash and is safe to repeat.
+    func ensureLearningSituationSessionSequenceDocument(
+        version: LearningSituationSessionSequenceVersion?
+    ) async -> URL? {
+        if let localURL = localSequenceSourceURL(version) { return localURL }
+        guard let sha256 = version?.sha256.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sha256.isEmpty,
+              let path = await downloadLearningSituationDocumentIfNeeded(sha256: sha256) else {
+            return nil
+        }
+        return URL(fileURLWithPath: path)
     }
 
     func confirmLearningSituationImport(
@@ -6333,6 +6539,14 @@ final class KmpBridge: ObservableObject {
         let existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situation.id)
         if let identicalVersion = existingVersions.first(where: { $0.sha256 == draft.sha256 }) {
             let existingPlans = try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: identicalVersion.id)
+            for existingPlan in existingPlans {
+                guard let importedPlan = draft.plans.first(where: { $0.sessionNumber == Int(existingPlan.sessionNumber) }),
+                      let developmentJSON = Self.canonicalDevelopmentJSON(
+                          for: importedPlan,
+                          sourceSHA256: draft.sha256
+                      ) else { continue }
+                _ = try await persistDerivedDevelopmentJSON(developmentJSON, for: existingPlan)
+            }
             return Dictionary(
                 existingPlans.map { (Int($0.sessionNumber), $0.id) },
                 uniquingKeysWith: { first, _ in first }
@@ -6378,7 +6592,8 @@ final class KmpBridge: ObservableObject {
                 sections: plan.development,
                 activities: plan.activities,
                 guidingQuestions: plan.guidingQuestions,
-                closure: plan.closure
+                closure: plan.closure,
+                sourceDocumentSHA256: draft.sha256
             )
             let developmentJSON = String(data: try JSONEncoder().encode(developmentPayload), encoding: .utf8) ?? "{}"
             let adaptationsJSON = String(data: try JSONEncoder().encode(plan.adaptations), encoding: .utf8) ?? "[]"
@@ -7875,7 +8090,10 @@ final class KmpBridge: ObservableObject {
     private func downloadLearningSituationDocumentIfNeeded(sha256: String) async -> String? {
         let store = LearningSituationDocumentStore()
         let destination = store.directoryURL.appendingPathComponent("\(sha256).docx")
-        if FileManager.default.fileExists(atPath: destination.path) { return destination.path }
+        if let existing = try? Data(contentsOf: destination) {
+            let actualHash = SHA256.hash(data: existing).map { String(format: "%02x", $0) }.joined()
+            if actualHash == sha256 { return destination.path }
+        }
         guard let host = pairedSyncHost, let token = syncToken else { return nil }
         do {
             try FileManager.default.createDirectory(at: store.directoryURL, withIntermediateDirectories: true)

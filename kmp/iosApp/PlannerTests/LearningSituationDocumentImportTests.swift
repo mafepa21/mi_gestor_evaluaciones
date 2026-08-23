@@ -22,7 +22,8 @@ final class LearningSituationDocumentImportTests: XCTestCase {
             teacherActions: "Teacher narrative", studentInstructions: "Instructions",
             studentActions: "Student output", timingBreakdown: "Timing",
             clilFocus: "CLIL", evidence: "Evidence", materials: "Materials",
-            adaptations: "Adaptations", slowGroupPlan: "If slow", fastGroupExtension: "If ahead"
+            adaptations: "Adaptations", slowGroupPlan: "If slow", fastGroupExtension: "If ahead",
+            prepares: "Activate the prior learning.", consolidates: "Retrieve the long-block evidence."
         )
         let payload = LearningSituationSessionDevelopmentPayload(
             organisation: "Eight groups", coreKnowledge: "FITT-PV", assessment: "Health Passport",
@@ -31,8 +32,12 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         let v2JSON = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
         XCTAssertTrue(v2JSON.contains("session-plan-v2"))
         XCTAssertTrue(v2JSON.contains("\"teacherNarrative\""))
+        XCTAssertTrue(v2JSON.contains("\"prepares\""))
+        XCTAssertTrue(v2JSON.contains("\"consolidates\""))
         let v2 = LearningSituationSessionDevelopmentPayload.decode(from: v2JSON)
         XCTAssertEqual(v2?.activities.first?.activityKey, "W01-L-03")
+        XCTAssertEqual(v2?.activities.first?.prepares, "Activate the prior learning.")
+        XCTAssertEqual(v2?.activities.first?.consolidates, "Retrieve the long-block evidence.")
         XCTAssertEqual(v2?.guidingQuestions, ["What changed?"])
         XCTAssertNil(LearningSituationSessionDevelopmentPayload.decode(from: "{not-json"))
     }
@@ -91,7 +96,9 @@ final class LearningSituationDocumentImportTests: XCTestCase {
             .paragraph("Purpose"),
             .paragraph("Establish a safe baseline."),
             .paragraph("Instructions for students:"),
-            .paragraph("Listen, record and swap roles.")
+            .paragraph("Listen, record and swap roles."),
+            .paragraph("Prepares: Rehearse the long-block vocabulary."),
+            .paragraph("Consolidates: Record the evidence in the passport.")
         ]
 
         let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
@@ -105,6 +112,8 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(plan.activities.first?.studentActions, "One completed record")
         XCTAssertEqual(plan.activities.first?.studentInstructions, "Listen, record and swap roles.")
         XCTAssertEqual(plan.activities.first?.purpose, "Establish a safe baseline.")
+        XCTAssertEqual(plan.activities.first?.prepares, "Rehearse the long-block vocabulary.")
+        XCTAssertEqual(plan.activities.first?.consolidates, "Record the evidence in the passport.")
     }
 
     func testFormatCDuplicateSessionNumberKeepsFirstPlanAndWarns() throws {
@@ -214,10 +223,114 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(shortPlan.activities.map(\.activity), ["Short retrieval launch", "Short evidence check"])
         XCTAssertEqual(shortPlan.activities.map(\.plannedMinutes), [10, 20])
         XCTAssertEqual(shortPlan.activities.map(\.evidence), ["Recall note", "Checked passport"])
+        XCTAssertEqual(shortPlan.activities.map(\.prepares), ["Activate prior knowledge.", "Rehearse the challenge roles."])
+        XCTAssertEqual(shortPlan.activities.map(\.consolidates), ["Retrieve the long-block learning.", "Consolidate the evidence record."])
         XCTAssertTrue(shortPlan.activities.allSatisfy { !$0.activityKey.hasPrefix("LEGACY-") })
         XCTAssertTrue(shortPlan.activities.allSatisfy { !$0.activityKey.contains("-L-") })
         XCTAssertEqual(shortPlan.effectiveMinutes, 30)
         XCTAssertFalse(shortPlan.activities.contains { $0.activity == "Long-only challenge" })
+    }
+
+    func testTimeTableLinesNeverUsesActivityIDAsActivity() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("WEEK 1 - Activity ID regression"),
+            .paragraph("LONG BLOCK (90 effective minutes)"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity", "Evidence"],
+                ["0′–10′", "W01-L-01", "setup", "10", "Entry", "Real briefing", "Entry note"]
+            ])
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("activity-id-regression".utf8),
+            url: URL(fileURLWithPath: "/tmp/activity-id-regression.docx")
+        )
+        let plan = try XCTUnwrap(draft.plans.first)
+        XCTAssertEqual(plan.activities.map(\.activity), ["Real briefing"])
+        XCTAssertTrue(plan.development.flatMap(\.lines).contains { $0.contains("Real briefing") })
+        XCTAssertFalse(plan.development.flatMap(\.lines).contains { $0.contains("W01-L-01") })
+    }
+
+    func testActivityIDHeaderSynonymsRemainIdentifiersAndNeverBecomeActivities() throws {
+        for headerName in ["Activity Identifier", "Identificador de actividad"] {
+            let blocks: [WordDocumentBlock] = [
+                .paragraph("WEEK 1 - Activity ID synonym \(headerName)"),
+                .paragraph("LONG BLOCK (90 effective minutes)"),
+                .table([
+                    ["Time", headerName, "Activity", "Evidence"],
+                    ["0′–10′", "W01-L-01", "Real briefing", "Entry note"]
+                ])
+            ]
+
+            let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+                blocks: blocks,
+                data: Data(headerName.utf8),
+                url: URL(fileURLWithPath: "/tmp/activity-id-\(headerName).docx")
+            )
+            let plan = try XCTUnwrap(draft.plans.first)
+            XCTAssertEqual(plan.activities.map(\.activityKey), ["W01-L-01"])
+            XCTAssertEqual(plan.activities.map(\.activity), ["Real briefing"])
+            XCTAssertFalse(plan.development.flatMap(\.lines).contains { $0.contains("W01-L-01") })
+        }
+    }
+
+    func testWorkspaceDocxHasNoLegacyActivitiesOrIdentifierTitles() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let url = repositoryRoot.appendingPathComponent("sesiones_secuenciadas.docx")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw XCTSkip("El DOCX local no está disponible en este checkout.")
+        }
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
+        let idPattern = try NSRegularExpression(pattern: #"^W[0-9]{2}-[LS]-[0-9]{2}$"#)
+        let titlePattern = try NSRegularExpression(pattern: #"(?:LEGACY-[0-9-]+|W[0-9]{2}-[LS]-[0-9]{2})"#, options: .caseInsensitive)
+        for activity in draft.plans.flatMap(\.activities) {
+            XCTAssertFalse(activity.activityKey.hasPrefix("LEGACY-"), activity.activityKey)
+            XCTAssertNotNil(idPattern.firstMatch(in: activity.activityKey, range: NSRange(activity.activityKey.startIndex..., in: activity.activityKey)))
+            XCTAssertFalse(titlePattern.firstMatch(in: activity.activity, range: NSRange(activity.activity.startIndex..., in: activity.activity)) != nil, activity.activity)
+            XCTAssertFalse(activity.activity.hasPrefix("LEGACY-"), activity.activity)
+        }
+
+        let counts = draft.plans.filter { $0.sessionNumber <= 4 }.map {
+            "\($0.sessionNumber):\($0.activities.count)"
+        }.joined(separator: ",")
+        print("DOCX_SESSION_ACTIVITY_COUNTS=\(counts)")
+    }
+
+    func testWorkspaceDocxDumpsW01ShortDevelopmentJSON() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let url = repositoryRoot.appendingPathComponent("sesiones_secuenciadas.docx")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw XCTSkip("El DOCX local no está disponible en este checkout.")
+        }
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
+        let shortPlan = try XCTUnwrap(draft.plans.first { $0.sessionNumber == 2 })
+        let payload = LearningSituationSessionDevelopmentPayload(
+            organisation: shortPlan.organisation,
+            coreKnowledge: shortPlan.coreKnowledge,
+            assessment: shortPlan.assessment,
+            sections: shortPlan.development,
+            activities: shortPlan.activities,
+            guidingQuestions: shortPlan.guidingQuestions,
+            closure: shortPlan.closure
+        )
+        let json = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        let attachment = XCTAttachment(string: json)
+        attachment.name = "W01-SHORT-developmentJson"
+        add(attachment)
+        XCTAssertEqual(payload.schema, "session-plan-v2")
+        XCTAssertEqual(payload.activities.count, shortPlan.activities.count)
+        print("W01_SHORT_DEVELOPMENT_JSON=\(json)")
     }
 
     func testWeeklyActivityDetailHeadingWithTitleSuffixMergesByActivityID() throws {
@@ -367,6 +480,8 @@ final class LearningSituationDocumentImportTests: XCTestCase {
             .paragraph("Instructions for students: Count, record and swap roles."),
             .paragraph("Timing breakdown: 5 minutes model, 12 minutes practice, 3 minutes check."),
             .paragraph("CLIL focus: Use the stem: Our evidence shows…"),
+            .paragraph("Prepares: Activate the prior learning before the short block."),
+            .paragraph("Consolidates: Retrieve the long-block evidence record."),
             .paragraph("If the group is slow: Keep the first test only."),
             .paragraph("SHORT BLOCK (30 effective minutes)"),
             .table([
@@ -388,6 +503,8 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.plans[0].activities.first?.studentInstructions, "Count, record and swap roles.")
         XCTAssertEqual(draft.plans[0].activities.first?.studentActions, "Complete the record.")
         XCTAssertEqual(draft.plans[0].activities.first?.timingBreakdown, "5 minutes model, 12 minutes practice, 3 minutes check.")
+        XCTAssertEqual(draft.plans[0].activities.first?.prepares, "Activate the prior learning before the short block.")
+        XCTAssertEqual(draft.plans[0].activities.first?.consolidates, "Retrieve the long-block evidence record.")
         XCTAssertEqual(draft.plans[1].activities.map(\.activityKey), ["W01-S-01"])
         XCTAssertEqual(draft.plans[1].activities.first?.activity, "Exit response")
     }

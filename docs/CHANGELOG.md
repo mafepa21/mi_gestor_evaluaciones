@@ -22,6 +22,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- La importación de actividades conserva las etiquetas compuestas de preparación, acción docente, acción del alumnado, evidencia y adaptación, y prioriza el detalle narrativo frente al resumen `QUICK VIEW`.
+- El importador de itinerarios seleccionables ya no aplica la validación legacy `-S-`/`-L-` a los identificadores `SF-Sn-Amm` y `LF-Sn-Amm`; conserva la validación de bloques antiguos y comprueba el prefijo de cada ruta.
 - El importador semanal ya no duplica las actividades al leer el detalle: fusiona los campos ampliados por `Activity ID`, valida IDs vacíos/duplicados/malformados y mantiene compatibilidad con payloads antiguos.
 - Las tablas horarias ya no pueden seleccionar `Activity ID` como título de `Activity`; la proyección histórica tampoco muestra claves `LEGACY-*` ni IDs como títulos.
 - La ficha de sesión resuelve el DOCX por su ruta almacenada o por su caché direccionada por SHA-256; en macOS abre el original con la aplicación del sistema y en iOS/iPadOS mantiene QuickLook.

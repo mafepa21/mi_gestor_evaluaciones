@@ -89,6 +89,7 @@ struct LearningSituationScheduleProjectionResult {
 enum LearningSituationSessionSequenceKind: Equatable {
     case canonicalWeekly
     case legacyWeekly
+    case routeAware
     case linear
 }
 
@@ -124,6 +125,9 @@ enum LearningSituationScheduleProjection {
             $0.blockRole != nil && $0.cycleIndex != nil && $0.weekKey != nil && $0.sequenceFormat != nil
         }
         if canonical { return .canonicalWeekly }
+        if plans.allSatisfy({ $0.sequenceFormat == "route-aware-v1" && $0.sequenceRoute != nil && $0.blockRole != nil }) {
+            return .routeAware
+        }
         return plans.contains(where: isWeeklyBlockPlan) ? .legacyWeekly : .linear
     }
 
@@ -221,6 +225,31 @@ enum LearningSituationScheduleProjection {
         var usedDestinations = Set<ScheduledDestination>()
         var previousAssignment: LearningSituationScheduledSlot?
         var route: LearningSituationWeeklySequenceRoute?
+        if sequenceKind(for: orderedPlans) == .routeAware {
+            for plan in orderedPlans.prefix(targetCount) {
+                let role = blockRole(for: plan)
+                guard let candidate = nextCandidate(
+                    for: role,
+                    startDate: normalizedStart,
+                    after: previousAssignment,
+                    sortedTemplate: sortedTemplate,
+                    periodForSlot: periodForSlot,
+                    usedDestinations: usedDestinations,
+                    searchDays: max(orderedPlans.count * 14 + 14, 84),
+                    excludedDates: normalizedExcludedDates
+                ) else {
+                    let requirement = role == .long ? "bloque largo" : "bloque corto"
+                    warnings.append("La sesión \(plan.sessionNumber) requiere un \(requirement), pero no hay una franja compatible desde la fecha de inicio.")
+                    continue
+                }
+                let assigned = withPlan(candidate, plan: plan)
+                assignments.append(assigned)
+                addDestinations(assigned, to: &usedDestinations)
+                previousAssignment = assigned
+                route = plan.sequenceRoute
+            }
+            return LearningSituationScheduleProjectionResult(slots: assignments, warnings: warnings, route: route)
+        }
         let searchDays = max(orderedPlans.count * 14 + 14, 84)
         let cycleGroups = Dictionary(grouping: orderedPlans) { cycleIndex(for: $0) }
 
@@ -281,6 +310,46 @@ enum LearningSituationScheduleProjection {
     private struct WeeklyCandidate {
         let pendingPlan: WeeklyPendingPlan
         let slot: LearningSituationScheduledSlot
+    }
+
+    static func inferRouteForFirstBlock(
+        startDate: Date,
+        template: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int,
+        excludedDates: Set<Date> = []
+    ) -> LearningSituationWeeklySequenceRoute? {
+        let calendar = Calendar(identifier: .iso8601)
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        let normalizedExcludedDates = Set(excludedDates.map { calendar.startOfDay(for: $0) })
+        let sortedTemplate = template.sorted {
+            Int($0.dayOfWeek) == Int($1.dayOfWeek) ? $0.startTime < $1.startTime : $0.dayOfWeek < $1.dayOfWeek
+        }
+        var firstShort: LearningSituationScheduledSlot?
+        var firstLong: LearningSituationScheduledSlot?
+        for dayOffset in 0...84 {
+            guard let date = calendar.date(byAdding: .day, value: dayOffset, to: normalizedStart),
+                  !normalizedExcludedDates.contains(calendar.startOfDay(for: date)) else { continue }
+            let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+            let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
+            if firstLong == nil {
+                firstLong = longCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot).first
+            }
+            if firstShort == nil {
+                firstShort = shortOnlyCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot).first
+            }
+            if firstShort != nil || firstLong != nil {
+                // A first slot that can start a long block wins ties: that is the only
+                // deterministic interpretation when two consecutive periods are available.
+                break
+            }
+        }
+        guard let firstShort, let firstLong else {
+            if firstLong != nil { return .longFirst }
+            if firstShort != nil { return .shortFirst }
+            return nil
+        }
+        let sameStart = firstLong.date == firstShort.date && firstLong.startTime == firstShort.startTime
+        return sameStart || isChronologicallyBefore(firstLong, firstShort) ? .longFirst : .shortFirst
     }
 
     private struct ScheduledDestination: Hashable {
@@ -455,6 +524,17 @@ enum LearningSituationScheduleProjection {
                     endTime: slot.endTime
                 )]
             )
+        }
+    }
+
+    private static func shortOnlyCandidates(
+        on date: Date,
+        slots: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> [LearningSituationScheduledSlot] {
+        shortCandidates(on: date, slots: slots, periodForSlot: periodForSlot).filter {
+            guard let start = minutes($0.startTime), let end = minutes($0.endTime) else { return false }
+            return end - start < 75
         }
     }
 
@@ -1635,6 +1715,7 @@ private struct LearningSituationScheduleSheet: View {
     @State private var expandedPlanNumbers: Set<Int> = []
     @State private var scheduleNotice = ""
     @State private var weeklyRoute: LearningSituationWeeklySequenceRoute?
+    @State private var selectedSequenceRoute: LearningSituationWeeklySequenceRoute?
     @State private var errorMessage = ""
 
     var body: some View {
@@ -1676,14 +1757,21 @@ private struct LearningSituationScheduleSheet: View {
                     var draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
                     let isWeekly = sequenceKind(draft.plans) == .canonicalWeekly
                     let annualSessionCount = Int(situation.sessionCount)
-                    let expectedPlanCount = isWeekly
-                        ? LearningSituationScheduleProjection.canonicalBlockCount(forAnnualSessionCount: annualSessionCount)
-                        : annualSessionCount
-                    if situation.sessionCount > 0 && draft.plans.count != expectedPlanCount {
+                    let expectedPlanCount: Int? = if sequenceKind(draft.plans) == .routeAware {
+                        nil
+                    } else {
+                        isWeekly
+                            ? LearningSituationScheduleProjection.canonicalBlockCount(forAnnualSessionCount: annualSessionCount)
+                            : annualSessionCount
+                    }
+                    if let expectedPlanCount, situation.sessionCount > 0 && draft.plans.count != expectedPlanCount {
                         let expectedLabel = isWeekly ? "bloques canónicos para \(annualSessionCount) sesiones lectivas" : "sesiones"
                         draft.warnings.append("La programación anual exige \(annualSessionCount) sesiones y se esperaban \(expectedPlanCount) \(expectedLabel), pero el documento contiene \(draft.plans.count).")
                     }
                     sequenceDraft = draft
+                    selectedSequenceRoute = nil
+                    weeklyRoute = nil
+                    slots = []
                     expandedPlanNumbers = Set(draft.plans.prefix(3).map(\.sessionNumber))
                 } catch {
                     errorMessage = error.localizedDescription
@@ -1712,6 +1800,30 @@ private struct LearningSituationScheduleSheet: View {
         LearningSituationScheduleProjection.sequenceKind(for: plans)
     }
 
+    private var routeVariants: [LearningSituationWeeklySequenceRoute: [LearningSituationSessionPlanDraft]] {
+        sequenceDraft?.routeVariants ?? [:]
+    }
+
+    private var isRouteAwareDocument: Bool {
+        !routeVariants.isEmpty
+    }
+
+    private var routeOptions: [LearningSituationWeeklySequenceRoute] {
+        routeVariants.keys.sorted { $0.rawValue < $1.rawValue }
+    }
+
+    private func selectRoute(_ route: LearningSituationWeeklySequenceRoute?) {
+        selectedSequenceRoute = route
+        weeklyRoute = nil
+        slots = []
+        guard let sequenceDraft else { return }
+        let fallback = route ?? routeOptions.first ?? .shortFirst
+        if let plans = sequenceDraft.routeVariants[fallback] {
+            self.sequenceDraft?.plans = plans
+            expandedPlanNumbers = Set(plans.prefix(3).map(\.sessionNumber))
+        }
+    }
+
     private func hasValidCanonicalBlockCount(_ plans: [LearningSituationSessionPlanDraft]) -> Bool {
         guard sequenceKind(plans) == .canonicalWeekly else { return true }
         return LearningSituationScheduleProjection.hasExpectedCanonicalBlockCount(
@@ -1730,6 +1842,10 @@ private struct LearningSituationScheduleSheet: View {
 
     private var statusText: String {
         if let sequenceDraft {
+            if isRouteAwareDocument {
+                let routeLabel = selectedSequenceRoute?.displayName ?? "selección automática pendiente"
+                return "\(routeVariants.count) itinerarios · \(routeLabel) · \(sequenceDraft.plans.count) bloques · \(selectedSlotCount) franjas"
+            }
             if sequenceKind(sequenceDraft.plans) == .canonicalWeekly {
                 return "\(targetSessionCount) sesiones · \(sequenceDraft.plans.count) bloques · \(selectedSlotCount) programadas"
             }
@@ -1838,6 +1954,7 @@ private struct LearningSituationScheduleSheet: View {
                 if sequenceDraft != nil {
                     Button(role: .destructive) {
                         sequenceDraft = nil
+                        selectedSequenceRoute = nil
                         expandedPlanNumbers.removeAll()
                         weeklyRoute = nil
                     } label: {
@@ -1847,6 +1964,26 @@ private struct LearningSituationScheduleSheet: View {
                 }
             }
             if let draft = sequenceDraft {
+                if isRouteAwareDocument {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker(
+                            "Itinerario",
+                            selection: Binding<LearningSituationWeeklySequenceRoute?>(
+                                get: { selectedSequenceRoute },
+                                set: { selectRoute($0) }
+                            )
+                        ) {
+                            Text("Automático según la primera franja").tag(nil as LearningSituationWeeklySequenceRoute?)
+                            ForEach(routeOptions, id: \.self) { route in
+                                Text(route.displayName).tag(Optional(route))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        Text("La app escogerá SHORT primero o LONG primero cuando previsualices el horario; puedes fijar una ruta manualmente si el horario es ambiguo.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if !draft.warnings.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(draft.warnings, id: \.self) { warning in
@@ -2186,12 +2323,31 @@ private struct LearningSituationScheduleSheet: View {
                 notices.append("Se \(ignoredDuplicates == 1 ? "ha ignorado 1 franja duplicada" : "han ignorado \(ignoredDuplicates) franjas duplicadas") del horario.")
             }
             if let sequenceDraft {
+                let activePlans: [LearningSituationSessionPlanDraft]
+                if isRouteAwareDocument {
+                    let inferredRoute = selectedSequenceRoute ?? LearningSituationScheduleProjection.inferRouteForFirstBlock(
+                        startDate: startDate,
+                        template: template,
+                        periodForSlot: { self.plannerPeriod(for: $0, allScheduleSlots: allScheduleSlots) },
+                        excludedDates: excludedDates
+                    )
+                    guard let route = inferredRoute, let routePlans = routeVariants[route] else {
+                        errorMessage = "No se puede distinguir si la SA empieza en una franja corta o larga. Selecciona el itinerario manualmente o revisa el horario del grupo."
+                        return
+                    }
+                    selectedSequenceRoute = route
+                    self.sequenceDraft?.plans = routePlans
+                    expandedPlanNumbers = Set(routePlans.prefix(3).map(\.sessionNumber))
+                    activePlans = routePlans
+                } else {
+                    activePlans = sequenceDraft.plans
+                }
                 let projection = LearningSituationScheduleProjection.planAwareSlots(
-                    plans: sequenceDraft.plans,
+                    plans: activePlans,
                     startDate: startDate,
                     template: template,
                     periodForSlot: { self.plannerPeriod(for: $0, allScheduleSlots: allScheduleSlots) },
-                    targetSessionCount: targetSessionCount,
+                    targetSessionCount: activePlans.count,
                     excludedDates: excludedDates
                 )
                 slots = projection.slots

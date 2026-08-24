@@ -76,6 +76,58 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.plans.first?.closure, "Close with one evidence note.")
     }
 
+    func testLegacyFormatCBlockIDMismatchStillWarns() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Session 1 - Simple (30 minutes) — Legacy validation"),
+            .paragraph("QUICK VIEW"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity"],
+                ["0′–10′", "W01-L-01", "setup", "10", "Entry", "Legacy activity"]
+            ])
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("legacy-block-id-mismatch".utf8),
+            url: URL(fileURLWithPath: "/tmp/legacy-block-id-mismatch.docx")
+        )
+
+        XCTAssertTrue(draft.warnings.contains { $0.contains("W01-L-01") && $0.contains("no corresponde al bloque") })
+    }
+
+    func testRouteAwareFormatCAcceptsRouteActivityIDsWithoutLegacyBlockWarnings() throws {
+        func routeSession(activityID: String, title: String) -> [WordDocumentBlock] {
+            [
+                .paragraph("Session 1 - SHORT (30 minutes) — \(title)"),
+                .paragraph("QUICK VIEW"),
+                .table([
+                    ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity"],
+                    ["0′–30′", activityID, "core", "30", "Main", "Route activity"]
+                ]),
+                .paragraph("ACTIVITY DETAILS"),
+                .paragraph("Activity \(activityID) — Route activity"),
+                .paragraph("Purpose: Keep the route-specific activity.")
+            ]
+        }
+
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("ROUTE OPTION: shortFirst")
+        ] + routeSession(activityID: "SF-S1-A01", title: "Short-first route") + [
+            .paragraph("ROUTE OPTION: longFirst")
+        ] + routeSession(activityID: "LF-S1-A01", title: "Long-first route")
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("route-aware-activity-ids".utf8),
+            url: URL(fileURLWithPath: "/tmp/route-aware-activity-ids.docx")
+        )
+
+        XCTAssertEqual(draft.routeVariants.count, 2)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.activities.map(\.activityKey), ["SF-S1-A01"])
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.first?.activities.map(\.activityKey), ["LF-S1-A01"])
+        XCTAssertFalse(draft.warnings.contains { $0.contains("no corresponde") })
+    }
+
     func testFormatCAcceptsMultilineLabelsAndHeaderlessFichaTables() throws {
         let blocks: [WordDocumentBlock] = [
             .paragraph("Session 1 - Double (90 minutes) — Week 1"),

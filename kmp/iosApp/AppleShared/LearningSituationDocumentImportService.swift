@@ -1038,6 +1038,11 @@ private struct ParsedSessionPlan {
 }
 
 struct LearningSituationSessionSequenceDocumentImportService {
+    private enum FormatCActivityIDValidation {
+        case legacyBlockMarker
+        case routeAware(LearningSituationWeeklySequenceRoute)
+    }
+
     /// B2/B3: el número de sesión debe ir seguido de un separador explícito (".", "-", "—",
     /// "–", ":", opcionalmente detrás de una anotación entre paréntesis como "(NEW)") o no
     /// llevar nada más. Sin este requisito, un párrafo de prosa como "Session 3 finishes the
@@ -1228,7 +1233,12 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 warnings.append("La ruta \(routeHeader.route.rawValue) no contiene fichas completas con QUICK VIEW y ACTIVITY DETAILS.")
                 continue
             }
-            let parsed = parseFormatC(blocks: routeBlocks, data: data, url: url)
+            let parsed = parseFormatC(
+                blocks: routeBlocks,
+                data: data,
+                url: url,
+                activityIDValidation: .routeAware(routeHeader.route)
+            )
             warnings.append(contentsOf: parsed.warnings.map { "\(routeHeader.route.rawValue): \($0)" })
             var plans = parsed.plans
             for index in plans.indices {
@@ -1289,7 +1299,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
     private func parseFormatC(
         blocks: [WordDocumentBlock],
         data: Data,
-        url: URL
+        url: URL,
+        activityIDValidation: FormatCActivityIDValidation = .legacyBlockMarker
     ) -> LearningSituationSessionSequenceImportDraft {
         struct Header {
             let index: Int
@@ -1315,7 +1326,12 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 continue
             }
             let end = position + 1 < headers.count ? headers[position + 1].index : blocks.count
-            let parsed = parseFormatCSession(header: header.value, body: Array(blocks[(header.index + 1)..<end]), warnings: &warnings)
+            let parsed = parseFormatCSession(
+                header: header.value,
+                body: Array(blocks[(header.index + 1)..<end]),
+                warnings: &warnings,
+                activityIDValidation: activityIDValidation
+            )
             plans.append(LearningSituationSessionPlanDraft(
                 sessionNumber: header.number,
                 sourceLabel: header.value,
@@ -1367,7 +1383,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
     private func parseFormatCSession(
         header: String,
         body: [WordDocumentBlock],
-        warnings: inout [String]
+        warnings: inout [String],
+        activityIDValidation: FormatCActivityIDValidation
     ) -> ParsedSessionPlan {
         var title = cleanRestTitle(sessionTypeAndTitle(from: header).title)
         var sessionType = sessionTypeAndTitle(from: header).type
@@ -1588,9 +1605,25 @@ struct LearningSituationSessionSequenceDocumentImportService {
         for id in quickIDs where !detailIDs.contains(id) {
             warnings.append("\(header): Activity ID \(id) no tiene ficha en ACTIVITY DETAILS; se conserva la fila QUICK VIEW.")
         }
-        let expectedBlock = normalized(sessionType).contains("simple") || normalized(sessionType).contains("short") ? "-S-" : "-L-"
-        for activity in mergedActivities where !activity.activityKey.contains(expectedBlock) {
-            warnings.append("\(header): Activity ID \(activity.activityKey) no corresponde al bloque \(sessionType).")
+        switch activityIDValidation {
+        case .legacyBlockMarker:
+            let expectedBlock = normalized(sessionType).contains("simple") || normalized(sessionType).contains("short") ? "-S-" : "-L-"
+            for activity in mergedActivities where !activity.activityKey.contains(expectedBlock) {
+                warnings.append("\(header): Activity ID \(activity.activityKey) no corresponde al bloque \(sessionType).")
+            }
+        case .routeAware(let route):
+            let expectedPrefix = route == .shortFirst ? "SF-" : "LF-"
+            let routeActivityIDPattern = try! NSRegularExpression(
+                pattern: "^\(expectedPrefix)S[0-9]+-A[0-9]+$",
+                options: [.caseInsensitive]
+            )
+            for activity in mergedActivities {
+                let key = activity.activityKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                let range = NSRange(key.startIndex..., in: key)
+                if routeActivityIDPattern.firstMatch(in: key, range: range) == nil {
+                    warnings.append("\(header): Activity ID \(key) no corresponde al itinerario \(route.rawValue).")
+                }
+            }
         }
         sessionType = normalized(sessionType).contains("simple") || normalized(sessionType).contains("short") ? "Simple" : "Doble"
         let sections = mergedActivities.isEmpty ? [] : [LearningSituationSessionSectionDraft(title: "QUICK VIEW", lines: mergedActivities.map { [$0.timeLabel, $0.activity].filter { !$0.isEmpty }.joined(separator: " · ") })]

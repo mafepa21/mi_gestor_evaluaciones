@@ -16,6 +16,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Added
 
 - Secuenciación de sesiones CLIL: contrato semanal importable con bloques `LONG BLOCK` y `SHORT BLOCK`, actividades estructuradas en inglés, evidencias, materiales, adaptaciones y comentarios CLIL; corpus normalizado en 55 Markdown y 55 DOCX.
+- Itinerarios seleccionables de Bachillerato (#225): los DOCX pueden declarar `ROUTE OPTION: shortFirst` y `ROUTE OPTION: longFirst` con fichas completas e independientes; el Planificador elige una sola ruta según la primera franja compatible o permite fijarla manualmente.
 - Fichas de sesión operativas: cada bloque separa `QUICK VIEW` y `ACTIVITY DETAILS`, usa `Activity ID` estable (`Wnn-L/S-nn`) y permite abrir una actividad concreta desde timeline, desplegable o botones Anterior/Siguiente.
 - `session-plan-v2` conserva por actividad los contextos explícitos `prepares` y `consolidates`, disponibles tanto en la previsualización de importación como en la ficha operativa.
 

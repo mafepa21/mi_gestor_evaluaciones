@@ -1425,15 +1425,19 @@ struct LearningSituationSessionSequenceDocumentImportService {
             switch normalized(raw).trimmingCharacters(in: CharacterSet(charactersIn: " :\t")) {
             case "purpose", "proposito", "proposito de la actividad": return "purpose"
             case "organisation", "organization", "organizacion", "grouping": return "organisation"
+            // Compound labels are used by the current Bachillerato diary. The UI
+            // already presents organisation and setup together, so keep the full
+            // value in setup instead of duplicating it in two fields.
+            case "set-up and organisation", "set up and organisation", "organisation and set-up", "organisation and setup": return "setup"
             case "set-up", "setup", "preparation", "preparacion", "montaje": return "setup"
-            case "teacher narrative", "teacher instructions", "teacher actions", "teacher script", "what the teacher says", "instrucciones del profesor", "acciones del docente", "narrativa del profesor": return "teacherActions"
-            case "student instructions", "instructions for students", "learner narrative", "instrucciones para el alumnado", "consignas": return "studentInstructions"
+            case "teacher narrative", "teacher instructions", "teacher actions", "teacher action", "teacher action and cue", "teacher script", "what the teacher says", "instrucciones del profesor", "acciones del docente", "narrativa del profesor": return "teacherActions"
+            case "student instructions", "instructions for students", "student action", "learner narrative", "instrucciones para el alumnado", "consignas": return "studentInstructions"
             case "student output", "what students do", "student actions", "student narrative", "acciones del alumnado", "resultado del alumnado": return "studentActions"
             case "timing", "timing breakdown", "timing and transition", "transition cue", "transition", "desglose temporal", "transicion", "temporizacion y transiciones": return "timingBreakdown"
             case "clil", "clil focus", "clil language", "enfoque clil": return "clilFocus"
             case "materials", "materiales": return "materials"
-            case "evidence", "evidencia": return "evidence"
-            case "adaptations", "adaptaciones": return "adaptations"
+            case "evidence", "evidence and check", "evidencias recogidas", "evidence collected", "evidencia": return "evidence"
+            case "adaptation", "adaptations", "adaptaciones", "safety/adaptation", "safety / adaptation", "safety and adaptation": return "adaptations"
             case "if the group is slow", "slow group plan", "si el grupo va lento": return "slowGroupPlan"
             case "if the group is ahead", "fast group extension", "si el grupo termina antes": return "fastGroupExtension"
             case "prepares", "prepares the long block", "prepares for the long block", "prepara", "prepara el bloque largo", "prepara el largo": return "prepares"
@@ -1578,24 +1582,25 @@ struct LearningSituationSessionSequenceDocumentImportService {
 
         let mergedActivities = activities.map { activity -> LearningSituationSessionActivityDraft in
             guard let values = details[activity.activityKey] else { return activity }
-            func quickViewValue(_ current: String, _ detail: String?) -> String {
-                current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (detail ?? current) : current
+            func detailValue(_ current: String, _ detail: String?) -> String {
+                guard let detail, !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return current }
+                return detail
             }
             return LearningSituationSessionActivityDraft(
                 activityKey: activity.activityKey, activityType: activity.activityType,
                 plannedMinutes: activity.plannedMinutes, timeLabel: activity.timeLabel,
                 phase: activity.phase, activity: activity.activity, purpose: values["purpose"] ?? activity.purpose,
-                organisation: quickViewValue(activity.organisation, values["organisation"]), setup: values["setup"] ?? activity.setup,
+                organisation: detailValue(activity.organisation, values["organisation"]), setup: values["setup"] ?? activity.setup,
                 teacherActions: values["teacherActions"] ?? activity.teacherActions,
-                studentInstructions: values["studentInstructions"] ?? activity.studentInstructions,
-                studentActions: quickViewValue(activity.studentActions, values["studentActions"]),
+                studentInstructions: detailValue(activity.studentInstructions, values["studentInstructions"]),
+                studentActions: detailValue(activity.studentActions, values["studentActions"]),
                 timingBreakdown: values["timingBreakdown"] ?? activity.timingBreakdown,
-                clilFocus: values["clilFocus"] ?? activity.clilFocus, evidence: quickViewValue(activity.evidence, values["evidence"]),
-                materials: quickViewValue(activity.materials, values["materials"]), adaptations: quickViewValue(activity.adaptations, values["adaptations"]),
+                clilFocus: values["clilFocus"] ?? activity.clilFocus, evidence: detailValue(activity.evidence, values["evidence"]),
+                materials: detailValue(activity.materials, values["materials"]), adaptations: detailValue(activity.adaptations, values["adaptations"]),
                 slowGroupPlan: values["slowGroupPlan"] ?? activity.slowGroupPlan,
                 fastGroupExtension: values["fastGroupExtension"] ?? activity.fastGroupExtension,
-                prepares: quickViewValue(activity.prepares, values["prepares"]),
-                consolidates: quickViewValue(activity.consolidates, values["consolidates"])
+                prepares: detailValue(activity.prepares, values["prepares"]),
+                consolidates: detailValue(activity.consolidates, values["consolidates"])
             )
         }
         let quickIDs = Set(activities.map(\.activityKey))
@@ -1907,15 +1912,16 @@ struct LearningSituationSessionSequenceDocumentImportService {
             switch value {
             case "purpose", "proposito", "proposito de la actividad": return "purpose"
             case "organisation", "organization", "organizacion", "grouping": return "organisation"
+            case "set-up and organisation", "set up and organisation", "organisation and set-up", "organisation and setup": return "setup"
             case "set-up", "setup", "preparation", "preparacion": return "setup"
-            case "teacher instructions", "teacher actions", "teacher narrative", "teacher script", "instrucciones del profesor", "acciones del docente", "narrativa del profesor": return "teacherActions"
-            case "instructions for students", "student instructions", "student narrative", "learner narrative", "instrucciones para el alumnado", "narrativa del alumnado": return "studentInstructions"
+            case "teacher instructions", "teacher actions", "teacher action", "teacher action and cue", "teacher narrative", "teacher script", "instrucciones del profesor", "acciones del docente", "narrativa del profesor": return "teacherActions"
+            case "instructions for students", "student instructions", "student action", "student narrative", "learner narrative", "instrucciones para el alumnado", "narrativa del alumnado": return "studentInstructions"
             case "student actions", "student output", "what students do", "acciones del alumnado": return "studentActions"
             case "timing breakdown", "timing", "transition cue", "transition", "desglose temporal", "transicion": return "timingBreakdown"
             case "clil focus", "clil language", "enfoque clil": return "clilFocus"
             case "materials", "materiales": return "materials"
-            case "evidence", "evidencia": return "evidence"
-            case "adaptations", "adaptaciones": return "adaptations"
+            case "evidence", "evidence and check", "evidencias recogidas", "evidence collected", "evidencia": return "evidence"
+            case "adaptation", "adaptations", "adaptaciones", "safety/adaptation", "safety / adaptation", "safety and adaptation": return "adaptations"
             case "if the group is slow", "slow group plan", "si el grupo va lento": return "slowGroupPlan"
             case "if the group is ahead", "fast group extension", "si el grupo termina antes": return "fastGroupExtension"
             case "prepares", "prepares the long block", "prepares for the long block", "prepara", "prepara el bloque largo", "prepara el largo": return "prepares"
@@ -1932,8 +1938,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
 
         func mergeDetails(into activity: LearningSituationSessionActivityDraft) -> LearningSituationSessionActivityDraft {
             guard let values = activityDetails[activity.activityKey] else { return activity }
-            func quickViewValue(_ current: String, _ detail: String?) -> String {
-                current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (detail ?? current) : current
+            func detailValue(_ current: String, _ detail: String?) -> String {
+                guard let detail, !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return current }
+                return detail
             }
             return LearningSituationSessionActivityDraft(
                 activityKey: activity.activityKey,
@@ -1943,20 +1950,20 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 phase: activity.phase,
                 activity: activity.activity,
                 purpose: values["purpose"] ?? activity.purpose,
-                organisation: quickViewValue(activity.organisation, values["organisation"]),
+                organisation: detailValue(activity.organisation, values["organisation"]),
                 setup: values["setup"] ?? activity.setup,
                 teacherActions: values["teacherActions"] ?? activity.teacherActions,
-                studentInstructions: values["studentInstructions"] ?? activity.studentInstructions,
-                studentActions: quickViewValue(activity.studentActions, values["studentActions"]),
+                studentInstructions: detailValue(activity.studentInstructions, values["studentInstructions"]),
+                studentActions: detailValue(activity.studentActions, values["studentActions"]),
                 timingBreakdown: values["timingBreakdown"] ?? activity.timingBreakdown,
                 clilFocus: values["clilFocus"] ?? activity.clilFocus,
-                evidence: quickViewValue(activity.evidence, values["evidence"]),
-                materials: quickViewValue(activity.materials, values["materials"]),
-                adaptations: quickViewValue(activity.adaptations, values["adaptations"]),
+                evidence: detailValue(activity.evidence, values["evidence"]),
+                materials: detailValue(activity.materials, values["materials"]),
+                adaptations: detailValue(activity.adaptations, values["adaptations"]),
                 slowGroupPlan: values["slowGroupPlan"] ?? activity.slowGroupPlan,
                 fastGroupExtension: values["fastGroupExtension"] ?? activity.fastGroupExtension,
-                prepares: quickViewValue(activity.prepares, values["prepares"]),
-                consolidates: quickViewValue(activity.consolidates, values["consolidates"])
+                prepares: detailValue(activity.prepares, values["prepares"]),
+                consolidates: detailValue(activity.consolidates, values["consolidates"])
             )
         }
 

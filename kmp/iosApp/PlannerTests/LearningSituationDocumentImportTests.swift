@@ -583,6 +583,72 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(activity.timingBreakdown, "At minute 10, give the two-minute warning and ask pairs to leave the passport open on the floor.")
     }
 
+    func testFormatCActivityDetailAliasesImportCompoundLabels() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Session 1 - Double (80 minutes) — Alias labels"),
+            .paragraph("QUICK VIEW"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity", "Student output", "Evidence"],
+                ["0′–10′", "W01-L-01", "setup", "10", "Entry", "Safe start", "", ""]
+            ]),
+            .paragraph("ACTIVITY DETAILS"),
+            .paragraph("ACTIVITY W01-L-01 — Safe start"),
+            .paragraph("Purpose: Establish a safe start."),
+            .paragraph("Set-up and organisation: Place nine zones and stable teams before entry."),
+            .paragraph("Teacher action and cue: Model the stop signal and check spacing."),
+            .paragraph("Student action: Students identify their zone and choose an active role."),
+            .paragraph("Evidence and check: Record one safety decision."),
+            .paragraph("Safety/adaptation: Offer a walking or seated version.")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("format-c-aliases".utf8),
+            url: URL(fileURLWithPath: "/tmp/format-c-aliases.docx")
+        )
+
+        let activity = try XCTUnwrap(draft.plans.first?.activities.first)
+        XCTAssertEqual(activity.setup, "Place nine zones and stable teams before entry.")
+        XCTAssertEqual(activity.teacherActions, "Model the stop signal and check spacing.")
+        XCTAssertEqual(activity.studentInstructions, "Students identify their zone and choose an active role.")
+        XCTAssertEqual(activity.studentActions, "")
+        XCTAssertEqual(activity.evidence, "Record one safety decision.")
+        XCTAssertEqual(activity.adaptations, "Offer a walking or seated version.")
+    }
+
+    func testWeeklyActivityDetailAliasesImportCompoundLabels() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("WEEK 3 — Alias labels"),
+            .paragraph("LONG BLOCK (80 effective minutes)"),
+            .table([
+                ["Time", "Activity ID", "Type", "Minutes", "Phase", "Activity", "Student output", "Evidence"],
+                ["0′–10′", "W03-L-01", "setup", "10", "Entry", "Safe start", "", ""]
+            ]),
+            .paragraph("ACTIVITY DETAILS"),
+            .paragraph("ACTIVITY W03-L-01 — Safe start"),
+            .paragraph("Purpose: Establish a safe start."),
+            .paragraph("Set-up and organisation: Place nine zones and stable teams before entry."),
+            .paragraph("Teacher action and cue: Model the stop signal and check spacing."),
+            .paragraph("Student action: Students identify their zone and choose an active role."),
+            .paragraph("Evidence and check: Record one safety decision."),
+            .paragraph("Safety/adaptation: Offer a walking or seated version.")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("weekly-aliases".utf8),
+            url: URL(fileURLWithPath: "/tmp/weekly-aliases.docx")
+        )
+
+        let activity = try XCTUnwrap(draft.plans.flatMap(\.activities).first)
+        XCTAssertEqual(activity.setup, "Place nine zones and stable teams before entry.")
+        XCTAssertEqual(activity.teacherActions, "Model the stop signal and check spacing.")
+        XCTAssertEqual(activity.studentInstructions, "Students identify their zone and choose an active role.")
+        XCTAssertEqual(activity.studentActions, "")
+        XCTAssertEqual(activity.evidence, "Record one safety decision.")
+        XCTAssertEqual(activity.adaptations, "Offer a walking or seated version.")
+    }
+
     func testSessionDocxRendererKeepsTablesAndImagesInSessionOrder() throws {
         let docxURL = try makeMinimalDocx()
         defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }

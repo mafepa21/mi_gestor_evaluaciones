@@ -16,6 +16,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Added
 
 - Secuenciación de sesiones CLIL: contrato semanal importable con bloques `LONG BLOCK` y `SHORT BLOCK`, actividades estructuradas en inglés, evidencias, materiales, adaptaciones y comentarios CLIL; corpus normalizado en 55 Markdown y 55 DOCX.
+- Itinerarios seleccionables de Bachillerato (#225): los DOCX pueden declarar `ROUTE OPTION: shortFirst` y `ROUTE OPTION: longFirst` con fichas completas e independientes; el Planificador elige una sola ruta según la primera franja compatible o permite fijarla manualmente.
 - Fichas de sesión operativas: cada bloque separa `QUICK VIEW` y `ACTIVITY DETAILS`, usa `Activity ID` estable (`Wnn-L/S-nn`) y permite abrir una actividad concreta desde timeline, desplegable o botones Anterior/Siguiente.
 - `session-plan-v2` conserva por actividad los contextos explícitos `prepares` y `consolidates`, disponibles tanto en la previsualización de importación como en la ficha operativa.
 
@@ -164,6 +165,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Issue #225: `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran el proyecto y compilan correctamente macOS Native y iOS Simulator en `codex/sa-route-itineraries`.
 - Este ticket: `MiGestorPlannerTests` completo pasa con 80 tests aprobados, 2 omitidos y 0 fallos (82 totales); la batería dirigida de importación/proyección pasa con 25/25; `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran XcodeGen y compilan macOS Native e iOS Simulator correctamente.
 - El DOCX real del workspace se comprobó end-to-end con SHA-256 `d0ee52ff904256208063f23efb84ea5fd881a754f09dc93ec6dcd9d280dab70a`: produce W01 LONG=4, W01 SHORT=3, W02 LONG=4 y W02 SHORT=3, sin `LEGACY-*` ni títulos-ID. Los conteos 6/4 solicitados no están presentes en este binario y quedan pendientes de un artefacto corregido.
 - Ficha adaptativa de sesión (#221): `MiGestorPlannerTests` pasa en macOS; `scripts/verify_apple_builds.sh` regenera XcodeGen y compila correctamente macOS Native e iOS Simulator.

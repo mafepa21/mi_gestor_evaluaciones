@@ -419,6 +419,7 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
     var weekKey: String?
     var blockRole: LearningSituationWeeklyBlockRole?
     var sequenceFormat: String?
+    var sequenceRoute: LearningSituationWeeklySequenceRoute?
 
     init(
         sessionNumber: Int,
@@ -440,7 +441,8 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         cycleIndex: Int? = nil,
         weekKey: String? = nil,
         blockRole: LearningSituationWeeklyBlockRole? = nil,
-        sequenceFormat: String? = nil
+        sequenceFormat: String? = nil,
+        sequenceRoute: LearningSituationWeeklySequenceRoute? = nil
     ) {
         self.id = UUID()
         self.sessionNumber = sessionNumber
@@ -463,13 +465,14 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         self.weekKey = weekKey
         self.blockRole = blockRole
         self.sequenceFormat = sequenceFormat
+        self.sequenceRoute = sequenceRoute
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, sessionNumber, sourceLabel, title, sessionType, effectiveMinutes,
              objective, criteria, material, development, activities, adaptations,
              organisation, coreKnowledge, assessment, guidingQuestions, closure,
-             cycleIndex, weekKey, blockRole, sequenceFormat
+             cycleIndex, weekKey, blockRole, sequenceFormat, sequenceRoute
     }
 
     init(from decoder: Decoder) throws {
@@ -495,6 +498,7 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         weekKey = try container.decodeIfPresent(String.self, forKey: .weekKey)
         blockRole = try container.decodeIfPresent(LearningSituationWeeklyBlockRole.self, forKey: .blockRole)
         sequenceFormat = try container.decodeIfPresent(String.self, forKey: .sequenceFormat)
+        sequenceRoute = try container.decodeIfPresent(LearningSituationWeeklySequenceRoute.self, forKey: .sequenceRoute)
     }
 
     var developmentSummary: String {
@@ -518,15 +522,27 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
 struct LearningSituationSessionSequenceImportDraft: Identifiable, Codable {
     let id: UUID
     var plans: [LearningSituationSessionPlanDraft]
+    /// Alternative route plans from a selectable-route document. `plans` contains the
+    /// currently active route; the UI replaces it after inspecting the group's first slot.
+    var routeVariants: [LearningSituationWeeklySequenceRoute: [LearningSituationSessionPlanDraft]]
     var warnings: [String]
     let sourceURL: URL
     let sourceFileName: String
     let sha256: String
     let sizeBytes: Int64
 
-    init(plans: [LearningSituationSessionPlanDraft], warnings: [String], sourceURL: URL, sourceFileName: String, sha256: String, sizeBytes: Int64) {
+    init(
+        plans: [LearningSituationSessionPlanDraft],
+        routeVariants: [LearningSituationWeeklySequenceRoute: [LearningSituationSessionPlanDraft]] = [:],
+        warnings: [String],
+        sourceURL: URL,
+        sourceFileName: String,
+        sha256: String,
+        sizeBytes: Int64
+    ) {
         self.id = UUID()
         self.plans = plans
+        self.routeVariants = routeVariants
         self.warnings = warnings
         self.sourceURL = sourceURL
         self.sourceFileName = sourceFileName
@@ -1031,6 +1047,10 @@ struct LearningSituationSessionSequenceDocumentImportService {
         pattern: #"^(?:SESSION|SESSIONS|SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+([0-9]+)(?:\s+(?:y|and|\&)\s+([0-9]+))?(?:\s*\([^)]*\))?(?:\s*[.:\-–—]\s*(.*))?$"#,
         options: [.caseInsensitive]
     )
+    private static let routeOptionPattern = try! NSRegularExpression(
+        pattern: #"^ROUTE\s+OPTION\s*:\s*(shortFirst|longFirst)\s*$"#,
+        options: [.caseInsensitive]
+    )
 
     func preview(from url: URL) throws -> LearningSituationSessionSequenceImportDraft {
         let accessing = url.startAccessingSecurityScopedResource()
@@ -1044,6 +1064,13 @@ struct LearningSituationSessionSequenceDocumentImportService {
     /// extraídos (documentos de prueba) sin pasar por la descompresión del `.docx`.
     func preview(blocks: [WordDocumentBlock], data: Data, url: URL) throws -> LearningSituationSessionSequenceImportDraft {
         guard !blocks.isEmpty else { throw LearningSituationImportError.missingDocumentBody }
+
+        // A selectable-route document contains two complete Format C sections. Parse and
+        // retain both here; the scheduling UI chooses one after inspecting the first compatible
+        // timetable slot. Falling through to the historical parsers keeps old documents stable.
+        if let routeAware = try routeAwarePreview(blocks: blocks, data: data, url: url) {
+            return routeAware
+        }
 
         // Formato C (ficha + QUICK VIEW + ACTIVITY DETAILS) must win over the generic
         // paragraph/table parser. Its detail paragraphs are not session development and
@@ -1168,6 +1195,67 @@ struct LearningSituationSessionSequenceDocumentImportService {
         }
         return LearningSituationSessionSequenceImportDraft(
             plans: plans,
+            warnings: warnings,
+            sourceURL: url,
+            sourceFileName: url.lastPathComponent,
+            sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
+            sizeBytes: Int64(data.count)
+        )
+    }
+
+    private func routeAwarePreview(
+        blocks: [WordDocumentBlock],
+        data: Data,
+        url: URL
+    ) throws -> LearningSituationSessionSequenceImportDraft? {
+        var routeHeaders: [(index: Int, route: LearningSituationWeeklySequenceRoute)] = []
+        for (index, block) in blocks.enumerated() {
+            guard case .paragraph(let text) = block,
+                  let match = Self.routeOptionPattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let routeRange = Range(match.range(at: 1), in: text),
+                  let route = LearningSituationWeeklySequenceRoute(rawValue: String(text[routeRange])) else { continue }
+            routeHeaders.append((index, route))
+        }
+        guard routeHeaders.count >= 2,
+              Set(routeHeaders.map(\.route)).count >= 2 else { return nil }
+
+        var variants: [LearningSituationWeeklySequenceRoute: [LearningSituationSessionPlanDraft]] = [:]
+        var warnings: [String] = []
+        for (position, routeHeader) in routeHeaders.enumerated() {
+            let end = position + 1 < routeHeaders.count ? routeHeaders[position + 1].index : blocks.count
+            let routeBlocks = Array(blocks[(routeHeader.index + 1)..<end])
+            guard isFormatC(routeBlocks) else {
+                warnings.append("La ruta \(routeHeader.route.rawValue) no contiene fichas completas con QUICK VIEW y ACTIVITY DETAILS.")
+                continue
+            }
+            let parsed = parseFormatC(blocks: routeBlocks, data: data, url: url)
+            warnings.append(contentsOf: parsed.warnings.map { "\(routeHeader.route.rawValue): \($0)" })
+            var plans = parsed.plans
+            for index in plans.indices {
+                let headerValue = plans[index].sourceLabel.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                let isLong = headerValue.contains("long")
+                let isLongPart = headerValue.contains("long part") || headerValue.contains("long_part")
+                let role: LearningSituationWeeklyBlockRole = isLong ? .long : .short
+                plans[index].sessionType = isLongPart ? "LONG_PART_1" : (isLong ? "LONG" : "SHORT")
+                plans[index].title = plans[index].title.replacingOccurrences(
+                    of: #"^(?:SHORT|LONG(?:\s+PART\s+1)?|LONG_PART_1)\s*(?:\([^)]*\))?\s*[—–-]\s*"#,
+                    with: "",
+                    options: [.regularExpression, .caseInsensitive]
+                ).trimmingCharacters(in: .whitespacesAndNewlines)
+                plans[index].blockRole = role
+                plans[index].cycleIndex = plans[index].sessionNumber
+                plans[index].sequenceFormat = "route-aware-v1"
+                plans[index].sequenceRoute = routeHeader.route
+            }
+            variants[routeHeader.route] = plans
+        }
+
+        guard variants.count >= 2 else { return nil }
+        let defaultRoute: LearningSituationWeeklySequenceRoute = variants[.shortFirst] != nil ? .shortFirst : .longFirst
+        warnings.append("Documento de itinerarios: se han detectado SHORT primero y LONG primero. La app seleccionará una sola ruta según la primera franja compatible del grupo.")
+        return LearningSituationSessionSequenceImportDraft(
+            plans: variants[defaultRoute] ?? [],
+            routeVariants: variants,
             warnings: warnings,
             sourceURL: url,
             sourceFileName: url.lastPathComponent,

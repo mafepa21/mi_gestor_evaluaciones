@@ -3,6 +3,21 @@ import XCTest
 @testable import MiGestorKMPMac
 
 final class PhysicalTestsImportTests: XCTestCase {
+    func testPreviewDefaultsOptionalManifestMetadataArrays() throws {
+        let json = #"{"format":"mi_gestor.physical-tests-import","version":2,"purpose":"INITIAL_DIAGNOSTIC","learningSituation":{"number":0,"course":"4º ESO","subject":"Educación Física"},"assignmentTemplate":{"batteryId":"sa0_4_initial_baseline_2026","batteryName":"SA 0 · Línea base inicial (4º ESO)","termLabel":"1ª evaluación · diagnóstico","rawColumnMode":true,"scoreColumnMode":false,"recordScore":false,"countsTowardAverage":false,"showRankings":false},"testDefinitions":[{"id":"vertical_jump","name":"Salto vertical","capacity":"STRENGTH","measurementKind":"DISTANCE","unit":"cm","higherIsBetter":true,"attempts":2,"resultMode":"BEST","protocol":"Registrar el mejor salto válido.","plausibleMinimum":0,"plausibleMaximum":100,"decimals":0}],"referenceScales":[]}"#
+
+        let draft = try PhysicalTestsImportService().preview(
+            from: URL(fileURLWithPath: "/tmp/sa0-missing-optional-metadata.json"),
+            data: Data(json.utf8)
+        )
+
+        XCTAssertEqual(draft.testDefinitions.map(\.id), ["vertical_jump"])
+        XCTAssertTrue(draft.calibrationRequiredTestIds.isEmpty)
+        XCTAssertTrue(draft.warnings.isEmpty)
+        XCTAssertTrue(draft.sourceNotes.isEmpty)
+        XCTAssertTrue(draft.scoreIsDisabled)
+    }
+
     func testPreviewAcceptsCustomDiagnosticTestsAndKeepsRawOnlyMode() throws {
         let json = #"{"format":"mi_gestor.physical-tests-import","version":1,"purpose":"INITIAL_DIAGNOSTIC","learningSituation":{"number":0,"course":"3º ESO","subject":"Educación Física"},"assignmentTemplate":{"batteryId":"sa0_3_initial_baseline_2026","batteryName":"SA 0 · Línea base inicial (3º ESO)","termLabel":"1ª evaluación · diagnóstico","rawColumnMode":true,"scoreColumnMode":false,"recordScore":false,"countsTowardAverage":false,"showRankings":false},"testDefinitions":[{"id":"police_agility_circuit","name":"Circuito de agilidad","capacity":"AGILITY","measurementKind":"TIME","unit":"s","higherIsBetter":false,"attempts":2,"resultMode":"BEST","protocol":"Registrar el menor tiempo válido.","plausibleMinimum":6,"plausibleMaximum":20,"decimals":2}],"referenceScales":[{"id":"agility_reference","testId":"police_agility_circuit","name":"Referencia inicial","course":3,"ageFrom":13,"ageTo":14,"sex":null,"direction":"LOWER_IS_BETTER","diagnosticReferenceOnly":true,"ranges":[{"id":"r1","minValue":null,"maxValue":9,"score":10,"label":"≤ 9 s","sortOrder":0}]}],"calibrationRequiredTestIds":[],"warnings":["Solo diagnóstico."],"sourceNotes":["Fixture anónima"]}"#
 

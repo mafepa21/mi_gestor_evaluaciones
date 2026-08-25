@@ -3,6 +3,27 @@ import XCTest
 @testable import MiGestorKMPMac
 
 final class LearningSituationDocumentImportTests: XCTestCase {
+    func testAssessmentChecklistIgnoresNarrativeParagraphsWhenTableProvidesItems() throws {
+        let docxURL = try makeAssessmentInstrumentDocx()
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let data = try Data(contentsOf: docxURL)
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: data
+        )
+        let instrument = try XCTUnwrap(draft.instruments.first)
+
+        XCTAssertEqual(
+            instrument.checklistItems.map(\.title),
+            ["Safety", "Technical control", "Cooperation", "Autonomy"]
+        )
+        XCTAssertEqual(instrument.weightPercent, 100)
+        XCTAssertEqual(instrument.scoreStrategy, .checklistProportional)
+        XCTAssertTrue(instrument.countsTowardAverage)
+        XCTAssertEqual(draft.instruments.count, 1)
+    }
+
     func testDevelopmentPayloadDecodesV1V2AndCorruptInputWithoutCrashing() throws {
         let section = LearningSituationSessionSectionDraft(title: "Bloque", lines: ["0'-10' · Entrada · Actividad"])
         let legacy = String(data: try JSONEncoder().encode([section]), encoding: .utf8)!
@@ -686,6 +707,42 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertFalse(longResult.html.contains("Short-only activity"))
         XCTAssertTrue(shortResult.html.contains("Short-only activity"))
         XCTAssertFalse(shortResult.html.contains("Long-only activity"))
+    }
+
+    private func makeAssessmentInstrumentDocx() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("assessment-instrument-docx-\(UUID().uuidString)", isDirectory: true)
+        let wordDirectory = root.appendingPathComponent("word", isDirectory: true)
+        try FileManager.default.createDirectory(at: wordDirectory, withIntermediateDirectories: true)
+
+        let document = """
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+          <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>SA 0 - Assessment instruments</w:t></w:r></w:p>
+          <w:p><w:r><w:t>1. Initial diagnostic checklist - 100%</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Completed by the teacher: mark an item when the student demonstrates it safely.</w:t></w:r></w:p>
+          <w:tbl>
+            <w:tr><w:tc><w:p><w:r><w:t>Checklist item</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Select when achieved</w:t></w:r></w:p></w:tc></w:tr>
+            <w:tr><w:tc><w:p><w:r><w:t>Safety</w:t></w:r></w:p></w:tc><w:tc><w:p/></w:tc></w:tr>
+            <w:tr><w:tc><w:p><w:r><w:t>Technical control</w:t></w:r></w:p></w:tc><w:tc><w:p/></w:tc></w:tr>
+            <w:tr><w:tc><w:p><w:r><w:t>Cooperation</w:t></w:r></w:p></w:tc><w:tc><w:p/></w:tc></w:tr>
+            <w:tr><w:tc><w:p><w:r><w:t>Autonomy</w:t></w:r></w:p></w:tc><w:tc><w:p/></w:tc></w:tr>
+          </w:tbl>
+          <w:p><w:r><w:t>Numeric rule in the app: checked items ÷ 4 × 10.</w:t></w:r></w:p>
+          <w:p><w:r><w:t>App import mapping</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Import this DOCX through the app's assessment-instrument importer.</w:t></w:r></w:p>
+        </w:body></w:document>
+        """
+        try Data(document.utf8).write(to: wordDirectory.appendingPathComponent("document.xml"))
+
+        let archiveURL = root.appendingPathComponent("assessment-instrument.docx")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.currentDirectoryURL = root
+        process.arguments = ["-q", "-r", archiveURL.path, "word"]
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+        return archiveURL
     }
 
     private func makeMinimalDocx() throws -> URL {

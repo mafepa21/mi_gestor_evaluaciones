@@ -517,7 +517,10 @@ struct LearningSituationAssessmentInstrumentsImportService {
         var items = tableItems
         var consumed: Set<Int> = []
         for (index, paragraph) in paragraphs.enumerated() {
-            let extracted = checklistItems(from: paragraph)
+            // When a table already provides the checklist rows, prose paragraphs are
+            // instructions/notes unless they carry an explicit checkbox marker. This keeps
+            // the four real SA0 rows separate from the teacher instructions and import notes.
+            let extracted = checklistItems(from: paragraph, allowNarrativeFallback: tableItems.isEmpty)
             guard !extracted.isEmpty else { continue }
             items.append(contentsOf: extracted)
             consumed.insert(index)
@@ -802,18 +805,21 @@ struct LearningSituationAssessmentInstrumentsImportService {
         return warnings
     }
 
-    private func checklistItems(from paragraph: String) -> [ChecklistItemDraft] {
+    private func checklistItems(from paragraph: String, allowNarrativeFallback: Bool) -> [ChecklistItemDraft] {
         let markerPattern = #"(?:^|\s)-\s*\[\s?\]\s*"#
         let normalizedMarkers = paragraph
             .replacingOccurrences(of: markerPattern, with: "|||CHECK_ITEM|||", options: .regularExpression)
             .replacingOccurrences(of: #"\[\s?\]\s*"#, with: "|||CHECK_ITEM|||", options: .regularExpression)
+            .replacingOccurrences(of: #"(?:☐|□)\s*"#, with: "|||CHECK_ITEM|||", options: .regularExpression)
         let splitItems = normalizedMarkers
             .components(separatedBy: "|||CHECK_ITEM|||")
             .map(clean)
+        let explicitItems = splitItems.dropFirst()
             .filter { !$0.isEmpty && !normalized($0).hasPrefix("tick before") }
-        if splitItems.count > 1 {
-            return splitItems.map { ChecklistItemDraft(title: $0, required: true) }
+        if !explicitItems.isEmpty {
+            return explicitItems.map { ChecklistItemDraft(title: $0, required: true) }
         }
+        guard allowNarrativeFallback else { return [] }
         let labelStripped = paragraph
             .replacingOccurrences(of: #"^[^:]{1,40}:\s*"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -845,7 +851,11 @@ struct LearningSituationAssessmentInstrumentsImportService {
     /// (metainstrucciones dirigidas a quien procese el documento, no a docentes/alumnado)
     /// no deben quedar enganchados como ítems del último instrumento/checklist detectado.
     private func isImporterNoteSection(_ text: String) -> Bool {
-        normalized(text).contains("nota para quien importe")
+        let value = normalized(text)
+        return value.contains("nota para quien importe") ||
+            value.contains("app import mapping") ||
+            value.contains("import mapping") ||
+            value.contains("import notes")
     }
 
     private func isGradingLine(_ text: String) -> Bool {

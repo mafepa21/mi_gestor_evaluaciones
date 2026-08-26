@@ -90,6 +90,81 @@ final class PhysicalTestsImportTests: XCTestCase {
         XCTAssertEqual(draft.referenceScales.map(\.canonicalSex), ["MALE", "FEMALE"])
     }
 
+    func testPreviewAcceptsNeutralAndSexSpecificScopesForOneTest() throws {
+        func scale(id: String, sex: String?) -> [String: Any] {
+            var value: [String: Any] = [
+                "id": id,
+                "testId": "agility_4x10m",
+                "name": "Agilidad 4 × 10 m",
+                "course": 3,
+                "ageFrom": NSNull(),
+                "ageTo": NSNull(),
+                "direction": "LOWER_IS_BETTER",
+                "diagnosticReferenceOnly": true,
+                "scoring": ["mode": "STEP", "points": []],
+                "ranges": [[
+                    "id": "\(id)_r1",
+                    "minValue": NSNull(),
+                    "maxValue": 10.0,
+                    "score": 10.0,
+                    "label": "≤10 s",
+                    "sortOrder": 0,
+                ]],
+            ]
+            value["sex"] = sex ?? NSNull()
+            return value
+        }
+
+        let manifest: [String: Any] = [
+            "format": "mi_gestor.physical-tests-import",
+            "version": 2,
+            "purpose": "INITIAL_DIAGNOSTIC",
+            "learningSituation": ["number": 0, "course": "3º ESO", "subject": "Educación Física"],
+            "assignmentTemplate": [
+                "batteryId": "battery",
+                "batteryName": "Batería",
+                "termLabel": "Diagnóstico",
+                "rawColumnMode": true,
+                "scoreColumnMode": false,
+                "recordScore": false,
+                "countsTowardAverage": false,
+                "showRankings": false,
+            ],
+            "testDefinitions": [[
+                "id": "agility_4x10m",
+                "name": "Agilidad 4 × 10 m",
+                "capacity": "AGILITY",
+                "measurementKind": "TIME",
+                "unit": "s",
+                "higherIsBetter": false,
+                "attempts": 2,
+                "resultMode": "BEST",
+                "protocol": "",
+                "plausibleMinimum": 0,
+                "plausibleMaximum": 30,
+                "decimals": 2,
+            ]],
+            "referenceScales": [
+                scale(id: "agility_neutral", sex: nil),
+                scale(id: "agility_male", sex: "MALE"),
+                scale(id: "agility_female", sex: "FEMALE"),
+            ],
+            "calibrationRequiredTestIds": [],
+            "warnings": [],
+            "sourceNotes": [],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: manifest)
+        let draft = try PhysicalTestsImportService().preview(
+            from: URL(fileURLWithPath: "/tmp/pruebas-sexo-neutral.json"),
+            data: data
+        )
+
+        XCTAssertEqual(draft.referenceScales.count, 3)
+        XCTAssertNil(draft.referenceScales[0].canonicalSex)
+        XCTAssertEqual(draft.referenceScales[1].canonicalSex, "MALE")
+        XCTAssertEqual(draft.referenceScales[2].canonicalSex, "FEMALE")
+    }
+
     func testNameInferenceOnlySuggestsConservativeHighConfidenceMatches() {
         let male = StudentSexNameInference.infer(firstName: "Javier")
         let female = StudentSexNameInference.infer(firstName: "María")

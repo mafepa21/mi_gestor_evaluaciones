@@ -35,6 +35,24 @@ final class PhysicalTestsImportTests: XCTestCase {
         XCTAssertEqual(draft.courseNumber, 3)
     }
 
+    func testPreviewAcceptsStepReferenceScaleWithoutEnablingScoreColumn() throws {
+        let json = #"{"format":"mi_gestor.physical-tests-import","version":2,"purpose":"INITIAL_DIAGNOSTIC","learningSituation":{"number":0,"course":"4º ESO","subject":"Educación Física"},"assignmentTemplate":{"batteryId":"sa0_4_initial_baseline_2026","batteryName":"SA 0 · Línea base inicial (4º ESO)","termLabel":"1ª evaluación · diagnóstico","rawColumnMode":true,"scoreColumnMode":false,"recordScore":false,"countsTowardAverage":false,"showRankings":false},"testDefinitions":[{"id":"vertical_jump","name":"Salto vertical","capacity":"STRENGTH","measurementKind":"DISTANCE","unit":"cm","higherIsBetter":true,"attempts":2,"resultMode":"BEST","protocol":"Registrar el mejor salto válido.","plausibleMinimum":0,"plausibleMaximum":100,"decimals":0}],"referenceScales":[{"id":"sa0_4_vertical_jump_baremo_2026","testId":"vertical_jump","name":"Baremo orientativo SA0 · Salto vertical","course":4,"ageFrom":null,"ageTo":null,"sex":null,"direction":"HIGHER_IS_BETTER","diagnosticReferenceOnly":true,"scoring":{"mode":"STEP","points":[]},"ranges":[{"id":"r1","minValue":null,"maxValue":19,"score":0,"label":"0-19 cm","sortOrder":0},{"id":"r2","minValue":20,"maxValue":29,"score":2.5,"label":"20-29 cm","sortOrder":1},{"id":"r3","minValue":30,"maxValue":39,"score":5,"label":"30-39 cm","sortOrder":2},{"id":"r4","minValue":40,"maxValue":49,"score":7.5,"label":"40-49 cm","sortOrder":3},{"id":"r5","minValue":50,"maxValue":null,"score":10,"label":"≥50 cm","sortOrder":4}]}],"calibrationRequiredTestIds":[],"warnings":["Solo referencia."],"sourceNotes":["Fixture anónima"]}"#
+
+        let draft = try PhysicalTestsImportService().preview(
+            from: URL(fileURLWithPath: "/tmp/pruebas-step-diagnosticas.json"),
+            data: Data(json.utf8)
+        )
+
+        XCTAssertEqual(draft.referenceScales.count, 1)
+        XCTAssertEqual(draft.referenceScales.first?.scoring?.mode, "STEP")
+        XCTAssertEqual(draft.referenceScales.first?.ranges.count, 5)
+        XCTAssertEqual(draft.referenceScales.first?.ranges.map(\.score), [0, 2.5, 5, 7.5, 10])
+        XCTAssertTrue(draft.referenceScales.first?.diagnosticReferenceOnly == true)
+        XCTAssertFalse(draft.assignmentTemplate.scoreColumnMode)
+        XCTAssertFalse(draft.assignmentTemplate.recordScore)
+        XCTAssertTrue(draft.scoreIsDisabled)
+    }
+
     func testPreviewRejectsScoreColumnWhenRecordScoreIsDisabled() {
         let json = #"{"format":"mi_gestor.physical-tests-import","version":1,"purpose":"INITIAL_DIAGNOSTIC","learningSituation":{"number":0,"course":"3º ESO","subject":"Educación Física"},"assignmentTemplate":{"batteryId":"battery","batteryName":"Batería","termLabel":"Diagnóstico","rawColumnMode":true,"scoreColumnMode":true,"recordScore":false,"countsTowardAverage":false,"showRankings":false},"testDefinitions":[{"id":"test","name":"Prueba","capacity":"CUSTOM","measurementKind":"SCORE","unit":"u","higherIsBetter":true,"attempts":1,"resultMode":"LAST","protocol":"","plausibleMinimum":null,"plausibleMaximum":null,"decimals":0}],"referenceScales":[],"calibrationRequiredTestIds":[],"warnings":[],"sourceNotes":[]}"#
 

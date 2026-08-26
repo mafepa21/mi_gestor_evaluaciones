@@ -45,7 +45,10 @@ struct PhysicalTestCaptureView: View {
     }
 
     private var scorePreview: Double? {
-        guard recordScore, let finalValue, let resolvedScale else { return nil }
+        // Diagnostic assignments keep the score column disabled, but the
+        // imported scale is still useful feedback while the teacher captures
+        // the raw result. The score is only persisted when recordScore is true.
+        guard let finalValue, let resolvedScale else { return nil }
         return resolvedScale.scoreFor(rawValue: finalValue)?.doubleValue
     }
 
@@ -86,7 +89,10 @@ struct PhysicalTestCaptureView: View {
 
                         HStack(spacing: 12) {
                             CaptureMetric(title: "Resultado", value: finalValue.map { PhysicalTestsFormatting.decimal($0) } ?? "-")
-                            CaptureMetric(title: "Nota baremada", value: scorePreview.map { PhysicalTestsFormatting.decimal($0) } ?? "-")
+                            CaptureMetric(
+                                title: recordScore ? "Nota baremada" : "Nota de referencia",
+                                value: scorePreview.map { PhysicalTestsFormatting.decimal($0) } ?? "-"
+                            )
                             CaptureMetric(title: "Alumno", value: "\(selectedIndex + 1)/\(test.results.count)")
                         }
 
@@ -215,9 +221,7 @@ struct PhysicalTestCaptureView: View {
             let effectiveAge = ageOnCurrentDate(for: currentResult.student) ?? age
             let effectiveSex = sexForScale(currentResult.student)
             let resolvedScale: MiGestorKit.PhysicalTestScale?
-            if !recordScore {
-                resolvedScale = nil
-            } else if let loadedScale = self.resolvedScale {
+            if let loadedScale = self.resolvedScale {
                 resolvedScale = loadedScale
             } else {
                 resolvedScale = try await bridge.resolvePhysicalScale(
@@ -240,8 +244,9 @@ struct PhysicalTestCaptureView: View {
                 rawValue: rawValue.map { KotlinDouble(value: $0) },
                 rawText: normalizedAttempts.filter { !$0.isEmpty }.joined(separator: " · "),
                 score: score.map { KotlinDouble(value: $0) },
-                // Even in diagnostic mode, keep the selected reference scale for audit.
-                // The score remains nil and the raw column stays outside the average.
+                // Even in diagnostic mode, keep the selected reference scale for
+                // audit. The score remains nil and the raw column stays outside
+                // the average.
                 scaleId: resolvedScale?.id,
                 observedAtEpochMs: nowMs,
                 rawColumnId: rawColumnId,

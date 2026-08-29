@@ -61,7 +61,10 @@ manual picker when the first opportunity is ambiguous.
 Teacher-authored documents may use a readable ledger instead of the QUICK VIEW /
 ACTIVITY DETAILS shape. The importer detects the same two route markers before
 the generic weekly parser, then treats each `BLOQUE CORTO` or `BLOQUE LARGO` as
-one plan and each `U01`–`U04` heading as structured operational content. A
+one plan and each `U##` heading as structured operational content. The importer
+compacts each narrative block into at most four operational moments — explanation,
+activation, main activity and optional reflection — while keeping adaptations
+inside the main activity. A
 `LONG_PART_1` block is a single 35–74 minute opportunity: it is not expanded to
 two timetable periods and it is not treated as a 30-minute `SHORT`.
 
@@ -70,7 +73,8 @@ The payload keeps image references as DOCX relationship IDs plus the Word
 binary source of truth; the detail renderer resolves those IDs locally, avoids
 duplicating images already rendered in the selected route, and supplements the
 selected route when the source document anchors a shared or unit image only in
-the other route.
+the other route. References are retained both at plan level for the full Annex
+and at activity level so related images are visible in the Activity tab.
 
 ## Consequences
 
@@ -80,8 +84,9 @@ the other route.
 - The UI distinguishes imported canonical blocks from classes to schedule.
 - Scheduling stores only the plans selected by the actual chronological route.
 - Imported legacy sequences preserve their previous behavior.
-- Narrative ledgers preserve teacher wording, operational sections and embedded
-  visuals without requiring authors to reformat their existing DOCX.
+- Narrative ledgers preserve teacher wording, operational content and embedded
+  visuals without requiring authors to reformat their existing DOCX; the planner
+  shows a compact four-moment activity script and keeps the full source in Annex.
 
 ## Verification
 

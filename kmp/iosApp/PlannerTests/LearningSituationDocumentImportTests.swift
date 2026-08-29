@@ -769,7 +769,114 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.objective, "Coordinarse con una elección segura")
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.material, "Tres zonas paralelas y material seguro.")
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.activities.count, 3)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.map { $0.activities.count }, [3, 3, 3])
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.activities.map(\.activity), [
+            "Explicación inicial", "Actividad principal", "Reflexión"
+        ])
         XCTAssertFalse(draft.warnings.contains { $0.contains("seis") || $0.contains("duplic") })
+    }
+
+    func testNarrativeCompactorUsesFourMomentsAndMovesAdaptationIntoMainActivity() {
+        let visual = LearningSituationSessionVisualDraft(
+            sourceRelationshipID: "rId-visual",
+            title: "Circuito",
+            altText: "Esquema del circuito"
+        )
+        let source = [
+            LearningSituationSessionActivityDraft(
+                activityKey: "SF-U05-A01", activityType: "narrative", plannedMinutes: 4,
+                timeLabel: "1. Explicación inicial · 4 minutos", phase: "Explicación inicial",
+                activity: "Explicación inicial", teacherActions: "Explicar el criterio.",
+                studentInstructions: "Explicar el criterio."
+            ),
+            LearningSituationSessionActivityDraft(
+                activityKey: "SF-U05-A02", activityType: "narrative", plannedMinutes: 6,
+                timeLabel: "2. Activación · 6 minutos", phase: "Activación",
+                activity: "Activación", teacherActions: "Activar al grupo."
+            ),
+            LearningSituationSessionActivityDraft(
+                activityKey: "SF-U05-A03", activityType: "narrative", plannedMinutes: 24,
+                timeLabel: "3. Actividad principal · 24 minutos", phase: "Actividad principal",
+                activity: "Actividad principal", teacherActions: "Resolver la tarea principal."
+            ),
+            LearningSituationSessionActivityDraft(
+                activityKey: "SF-U05-A04", activityType: "narrative", plannedMinutes: 6,
+                timeLabel: "4. Cierre operativo · 6 minutos", phase: "Cierre operativo",
+                activity: "Cierre operativo", teacherActions: "Registrar el resultado."
+            ),
+            LearningSituationSessionActivityDraft(
+                activityKey: "SF-U05-A05", activityType: "narrative", plannedMinutes: nil,
+                timeLabel: "Adaptación equivalente", phase: "Adaptación equivalente",
+                activity: "Adaptación equivalente", teacherActions: "Reducir la distancia."
+            )
+        ]
+        let payload = LearningSituationSessionDevelopmentPayload(
+            sections: [], activities: source, visuals: [visual]
+        )
+
+        let activities = PlannerSessionPlanPayloadNormalizer.activities(from: payload)
+        XCTAssertEqual(activities.map(\.activity), [
+            "Explicación inicial", "Activación", "Actividad principal", "Reflexión"
+        ])
+        XCTAssertEqual(activities.count, 4)
+        XCTAssertTrue(activities[2].adaptations.contains("Reducir la distancia."))
+        XCTAssertEqual(activities[2].visuals.map(\.sourceRelationshipID), ["rId-visual"])
+        XCTAssertTrue(activities[0].studentInstructions.isEmpty)
+
+        let normalizedSections = PlannerSessionPlanPayloadNormalizer.sections(from: payload)
+        XCTAssertEqual(normalizedSections.count, 4)
+        XCTAssertTrue(normalizedSections.map(\.title).allSatisfy { $0.contains("(") })
+
+        let normalizedJSON = try XCTUnwrap(PlannerSessionPlanPayloadNormalizer.normalizedJSON(
+            from: String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        ))
+        let normalizedPayload = try XCTUnwrap(LearningSituationSessionDevelopmentPayload.decode(from: normalizedJSON))
+        XCTAssertEqual(normalizedPayload.activities.map(\.activityKey), activities.map(\.activityKey))
+        XCTAssertEqual(normalizedPayload.sections.count, 4)
+        XCTAssertEqual(
+            PlannerSessionPlanPayloadNormalizer.activities(from: normalizedPayload).map(\.activityKey),
+            activities.map(\.activityKey)
+        )
+    }
+
+    func testNarrativeRouteLedgerSupportsUnitsBeyondU04() throws {
+        func unit(_ key: String) -> [WordDocumentBlock] {
+            [
+                .paragraph("\(key) · Unidad ampliada · 40 minutos útiles"),
+                .paragraph("Objetivo de hoy: Trabajar \(key) con seguridad."),
+                .paragraph("Material, espacio y agrupamiento: Conos y grupos estables."),
+                .paragraph("1. Explicación inicial · 4 minutos"),
+                .paragraph("Explicar la tarea."),
+                .paragraph("2. Activación con balón · 6 minutos"),
+                .paragraph("Activar con un juego breve."),
+                .paragraph("3. Actividad principal · 24 minutos"),
+                .paragraph("Resolver la tarea principal."),
+                .paragraph("4. Cierre operativo · 6 minutos"),
+                .paragraph("Registrar el resultado.")
+            ]
+        }
+
+        func route(_ name: String) -> [WordDocumentBlock] {
+            [
+                .paragraph("ROUTE OPTION: \(name)"),
+                .paragraph("WEEK 1 — Unidades ampliadas"),
+                .paragraph("BLOQUE CORTO (30 minutos útiles) · U05")
+            ] + unit("U05") + [
+                .paragraph("BLOQUE LARGO (80 minutos útiles) · U09 + U10")
+            ] + unit("U09") + unit("U10")
+        }
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: route("shortFirst") + route("longFirst"),
+            data: Data("narrative-u10".utf8),
+            url: URL(fileURLWithPath: "/tmp/narrative-u10.docx")
+        )
+
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.count, 2)
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.count, 2)
+        XCTAssertTrue(draft.routeVariants[.shortFirst]?.last?.title.contains("U10") == true)
+        XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { $0.activities.count <= 4 })
+        XCTAssertTrue(draft.routeVariants[.longFirst]?.last?.activities.contains { $0.activity == "Reflexión" } == true)
     }
 
     func testProvidedSA0DOCXImportsWithoutSyntheticWeeklyDuplicates() throws {
@@ -788,7 +895,27 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.map(\.sessionType), ["SHORT", "LONG", "SHORT"])
         XCTAssertEqual(draft.routeVariants[.longFirst]?.map(\.sessionType), ["LONG", "SHORT", "LONG_PART_1"])
         XCTAssertEqual(Set(draft.routeVariants[.shortFirst]?.flatMap(\.visuals).map(\.sourceRelationshipID) ?? []).count, 5)
+        XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { $0.activities.count <= 4 })
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.activities.count, 4)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.dropFirst().first?.activities.count, 4)
         XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { !$0.objective.isEmpty && !$0.development.isEmpty })
+    }
+
+    func testProvidedSA4bDOCXImportsAllTenUnitsAndCompactsEveryBlock() throws {
+        guard let path = ProcessInfo.processInfo.environment["MIGESTOR_SA4B_DOCX_PATH"], !path.isEmpty else {
+            throw XCTSkip("Se ejecuta solo cuando se proporciona MIGESTOR_SA4B_DOCX_PATH con el DOCX de Balonmano.")
+        }
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw XCTSkip("El DOCX indicado no está disponible.")
+        }
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.count, 7)
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.count, 7)
+        XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { $0.activities.count <= 4 })
+        XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.contains { $0.title.contains("U10") })
+        XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { $0.visuals.isEmpty == false })
     }
 
     func testNarrativeImageAnchorsKeepDocxMetadataAndRendererCanSupplementRoute() throws {
@@ -816,6 +943,12 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(result.imageCount, 1)
         XCTAssertTrue(result.html.contains("alt=\"Esquema de rotación\""))
         XCTAssertTrue(result.html.contains("Rotación"))
+        let activityResult = try PlannerSessionDocxRenderer().renderVisualReferences(
+            from: docxURL,
+            references: [visual]
+        )
+        XCTAssertEqual(activityResult.imageCount, 1)
+        XCTAssertTrue(activityResult.html.contains("data:image/png;base64,"))
     }
 
     private func makeAssessmentInstrumentDocx() throws -> URL {

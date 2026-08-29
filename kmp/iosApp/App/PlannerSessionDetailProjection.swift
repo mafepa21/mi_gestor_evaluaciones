@@ -26,7 +26,8 @@ struct PlannerSessionDetailProjection {
 
     init(plan: LearningSituationSessionPlan) {
         let payload = Self.decodePayload(plan.developmentJson)
-        let sections = payload.sections
+        let normalizedActivities = PlannerSessionPlanPayloadNormalizer.activities(from: payload)
+        let sections = PlannerSessionPlanPayloadNormalizer.sections(from: payload)
         let timelineSections = sections.filter(Self.isTimelineSection)
         let timeline = timelineSections.map(PlannerSessionTimelineBlock.init)
 
@@ -52,7 +53,6 @@ struct PlannerSessionDetailProjection {
         self.assessment = Self.cleaned(payload.assessment)
         self.guidingQuestions = Self.unique(payload.guidingQuestions.map(Self.cleaned).filter { !$0.isEmpty })
         self.closure = Self.cleaned(payload.closure)
-        let normalizedActivities = PlannerSessionPlanPayloadNormalizer.activities(from: payload)
         self.activities = normalizedActivities
         self.timeline = timeline
         self.supportSections = sections
@@ -265,19 +265,25 @@ enum PlannerSessionPlanPayloadNormalizer {
         let source = payload.activities.isEmpty
             ? PlannerSessionLegacyActivityProjection.executableActivities(from: payload.sections)
             : payload.activities
-        return normalizedActivities(source)
+        let normalized = normalizedActivities(source)
+        return NarrativeSessionActivityCompactor.compact(normalized, planVisuals: payload.visuals)
+    }
+
+    static func sections(from payload: LearningSituationSessionDevelopmentPayload) -> [LearningSituationSessionSectionDraft] {
+        normalizedSections(from: payload, activities: activities(from: payload))
     }
 
     static func normalizedJSON(from json: String) -> String? {
         guard let payload = LearningSituationSessionDevelopmentPayload.decode(from: json) else { return nil }
+        let normalizedActivities = activities(from: payload)
         let normalizedPayload = LearningSituationSessionDevelopmentPayload(
             schema: "session-plan-v2",
             schemaVersion: max(payload.schemaVersion, 2),
             organisation: payload.organisation,
             coreKnowledge: payload.coreKnowledge,
             assessment: payload.assessment,
-            sections: payload.sections,
-            activities: activities(from: payload),
+            sections: normalizedSections(from: payload, activities: normalizedActivities),
+            activities: normalizedActivities,
             guidingQuestions: payload.guidingQuestions,
             closure: payload.closure,
             visuals: payload.visuals,
@@ -309,6 +315,30 @@ enum PlannerSessionPlanPayloadNormalizer {
                 copy.activity = "Actividad \(index + 1)"
             }
             return copy
+        }
+    }
+
+    private static func normalizedSections(
+        from payload: LearningSituationSessionDevelopmentPayload,
+        activities: [LearningSituationSessionActivityDraft]
+    ) -> [LearningSituationSessionSectionDraft] {
+        guard payload.activities.count > 1,
+              payload.activities.allSatisfy(NarrativeSessionActivityCompactor.isNarrative),
+              !activities.isEmpty else { return payload.sections }
+        return activities.map { activity in
+            let content = [
+                activity.teacherActions,
+                activity.studentInstructions,
+                activity.studentActions,
+                activity.adaptations.isEmpty ? "" : "Adaptaciones: \(activity.adaptations)"
+            ].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let line = [activity.timeLabel, activity.activity, content.joined(separator: "\n")]
+                .filter { !$0.isEmpty }
+                .joined(separator: " · ")
+            return LearningSituationSessionSectionDraft(
+                title: activity.timeLabel.isEmpty ? activity.activity : "\(activity.activity) (\(activity.timeLabel))",
+                lines: line.isEmpty ? [] : [line]
+            )
         }
     }
 

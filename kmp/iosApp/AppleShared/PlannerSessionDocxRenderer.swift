@@ -79,6 +79,27 @@ struct PlannerSessionDocxRenderer {
         )
     }
 
+    /// Renderiza únicamente los visuales asignados a una actividad. El anexo sigue usando
+    /// `render` para mantener el orden y el contenido completo del bloque original.
+    func renderVisualReferences(
+        from url: URL,
+        references: [LearningSituationSessionVisualDraft]
+    ) throws -> PlannerDocxRenderResult {
+        guard !references.isEmpty else {
+            return PlannerDocxRenderResult(html: Self.htmlDocument(""), tableCount: 0, imageCount: 0)
+        }
+        let data = try Data(contentsOf: url)
+        let archive = try Archive(data: data, accessMode: .read, pathEncoding: nil)
+        let relationships = try documentRelationships(from: archive)
+        let context = PlannerDocxRenderContext(archive: archive, relationships: relationships)
+        let body = context.renderReferencedImages(references)
+        return PlannerDocxRenderResult(
+            html: Self.htmlDocument(body),
+            tableCount: context.tableCount,
+            imageCount: context.imageCount
+        )
+    }
+
     private func selectSessionBlocks(
         from blocks: [PlannerDocxXMLNode],
         sourceLabel: String,
@@ -491,10 +512,25 @@ private final class PlannerDocxXMLParser: NSObject, XMLParserDelegate {
 
 struct PlannerDocxWebView: View {
     let html: String
+    let minHeight: CGFloat
+    let idealHeight: CGFloat
+    let maxHeight: CGFloat
+
+    init(
+        html: String,
+        minHeight: CGFloat = 420,
+        idealHeight: CGFloat = 560,
+        maxHeight: CGFloat = 720
+    ) {
+        self.html = html
+        self.minHeight = minHeight
+        self.idealHeight = idealHeight
+        self.maxHeight = maxHeight
+    }
 
     var body: some View {
         PlannerDocxWebViewRepresentable(html: html)
-            .frame(minHeight: 420, idealHeight: 560, maxHeight: 720)
+            .frame(minHeight: minHeight, idealHeight: idealHeight, maxHeight: maxHeight)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .accessibilityLabel("Contenido enriquecido del documento de sesión")
     }

@@ -468,6 +468,18 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-08-29 - Compactación narrativa de actividades y visuales por actividad
+
+Resumen:
+- Qué cambio se hizo: el importador narrativo de Bachillerato reconoce unidades `U##` sin limitarse a U04, agrupa cada bloque en explicación, activación, actividad principal y reflexión opcional, integra las adaptaciones en la actividad principal y evita duplicar el texto de Teacher/Student cuando es el mismo.
+- Por qué importa: los DOCX reales de Evaluación Inicial y Balonmano conservan su redacción y sus rutas, pero el Planificador muestra ahora un guion breve y ejecutable; las imágenes relacionadas aparecen tanto en la ficha de Actividad como en Anexos.
+- Dónde vive el cambio: `kmp/iosApp/AppleShared/LearningSituationDocumentImportService.swift`, `PlannerSessionPlanPayloadNormalizer`, `PlannerSessionDocxRenderer.swift`, `PlannerSessionDetailSheet.swift` y `LearningSituationDocumentImportTests.swift`.
+- Validación realizada: `swiftc -parse` para los archivos modificados, `xcodegen generate` y `git diff --check` correctos. El `xcodebuild test` quedó bloqueado antes de ejecutar tests por una terminación silenciosa del compilador en el archivo preexistente `MacPhysicalTestsView.swift`; una compilación aislada del helper además encontró falta de espacio temporal.
+
+Notas para futuras conversaciones:
+- La compactación es idempotente y también se aplica al leer payloads narrativos antiguos, por lo que no hace falta una migración SQLDelight.
+- Las referencias visuales guardan `rId` y metadatos, no base64; el DOCX cacheado sigue siendo necesario para renderizar la imagen concreta en la ficha.
+
 ### 2026-08-29 - Importador narrativo de SA0 con rutas e imágenes DOCX
 
 Resumen:

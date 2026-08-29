@@ -199,6 +199,7 @@ struct PlannerSessionDetailSheet: View {
     @State private var sequenceVersion: LearningSituationSessionSequenceVersion?
     @State private var sourceDocumentURL: URL?
     @State private var renderedDocument: PlannerDocxRenderResult?
+    @State private var renderedActivityVisuals: [String: String] = [:]
     @State private var isLoadingRenderedDocument = false
     @State private var isDeleteConfirmationPresented = false
     @State private var selectedSection: PlannerSessionDetailSection = .activity
@@ -822,6 +823,22 @@ struct PlannerSessionDetailSheet: View {
                     .padding(.top, 4)
             }
 
+            if let visualHTML = renderedActivityVisuals[activityIdentity(activity, index: index)],
+               !visualHTML.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Apoyo visual", systemImage: "photo.on.rectangle.angled")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(tint)
+                    PlannerDocxWebView(
+                        html: visualHTML,
+                        minHeight: 160,
+                        idealHeight: 240,
+                        maxHeight: 320
+                    )
+                }
+                .padding(.top, 16)
+            }
+
             VStack(alignment: .leading, spacing: 0) {
                 activityDetailSection("Propósito", activity.purpose)
                 activityDetailSection("Organización y preparación", [activity.organisation, activity.setup].filter { !$0.isEmpty }.joined(separator: "\n"))
@@ -1018,6 +1035,7 @@ struct PlannerSessionDetailSheet: View {
     @MainActor
     private func loadDetailedPlan() async {
         renderedDocument = nil
+        renderedActivityVisuals = [:]
         isLoadingRenderedDocument = false
         guard let planId = session.learningSituationSessionPlanId?.int64Value else { return }
         guard let plan = try? await bridge.learningSituationSessionPlan(id: planId) else { return }
@@ -1041,6 +1059,8 @@ struct PlannerSessionDetailSheet: View {
         let payload = LearningSituationSessionDevelopmentPayload.decode(from: plan.developmentJson)
         let route = payload?.sequenceRoute
         let visualReferences = payload?.visuals ?? []
+        let activityVisualReferences = (payload.map(PlannerSessionPlanPayloadNormalizer.activities(from:)) ?? [])
+            .filter { !$0.visuals.isEmpty }
         renderedDocument = await Task.detached(priority: .userInitiated) {
             try? PlannerSessionDocxRenderer().render(
                 from: sourceURL,
@@ -1050,6 +1070,21 @@ struct PlannerSessionDetailSheet: View {
                 visualReferences: visualReferences
             )
         }.value
+        if !activityVisualReferences.isEmpty {
+            renderedActivityVisuals = await Task.detached(priority: .userInitiated) {
+                let renderer = PlannerSessionDocxRenderer()
+                var rendered: [String: String] = [:]
+                for activity in activityVisualReferences {
+                    if let result = try? renderer.renderVisualReferences(
+                        from: sourceURL,
+                        references: activity.visuals
+                    ), result.imageCount > 0 {
+                        rendered[activity.activityKey] = result.html
+                    }
+                }
+                return rendered
+            }.value
+        }
         isLoadingRenderedDocument = false
     }
 

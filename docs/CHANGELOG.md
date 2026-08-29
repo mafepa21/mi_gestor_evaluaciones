@@ -17,7 +17,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - Secuenciación de sesiones CLIL: contrato semanal importable con bloques `LONG BLOCK` y `SHORT BLOCK`, actividades estructuradas en inglés, evidencias, materiales, adaptaciones y comentarios CLIL; corpus normalizado en 55 Markdown y 55 DOCX.
 - Itinerarios seleccionables de Bachillerato (#225): los DOCX pueden declarar `ROUTE OPTION: shortFirst` y `ROUTE OPTION: longFirst` con fichas completas e independientes; el Planificador elige una sola ruta según la primera franja compatible o permite fijarla manualmente.
-- Importador narrativo de Bachillerato: reconoce el ledger de SA0 tal como está redactado, conserva las rutas `shortFirst`/`longFirst`, agrupa las unidades U01–U04 en bloques operativos y mantiene referencias estables a las imágenes embebidas del DOCX.
+- Importador narrativo de Bachillerato: reconoce los ledgers de SA0 y otras SA tal como están redactados, conserva las rutas `shortFirst`/`longFirst`, agrupa cualquier unidad `U##` en bloques operativos y mantiene referencias estables a las imágenes embebidas del DOCX.
+- Actividades narrativas compactas: cada bloque importado presenta `Explicación inicial`, `Activación`, `Actividad principal` y `Reflexión` cuando existe; las adaptaciones se integran en la actividad principal y las imágenes relacionadas se muestran también en su ficha.
 - Fichas de sesión operativas: cada bloque separa `QUICK VIEW` y `ACTIVITY DETAILS`, usa `Activity ID` estable (`Wnn-L/S-nn`) y permite abrir una actividad concreta desde timeline, desplegable o botones Anterior/Siguiente.
 - `session-plan-v2` conserva por actividad los contextos explícitos `prepares` y `consolidates`, disponibles tanto en la previsualización de importación como en la ficha operativa.
 
@@ -31,6 +32,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - La navegación macOS hacia la ejecución desde la ficha de sesión cierra primero el inspector y conserva la transición diferida al Diario.
 - La programación de un bloque largo persiste todas sus franjas consecutivas, incluyendo el segundo período del par horario, y enlaza cada ocupación con su sesión planificada.
 - La secuenciación narrativa distingue `LONG_PART_1` como una única franja parcial de 40 minutos y el visor enriquecido del Planificador limita el DOCX a la ruta elegida, incorporando también las imágenes de la ruta alternativa cuando el original solo las ancla en una de ellas.
+- La importación narrativa ya no convierte cada encabezado curricular o adaptación en una actividad independiente: fusiona los contenidos por momento, elimina duplicaciones de Teacher/Student, admite unidades `U##` más allá de U04 y normaliza payloads antiguos al abrirlos o reimportarlos.
 - Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
 - AppIcon nativo de Apple integrado mediante `AppIcon.icon` de Icon Composer para el target KMP de iPadOS y macOS, con rendiciones `Default` y `Dark` en una única fuente compartida.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
@@ -168,6 +170,8 @@ El formato sigue una variante practica de Keep a Changelog:
   escalas físicas. Las filas existentes reciben `STEP` por defecto.
 
 ### Verification
+
+- `swiftc -parse` pasó para los cinco archivos Swift modificados; `xcodegen generate` pasó y `git diff --check` quedó limpio. `xcodebuild test` no pudo alcanzar la ejecución de tests porque el compilador Swift del entorno terminó con código 0 y sin salida al compilar el archivo preexistente `MacPhysicalTestsView.swift`; una verificación aislada del helper también quedó limitada por falta de espacio temporal.
 
 - Este cambio: `MiGestorPlannerTests` completo pasa con 94 tests ejecutados, 1 omitido y 0 fallos; `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran el proyecto y compilan correctamente macOS Native e iOS Simulator. El DOCX real de SA0 se validó durante el desarrollo con dos rutas, tres bloques por ruta, `LONG_PART_1` y cinco imágenes embebidas.
 - Issue #225: `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran el proyecto y compilan correctamente macOS Native y iOS Simulator en `codex/sa-route-itineraries`.

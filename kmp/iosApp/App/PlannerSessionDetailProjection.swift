@@ -325,21 +325,83 @@ enum PlannerSessionPlanPayloadNormalizer {
         guard payload.activities.count > 1,
               payload.activities.allSatisfy(NarrativeSessionActivityCompactor.isNarrative),
               !activities.isEmpty else { return payload.sections }
-        return activities.map { activity in
-            let content = [
-                activity.teacherActions,
-                activity.studentInstructions,
-                activity.studentActions,
-                activity.adaptations.isEmpty ? "" : "Adaptaciones: \(activity.adaptations)"
-            ].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            let line = [activity.timeLabel, activity.activity, content.joined(separator: "\n")]
-                .filter { !$0.isEmpty }
-                .joined(separator: " · ")
-            return LearningSituationSessionSectionDraft(
-                title: activity.timeLabel.isEmpty ? activity.activity : "\(activity.activity) (\(activity.timeLabel))",
-                lines: line.isEmpty ? [] : [line]
-            )
+        let breaks = payload.sections.filter(isNarrativeBreakSection)
+        var result: [LearningSituationSessionSectionDraft] = []
+        var previousSegment: String?
+        var breakIndex = 0
+
+        for activity in activities {
+            let segment = narrativeSegmentIdentity(for: activity)
+            if let segment,
+               let previousSegment,
+               segment != previousSegment,
+               breakIndex < breaks.count {
+                result.append(breaks[breakIndex])
+                breakIndex += 1
+            }
+            result.append(narrativeTimelineSection(for: activity))
+            if segment != nil { previousSegment = segment }
         }
+
+        // A break at the end of a source block is still meaningful and must not be lost
+        // merely because there is no following segment to trigger its insertion.
+        result.append(contentsOf: breaks.dropFirst(breakIndex))
+        return result
+    }
+
+    private static func narrativeTimelineSection(
+        for activity: LearningSituationSessionActivityDraft
+    ) -> LearningSituationSessionSectionDraft {
+        let segment = [activity.segmentKey, activity.segmentTitle]
+            .compactMap { value in value?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        let title = [segment, activity.activity]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        let duration = activity.plannedMinutes.map { "\($0) min" } ?? cleaned(activity.timeLabel)
+        let content = [
+            activity.teacherActions,
+            activity.studentInstructions,
+            activity.studentActions,
+            activity.adaptations.isEmpty ? "" : "Adaptaciones: \(activity.adaptations)"
+        ].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let line = [duration, title, content.joined(separator: "\n")]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        let sectionTitle = duration.isEmpty ? title : "\(title) (\(duration))"
+        return LearningSituationSessionSectionDraft(
+            title: sectionTitle,
+            lines: line.isEmpty ? [] : [line]
+        )
+    }
+
+    private static func isNarrativeBreakSection(_ section: LearningSituationSessionSectionDraft) -> Bool {
+        let value = normalized(section.title)
+        return value.hasPrefix("descanso") || value.hasPrefix("break") ||
+            value.hasPrefix("pausa") || value.hasPrefix("rest")
+    }
+
+    private static func narrativeSegmentIdentity(
+        for activity: LearningSituationSessionActivityDraft
+    ) -> String? {
+        if let segmentKey = activity.segmentKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !segmentKey.isEmpty {
+            return normalized(segmentKey)
+        }
+        let range = NSRange(activity.activityKey.startIndex..., in: activity.activityKey)
+        guard let regex = try? NSRegularExpression(pattern: #"\bU[0-9]{2,3}\b"#, options: .caseInsensitive),
+              let match = regex.firstMatch(in: activity.activityKey, range: range),
+              let keyRange = Range(match.range, in: activity.activityKey) else { return nil }
+        return normalized(String(activity.activityKey[keyRange]))
+    }
+
+    private static func cleaned(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func normalized(_ value: String) -> String {
+        cleaned(value).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
     }
 
     private static func matchesActivityIdentifier(_ value: String) -> Bool {

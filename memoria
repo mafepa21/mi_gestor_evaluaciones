@@ -468,6 +468,18 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-08-29 - Segmentación curricular de los LONG narrativos
+
+Resumen:
+- Qué cambio se hizo: el importador de ledgers narrativos compacta cada unidad `U##` por separado en explicación, activación, actividad principal y reflexión opcional; un `LONG` que contiene dos unidades conserva sus ocho actividades, el orden y las fronteras `BREAK`.
+- Por qué importa: las sesiones largas de Evaluación Inicial, Balonmano y otras SA dejan de mezclar tiempos, textos o identidades de dos sesiones de 40 minutos, y el Planificador muestra cada segmento como un grupo reconocible.
+- Dónde vive el cambio: `kmp/iosApp/AppleShared/LearningSituationDocumentImportService.swift`, `kmp/iosApp/App/PlannerSessionDetailProjection.swift`, `kmp/iosApp/App/PlannerSessionDetailSheet.swift` y `kmp/iosApp/PlannerTests/LearningSituationDocumentImportTests.swift`.
+- Validación realizada: `swiftc -parse` pasó para los cuatro archivos Swift tocados; se actualizaron las pruebas sintéticas y opcionales de SA0/Balonmano. La ejecución completa de Xcode queda pendiente por la falta de espacio temporal ya documentada en el changelog.
+
+Notas para futuras conversaciones:
+- El payload conserva metadatos opcionales `segmentKey`, `segmentTitle`, `segmentOrder`, `momentOrder` y `sourceOrder`; los payloads antiguos se normalizan sin migración SQLDelight.
+- Las imágenes embebidas siguen siendo referencias `rId`, pero ahora incluyen el ordinal del párrafo fuente para asociarlas a U## aunque Word no lo declare en `title`/`alt text`; se muestran en Anexos y en la actividad correspondiente.
+
 ### 2026-08-29 - Compactación narrativa de actividades y visuales por actividad
 
 Resumen:

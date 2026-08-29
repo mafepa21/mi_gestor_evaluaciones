@@ -154,13 +154,17 @@ struct LearningSituationSessionVisualDraft: Identifiable, Codable, Hashable {
     var altText: String
     var anchorText: String
     var unitKey: String?
+    /// Ordinal del párrafo fuente (sin contar párrafos internos de tablas). Permite
+    /// asociar imágenes sin depender de que el texto alternativo contenga U##.
+    var sourceParagraphIndex: Int?
 
     init(
         sourceRelationshipID: String,
         title: String = "",
         altText: String = "",
         anchorText: String = "",
-        unitKey: String? = nil
+        unitKey: String? = nil,
+        sourceParagraphIndex: Int? = nil
     ) {
         self.id = UUID()
         self.sourceRelationshipID = sourceRelationshipID
@@ -168,6 +172,7 @@ struct LearningSituationSessionVisualDraft: Identifiable, Codable, Hashable {
         self.altText = altText
         self.anchorText = anchorText
         self.unitKey = unitKey
+        self.sourceParagraphIndex = sourceParagraphIndex
     }
 }
 
@@ -205,6 +210,13 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
     /// Referencias a imágenes del DOCX que pertenecen a esta actividad. Las imágenes
     /// también se conservan en el payload de plan para poder reconstruir el anexo completo.
     var visuals: [LearningSituationSessionVisualDraft]
+    /// Contexto curricular del segmento dentro de un LONG. Es opcional para leer payloads
+    /// históricos creados antes de que el parser conservara la frontera U##.
+    var segmentKey: String?
+    var segmentTitle: String?
+    var segmentOrder: Int?
+    var momentOrder: Int?
+    var sourceOrder: Int?
 
     init(
         activityKey: String = "",
@@ -228,7 +240,12 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
         fastGroupExtension: String = "",
         prepares: String = "",
         consolidates: String = "",
-        visuals: [LearningSituationSessionVisualDraft] = []
+        visuals: [LearningSituationSessionVisualDraft] = [],
+        segmentKey: String? = nil,
+        segmentTitle: String? = nil,
+        segmentOrder: Int? = nil,
+        momentOrder: Int? = nil,
+        sourceOrder: Int? = nil
     ) {
         self.id = UUID()
         self.activityKey = activityKey
@@ -253,13 +270,19 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
         self.prepares = prepares
         self.consolidates = consolidates
         self.visuals = visuals
+        self.segmentKey = segmentKey
+        self.segmentTitle = segmentTitle
+        self.segmentOrder = segmentOrder
+        self.momentOrder = momentOrder
+        self.sourceOrder = sourceOrder
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, activityKey, activityType, plannedMinutes, timeLabel, phase, activity,
              purpose, organisation, setup, teacherActions, studentInstructions, studentActions,
              timingBreakdown, clilFocus, evidence, materials, adaptations, slowGroupPlan,
-             fastGroupExtension, prepares, consolidates, visuals
+             fastGroupExtension, prepares, consolidates, visuals, segmentKey, segmentTitle,
+             segmentOrder, momentOrder, sourceOrder
         // session-plan-v2 keys. The legacy keys above remain accepted on decode.
         case v2Time = "time", v2Minutes = "minutes", v2Kind = "kind", v2Title = "title"
         case v2TeacherNarrative = "teacherNarrative", v2StudentOutput = "studentOutput"
@@ -293,6 +316,11 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
         try container.encode(prepares, forKey: .prepares)
         try container.encode(consolidates, forKey: .consolidates)
         try container.encode(visuals, forKey: .visuals)
+        try container.encodeIfPresent(segmentKey, forKey: .segmentKey)
+        try container.encodeIfPresent(segmentTitle, forKey: .segmentTitle)
+        try container.encodeIfPresent(segmentOrder, forKey: .segmentOrder)
+        try container.encodeIfPresent(momentOrder, forKey: .momentOrder)
+        try container.encodeIfPresent(sourceOrder, forKey: .sourceOrder)
     }
 
     init(from decoder: Decoder) throws {
@@ -338,6 +366,11 @@ struct LearningSituationSessionActivityDraft: Identifiable, Codable {
         self.prepares = try container.decodeIfPresent(String.self, forKey: .prepares) ?? ""
         self.consolidates = try container.decodeIfPresent(String.self, forKey: .consolidates) ?? ""
         self.visuals = try container.decodeIfPresent([LearningSituationSessionVisualDraft].self, forKey: .visuals) ?? []
+        self.segmentKey = try container.decodeIfPresent(String.self, forKey: .segmentKey)
+        self.segmentTitle = try container.decodeIfPresent(String.self, forKey: .segmentTitle)
+        self.segmentOrder = try container.decodeIfPresent(Int.self, forKey: .segmentOrder)
+        self.momentOrder = try container.decodeIfPresent(Int.self, forKey: .momentOrder)
+        self.sourceOrder = try container.decodeIfPresent(Int.self, forKey: .sourceOrder)
     }
 }
 
@@ -422,9 +455,10 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
     }
 }
 
-/// Reduce la prosa narrativa de un bloque docente a los cuatro momentos que el profesor
+/// Reduce la prosa narrativa de cada segmento curricular a los cuatro momentos que el profesor
 /// necesita ejecutar. Es compartido por el importador y por la lectura de payloads antiguos:
-/// así una reimportación y una sesión ya guardada presentan exactamente la misma ficha.
+/// así una reimportación y una sesión ya guardada presentan exactamente la misma ficha sin
+/// mezclar las dos unidades de un bloque LONG.
 enum NarrativeSessionActivityCompactor {
     enum Moment: Int, CaseIterable, Hashable {
         case explanation
@@ -482,6 +516,43 @@ enum NarrativeSessionActivityCompactor {
         guard narrative.count > 1 else { return source }
         guard narrative.count == source.count else { return source }
 
+        // Un LONG puede contener dos lessonUnits de 40 minutos. La unidad curricular
+        // es la frontera que no se puede perder: compactamos cada segmento por separado
+        // y solo después lo proyectamos como una lista plana para la UI.
+        var groups: [(key: String, activities: [LearningSituationSessionActivityDraft])] = []
+        var groupIndexes: [String: Int] = [:]
+        for activity in source {
+            let key = segmentIdentity(for: activity)
+            if let index = groupIndexes[key] {
+                groups[index].activities.append(activity)
+            } else {
+                groupIndexes[key] = groups.count
+                groups.append((key: key, activities: [activity]))
+            }
+        }
+
+        guard groups.count > 1 || groups.contains(where: { $0.activities.count > 1 }) else { return source }
+        return groups.enumerated().flatMap { index, group in
+            compactSegment(
+                group.activities,
+                planVisuals: planVisuals.filter { visual in
+                    if let unitKey = visual.unitKey {
+                        return normalized(unitKey) == normalized(group.key)
+                    }
+                    return index == 0
+                }
+            )
+        }
+    }
+
+    private static func compactSegment(
+        _ source: [LearningSituationSessionActivityDraft],
+        planVisuals: [LearningSituationSessionVisualDraft]
+    ) -> [LearningSituationSessionActivityDraft] {
+        guard !source.isEmpty else { return [] }
+        let narrative = source.filter(isNarrative)
+        guard narrative.count > 1, narrative.count == source.count else { return source }
+
         // El payload ya puede haber pasado por esta capa (por ejemplo, al normalizarlo
         // antes de guardarlo). No vuelvas a envolver sus claves ni a duplicar el contenido.
         if narrative.count <= 4,
@@ -525,6 +596,14 @@ enum NarrativeSessionActivityCompactor {
         return compacted
     }
 
+    private static func segmentIdentity(for activity: LearningSituationSessionActivityDraft) -> String {
+        if let segmentKey = activity.segmentKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !segmentKey.isEmpty {
+            return segmentKey.uppercased()
+        }
+        return unitKey(from: activity.activityKey)?.uppercased() ?? "__UNSEGMENTED__"
+    }
+
     private static func merge(
         entries: [LearningSituationSessionActivityDraft],
         extraAdaptations: [LearningSituationSessionActivityDraft],
@@ -554,6 +633,10 @@ enum NarrativeSessionActivityCompactor {
         let materials = mergeField(contextualValues(entries, keyPath: \.materials))
         let prepares = moment == .main ? mergeField(contextualValues(entries, keyPath: \.prepares)) : ""
         let consolidates = moment == .main ? mergeField(contextualValues(entries, keyPath: \.consolidates)) : ""
+        let segmentKey = entries.first?.segmentKey ?? unitKey(from: entries.first?.activityKey ?? "")
+        let segmentTitle = entries.first?.segmentTitle
+        let segmentOrder = entries.first?.segmentOrder
+        let sourceOrder = entries.first?.sourceOrder
 
         return LearningSituationSessionActivityDraft(
             activityKey: "\(keyPrefix)-NARRATIVE-A\(String(format: "%02d", moment.rawValue + 1))",
@@ -577,7 +660,12 @@ enum NarrativeSessionActivityCompactor {
             fastGroupExtension: moment == .main ? mergeField(contextualValues(entries, keyPath: \.fastGroupExtension)) : "",
             prepares: prepares,
             consolidates: consolidates,
-            visuals: mergedVisuals
+            visuals: mergedVisuals,
+            segmentKey: segmentKey,
+            segmentTitle: segmentTitle,
+            segmentOrder: segmentOrder,
+            momentOrder: moment.rawValue,
+            sourceOrder: sourceOrder
         )
     }
 
@@ -1554,13 +1642,26 @@ struct LearningSituationSessionSequenceDocumentImportService {
               Set(routeHeaders.map(\.route)).count >= 2 else { return nil }
 
         let imageAnchors = (try? wordDocumentImageAnchors(from: data)) ?? []
+        let paragraphOrdinals = narrativeParagraphOrdinals(in: blocks)
+        let unitHeaderPositions: [(paragraphIndex: Int, key: String)] = blocks.enumerated().compactMap { index, block in
+            guard case .paragraph(let text) = block,
+                  let key = narrativeUnitKey(in: text),
+                  normalized(text).range(of: #"^u[0-9]{2,3}\b"#, options: .regularExpression) != nil,
+                  let paragraphIndex = paragraphOrdinals[index] else { return nil }
+            return (paragraphIndex: paragraphIndex, key: key)
+        }
         let visuals = imageAnchors.map { anchor in
-            LearningSituationSessionVisualDraft(
+            let textContext = [anchor.title, anchor.description, anchor.contextText].joined(separator: " ")
+            let unitKey = narrativeUnitKey(in: textContext) ?? anchor.paragraphIndex.flatMap { paragraphIndex in
+                unitHeaderPositions.last(where: { $0.paragraphIndex <= paragraphIndex })?.key
+            }
+            return LearningSituationSessionVisualDraft(
                 sourceRelationshipID: anchor.relationshipID,
                 title: anchor.title,
                 altText: anchor.description,
                 anchorText: anchor.contextText,
-                unitKey: narrativeUnitKey(in: [anchor.title, anchor.description, anchor.contextText].joined(separator: " "))
+                unitKey: unitKey,
+                sourceParagraphIndex: anchor.paragraphIndex
             )
         }
 
@@ -1611,10 +1712,13 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let objective: String
         let material: String
         let attention: String
+        let evidence: String
         let prepares: String
         let consolidates: String
         let sections: [LearningSituationSessionSectionDraft]
         let activities: [LearningSituationSessionActivityDraft]
+        let breakSections: [LearningSituationSessionSectionDraft]
+        let visuals: [LearningSituationSessionVisualDraft]
     }
 
     private func narrativePlans(
@@ -1655,6 +1759,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
             let unitTitles = units.map { "\($0.key) · \($0.title)" }.joined(separator: " · ")
             let objective = units.map(\.objective).filter { !$0.isEmpty }.joined(separator: "\n")
             let material = units.map(\.material).filter { !$0.isEmpty }.joined(separator: "\n")
+            let evidence = units.map(\.evidence).filter { !$0.isEmpty }.joined(separator: "\n")
             let adaptations = units.map(\.attention).filter { !$0.isEmpty }
             let unitVisuals = uniqueVisuals(
                 visualsFor: header.unitKeys.isEmpty ? units.map(\.key) : header.unitKeys,
@@ -1664,21 +1769,19 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 units.flatMap(\.activities),
                 planVisuals: unitVisuals
             )
-            let sections = activities.map { activity in
-                let lines = [
-                    activity.teacherActions,
-                    activity.studentInstructions,
-                    activity.studentActions,
-                    activity.adaptations.isEmpty ? "" : "Adaptaciones: \(activity.adaptations)"
-                ].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                let line = [activity.timeLabel, activity.activity, lines.joined(separator: "\n")]
-                    .filter { !$0.isEmpty }
-                    .joined(separator: " · ")
-                return LearningSituationSessionSectionDraft(
-                    title: activity.timeLabel.isEmpty ? activity.activity : "\(activity.activity) (\(activity.timeLabel))",
-                    lines: line.isEmpty ? [] : [line]
-                )
-            }.filter { !$0.lines.isEmpty }
+            var sections: [LearningSituationSessionSectionDraft] = []
+            for unit in units {
+                let segmentActivities = activities.filter { activity in
+                    normalized(activity.segmentKey ?? "") == normalized(unit.key)
+                }
+                sections.append(contentsOf: segmentActivities.map(narrativeTimelineSection))
+                sections.append(contentsOf: unit.breakSections)
+            }
+            // Unsegmented content is retained at the end rather than silently dropped.
+            let knownSegmentKeys = Set(units.map { normalized($0.key) })
+            sections.append(contentsOf: activities
+                .filter { !knownSegmentKeys.contains(normalized($0.segmentKey ?? "")) }
+                .map(narrativeTimelineSection))
             let roleLabel: String
             switch header.role {
             case .long: roleLabel = "LONG"
@@ -1700,17 +1803,48 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 adaptations: adaptations,
                 organisation: material,
                 coreKnowledge: "",
-                assessment: "Registro diagnóstico bruto; no genera calificación.",
+                assessment: ["Registro diagnóstico bruto; no genera calificación.", evidence]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: "\n"),
                 guidingQuestions: [],
-                closure: activities.first(where: { NarrativeSessionActivityCompactor.moment(for: $0.activity) == .reflection })?.teacherActions ?? "",
+                closure: activities
+                    .filter { NarrativeSessionActivityCompactor.moment(for: $0.activity) == .reflection }
+                    .map(\.teacherActions)
+                    .filter { !$0.isEmpty }
+                    .joined(separator: "\n\n"),
                 visuals: unitVisuals,
                 cycleIndex: nil,
                 weekKey: header.weekKey,
                 blockRole: header.role,
-                sequenceFormat: "route-aware-narrative-v2",
+                sequenceFormat: "route-aware-narrative-v3",
                 sequenceRoute: route
             )
         }
+    }
+
+    private func narrativeTimelineSection(_ activity: LearningSituationSessionActivityDraft) -> LearningSituationSessionSectionDraft {
+        let segment = [activity.segmentKey, activity.segmentTitle]
+            .compactMap { value in value?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        let title = [segment, activity.activity]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        let duration = activity.plannedMinutes.map { "\($0) min" } ?? activity.timeLabel
+        let timedTitle = duration.isEmpty ? title : "\(title) (\(duration))"
+        let lines = [
+            activity.teacherActions,
+            activity.studentInstructions,
+            activity.studentActions,
+            activity.adaptations.isEmpty ? "" : "Adaptaciones: \(activity.adaptations)"
+        ].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let line = [duration, title, lines.joined(separator: "\n")]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        return LearningSituationSessionSectionDraft(
+            title: timedTitle,
+            lines: line.isEmpty ? [] : [line]
+        )
     }
 
     private func narrativeBlockHeader(from text: String) -> (role: LearningSituationWeeklyBlockRole, minutes: Int, unitKeys: [String])? {
@@ -1737,6 +1871,17 @@ struct LearningSituationSessionSequenceDocumentImportService {
         return "week-\(text[range])"
     }
 
+    private func narrativeParagraphOrdinals(in blocks: [WordDocumentBlock]) -> [Int: Int] {
+        var result: [Int: Int] = [:]
+        var ordinal = 0
+        for (index, block) in blocks.enumerated() {
+            guard case .paragraph = block else { continue }
+            result[index] = ordinal
+            ordinal += 1
+        }
+        return result
+    }
+
     private func narrativeUnits(
         in blocks: [WordDocumentBlock],
         route: LearningSituationWeeklySequenceRoute,
@@ -1759,7 +1904,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 header: "",
                 blocks: blocks,
                 route: route,
-                visuals: visuals
+                visuals: visuals,
+                segmentOrder: 0
             )
             return [fallback]
         }
@@ -1770,7 +1916,10 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 header: header.value,
                 blocks: Array(blocks[(header.index + 1)..<end]),
                 route: route,
-                visuals: visuals
+                visuals: visuals.filter { visual in
+                    visual.unitKey.map { normalized($0) == normalized(header.key) } == true
+                },
+                segmentOrder: position
             )
         }
     }
@@ -1780,16 +1929,20 @@ struct LearningSituationSessionSequenceDocumentImportService {
         header: String,
         blocks: [WordDocumentBlock],
         route: LearningSituationWeeklySequenceRoute,
-        visuals: [LearningSituationSessionVisualDraft]
+        visuals: [LearningSituationSessionVisualDraft],
+        segmentOrder: Int
     ) -> NarrativeUnit {
         var objective = ""
         var material = ""
         var attention = ""
+        var evidence = ""
         var prepares = ""
         var consolidates = ""
         var sectionPairs: [(title: String, lines: [String])] = []
+        var breakSections: [LearningSituationSessionSectionDraft] = []
         var currentTitle: String?
         var currentLines: [String] = []
+        var pendingBreakIndex: Int?
 
         func flushSection() {
             guard let currentTitle, !currentLines.isEmpty else { return }
@@ -1807,13 +1960,27 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { continue }
                 if let (label, value) = narrativeLabelValue(text) {
+                    pendingBreakIndex = nil
                     switch label {
                     case "objective": objective = value
                     case "material": material = value
                     case "attention": attention = value
+                    case "evidence": evidence = value
                     case "prepares": prepares = value
                     case "consolidates": consolidates = value
                     default: break
+                    }
+                    continue
+                }
+                if let breakSection = narrativeBreakSection(from: text) {
+                    flushSection()
+                    currentTitle = nil
+                    currentLines = []
+                    if let pendingBreakIndex {
+                        breakSections[pendingBreakIndex].lines.append(breakSection.title)
+                    } else {
+                        breakSections.append(breakSection)
+                        pendingBreakIndex = breakSections.count - 1
                     }
                     continue
                 }
@@ -1821,16 +1988,22 @@ struct LearningSituationSessionSequenceDocumentImportService {
                     flushSection()
                     currentTitle = heading
                     currentLines = []
+                    pendingBreakIndex = nil
                     continue
                 }
                 if normalized(text).hasPrefix("adaptacion equivalente") || normalized(text).hasPrefix("equivalent adaptation") {
                     flushSection()
                     currentTitle = "Adaptación equivalente"
                     currentLines = []
+                    pendingBreakIndex = nil
                     append(text)
                     continue
                 }
                 if narrativeBlockHeader(from: text) != nil || narrativeWeekKey(from: text) != nil { continue }
+                if let pendingBreakIndex, currentTitle == nil {
+                    breakSections[pendingBreakIndex].lines.append(text)
+                    continue
+                }
                 append(text)
             case .table(let rows):
                 let lines = rows.map { row in row.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " · ") }.filter { !$0.isEmpty }
@@ -1843,6 +2016,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
         flushSection()
 
         let sections = sectionPairs.map { LearningSituationSessionSectionDraft(title: $0.title, lines: $0.lines) }
+        let segmentTitle = narrativeUnitTitle(header, key: key)
         let activities = sectionPairs.enumerated().map { index, section in
             let minutes = integerMatch(in: section.title, pattern: #"([0-9]+)\s*(?:['’′]|minutos?|minutes?|min)"#)
             let cleanTitle = section.title
@@ -1866,13 +2040,19 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 studentActions: "",
                 timingBreakdown: section.title,
                 clilFocus: "",
-                evidence: "Registro diagnóstico bruto; no genera calificación.",
+                evidence: ["Registro diagnóstico bruto; no genera calificación.", evidence]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: "\n"),
                 materials: material,
                 adaptations: attention,
                 slowGroupPlan: "",
                 fastGroupExtension: "",
                 prepares: prepares,
-                consolidates: consolidates
+                consolidates: consolidates,
+                segmentKey: key,
+                segmentTitle: segmentTitle,
+                segmentOrder: segmentOrder,
+                sourceOrder: index
             )
         }
         return NarrativeUnit(
@@ -1881,10 +2061,13 @@ struct LearningSituationSessionSequenceDocumentImportService {
             objective: objective,
             material: material,
             attention: attention,
+            evidence: evidence,
             prepares: prepares,
             consolidates: consolidates,
             sections: sections,
-            activities: activities
+            activities: activities,
+            breakSections: breakSections,
+            visuals: visuals
         )
     }
 
@@ -1896,6 +2079,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
         if label == "objetivo de hoy" || label == "objetivo" || label == "specific objective" { return ("objective", value) }
         if label.hasPrefix("material") || label.contains("espacio") || label.contains("agrupamiento") { return ("material", value) }
         if label.hasPrefix("atencion especial") || label.hasPrefix("special attention") { return ("attention", value) }
+        if label.hasPrefix("evidencia") || label.hasPrefix("evidence") { return ("evidence", value) }
         if label.hasPrefix("prepares") || label.hasPrefix("prepara") { return ("prepares", value) }
         if label.hasPrefix("consolidates") || label.hasPrefix("consolida") { return ("consolidates", value) }
         return nil
@@ -1904,6 +2088,13 @@ struct LearningSituationSessionSequenceDocumentImportService {
     private func narrativeNumberedHeading(_ text: String) -> String? {
         guard text.range(of: #"^\s*[0-9]+\.\s+.+"#, options: .regularExpression) != nil else { return nil }
         return text
+    }
+
+    private func narrativeBreakSection(from text: String) -> LearningSituationSessionSectionDraft? {
+        let value = normalized(text)
+        guard value.hasPrefix("descanso") || value.hasPrefix("break") ||
+            value.hasPrefix("pausa") || value.hasPrefix("rest") else { return nil }
+        return LearningSituationSessionSectionDraft(title: text, lines: [])
     }
 
     private func narrativeUnitKeys(in text: String) -> [String] {
@@ -2270,7 +2461,12 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 fastGroupExtension: values["fastGroupExtension"] ?? activity.fastGroupExtension,
                 prepares: detailValue(activity.prepares, values["prepares"]),
                 consolidates: detailValue(activity.consolidates, values["consolidates"]),
-                visuals: activity.visuals
+                visuals: activity.visuals,
+                segmentKey: activity.segmentKey,
+                segmentTitle: activity.segmentTitle,
+                segmentOrder: activity.segmentOrder,
+                momentOrder: activity.momentOrder,
+                sourceOrder: activity.sourceOrder
             )
         }
         let quickIDs = Set(activities.map(\.activityKey))
@@ -2634,7 +2830,12 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 fastGroupExtension: values["fastGroupExtension"] ?? activity.fastGroupExtension,
                 prepares: detailValue(activity.prepares, values["prepares"]),
                 consolidates: detailValue(activity.consolidates, values["consolidates"]),
-                visuals: activity.visuals
+                visuals: activity.visuals,
+                segmentKey: activity.segmentKey,
+                segmentTitle: activity.segmentTitle,
+                segmentOrder: activity.segmentOrder,
+                momentOrder: activity.momentOrder,
+                sourceOrder: activity.sourceOrder
             )
         }
 
@@ -3607,6 +3808,7 @@ struct WordDocumentImageAnchor: Hashable {
     let title: String
     let description: String
     let contextText: String
+    let paragraphIndex: Int?
 }
 
 /// Extrae la posición semántica de los dibujos Word sin copiar sus bytes al modelo de sesión.
@@ -3623,7 +3825,10 @@ func wordDocumentImageAnchors(from data: Data) throws -> [WordDocumentImageAncho
 
 private final class WordDocumentImageAnchorReader: NSObject, XMLParserDelegate {
     private(set) var anchors: [WordDocumentImageAnchor] = []
+    private var tableDepth = 0
     private var paragraphDepth = 0
+    private var paragraphIndex = 0
+    private var currentParagraphIndex: Int?
     private var inText = false
     private var inDrawing = false
     private var paragraphText = ""
@@ -3644,10 +3849,13 @@ private final class WordDocumentImageAnchorReader: NSObject, XMLParserDelegate {
         qualifiedName: String?,
         attributes attributeDict: [String: String] = [:]
     ) {
-        if isElement(elementName, "p") {
+        if isElement(elementName, "tbl") {
+            tableDepth += 1
+        } else if isElement(elementName, "p") {
             if paragraphDepth == 0 {
                 paragraphText = ""
                 pendingImages = []
+                currentParagraphIndex = tableDepth == 0 ? paragraphIndex : nil
             }
             paragraphDepth += 1
         } else if isElement(elementName, "drawing") {
@@ -3699,10 +3907,17 @@ private final class WordDocumentImageAnchorReader: NSObject, XMLParserDelegate {
                     relationshipID: image.relationshipID,
                     title: image.title,
                     description: image.description,
-                    contextText: contextText
+                    contextText: contextText,
+                    paragraphIndex: currentParagraphIndex
                 ))
             }
+            if currentParagraphIndex != nil, !contextText.isEmpty {
+                paragraphIndex += 1
+            }
             pendingImages = []
+            currentParagraphIndex = nil
+        } else if isElement(elementName, "tbl") {
+            tableDepth = max(0, tableDepth - 1)
         }
     }
 

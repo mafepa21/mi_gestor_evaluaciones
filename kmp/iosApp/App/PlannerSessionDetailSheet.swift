@@ -499,6 +499,15 @@ struct PlannerSessionDetailSheet: View {
                     let activeKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
                     ForEach(Array(activities.enumerated()), id: \.element.activityKey) { index, activity in
                         let key = activityIdentity(activity, index: index)
+                        if let segmentLabel = narrativeSegmentLabel(activity),
+                           index == 0 || narrativeSegmentLabel(activities[index - 1]) != segmentLabel {
+                            Text(segmentLabel)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(tint)
+                                .padding(.top, index == 0 ? 0 : 16)
+                                .padding(.bottom, 8)
+                                .accessibilityAddTraits(.isHeader)
+                        }
                         PlannerSessionRunSheetRow(
                             index: index,
                             activity: activity,
@@ -816,6 +825,13 @@ struct PlannerSessionDetailSheet: View {
                 .foregroundStyle(.primary)
                 .padding(.top, 8)
 
+            if let segmentLabel = narrativeSegmentLabel(activity) {
+                Text(segmentLabel)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .padding(.top, 4)
+            }
+
             if !activity.timeLabel.isEmpty || !activity.phase.isEmpty {
                 Text([activity.timeLabel, activity.phase].filter { !$0.isEmpty }.joined(separator: " · "))
                     .font(.subheadline.weight(.semibold))
@@ -858,6 +874,14 @@ struct PlannerSessionDetailSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Detalle de actividad \(activity.activityKey.isEmpty ? "\(index + 1)" : activity.activityKey)")
+    }
+
+    private func narrativeSegmentLabel(_ activity: LearningSituationSessionActivityDraft) -> String? {
+        let label = [activity.segmentKey, activity.segmentTitle]
+            .compactMap { value in value?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        return label.isEmpty ? nil : label
     }
 
     private func activityIdentity(_ activity: LearningSituationSessionActivityDraft, index: Int) -> String {

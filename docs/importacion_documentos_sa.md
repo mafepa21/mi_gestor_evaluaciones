@@ -189,6 +189,29 @@ escuchar la consigna y recoger evidencias. El importador conserva el texto compl
 incluidas las frases largas, sin resumirlo ni sustituirlo por una descripción
 genérica.
 
+### Ledger narrativo de Bachillerato con itinerarios
+
+Los documentos que declaran `ROUTE OPTION: shortFirst` y `ROUTE OPTION: longFirst`
+se leen como dos variantes del mismo ledger y no como semanas duplicadas. Cada
+`BLOQUE CORTO` o `BLOQUE LARGO` produce un plan; dentro de un `LONG` cada encabezado
+`U##` es un segmento curricular independiente. El segmento se compacta, en su orden
+de aparición, a un máximo de cuatro momentos operativos: `Explicación inicial`,
+`Activación`, `Actividad principal` y `Reflexión` si existe. Por tanto, un LONG con
+`U02 + U03` mantiene ocho actividades (`U02`×4 y `U03`×4) dentro de una única
+sesión de 80 minutos, en lugar de sumar o mezclar los momentos de ambas unidades.
+
+Los encabezados `BREAK`, `DESCANSO`, `PAUSA` y sus equivalentes se conservan como
+secciones de transición entre segmentos. La ficha del Planificador muestra el
+segmento (`U## · título`) como cabecera de grupo y mantiene la misma secuencia en
+la navegación de actividades. Los payloads `session-plan-v2` ya guardados se
+normalizan con la misma regla al abrirse, sin migración de SQLDelight.
+
+Las imágenes embebidas se guardan como referencias al `rId` del DOCX y se asocian
+al segmento por el texto accesible cuando existe o, como respaldo, por la posición
+del párrafo en `word/document.xml`. Así se muestran tanto en `Anexos` como en la
+ficha de la actividad correspondiente, incluso si Word no incluye `U##` en `title`
+o `alt text`.
+
 ### Minutos por tipo (`defaultMinutesByType`)
 
 Se buscan en todo el documento (incluidas las celdas de tabla) frases como `Simple

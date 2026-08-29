@@ -735,8 +735,9 @@ final class LearningSituationDocumentImportTests: XCTestCase {
                 blocks += unit("U01", "Coordinarse con una elección segura")
                 blocks += [.paragraph("BLOQUE LARGO (80 minutos útiles) · U02 + U03")]
                 blocks += unit("U02", "Mantener el equilibrio con control")
-                blocks += unit("U03", "Regular sentadillas controladas")
                 blocks += [.paragraph("BREAK — 15–20 minutos")]
+                blocks += [.paragraph("Descanso legal, hidratación y cambio seguro.")]
+                blocks += unit("U03", "Regular sentadillas controladas")
                 blocks += [.paragraph("BLOQUE CORTO (30 minutos útiles) · U04")]
                 blocks += unit("U04", "Interpretar el dato y fijar un paso SMART")
             } else {
@@ -769,14 +770,26 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.objective, "Coordinarse con una elección segura")
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.material, "Tres zonas paralelas y material seguro.")
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.activities.count, 3)
-        XCTAssertEqual(draft.routeVariants[.shortFirst]?.map { $0.activities.count }, [3, 3, 3])
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.map { $0.activities.count }, [3, 6, 3])
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.map { $0.activities.count }, [6, 3, 3])
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.activities.map(\.activity), [
             "Explicación inicial", "Actividad principal", "Reflexión"
         ])
+        XCTAssertEqual(
+            draft.routeVariants[.shortFirst]?[1].activities.compactMap(\.segmentKey),
+            ["U02", "U02", "U02", "U03", "U03", "U03"]
+        )
+        XCTAssertEqual(
+            draft.routeVariants[.shortFirst]?[1].development.map(\.title).filter { $0.hasPrefix("BREAK") },
+            ["BREAK — 15–20 minutos"]
+        )
+        XCTAssertTrue(draft.routeVariants[.shortFirst]?[1].development.contains { section in
+            section.title == "BREAK — 15–20 minutos" && section.lines.contains("Descanso legal, hidratación y cambio seguro.")
+        } == true)
         XCTAssertFalse(draft.warnings.contains { $0.contains("seis") || $0.contains("duplic") })
     }
 
-    func testNarrativeCompactorUsesFourMomentsAndMovesAdaptationIntoMainActivity() {
+    func testNarrativeCompactorUsesFourMomentsAndMovesAdaptationIntoMainActivity() throws {
         let visual = LearningSituationSessionVisualDraft(
             sourceRelationshipID: "rId-visual",
             title: "Circuito",
@@ -822,6 +835,7 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertTrue(activities[2].adaptations.contains("Reducir la distancia."))
         XCTAssertEqual(activities[2].visuals.map(\.sourceRelationshipID), ["rId-visual"])
         XCTAssertTrue(activities[0].studentInstructions.isEmpty)
+        XCTAssertEqual(activities.compactMap(\.segmentKey), ["U05", "U05", "U05", "U05"])
 
         let normalizedSections = PlannerSessionPlanPayloadNormalizer.sections(from: payload)
         XCTAssertEqual(normalizedSections.count, 4)
@@ -875,7 +889,12 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.count, 2)
         XCTAssertEqual(draft.routeVariants[.longFirst]?.count, 2)
         XCTAssertTrue(draft.routeVariants[.shortFirst]?.last?.title.contains("U10") == true)
-        XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { $0.activities.count <= 4 })
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.map { $0.activities.count }, [4, 8])
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.map { $0.activities.count }, [8, 4])
+        XCTAssertEqual(
+            draft.routeVariants[.shortFirst]?[1].activities.compactMap(\.segmentKey),
+            ["U09", "U09", "U09", "U09", "U10", "U10", "U10", "U10"]
+        )
         XCTAssertTrue(draft.routeVariants[.longFirst]?.last?.activities.contains { $0.activity == "Reflexión" } == true)
     }
 
@@ -895,13 +914,16 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.map(\.sessionType), ["SHORT", "LONG", "SHORT"])
         XCTAssertEqual(draft.routeVariants[.longFirst]?.map(\.sessionType), ["LONG", "SHORT", "LONG_PART_1"])
         XCTAssertEqual(Set(draft.routeVariants[.shortFirst]?.flatMap(\.visuals).map(\.sourceRelationshipID) ?? []).count, 5)
-        XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { $0.activities.count <= 4 })
-        XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.activities.count, 4)
-        XCTAssertEqual(draft.routeVariants[.shortFirst]?.dropFirst().first?.activities.count, 4)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.map { $0.activities.count }, [4, 8, 4])
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.map { $0.activities.count }, [8, 4, 4])
+        XCTAssertEqual(
+            draft.routeVariants[.shortFirst]?[1].activities.compactMap(\.segmentKey),
+            ["U02", "U02", "U02", "U02", "U03", "U03", "U03", "U03"]
+        )
         XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { !$0.objective.isEmpty && !$0.development.isEmpty })
     }
 
-    func testProvidedSA4bDOCXImportsAllTenUnitsAndCompactsEveryBlock() throws {
+    func testProvidedSA4bDOCXImportsAllTenUnitsAndPreservesLongSegments() throws {
         guard let path = ProcessInfo.processInfo.environment["MIGESTOR_SA4B_DOCX_PATH"], !path.isEmpty else {
             throw XCTSkip("Se ejecuta solo cuando se proporciona MIGESTOR_SA4B_DOCX_PATH con el DOCX de Balonmano.")
         }
@@ -913,7 +935,14 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
         XCTAssertEqual(draft.routeVariants[.shortFirst]?.count, 7)
         XCTAssertEqual(draft.routeVariants[.longFirst]?.count, 7)
-        XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { $0.activities.count <= 4 })
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.map { $0.activities.count }, [4, 8, 4, 8, 4, 8, 4])
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.map { $0.activities.count }, [8, 4, 8, 4, 8, 4, 4])
+        XCTAssertEqual(
+            draft.routeVariants[.shortFirst]?[1].activities.compactMap(\.segmentKey),
+            ["U02", "U02", "U02", "U02", "U03", "U03", "U03", "U03"]
+        )
+        XCTAssertTrue(draft.routeVariants[.shortFirst]?[1].activities.contains { !$0.visuals.isEmpty && $0.segmentKey == "U02" } == true)
+        XCTAssertTrue(draft.routeVariants[.shortFirst]?[1].activities.contains { !$0.visuals.isEmpty && $0.segmentKey == "U03" } == true)
         XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.contains { $0.title.contains("U10") })
         XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { $0.visuals.isEmpty == false })
     }
@@ -928,6 +957,7 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(anchors.first?.relationshipID, "rId1")
         XCTAssertEqual(anchors.first?.title, "Rotación")
         XCTAssertEqual(anchors.first?.description, "Esquema de rotación")
+        XCTAssertEqual(anchors.first?.paragraphIndex, 2)
 
         let visual = LearningSituationSessionVisualDraft(
             sourceRelationshipID: "rId1",

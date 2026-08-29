@@ -61,20 +61,23 @@ manual picker when the first opportunity is ambiguous.
 Teacher-authored documents may use a readable ledger instead of the QUICK VIEW /
 ACTIVITY DETAILS shape. The importer detects the same two route markers before
 the generic weekly parser, then treats each `BLOQUE CORTO` or `BLOQUE LARGO` as
-one plan and each `U##` heading as structured operational content. The importer
-compacts each narrative block into at most four operational moments — explanation,
+one plan and each `U##` heading as an independent curriculum segment. The importer
+compacts each segment into at most four operational moments — explanation,
 activation, main activity and optional reflection — while keeping adaptations
-inside the main activity. A
+inside the main activity. A LONG containing two units therefore exposes two ordered
+four-moment groups (normally eight activities) without mixing their timings or
+identities. Explicit breaks between units remain timeline sections. A
 `LONG_PART_1` block is a single 35–74 minute opportunity: it is not expanded to
 two timetable periods and it is not treated as a 30-minute `SHORT`.
 
 The payload keeps image references as DOCX relationship IDs plus the Word
-`title`, `descr` and nearby paragraph context. The source DOCX remains the
-binary source of truth; the detail renderer resolves those IDs locally, avoids
-duplicating images already rendered in the selected route, and supplements the
-selected route when the source document anchors a shared or unit image only in
-the other route. References are retained both at plan level for the full Annex
-and at activity level so related images are visible in the Activity tab.
+`title`, `descr`, nearby paragraph context and source paragraph ordinal. The source
+DOCX remains the binary source of truth; the detail renderer resolves those IDs
+locally, avoids duplicating images already rendered in the selected route, and
+supplements the selected route when the source document anchors a shared or unit
+image only in the other route. References are retained both at plan level for the
+full Annex and at activity level so related images are visible in the Activity tab,
+even when Word's accessibility metadata omits the `U##` marker.
 
 ## Consequences
 
@@ -86,7 +89,8 @@ and at activity level so related images are visible in the Activity tab.
 - Imported legacy sequences preserve their previous behavior.
 - Narrative ledgers preserve teacher wording, operational content and embedded
   visuals without requiring authors to reformat their existing DOCX; the planner
-  shows a compact four-moment activity script and keeps the full source in Annex.
+  shows a compact four-moment script per U##, groups the segments inside a LONG,
+  keeps explicit breaks and retains the full source in Annex.
 
 ## Verification
 

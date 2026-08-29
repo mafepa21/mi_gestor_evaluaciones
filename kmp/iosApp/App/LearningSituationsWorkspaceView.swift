@@ -121,13 +121,14 @@ enum LearningSituationScheduleProjection {
         for plans: [LearningSituationSessionPlanDraft]
     ) -> LearningSituationSessionSequenceKind {
         guard !plans.isEmpty else { return .linear }
+        let routeAware = plans.allSatisfy {
+            $0.sequenceRoute != nil && $0.blockRole != nil && ($0.sequenceFormat?.hasPrefix("route-aware-") == true)
+        }
+        if routeAware { return .routeAware }
         let canonical = plans.allSatisfy {
             $0.blockRole != nil && $0.cycleIndex != nil && $0.weekKey != nil && $0.sequenceFormat != nil
         }
         if canonical { return .canonicalWeekly }
-        if plans.allSatisfy({ $0.sequenceFormat == "route-aware-v1" && $0.sequenceRoute != nil && $0.blockRole != nil }) {
-            return .routeAware
-        }
         return plans.contains(where: isWeeklyBlockPlan) ? .legacyWeekly : .linear
     }
 
@@ -238,7 +239,7 @@ enum LearningSituationScheduleProjection {
                     searchDays: max(orderedPlans.count * 14 + 14, 84),
                     excludedDates: normalizedExcludedDates
                 ) else {
-                    let requirement = role == .long ? "bloque largo" : "bloque corto"
+                    let requirement = requirementLabel(for: role)
                     warnings.append("La sesión \(plan.sessionNumber) requiere un \(requirement), pero no hay una franja compatible desde la fecha de inicio.")
                     continue
                 }
@@ -279,7 +280,7 @@ enum LearningSituationScheduleProjection {
 
                 guard let next = candidates.min(by: { isChronologicallyBefore($0.slot, $1.slot) }) else {
                     for pendingPlan in pending {
-                        let requirement = pendingPlan.role == .long ? "bloque largo" : "bloque corto"
+                        let requirement = requirementLabel(for: pendingPlan.role)
                         warnings.append("La sesión \(pendingPlan.plan.sessionNumber) requiere un \(requirement), pero no hay una franja compatible desde la fecha de inicio.")
                     }
                     break
@@ -374,9 +375,15 @@ enum LearningSituationScheduleProjection {
             guard !excludedDates.contains(calendar.startOfDay(for: date)) else { continue }
             let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
             let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
-            let candidates = role == .long
-                ? longCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
-                : shortCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+            let candidates: [LearningSituationScheduledSlot]
+            switch role {
+            case .long:
+                candidates = longCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+            case .short:
+                candidates = shortCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+            case .longPart1:
+                candidates = longPartCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+            }
             for candidate in candidates {
                 guard !collides(candidate, with: usedDestinations), follows(candidate, after: previous) else { continue }
                 return candidate
@@ -415,12 +422,15 @@ enum LearningSituationScheduleProjection {
 
     private static func blockRole(for plan: LearningSituationSessionPlanDraft) -> LearningSituationWeeklyBlockRole {
         if let blockRole = plan.blockRole { return blockRole }
+        let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        if value.contains("long_part_1") || value.contains("long part 1") { return .longPart1 }
         if isLongPlan(plan) && !isShortPlan(plan) { return .long }
         if isShortPlan(plan) && !isLongPlan(plan) { return .short }
         return plan.sessionNumber.isMultiple(of: 2) ? .short : .long
     }
 
     private static func isLongPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        if plan.blockRole == .longPart1 { return false }
         if plan.blockRole == .long { return true }
         if plan.blockRole == .short { return false }
         let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
@@ -438,6 +448,7 @@ enum LearningSituationScheduleProjection {
     }
 
     private static func isShortPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        if plan.blockRole == .longPart1 { return false }
         if plan.blockRole == .short { return true }
         if plan.blockRole == .long { return false }
         let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
@@ -535,6 +546,28 @@ enum LearningSituationScheduleProjection {
         shortCandidates(on: date, slots: slots, periodForSlot: periodForSlot).filter {
             guard let start = minutes($0.startTime), let end = minutes($0.endTime) else { return false }
             return end - start < 75
+        }
+    }
+
+    /// Una frontera LONG_PART_1 es un único encuentro activo de unos 40 minutos. No debe
+    /// consumir dos franjas como un LONG completo ni competir con una franja SHORT de 30′.
+    private static func longPartCandidates(
+        on date: Date,
+        slots: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> [LearningSituationScheduledSlot] {
+        shortCandidates(on: date, slots: slots, periodForSlot: periodForSlot).filter {
+            guard let start = minutes($0.startTime), let end = minutes($0.endTime) else { return false }
+            let duration = end - start
+            return duration >= 35 && duration < 75
+        }
+    }
+
+    private static func requirementLabel(for role: LearningSituationWeeklyBlockRole) -> String {
+        switch role {
+        case .long: return "bloque largo"
+        case .short: return "bloque corto"
+        case .longPart1: return "franja parcial de 40 minutos"
         }
     }
 
@@ -1817,7 +1850,9 @@ private struct LearningSituationScheduleSheet: View {
         weeklyRoute = nil
         slots = []
         guard let sequenceDraft else { return }
-        let fallback = route ?? routeOptions.first ?? .shortFirst
+        // Nil means automatic mode, not "first item after sorting". Keep the importer’s
+        // deterministic default in the editor until the timetable preview can infer the route.
+        let fallback = route ?? (routeVariants[.shortFirst] != nil ? .shortFirst : (routeOptions.first ?? .shortFirst))
         if let plans = sequenceDraft.routeVariants[fallback] {
             self.sequenceDraft?.plans = plans
             expandedPlanNumbers = Set(plans.prefix(3).map(\.sessionNumber))

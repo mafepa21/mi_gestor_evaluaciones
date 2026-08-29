@@ -579,6 +579,64 @@ final class PlannerGanttProjectionTests: XCTestCase {
         )
     }
 
+    func testNarrativeRouteProjectionKeepsLongPartOneInSingleCompatibleSlot() {
+        let calendar = Calendar(identifier: .iso8601)
+        let monday = calendar.date(from: DateComponents(year: 2026, month: 9, day: 28))!
+        let scheduleSlots = [
+            TeacherScheduleSlot(id: 1, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 1, startTime: "09:00", endTime: "09:55", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 2, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 1, startTime: "10:15", endTime: "11:10", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 3, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 2, startTime: "12:00", endTime: "12:30", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 4, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 3, startTime: "13:00", endTime: "13:40", weeklyTemplateId: nil)
+        ]
+        func plan(_ number: Int, role: LearningSituationWeeklyBlockRole, minutes: Int) -> LearningSituationSessionPlanDraft {
+            LearningSituationSessionPlanDraft(
+                sessionNumber: number,
+                sourceLabel: "Narrative \(number)",
+                title: "Narrative \(number)",
+                sessionType: role == .longPart1 ? "LONG_PART_1" : (role == .long ? "LONG" : "SHORT"),
+                effectiveMinutes: minutes,
+                objective: "Objective",
+                criteria: [],
+                material: "",
+                development: [],
+                adaptations: [],
+                blockRole: role,
+                sequenceFormat: "route-aware-narrative-v1",
+                sequenceRoute: .longFirst
+            )
+        }
+        let plans = [plan(1, role: .long, minutes: 80), plan(2, role: .short, minutes: 30), plan(3, role: .longPart1, minutes: 40)]
+
+        XCTAssertEqual(LearningSituationScheduleProjection.sequenceKind(for: plans), .routeAware)
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.targetSessionCount(
+                plans: plans, annualSessionCount: 4, sequenceKind: .routeAware
+            ),
+            3
+        )
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.inferRouteForFirstBlock(
+                startDate: monday,
+                template: scheduleSlots,
+                periodForSlot: { Int($0.id) }
+            ),
+            .longFirst
+        )
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: plans,
+            startDate: monday,
+            template: scheduleSlots,
+            periodForSlot: { Int($0.id) },
+            targetSessionCount: plans.count
+        )
+
+        XCTAssertTrue(projection.warnings.isEmpty)
+        XCTAssertEqual(projection.slots.map(\.planSessionNumber), [1, 2, 3])
+        XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[1, 2], [3], [4]])
+        XCTAssertEqual(projection.slots.last?.blockKind, "LONG_PART_1")
+    }
+
     private func weeklyPlan(
         _ sessionNumber: Int,
         role: LearningSituationWeeklyBlockRole,

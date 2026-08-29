@@ -6102,6 +6102,8 @@ final class KmpBridge: ObservableObject {
             activities: draft.activities,
             guidingQuestions: draft.guidingQuestions,
             closure: draft.closure,
+            visuals: draft.visuals,
+            sequenceRoute: draft.sequenceRoute,
             sourceDocumentSHA256: sourceSHA256
         )
         guard let data = try? JSONEncoder().encode(payload) else { return nil }
@@ -6593,6 +6595,8 @@ final class KmpBridge: ObservableObject {
                 activities: plan.activities,
                 guidingQuestions: plan.guidingQuestions,
                 closure: plan.closure,
+                visuals: plan.visuals,
+                sequenceRoute: plan.sequenceRoute,
                 sourceDocumentSHA256: draft.sha256
             )
             let developmentJSON = String(data: try JSONEncoder().encode(developmentPayload), encoding: .utf8) ?? "{}"

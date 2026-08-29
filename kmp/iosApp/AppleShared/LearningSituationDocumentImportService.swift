@@ -144,6 +144,33 @@ struct LearningSituationSessionSectionDraft: Identifiable, Codable {
     }
 }
 
+/// Referencia estable a una imagen embebida en el DOCX original. El binario sigue viviendo
+/// dentro del documento cacheado; el payload solo conserva la relación y el contexto que
+/// permiten volver a resolverla sin inflar cada plan guardado con base64.
+struct LearningSituationSessionVisualDraft: Identifiable, Codable, Hashable {
+    let id: UUID
+    var sourceRelationshipID: String
+    var title: String
+    var altText: String
+    var anchorText: String
+    var unitKey: String?
+
+    init(
+        sourceRelationshipID: String,
+        title: String = "",
+        altText: String = "",
+        anchorText: String = "",
+        unitKey: String? = nil
+    ) {
+        self.id = UUID()
+        self.sourceRelationshipID = sourceRelationshipID
+        self.title = title
+        self.altText = altText
+        self.anchorText = anchorText
+        self.unitKey = unitKey
+    }
+}
+
 /// Una actividad ejecutable por el docente. Se mantiene separada de las secciones
 /// narrativas para que la ficha de sesión pueda mostrar una secuencia accionable
 /// sin perder la compatibilidad con documentos antiguos.
@@ -320,6 +347,8 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
     var activities: [LearningSituationSessionActivityDraft]
     var guidingQuestions: [String]
     var closure: String
+    var visuals: [LearningSituationSessionVisualDraft]
+    var sequenceRoute: LearningSituationWeeklySequenceRoute?
     /// SHA-256 del DOCX que produjo este payload. Es opcional para leer payloads históricos.
     var sourceDocumentSHA256: String?
 
@@ -333,6 +362,8 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
         activities: [LearningSituationSessionActivityDraft],
         guidingQuestions: [String] = [],
         closure: String = "",
+        visuals: [LearningSituationSessionVisualDraft] = [],
+        sequenceRoute: LearningSituationWeeklySequenceRoute? = nil,
         sourceDocumentSHA256: String? = nil
     ) {
         self.schema = schema
@@ -344,12 +375,14 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
         self.activities = activities
         self.guidingQuestions = guidingQuestions
         self.closure = closure
+        self.visuals = visuals
+        self.sequenceRoute = sequenceRoute
         self.sourceDocumentSHA256 = sourceDocumentSHA256
     }
 
     private enum CodingKeys: String, CodingKey {
         case schema, schemaVersion, organisation, coreKnowledge, assessment
-        case sections, activities, guidingQuestions, closure, sourceDocumentSHA256
+        case sections, activities, guidingQuestions, closure, visuals, sequenceRoute, sourceDocumentSHA256
     }
 
     init(from decoder: Decoder) throws {
@@ -363,6 +396,8 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
         activities = try container.decodeIfPresent([LearningSituationSessionActivityDraft].self, forKey: .activities) ?? []
         guidingQuestions = try container.decodeIfPresent([String].self, forKey: .guidingQuestions) ?? []
         closure = try container.decodeIfPresent(String.self, forKey: .closure) ?? ""
+        visuals = try container.decodeIfPresent([LearningSituationSessionVisualDraft].self, forKey: .visuals) ?? []
+        sequenceRoute = try container.decodeIfPresent(LearningSituationWeeklySequenceRoute.self, forKey: .sequenceRoute)
         sourceDocumentSHA256 = try container.decodeIfPresent(String.self, forKey: .sourceDocumentSHA256)
     }
 
@@ -383,6 +418,7 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
 enum LearningSituationWeeklyBlockRole: String, Codable, CaseIterable, Hashable {
     case long
     case short
+    case longPart1
 }
 
 enum LearningSituationWeeklySequenceRoute: String, Codable, CaseIterable, Hashable {
@@ -415,6 +451,7 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
     var assessment: String
     var guidingQuestions: [String]
     var closure: String
+    var visuals: [LearningSituationSessionVisualDraft]
     var cycleIndex: Int?
     var weekKey: String?
     var blockRole: LearningSituationWeeklyBlockRole?
@@ -438,6 +475,7 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         assessment: String = "",
         guidingQuestions: [String] = [],
         closure: String = "",
+        visuals: [LearningSituationSessionVisualDraft] = [],
         cycleIndex: Int? = nil,
         weekKey: String? = nil,
         blockRole: LearningSituationWeeklyBlockRole? = nil,
@@ -461,6 +499,7 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         self.assessment = assessment
         self.guidingQuestions = guidingQuestions
         self.closure = closure
+        self.visuals = visuals
         self.cycleIndex = cycleIndex
         self.weekKey = weekKey
         self.blockRole = blockRole
@@ -472,7 +511,7 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         case id, sessionNumber, sourceLabel, title, sessionType, effectiveMinutes,
              objective, criteria, material, development, activities, adaptations,
              organisation, coreKnowledge, assessment, guidingQuestions, closure,
-             cycleIndex, weekKey, blockRole, sequenceFormat, sequenceRoute
+             visuals, cycleIndex, weekKey, blockRole, sequenceFormat, sequenceRoute
     }
 
     init(from decoder: Decoder) throws {
@@ -494,6 +533,7 @@ struct LearningSituationSessionPlanDraft: Identifiable, Codable {
         assessment = try container.decodeIfPresent(String.self, forKey: .assessment) ?? ""
         guidingQuestions = try container.decodeIfPresent([String].self, forKey: .guidingQuestions) ?? []
         closure = try container.decodeIfPresent(String.self, forKey: .closure) ?? ""
+        visuals = try container.decodeIfPresent([LearningSituationSessionVisualDraft].self, forKey: .visuals) ?? []
         cycleIndex = try container.decodeIfPresent(Int.self, forKey: .cycleIndex)
         weekKey = try container.decodeIfPresent(String.self, forKey: .weekKey)
         blockRole = try container.decodeIfPresent(LearningSituationWeeklyBlockRole.self, forKey: .blockRole)
@@ -1035,6 +1075,7 @@ private struct ParsedSessionPlan {
     let assessment: String
     let guidingQuestions: [String]
     let closure: String
+    let visuals: [LearningSituationSessionVisualDraft] = []
 }
 
 struct LearningSituationSessionSequenceDocumentImportService {
@@ -1075,6 +1116,13 @@ struct LearningSituationSessionSequenceDocumentImportService {
         // timetable slot. Falling through to the historical parsers keeps old documents stable.
         if let routeAware = try routeAwarePreview(blocks: blocks, data: data, url: url) {
             return routeAware
+        }
+
+        // SA0 and other teacher-authored documents may declare selectable routes using the
+        // readable ledger itself, without QUICK VIEW/Activity ID tables. Parse that shape before
+        // the generic weekly fallback so repeated WEEK 1 headers do not become duplicate plans.
+        if let narrativeRoute = try narrativeRoutePreview(blocks: blocks, data: data, url: url) {
+            return narrativeRoute
         }
 
         // Formato C (ficha + QUICK VIEW + ACTIVITY DETAILS) must win over the generic
@@ -1245,7 +1293,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 let headerValue = plans[index].sourceLabel.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
                 let isLong = headerValue.contains("long")
                 let isLongPart = headerValue.contains("long part") || headerValue.contains("long_part")
-                let role: LearningSituationWeeklyBlockRole = isLong ? .long : .short
+                let role: LearningSituationWeeklyBlockRole = isLongPart ? .longPart1 : (isLong ? .long : .short)
                 plans[index].sessionType = isLongPart ? "LONG_PART_1" : (isLong ? "LONG" : "SHORT")
                 plans[index].title = plans[index].title.replacingOccurrences(
                     of: #"^(?:SHORT|LONG(?:\s+PART\s+1)?|LONG_PART_1)\s*(?:\([^)]*\))?\s*[—–-]\s*"#,
@@ -1272,6 +1320,405 @@ struct LearningSituationSessionSequenceDocumentImportService {
             sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
             sizeBytes: Int64(data.count)
         )
+    }
+
+    // MARK: - Narrative route ledger (teacher-authored DOCX)
+
+    /// Importa el formato narrativo utilizado por SA0: dos rutas explícitas, bloques SHORT/LONG
+    /// y unidades U01…U04 descritas con prosa operativa. No exige que el documento se transforme
+    /// a QUICK VIEW ni inventa sesiones a partir de cada encabezado WEEK.
+    private func narrativeRoutePreview(
+        blocks: [WordDocumentBlock],
+        data: Data,
+        url: URL
+    ) throws -> LearningSituationSessionSequenceImportDraft? {
+        var routeHeaders: [(index: Int, route: LearningSituationWeeklySequenceRoute)] = []
+        for (index, block) in blocks.enumerated() {
+            guard case .paragraph(let text) = block,
+                  let match = Self.routeOptionPattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let routeRange = Range(match.range(at: 1), in: text),
+                  let route = LearningSituationWeeklySequenceRoute(rawValue: String(text[routeRange])) else { continue }
+            routeHeaders.append((index, route))
+        }
+        guard routeHeaders.count >= 2,
+              Set(routeHeaders.map(\.route)).count >= 2 else { return nil }
+
+        let imageAnchors = (try? wordDocumentImageAnchors(from: data)) ?? []
+        let visuals = imageAnchors.map { anchor in
+            LearningSituationSessionVisualDraft(
+                sourceRelationshipID: anchor.relationshipID,
+                title: anchor.title,
+                altText: anchor.description,
+                anchorText: anchor.contextText,
+                unitKey: narrativeUnitKey(in: [anchor.title, anchor.description, anchor.contextText].joined(separator: " "))
+            )
+        }
+
+        var variants: [LearningSituationWeeklySequenceRoute: [LearningSituationSessionPlanDraft]] = [:]
+        var warnings: [String] = []
+        for (position, routeHeader) in routeHeaders.enumerated() {
+            let end = position + 1 < routeHeaders.count ? routeHeaders[position + 1].index : blocks.count
+            let routeBlocks = Array(blocks[(routeHeader.index + 1)..<end])
+            let plans = narrativePlans(
+                in: routeBlocks,
+                route: routeHeader.route,
+                visuals: visuals,
+                warnings: &warnings
+            )
+            guard !plans.isEmpty else {
+                warnings.append("La ruta \(routeHeader.route.rawValue) no contiene bloques narrativos SHORT/LONG reconocibles.")
+                continue
+            }
+            variants[routeHeader.route] = plans
+        }
+
+        guard variants.count >= 2 else { return nil }
+        let defaultRoute: LearningSituationWeeklySequenceRoute = variants[.shortFirst] != nil ? .shortFirst : .longFirst
+        warnings.append("Documento narrativo de itinerarios: se han detectado SHORT primero y LONG primero. La app seleccionará una sola ruta según la primera franja compatible del grupo.")
+        return LearningSituationSessionSequenceImportDraft(
+            plans: variants[defaultRoute] ?? [],
+            routeVariants: variants,
+            warnings: warnings,
+            sourceURL: url,
+            sourceFileName: url.lastPathComponent,
+            sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
+            sizeBytes: Int64(data.count)
+        )
+    }
+
+    private struct NarrativeBlockHeader {
+        let index: Int
+        let value: String
+        let role: LearningSituationWeeklyBlockRole
+        let minutes: Int
+        let unitKeys: [String]
+        let weekKey: String?
+    }
+
+    private struct NarrativeUnit {
+        let key: String
+        let title: String
+        let objective: String
+        let material: String
+        let attention: String
+        let prepares: String
+        let consolidates: String
+        let sections: [LearningSituationSessionSectionDraft]
+        let activities: [LearningSituationSessionActivityDraft]
+    }
+
+    private func narrativePlans(
+        in blocks: [WordDocumentBlock],
+        route: LearningSituationWeeklySequenceRoute,
+        visuals: [LearningSituationSessionVisualDraft],
+        warnings: inout [String]
+    ) -> [LearningSituationSessionPlanDraft] {
+        var headers: [NarrativeBlockHeader] = []
+        var currentWeekKey: String?
+        for (index, block) in blocks.enumerated() {
+            guard case .paragraph(let rawText) = block else { continue }
+            let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let week = narrativeWeekKey(from: text) {
+                currentWeekKey = week
+            }
+            guard let parsed = narrativeBlockHeader(from: text) else { continue }
+            headers.append(NarrativeBlockHeader(
+                index: index,
+                value: text,
+                role: parsed.role,
+                minutes: parsed.minutes,
+                unitKeys: parsed.unitKeys,
+                weekKey: currentWeekKey
+            ))
+        }
+
+        return headers.enumerated().compactMap { position, header in
+            let end = position + 1 < headers.count ? headers[position + 1].index : blocks.count
+            let body = Array(blocks[(header.index + 1)..<end])
+            let units = narrativeUnits(in: body, route: route, visuals: visuals)
+            guard !units.isEmpty else {
+                warnings.append("\(route.rawValue): \(header.value) no contiene unidades U01–U04 reconocibles.")
+                return nil
+            }
+
+            let planNumber = position + 1
+            let unitTitles = units.map { "\($0.key) · \($0.title)" }.joined(separator: " · ")
+            let objective = units.map(\.objective).filter { !$0.isEmpty }.joined(separator: "\n")
+            let material = units.map(\.material).filter { !$0.isEmpty }.joined(separator: "\n")
+            let adaptations = units.map(\.attention).filter { !$0.isEmpty }
+            let unitVisuals = uniqueVisuals(
+                visualsFor: header.unitKeys.isEmpty ? units.map(\.key) : header.unitKeys,
+                from: visuals
+            )
+            let sections = units.flatMap { unit in
+                [LearningSituationSessionSectionDraft(title: "\(unit.key) · \(unit.title)", lines: [
+                    unit.objective.isEmpty ? nil : "Objetivo de hoy: \(unit.objective)",
+                    unit.material.isEmpty ? nil : "Material, espacio y agrupamiento: \(unit.material)",
+                    unit.attention.isEmpty ? nil : "Atención especial: \(unit.attention)"
+                ].compactMap { $0 })] + unit.sections
+            }.filter { !$0.lines.isEmpty }
+            let activities = units.flatMap(\.activities)
+            let roleLabel: String
+            switch header.role {
+            case .long: roleLabel = "LONG"
+            case .short: roleLabel = "SHORT"
+            case .longPart1: roleLabel = "LONG_PART_1"
+            }
+            let sourceLabel = header.value
+            return LearningSituationSessionPlanDraft(
+                sessionNumber: planNumber,
+                sourceLabel: sourceLabel,
+                title: unitTitles.isEmpty ? roleLabel : unitTitles,
+                sessionType: roleLabel,
+                effectiveMinutes: header.minutes,
+                objective: objective,
+                criteria: [],
+                material: material,
+                development: sections,
+                activities: activities,
+                adaptations: adaptations,
+                organisation: material,
+                coreKnowledge: "",
+                assessment: "Registro diagnóstico bruto; no genera calificación.",
+                guidingQuestions: [],
+                closure: units.flatMap { unit in unit.sections.filter { normalized($0.title).contains("reflexion") || normalized($0.title).contains("registro") }.flatMap(\.lines) }.joined(separator: "\n"),
+                visuals: unitVisuals,
+                cycleIndex: nil,
+                weekKey: header.weekKey,
+                blockRole: header.role,
+                sequenceFormat: "route-aware-narrative-v1",
+                sequenceRoute: route
+            )
+        }
+    }
+
+    private func narrativeBlockHeader(from text: String) -> (role: LearningSituationWeeklyBlockRole, minutes: Int, unitKeys: [String])? {
+        let value = normalized(text)
+        let hasLongBlockPrefix = value.hasPrefix("bloque largo") || value.hasPrefix("long block")
+        let isLongPart = hasLongBlockPrefix && (value.contains("long_part_1") || value.contains("long part 1") || value.contains("longpart1"))
+        let role: LearningSituationWeeklyBlockRole
+        if isLongPart {
+            role = .longPart1
+        } else if hasLongBlockPrefix {
+            role = .long
+        } else if value.hasPrefix("bloque corto") || value.hasPrefix("short block") {
+            role = .short
+        } else {
+            return nil
+        }
+        let minutes = integerMatch(in: text, pattern: #"([0-9]+)\s*(?:['’′]|minutos?|minutes?|min)"#) ?? (role == .short ? 30 : 40)
+        return (role, minutes, narrativeUnitKeys(in: text))
+    }
+
+    private func narrativeWeekKey(from text: String) -> String? {
+        guard let match = Self.weekHeaderPattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let range = Range(match.range(at: 1), in: text) else { return nil }
+        return "week-\(text[range])"
+    }
+
+    private func narrativeUnits(
+        in blocks: [WordDocumentBlock],
+        route: LearningSituationWeeklySequenceRoute,
+        visuals: [LearningSituationSessionVisualDraft]
+    ) -> [NarrativeUnit] {
+        struct UnitHeader { let index: Int; let key: String; let value: String }
+        let unitHeaders: [UnitHeader] = blocks.enumerated().compactMap { index, block in
+            guard case .paragraph(let text) = block,
+                  let key = narrativeUnitKey(in: text),
+                  normalized(text).range(of: #"^u0[1-4]\b"#, options: .regularExpression) != nil else { return nil }
+            return UnitHeader(index: index, key: key, value: text)
+        }
+        if unitHeaders.isEmpty {
+            let fallbackText = blocks.compactMap { block -> String? in
+                if case .paragraph(let text) = block { return text }
+                return nil
+            }.joined(separator: " ")
+            let fallback = narrativeUnit(
+                key: narrativeUnitKeys(in: fallbackText).first ?? "U01",
+                header: "",
+                blocks: blocks,
+                route: route,
+                visuals: visuals
+            )
+            return [fallback]
+        }
+        return unitHeaders.enumerated().map { position, header in
+            let end = position + 1 < unitHeaders.count ? unitHeaders[position + 1].index : blocks.count
+            return narrativeUnit(
+                key: header.key,
+                header: header.value,
+                blocks: Array(blocks[(header.index + 1)..<end]),
+                route: route,
+                visuals: visuals
+            )
+        }
+    }
+
+    private func narrativeUnit(
+        key: String,
+        header: String,
+        blocks: [WordDocumentBlock],
+        route: LearningSituationWeeklySequenceRoute,
+        visuals: [LearningSituationSessionVisualDraft]
+    ) -> NarrativeUnit {
+        var objective = ""
+        var material = ""
+        var attention = ""
+        var prepares = ""
+        var consolidates = ""
+        var sectionPairs: [(title: String, lines: [String])] = []
+        var currentTitle: String?
+        var currentLines: [String] = []
+
+        func flushSection() {
+            guard let currentTitle, !currentLines.isEmpty else { return }
+            sectionPairs.append((currentTitle, currentLines))
+        }
+
+        func append(_ line: String) {
+            if currentTitle == nil { currentTitle = "Desarrollo operativo" }
+            currentLines.append(line)
+        }
+
+        for block in blocks {
+            switch block {
+            case .paragraph(let raw):
+                let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                if let (label, value) = narrativeLabelValue(text) {
+                    switch label {
+                    case "objective": objective = value
+                    case "material": material = value
+                    case "attention": attention = value
+                    case "prepares": prepares = value
+                    case "consolidates": consolidates = value
+                    default: break
+                    }
+                    continue
+                }
+                if let heading = narrativeNumberedHeading(text) {
+                    flushSection()
+                    currentTitle = heading
+                    currentLines = []
+                    continue
+                }
+                if normalized(text).hasPrefix("adaptacion equivalente") || normalized(text).hasPrefix("equivalent adaptation") {
+                    flushSection()
+                    currentTitle = "Adaptación equivalente"
+                    currentLines = []
+                    append(text)
+                    continue
+                }
+                if narrativeBlockHeader(from: text) != nil || narrativeWeekKey(from: text) != nil { continue }
+                append(text)
+            case .table(let rows):
+                let lines = rows.map { row in row.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " · ") }.filter { !$0.isEmpty }
+                if !lines.isEmpty {
+                    if currentTitle == nil { currentTitle = "Rotación y grupos" }
+                    currentLines.append(contentsOf: lines)
+                }
+            }
+        }
+        flushSection()
+
+        let sections = sectionPairs.map { LearningSituationSessionSectionDraft(title: $0.title, lines: $0.lines) }
+        let activities = sectionPairs.enumerated().map { index, section in
+            let minutes = integerMatch(in: section.title, pattern: #"([0-9]+)\s*(?:['’′]|minutos?|minutes?|min)"#)
+            let cleanTitle = section.title
+                .replacingOccurrences(of: #"^\s*[0-9]+\.\s*"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: #"\s*·\s*[0-9]+\s*(?:minutos?|minutes?|min|['’′]).*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let activityKey = "\(route == .shortFirst ? "SF" : "LF")-\(key)-A\(String(format: "%02d", index + 1))"
+            return LearningSituationSessionActivityDraft(
+                activityKey: activityKey,
+                activityType: "narrative",
+                plannedMinutes: minutes,
+                timeLabel: section.title,
+                phase: cleanTitle,
+                activity: cleanTitle.isEmpty ? "Desarrollo operativo" : cleanTitle,
+                purpose: objective,
+                organisation: material,
+                setup: material,
+                teacherActions: section.lines.joined(separator: "\n"),
+                studentInstructions: section.lines.joined(separator: "\n"),
+                studentActions: "",
+                timingBreakdown: section.title,
+                clilFocus: "",
+                evidence: "Registro diagnóstico bruto; no genera calificación.",
+                materials: material,
+                adaptations: attention,
+                slowGroupPlan: "",
+                fastGroupExtension: "",
+                prepares: prepares,
+                consolidates: consolidates
+            )
+        }
+        return NarrativeUnit(
+            key: key,
+            title: narrativeUnitTitle(header, key: key),
+            objective: objective,
+            material: material,
+            attention: attention,
+            prepares: prepares,
+            consolidates: consolidates,
+            sections: sections,
+            activities: activities
+        )
+    }
+
+    private func narrativeLabelValue(_ text: String) -> (String, String)? {
+        guard let colon = text.firstIndex(of: ":") else { return nil }
+        let label = normalized(String(text[..<colon]))
+        let value = String(text[text.index(after: colon)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        if label == "objetivo de hoy" || label == "objetivo" || label == "specific objective" { return ("objective", value) }
+        if label.hasPrefix("material") || label.contains("espacio") || label.contains("agrupamiento") { return ("material", value) }
+        if label.hasPrefix("atencion especial") || label.hasPrefix("special attention") { return ("attention", value) }
+        if label.hasPrefix("prepares") || label.hasPrefix("prepara") { return ("prepares", value) }
+        if label.hasPrefix("consolidates") || label.hasPrefix("consolida") { return ("consolidates", value) }
+        return nil
+    }
+
+    private func narrativeNumberedHeading(_ text: String) -> String? {
+        guard text.range(of: #"^\s*[0-9]+\.\s+.+"#, options: .regularExpression) != nil else { return nil }
+        return text
+    }
+
+    private func narrativeUnitKeys(in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: #"\bU0([1-4])\b"#, options: .caseInsensitive) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        var seen = Set<String>()
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard let valueRange = Range(match.range(at: 1), in: text) else { return nil }
+            let key = "U0\(text[valueRange])"
+            return seen.insert(key).inserted ? key : nil
+        }
+    }
+
+    private func narrativeUnitKey(in text: String) -> String? {
+        narrativeUnitKeys(in: text).first
+    }
+
+    private func narrativeUnitTitle(_ header: String, key: String) -> String {
+        guard !header.isEmpty else { return key }
+        let withoutKey = header.replacingOccurrences(of: #"^\s*U0[1-4]\s*(?:·|-|—|:)\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+        return withoutKey
+            .replacingOccurrences(of: #"\s*(?:·|-|—)\s*[0-9]+\s*(?:minutos?|minutes?|min|['’′]).*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func uniqueVisuals(
+        visualsFor unitKeys: [String],
+        from visuals: [LearningSituationSessionVisualDraft]
+    ) -> [LearningSituationSessionVisualDraft] {
+        let requested = Set(unitKeys.map { $0.uppercased() })
+        var seen = Set<String>()
+        return visuals.filter { visual in
+            let isShared = visual.unitKey == nil
+            let matches = isShared || visual.unitKey.map { requested.contains($0.uppercased()) } == true
+            guard matches else { return false }
+            return seen.insert(visual.sourceRelationshipID).inserted
+        }
     }
 
     // MARK: - C: ficha + QUICK VIEW + ACTIVITY DETAILS
@@ -2928,6 +3375,115 @@ private final class WordStyledParagraphReader: NSObject, XMLParserDelegate {
 
     private func isElement(_ elementName: String, _ localName: String) -> Bool {
         elementName == "w:\(localName)" || elementName.hasSuffix(":\(localName)")
+    }
+}
+
+struct WordDocumentImageAnchor: Hashable {
+    let relationshipID: String
+    let title: String
+    let description: String
+    let contextText: String
+}
+
+/// Extrae la posición semántica de los dibujos Word sin copiar sus bytes al modelo de sesión.
+/// La relación `rId` se resuelve posteriormente contra el DOCX cacheado por el renderer.
+func wordDocumentImageAnchors(from data: Data) throws -> [WordDocumentImageAnchor] {
+    let archive = try Archive(data: data, accessMode: .read, pathEncoding: nil)
+    guard let entry = archive["word/document.xml"] else { throw LearningSituationImportError.unreadableDocument }
+    var xmlData = Data()
+    _ = try archive.extract(entry) { xmlData.append($0) }
+    let reader = WordDocumentImageAnchorReader()
+    guard reader.parse(data: xmlData) else { throw LearningSituationImportError.unreadableDocument }
+    return reader.anchors
+}
+
+private final class WordDocumentImageAnchorReader: NSObject, XMLParserDelegate {
+    private(set) var anchors: [WordDocumentImageAnchor] = []
+    private var paragraphDepth = 0
+    private var inText = false
+    private var inDrawing = false
+    private var paragraphText = ""
+    private var pendingImages: [(relationshipID: String, title: String, description: String)] = []
+    private var currentImageTitle = ""
+    private var currentImageDescription = ""
+
+    func parse(data: Data) -> Bool {
+        let parser = XMLParser(data: data)
+        parser.delegate = self
+        return parser.parse()
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didStartElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName: String?,
+        attributes attributeDict: [String: String] = [:]
+    ) {
+        if isElement(elementName, "p") {
+            if paragraphDepth == 0 {
+                paragraphText = ""
+                pendingImages = []
+            }
+            paragraphDepth += 1
+        } else if isElement(elementName, "drawing") {
+            inDrawing = true
+            currentImageTitle = ""
+            currentImageDescription = ""
+        } else if inDrawing && isElement(elementName, "docPr") {
+            // Word uses `name` for a generated label (often "Picture 1") and
+            // `title` for the teacher-authored accessible caption. Preserve the
+            // latter when it exists so the planner does not show opaque labels.
+            currentImageTitle = attributeDict["title"] ?? attributeDict["name"] ?? ""
+            currentImageDescription = attributeDict["descr"] ?? attributeDict["description"] ?? ""
+        } else if inDrawing && isElement(elementName, "blip") {
+            let relationshipID = attributeDict["r:embed"] ?? attributeDict["embed"] ?? attributeDict["r:link"] ?? attributeDict["link"] ?? ""
+            if !relationshipID.isEmpty {
+                pendingImages.append((relationshipID, currentImageTitle, currentImageDescription))
+            }
+        } else if paragraphDepth > 0 && isElement(elementName, "t") {
+            inText = true
+        } else if paragraphDepth > 0 && isElement(elementName, "tab") {
+            paragraphText += " "
+        } else if paragraphDepth > 0 && isElement(elementName, "br") {
+            paragraphText += " "
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        if inText { paragraphText += string }
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didEndElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName: String?
+    ) {
+        if isElement(elementName, "t") {
+            inText = false
+        } else if isElement(elementName, "drawing") {
+            inDrawing = false
+        } else if isElement(elementName, "p") {
+            paragraphDepth = max(0, paragraphDepth - 1)
+            guard paragraphDepth == 0 else { return }
+            let contextText = paragraphText
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            for image in pendingImages {
+                anchors.append(WordDocumentImageAnchor(
+                    relationshipID: image.relationshipID,
+                    title: image.title,
+                    description: image.description,
+                    contextText: contextText
+                ))
+            }
+            pendingImages = []
+        }
+    }
+
+    private func isElement(_ elementName: String, _ localName: String) -> Bool {
+        elementName == "w:\(localName)" || elementName.hasSuffix(":\(localName)") || elementName == localName
     }
 }
 

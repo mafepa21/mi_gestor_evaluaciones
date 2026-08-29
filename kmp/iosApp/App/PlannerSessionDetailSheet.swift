@@ -1038,11 +1038,16 @@ struct PlannerSessionDetailSheet: View {
         isLoadingRenderedDocument = true
         let sourceLabel = plan.sourceLabel
         let sessionNumber = Int(plan.sessionNumber)
+        let payload = LearningSituationSessionDevelopmentPayload.decode(from: plan.developmentJson)
+        let route = payload?.sequenceRoute
+        let visualReferences = payload?.visuals ?? []
         renderedDocument = await Task.detached(priority: .userInitiated) {
             try? PlannerSessionDocxRenderer().render(
                 from: sourceURL,
                 sourceLabel: sourceLabel,
-                sessionNumber: sessionNumber
+                sessionNumber: sessionNumber,
+                route: route,
+                visualReferences: visualReferences
             )
         }.value
         isLoadingRenderedDocument = false

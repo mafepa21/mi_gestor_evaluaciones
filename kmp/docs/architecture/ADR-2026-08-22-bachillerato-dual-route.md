@@ -56,6 +56,22 @@ its own development; it is not a short route with an extension activity appended
 The selected route is inferred from the first compatible timetable block, with a
 manual picker when the first opportunity is ambiguous.
 
+## Narrative ledger extension
+
+Teacher-authored documents may use a readable ledger instead of the QUICK VIEW /
+ACTIVITY DETAILS shape. The importer detects the same two route markers before
+the generic weekly parser, then treats each `BLOQUE CORTO` or `BLOQUE LARGO` as
+one plan and each `U01`–`U04` heading as structured operational content. A
+`LONG_PART_1` block is a single 35–74 minute opportunity: it is not expanded to
+two timetable periods and it is not treated as a 30-minute `SHORT`.
+
+The payload keeps image references as DOCX relationship IDs plus the Word
+`title`, `descr` and nearby paragraph context. The source DOCX remains the
+binary source of truth; the detail renderer resolves those IDs locally, avoids
+duplicating images already rendered in the selected route, and supplements the
+selected route when the source document anchors a shared or unit image only in
+the other route.
+
 ## Consequences
 
 - One DOCX supports both mirror timetables and any valid midweek start.
@@ -64,9 +80,12 @@ manual picker when the first opportunity is ambiguous.
 - The UI distinguishes imported canonical blocks from classes to schedule.
 - Scheduling stores only the plans selected by the actual chronological route.
 - Imported legacy sequences preserve their previous behavior.
+- Narrative ledgers preserve teacher wording, operational sections and embedded
+  visuals without requiring authors to reformat their existing DOCX.
 
 ## Verification
 
 Automated coverage includes short-first and long-first starts, midweek starts,
 holiday-like gaps, 15/20/21-minute break boundaries, odd three-class sequences,
-legacy fallback and backward-compatible payload decoding.
+legacy fallback, backward-compatible payload decoding, narrative ledgers,
+partial long blocks and DOCX image relationship metadata.

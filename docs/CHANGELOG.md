@@ -17,6 +17,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - Secuenciación de sesiones CLIL: contrato semanal importable con bloques `LONG BLOCK` y `SHORT BLOCK`, actividades estructuradas en inglés, evidencias, materiales, adaptaciones y comentarios CLIL; corpus normalizado en 55 Markdown y 55 DOCX.
 - Itinerarios seleccionables de Bachillerato (#225): los DOCX pueden declarar `ROUTE OPTION: shortFirst` y `ROUTE OPTION: longFirst` con fichas completas e independientes; el Planificador elige una sola ruta según la primera franja compatible o permite fijarla manualmente.
+- Importador narrativo de Bachillerato: reconoce el ledger de SA0 tal como está redactado, conserva las rutas `shortFirst`/`longFirst`, agrupa las unidades U01–U04 en bloques operativos y mantiene referencias estables a las imágenes embebidas del DOCX.
 - Fichas de sesión operativas: cada bloque separa `QUICK VIEW` y `ACTIVITY DETAILS`, usa `Activity ID` estable (`Wnn-L/S-nn`) y permite abrir una actividad concreta desde timeline, desplegable o botones Anterior/Siguiente.
 - `session-plan-v2` conserva por actividad los contextos explícitos `prepares` y `consolidates`, disponibles tanto en la previsualización de importación como en la ficha operativa.
 
@@ -29,6 +30,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - La ficha de sesión resuelve el DOCX por su ruta almacenada o por su caché direccionada por SHA-256; en macOS abre el original con la aplicación del sistema y en iOS/iPadOS mantiene QuickLook.
 - La navegación macOS hacia la ejecución desde la ficha de sesión cierra primero el inspector y conserva la transición diferida al Diario.
 - La programación de un bloque largo persiste todas sus franjas consecutivas, incluyendo el segundo período del par horario, y enlaza cada ocupación con su sesión planificada.
+- La secuenciación narrativa distingue `LONG_PART_1` como una única franja parcial de 40 minutos y el visor enriquecido del Planificador limita el DOCX a la ruta elegida, incorporando también las imágenes de la ruta alternativa cuando el original solo las ancla en una de ellas.
 - Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
 - AppIcon nativo de Apple integrado mediante `AppIcon.icon` de Icon Composer para el target KMP de iPadOS y macOS, con rendiciones `Default` y `Dark` en una única fuente compartida.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
@@ -167,6 +169,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Este cambio: `MiGestorPlannerTests` completo pasa con 94 tests ejecutados, 1 omitido y 0 fallos; `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran el proyecto y compilan correctamente macOS Native e iOS Simulator. El DOCX real de SA0 se validó durante el desarrollo con dos rutas, tres bloques por ruta, `LONG_PART_1` y cinco imágenes embebidas.
 - Issue #225: `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran el proyecto y compilan correctamente macOS Native y iOS Simulator en `codex/sa-route-itineraries`.
 - Este ticket: `MiGestorPlannerTests` completo pasa con 80 tests aprobados, 2 omitidos y 0 fallos (82 totales); la batería dirigida de importación/proyección pasa con 25/25; `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran XcodeGen y compilan macOS Native e iOS Simulator correctamente.
 - El DOCX real del workspace se comprobó end-to-end con SHA-256 `d0ee52ff904256208063f23efb84ea5fd881a754f09dc93ec6dcd9d280dab70a`: produce W01 LONG=4, W01 SHORT=3, W02 LONG=4 y W02 SHORT=3, sin `LEGACY-*` ni títulos-ID. Los conteos 6/4 solicitados no están presentes en este binario y quedan pendientes de un artefacto corregido.

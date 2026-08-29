@@ -709,6 +709,115 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertFalse(shortResult.html.contains("Long-only activity"))
     }
 
+    func testNarrativeRouteLedgerImportsBothRoutesAndPartialLong() throws {
+        func unit(_ key: String, _ objective: String) -> [WordDocumentBlock] {
+            [
+                .paragraph("\(key) · Unidad diagnóstica · 40 minutos útiles"),
+                .paragraph("Objetivo de hoy: \(objective)"),
+                .paragraph("Material, espacio y agrupamiento: Tres zonas paralelas y material seguro."),
+                .paragraph("Atención especial: Parar ante dolor o pérdida de control."),
+                .paragraph("1. Explicación inicial · 4 minutos"),
+                .paragraph("Presentar una sola prueba y su criterio de seguridad."),
+                .paragraph("2. Rotación de tres grupos · 24 minutos"),
+                .table([
+                    ["Ronda", "Grupo con el profesor", "Mini-juego 1"],
+                    ["1", "G1", "Juego A"]
+                ]),
+                .paragraph("3. Registro, reflexión y recogida · 6 minutos"),
+                .paragraph("Registrar el resultado bruto y el siguiente paso.")
+            ]
+        }
+
+        func route(_ name: String, _ finalWeek: Bool = false) -> [WordDocumentBlock] {
+            var blocks: [WordDocumentBlock] = [.paragraph("ROUTE OPTION: \(name)"), .paragraph("WEEK 1 — Evaluación inicial")]
+            if name == "shortFirst" {
+                blocks += [.paragraph("BLOQUE CORTO (30 minutos útiles) · U01")]
+                blocks += unit("U01", "Coordinarse con una elección segura")
+                blocks += [.paragraph("BLOQUE LARGO (80 minutos útiles) · U02 + U03")]
+                blocks += unit("U02", "Mantener el equilibrio con control")
+                blocks += unit("U03", "Regular sentadillas controladas")
+                blocks += [.paragraph("BREAK — 15–20 minutos")]
+                blocks += [.paragraph("BLOQUE CORTO (30 minutos útiles) · U04")]
+                blocks += unit("U04", "Interpretar el dato y fijar un paso SMART")
+            } else {
+                blocks += [.paragraph("BLOQUE LARGO (80 minutos útiles) · U01 + U02")]
+                blocks += unit("U01", "Coordinarse con una elección segura")
+                blocks += unit("U02", "Mantener el equilibrio con control")
+                blocks += [.paragraph("BLOQUE CORTO (30 minutos útiles) · U03")]
+                blocks += unit("U03", "Regular sentadillas controladas")
+                if finalWeek { blocks += [.paragraph("WEEK 2 — Frontera manual")]
+                }
+                blocks += [.paragraph("BLOQUE LARGO · LONG_PART_1 (40 minutos útiles) · U04")]
+                blocks += unit("U04", "Interpretar el dato y fijar un paso SMART")
+            }
+            return blocks
+        }
+
+        let blocks = route("shortFirst") + route("longFirst", true)
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("sa0-narrative-route".utf8),
+            url: URL(fileURLWithPath: "/tmp/sa0-narrative-route.docx")
+        )
+
+        XCTAssertEqual(draft.routeVariants.count, 2)
+        XCTAssertEqual(draft.plans.count, 3)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.map(\.sessionType), ["SHORT", "LONG", "SHORT"])
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.map(\.sessionType), ["LONG", "SHORT", "LONG_PART_1"])
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.last?.blockRole, .longPart1)
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.last?.weekKey, "week-2")
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.objective, "Coordinarse con una elección segura")
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.material, "Tres zonas paralelas y material seguro.")
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.first?.activities.count, 3)
+        XCTAssertFalse(draft.warnings.contains { $0.contains("seis") || $0.contains("duplic") })
+    }
+
+    func testProvidedSA0DOCXImportsWithoutSyntheticWeeklyDuplicates() throws {
+        guard let path = ProcessInfo.processInfo.environment["MIGESTOR_SA0_DOCX_PATH"], !path.isEmpty else {
+            throw XCTSkip("Se ejecuta solo cuando se proporciona MIGESTOR_SA0_DOCX_PATH con el DOCX de SA0.")
+        }
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw XCTSkip("El DOCX indicado no está disponible.")
+        }
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
+        XCTAssertEqual(draft.routeVariants.count, 2)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.count, 3)
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.count, 3)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.map(\.sessionType), ["SHORT", "LONG", "SHORT"])
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.map(\.sessionType), ["LONG", "SHORT", "LONG_PART_1"])
+        XCTAssertEqual(Set(draft.routeVariants[.shortFirst]?.flatMap(\.visuals).map(\.sourceRelationshipID) ?? []).count, 5)
+        XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { !$0.objective.isEmpty && !$0.development.isEmpty })
+    }
+
+    func testNarrativeImageAnchorsKeepDocxMetadataAndRendererCanSupplementRoute() throws {
+        let docxURL = try makeMinimalDocx()
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+        let data = try Data(contentsOf: docxURL)
+        let anchors = try wordDocumentImageAnchors(from: data)
+
+        XCTAssertEqual(anchors.count, 1)
+        XCTAssertEqual(anchors.first?.relationshipID, "rId1")
+        XCTAssertEqual(anchors.first?.title, "Rotación")
+        XCTAssertEqual(anchors.first?.description, "Esquema de rotación")
+
+        let visual = LearningSituationSessionVisualDraft(
+            sourceRelationshipID: "rId1",
+            title: "Rotación",
+            altText: "Esquema de rotación"
+        )
+        let result = try PlannerSessionDocxRenderer().render(
+            from: docxURL,
+            sourceLabel: "Sesión 2 - Continuidad",
+            sessionNumber: 2,
+            visualReferences: [visual]
+        )
+        XCTAssertEqual(result.imageCount, 1)
+        XCTAssertTrue(result.html.contains("alt=\"Esquema de rotación\""))
+        XCTAssertTrue(result.html.contains("Rotación"))
+    }
+
     private func makeAssessmentInstrumentDocx() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("assessment-instrument-docx-\(UUID().uuidString)", isDirectory: true)
@@ -760,7 +869,7 @@ final class LearningSituationDocumentImportTests: XCTestCase {
             <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Sesión 1 - Acogida</w:t></w:r></w:p>
             <w:p><w:r><w:t>Objetivo de la sesión.</w:t></w:r></w:p>
             <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Actividad</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Tiempo</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>Juego cooperativo</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>20 min</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
-            <w:p><w:r><w:drawing><wp:inline><a:graphic><a:graphicData><a:blip r:embed="rId1"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>
+            <w:p><w:r><w:drawing><wp:inline><wp:docPr name="Picture 1" title="Rotación" descr="Esquema de rotación"/><a:graphic><a:graphicData><a:blip r:embed="rId1"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>
             <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Sesión 2 - Continuidad</w:t></w:r></w:p>
             <w:p><w:r><w:t>Este contenido no debe aparecer.</w:t></w:r></w:p>
           </w:body>

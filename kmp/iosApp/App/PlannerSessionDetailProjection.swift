@@ -280,6 +280,8 @@ enum PlannerSessionPlanPayloadNormalizer {
             activities: activities(from: payload),
             guidingQuestions: payload.guidingQuestions,
             closure: payload.closure,
+            visuals: payload.visuals,
+            sequenceRoute: payload.sequenceRoute,
             sourceDocumentSHA256: payload.sourceDocumentSHA256
         )
         guard let data = try? JSONEncoder().encode(normalizedPayload) else { return nil }

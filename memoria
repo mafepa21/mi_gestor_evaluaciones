@@ -468,6 +468,18 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-08-29 - Importador narrativo de SA0 con rutas e imágenes DOCX
+
+Resumen:
+- Qué cambio se hizo: el importador de sesiones reconoce el DOCX narrativo de la evaluación inicial de Bachillerato tal como está redactado, con las rutas `shortFirst` y `longFirst`, bloques `SHORT`, `LONG` y `LONG_PART_1`, y unidades U01–U04.
+- Por qué importa: evita convertir cada encabezado `WEEK` en una sesión duplicada, conserva el orden curricular que corresponda al horario real y permite abrir en el Planificador el contenido operativo junto con las imágenes embebidas.
+- Dónde vive el cambio: `kmp/iosApp/AppleShared/LearningSituationDocumentImportService.swift`, `PlannerSessionDocxRenderer.swift`, `kmp/iosApp/App/LearningSituationsWorkspaceView.swift`, `PlannerSessionDetailSheet.swift` y `KmpBridge.swift`.
+- Validación realizada: `xcodegen generate`, `./scripts/verify_apple_builds.sh` (macOS Native e iOS Simulator correctos) y `MiGestorPlannerTests` completo (94 tests, 0 fallos, 1 opcional omitido); la prueba directa del DOCX real durante el desarrollo confirmó las dos rutas, tres bloques por ruta y cinco relaciones de imagen.
+
+Notas para futuras conversaciones:
+- Las referencias visuales guardan `rId` y metadatos, no base64; el DOCX cacheado sigue siendo necesario para renderizar.
+- `LONG_PART_1` debe seguir tratándose como una frontera manual de una sola franja y no como un `LONG` de dos períodos.
+
 ### 2026-08-13 - El Cuaderno distingue SyncLAN inactiva de sincronizado
 
 Resumen:

@@ -871,13 +871,22 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         }
 
         func route(_ name: String) -> [WordDocumentBlock] {
-            [
+            var blocks: [WordDocumentBlock] = [
                 .paragraph("ROUTE OPTION: \(name)"),
-                .paragraph("WEEK 1 — Unidades ampliadas"),
-                .paragraph("BLOQUE CORTO (30 minutos útiles) · U05")
-            ] + unit("U05") + [
-                .paragraph("BLOQUE LARGO (80 minutos útiles) · U09 + U10")
-            ] + unit("U09") + unit("U10")
+                .paragraph("WEEK 1 — Unidades ampliadas")
+            ]
+            if name == "shortFirst" {
+                blocks += [.paragraph("BLOQUE CORTO (30 minutos útiles) · U05")]
+                blocks += unit("U05")
+                blocks += [.paragraph("BLOQUE LARGO (80 minutos útiles) · U09 + U10")]
+                blocks += unit("U09") + unit("U10")
+            } else {
+                blocks += [.paragraph("BLOQUE LARGO (80 minutos útiles) · U09 + U10")]
+                blocks += unit("U09") + unit("U10")
+                blocks += [.paragraph("BLOQUE CORTO (30 minutos útiles) · U05")]
+                blocks += unit("U05")
+            }
+            return blocks
         }
 
         let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
@@ -979,6 +988,155 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         )
         XCTAssertEqual(activityResult.imageCount, 1)
         XCTAssertTrue(activityResult.html.contains("data:image/png;base64,"))
+    }
+
+    func testESOSessionHeadersAndFichaImport() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Estructura temporal: 4 sesiones uniformes de 55 minutos (30 minutos útiles de práctica motriz por sesión en pista de Mislata)"),
+            .paragraph("Sesión S01 · U01 · Agilidad y control de apoyos en desplazamientos rápidos"),
+            .paragraph("Objetivo de hoy: Al terminar la sesión, el alumnado ajusta desaceleraciones tras carrera frontal."),
+            .paragraph("Material, espacio y agrupamiento: Pista polideportiva completa, 20 conos y petos."),
+            .paragraph("Atención especial: Adaptar amplitud de apoyos si hay sobrecarga articular."),
+            .paragraph("1. Explicación inicial · 2–3 minutos"),
+            .paragraph("Presentar las reglas y normas de seguridad."),
+            .paragraph("2. Calentamiento mediante juego · 5–7 minutos"),
+            .paragraph("Juego de activación progresiva."),
+            .paragraph("3. Actividad principal · 18–20 minutos"),
+            .paragraph("Circuito de postas de agilidad con cambio de dirección."),
+            .paragraph("4. Reflexión o registro · 0–4 minutos · (OPCIONAL)"),
+            .paragraph("Puesta en común sobre frenadas y balance corporal."),
+            .paragraph("Trazabilidad curricular"),
+            .paragraph("- Duración útil: 30 minutos"),
+            .paragraph("- Evidencia: Registro individual de tiempo en 4×10 m y checklist de apoyos seguros"),
+            .paragraph("Sesión S02 · U02 · Estabilidad lumbopélvica y fuerza-resistencia de Core"),
+            .paragraph("Objetivo de hoy: Mantener alineación neutra durante planchas dinámicas."),
+            .paragraph("Material, espacio y agrupamiento: Gimnasio y esterillas individuales."),
+            .paragraph("1. Explicación inicial · 3 minutos"),
+            .paragraph("Demostración de alineación lumbopélvica."),
+            .paragraph("Trazabilidad curricular"),
+            .paragraph("- Duración útil: 30 minutos")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("eso-mislata".utf8),
+            url: URL(fileURLWithPath: "/tmp/eso-mislata.docx")
+        )
+
+        XCTAssertEqual(draft.plans.count, 2)
+        XCTAssertEqual(draft.plans[0].sessionNumber, 1)
+        XCTAssertEqual(draft.plans[0].title, "U01 · Agilidad y control de apoyos en desplazamientos rápidos")
+        XCTAssertEqual(draft.plans[0].effectiveMinutes, 30)
+        XCTAssertTrue(draft.plans[0].objective.contains("ajusta desaceleraciones"))
+        XCTAssertTrue(draft.plans[0].material.contains("Pista polideportiva completa"))
+        XCTAssertTrue(draft.plans[0].adaptations.contains { $0.contains("sobrecarga articular") })
+        XCTAssertEqual(draft.plans[1].sessionNumber, 2)
+        XCTAssertEqual(draft.plans[1].title, "U02 · Estabilidad lumbopélvica y fuerza-resistencia de Core")
+        XCTAssertEqual(draft.plans[1].effectiveMinutes, 30)
+    }
+
+    func testBachilleratoSpanishRoutesAndEncuentrosImport() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("RUTA 1: OPCIÓN shortFirst (Grupo A)"),
+            .paragraph("WEEK 1 — Evaluación diagnóstica inicial"),
+            .paragraph("Encuentro E01 · SHORT (30 minutos útiles) · U01 — Coordinación dinámica y decisiones seguras"),
+            .paragraph("Objetivo de hoy: Completar el circuito inicial con fluidez."),
+            .paragraph("Material, espacio y agrupamiento: Pista completa y balones."),
+            .paragraph("1. Explicación inicial · 4 minutos"),
+            .paragraph("Explicar normas del circuito."),
+            .paragraph("Encuentro E02 · LONG (80 minutos útiles) · U02 + U03 — Estabilidad monopodal y fuerza-resistencia"),
+            .paragraph("BLOQUE 1 (40 minutos útiles) · U02 — Circuito cooperativo y estabilidad monopodal"),
+            .paragraph("Objetivo del Bloque 1: Mantener balance monopodal durante 30 segundos."),
+            .paragraph("DESCANSO LEGAL OBLIGATORIO · 15 minutos (Fuera de cómputo activo)"),
+            .paragraph("Descanso, rehidratación y transición ordenada."),
+            .paragraph("BLOQUE 2 (40 minutos útiles) · U03 — Fuerza-resistencia de tren inferior"),
+            .paragraph("Objetivo del Bloque 2: Realizar sentadillas controladas en 60 segundos."),
+            .paragraph("RUTA 2: OPCIÓN longFirst (Grupo B)"),
+            .paragraph("WEEK 1 — Evaluación diagnóstica inicial"),
+            .paragraph("Encuentro E01 · LONG (80 minutos útiles) · U01 + U02 — Coordinación y estabilidad"),
+            .paragraph("BLOQUE 1 (40 minutos útiles) · U01 — Coordinación"),
+            .paragraph("Objetivo del Bloque 1: Coordinar apoyos."),
+            .paragraph("BLOQUE 2 (40 minutos útiles) · U02 — Estabilidad"),
+            .paragraph("Objetivo del Bloque 2: Estabilizar apoyos."),
+            .paragraph("Encuentro E02 · SHORT (30 minutos útiles) · U03 — Fuerza-resistencia"),
+            .paragraph("Objetivo de hoy: Sentadillas controladas.")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks,
+            data: Data("bac-mislata".utf8),
+            url: URL(fileURLWithPath: "/tmp/bac-mislata.docx")
+        )
+
+        XCTAssertEqual(draft.routeVariants.count, 2)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?.count, 2)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?[0].sessionType, "SHORT")
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?[0].effectiveMinutes, 30)
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?[1].sessionType, "LONG")
+        XCTAssertEqual(draft.routeVariants[.shortFirst]?[1].effectiveMinutes, 80)
+        XCTAssertTrue(draft.routeVariants[.shortFirst]?[1].development.contains { $0.title.contains("DESCANSO LEGAL") } == true)
+
+        XCTAssertEqual(draft.routeVariants[.longFirst]?.count, 2)
+        XCTAssertEqual(draft.routeVariants[.longFirst]?[0].sessionType, "LONG")
+        XCTAssertEqual(draft.routeVariants[.longFirst]?[0].effectiveMinutes, 80)
+        XCTAssertEqual(draft.routeVariants[.longFirst]?[1].sessionType, "SHORT")
+        XCTAssertEqual(draft.routeVariants[.longFirst]?[1].effectiveMinutes, 30)
+    }
+
+    func testMislataCurricularFilesImportSuccessfully() throws {
+        let service = LearningSituationSessionSequenceDocumentImportService()
+
+        // 3º ESO SA 0
+        let eso3SA0URL = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/3º ESO/SA 0 - Evaluación Inicial (3º ESO)/02_SESIONES/sesiones_secuenciadas.docx")
+        if FileManager.default.fileExists(atPath: eso3SA0URL.path) {
+            let draft = try service.preview(from: eso3SA0URL)
+            XCTAssertEqual(draft.plans.count, 4)
+            XCTAssertTrue(draft.plans.allSatisfy { !$0.title.isEmpty && !$0.objective.isEmpty && $0.effectiveMinutes == 30 })
+        }
+
+        // 3º ESO SA 1
+        let eso3SA1URL = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/3º ESO/SA 1 - Colpbol Pinfuvote (3º ESO)/02_SESIONES/sesiones_secuenciadas_colpbol.docx")
+        if FileManager.default.fileExists(atPath: eso3SA1URL.path) {
+            let draft = try service.preview(from: eso3SA1URL)
+            XCTAssertEqual(draft.plans.count, 8)
+            XCTAssertTrue(draft.plans.allSatisfy { !$0.title.isEmpty && !$0.objective.isEmpty && $0.effectiveMinutes == 30 })
+        }
+
+        // 4º ESO SA 0
+        let eso4SA0URL = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/4º ESO/SA 0 - Evaluación Inicial (4º ESO)/02_SESIONES/sesiones_secuenciadas.docx")
+        if FileManager.default.fileExists(atPath: eso4SA0URL.path) {
+            let draft = try service.preview(from: eso4SA0URL)
+            XCTAssertEqual(draft.plans.count, 4)
+            XCTAssertTrue(draft.plans.allSatisfy { !$0.title.isEmpty && !$0.objective.isEmpty && $0.effectiveMinutes == 30 })
+        }
+
+        // 4º ESO SA 1
+        let eso4SA1URL = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/4º ESO/SA 1 - Balonmano (4º ESO)/02_SESIONES/sesiones_secuenciadas.docx")
+        if FileManager.default.fileExists(atPath: eso4SA1URL.path) {
+            let draft = try service.preview(from: eso4SA1URL)
+            XCTAssertEqual(draft.plans.count, 10)
+            XCTAssertTrue(draft.plans.allSatisfy { !$0.title.isEmpty && !$0.objective.isEmpty && $0.effectiveMinutes == 30 })
+        }
+
+        // 1º Bachillerato SA 0
+        let bacSA0URL = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/00 - Evaluación Inicial (1 BAC)/02_SESIONES/sesiones_secuenciadas.docx")
+        if FileManager.default.fileExists(atPath: bacSA0URL.path) {
+            let draft = try service.preview(from: bacSA0URL)
+            XCTAssertEqual(draft.routeVariants.count, 2)
+            XCTAssertEqual(draft.routeVariants[.shortFirst]?.count, 3)
+            XCTAssertEqual(draft.routeVariants[.longFirst]?.count, 3)
+            XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { !$0.title.isEmpty && !$0.objective.isEmpty })
+        }
+
+        // 1º Bachillerato SA 1
+        let bacSA1URL = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/SA 1 - Building Health/02_SESIONES/sesiones_secuenciadas.docx")
+        if FileManager.default.fileExists(atPath: bacSA1URL.path) {
+            let draft = try service.preview(from: bacSA1URL)
+            XCTAssertEqual(draft.routeVariants.count, 2)
+            XCTAssertEqual(draft.routeVariants[.shortFirst]?.count, 7)
+            XCTAssertEqual(draft.routeVariants[.longFirst]?.count, 7)
+            XCTAssertTrue(draft.routeVariants.values.flatMap { $0 }.allSatisfy { !$0.title.isEmpty && !$0.objective.isEmpty })
+        }
     }
 
     private func makeAssessmentInstrumentDocx() throws -> URL {

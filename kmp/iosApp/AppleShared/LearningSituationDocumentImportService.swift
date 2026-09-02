@@ -1388,11 +1388,11 @@ struct LearningSituationSessionSequenceDocumentImportService {
     /// panel and starts planning the final event." (00d - Cierre de Curso) matcheaba igual que
     /// un encabezado real y generaba una sesión 3 fantasma duplicada.
     private static let headerPattern = try! NSRegularExpression(
-        pattern: #"^(?:SESSION|SESSIONS|SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+([0-9]+)(?:\s+(?:y|and|\&)\s+([0-9]+))?(?:\s*\([^)]*\))?(?:\s*[.:\-–—]\s*(.*))?$"#,
+        pattern: #"^(?:SESSION|SESSIONS|SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+S?([0-9]+)(?:\s+(?:y|and|\&)\s+S?([0-9]+))?(?:\s*\([^)]*\))?(?:\s*[.:\-–—·]\s*(.*))?$"#,
         options: [.caseInsensitive]
     )
     private static let routeOptionPattern = try! NSRegularExpression(
-        pattern: #"^ROUTE\s+OPTION\s*:\s*(shortFirst|longFirst)\s*$"#,
+        pattern: #"^(?:(?:RUTA|ROUTE)\s+[0-9]+\s*:\s*)?(?:OPCI[ÓO]N|ROUTE\s+OPTION|OPTION)?\s*(?::\s*)?(shortFirst|longFirst)(?:\s*\([^)]*\))?\s*$"#,
         options: [.caseInsensitive]
     )
 
@@ -1645,9 +1645,11 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let paragraphOrdinals = narrativeParagraphOrdinals(in: blocks)
         let unitHeaderPositions: [(paragraphIndex: Int, key: String)] = blocks.enumerated().compactMap { index, block in
             guard case .paragraph(let text) = block,
-                  let key = narrativeUnitKey(in: text),
-                  normalized(text).range(of: #"^u[0-9]{2,3}\b"#, options: .regularExpression) != nil,
-                  let paragraphIndex = paragraphOrdinals[index] else { return nil }
+                  let key = narrativeUnitKey(in: text) else { return nil }
+            let norm = normalized(text)
+            let isUnitStart = norm.range(of: #"^u[0-9]{2,3}\b"#, options: .regularExpression) != nil
+                || norm.range(of: #"^bloque\s+[0-9]+\b.*\bu[0-9]{2,3}\b"#, options: .regularExpression) != nil
+            guard isUnitStart, let paragraphIndex = paragraphOrdinals[index] else { return nil }
             return (paragraphIndex: paragraphIndex, key: key)
         }
         let visuals = imageAnchors.map { anchor in
@@ -1849,14 +1851,16 @@ struct LearningSituationSessionSequenceDocumentImportService {
 
     private func narrativeBlockHeader(from text: String) -> (role: LearningSituationWeeklyBlockRole, minutes: Int, unitKeys: [String])? {
         let value = normalized(text)
-        let hasLongBlockPrefix = value.hasPrefix("bloque largo") || value.hasPrefix("long block")
-        let isLongPart = hasLongBlockPrefix && (value.contains("long_part_1") || value.contains("long part 1") || value.contains("longpart1"))
+        let isEncuentro = value.range(of: #"^encuentro\s+e[0-9]+"#, options: .regularExpression) != nil
+        let hasLongBlockPrefix = value.hasPrefix("bloque largo") || value.hasPrefix("long block") || (isEncuentro && (value.contains("long") || value.contains("doble")))
+        let isLongPart = (value.contains("long_part_1") || value.contains("long part 1") || value.contains("longpart1") || value.contains("long part"))
+            && (hasLongBlockPrefix || isEncuentro || value.hasPrefix("bloque largo") || value.hasPrefix("long block"))
         let role: LearningSituationWeeklyBlockRole
         if isLongPart {
             role = .longPart1
         } else if hasLongBlockPrefix {
             role = .long
-        } else if value.hasPrefix("bloque corto") || value.hasPrefix("short block") {
+        } else if value.hasPrefix("bloque corto") || value.hasPrefix("short block") || (isEncuentro && (value.contains("short") || value.contains("simple"))) {
             role = .short
         } else {
             return nil
@@ -1890,8 +1894,11 @@ struct LearningSituationSessionSequenceDocumentImportService {
         struct UnitHeader { let index: Int; let key: String; let value: String }
         let unitHeaders: [UnitHeader] = blocks.enumerated().compactMap { index, block in
             guard case .paragraph(let text) = block,
-                  let key = narrativeUnitKey(in: text),
-                  normalized(text).range(of: #"^u[0-9]{2,3}\b"#, options: .regularExpression) != nil else { return nil }
+                  let key = narrativeUnitKey(in: text) else { return nil }
+            let norm = normalized(text)
+            let isUnitStart = norm.range(of: #"^u[0-9]{2,3}\b"#, options: .regularExpression) != nil
+                || norm.range(of: #"^bloque\s+[0-9]+\b.*\bu[0-9]{2,3}\b"#, options: .regularExpression) != nil
+            guard isUnitStart else { return nil }
             return UnitHeader(index: index, key: key, value: text)
         }
         if unitHeaders.isEmpty {
@@ -2076,7 +2083,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let label = normalized(String(text[..<colon]))
         let value = String(text[text.index(after: colon)...]).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
-        if label == "objetivo de hoy" || label == "objetivo" || label == "specific objective" { return ("objective", value) }
+        if label.hasPrefix("objetivo") || label == "specific objective" || label == "main objective" { return ("objective", value) }
         if label.hasPrefix("material") || label.contains("espacio") || label.contains("agrupamiento") { return ("material", value) }
         if label.hasPrefix("atencion especial") || label.hasPrefix("special attention") { return ("attention", value) }
         if label.hasPrefix("evidencia") || label.hasPrefix("evidence") { return ("evidence", value) }
@@ -2114,7 +2121,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
 
     private func narrativeUnitTitle(_ header: String, key: String) -> String {
         guard !header.isEmpty else { return key }
-        let withoutKey = header.replacingOccurrences(of: #"^\s*U[0-9]{2,3}\s*(?:·|-|—|:)\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+        let withoutKey = header
+            .replacingOccurrences(of: #"^\s*(?:bloque\s+[0-9]+(?:\s*\([^)]*\))?\s*[·–—\-]\s*)?U[0-9]{2,3}\s*(?:·|-|—|:)\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"^\s*U[0-9]{2,3}\s*(?:·|-|—|:)\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
         return withoutKey
             .replacingOccurrences(of: #"\s*(?:·|-|—)\s*[0-9]+\s*(?:minutos?|minutes?|min|['’′]).*$"#, with: "", options: [.regularExpression, .caseInsensitive])
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2849,6 +2858,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
             case .material: if material.isEmpty { material = value }
             case .saberes: if saberes.isEmpty { saberes = value }
             case .evidence: if evidence.isEmpty { evidence = value }
+            case .adaptations: adaptations.append(value)
             case .organisation, .date: break
             }
         }
@@ -3072,16 +3082,18 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let material = value(afterLabels: ["Material", "Materials", "Materiales"], in: body)
         let evidence = value(afterLabels: ["Evidencia", "Evidencias", "Evidence"], in: body)
         let type = headerParts.type
+        let adaptationFromBody = value(afterLabels: ["Atención especial", "Atencion especial", "Atención a la diversidad", "Atencion a la diversidad"], in: body)
         let adaptationIndex = body.firstIndex(where: {
             let norm = normalized($0)
             return norm.hasPrefix("adaptacion al contexto") || norm.hasPrefix("adaptación al contexto") || norm.hasPrefix("context adaptation")
         })
         let contentEnd = adaptationIndex ?? body.count
         let developmentStart = body.firstIndex(where: { isDevelopmentHeading($0) }) ?? contentEnd
+        let safeDevelopmentStart = min(developmentStart, contentEnd)
         var development: [LearningSituationSessionSectionDraft] = []
         var currentTitle: String?
         var currentLines: [String] = []
-        for paragraph in body[developmentStart..<contentEnd] {
+        for paragraph in body[safeDevelopmentStart..<contentEnd] {
             if isDevelopmentHeading(paragraph) {
                 if let currentTitle { development.append(.init(title: currentTitle, lines: currentLines)) }
                 currentTitle = paragraph
@@ -3094,10 +3106,14 @@ struct LearningSituationSessionSequenceDocumentImportService {
         if !evidence.isEmpty {
             development.insert(.init(title: "Evidencia", lines: [evidence]), at: 0)
         }
-        let adaptations = adaptationIndex.map { Array(body.dropFirst($0 + 1)) } ?? []
+        var adaptations = adaptationIndex.map { Array(body.dropFirst($0 + 1)) } ?? []
+        if !adaptationFromBody.isEmpty && !adaptations.contains(adaptationFromBody) {
+            adaptations.insert(adaptationFromBody, at: 0)
+        }
         let minutes = integerMatch(in: header, pattern: #"([0-9]+)\s*(?:minutos|minutes|min|')"#)
+            ?? integerMatch(in: body.joined(separator: " "), pattern: #"(?:duraci[oó]n\s+[úu]til|tiempo\s+[úu]til)[^0-9]{0,20}([0-9]+)"#)
             ?? defaultMinutes[normalized(type)]
-            ?? inferredMinutes(from: development)
+            ?? (inferredMinutes(from: development) > 0 ? inferredMinutes(from: development) : 30)
         return ParsedSessionPlan(
             title: title, sessionType: type, effectiveMinutes: minutes, objective: objective,
             criteria: criteria, material: material, development: development, activities: [],
@@ -3112,7 +3128,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
     /// `etiqueta | valor` (p.ej. "Item | Detail") como si vienen como dos párrafos consecutivos
     /// (etiqueta sola, seguida del contenido en el párrafo siguiente — SA 3, SA 4 y SA 6).
     private enum FichaField {
-        case title, objective, criteria, material, saberes, organisation, evidence, date
+        case title, objective, criteria, material, saberes, organisation, evidence, date, adaptations
     }
 
     private func fichaField(forLabel rawLabel: String) -> FichaField? {
@@ -3121,7 +3137,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
         case "titulo", "title":
             return .title
         case "objetivo", "objetivos", "objetivo especifico", "objetivo principal",
-             "objective", "objectives", "specific objective", "main objective":
+             "objective", "objectives", "specific objective", "main objective",
+             "objetivo de hoy", "objetivo de la sesion", "objetivo de la sesión":
             return .objective
         case "criterio", "criterios", "criterio de evaluacion", "criterios de evaluacion",
              "criterios de evaluacion trabajados", "criterios de evaluacion abordados",
@@ -3129,7 +3146,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
              "assessment focus":
             return .criteria
         case "material", "materiales", "material necesario", "materials", "materials needed",
-             "required materials":
+             "required materials", "material espacio y agrupamiento", "material y espacio",
+             "espacio y material", "materiales y espacio":
             return .material
         case "saberes basicos", "saberes basicos trabajados", "saberes basicos worked",
              "basic knowledge addressed", "core knowledge addressed":
@@ -3143,6 +3161,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
             return .evidence
         case "fecha", "date":
             return .date
+        case "atencion especial", "atención especial":
+            return .adaptations
         default:
             return nil
         }
@@ -3439,6 +3459,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
             case .saberes: if saberes.isEmpty { saberes = value }
             case .organisation: break // informativo, no tiene campo propio en el modelo actual
             case .evidence: if evidenceFromFicha.isEmpty { evidenceFromFicha = value }
+            case .adaptations: adaptations.append(value)
             case .date: break
             }
         }
@@ -3616,6 +3637,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
                item.hasPrefix("development of the session") ||
                item.contains("descanso reglamentario") ||
                item.contains("regulatory rest") ||
+               item.range(of: #"^[0-9]+\.\s*(?:explicaci[oó]n|calentamiento|actividad\s+principal|reflexi[oó]n|vuelta\s+a\s+la\s+calma|cierre)"#, options: [.regularExpression, .caseInsensitive]) != nil ||
+               item.hasPrefix("recogida:") ||
+               item.hasPrefix("trazabilidad curricular") ||
                timeRangeMinutes(in: paragraph) != nil
     }
 
@@ -3636,15 +3660,15 @@ struct LearningSituationSessionSequenceDocumentImportService {
         // B2: el separador tras el número también puede ser "." (no solo "-:–—"), el tipo puede
         // ir en plural ("Sesiones 3 y 5 - Dobles: ..."), y puede haber una anotación entre
         // paréntesis tipo "(NEW)"/"(nueva)" que no debe colarse en el título.
-        let pattern = #"^(?:SESSION|SESSIONS|SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+[0-9]+(?:\s+(?:y|and|\&)\s+[0-9]+)?\s*(?:\([^)]*\)\s*)?(?:[.:\-–—]\s*)?(?:(?:Simples?|Doubles?|Dobles?)\s*[.:\-–—]?\s*)?(?:\([^)]*\)\s*)?(.*)$"#
+        let pattern = #"^(?:SESSION|SESSIONS|SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+S?[0-9]+(?:\s+(?:y|and|\&)\s+S?[0-9]+)?\s*(?:\([^)]*\)\s*)?(?:[.:\-–—·]\s*)?(?:(?:Simples?|Doubles?|Dobles?)\s*[.:\-–—·]?\s*)?(?:\([^)]*\)\s*)?(.*)$"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
               let match = regex.firstMatch(in: header, range: NSRange(header.startIndex..., in: header)),
               let titleRange = Range(match.range(at: 1), in: header) else {
             return (type, "")
         }
         let title = String(header[titleRange])
-            .replacingOccurrences(of: #"^(Simples?|Doubles?|Dobles?)\s*[.:\-–—]?\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
-            .replacingOccurrences(of: #"^\([^)]*\)\s*[-–—:]?\s*"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"^(Simples?|Doubles?|Dobles?)\s*[.:\-–—·]?\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"^\([^)]*\)\s*[-–—:·]?\s*"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return (type, title)
     }
@@ -3667,6 +3691,14 @@ struct LearningSituationSessionSequenceDocumentImportService {
             if (normalizedParagraph.contains("double") || normalizedParagraph.contains("doble")),
                let minutes = integerMatch(in: paragraph, pattern: #"(?:Double|Doble)[^0-9]{0,80}([0-9]+)\s*"# + Self.minutesMarkerFragment) {
                 result[normalized("Doble")] = minutes
+            }
+        }
+        if result[normalized("Simple")] == nil {
+            for paragraph in paragraphs {
+                if let minutes = integerMatch(in: paragraph, pattern: #"([0-9]+)\s*(?:minutos?|minutes?|min|['’′])\s*(?:[úu]tiles?|efectivos?)"#) {
+                    result[normalized("Simple")] = minutes
+                    break
+                }
             }
         }
         return result

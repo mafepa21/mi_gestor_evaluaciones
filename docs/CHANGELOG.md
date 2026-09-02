@@ -24,6 +24,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Compatibilidad del importador de secuencias DOCX con la sintaxis de sesiones de ESO y Bachillerato de Mislata: `LearningSituationSessionSequenceDocumentImportService` reconoce encabezados con prefijo `S` y punto medio (`Sesión S01 · ...`), rutas en español con etiquetas de grupo (`RUTA 1: OPCIÓN shortFirst (Grupo A)`), encabezados de encuentros (`Encuentro E01 · SHORT ...`), subunidades en bloques dobles (`BLOQUE 1 ... · U02`), momentos pedagógicos de desarrollo y etiquetas docentes de objetivo, material y adaptaciones en cabecera de sesión.
 - La importación de actividades conserva las etiquetas compuestas de preparación, acción docente, acción del alumnado, evidencia y adaptación, y prioriza el detalle narrativo frente al resumen `QUICK VIEW`.
 - El importador de itinerarios seleccionables ya no aplica la validación legacy `-S-`/`-L-` a los identificadores `SF-Sn-Amm` y `LF-Sn-Amm`; conserva la validación de bloques antiguos y comprueba el prefijo de cada ruta.
 - El importador semanal ya no duplica las actividades al leer el detalle: fusiona los campos ampliados por `Activity ID`, valida IDs vacíos/duplicados/malformados y mantiene compatibilidad con payloads antiguos.

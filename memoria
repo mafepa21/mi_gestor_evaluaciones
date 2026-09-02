@@ -468,6 +468,18 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-09-02 - Compatibilidad de importación DOCX con formato pedagógico de Mislata (ESO y 1.º Bachillerato)
+
+Resumen:
+- Qué cambio se hizo: flexibilización de `LearningSituationSessionSequenceDocumentImportService` para reconocer encabezados de sesiones de ESO con prefijo `S` y punto medio (`Sesión S01 · U01 · ...`), itinerarios de Bachillerato en español con especificación de grupo (`RUTA 1: OPCIÓN shortFirst (Grupo A)`), encabezados de encuentros (`Encuentro E01 · SHORT ...`), subunidades en bloques dobles (`BLOQUE 1 ... · U02`), momentos de desarrollo de sesión (`1. Explicación inicial`, `2. Calentamiento...`, `Recogida:`) y etiquetas de ficha en cabecera (`Objetivo de hoy:`, `Material, espacio y agrupamiento:`, `Atención especial:`).
+- Por qué importa: permite importar directamente las secuencias de sesiones de las Situaciones de Aprendizaje 0 y 1 de 3.º ESO, 4.º ESO y 1.º Bachillerato de Mislata sin tocar los documentos originales del profesorado ni forzar reescrituras manuales.
+- Dónde vive el cambio: `kmp/iosApp/AppleShared/LearningSituationDocumentImportService.swift` y `kmp/iosApp/PlannerTests/LearningSituationDocumentImportTests.swift`.
+- Validación realizada: suite completa de 32 tests de `LearningSituationDocumentImportTests` ejecutada en macOS mediante `xcodebuild test` resultando en 0 fallos, incluyendo tests específicos sintéticos y validación directa contra los 6 documentos `.docx` reales de Mislata (`testMislataCurricularFilesImportSuccessfully`).
+
+Notas para futuras conversaciones:
+- En documentos de ESO las adaptaciones se ubican en la ficha de cabecera (`Atención especial:`); `parsePlanLegacy` ahora extrae este campo sin confundirlo con la sección de adaptaciones de cierre, preservando el bloque de desarrollo completo.
+- En Bachillerato, la detección de encuentros exige el prefijo estricto `^encuentro\s+e[0-9]+` para evitar falsas coincidencias con tablas o párrafos explicativos de la introducción.
+
 ### 2026-08-29 - Segmentación curricular de los LONG narrativos
 
 Resumen:

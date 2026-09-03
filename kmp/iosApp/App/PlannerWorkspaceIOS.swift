@@ -914,6 +914,7 @@ private struct PlannerWeekCompactEntryRow: View {
 
     private var stateLabel: String {
         if entry.kind == .scheduledSlot { return "Sin concretar" }
+        if entry.kind == .blockedSlot { return "Bloqueado" }
         if entry.journalStatus == .completed { return "Diario cerrado" }
         if entry.journalStatus == .draft { return "Diario pendiente" }
         if entry.sessionStatus == .completed { return "Impartida" }
@@ -922,6 +923,7 @@ private struct PlannerWeekCompactEntryRow: View {
 
     private var stateIcon: String {
         if entry.kind == .scheduledSlot { return "plus.circle.fill" }
+        if entry.kind == .blockedSlot { return "lock.fill" }
         if entry.journalStatus == .completed { return "checkmark.seal.fill" }
         if entry.journalStatus == .draft { return "doc.text.fill" }
         if entry.sessionStatus == .completed { return "checkmark.circle.fill" }
@@ -930,6 +932,7 @@ private struct PlannerWeekCompactEntryRow: View {
 
     private var stateTint: Color {
         if entry.kind == .scheduledSlot { return tint }
+        if entry.kind == .blockedSlot { return Color.indigo }
         if entry.journalStatus == .completed { return EvaluationDesign.success }
         if entry.journalStatus == .draft || entry.sessionStatus == .completed { return IOSAppStyle.warning }
         return .secondary
@@ -948,11 +951,15 @@ private struct PlannerWeekEntryCard: View {
     private var tint: Color { Color(hex: entry.classColorHex) }
 
     var body: some View {
-        Button(action: onTap) {
+        Button(action: {
+            if entry.kind != .blockedSlot {
+                onTap()
+            }
+        }) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     Capsule()
-                        .fill(tint)
+                        .fill(entry.kind == .blockedSlot ? Color.indigo : tint)
                         .frame(width: 8, height: 32)
 
                     VStack(alignment: .leading, spacing: 4) {
@@ -1010,6 +1017,7 @@ private struct PlannerWeekEntryCard: View {
 
     private var stateLabel: String {
         if entry.kind == .scheduledSlot { return "Crear sesión" }
+        if entry.kind == .blockedSlot { return "Bloqueado" }
         if entry.journalStatus == .completed { return "Cerrada" }
         if entry.journalStatus == .draft { return "Borrador" }
         if entry.sessionStatus == .completed { return "Diario pendiente" }
@@ -1018,6 +1026,7 @@ private struct PlannerWeekEntryCard: View {
 
     private var stateIcon: String {
         if entry.kind == .scheduledSlot { return "plus.circle.fill" }
+        if entry.kind == .blockedSlot { return "lock.fill" }
         if entry.journalStatus == .completed { return "checkmark.seal.fill" }
         if entry.journalStatus == .draft { return "doc.text.fill" }
         if entry.sessionStatus == .completed { return "checkmark.circle.fill" }
@@ -1026,6 +1035,7 @@ private struct PlannerWeekEntryCard: View {
 
     private var stateTint: Color {
         if entry.kind == .scheduledSlot { return tint }
+        if entry.kind == .blockedSlot { return Color.indigo }
         if entry.journalStatus == .completed { return EvaluationDesign.success }
         if entry.journalStatus == .draft { return EvaluationDesign.accent }
         if entry.sessionStatus == .completed { return IOSAppStyle.warning }
@@ -1036,6 +1046,8 @@ private struct PlannerWeekEntryCard: View {
         switch entry.kind {
         case .scheduledSlot:
             return tint.opacity(0.10)
+        case .blockedSlot:
+            return Color.indigo.opacity(0.12)
         case .session:
             return entry.isCompleted ? tint.opacity(0.24) : tint.opacity(0.14)
         }
@@ -1045,10 +1057,13 @@ private struct PlannerWeekEntryCard: View {
         switch entry.kind {
         case .scheduledSlot:
             return tint.opacity(0.35)
+        case .blockedSlot:
+            return Color.indigo.opacity(0.5)
         case .session:
             return entry.isCompleted ? tint.opacity(0.8) : tint.opacity(0.45)
         }
     }
+
 }
 
 private struct PlannerStatusPill: View {

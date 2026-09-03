@@ -197,6 +197,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         scheduleFormGroupId = await calendarStore.reloadBootstrap(bridge: bridge, scheduleFormGroupId: scheduleFormGroupId)
         groups = calendarStore.groups
         classColorHexById = calendarStore.classColorHexById
+        _ = try? await SchoolCalendarPreset2026_2027.sync1BachExams(bridge: bridge, groups: groups)
         do {
             let plans = try await bridge.learningSituationSessionPlansAll()
             sessionPlansById = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
@@ -206,6 +207,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             sessionPlansById = [:]
         }
     }
+
 
     func reloadWeekSessions(keepSelection: Bool = true) async {
         guard let bridge else { return }

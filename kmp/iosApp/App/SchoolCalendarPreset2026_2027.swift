@@ -193,6 +193,93 @@ enum SchoolCalendarPreset2026_2027 {
         )
     ]
 
+    // MARK: - Exámenes de 1º Bachillerato vinculados a sus grupos
+
+    struct ExamPreset: Identifiable {
+        let id: String
+        let title: String
+        let periodDescription: String
+        let datesIso: [String]
+        let dateRangeSummary: String
+        let description: String
+        let matchesCourse: (SchoolClass) -> Bool
+    }
+
+    static let all1BachExams: [ExamPreset] = [
+        ExamPreset(
+            id: "parciales_1eva_1bach",
+            title: "Exámenes Parciales (1º Bach)",
+            periodDescription: "1ª Evaluación",
+            datesIso: ["2026-10-08", "2026-10-13", "2026-10-14"],
+            dateRangeSummary: "8, 13, 14 octubre 2026",
+            description: "No lectivo para 1º Bach · Exámenes parciales 1ª Evaluación",
+            matchesCourse: { matchesGrade($0, expectedLevel: 1, gradeKeywords: ["1º bach", "1 bach", "1bach", "1ºbach"]) }
+        ),
+        ExamPreset(
+            id: "globales_1eva_1bach",
+            title: "Exámenes Globales (1º Bach)",
+            periodDescription: "1ª Evaluación",
+            datesIso: ["2026-11-20", "2026-11-23", "2026-11-24"],
+            dateRangeSummary: "20, 23, 24 noviembre 2026",
+            description: "No lectivo para 1º Bach · Exámenes globales 1ª Evaluación",
+            matchesCourse: { matchesGrade($0, expectedLevel: 1, gradeKeywords: ["1º bach", "1 bach", "1bach", "1ºbach"]) }
+        ),
+        ExamPreset(
+            id: "parciales_2eva_1bach",
+            title: "Exámenes Parciales (1º Bach)",
+            periodDescription: "2ª Evaluación",
+            datesIso: ["2027-01-22", "2027-01-25", "2027-01-26"],
+            dateRangeSummary: "22, 25, 26 enero 2027",
+            description: "No lectivo para 1º Bach · Exámenes parciales 2ª Evaluación",
+            matchesCourse: { matchesGrade($0, expectedLevel: 1, gradeKeywords: ["1º bach", "1 bach", "1bach", "1ºbach"]) }
+        ),
+        ExamPreset(
+            id: "globales_2eva_1bach",
+            title: "Exámenes Globales (1º Bach)",
+            periodDescription: "2ª Evaluación",
+            datesIso: ["2027-02-25", "2027-02-26", "2027-03-01"],
+            dateRangeSummary: "25, 26 febrero y 1 marzo 2027",
+            description: "No lectivo para 1º Bach · Exámenes globales 2ª Evaluación",
+            matchesCourse: { matchesGrade($0, expectedLevel: 1, gradeKeywords: ["1º bach", "1 bach", "1bach", "1ºbach"]) }
+        ),
+        ExamPreset(
+            id: "parciales_3eva_1bach",
+            title: "Exámenes Parciales (1º Bach)",
+            periodDescription: "3ª Evaluación",
+            datesIso: ["2027-04-16", "2027-04-19", "2027-04-20"],
+            dateRangeSummary: "16, 19, 20 abril 2027",
+            description: "No lectivo para 1º Bach · Exámenes parciales 3ª Evaluación",
+            matchesCourse: { matchesGrade($0, expectedLevel: 1, gradeKeywords: ["1º bach", "1 bach", "1bach", "1ºbach"]) }
+        ),
+        ExamPreset(
+            id: "globales_3eva_1bach",
+            title: "Exámenes Globales (1º Bach)",
+            periodDescription: "3ª Evaluación",
+            datesIso: ["2027-05-20", "2027-05-21", "2027-05-24"],
+            dateRangeSummary: "20, 21, 24 mayo 2027",
+            description: "No lectivo para 1º Bach · Exámenes globales 3ª Evaluación",
+            matchesCourse: { matchesGrade($0, expectedLevel: 1, gradeKeywords: ["1º bach", "1 bach", "1bach", "1ºbach"]) }
+        ),
+        ExamPreset(
+            id: "finales_ord_1bach",
+            title: "Exámenes Finales Ordinarios (1º Bach)",
+            periodDescription: "Convocatoria Ordinaria",
+            datesIso: ["2027-06-01", "2027-06-02", "2027-06-03"],
+            dateRangeSummary: "1, 2, 3 junio 2027",
+            description: "No lectivo para 1º Bach · Convocatoria ordinaria final",
+            matchesCourse: { matchesGrade($0, expectedLevel: 1, gradeKeywords: ["1º bach", "1 bach", "1bach", "1ºbach"]) }
+        ),
+        ExamPreset(
+            id: "extraord_1bach",
+            title: "Exámenes Extraordinarios (1º Bach)",
+            periodDescription: "Convocatoria Extraordinaria",
+            datesIso: ["2027-06-17", "2027-06-18", "2027-06-21"],
+            dateRangeSummary: "17, 18, 21 junio 2027",
+            description: "No lectivo para 1º Bach · Convocatoria extraordinaria",
+            matchesCourse: { matchesGrade($0, expectedLevel: 1, gradeKeywords: ["1º bach", "1 bach", "1bach", "1ºbach"]) }
+        )
+    ]
+
     // MARK: - Hitos colegiales y festivos de centro (sin classId)
 
     struct SchoolEventPreset: Identifiable {
@@ -531,15 +618,61 @@ enum SchoolCalendarPreset2026_2027 {
             }
         }
 
+        // 5. Exámenes de 1º Bachillerato vinculados a sus grupos
+        let examCount = (try? await sync1BachExams(bridge: bridge, groups: groups)) ?? 0
+
         return ApplyResult(
             evaluationPeriodsCreated: evalCount,
-            tripEventsCreated: tripCount,
+            tripEventsCreated: tripCount + examCount,
             schoolEventsCreated: schoolEventCount,
             milestonesCreated: milestoneCount
         )
+
+    }
+
+    /// Sincroniza e inserta de forma idempotente los exámenes de 1º Bachillerato en calendar_events
+    @discardableResult
+    static func sync1BachExams(bridge: KmpBridge, groups: [SchoolClass]) async throws -> Int {
+        let matching1BachGroups = groups.filter {
+            matchesGrade($0, expectedLevel: 1, gradeKeywords: ["1º bach", "1 bach", "1bach", "1ºbach", "1ba", "1bb"])
+        }
+        guard !matching1BachGroups.isEmpty else { return 0 }
+
+        let allEvents = (try? await bridge.plannerAllCalendarEvents()) ?? []
+        var created = 0
+
+        for exam in all1BachExams {
+            for group in matching1BachGroups {
+                for dateIso in exam.datesIso {
+                    guard let (startMs, endMs) = epochRange(for: dateIso) else { continue }
+                    let alreadyExists = allEvents.contains { evt in
+                        evt.classId?.int64Value == group.id &&
+                        isSameDay(epochMs: evt.startAt.toEpochMilliseconds(), targetDateIso: dateIso) &&
+                        (evt.title.localizedCaseInsensitiveContains("parcial") ||
+                         evt.title.localizedCaseInsensitiveContains("global") ||
+                         evt.title.localizedCaseInsensitiveContains("final") ||
+                         evt.title.localizedCaseInsensitiveContains("extraordinari"))
+                    }
+
+                    if !alreadyExists {
+                        _ = try await bridge.plannerSaveCalendarEvent(
+                            id: nil,
+                            classId: group.id,
+                            title: "\(exam.title) · \(group.name)",
+                            description: exam.description,
+                            startEpochMs: startMs,
+                            endEpochMs: endMs
+                        )
+                        created += 1
+                    }
+                }
+            }
+        }
+        return created
     }
 
     // MARK: - Helpers de fecha
+
 
     private static func epochRange(for isoDate: String) -> (startMs: Int64, endMs: Int64)? {
         let calendar = Calendar.current

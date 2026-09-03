@@ -185,6 +185,8 @@ extension PlannerWorkspaceViewModel {
             }
 
         let existingClassIds = Set(sessionEntries.map(\.classId))
+        let dayMilestonesForDay = dayMilestones[day] ?? []
+
         let scheduledEntries = teacherScheduleSlots
             .filter { slot in
                 guard Int(slot.dayOfWeek) == day else { return false }
@@ -197,8 +199,38 @@ extension PlannerWorkspaceViewModel {
                 let rhsName = groups.first(where: { $0.id == rhs.schoolClassId })?.name ?? ""
                 return lhsName < rhsName
             }
-            .map { slot in
-                PlannerWeekCellEntry(
+            .map { slot -> PlannerWeekCellEntry in
+                let blockingMilestone = dayMilestonesForDay.first { m in
+                    m.isBlocking && (m.classId == nil || m.classId == slot.schoolClassId)
+                }
+
+                if let blocking = blockingMilestone {
+                    let groupName = groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)"
+                    return PlannerWeekCellEntry(
+                        id: "blocked-\(slot.id)",
+                        kind: .blockedSlot,
+                        classId: slot.schoolClassId,
+                        className: groupName,
+                        classColorHex: classColorHex(for: slot.schoolClassId),
+                        dayOfWeek: Int(slot.dayOfWeek),
+                        period: period,
+                        title: blocking.title,
+                        preview: blocking.subtitle ?? "Horas de EF bloqueadas por exámenes",
+                        sessionGlance: nil,
+                        sectionPreviews: [
+                            PlannerSectionPreview(title: "Curso", value: groupName),
+                            PlannerSectionPreview(title: "Motivo", value: blocking.title),
+                            PlannerSectionPreview(title: "Estado", value: "Bloqueado (No lectivo)")
+                        ],
+                        sessionId: nil,
+                        sessionStatus: nil,
+                        journalStatus: nil,
+                        scheduledSlotId: slot.id,
+                        isCompleted: false
+                    )
+                }
+
+                return PlannerWeekCellEntry(
                     id: "slot-\(slot.id)",
                     kind: .scheduledSlot,
                     classId: slot.schoolClassId,
@@ -220,6 +252,7 @@ extension PlannerWorkspaceViewModel {
                     isCompleted: false
                 )
             }
+
 
         return sessionEntries + scheduledEntries
     }
@@ -303,7 +336,9 @@ extension PlannerWorkspaceViewModel {
                     let haystack = "\(titleLower) \(descLower)"
 
                     let category: PlannerMilestoneCategory
-                    if event.classId != nil || haystack.contains("viaje") || haystack.contains("salida") || haystack.contains("toledo") || haystack.contains("pirineos") || haystack.contains("agullent") {
+                    if haystack.contains("examen") || haystack.contains("parcial") || haystack.contains("global") {
+                        category = .exam
+                    } else if event.classId != nil || haystack.contains("viaje") || haystack.contains("salida") || haystack.contains("toledo") || haystack.contains("pirineos") || haystack.contains("agullent") {
                         category = .trip
                     } else if haystack.contains("reunión") || haystack.contains("notas") || haystack.contains("graduación") || haystack.contains("claustro") || haystack.contains("educamos") {
                         category = .milestone
@@ -314,7 +349,11 @@ extension PlannerWorkspaceViewModel {
                     let isBlocking = haystack.contains("no lectivo") ||
                         haystack.contains("festivo") ||
                         haystack.contains("vacaciones") ||
-                        haystack.contains("puente")
+                        haystack.contains("puente") ||
+                        haystack.contains("examen") ||
+                        haystack.contains("parcial") ||
+                        haystack.contains("global")
+
 
                     let className = event.classId.flatMap { groupsById[$0.int64Value] }
 

@@ -493,6 +493,9 @@ private struct PlannerWeekMiniatureCell: View {
     }
 
     private func compactSessionBadge(for entry: PlannerWeekCellEntry) -> String? {
+        if entry.kind == .blockedSlot {
+            return "EXAMEN"
+        }
         guard let badge = entry.sessionGlance?.badges.first(where: { $0.hasPrefix("Sesión ") }) else {
             return nil
         }
@@ -542,17 +545,23 @@ private struct PlannerWeekMiniatureCell: View {
 
     private func statusIcon(for entry: PlannerWeekCellEntry) -> String {
         if entry.kind == .scheduledSlot { return "plus" }
+        if entry.kind == .blockedSlot { return "lock.fill" }
         return vm.sessionStateIcon(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
     }
 
     private func statusTint(for entry: PlannerWeekCellEntry) -> Color {
         if entry.kind == .scheduledSlot { return IOSAppStyle.warning }
+        if entry.kind == .blockedSlot { return Color.indigo }
         return vm.sessionStateTint(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
     }
 
     private var fillColor: Color {
         if isHoliday { return Color.red.opacity(0.08) }
         guard let entry = primaryEntry else { return Color.secondary.opacity(0.12) }
+        if entry.kind == .blockedSlot {
+            return Color.indigo.opacity(0.14)
+        }
         return groupTint(for: entry).opacity(entry.kind == .scheduledSlot ? 0.14 : 0.22)
     }
+
 }

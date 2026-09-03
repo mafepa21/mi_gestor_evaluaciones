@@ -3,7 +3,21 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-03 - Integración y bloqueo de horas de EF por exámenes de 1º Bachillerato
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se definieron los exámenes de 1º de Bachillerato (parciales y globales de 1ª, 2ª y 3ª evaluación, así como convocatorias final ordinaria y extraordinaria) en `SchoolCalendarPreset2026_2027.swift` con sus fechas exactas del claustro, vinculados a los grupos `1º BAC A` y `1º BAC B`, y se implementó su inserción idempotente en `calendar_events`.
+  2. Se actualizó `KmpBridge.isNonTeachingCalendarEvent` para reconocer `"examen"`, `"parcial"` y `"global"` como marcadores no lectivos, lo que garantiza que `LearningSituationsWorkspaceView` (`makePreview`) añada estas fechas a `excludedDates` y salte automáticamente estos días al programar sesiones de una SA.
+  3. Se amplió `PlannerWeekCellEntry.Kind` con `.blockedSlot` y se enriqueció `buildEntries` en `PlannerWorkspaceViewModel+WeekBoard.swift`: cuando una franja lectiva del horario coincide con un examen o hito no lectivo de ese grupo, la celda se marca como bloqueada con icono de candado/examen, sin permitir la adición accidental de sesiones con el botón `+`.
+  4. Se actualizaron `PlannerWeekMiniatureGrid`, `PlannerWeekDetailPane` y `PlannerWorkspaceIOS` para representar las franjas `.blockedSlot` en tono índigo/púrpura con distintivo `EXAMEN` y aviso explicativo en el panel de detalle.
+  5. En `PlannerWorkspaceViewModel+Schedule.swift` (`generateSessionsForSchedule`), se omiten automáticamente las franjas bloqueadas por exámenes o festivos al generar sesiones a partir de la plantilla semanal.
+- Por qué importa: Atiende con precisión a la petición del profesor de Educación Física: en los días de exámenes de 1º BAC sus horas de EF quedan bloqueadas y las situaciones de aprendizaje jamás programan sesiones en esos días.
+- Dónde vive el cambio: `kmp/iosApp/App/SchoolCalendarPreset2026_2027.swift`, `kmp/iosApp/App/KmpBridge.swift`, `PlannerModels.swift`, `PlannerWorkspaceViewModel.swift`, `PlannerWorkspaceViewModel+WeekBoard.swift`, `PlannerWorkspaceViewModel+Schedule.swift`, `PlannerWeekMiniatureGrid.swift`, `PlannerWeekDetailPane.swift` y `PlannerWorkspaceIOS.swift`.
+- Validación realizada: Se verificó la inserción en base de datos SQLite y se ejecutó `./scripts/verify_apple_builds.sh` completando con éxito tanto para macOS Native como para iOS Simulator.
+
 ## Avance 2026-09-03 - Corrección de bucle de carga en layout semanal del Planificador
+
 
 Resumen:
 - Qué cambio se hizo:

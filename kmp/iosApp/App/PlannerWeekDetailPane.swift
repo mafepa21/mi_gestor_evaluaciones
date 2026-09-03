@@ -219,13 +219,27 @@ private struct PlannerWeekDetailEntryCard: View {
                 PlannerStatusBadge(label: statusLabel, systemImage: statusIcon, tint: statusTint)
             }
 
-            Button {
-                onPrimaryAction()
-            } label: {
-                Label(primaryActionTitle, systemImage: primaryActionIcon)
-                    .frame(maxWidth: .infinity)
+            if entry.kind != .blockedSlot {
+                Button {
+                    onPrimaryAction()
+                } label: {
+                    Label(primaryActionTitle, systemImage: primaryActionIcon)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(Color.indigo)
+                    Text("Franja bloqueada por exámenes (no lectivo)")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
-            .buttonStyle(.borderedProminent)
         }
         .padding(16)
         .plannerGlassPanel(.content, cornerRadius: 12)
@@ -234,11 +248,13 @@ private struct PlannerWeekDetailEntryCard: View {
 
     private var statusLabel: String {
         if entry.kind == .scheduledSlot { return "Pendiente" }
+        if entry.kind == .blockedSlot { return "Bloqueado" }
         return vm.sessionStateLabel(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
     }
 
     private var statusIcon: String {
         if entry.kind == .scheduledSlot { return "plus.circle.fill" }
+        if entry.kind == .blockedSlot { return "lock.fill" }
         return vm.sessionStateIcon(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
     }
 
@@ -249,6 +265,7 @@ private struct PlannerWeekDetailEntryCard: View {
     private var primaryActionIcon: String {
         entry.kind == .scheduledSlot ? "plus" : "arrow.up.right"
     }
+
 
     private var entryTitle: String {
         let title = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)

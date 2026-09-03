@@ -3867,9 +3867,10 @@ final class KmpBridge: ObservableObject {
         let haystack = [title, description ?? ""]
             .joined(separator: " ")
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-        let markers = ["festivo", "no lectivo", "vacaciones", "puente", "holiday"]
+        let markers = ["festivo", "no lectivo", "vacaciones", "puente", "holiday", "examen", "examenes", "parcial", "parciales", "global", "globales"]
         return markers.contains { haystack.contains($0) }
     }
+
 
     private func plannerMinutes(_ hhmm: String) -> Int? {
         let parts = hhmm.split(separator: ":")

@@ -303,7 +303,9 @@ struct PlannerWeekCellEntry: Identifiable, Hashable {
     enum Kind: Hashable {
         case session
         case scheduledSlot
+        case blockedSlot
     }
+
 
     let id: String
     let kind: Kind
@@ -624,6 +626,7 @@ enum PlannerMilestoneCategory: String, Hashable, CaseIterable {
     case trip = "Salida / Viaje"
     case milestone = "Hito de centro"
     case evaluation = "Evaluación"
+    case exam = "Exámenes"
 
     var iconName: String {
         switch self {
@@ -631,6 +634,7 @@ enum PlannerMilestoneCategory: String, Hashable, CaseIterable {
         case .trip: return "bus.fill"
         case .milestone: return "calendar.badge.clock"
         case .evaluation: return "chart.bar.doc.horizontal.fill"
+        case .exam: return "pencil.and.ruler.fill"
         }
     }
 
@@ -640,9 +644,11 @@ enum PlannerMilestoneCategory: String, Hashable, CaseIterable {
         case .trip: return Color.blue
         case .milestone: return Color.orange
         case .evaluation: return Color.purple
+        case .exam: return Color.indigo
         }
     }
 }
+
 
 struct PlannerDayMilestone: Identifiable, Hashable {
     let id: String

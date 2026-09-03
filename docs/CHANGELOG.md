@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Tarjetas visuales de sección y formateador estructurado (`PlannerActivityDetailSectionCard` / `PlannerFormattedTextView`): descomposición automática de textos pedagógicos densos en bloques jerárquicos (zonas con badges turquesa/índigo/naranja, fases, rondas de rotación de grupos G1/G2/G3, consignas CLIL, listas de viñetas espaciadas y pares clave-valor) con iconos semánticos dedicados y fondo redondeado continuo.
 - Rediseño *at-a-glance* de la ficha de detalle de sesión en Planificación: barra de tiempo horizontal interactiva proporcional (`PlannerSessionTimelineBar`) con visualización de momentos pedagógicos y descanso legal de 15 minutos en bloques dobles LONG (80 minutos útiles).
 - Extracción de títulos lúdicos específicos: `PlannerSessionPresentationHelper.displayTitle` proyecta el nombre específico del juego o reto de pista entre comillas `«...»` o del guion pedagógico en vez de títulos genéricos repetitivos.
 - Tarjetas operativas por zonas de pista (`PlannerSessionZoneCardsView`): desglose visual de circuitos en 3 zonas con asignación de roles docente/autogestionado y panel de rondas de rotación para grupos G1, G2 y G3.

@@ -2139,3 +2139,24 @@ Resumen:
 - **Validación realizada**:
   - Verificación estática y de compilación limpia tanto en `macOS Native / Catalyst` como en `iOS Simulator` mediante `./scripts/verify_apple_builds.sh` (ambos en estado `✓ COMPILADO CORRECTAMENTE`).
   - Paso del 100% de la suite de pruebas unitarias `MiGestorPlannerTests` en destino macOS.
+
+### 2026-09-03 - Formato estructurado y tarjetas visuales para los detalles operativos de sesión en Planner
+
+Resumen:
+- **Cambios realizados**:
+  - Se sustituyó el renderizado continuo y plano de texto de las secciones de detalle (`activityDetailSection`) por componentes de tarjetas semánticas (`PlannerActivityDetailSectionCard`).
+  - **Tarjetas temáticas de sección**: Cada sección (*Propósito*, *Profesorado*, *Alumnado*, *Organización y preparación*, *Temporización y transiciones*, *Evidencia*, *Adaptaciones/DUA*, *Si el grupo va lento*, *Extensión rápida*) cuenta con su icono dedicado en cápsula suave, tipografía jerárquica y contenedor redondeado `surfaceSoft` con borde sutil.
+  - **Formateador estructurado (`PlannerFormattedTextView`)**: Desglosa y estiliza de forma autónoma el contenido de los párrafos en bloques visuales:
+    - *Zonas de pista* (`Zona 1...`, `Zona 2...`, `Zona 3...`) con badges cromáticos temáticos (turquesa para zona docente, índigo/naranja para autogestionadas), subtítulos y viñetas indentadas.
+    - *Fases y rondas de rotación* (`Fase 1...`, `Ronda 2 (8 min)...`) con píldoras temporales de grupo.
+    - *Consignas CLIL* integradas con banner resaltado.
+    - *Listas y viñetas* espaciadas con bullets circulares alineados.
+    - *Pares clave-valor* destacados con etiqueta en negrita semántica.
+    - *Propósito educativo* limpio de prefijos redundantes de unidad (como `U03 · `) y con estilo hero.
+- **Por qué importa**: Elimina por completo los bloques densos e ilegibles de 20 líneas en apartados pedagógicos complejos, permitiendo que el docente en pista identifique instantáneamente roles, rotaciones y pautas con un escaneo visual de 3 segundos.
+- **Rutas afectadas**:
+  - [PlannerSessionDetailComponents.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/PlannerSessionDetailComponents.swift)
+  - [PlannerSessionDetailSheet.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/PlannerSessionDetailSheet.swift)
+- **Validación realizada**:
+  - Compilación exitosa en `macOS Native / Catalyst` y en `iOS Simulator` con `./scripts/verify_apple_builds.sh`.
+  - Paso del 100% de `MiGestorPlannerTests` en macOS (exit code 0).

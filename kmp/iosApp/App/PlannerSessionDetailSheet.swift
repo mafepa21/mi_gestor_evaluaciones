@@ -904,7 +904,6 @@ struct PlannerSessionDetailSheet: View {
 
     private func activityDetailCard(_ activity: LearningSituationSessionActivityDraft, index: Int) -> some View {
         let displayTitle = PlannerSessionPresentationHelper.displayTitle(for: activity)
-        let stationActivity = PlannerSessionPresentationHelper.parseStationActivity(from: activity)
         let clilCallout = PlannerSessionPresentationHelper.clilCallout(for: activity)
 
         return VStack(alignment: .leading, spacing: 0) {
@@ -948,17 +947,12 @@ struct PlannerSessionDetailSheet: View {
 
             if let clilCallout, !clilCallout.isEmpty {
                 PlannerSessionCLILBanner(text: clilCallout, tint: tint)
-                    .padding(.top, 14)
+                    .padding(.top, 12)
             }
 
             if !activity.materials.isEmpty {
                 PlannerSessionMaterialChipsView(materialsText: activity.materials, tint: tint)
-                    .padding(.top, 8)
-            }
-
-            if let stationActivity {
-                PlannerSessionZoneCardsView(station: stationActivity, tint: tint)
-                    .padding(.top, 14)
+                    .padding(.top, 6)
             }
 
             if let visualHTML = renderedActivityVisuals[activityIdentity(activity, index: index)],
@@ -977,21 +971,17 @@ struct PlannerSessionDetailSheet: View {
                 .padding(.top, 16)
             }
 
-            VStack(alignment: .leading, spacing: 0) {
-                activityDetailSection("Propósito", activity.purpose)
-                if stationActivity == nil {
-                    activityDetailSection("Organización y preparación", [activity.organisation, activity.setup].filter { !$0.isEmpty }.joined(separator: "\n"))
-                    activityDetailSection("Profesorado", activity.teacherActions)
-                } else if !stationActivity!.generalNotes.isEmpty {
-                    activityDetailSection("Pautas generales", stationActivity!.generalNotes.joined(separator: "\n"))
-                }
-                activityDetailSection("Alumnado", [activity.studentInstructions, activity.studentActions].filter { !$0.isEmpty }.joined(separator: "\n"))
-                activityDetailSection("Temporización y transiciones", activity.timingBreakdown)
-                activityDetailSection("Evidencia", activity.evidence)
-                activityDetailSection("Adaptaciones", activity.adaptations)
-                activityDetailSection("Si el grupo va lento", activity.slowGroupPlan)
-                activityDetailSection("Extensión si termina antes", activity.fastGroupExtension)
-                activityDetailSection("Continuidad LONG", [activity.prepares, activity.consolidates].filter { !$0.isEmpty }.joined(separator: "\n"))
+            VStack(alignment: .leading, spacing: 12) {
+                PlannerActivityDetailSectionCard(kind: .purpose, text: activity.purpose, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .organization, text: [activity.organisation, activity.setup].filter { !$0.isEmpty }.joined(separator: "\n"), tint: tint)
+                PlannerActivityDetailSectionCard(kind: .teacher, text: activity.teacherActions, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .students, text: [activity.studentInstructions, activity.studentActions].filter { !$0.isEmpty }.joined(separator: "\n"), tint: tint)
+                PlannerActivityDetailSectionCard(kind: .timing, text: activity.timingBreakdown, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .evidence, text: activity.evidence, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .adaptations, text: activity.adaptations, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .slowGroup, text: activity.slowGroupPlan, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .fastGroup, text: activity.fastGroupExtension, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .continuity, text: [activity.prepares, activity.consolidates].filter { !$0.isEmpty }.joined(separator: "\n"), tint: tint)
             }
             .padding(.top, 16)
         }
@@ -1024,30 +1014,6 @@ struct PlannerSessionDetailSheet: View {
         navigator.moveNext()
         selectedActivityKey = navigator.selectedKey
         selectedSection = .activity
-    }
-
-    @ViewBuilder
-    private func activityDetailSection(_ label: String, _ value: String) -> some View {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(label)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(trimmed)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 12)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(EvaluationDesign.border)
-                    .frame(height: 1)
-            }
-        }
     }
 
     private func sourceDocumentSection(_ plan: LearningSituationSessionPlan) -> some View {

@@ -102,19 +102,19 @@ enum PlannerSessionPresentationHelper {
     
     /// Extrae una consigna CLIL destacada de la actividad si existe.
     static func clilCallout(for activity: LearningSituationSessionActivityDraft) -> String? {
-        let direct = activity.clilFocus.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !direct.isEmpty {
-            return direct
+        var raw = activity.clilFocus.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty {
+            let text = activity.teacherActions
+            if let range = text.range(of: #"(?:Consigna\s+CLIL|CLIL\s+consigna|Consigna)\s*:\s*([^\n\r]+)"#, options: [.regularExpression, .caseInsensitive]) {
+                let line = String(text[range])
+                raw = line.replacingOccurrences(of: #"^(?:Consigna\s+CLIL|CLIL\s+consigna|Consigna)\s*:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
         }
-        
-        let text = activity.teacherActions
-        if let range = text.range(of: #"(?:Consigna\s+CLIL|CLIL\s+consigna|Consigna)\s*:\s*([^\n\r]+)"#, options: [.regularExpression, .caseInsensitive]) {
-            let line = String(text[range])
-            let cleaned = line.replacingOccurrences(of: #"^(?:Consigna\s+CLIL|CLIL\s+consigna|Consigna)\s*:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !cleaned.isEmpty { return cleaned }
-        }
-        return nil
+        guard !raw.isEmpty else { return nil }
+        let cleaned = raw.replacingOccurrences(of: #"^\s*U[0-9]{2,3}\s*[-·:]\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
     }
     
     /// Divide el texto de materiales en cápsulas individuales limpias.
@@ -847,3 +847,350 @@ extension Image {
     }
 }
 #endif
+
+// MARK: - Activity Detail Section Cards & Formatted Content
+
+enum PlannerSectionKind: Equatable {
+    case purpose
+    case teacher
+    case students
+    case organization
+    case timing
+    case evidence
+    case adaptations
+    case slowGroup
+    case fastGroup
+    case continuity
+    case custom(title: String, icon: String)
+    
+    var icon: String {
+        switch self {
+        case .purpose: return "target"
+        case .teacher: return "person.badge.shield.checkmark.fill"
+        case .students: return "person.2.fill"
+        case .organization: return "square.split.2x2.fill"
+        case .timing: return "clock.arrow.2.circlepath"
+        case .evidence: return "checklist"
+        case .adaptations: return "accessibility"
+        case .slowGroup: return "tortoise.fill"
+        case .fastGroup: return "hare.fill"
+        case .continuity: return "arrow.right.circle.fill"
+        case .custom(_, let icon): return icon
+        }
+    }
+    
+    var title: String {
+        switch self {
+        case .purpose: return "Propósito"
+        case .teacher: return "Profesorado"
+        case .students: return "Alumnado"
+        case .organization: return "Organización y preparación"
+        case .timing: return "Temporización y transiciones"
+        case .evidence: return "Evidencia y registro"
+        case .adaptations: return "Adaptaciones y DUA"
+        case .slowGroup: return "Si el grupo va lento"
+        case .fastGroup: return "Extensión si termina antes"
+        case .continuity: return "Continuidad LONG"
+        case .custom(let title, _): return title
+        }
+    }
+    
+    var accentColor: Color? {
+        switch self {
+        case .slowGroup: return Color.orange
+        case .fastGroup: return Color.blue
+        default: return nil
+        }
+    }
+}
+
+struct PlannerActivityDetailSectionCard: View {
+    let kind: PlannerSectionKind
+    let text: String
+    let tint: Color
+    
+    private var cleanText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    var body: some View {
+        if !cleanText.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: kind.icon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(kind.accentColor ?? tint)
+                        .frame(width: 26, height: 26)
+                        .background((kind.accentColor ?? tint).opacity(0.12), in: Circle())
+                    
+                    Text(kind.title)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    
+                    Spacer()
+                }
+                
+                PlannerFormattedTextView(text: cleanText, kind: kind, tint: tint)
+            }
+            .padding(14)
+            .background(EvaluationDesign.surfaceSoft)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(EvaluationDesign.border, lineWidth: 1)
+            )
+            .padding(.bottom, 10)
+        }
+    }
+}
+
+struct PlannerFormattedTextView: View {
+    let text: String
+    let kind: PlannerSectionKind
+    let tint: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if kind == .purpose {
+                let cleaned = text.replacingOccurrences(of: #"^\s*U[0-9]{2,3}\s*[-·:]\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                Text(cleaned)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                let blocks = parseBlocks(from: text)
+                ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                    renderBlock(block)
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func renderBlock(_ block: FormattedTextBlock) -> some View {
+        switch block {
+        case .zone(let number, let subtitle, let title, let description):
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text("Zona \(number)")
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(zoneColor(number: number).opacity(0.15), in: Capsule())
+                        .foregroundStyle(zoneColor(number: number))
+                    
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    if !title.isEmpty {
+                        Text("· \(title)")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.primary)
+                    }
+                    Spacer()
+                }
+                
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .background(EvaluationDesign.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(zoneColor(number: number).opacity(0.35), lineWidth: 1)
+            )
+            
+        case .phaseHeader(let title):
+            HStack(spacing: 6) {
+                Image(systemName: "flag.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(tint)
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 2)
+            
+        case .rotationRound(let number, let duration, let rawText):
+            HStack(alignment: .top, spacing: 8) {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.caption2)
+                    Text("Ronda \(number)")
+                        .font(.caption.weight(.bold))
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(tint.opacity(0.12), in: Capsule())
+                .foregroundStyle(tint)
+                
+                if let duration {
+                    Text("\(duration) min")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                }
+                
+                Text(rawText)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(EvaluationDesign.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(EvaluationDesign.border, lineWidth: 1)
+            )
+            
+        case .clilConsigna(let consigna):
+            PlannerSessionCLILBanner(text: consigna, tint: tint)
+                .padding(.vertical, 2)
+            
+        case .bulletItem(let item):
+            HStack(alignment: .top, spacing: 8) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 5, height: 5)
+                    .padding(.top, 6)
+                renderStyledText(item)
+            }
+            
+        case .keyValue(let key, let value):
+            HStack(alignment: .top, spacing: 4) {
+                Text("\(key):")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(value)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            
+        case .paragraph(let text):
+            renderStyledText(text)
+        }
+    }
+    
+    @ViewBuilder
+    private func renderStyledText(_ content: String) -> some View {
+        let cleaned = content.replacingOccurrences(of: #"^\s*U[0-9]{2,3}\s*[-·:]\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        Text(cleaned)
+            .font(.subheadline)
+            .foregroundStyle(.primary)
+            .lineSpacing(3)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+    
+    private func zoneColor(number: Int) -> Color {
+        switch number {
+        case 1: return Color.teal
+        case 2: return Color.indigo
+        case 3: return Color.orange
+        default: return tint
+        }
+    }
+    
+    private func parseBlocks(from fullText: String) -> [FormattedTextBlock] {
+        var blocks: [FormattedTextBlock] = []
+        let rawLines = fullText.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        
+        for line in rawLines {
+            let zoneRegex = try? NSRegularExpression(pattern: #"^(?:-\s*)?Zona\s+([1-9])(?:\s*\(([^)]+)\))?\s*:\s*(.*)$"#, options: [.caseInsensitive])
+            if let match = zoneRegex?.firstMatch(in: line, options: [], range: NSRange(line.startIndex..., in: line)) {
+                let numStr = (Range(match.range(at: 1), in: line) != nil) ? String(line[Range(match.range(at: 1), in: line)!]) : "1"
+                let num = Int(numStr) ?? 1
+                var subtitle: String?
+                var parsedTitle = ""
+                if match.range(at: 2).location != NSNotFound, let subRange = Range(match.range(at: 2), in: line) {
+                    let rawSub = String(line[subRange])
+                    let parts = rawSub.components(separatedBy: "·").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    if parts.count >= 2 {
+                        subtitle = parts[0]
+                        parsedTitle = parts.dropFirst().joined(separator: " · ")
+                    } else {
+                        subtitle = rawSub
+                    }
+                }
+                let desc = (match.range(at: 3).location != NSNotFound && Range(match.range(at: 3), in: line) != nil)
+                    ? String(line[Range(match.range(at: 3), in: line)!]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+                
+                blocks.append(.zone(number: num, subtitle: subtitle, title: parsedTitle, description: desc))
+                continue
+            }
+            
+            let roundRegex = try? NSRegularExpression(pattern: #"^Ronda\s+([1-9])(?:\s*\(([0-9]+)\s*min\))?\s*:\s*(.*)$"#, options: [.caseInsensitive])
+            if let match = roundRegex?.firstMatch(in: line, options: [], range: NSRange(line.startIndex..., in: line)) {
+                let numStr = (Range(match.range(at: 1), in: line) != nil) ? String(line[Range(match.range(at: 1), in: line)!]) : "1"
+                let rNum = Int(numStr) ?? 1
+                var minutes: Int?
+                if match.range(at: 2).location != NSNotFound, let mRange = Range(match.range(at: 2), in: line) {
+                    minutes = Int(line[mRange])
+                }
+                let rest = (match.range(at: 3).location != NSNotFound && Range(match.range(at: 3), in: line) != nil)
+                    ? String(line[Range(match.range(at: 3), in: line)!]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+                blocks.append(.rotationRound(number: rNum, duration: minutes, rawText: rest))
+                continue
+            }
+            
+            if line.lowercased().hasPrefix("fase ") || line.lowercased().hasPrefix("fases ") {
+                blocks.append(.phaseHeader(title: line))
+                continue
+            }
+            
+            if line.lowercased().contains("consigna clil") || line.lowercased().contains("clil:") {
+                let consigna = line.replacingOccurrences(of: #"^.*?(?:Consigna\s+CLIL|CLIL)\s*:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                blocks.append(.clilConsigna(consigna: consigna))
+                continue
+            }
+            
+            if line.hasPrefix("- ") || line.hasPrefix("• ") || line.hasPrefix("· ") {
+                let item = line.replacingOccurrences(of: #"^[-•·]\s*"#, with: "", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                blocks.append(.bulletItem(item: item))
+                continue
+            }
+            
+            if let colonIdx = line.firstIndex(of: ":") {
+                let keyCandidate = String(line[..<colonIdx]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let valCandidate = String(line[line.index(after: colonIdx)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if keyCandidate.count >= 3 && keyCandidate.count <= 35 && !valCandidate.isEmpty && !keyCandidate.contains("http") {
+                    blocks.append(.keyValue(key: keyCandidate, value: valCandidate))
+                    continue
+                }
+            }
+            
+            blocks.append(.paragraph(text: line))
+        }
+        
+        return blocks
+    }
+}
+
+enum FormattedTextBlock {
+    case zone(number: Int, subtitle: String?, title: String, description: String)
+    case phaseHeader(title: String)
+    case rotationRound(number: Int, duration: Int?, rawText: String)
+    case clilConsigna(consigna: String)
+    case bulletItem(item: String)
+    case keyValue(key: String, value: String)
+    case paragraph(text: String)
+}
+

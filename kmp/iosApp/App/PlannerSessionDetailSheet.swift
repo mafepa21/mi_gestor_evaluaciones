@@ -117,6 +117,10 @@ private struct PlannerSessionRunSheetRow: View {
         !activity.evidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var displayTitle: String {
+        PlannerSessionPresentationHelper.displayTitle(for: activity)
+    }
+
     var body: some View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 10) {
@@ -134,16 +138,20 @@ private struct PlannerSessionRunSheetRow: View {
                         }
                         if !activity.phase.isEmpty {
                             Text(activity.phase.uppercased())
-                                .font(.caption2.weight(.semibold))
+                                .font(.caption2.weight(.bold))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
                     }
-                    Text(activity.activity)
+                    Text(displayTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 0)
@@ -174,7 +182,7 @@ private struct PlannerSessionRunSheetRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityLabel("Actividad \(index + 1): \(activity.activity)")
+        .accessibilityLabel("Actividad \(index + 1): \(displayTitle)")
         .accessibilityValue(isSelected ? "Seleccionada" : "No seleccionada")
         .accessibilityHint("Abre el detalle de esta actividad")
     }
@@ -192,6 +200,27 @@ struct PlannerSessionDetailSheet: View {
     var onCopyToNextWeek: (() -> Void)? = nil
     var presentation: PlannerSessionDetailPresentation = .sheet
     var onClose: (() -> Void)? = nil
+
+    @StateObject private var attachmentStore: PlannerSessionAttachmentStore
+
+    init(
+        session: PlanningSession,
+        onOpenDiary: @escaping () -> Void,
+        onEdit: @escaping () -> Void,
+        onDelete: (() -> Void)? = nil,
+        onCopyToNextWeek: (() -> Void)? = nil,
+        presentation: PlannerSessionDetailPresentation = .sheet,
+        onClose: (() -> Void)? = nil
+    ) {
+        self.session = session
+        self.onOpenDiary = onOpenDiary
+        self.onEdit = onEdit
+        self.onDelete = onDelete
+        self.onCopyToNextWeek = onCopyToNextWeek
+        self.presentation = presentation
+        self.onClose = onClose
+        _attachmentStore = StateObject(wrappedValue: PlannerSessionAttachmentStore(sessionId: session.id))
+    }
 
     @State private var linkedInstruments: [PlannerAssessmentInstrument] = []
     @State private var isLoadingInstruments = false
@@ -280,6 +309,32 @@ struct PlannerSessionDetailSheet: View {
     private var regularSheetContent: some View {
         VStack(spacing: 0) {
             sessionHeader(layout: .regular)
+            if let detailedPlan {
+                let activities = decodedActivities(detailedPlan)
+                if !activities.isEmpty {
+                    let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
+                    let activeKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
+                    PlannerSessionTimelineBar(
+                        activities: activities,
+                        selectedKey: activeKey,
+                        tint: tint,
+                        effectiveMinutes: Int(detailedPlan.effectiveMinutes)
+                    ) { key in
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            selectedActivityKey = key
+                            selectedSection = .activity
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 8)
+                    .background(EvaluationDesign.surface)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(EvaluationDesign.border)
+                            .frame(height: 1)
+                    }
+                }
+            }
             HStack(alignment: .top, spacing: 0) {
                 ScrollView {
                     runSheetContent
@@ -320,6 +375,32 @@ struct PlannerSessionDetailSheet: View {
     private var compactSheetContent: some View {
         VStack(spacing: 0) {
             sessionHeader(layout: .compact)
+            if let detailedPlan {
+                let activities = decodedActivities(detailedPlan)
+                if !activities.isEmpty {
+                    let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
+                    let activeKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
+                    PlannerSessionTimelineBar(
+                        activities: activities,
+                        selectedKey: activeKey,
+                        tint: tint,
+                        effectiveMinutes: Int(detailedPlan.effectiveMinutes)
+                    ) { key in
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            selectedActivityKey = key
+                            selectedSection = .activity
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(EvaluationDesign.surface)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(EvaluationDesign.border)
+                            .frame(height: 1)
+                    }
+                }
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     runSheetContent
@@ -498,6 +579,23 @@ struct PlannerSessionDetailSheet: View {
                     let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
                     let activeKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
                     ForEach(Array(activities.enumerated()), id: \.element.activityKey) { index, activity in
+                        if index == 4 && activities.count >= 8 {
+                            HStack(spacing: 8) {
+                                Image(systemName: "cup.and.saucer.fill")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                Text("Descanso legal · 15 minutos")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
+                        }
+
                         let key = activityIdentity(activity, index: index)
                         if let segmentLabel = narrativeSegmentLabel(activity),
                            index == 0 || narrativeSegmentLabel(activities[index - 1]) != segmentLabel {
@@ -765,6 +863,8 @@ struct PlannerSessionDetailSheet: View {
 
     private var annexesContent: some View {
         VStack(spacing: 16) {
+            PlannerSessionAttachmentGalleryView(store: attachmentStore, tint: tint)
+
             if let detailedPlan {
                 if !decodedGuidingQuestions(detailedPlan).isEmpty {
                     teacherCard(
@@ -803,7 +903,10 @@ struct PlannerSessionDetailSheet: View {
     }
 
     private func activityDetailCard(_ activity: LearningSituationSessionActivityDraft, index: Int) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let displayTitle = PlannerSessionPresentationHelper.displayTitle(for: activity)
+        let clilCallout = PlannerSessionPresentationHelper.clilCallout(for: activity)
+
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(activity.activityKey.isEmpty ? "Actividad \(index + 1)" : activity.activityKey)
                     .font(.caption.weight(.bold).monospacedDigit())
@@ -820,7 +923,7 @@ struct PlannerSessionDetailSheet: View {
                 }
             }
 
-            Text(activity.activity)
+            Text(displayTitle)
                 .font(.title3.weight(.bold))
                 .foregroundStyle(.primary)
                 .padding(.top, 8)
@@ -834,9 +937,22 @@ struct PlannerSessionDetailSheet: View {
 
             if !activity.timeLabel.isEmpty || !activity.phase.isEmpty {
                 Text([activity.timeLabel, activity.phase].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(tint.opacity(0.12), in: Capsule())
                     .foregroundStyle(tint)
-                    .padding(.top, 4)
+                    .padding(.top, 6)
+            }
+
+            if let clilCallout, !clilCallout.isEmpty {
+                PlannerSessionCLILBanner(text: clilCallout, tint: tint)
+                    .padding(.top, 12)
+            }
+
+            if !activity.materials.isEmpty {
+                PlannerSessionMaterialChipsView(materialsText: activity.materials, tint: tint)
+                    .padding(.top, 6)
             }
 
             if let visualHTML = renderedActivityVisuals[activityIdentity(activity, index: index)],
@@ -855,19 +971,17 @@ struct PlannerSessionDetailSheet: View {
                 .padding(.top, 16)
             }
 
-            VStack(alignment: .leading, spacing: 0) {
-                activityDetailSection("Propósito", activity.purpose)
-                activityDetailSection("Organización y preparación", [activity.organisation, activity.setup].filter { !$0.isEmpty }.joined(separator: "\n"))
-                activityDetailSection("Profesorado", activity.teacherActions)
-                activityDetailSection("Alumnado", [activity.studentInstructions, activity.studentActions].filter { !$0.isEmpty }.joined(separator: "\n"))
-                activityDetailSection("Temporización y transiciones", activity.timingBreakdown)
-                activityDetailSection("CLIL", activity.clilFocus)
-                activityDetailSection("Evidencia", activity.evidence)
-                activityDetailSection("Material", activity.materials)
-                activityDetailSection("Adaptaciones", activity.adaptations)
-                activityDetailSection("Si el grupo va lento", activity.slowGroupPlan)
-                activityDetailSection("Extensión si termina antes", activity.fastGroupExtension)
-                activityDetailSection("Continuidad LONG", [activity.prepares, activity.consolidates].filter { !$0.isEmpty }.joined(separator: "\n"))
+            VStack(alignment: .leading, spacing: 12) {
+                PlannerActivityDetailSectionCard(kind: .purpose, text: activity.purpose, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .organization, text: [activity.organisation, activity.setup].filter { !$0.isEmpty }.joined(separator: "\n"), tint: tint)
+                PlannerActivityDetailSectionCard(kind: .teacher, text: activity.teacherActions, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .students, text: [activity.studentInstructions, activity.studentActions].filter { !$0.isEmpty }.joined(separator: "\n"), tint: tint)
+                PlannerActivityDetailSectionCard(kind: .timing, text: activity.timingBreakdown, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .evidence, text: activity.evidence, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .adaptations, text: activity.adaptations, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .slowGroup, text: activity.slowGroupPlan, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .fastGroup, text: activity.fastGroupExtension, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .continuity, text: [activity.prepares, activity.consolidates].filter { !$0.isEmpty }.joined(separator: "\n"), tint: tint)
             }
             .padding(.top, 16)
         }
@@ -900,30 +1014,6 @@ struct PlannerSessionDetailSheet: View {
         navigator.moveNext()
         selectedActivityKey = navigator.selectedKey
         selectedSection = .activity
-    }
-
-    @ViewBuilder
-    private func activityDetailSection(_ label: String, _ value: String) -> some View {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(label)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(trimmed)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 12)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(EvaluationDesign.border)
-                    .frame(height: 1)
-            }
-        }
     }
 
     private func sourceDocumentSection(_ plan: LearningSituationSessionPlan) -> some View {

@@ -2116,6 +2116,24 @@ Notas para futuras conversaciones:
 - `NotebookDataGrid` sigue usando tres paneles sincronizados, no un único scroll vertical maestro. Si vuelve a haber descuadres persistentes, el siguiente paso sería un refactor específico de layout más invasivo.
 - `MacPremiumInspectorSection` existe pero aún no se aplicó de forma amplia a inspectores; queda como follow-up natural para normalizar Cuaderno, Alumnado y Asistencia.
 
+### 2026-09-03 - Preset oficial de claustro 2026-2027 (Evaluaciones, Salidas e Hitos de Centro)
+
+Resumen:
+- Se implementó `SchoolCalendarPreset2026_2027.swift` con el catálogo oficial del claustro de inicio de curso 2026-2027:
+  - Periodos de evaluación segmentados por etapa: ESO (1ª hasta 27 nov, 2ª hasta 5 mar, 3ª hasta 4 jun), 1º Bachillerato (1ª hasta 24 nov, 2ª hasta 1 mar, 3ª hasta 3 jun) y 2º Bachillerato (1ª hasta 20 nov, 2ª hasta 19 feb, 3ª hasta 4 may).
+  - Salidas y viajes con enlace directo al `classId` correspondiente (Toledo para 2º ESO, Pirineos para 4º ESO, Agullent para 1º y 2º Bach, viaje cultural de 1º Bach). El motor de previsión del Planner (`isBlockedDate`) descuenta automáticamente las sesiones bloqueadas sólo a los grupos que viajan.
+  - Hitos colegiales y festivos de centro (Convivencias de inicio 23 sep, Día HHDC 18 nov, Festival Navidad 23 dic, Día de la Paz 29 ene, Fallas 12 mar).
+  - Hitos informativos de claustro (Reuniones con familias 16 sep y 20 ene, límites de entrega de notas en Educamos y graduaciones).
+- Se diseñó la hoja interactiva `SchoolCalendarPresetSheet.swift` para previsualizar, seleccionar y aplicar de forma modular los 4 bloques con detección automática de etapa y grupos del docente.
+- Se integró el preset en `TeacherScheduleWizard.swift` (Paso 1 "Curso" y accesos directos en los estados vacíos de evaluaciones y no lectivos del Paso 3 "Terminado").
+- Se añadió manejo en `TeacherScheduleSettingsViewModel.swift` para aplicar de forma segura e idempotente (evitando duplicados).
+- Validación realizada: Proyecto regenerado con `xcodegen generate`. Compilación limpia ejecutada con `./scripts/verify_apple_builds.sh` tanto para macOS (Catalyst/Nativo) como para iOS Simulator (`BUILD SUCCEEDED` en ambos targets).
+
+Notas para futuras conversaciones:
+- No se modificaron contratos ni tablas SQLDelight; se reutilizaron las APIs existentes de `KmpBridge` (`plannerSaveEvaluationPeriod` y `plannerSaveCalendarEvent`).
+- La casación de grupos utiliza el nombre y el nivel del grupo para asegurar que viajes como Toledo o Pirineos solo se liguen a los alumnos afectados sin alterar los horarios de otros cursos del profesor.
+
 ### 2026-05-17 - Creación de memoria del proyecto
 
 Se creó este archivo `memoria` como documento maestro para conservar una visión ejecutiva del producto, su arquitectura, módulos funcionales, estado de persistencia, riesgos y avances relevantes. También se añadió un skill local para registrar avances significativos futuros de forma consistente.
+

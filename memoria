@@ -3,7 +3,20 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-03 - Corrección de bucle de carga en layout semanal del Planificador
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se eliminó el `ProgressView()` bloqueante dentro de `grid` en `PlannerWeekMiniatureLayout`: la vista no observaba directamente `vm.isLoaded` por diseño de aislamiento del grid (solo observa `weekBoard`), lo que provocaba que se quedara permanentemente en estado de carga.
+  2. Se ajustó la condición de estado vacío para comprobar la ausencia total de horario docente (`vm.teacherSchedule == nil && vm.effectiveScheduleSlots.isEmpty && vm.sessions.isEmpty && vm.evaluationPeriods.isEmpty`). Si el docente ya configuró su horario escolar (incluso en semanas sin clases lectivas previas al inicio de curso como la semana 36), la cuadrícula semanal se muestra de forma inmediata.
+  3. Se protegió la recarga en `.onAppear` de `MacPlannerView` y `PlannerWorkspaceIOS`: ahora comprueba `if vm.isLoaded` antes de lanzar tareas asíncronas de recarga, evitando colisiones con la inicialización secuencial de `.task { await vm.bind() }`.
+  4. Se blindó la construcción del diccionario `groupsById` en `reloadHolidays()` utilizando `uniquingKeysWith` para evitar potenciales fallos con claves repetidas.
+- Por qué importa: La vista semanal en macOS e iOS se abre de forma instantánea sin spinners infinitos y muestra con total nitidez todos los hitos y salidas del curso.
+- Dónde vive el cambio: `kmp/iosApp/App/PlannerWeekMiniatureLayout.swift`, `kmp/iosApp/MacApp/MacPlannerView.swift`, `kmp/iosApp/App/PlannerWorkspaceIOS.swift` y `kmp/iosApp/App/PlannerWorkspaceViewModel+WeekBoard.swift`.
+- Validación realizada: `xcodegen generate` y `./scripts/verify_apple_builds.sh` (macOS Native y iOS Simulator ambos SUCCEEDED).
+
 ## Avance 2026-09-03 - Persistencia reactiva del horario y visibilidad de hitos y salidas en el Planificador
+
 
 Resumen:
 - Qué cambio se hizo:

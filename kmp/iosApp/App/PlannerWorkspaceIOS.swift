@@ -57,11 +57,14 @@ struct PlannerWorkspaceIOS: View {
         }
         .onAppear {
             configurePlannerToolbar()
-            Task {
-                await vm.reloadScheduleOnly()
-                await vm.reloadHolidays()
+            if vm.isLoaded {
+                Task {
+                    await vm.reloadScheduleOnly()
+                    await vm.reloadHolidays()
+                }
             }
         }
+
         .appOnChange(of: context) { newValue in
             Task {
                 await vm.applyExternalContext(

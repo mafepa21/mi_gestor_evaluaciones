@@ -266,7 +266,8 @@ extension PlannerWorkspaceViewModel {
             var milestonesByDay: [Int: [PlannerDayMilestone]] = [:]
 
             let calendar = Calendar.current
-            let groupsById = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
+            let groupsById = Dictionary(groups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+
 
             for (index, dayDate) in days.enumerated() {
                 let dayOfWeek = index + 1

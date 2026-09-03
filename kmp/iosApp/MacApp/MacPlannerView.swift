@@ -82,11 +82,14 @@ struct MacPlannerView: View {
             transientMessage = newValue
         }
         .onAppear {
-            Task {
-                await vm.reloadScheduleOnly()
-                await vm.reloadHolidays()
+            if vm.isLoaded {
+                Task {
+                    await vm.reloadScheduleOnly()
+                    await vm.reloadHolidays()
+                }
             }
         }
+
         .task {
             await vm.bind(bridge: bridge)
             await syncInspectorStudents(for: vm.selectedSession)

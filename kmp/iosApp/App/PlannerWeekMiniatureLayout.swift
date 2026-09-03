@@ -109,14 +109,11 @@ struct PlannerWeekMiniatureLayout: View {
 
     @ViewBuilder
     private var grid: some View {
-        if !vm.isLoaded {
-            ProgressView()
-                .frame(maxWidth: .infinity, minHeight: 240)
-        } else if vm.effectiveScheduleSlots.isEmpty && vm.sessions.isEmpty && vm.evaluationPeriods.isEmpty {
+        if vm.teacherSchedule == nil && vm.effectiveScheduleSlots.isEmpty && vm.sessions.isEmpty && vm.evaluationPeriods.isEmpty {
             emptyScheduleState
         } else {
             VStack(spacing: 8) {
-                if vm.effectiveScheduleSlots.isEmpty {
+                if vm.effectiveScheduleSlots.isEmpty && vm.teacherSchedule == nil {
                     HStack(spacing: 8) {
                         Image(systemName: "info.circle.fill")
                             .foregroundStyle(EvaluationDesign.accent)
@@ -147,6 +144,7 @@ struct PlannerWeekMiniatureLayout: View {
             }
         }
     }
+
 
 
     /// Sin horario configurado, un grid vacío no dice nada útil. Una única

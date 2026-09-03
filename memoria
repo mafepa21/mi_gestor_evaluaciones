@@ -3,7 +3,22 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-03 - Persistencia reactiva del horario y visibilidad de hitos y salidas en el Planificador
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se corrigió el falso estado de bloqueo "Aún no has configurado tu horario" en `PlannerWeekMiniatureLayout`: ahora respeta `vm.isLoaded` mostrando un indicador de carga mientras lee de base de datos, y solo muestra el empty state si no existen franjas, ni sesiones, ni evaluaciones configuradas. Si existen evaluaciones o eventos de calendario pero aún no hay franjas lectivas fijas, muestra la cuadrícula semanal con un aviso contextual no bloqueante.
+  2. Se añadió reactividad en el ciclo de vida de `MacPlannerView` y `PlannerWorkspaceIOS`: al regresar a la pestaña mediante `.onAppear`, se ejecutan `reloadScheduleOnly()` y `reloadHolidays()` para asegurar que cualquier cambio hecho en Ajustes de horario se refleje al instante sin reiniciar la app.
+  3. Se rediseñó el sistema de eventos de la semana (`PlannerDayMilestone` y `dayMilestones` en `PlannerWeekBoardStore`): `reloadHolidays()` ahora consulta todos los eventos del calendario mediante `plannerAllCalendarEvents()` en `KmpBridge`, asociando salidas y viajes por grupo (Toledo, Pirineos, Agullent), festivos de centro (HHDC, Convivencias, Fallas), hitos de claustro (reuniones con familias, límites de entrega de notas en Educamos) e hitos de evaluaciones LOMLOE.
+  4. En la cuadrícula semanal (`PlannerWeekMiniatureGrid`), las cabeceras de los días muestran badges/chips compactos con el icono y título del evento (ej. `🔵 Toledo (2º ESO)`, `🟣 Convivencias`, `🟠 Reunión familias`).
+  5. En el panel de detalle diario (`PlannerWeekDetailPane`), al pulsar cualquier día se presenta la sección destacada "Hitos y salidas de este día" con toda la información (título, descripción, grupo afectado y si es no lectivo).
+  6. Se creó `SchoolCalendarEventsOverviewSheet`: una hoja accesible desde el menú de la semana del Planificador para consultar y filtrar con buscador todos los hitos, salidas y evaluaciones del curso escolar 2026–2027.
+- Por qué importa: Resuelve el bug por el cual el docente veía el planificador como no configurado tras guardar su horario, y dota de visibilidad total e inmediata a todos los eventos y salidas escolares en el flujo de trabajo semanal.
+- Dónde vive el cambio: `kmp/iosApp/App/KmpBridge.swift`, `PlannerModels.swift`, `PlannerWorkspaceViewModel+WeekBoard.swift`, `PlannerWorkspaceViewModel.swift`, `PlannerWeekMiniatureLayout.swift`, `PlannerWeekMiniatureGrid.swift`, `PlannerWeekDetailPane.swift`, `SchoolCalendarEventsOverviewSheet.swift`, `MacPlannerView.swift`, `MacRootView.swift` y `PlannerWorkspaceIOS.swift`.
+- Validación realizada: `xcodegen generate` y `./scripts/verify_apple_builds.sh` completaron con éxito (`✓ Compilación de macOS SUCCEEDED` y `✓ Compilación de iOS Simulator SUCCEEDED`).
+
 ## Avance 2026-07-06 - Reorganización de Git y Desacoplamiento de Ramas Temáticas
+
 
 Resumen:
 - Qué cambio se hizo: Se reestructuró por completo el repositorio local de Git. Los commits acumulados linealmente en la rama de planificación se separaron en ramas temáticas independientes y limpias.

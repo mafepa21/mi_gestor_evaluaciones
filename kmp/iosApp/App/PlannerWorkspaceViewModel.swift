@@ -93,10 +93,18 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         get { weekBoard.holidayDays }
         set { weekBoard.holidayDays = newValue }
     }
+    var dayMilestones: [Int: [PlannerDayMilestone]] {
+        get { weekBoard.dayMilestones }
+        set { weekBoard.dayMilestones = newValue }
+    }
+    var weekMilestones: [PlannerDayMilestone] {
+        weekBoard.weekMilestones
+    }
     var weekRenderModel: PlannerWeekRenderModel {
         get { weekBoard.weekRenderModel }
         set { weekBoard.weekRenderModel = newValue }
     }
+
 
     init() {
         weekBoard.objectWillChange

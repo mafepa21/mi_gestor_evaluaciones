@@ -61,17 +61,25 @@ struct PlannerWeekDetailPane: View {
     @ViewBuilder
     private func dayDetail(for day: Int) -> some View {
         let entries = entriesForDay(day)
+        let dayMilestones = weekBoard.dayMilestones[day] ?? []
+
         VStack(alignment: .leading, spacing: 16) {
             detailHeader(
                 title: vm.dayHeaderLabel(for: day),
-                subtitle: entries.isEmpty ? "Sin sesiones planificadas" : "\(entries.count) sesiones planificadas"
+                subtitle: entries.isEmpty ? (dayMilestones.isEmpty ? "Sin sesiones planificadas" : "Hitos activos") : "\(entries.count) sesiones planificadas"
             )
+
+            if !dayMilestones.isEmpty {
+                PlannerDayMilestonesSection(milestones: dayMilestones)
+            }
 
             if entries.isEmpty {
                 PlannerEmptyState(
-                    title: "Día sin sesiones",
-                    systemImage: "calendar.badge.plus",
-                    message: "Selecciona una franja de la miniatura para crear una sesión."
+                    title: dayMilestones.isEmpty ? "Día sin sesiones" : "Sin clases planificadas",
+                    systemImage: dayMilestones.isEmpty ? "calendar.badge.plus" : "calendar.badge.checkmark",
+                    message: dayMilestones.isEmpty
+                        ? "Selecciona una franja de la miniatura para crear una sesión."
+                        : "Los hitos del día están reflejados arriba. Toca una franja de la miniatura si necesitas añadir una sesión lectiva."
                 )
             } else {
                 LazyVStack(alignment: .leading, spacing: 12) {
@@ -91,6 +99,7 @@ struct PlannerWeekDetailPane: View {
             }
         }
     }
+
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -315,3 +324,58 @@ private struct PlannerWeekDayEntryRow: View {
         return vm.sessions.first(where: { $0.id == sessionId })
     }
 }
+
+struct PlannerDayMilestonesSection: View {
+    let milestones: [PlannerDayMilestone]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Hitos y salidas de este día")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+
+            ForEach(milestones) { milestone in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: milestone.category.iconName)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(milestone.category.accentColor)
+                        .frame(width: 24, height: 24)
+                        .background(milestone.category.accentColor.opacity(0.12), in: Circle())
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(milestone.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+
+                            if milestone.isBlocking {
+                                Text("No lectivo")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(Color.red)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(Color.red.opacity(0.12), in: Capsule())
+                            }
+                        }
+
+                        if let subtitle = milestone.subtitle, !subtitle.isEmpty {
+                            Text(subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let className = milestone.className {
+                            Text("Afecta a: \(className)")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(EvaluationDesign.accent)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(12)
+                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+    }
+}
+

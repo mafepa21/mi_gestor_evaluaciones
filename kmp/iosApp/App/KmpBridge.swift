@@ -3289,6 +3289,12 @@ final class KmpBridge: ObservableObject {
             .sorted { $0.startAt.toEpochMilliseconds() < $1.startAt.toEpochMilliseconds() }
     }
 
+    func plannerAllCalendarEvents(classId: Int64? = nil) async throws -> [CalendarEvent] {
+        let events = try await container.calendarRepository.listEvents(classId: classId.map { KotlinLong(value: $0) })
+        return events.sorted { $0.startAt.toEpochMilliseconds() < $1.startAt.toEpochMilliseconds() }
+    }
+
+
     func plannerSaveCalendarEvent(
         id: Int64?,
         classId: Int64?,

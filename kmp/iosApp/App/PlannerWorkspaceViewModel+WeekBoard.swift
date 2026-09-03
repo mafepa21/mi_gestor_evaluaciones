@@ -260,13 +260,18 @@ extension PlannerWorkspaceViewModel {
     func reloadHolidays() async {
         guard let bridge else { return }
         do {
-            let events = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
+            let allEvents = (try? await bridge.plannerAllCalendarEvents()) ?? []
             let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(week), year: Int32(year))
             var holidays: Set<Int> = []
-            
+            var milestonesByDay: [Int: [PlannerDayMilestone]] = [:]
+
             let calendar = Calendar.current
-            
+            let groupsById = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
+
             for (index, dayDate) in days.enumerated() {
+                let dayOfWeek = index + 1
+                let dateIso = String(format: "%04d-%02d-%02d", dayDate.year, dayDate.monthNumber, dayDate.dayOfMonth)
+
                 var components = DateComponents()
                 components.year = Int(dayDate.year)
                 components.month = Int(dayDate.monthNumber)
@@ -274,30 +279,114 @@ extension PlannerWorkspaceViewModel {
                 components.hour = 0
                 components.minute = 0
                 components.second = 0
-                
+
                 guard let startOfDay = calendar.date(from: components) else { continue }
                 let startMs = Int64(startOfDay.timeIntervalSince1970 * 1000)
-                
+
                 components.hour = 23
                 components.minute = 59
                 components.second = 59
                 guard let endOfDay = calendar.date(from: components) else { continue }
                 let endMs = Int64(endOfDay.timeIntervalSince1970 * 1000)
-                
-                for event in events {
+
+                var dayList: [PlannerDayMilestone] = []
+
+                for event in allEvents {
                     let eventStartMs = event.startAt.toEpochMilliseconds()
-                    if eventStartMs >= startMs && eventStartMs <= endMs {
-                        holidays.insert(index + 1)
-                        break
+                    let eventEndMs = event.endAt.toEpochMilliseconds()
+                    let overlaps = max(eventStartMs, startMs) <= min(eventEndMs, endMs)
+                    guard overlaps else { continue }
+
+                    let titleLower = event.title.lowercased()
+                    let descLower = (event.description_ ?? "").lowercased()
+                    let haystack = "\(titleLower) \(descLower)"
+
+                    let category: PlannerMilestoneCategory
+                    if event.classId != nil || haystack.contains("viaje") || haystack.contains("salida") || haystack.contains("toledo") || haystack.contains("pirineos") || haystack.contains("agullent") {
+                        category = .trip
+                    } else if haystack.contains("reunión") || haystack.contains("notas") || haystack.contains("graduación") || haystack.contains("claustro") || haystack.contains("educamos") {
+                        category = .milestone
+                    } else {
+                        category = .holiday
+                    }
+
+                    let isBlocking = haystack.contains("no lectivo") ||
+                        haystack.contains("festivo") ||
+                        haystack.contains("vacaciones") ||
+                        haystack.contains("puente")
+
+                    let className = event.classId.flatMap { groupsById[$0.int64Value] }
+
+                    let milestone = PlannerDayMilestone(
+                        id: "evt-\(event.id)-\(dayOfWeek)",
+                        title: event.title,
+                        subtitle: event.description_,
+                        category: category,
+                        dayOfWeek: dayOfWeek,
+                        dateIso: dateIso,
+                        classId: event.classId?.int64Value,
+                        className: className,
+                        isBlocking: isBlocking
+                    )
+                    dayList.append(milestone)
+
+                    // Si el evento bloquea (para todos o para el grupo seleccionado):
+                    if isBlocking {
+                        if let selectedGroupId {
+                            if event.classId == nil || event.classId?.int64Value == selectedGroupId {
+                                holidays.insert(dayOfWeek)
+                            }
+                        } else {
+                            if event.classId == nil {
+                                holidays.insert(dayOfWeek)
+                            }
+                        }
                     }
                 }
+
+                // Añadir hitos de periodos de evaluación si coinciden exactamente hoy
+                for period in evaluationPeriods {
+                    if period.startDateIso == dateIso {
+                        dayList.append(PlannerDayMilestone(
+                            id: "eval-start-\(period.id)-\(dayOfWeek)",
+                            title: "Inicio \(period.name)",
+                            subtitle: "Arranca el periodo lectivo de \(period.name)",
+                            category: .evaluation,
+                            dayOfWeek: dayOfWeek,
+                            dateIso: dateIso,
+                            classId: nil,
+                            className: nil,
+                            isBlocking: false
+                        ))
+                    }
+                    if period.endDateIso == dateIso {
+                        dayList.append(PlannerDayMilestone(
+                            id: "eval-end-\(period.id)-\(dayOfWeek)",
+                            title: "Cierre \(period.name)",
+                            subtitle: "Fin del periodo de evaluación de \(period.name)",
+                            category: .evaluation,
+                            dayOfWeek: dayOfWeek,
+                            dateIso: dateIso,
+                            classId: nil,
+                            className: nil,
+                            isBlocking: false
+                        ))
+                    }
+                }
+
+                if !dayList.isEmpty {
+                    milestonesByDay[dayOfWeek] = dayList
+                }
             }
+
+            self.dayMilestones = milestonesByDay
             self.holidayDays = holidays
             rebuildWeekRenderModel()
         } catch {
-            print("Error al cargar festivos: \(error)")
+            print("Error al cargar festivos e hitos: \(error)")
         }
     }
+
 
     func toggleHoliday(for day: Int) async {
         guard let bridge else { return }

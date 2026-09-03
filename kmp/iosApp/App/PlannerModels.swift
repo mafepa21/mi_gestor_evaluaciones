@@ -619,6 +619,43 @@ final class PlannerComposerStore: ObservableObject {
     }
 }
 
+enum PlannerMilestoneCategory: String, Hashable, CaseIterable {
+    case holiday = "Festivo"
+    case trip = "Salida / Viaje"
+    case milestone = "Hito de centro"
+    case evaluation = "Evaluación"
+
+    var iconName: String {
+        switch self {
+        case .holiday: return "flag.fill"
+        case .trip: return "bus.fill"
+        case .milestone: return "calendar.badge.clock"
+        case .evaluation: return "chart.bar.doc.horizontal.fill"
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .holiday: return Color.red
+        case .trip: return Color.blue
+        case .milestone: return Color.orange
+        case .evaluation: return Color.purple
+        }
+    }
+}
+
+struct PlannerDayMilestone: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let subtitle: String?
+    let category: PlannerMilestoneCategory
+    let dayOfWeek: Int
+    let dateIso: String
+    let classId: Int64?
+    let className: String?
+    let isBlocking: Bool
+}
+
 /// Aísla el estado que pinta el grid semanal (PlannerWeekMiniatureGrid/Layout/DetailPane)
 /// en su propio ObservableObject para que escribir en el buscador u otros campos del
 /// facade no invalide esas vistas: solo observan este store, no PlannerWorkspaceViewModel.
@@ -629,8 +666,16 @@ final class PlannerWeekBoardStore: ObservableObject {
     @Published var visibleSlots: [PlannerVisibleSlot] = []
     @Published var timeSlots: [TimeSlotConfig] = []
     @Published var holidayDays: Set<Int> = []
+    @Published var dayMilestones: [Int: [PlannerDayMilestone]] = [:]
     @Published var weekRenderModel: PlannerWeekRenderModel = .empty
+
+    var weekMilestones: [PlannerDayMilestone] {
+        dayMilestones.values.flatMap { $0 }.sorted { lhs, rhs in
+            lhs.dayOfWeek < rhs.dayOfWeek
+        }
+    }
 }
+
 
 /// Rango temporal del Resumen/informe: semana en curso, mes natural o una
 /// evaluación completa (usa los periodos ya configurados por el docente).

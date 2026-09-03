@@ -25,7 +25,7 @@ struct PlannerWeekMiniatureGrid: View {
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     private let timeAxisWidth: CGFloat = 72
-    private let headerHeight: CGFloat = 40
+    private let headerHeight: CGFloat = 46
     private let gridSpacing: CGFloat = 4
 
     var body: some View {
@@ -48,6 +48,7 @@ struct PlannerWeekMiniatureGrid: View {
 
                     ForEach(days, id: \.self) { day in
                         let isToday = day == todayDayIndex
+                        let dayMilestones = weekBoard.dayMilestones[day] ?? []
                         Button {
                             withAnimation(uiFeatureFlags.interactionAnimation) {
                                 selectedDay = day
@@ -58,10 +59,10 @@ struct PlannerWeekMiniatureGrid: View {
                                 HStack(spacing: 4) {
                                     Text(vm.dayLabel(for: day))
                                         .font(.caption.weight(.bold))
-                                    if weekBoard.holidayDays.contains(day) {
-                                        Text("· Festivo")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundStyle(Color.red.opacity(0.8))
+                                    if let dateStr = dateLabel(for: day), !dateStr.isEmpty {
+                                        Text(dateStr)
+                                            .font(.system(size: 9, weight: .semibold))
+                                            .foregroundStyle(selectedDay == day ? Color.white.opacity(0.8) : .secondary)
                                     }
                                     if isToday {
                                         Circle()
@@ -70,10 +71,26 @@ struct PlannerWeekMiniatureGrid: View {
                                     }
                                 }
                                 .foregroundStyle(selectedDay == day ? Color.white : Color.primary)
-                                if let dateStr = dateLabel(for: day), !dateStr.isEmpty {
-                                    Text(dateStr)
-                                        .font(.system(size: 9, weight: .semibold))
-                                        .foregroundStyle(selectedDay == day ? Color.white.opacity(0.8) : .secondary)
+
+                                if let first = dayMilestones.first {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: first.category.iconName)
+                                            .font(.system(size: 7, weight: .bold))
+                                        Text(first.title)
+                                            .font(.system(size: 8, weight: .bold))
+                                            .lineLimit(1)
+                                    }
+                                    .foregroundStyle(selectedDay == day ? Color.white : first.category.accentColor)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(
+                                        Capsule()
+                                            .fill(selectedDay == day ? Color.white.opacity(0.2) : first.category.accentColor.opacity(0.12))
+                                    )
+                                } else if weekBoard.holidayDays.contains(day) {
+                                    Text("· Festivo")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(selectedDay == day ? Color.white : Color.red.opacity(0.8))
                                 }
                             }
                             .lineLimit(1)
@@ -92,6 +109,7 @@ struct PlannerWeekMiniatureGrid: View {
                         .accessibilityLabel("Ver día \(vm.dayHeaderLabel(for: day))\(isToday ? ", hoy" : "")")
                     }
                 }
+
 
                 ForEach(slots, id: \.period) { slot in
                     let isCurrentPeriod = slot.period == currentPeriodNumber

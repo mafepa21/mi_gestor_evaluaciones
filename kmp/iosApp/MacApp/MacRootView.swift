@@ -1142,6 +1142,10 @@ struct MacRootView: View {
                     }
                 } else if plannerSection == .week {
                     Menu {
+                        Button(action: plannerToolbarActions.onShowCalendarMilestones) {
+                            Label("Hitos y salidas del curso…", systemImage: "calendar.badge.clock")
+                        }
+                        Divider()
                         Button(action: plannerToolbarActions.onToggleSelectionMode) {
                             Label("Seleccionar sesiones", systemImage: "checklist")
                         }
@@ -1159,8 +1163,9 @@ struct MacRootView: View {
                     } label: {
                         Label("Más", systemImage: "ellipsis.circle")
                     }
-                    .help("Selección y operaciones de la semana")
+                    .help("Hitos del curso, selección y operaciones de la semana")
                 }
+
 
                 if plannerSection == .week || plannerSection == .day {
                     Button(action: plannerToolbarActions.onNewSession) {

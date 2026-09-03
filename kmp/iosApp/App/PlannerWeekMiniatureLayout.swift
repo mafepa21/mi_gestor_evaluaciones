@@ -109,20 +109,45 @@ struct PlannerWeekMiniatureLayout: View {
 
     @ViewBuilder
     private var grid: some View {
-        if vm.effectiveScheduleSlots.isEmpty {
+        if !vm.isLoaded {
+            ProgressView()
+                .frame(maxWidth: .infinity, minHeight: 240)
+        } else if vm.effectiveScheduleSlots.isEmpty && vm.sessions.isEmpty && vm.evaluationPeriods.isEmpty {
             emptyScheduleState
         } else {
-            PlannerWeekMiniatureGrid(
-                weekBoard: weekBoard,
-                vm: vm,
-                selectedCell: $selectedCell,
-                selectedDay: $selectedDay,
-                onOpenSession: onOpenSession,
-                onOpenDiary: onOpenDiary,
-                onDropSession: onDropSession
-            )
+            VStack(spacing: 8) {
+                if vm.effectiveScheduleSlots.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundStyle(EvaluationDesign.accent)
+                        Text("Calendario configurado. Añade tus franjas lectivas para organizar las sesiones en tus horas habituales.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if let onOpenSettings {
+                            Button("Añadir franjas") { onOpenSettings() }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+
+                PlannerWeekMiniatureGrid(
+                    weekBoard: weekBoard,
+                    vm: vm,
+                    selectedCell: $selectedCell,
+                    selectedDay: $selectedDay,
+                    onOpenSession: onOpenSession,
+                    onOpenDiary: onOpenDiary,
+                    onDropSession: onDropSession
+                )
+            }
         }
     }
+
 
     /// Sin horario configurado, un grid vacío no dice nada útil. Una única
     /// tarea obvia ("Configurar mi horario") en vez de una rejilla en blanco.

@@ -36,7 +36,9 @@ struct PlannerMacToolbarActions {
     let onOpenDiary: (PlanningSession) -> Void
     let onEditSession: (PlanningSession) -> Void
     let onDeleteSession: (PlanningSession) -> Void
+    let onShowCalendarMilestones: () -> Void
 }
+
 
 struct MacPlannerView: View {
     @ObservedObject var bridge: KmpBridge
@@ -47,6 +49,7 @@ struct MacPlannerView: View {
     let onOpenDiaryDirect: (PlanningSession) -> Void
     @StateObject private var vm = PlannerWorkspaceViewModel()
     @State private var showingScheduleSettings = false
+    @State private var showingCalendarMilestones = false
     @State private var showingClearSchedulelessWeekConfirmation = false
     @State private var transientMessage: String?
     @State private var groupFilterId: Int64?
@@ -77,6 +80,12 @@ struct MacPlannerView: View {
         .appOnChange(of: cascadeCoordinator.transientMessage) { newValue in
             guard let newValue else { return }
             transientMessage = newValue
+        }
+        .onAppear {
+            Task {
+                await vm.reloadScheduleOnly()
+                await vm.reloadHolidays()
+            }
         }
         .task {
             await vm.bind(bridge: bridge)
@@ -115,7 +124,14 @@ struct MacPlannerView: View {
             )
             .frame(minWidth: 980, minHeight: 760)
         }
+        .sheet(isPresented: $showingCalendarMilestones) {
+            SchoolCalendarEventsOverviewSheet(
+                bridge: bridge,
+                onClose: { showingCalendarMilestones = false }
+            )
+        }
         .alert("Limpiar semana sin franjas", isPresented: $showingClearSchedulelessWeekConfirmation) {
+
             Button("Cancelar", role: .cancel) {}
             Button("Eliminar sesiones planificadas", role: .destructive) {
                 Task { await vm.clearCurrentWeekSessionsWithoutSchedule(groupId: vm.selectedGroupId) }
@@ -195,9 +211,11 @@ struct MacPlannerView: View {
                 onDeleteSession: { session in
                     inspectorSession = nil
                     Task { await vm.deleteSession(session) }
-                }
+                },
+                onShowCalendarMilestones: { showingCalendarMilestones = true }
             )
         )
+
     }
 
     private func openMacSession(_ session: PlanningSession) {

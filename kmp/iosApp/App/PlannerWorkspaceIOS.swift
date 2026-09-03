@@ -17,6 +17,8 @@ struct PlannerWorkspaceIOS: View {
     /// horario — un callejón sin salida. Ahora se abre aquí mismo, igual que
     /// ya hacía macOS.
     @State private var showingScheduleSettings = false
+    @State private var showingCalendarMilestones = false
+
     private let initialSection: PlannerWorkspaceSection
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
@@ -53,7 +55,13 @@ struct PlannerWorkspaceIOS: View {
             configurePlannerToolbar()
             syncNavigationContext()
         }
-        .onAppear(perform: configurePlannerToolbar)
+        .onAppear {
+            configurePlannerToolbar()
+            Task {
+                await vm.reloadScheduleOnly()
+                await vm.reloadHolidays()
+            }
+        }
         .appOnChange(of: context) { newValue in
             Task {
                 await vm.applyExternalContext(
@@ -86,6 +94,13 @@ struct PlannerWorkspaceIOS: View {
                 onClose: { showingScheduleSettings = false }
             )
         }
+        .sheet(isPresented: $showingCalendarMilestones) {
+            SchoolCalendarEventsOverviewSheet(
+                bridge: bridge,
+                onClose: { showingCalendarMilestones = false }
+            )
+        }
+
         .appFullScreenCover(
             isPresented: Binding(
                 get: { selectedDetailSession != nil },
@@ -371,7 +386,21 @@ struct PlannerToolbar: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
+                    if !vm.weekMilestones.isEmpty {
+                        HStack(spacing: 3) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.system(size: 8, weight: .bold))
+                            Text("\(vm.weekMilestones.count) hitos")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(Color.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.12), in: Capsule())
+                    }
+
                     Spacer(minLength: 8)
+
 
                     if !isWeekProgressExpanded {
                         Text("\(vm.filteredSessions.count) sesiones")

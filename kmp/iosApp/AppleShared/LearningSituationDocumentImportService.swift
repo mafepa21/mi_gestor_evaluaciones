@@ -638,6 +638,9 @@ enum NarrativeSessionActivityCompactor {
         let segmentOrder = entries.first?.segmentOrder
         let sourceOrder = entries.first?.sourceOrder
 
+        let clilFound = mergeField(contextualValues(entries, keyPath: \.clilFocus))
+        let clilFocus = clilFound.isEmpty ? extractCLILConsigna(from: teacher) : clilFound
+
         return LearningSituationSessionActivityDraft(
             activityKey: "\(keyPrefix)-NARRATIVE-A\(String(format: "%02d", moment.rawValue + 1))",
             activityType: "narrative",
@@ -652,7 +655,7 @@ enum NarrativeSessionActivityCompactor {
             studentInstructions: studentInstructions,
             studentActions: studentActions,
             timingBreakdown: timing,
-            clilFocus: mergeField(contextualValues(entries, keyPath: \.clilFocus)),
+            clilFocus: clilFocus,
             evidence: evidence,
             materials: materials,
             adaptations: adaptations,
@@ -710,6 +713,15 @@ enum NarrativeSessionActivityCompactor {
 
     private static func normalized(_ value: String) -> String {
         value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+    }
+
+    private static func extractCLILConsigna(from text: String) -> String {
+        if let range = text.range(of: #"(?:Consigna\s+CLIL|CLIL\s+consigna|Consigna)\s*:\s*([^\n\r]+)"#, options: [.regularExpression, .caseInsensitive]) {
+            let line = String(text[range])
+            return line.replacingOccurrences(of: #"^(?:Consigna\s+CLIL|CLIL\s+consigna|Consigna)\s*:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return ""
     }
 }
 
@@ -2032,6 +2044,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let activityKey = "\(route == .shortFirst ? "SF" : "LF")-\(key)-A\(String(format: "%02d", index + 1))"
             let narrativeText = section.lines.joined(separator: "\n")
+            let clilConsigna = extractCLILConsigna(from: narrativeText)
             return LearningSituationSessionActivityDraft(
                 activityKey: activityKey,
                 activityType: "narrative",
@@ -2046,7 +2059,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 studentInstructions: "",
                 studentActions: "",
                 timingBreakdown: section.title,
-                clilFocus: "",
+                clilFocus: clilConsigna,
                 evidence: ["Registro diagnóstico bruto; no genera calificación.", evidence]
                     .filter { !$0.isEmpty }
                     .joined(separator: "\n"),
@@ -2095,6 +2108,42 @@ struct LearningSituationSessionSequenceDocumentImportService {
     private func narrativeNumberedHeading(_ text: String) -> String? {
         guard text.range(of: #"^\s*[0-9]+\.\s+.+"#, options: .regularExpression) != nil else { return nil }
         return text
+    }
+
+    private func extractSpecificGameOrTaskTitle(from lines: [String]) -> String? {
+        for line in lines.prefix(4) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let range = trimmed.range(of: #"«([^»]+)»"#, options: .regularExpression) {
+                var candidate = String(trimmed[range])
+                candidate = candidate.replacingOccurrences(of: "«", with: "")
+                    .replacingOccurrences(of: "»", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if candidate.count >= 3 && candidate.count <= 120 {
+                    return candidate
+                }
+            }
+            if let range = trimmed.range(of: #"\*+«?([^»*]+)»?\*+"#, options: .regularExpression) {
+                let candidate = trimmed[range]
+                    .replacingOccurrences(of: "*", with: "")
+                    .replacingOccurrences(of: "«", with: "")
+                    .replacingOccurrences(of: "»", with: "")
+                    .replacingOccurrences(of: ":", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if candidate.count >= 3 && candidate.count <= 120 && !candidate.lowercased().contains("minuto") {
+                    return candidate
+                }
+            }
+        }
+        return nil
+    }
+
+    private func extractCLILConsigna(from text: String) -> String {
+        if let range = text.range(of: #"(?:Consigna\s+CLIL|CLIL\s+consigna|Consigna)\s*:\s*([^\n\r]+)"#, options: [.regularExpression, .caseInsensitive]) {
+            let line = String(text[range])
+            return line.replacingOccurrences(of: #"^(?:Consigna\s+CLIL|CLIL\s+consigna|Consigna)\s*:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return ""
     }
 
     private func narrativeBreakSection(from text: String) -> LearningSituationSessionSectionDraft? {

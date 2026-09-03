@@ -15,6 +15,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Rediseño *at-a-glance* de la ficha de detalle de sesión en Planificación: barra de tiempo horizontal interactiva proporcional (`PlannerSessionTimelineBar`) con visualización de momentos pedagógicos y descanso legal de 15 minutos en bloques dobles LONG (80 minutos útiles).
+- Extracción de títulos lúdicos específicos: `PlannerSessionPresentationHelper.displayTitle` proyecta el nombre específico del juego o reto de pista entre comillas `«...»` o del guion pedagógico en vez de títulos genéricos repetitivos.
+- Tarjetas operativas por zonas de pista (`PlannerSessionZoneCardsView`): desglose visual de circuitos en 3 zonas con asignación de roles docente/autogestionado y panel de rondas de rotación para grupos G1, G2 y G3.
+- Banner de consignas CLIL (`PlannerSessionCLILBanner`): resalte visual de alta visibilidad para indicaciones bilingües de inicio y transición.
+- Galería y almacenamiento de adjuntos/croquis (`PlannerSessionAttachmentGalleryView` / `PlannerSessionAttachmentStore`): soporte nativo de imágenes tácticas, fotos de pizarra y PDFs con importación desde Fotos o Archivos y visor interactivo QuickLook.
+- Chips de material rápido (`PlannerSessionMaterialChipsView`): visualización compacta de elementos requeridos en pista con `WorkspaceFlowLayout`.
 - Secuenciación de sesiones CLIL: contrato semanal importable con bloques `LONG BLOCK` y `SHORT BLOCK`, actividades estructuradas en inglés, evidencias, materiales, adaptaciones y comentarios CLIL; corpus normalizado en 55 Markdown y 55 DOCX.
 - Itinerarios seleccionables de Bachillerato (#225): los DOCX pueden declarar `ROUTE OPTION: shortFirst` y `ROUTE OPTION: longFirst` con fichas completas e independientes; el Planificador elige una sola ruta según la primera franja compatible o permite fijarla manualmente.
 - Importador narrativo de Bachillerato: reconoce los ledgers de SA0 y otras SA tal como están redactados, conserva las rutas `shortFirst`/`longFirst`, agrupa cualquier unidad `U##` en bloques operativos y mantiene referencias estables a las imágenes embebidas del DOCX.

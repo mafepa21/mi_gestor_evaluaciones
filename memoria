@@ -3,6 +3,24 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-04 - Reconocimiento estricto 1º BAC frente a ESO, purga de 2º Bachillerato y marcado/desmarcado interactivo de festivos
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se refactorizó la casación de grupos en `SchoolCalendarPreset2026_2027.swift` con tipado discriminado explícito (`isBachilleratoGroup`, `isEsoGroup`, `gradeLevel`, `matches1Bach`, `matchesEso`): el nombre `1º BAC A` / `1º BAC B` (con `BAC`) ahora se identifica inequívocamente como Bachillerato y queda totalmente aislado de `1º ESO A` o `2º ESO A/B`, impidiendo cruces indebidos de nivel.
+  2. Se eliminó por completo 2º de Bachillerato del catálogo de etapas (`Stage.bach2`) y de salidas curriculares, atendiendo a que el docente no imparte clase a dicho nivel.
+  3. En `sync1BachExams`, se implementó una rutina de purga y deduplicación automática: elimina cualquier examen de Bachillerato que se hubiera asignado erróneamente a grupos de la ESO o que contenga mención a 2º de Bachillerato, y deduplica eventos repetidos en base de datos.
+  4. En KMP (`AppDatabase.sq`, `Contracts.kt`, `SqlDelightRepositories.kt`, `KmpBridge.swift`), se añadió la query y método `deleteEvent` / `plannerDeleteCalendarEvent(id:)` para permitir la eliminación directa de eventos en `calendar_events`.
+  5. Se implementó la alternancia interactiva de días lectivos y festivos (`toggleHoliday(for:)`) en `PlannerWorkspaceViewModel+WeekBoard.swift`:
+     - Menú contextual en la cabecera de cada día en `PlannerWeekMiniatureGrid`.
+     - Barra de estado y botón de acción en la vista de detalle de día `PlannerWeekDetailPane`.
+     - Barra de estado y botón de acción en la cabecera de la vista de Día `PlannerDayView`.
+     - Desmarcar un festivo elimina los eventos no lectivos de ese día; marcar un día como no lectivo crea un evento de jornada no lectiva, actualizando inmediatamente la cuadrícula semanal y la disponibilidad de franjas horarias.
+  6. Se validó con 100 tests unitarios en `MiGestorPlannerTests` y `./scripts/verify_apple_builds.sh` completando con éxito en macOS Native y iOS Simulator.
+- Por qué importa: Resuelve con exactitud la petición del docente de aislar sus cursos de 1º BAC, descartar 2º BAC y tener control total para marcar o desmarcar festivos al vuelo en cualquier día del curso.
+- Dónde vive el cambio: `SchoolCalendarPreset2026_2027.swift`, `AppDatabase.sq`, `Contracts.kt`, `SqlDelightRepositories.kt`, `KmpBridge.swift`, `PlannerWorkspaceViewModel+WeekBoard.swift`, `PlannerWeekMiniatureGrid.swift`, `PlannerWeekDetailPane.swift` y `PlannerDayView.swift`.
+- Validación realizada: Compilación de frameworks Apple (iOS y macOS), suite de tests unitarios (100 pasados) y verificación de builds en macOS e iOS.
+
 ## Avance 2026-09-04 - Optimización O(1) en pronósticos KMP y reactividad completa de franjas horarias en la vista semanal
 
 Resumen:

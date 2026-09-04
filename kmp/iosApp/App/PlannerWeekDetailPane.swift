@@ -69,6 +69,37 @@ struct PlannerWeekDetailPane: View {
                 subtitle: entries.isEmpty ? (dayMilestones.isEmpty ? "Sin sesiones planificadas" : "Hitos activos") : "\(entries.count) sesiones planificadas"
             )
 
+            let isHoliday = weekBoard.holidayDays.contains(day)
+            HStack(spacing: 8) {
+                if isHoliday {
+                    Label("Día no lectivo / Festivo", systemImage: "beach.umbrella.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.red)
+                    Spacer()
+                    Button("Hacer lectivo") {
+                        Task { await vm.toggleHoliday(for: day) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                } else {
+                    Text("Día lectivo ordinario")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        Task { await vm.toggleHoliday(for: day) }
+                    } label: {
+                        Label("Marcar no lectivo", systemImage: "beach.umbrella")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isHoliday ? Color.red.opacity(0.08) : EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
             if !dayMilestones.isEmpty {
                 PlannerDayMilestonesSection(milestones: dayMilestones)
             }

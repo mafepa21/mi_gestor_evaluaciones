@@ -931,6 +931,8 @@ interface CalendarRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): Long
+    @Throws(Throwable::class)
+    suspend fun deleteEvent(id: Long)
 }
 
 interface ConfigurationTemplateRepository {

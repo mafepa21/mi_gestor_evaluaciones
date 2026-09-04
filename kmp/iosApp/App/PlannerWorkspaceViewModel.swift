@@ -176,6 +176,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     func reloadSessionsOnly(keepSelection: Bool = true) async {
+        if teacherSchedule == nil {
+            await reloadScheduleOnly()
+        }
         await reloadWeekSessions(keepSelection: keepSelection)
     }
 

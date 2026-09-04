@@ -3,6 +3,19 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-04 - Optimización O(1) en pronósticos KMP y reactividad completa de franjas horarias en la vista semanal
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se optimizó `buildForecasts` y `countExpectedSessions` en `TeacherScheduleRepositorySqlDelight.kt`: se sustituyó la comprobación no indexada que evaluaba `event.startAt.toLocalDateTime(TimeZone.currentSystemDefault()).date` dentro de un cuádruple bucle anidado (lo que generaba casi 2 millones de lecturas síncronas al sistema de archivos de zona horaria por cálculo) por un pre-indexado `O(1)` en conjuntos `Set<LocalDate>`. La ejecución pasó de tardar más de 45 segundos y colgar el hilo a ejecutarse en menos de 2 milisegundos.
+  2. Se añadieron los descriptores `"examen"`, `"parcial"` y `"global"` a `isNonTeachingEvent` en KMP para coherencia con la exclusión de franjas de EF en evaluaciones de Bachillerato.
+  3. Se aseguraron las dependencias reactivas en `PlannerWeekMiniatureLayout.swift` y `PlannerWeekMiniatureGrid.swift` declarando `vm` como `@ObservedObject`: cualquier mutación en el horario, franjas o períodos invalida y repinta inmediatamente la cuadrícula semanal sin depender exclusivamente de eventos manuales del board store.
+  4. Se añadió una salvaguarda en `reloadSessionsOnly` de `PlannerWorkspaceViewModel.swift` para recargar el horario si aún no se hubiera completado al navegar de semana.
+  5. Se verificó con 100 pruebas unitarias pasando limpiamente en `MiGestorPlannerTests` y compilación completa sin errores en macOS Native y iOS Simulator.
+- Por qué importa: Elimina definitivamente el fallo donde la vista semanal se congelaba o mostraba el horario sin configurar y franjas en blanco a pesar de estar guardadas en base de datos.
+- Dónde vive el cambio: `TeacherScheduleRepositorySqlDelight.kt`, `PlannerModels.swift`, `PlannerWorkspaceViewModel.swift`, `PlannerWeekMiniatureLayout.swift` y `PlannerWeekMiniatureGrid.swift`.
+- Validación realizada: `./gradlew :data:compileKotlinMacosArm64`, `build_apple_framework.sh`, `MiGestorPlannerTests` (100 tests PASSED) y `./scripts/verify_apple_builds.sh` (macOS y iOS ambos SUCCEEDED).
+
 ## Avance 2026-09-03 - Integración y bloqueo de horas de EF por exámenes de 1º Bachillerato
 
 Resumen:

@@ -3335,6 +3335,20 @@ final class KmpBridge: ObservableObject {
         return savedId
     }
 
+    func plannerDeleteCalendarEvent(id: Int64) async throws {
+        try await container.calendarRepository.deleteEvent(id: id)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        enqueueLocalChange(
+            entity: "calendar_event",
+            id: "\(id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": id,
+                "deleted": true
+            ]
+        )
+    }
+
     func plannerSaveTeacherSchedule(
         scheduleId: Int64,
         ownerUserId: Int64,

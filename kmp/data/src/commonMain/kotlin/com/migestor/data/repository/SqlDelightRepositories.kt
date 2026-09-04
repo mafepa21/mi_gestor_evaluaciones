@@ -2643,6 +2643,10 @@ class CalendarRepositorySqlDelight(
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
+
+    override suspend fun deleteEvent(id: Long): Unit = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteEvent(id)
+    }
 }
 
 class ConfigurationTemplateRepositorySqlDelight(

@@ -107,6 +107,17 @@ struct PlannerWeekMiniatureGrid: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Ver día \(vm.dayHeaderLabel(for: day))\(isToday ? ", hoy" : "")")
+                        .contextMenu {
+                            let isHoliday = weekBoard.holidayDays.contains(day)
+                            Button(role: isHoliday ? .destructive : nil) {
+                                Task { await vm.toggleHoliday(for: day) }
+                            } label: {
+                                Label(
+                                    isHoliday ? "Desmarcar como festivo (hacer lectivo)" : "Marcar como festivo / no lectivo",
+                                    systemImage: isHoliday ? "sun.max" : "beach.umbrella"
+                                )
+                            }
+                        }
                     }
                 }
 

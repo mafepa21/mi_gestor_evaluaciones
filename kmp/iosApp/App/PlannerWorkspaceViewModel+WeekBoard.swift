@@ -428,13 +428,20 @@ extension PlannerWorkspaceViewModel {
     }
 
 
+    func dayDateIso(for day: Int) -> String? {
+        let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(week), year: Int32(year))
+        guard day >= 1 && day <= days.count else { return nil }
+        let d = days[day - 1]
+        return String(format: "%04d-%02d-%02d", d.year, d.monthNumber, d.dayOfMonth)
+    }
+
     func toggleHoliday(for day: Int) async {
         guard let bridge else { return }
         let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(week), year: Int32(year))
         guard day >= 1 && day <= days.count else { return }
         let targetDate = days[day - 1]
         
-        let events = (try? await bridge.plannerNonTeachingCalendarEvents(classId: nil)) ?? []
+        let allEvents = (try? await bridge.plannerAllCalendarEvents()) ?? []
         let calendar = Calendar.current
         
         var components = DateComponents()
@@ -454,32 +461,37 @@ extension PlannerWorkspaceViewModel {
         guard let endOfDay = calendar.date(from: components) else { return }
         let endEpochMs = Int64(endOfDay.timeIntervalSince1970 * 1000)
         
-        let existingEvent = events.first { event in
+        let blockingEvents = allEvents.filter { event in
             let eventStartMs = event.startAt.toEpochMilliseconds()
-            return eventStartMs >= startEpochMs && eventStartMs <= endEpochMs
+            let eventEndMs = event.endAt.toEpochMilliseconds()
+            let overlaps = max(eventStartMs, startEpochMs) <= min(eventEndMs, endEpochMs)
+            guard overlaps else { return false }
+            let haystack = "\(event.title) \(event.description_ ?? "")".lowercased()
+            return haystack.contains("festivo") ||
+                   haystack.contains("no lectivo") ||
+                   haystack.contains("vacaciones") ||
+                   haystack.contains("puente") ||
+                   haystack.contains("holiday")
         }
         
         do {
-            if let event = existingEvent {
-                _ = try await bridge.plannerSaveCalendarEvent(
-                    id: event.id,
-                    classId: nil,
-                    title: "Lectivo",
-                    description: "Clase ordinaria",
-                    startEpochMs: event.startAt.toEpochMilliseconds(),
-                    endEpochMs: event.endAt.toEpochMilliseconds()
-                )
+            if !blockingEvents.isEmpty {
+                for event in blockingEvents {
+                    try await bridge.plannerDeleteCalendarEvent(id: event.id)
+                }
             } else {
                 _ = try await bridge.plannerSaveCalendarEvent(
                     id: nil,
                     classId: nil,
-                    title: "Festivo",
-                    description: "Día no lectivo",
+                    title: "Día no lectivo",
+                    description: "Festivo / no lectivo",
                     startEpochMs: startEpochMs,
                     endEpochMs: endEpochMs
                 )
             }
-            await reloadWeekSessions()
+            await reloadHolidays()
+            rebuildVisiblePlannerStructure()
+            rebuildWeekRenderModel()
         } catch {
             print("Error al alternar festivo: \(error)")
         }

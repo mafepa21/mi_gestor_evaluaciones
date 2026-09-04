@@ -570,6 +570,7 @@ final class PlannerScheduleStore: ObservableObject {
             teacherScheduleSlots = (try? await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)) ?? []
             weeklySlots = bridge.plannerWeeklySlots(classId: nil)
             evaluationPeriods = (try? await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)) ?? []
+            scheduleError = ""
             forecastRows = (try? await bridge.plannerForecast(scheduleId: schedule.id, classId: nil)) ?? []
             return scheduleFormGroupId ?? groups.first?.id
         } catch {

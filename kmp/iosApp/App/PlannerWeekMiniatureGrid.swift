@@ -16,7 +16,7 @@ enum PlannerSessionDragPayload {
 
 struct PlannerWeekMiniatureGrid: View {
     @ObservedObject var weekBoard: PlannerWeekBoardStore
-    let vm: PlannerWorkspaceViewModel
+    @ObservedObject var vm: PlannerWorkspaceViewModel
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void

@@ -50,6 +50,8 @@ Archivos protegidos (no tocar salvo orden explicita, explicando antes el motivo)
 | Intencion | Skill |
 |---|---|
 | Registrar avance, PR y documentacion | `registrar-avance-app` |
+| Bitácora ejecutiva viva del proyecto | `memoria-avances` |
+| Divulgación en X de IA aplicada a la docencia | `post-x-docente` |
 | UI/UX SwiftUI | `swiftui-polish` |
 | Bug SwiftUI | `swiftui-bugfix` |
 | Funcion nativa Apple | `swiftui-native-feature` |

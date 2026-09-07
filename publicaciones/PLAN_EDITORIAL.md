@@ -37,6 +37,7 @@ Cada publicación debe reforzar, explícita o sutilmente, la premisa del proyect
 | **12** | **IA local sin mandar datos de menores fuera del dispositivo** | Resúmenes de tutoría y tendencias usando Apple Intelligence en chip | **Codex / Antigravity** | Avance 2026-06-04 (Apple Intelligence LOMLOE) | ⏳ Pendiente | Por redactar |
 | **13** | **"Oye Antigravity, no me gusta este botón": inmediatez docente** | De detectar una molestia en clase a tenerla resuelta esa misma tarde | **Codex / Antigravity** | Flujo diario de desarrollo | ⏳ Pendiente | Por redactar |
 | **14** | **Consejos para docentes que quieren perder el miedo a crear con IA** | La verdadera habilidad no es programar, sino definir el problema de aula | **Ecosistema completo** | Balance de experiencia acumulada | ⏳ Pendiente | Por redactar |
+| **15** | **De una duda de aula al diseño de un Máster con IA** | Usar la IA como arquitecto curricular y autoformación docente continua | **Antigravity** | Conversación `0467f0b4` (Currículo M.Ed. EF) | ✅ Redactado | `2026-09-06-de-una-duda-docente-a-un-master-con-ia.md` |
 
 ---
 
@@ -69,6 +70,13 @@ Cada publicación debe reforzar, explícita o sutilmente, la premisa del proyect
   - *Codex / Antigravity:* Habilitó los atajos de teclado físicos en la funda del iPad para evaluar pulsando teclas sin mirar la pantalla.
 - **Impacto docente:** Ergonomía y usabilidad real adaptada a la actividad motriz del aula.
 - **Llamada a la acción:** ¿Qué interfaz de las apps educativas que usáis os parece menos práctica para vuestra materia?
+
+### Entrega 15: De una duda de aula al diseño de un Máster con IA
+- **Gancho:** «Casi todo el mundo usa la IA para pedirle un calentamiento, una ficha o un examen tipo test. Ayer hice un experimento diferente con Antigravity sobre desarrollo profesional docente y el resultado me dejó alucinando: de una duda honesta al plan de estudios de un Máster universitario completo.»
+- **El rol de cada agente:**
+  - *Antigravity:* Desglosó los 7 pilares de la EF contemporánea y los estructuró en una malla de posgrado con créditos, módulos temáticos, laboratorios prácticos de vídeo-análisis y TFM de investigación-acción en el aula.
+- **Impacto docente:** Mostrar el potencial de la IA como catalizador de la autoformación docente y el diseño curricular avanzado, en lugar de un simple asistente de oficina.
+- **Llamada a la acción:** ¿Usáis la IA para diseñar vuestros propios planes de aprendizaje como profes?
 
 ---
 

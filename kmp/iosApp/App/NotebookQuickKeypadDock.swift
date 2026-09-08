@@ -197,6 +197,8 @@ struct NotebookQuickKeypadDock: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Cerrar teclado rápido")
@@ -240,16 +242,6 @@ struct NotebookQuickKeypadDock: View {
                         modifierButton("-0.5") {
                             onApplyModifier(-0.5)
                         }
-                    }
-
-                    Divider().frame(height: 20)
-
-                    // Pedagogical Status Keys
-                    statusButton(label: "NP", title: "No Presentado", tint: Color.orange) {
-                        onApplyGrade("NP")
-                    }
-                    statusButton(label: "Falta", title: "Falta Justificada/Injustificada", tint: Color.red) {
-                        onApplyGrade("Falta")
                     }
 
                     Divider().frame(height: 20)
@@ -299,7 +291,7 @@ struct NotebookQuickKeypadDock: View {
             Text("\(number)")
                 .font(.system(size: 16, weight: .bold, design: .rounded))
                 .foregroundStyle(isCurrent ? Color.white : Color.primary)
-                .frame(minWidth: 42, maxWidth: 58, minHeight: 38)
+                .frame(minWidth: 44, maxWidth: 64, minHeight: 44)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(isCurrent ? EvaluationDesign.accent : Color.secondary.opacity(0.12))
@@ -308,6 +300,7 @@ struct NotebookQuickKeypadDock: View {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(isCurrent ? EvaluationDesign.accent : Color.secondary.opacity(0.18), lineWidth: 1)
                 )
+                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(NotebookScaleButtonStyle())
         .accessibilityLabel("Nota \(number)")
@@ -316,44 +309,22 @@ struct NotebookQuickKeypadDock: View {
     private func modifierButton(_ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.primary)
-                .padding(.horizontal, 8)
-                .frame(minHeight: 32)
+                .padding(.horizontal, 10)
+                .frame(minWidth: 44, minHeight: 44)
                 .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(Color.secondary.opacity(0.10))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
                 )
+                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(NotebookScaleButtonStyle())
         .accessibilityLabel("Modificador \(label)")
-    }
-
-    private func statusButton(label: String, title: String, tint: Color, action: @escaping () -> Void) -> some View {
-        let isCurrent = currentValue.localizedCaseInsensitiveCompare(label) == .orderedSame
-
-        return Button(action: action) {
-            Text(label)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(isCurrent ? Color.white : tint)
-                .padding(.horizontal, 10)
-                .frame(minHeight: 32)
-                .background(
-                    Capsule()
-                        .fill(isCurrent ? tint : tint.opacity(0.12))
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(tint.opacity(isCurrent ? 1.0 : 0.25), lineWidth: 1)
-                )
-        }
-        .buttonStyle(NotebookScaleButtonStyle())
-        .help(title)
-        .accessibilityLabel(title)
     }
 
     private func actionIconButton(
@@ -364,13 +335,14 @@ struct NotebookQuickKeypadDock: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(isEnabled ? Color.primary : Color.secondary.opacity(0.35))
-                .frame(width: 34, height: 32)
+                .frame(width: 44, height: 44)
                 .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(Color.secondary.opacity(isEnabled ? 0.08 : 0.03))
                 )
+                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(NotebookScaleButtonStyle())
         .disabled(!isEnabled)
@@ -402,21 +374,22 @@ struct NotebookQuickKeypadDock: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: advanceMode.icon)
-                    .font(.caption2.weight(.bold))
+                    .font(.caption.weight(.bold))
                 Image(systemName: direction.systemImage)
-                    .font(.caption2.weight(.bold))
+                    .font(.caption.weight(.bold))
                 Text(advanceMode.title)
-                    .font(.caption.weight(.medium))
+                    .font(.caption.weight(.semibold))
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .frame(minHeight: 32)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 44)
             .background(
                 Capsule()
                     .fill(Color.secondary.opacity(0.08))
             )
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Configuración de avance automático")
@@ -464,6 +437,8 @@ struct NotebookQuickKeypadDock: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }

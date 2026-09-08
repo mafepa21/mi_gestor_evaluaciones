@@ -28,7 +28,7 @@ extension NotebookModuleView {
 
     // MARK: - Quick Keypad Actions
 
-    func applyKeypadGrade(_ value: String, data: NotebookUiStateData, rows: [NotebookTableRow]) {
+    func applyKeypadGrade(_ value: String, data: NotebookUiStateData, rows: [NotebookTableRow], advance: Bool = true) {
         guard let selected = selectedNotebookCell(data: data) else { return }
         guard isToolbarEditableCellColumn(selected.column) else {
             showToast("Esta columna se edita desde su acción específica", style: .warning)
@@ -53,6 +53,8 @@ extension NotebookModuleView {
         #if canImport(UIKit)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         #endif
+
+        guard advance else { return }
 
         let currentStudentId = selected.selection.studentId
         let currentColumn = selected.column
@@ -84,15 +86,20 @@ extension NotebookModuleView {
         guard let selected = selectedNotebookCell(data: data) else { return }
         let raw = displayValue(for: selected.row, column: selected.column)
         let clean = raw.replacingOccurrences(of: ",", with: ".")
-        let intPart: Int
-        if let val = Double(clean) {
-            intPart = Int(val)
-        } else {
-            intPart = 0
+        let currentVal = Double(clean) ?? 0.0
+        let intPart = Int(currentVal)
+        if intPart >= 10 {
+            applyKeypadGrade("10", data: data, rows: rows)
+            return
         }
         let fracPart = fraction.hasPrefix(".") ? String(fraction.dropFirst()) : fraction
         let combined = "\(intPart).\(fracPart)"
-        applyKeypadGrade(combined, data: data, rows: rows)
+        if let doubleVal = Double(combined) {
+            let clamped = min(10.0, max(0.0, doubleVal))
+            applyKeypadGrade(formatKeypadNumber(clamped), data: data, rows: rows)
+        } else {
+            applyKeypadGrade(combined, data: data, rows: rows)
+        }
     }
 
     func applyKeypadBackspace(data: NotebookUiStateData, rows: [NotebookTableRow]) {
@@ -103,11 +110,11 @@ extension NotebookModuleView {
         if current.hasSuffix(".") || current.hasSuffix(",") {
             current.removeLast()
         }
-        applyKeypadGrade(current, data: data, rows: rows)
+        applyKeypadGrade(current, data: data, rows: rows, advance: false)
     }
 
     func applyKeypadClear(data: NotebookUiStateData, rows: [NotebookTableRow]) {
-        applyKeypadGrade("", data: data, rows: rows)
+        applyKeypadGrade("", data: data, rows: rows, advance: false)
     }
 
     func advanceKeypadCell(

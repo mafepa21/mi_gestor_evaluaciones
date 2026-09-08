@@ -663,6 +663,7 @@ private struct NotebookStatefulEditableTableCell: View {
     @State private var isNumericDragging = false
     @State private var showTextPopover = false
     @State private var isNumericKeyboardPresented = false
+    @AppStorage("notebook.isQuickKeypadPresented") private var isQuickKeypadPresented = false
     @State private var hasLoadedDrafts = false
     @State private var physicalScore: Double?
     @State private var isResolvingPhysicalScore = false
@@ -888,7 +889,9 @@ private struct NotebookStatefulEditableTableCell: View {
                         onSelect()
                         focusedCellId.wrappedValue = nil
                         activeChoiceCellId = nil
-                        isNumericKeyboardPresented = true
+                        if !isQuickKeypadPresented {
+                            isNumericKeyboardPresented = true
+                        }
                     } label: {
                         HStack(spacing: 6) {
                             Text(numericDraft.isEmpty ? "—" : numericDraft)

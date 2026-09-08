@@ -3,6 +3,28 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-08 - Fase 2 del rediseño estilo iDoceo: dock táctil de calificación rápida con teclado 0-10 y avance automático
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se implementó la Fase 2 de la hoja de ruta de inspiración iDoceo para el Cuaderno docente: el dock flotante táctil inferior de calificación rápida (`NotebookQuickKeypadDock.swift` y `NotebookModuleQuickKeypad.swift`).
+  2. Panel de control ergonómico inferior con doble fila interactiva sobre material translúcido (`.ultraThinMaterial`), esquinas redondeadas continuas y elevación con sombra suave.
+  3. Fila superior de contexto y navegación: ficha visual del alumno seleccionado (iniciales, nombre, posición `i/total`), selector de dirección de avance (vertical por alumnos `↓` u horizontal por columnas `→`), selector de modo de salto (Inmediato, Pausa 0.4s con cancelación de carrera al teclear rápido, Manual) y botón de cierre táctil amplio.
+  4. Fila inferior de calificación rápida: teclado numérico directo 0 a 10 con pastillas prominentes y estado activo destacado en color acento; modificadores fraccionarios (`.25`, `.50`, `.75`) y diferenciales (`+0.5`, `-0.5`) con protección de límites (clamp estricto 0.0–10.0); botones de borrado de carácter (backspace) y vaciado de celda (trash) que preservan el foco en el alumno actual sin desencadenar saltos automáticos.
+  5. Cumplimiento estricto Apple HIG de accesibilidad táctil: todos los controles táctiles cuentan con hit targets mínimos de 44pt (`minHeight: 44`, `minWidth: 44`, frames de 44x44 y `.contentShape(...)`), optimizados para uso ágil a una o dos manos en iPad e iPhone.
+  6. Supresión de popovers redundantes en `NotebookEditableTableCell.swift`: al tocar una celda con el dock activo, se enfoca la celda sin abrir el popover numérico local superfluo, asegurando una experiencia fluida sin superposición de interfaces.
+  7. Integración nativa multiplataforma: toggle persistido en `@AppStorage("notebook.isQuickKeypadPresented")`, botón en la barra de comandos compacta y regular de iPad/iOS (`NotebookCompactCommandBar.swift`), soporte en la toolbar de macOS (`MacRootView.swift` y `NotebookMacToolbarBinding.swift`) y sincronización en `NotebookModuleToolbarState.swift`.
+- Por qué importa: Replica la experiencia ágil y sin fricción de calificación masiva que hace famosa a la app iDoceo en tabletas docentes, permitiendo calificar a toda una clase en segundos con una sola mano mediante avance automático sin necesidad de abrir y cerrar teclados emergentes en cada celda.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/NotebookQuickKeypadDock.swift` (nuevo componente UI)
+  - `kmp/iosApp/App/NotebookModuleQuickKeypad.swift` (nueva extensión de acciones y lógica de calificación)
+  - `kmp/iosApp/App/NotebookEditableTableCell.swift` (supresión de popover redundante)
+  - `kmp/iosApp/App/NotebookModuleView.swift` (anclaje de dock en panel central)
+  - `kmp/iosApp/App/NotebookCompactCommandBar.swift` (toggle y estilo de botón)
+  - `kmp/iosApp/App/NotebookMacToolbarBinding.swift` y `NotebookModuleToolbarState.swift` (binding de toolbar macOS)
+  - `kmp/iosApp/MacApp/MacRootView.swift` (ítem de toolbar y menú macOS)
+- Validación realizada: Verificación de compilación limpia en macOS Native y en iOS Simulator mediante `./scripts/verify_apple_builds.sh`, revisión de código exhaustiva por subagente revisor, resolución de 5 hallazgos de integridad/ergonomía/HIG, y auditoría read-only del subagente `janitor` previa al merge fast-forward en `develop` (commits `afaadef` y `3ea0ed7`).
+
 ## Avance 2026-09-08 - Fase 1 del rediseño estilo iDoceo: cabeceras del Cuaderno con iconografía pedagógica, tinte pastel y pastilla de peso
 
 Resumen:

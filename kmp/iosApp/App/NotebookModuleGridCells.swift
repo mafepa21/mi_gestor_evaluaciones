@@ -12,25 +12,50 @@ extension NotebookModuleView {
         subtitle: String,
         width: CGFloat,
         tint: Color,
-        typeBadge: String? = nil,
+        systemIcon: String? = nil,
+        weightBadge: String? = nil,
         isSystemColumn: Bool = false,
         folderStyle: Bool = false,
         hasColumnColor: Bool = false,
         isHighlighted: Bool = false
     ) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(isSystemColumn ? .footnote : NotebookGridStyle.columnTitle)
-                .foregroundStyle(isSystemColumn ? .secondary : .primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                if let systemIcon {
+                    Image(systemName: systemIcon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(isSystemColumn ? Color.secondary : tint)
+                        .accessibilityHidden(true)
+                }
 
-            if !subtitle.isEmpty {
-                Text(subtitle)
-                    .font(NotebookGridStyle.columnMeta)
-                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(isSystemColumn ? .footnote : NotebookGridStyle.columnTitle)
+                    .foregroundStyle(isSystemColumn ? .secondary : .primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+            }
+
+            HStack(spacing: 5) {
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(NotebookGridStyle.columnMeta)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+
+                if let weightBadge, !weightBadge.isEmpty {
+                    Text(weightBadge)
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(weightBadge == "no cuenta" ? Color.secondary : tint)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1.5)
+                        .background(
+                            (weightBadge == "no cuenta" ? Color.secondary : tint).opacity(0.12),
+                            in: Capsule()
+                        )
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.horizontal, 8)
@@ -38,7 +63,15 @@ extension NotebookModuleView {
         .padding(.bottom, 10)
         .frame(width: width, alignment: .leading)
         .frame(minHeight: 52, alignment: .topLeading)
-        .background(isHighlighted ? NotebookGridStyle.columnActiveWash : Color.clear)
+        .background(
+            ZStack {
+                if isHighlighted {
+                    NotebookGridStyle.columnActiveWash
+                } else if !isSystemColumn && (hasColumnColor || folderStyle) {
+                    tint.opacity(0.06)
+                }
+            }
+        )
         .overlay(alignment: .bottom) {
             if !isSystemColumn {
                 // Columna activa → barra de acento (la identidad de "resaltada"
@@ -62,11 +95,18 @@ extension NotebookModuleView {
                 // de cabeceras del sistema tras el rediseño de PR3).
                 let chip = HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(fixed.title)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                        HStack(spacing: 5) {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color.secondary)
+                                .accessibilityHidden(true)
+
+                            Text(fixed.title)
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
 
                         Text(fixed.subtitle)
                             .font(NotebookGridStyle.columnMeta)
@@ -142,6 +182,7 @@ extension NotebookModuleView {
                 subtitle: fixed.subtitle,
                 width: resolvedFixedWidth(for: fixed),
                 tint: tint(for: fixed),
+                systemIcon: fixedColumnSystemIcon(for: fixed),
                 isSystemColumn: true
             )
             if fixed == .average {
@@ -161,11 +202,18 @@ extension NotebookModuleView {
                     } label: {
                         HStack(spacing: 6) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(fixed.title)
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
+                                HStack(spacing: 5) {
+                                    Image(systemName: "chart.xyaxis.line")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(NotebookStyle.primaryTint)
+                                        .accessibilityHidden(true)
+
+                                    Text(fixed.title)
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                }
                                 Text(averageSubtitle)
                                     .font(NotebookGridStyle.columnMeta)
                                     .foregroundStyle(.secondary)
@@ -208,9 +256,11 @@ extension NotebookModuleView {
                 } content: {
                     headerChip(
                         title: column.title,
-                        subtitle: columnHeaderMeta(for: column),
+                        subtitle: columnTypeMeta(for: column),
                         width: resolvedColumnWidth(for: column),
                         tint: displayTint(for: column),
+                        systemIcon: columnSystemIcon(for: column),
+                        weightBadge: columnWeightBadge(for: column),
                         folderStyle: column.categoryId != nil,
                         hasColumnColor: hasCustomColumnColor(column),
                         isHighlighted: isColumnHighlighted(column)
@@ -263,7 +313,7 @@ extension NotebookModuleView {
             HStack(spacing: 6) {
                 Image(systemName: isEmpty ? "folder" : "chevron.right")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(categoryTint)
                     .accessibilityHidden(true)
 
                 Text(category.name)
@@ -284,6 +334,7 @@ extension NotebookModuleView {
         .padding(.bottom, 10)
         .frame(width: width, alignment: .leading)
         .frame(minHeight: 52, alignment: .topLeading)
+        .background(categoryTint.opacity(0.08))
         .contentShape(Rectangle())
         .overlay(alignment: .bottom) {
             if !isEmpty {
@@ -332,20 +383,124 @@ extension NotebookModuleView {
         }
     }
 
-    func columnHeaderMeta(for column: NotebookColumnDefinition) -> String {
-        let typeText: String
+    func fixedColumnSystemIcon(for fixed: NotebookFixedColumn) -> String? {
+        switch fixed {
+        case .photo: return "camera.fill"
+        case .name: return "person.fill"
+        case .group: return "person.3.sequence.fill"
+        case .followUp: return "flag.fill"
+        case .attendance: return "calendar.badge.clock"
+        case .average: return "chart.xyaxis.line"
+        }
+    }
+
+    func columnSystemIcon(for column: NotebookColumnDefinition) -> String {
+        if let customIcon = column.iconName?.trimmingCharacters(in: .whitespacesAndNewlines), !customIcon.isEmpty {
+            return customIcon
+        }
         if column.inputKind.isStructuredInstrument {
             switch column.inputKind {
             case .structuredChecklist:
-                typeText = "Checklist"
+                return "checklist"
             case .structuredObservation:
-                typeText = "Observación"
+                return "list.bullet.clipboard"
             case .structuredForm:
-                typeText = "Formulario"
+                return "square.and.pencil"
             case .structuredQuiz:
-                typeText = "Quiz"
+                return "questionmark.app"
             default:
-                typeText = "Columna"
+                return "doc.text"
+            }
+        }
+        if column.instrumentKind == .physicalTest || column.categoryKind == .physicalEducation {
+            switch column.scaleKind {
+            case .time:
+                return "stopwatch"
+            case .distance:
+                return "ruler"
+            case .repetitions:
+                return "arrow.triangle.2.circlepath"
+            default:
+                return "figure.run"
+            }
+        }
+        switch column.instrumentKind {
+        case .writtenTest:
+            return "doc.text.fill"
+        case .rubric:
+            return "sparkles"
+        case .checklist:
+            return "checklist"
+        case .systematicObservation, .observationScale, .freeObservation:
+            return "eye.fill"
+        case .selfAssessment:
+            return "person.crop.circle.badge.checkmark"
+        case .peerAssessment:
+            return "person.2.circle"
+        case .finalProduct:
+            return "shippingbox.fill"
+        case .presentation:
+            return "person.wave.2.fill"
+        case .task, .dailyWork, .practice:
+            return "pencil.and.outline"
+        case .learningSituation:
+            return "book.closed.fill"
+        case .participation, .attitude, .behaviour:
+            return "hand.thumbsup.fill"
+        case .progress:
+            return "chart.line.uptrend.xyaxis"
+        case .material:
+            return "backpack.fill"
+        case .incident:
+            return "exclamationmark.triangle.fill"
+        case .adaptation, .reinforcement, .recovery:
+            return "arrow.clockwise.circle.fill"
+        case .bonus:
+            return "star.fill"
+        case .penalty:
+            return "minus.circle.fill"
+        case .attachment, .multimediaEvidence:
+            return "paperclip"
+        case .privateComment:
+            return isNotebookAICommentColumn(column) ? "apple.intelligence" : "bubble.left.fill"
+        case .familyCommunication:
+            return "envelope.fill"
+        case .custom:
+            break
+        default:
+            break
+        }
+        switch column.type {
+        case .rubric:
+            return "sparkles"
+        case .calculated:
+            return "function"
+        case .attendance:
+            return "calendar.badge.clock"
+        case .check:
+            return "checkmark.square"
+        case .text:
+            return isNotebookAICommentColumn(column) ? "apple.intelligence" : "text.alignleft"
+        case .numeric:
+            return column.evaluationId != nil ? "chart.bar.doc.horizontal" : "number"
+        default:
+            return "doc.text"
+        }
+    }
+
+    func columnTypeMeta(for column: NotebookColumnDefinition) -> String {
+        if column.inputKind.isStructuredInstrument {
+            switch column.inputKind {
+            case .structuredChecklist:
+                return "Checklist"
+            case .structuredObservation:
+                return "Observación"
+            case .structuredForm:
+                return "Formulario"
+            case .structuredQuiz:
+                return "Quiz"
+            default:
+                return "Columna"
             }
         } else {
             switch column.type {
@@ -353,34 +508,41 @@ extension NotebookModuleView {
                 if column.instrumentKind == .physicalTest {
                     switch column.scaleKind {
                     case .time:
-                        typeText = "Tiempo"
+                        return "Tiempo"
                     case .distance:
-                        typeText = "Distancia"
+                        return "Distancia"
                     case .repetitions:
-                        typeText = "Repeticiones"
+                        return "Repeticiones"
                     case .tenPoint:
-                        typeText = "Nota baremada"
+                        return "Baremo"
                     default:
-                        typeText = "Nota"
+                        return "Nota"
                     }
+                } else if column.evaluationId != nil {
+                    return "Evaluación"
                 } else {
-                    typeText = "Nota"
+                    return "Nota"
                 }
             case .rubric:
-                typeText = "Rúbrica"
+                return "Rúbrica"
             case .check:
-                typeText = "Lista"
+                return "Control"
             case .ordinal:
-                typeText = "Nivel"
+                return "Nivel"
             case .text:
-                typeText = "Texto"
+                return isNotebookAICommentColumn(column) ? "Síntesis IA" : "Anotación"
             case .calculated:
-                typeText = "Fórmula"
+                return "Fórmula"
+            case .attendance:
+                return "Asistencia"
             default:
-                typeText = "Columna"
+                return "Columna"
             }
         }
+    }
 
+    func columnHeaderMeta(for column: NotebookColumnDefinition) -> String {
+        let typeText = columnTypeMeta(for: column)
         guard let weightBadge = columnWeightBadge(for: column) else { return typeText }
         return "\(typeText) · \(weightBadge)"
     }
@@ -744,7 +906,11 @@ extension NotebookModuleView {
             .contentShape(Rectangle())
             .background(
                 Capsule(style: .continuous)
-                    .fill(Color.primary.opacity(0.03))
+                    .fill(categoryTint.opacity(0.10))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(categoryTint.opacity(0.24), lineWidth: 1)
+                    )
             )
         }
         .buttonStyle(NotebookCategoryHeaderButtonStyle())

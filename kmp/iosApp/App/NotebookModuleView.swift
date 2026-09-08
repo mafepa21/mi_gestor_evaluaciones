@@ -129,6 +129,10 @@ struct NotebookModuleView: View {
     @State private var contextualAIOrchestrator = AppleAIOrchestrator()
     @StateObject private var formulaAIServiceStore = AppleFoundationFormulaServiceStore()
     @AppStorage("notebook.navigationDirection") var navigationDirectionRaw = NotebookNavigationDirection.down.rawValue
+    @AppStorage("notebook.isQuickKeypadPresented") var isQuickKeypadPresented = false
+    @AppStorage("notebook.keypad.advanceMode") var keypadAdvanceModeRaw = NotebookKeypadAdvanceMode.immediate.rawValue
+    @AppStorage("notebook.keypad.direction") var keypadDirectionRaw = NotebookKeypadDirection.down.rawValue
+    @State var keypadAdvanceTask: Task<Void, Never>? = nil
     @FocusState var focusedCellId: String?
 
     var formulaAIService: AppleFoundationFormulaService {
@@ -348,6 +352,12 @@ struct NotebookModuleView: View {
                         isAttendanceQuickMode: isAttendanceQuickMode,
                         showsAdvancedActions: focusMode == .normal,
                         selectionContext: toolbarSelectionContext(data: data),
+                        isQuickKeypadPresented: isQuickKeypadPresented,
+                        onToggleQuickKeypad: {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                                isQuickKeypadPresented.toggle()
+                            }
+                        },
                         onAddColumn: {
                             addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
                         },
@@ -456,7 +466,14 @@ struct NotebookModuleView: View {
                     .shadow(color: NotebookGridStyle.gridSurfaceShadow, radius: 14, x: 0, y: 6)
                     .padding(.horizontal, 16)
                     .padding(.top, 2)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, isQuickKeypadPresented ? 8 : 16)
+
+                if isQuickKeypadPresented {
+                    quickKeypadDock(data: data, rows: rows)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 10)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 

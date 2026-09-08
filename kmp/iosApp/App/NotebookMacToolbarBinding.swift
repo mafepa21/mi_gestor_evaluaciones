@@ -7,6 +7,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     @Published var canToggleInspector = false
     @Published var isAttendanceQuickMode = false
     @Published var isInspectorPresented = false
+    @Published var isQuickKeypadPresented = false
     @Published var addColumnAvailable = false
     @Published var organizationMenuAvailable = false
     @Published var groupManagementAvailable = false
@@ -14,6 +15,7 @@ final class NotebookMacToolbarActions: ObservableObject {
 
     private var markAllPresentAction: (() -> Void)?
     private var attendanceQuickModeAction: (() -> Void)?
+    private var toggleQuickKeypadAction: (() -> Void)?
     private var undoAction: (() -> Void)?
     private var toggleInspectorAction: (() -> Void)?
     private var addColumnAction: (() -> Void)?
@@ -36,12 +38,14 @@ final class NotebookMacToolbarActions: ObservableObject {
         canToggleInspector: Bool,
         isAttendanceQuickMode: Bool,
         isInspectorPresented: Bool,
+        isQuickKeypadPresented: Bool = false,
         addColumnAvailable: Bool,
         organizationMenuAvailable: Bool,
         groupManagementAvailable: Bool,
         exportText: String?,
         onMarkAllPresent: @escaping () -> Void,
         onToggleAttendanceQuickMode: @escaping () -> Void,
+        onToggleQuickKeypad: (() -> Void)? = nil,
         onUndo: @escaping () -> Void,
         onToggleInspector: @escaping () -> Void,
         onAddColumn: @escaping () -> Void,
@@ -57,12 +61,14 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.canToggleInspector = canToggleInspector
             self.isAttendanceQuickMode = isAttendanceQuickMode
             self.isInspectorPresented = isInspectorPresented
+            self.isQuickKeypadPresented = isQuickKeypadPresented
             self.addColumnAvailable = addColumnAvailable
             self.organizationMenuAvailable = organizationMenuAvailable
             self.groupManagementAvailable = groupManagementAvailable
             self.exportText = exportText
             self.markAllPresentAction = onMarkAllPresent
             self.attendanceQuickModeAction = onToggleAttendanceQuickMode
+            self.toggleQuickKeypadAction = onToggleQuickKeypad
             self.undoAction = onUndo
             self.toggleInspectorAction = onToggleInspector
             self.addColumnAction = onAddColumn
@@ -81,12 +87,14 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.canToggleInspector = false
             self.isAttendanceQuickMode = false
             self.isInspectorPresented = false
+            self.isQuickKeypadPresented = false
             self.addColumnAvailable = false
             self.organizationMenuAvailable = false
             self.groupManagementAvailable = false
             self.exportText = nil
             self.markAllPresentAction = nil
             self.attendanceQuickModeAction = nil
+            self.toggleQuickKeypadAction = nil
             self.undoAction = nil
             self.toggleInspectorAction = nil
             self.addColumnAction = nil
@@ -100,6 +108,7 @@ final class NotebookMacToolbarActions: ObservableObject {
 
     func markAllPresent() { markAllPresentAction?() }
     func toggleAttendanceQuickMode() { attendanceQuickModeAction?() }
+    func toggleQuickKeypad() { toggleQuickKeypadAction?() }
     func undo() { undoAction?() }
     func toggleInspector() { toggleInspectorAction?() }
     func addColumn() { addColumnAction?() }

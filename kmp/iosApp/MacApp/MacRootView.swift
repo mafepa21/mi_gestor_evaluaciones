@@ -698,6 +698,18 @@ struct MacRootView: View {
             }
         }
 
+        ToolbarItem(id: "notebook.quickKeypad", placement: .primaryAction) {
+            Button {
+                notebookToolbarActions.toggleQuickKeypad()
+            } label: {
+                Label(
+                    notebookToolbarActions.isQuickKeypadPresented ? "Ocultar teclado rápido" : "Teclado rápido",
+                    systemImage: notebookToolbarActions.isQuickKeypadPresented ? "keyboard.fill" : "keyboard"
+                )
+            }
+            .help("Teclado táctil de calificación rápida")
+        }
+
         ToolbarItem(id: "notebook.addColumn", placement: .primaryAction) {
             Button {
                 notebookToolbarActions.addColumn()
@@ -803,6 +815,15 @@ struct MacRootView: View {
                 Label(
                     notebookToolbarActions.isAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
                     systemImage: notebookToolbarActions.isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle"
+                )
+            }
+
+            Button {
+                notebookToolbarActions.toggleQuickKeypad()
+            } label: {
+                Label(
+                    notebookToolbarActions.isQuickKeypadPresented ? "Ocultar teclado rápido" : "Teclado rápido",
+                    systemImage: notebookToolbarActions.isQuickKeypadPresented ? "keyboard.fill" : "keyboard"
                 )
             }
 

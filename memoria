@@ -3,6 +3,32 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-08 - Fase 1 del rediseño estilo iDoceo: cabeceras del Cuaderno con iconografía pedagógica, tinte pastel y pastilla de peso
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se completó la Fase 1 de la hoja de ruta de inspiración iDoceo para el Cuaderno docente (`NotebookModuleGridCells.swift`), enriqueciendo la jerarquía visual de las cabeceras de columna sin alterar la cota geométrica fija de 56pt.
+  2. Mapeo pedagógico de SF Symbols (`columnSystemIcon`): asigna glifos educativos de alto contraste según el instrumento didáctico (`doc.text.fill` para exámenes escritos, `sparkles` para rúbricas, `checklist` para listas de control, `eye.fill` para observación sistemática, `figure.run`, `stopwatch` y `ruler` para pruebas de EF, `apple.intelligence` para síntesis IA, `pencil.and.outline` para tareas diarias, etc.), respetando cualquier `iconName` personalizado.
+  3. Desglose y pastilla de peso (`weightBadge`): se independizó el tipo de columna (`columnTypeMeta`) del porcentaje de ponderación, presentando este último en una cápsula compacta (`Capsule`) con fondo pastel al 12% y tipografía redondeada semibold, distinguiendo claramente columnas con peso de aquellas excluidas (`"no cuenta"`).
+  4. Tintado suave de cabecera por categoría: las columnas asignadas a una categoría o con color propio reciben un fondo pastel translúcido sutil al 6% (`tint.opacity(0.06)`), aportando ritmo visual y reconocimiento inmediato de bloques evaluativos en rejillas densas de 20+ columnas.
+  5. Conexión cromática del Folder Lane y carpetas colapsadas: la cápsula de carpeta expandida y la cabecera colapsada adoptan el tinte suave y borde de `categoryTint`, abrazando visualmente a sus columnas hijas.
+  6. Iconografía identificativa en columnas fijas (`fixedColumnSystemIcon`): asignados glifos a Nombre (`person.fill`), Foto (`camera.fill`), Grupo (`person.3.sequence.fill`), Seguimiento (`flag.fill`), Asistencia (`calendar.badge.clock`) y Media (`chart.xyaxis.line`).
+- Por qué importa: Eleva radicalmente la legibilidad del Cuaderno hacia el estándar pedagógico de iDoceo que los docentes aprecian, permitiendo identificar instrumentos y pesos de un vistazo sin abrir inspectores y manteniendo un diseño limpio y moderno conforme a Apple HIG y Organic Precision v2.2.
+- Dónde vive el cambio: `kmp/iosApp/App/NotebookModuleGridCells.swift`.
+- Validación realizada: Compilación completa sin errores en macOS Native y iOS Simulator (`verify_apple_builds.sh`), revisión de código independiente con dictamen de aprobación sin objeciones, y auditoría read-only de `janitor` previa al merge fast-forward en `develop` (commit `92b80f5`). Avance registrado en Ritmo MCP (`task-mtt3kzuk-b2zxp`).
+
+## Avance 2026-09-07 - Homologación de instrumentos de evaluación de Tavernes (1º a 4º ESO) y compatibilidad 100% con el importador nativo
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se completó la Fase 1 del Ticket TAV-CURR-05 actualizando las 4 Programaciones Didácticas Anuales oficiales de Tavernes de la Valldigna (1º a 4º ESO) en `.md` y `.docx`, integrando el intercambio pedagógico aprobado entre 1º ESO (Colpbol, 11h) y 2º ESO (Twincon, 11h), y adaptando los turnos de mañana (1º-2º ESO, 60' útiles) y tarde con protocolo térmico (3º-4º ESO, 90' útiles).
+  2. Se revisaron, reescribieron y compilaron a `.docx` los instrumentos de evaluación (`05_EVALUACION/instrumentos_evaluacion.md` y `.docx`) en las 28 Situaciones de Aprendizaje de Tavernes (6 en 1º ESO, 7 en 2º ESO, 8 en 3º ESO y 7 en 4º ESO).
+  3. Se garantizó la evaluación ágil para el docente en pista: presupuesto estricto de 13 decisiones docentes por alumno ($\le 18$), 3 momentos de observación y 4 instrumentos estándar por SA (rejilla transversal de fair play al 25% con escala 1-4, rúbrica analítica técnico-táctica al 65% con 4 niveles, rúbrica de autoevaluación al 10% con escala 1-4 y 2 preguntas de reflexión abierta, y checklist final de entrega sin peso).
+  4. Se aseguró el 100% de compatibilidad con el importador nativo de la app (`LearningSituationAssessmentInstrumentsImportService.swift`): encabezados con numeración escapada `N\. ` (para evitar viñetas autonumeradas de Word), coincidencia literal exacta entre términos de fórmula y encabezados, y suma matemática exacta del 100.0%.
+- Por qué importa: Permite al profesorado de Educación Física de Tavernes calificar de forma ágil y rápida en el patio/gimnasio con iPad o papel, e importar directamente los 28 paquetes evaluativos a Mi Gestor Evaluaciones con 0 errores y 0 avisos.
+- Dónde vive el cambio: `/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/Tavernes/` (las 28 carpetas de SA) y `/Users/mariofernandez/Desktop/Programaciones/output/Programación anual/02_Tavernes_San_Jose/` (1º a 4º ESO).
+- Validación realizada: Se ejecutó un simulador del parser de Swift sobre los 28 documentos DOCX generados, verificando 28/28 con 0 warnings, suma exacta del 100.0%, fórmula detectada y los 4 tipos esperados reconocidos. Avance registrado también en Ritmo MCP.
+
 ## Avance 2026-09-04 - Reconocimiento estricto 1º BAC frente a ESO, purga de 2º Bachillerato y marcado/desmarcado interactivo de festivos
 
 Resumen:

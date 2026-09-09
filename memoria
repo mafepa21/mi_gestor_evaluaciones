@@ -3,6 +3,26 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-09 - Fase 3 del rediseño estilo iDoceo: selector visual de rúbricas con tarjetas de nivel pedagógicas y carrusel de alumnos
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se implementó la Fase 3 de la hoja de ruta de inspiración iDoceo: el selector visual de rúbricas individual y masivo con diseño pedagógico y carrusel de alumnos (`RubricEvaluationView.swift` y `RubricsStyle.swift`).
+  2. Tarjetas de nivel pedagógicas (`RubricLevelPill`): diseño de 4 niveles diferenciados con paleta semántica (`Sobresaliente` esmeralda ≥80%, `Notable` azul 60-80%, `Aprobado` naranja 40-60%, `Insuficiente` rojo <40%). En reposo ofrecen fondo sutil pastel al 7% (`opacity(0.07)`), mientras que al seleccionarse adquieren relleno sólido de alto contraste, borde reforzado de 2pt, sombra difuminada y pastilla monospaced de puntos (`Text("\(ptsText) pts").monospacedDigit()`).
+  3. Carrusel de navegación de alumnos en cabecera: controles táctiles `‹` y `›` (44×44pt), cálculo reactivo de posición («Alumno X de N»), avatar con iniciales del estudiante, atajos de teclado de hardware (`⌘←` y `⌘→`) y tooltips nativos.
+  4. Flujo continuo de evaluación y persistencia reactiva: métodos `saveAndNavigate(to:)` y `saveAndNextOrFinish()` que guardan la calificación actual de forma manual en base de datos (`bridge.saveRubricEvaluation`), actualizan el contexto del coordinador (`RubricEvaluationCoordinator`), refrescan el cuaderno y cargan al siguiente alumno en la secuencia sin cerrar ni parpadear la modal (`isNotebookRubricAutoAdvanceActive`). Al llegar al último alumno, el botón transmuta a «Guardar y finalizar» con color esmeralda de éxito y cierre limpio.
+  5. Barra de acción inferior ergonómica: ancho acotado a 760pt, layout adaptativo con `ViewThatFits` para iPad/macOS y pantallas compactas, barra de progreso lineal de criterios calificados (`X de Y criterios`, porcentaje y nota provisional) y botón secundario «Guardar».
+  6. Anillo de calificación en tiempo real y pastilla cualitativa: `RubricScoreRing` animado y función `qualitativeGradeBand(for:)` que clasifica la nota en escala LOMLOE oficial (Sobresaliente, Notable, Bien, Suficiente, Insuficiente) con color semántico.
+  7. Chips de estado por criterio en `RubricCriterionRow`: distintivo visual con el nivel seleccionado (`✓ Nivel X · Y pts`) o indicador `Pendiente` en gris punteado junto al peso porcentual del criterio.
+- Por qué importa: Transforma la evaluación cualitativa y competencial por rúbricas en una experiencia táctil intuitiva, rápida y pedagógica idéntica al estándar de oro de iDoceo, eliminando la fricción de tener que abrir y cerrar la rúbrica para cada alumno de la clase.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/RubricEvaluationView.swift` (carrusel de alumnos, barra inferior, chips de criterio, atajos y coordinación de persistencia)
+  - `kmp/iosApp/App/RubricsStyle.swift` (tarjetas `RubricLevelPill`, tokens de nivel, paleta pedagógica de 4 tramos y tipografía monospaced)
+- Validación realizada:
+  - Compilación nativa y verificación completa con `./scripts/verify_apple_builds.sh` (macOS Native y iOS Simulator OK).
+  - Auditoría técnica y de diseño con subagente revisor (`reviewer` - APROBADO, 100% de cumplimiento Apple HIG y touch targets ≥44pt).
+  - Auditoría de integración Git con subagente `janitor` (SEGURO PROCEDER AL MERGE, fast-forward verificado).
+
 ## Avance 2026-09-08 - Fase 2 del rediseño estilo iDoceo: dock táctil de calificación rápida con teclado 0-10 y avance automático
 
 Resumen:

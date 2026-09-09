@@ -668,6 +668,7 @@ private struct NotebookStatefulEditableTableCell: View {
     @State private var physicalScore: Double?
     @State private var isResolvingPhysicalScore = false
     @State private var physicalScoreRequestID = UUID()
+    @State private var lastExternalReloadTime: Date = .distantPast
 
     private var cellId: String {
         "\(item.student.id)|\(column.id)"
@@ -733,8 +734,12 @@ private struct NotebookStatefulEditableTableCell: View {
             saveFocusedDraftIfNeeded(requireFocusReleased: false)
         }
         .appOnChange(of: reloadToken) { _ in
+            lastExternalReloadTime = Date()
             loadDraftsUnlessEditing()
             refreshPhysicalScore()
+        }
+        .appOnChange(of: displaySnapshot) { _ in
+            loadDraftsUnlessEditing()
         }
         .appOnChange(of: focusedCellId.wrappedValue) { newValue in
             if newValue == cellId {
@@ -1681,7 +1686,8 @@ private struct NotebookStatefulEditableTableCell: View {
         guard hasLoadedDrafts,
               activeChoiceCellId != cellId,
               !isNumericKeyboardPresented,
-              !showTextPopover
+              !showTextPopover,
+              Date().timeIntervalSince(lastExternalReloadTime) > 0.5
         else { return }
         if requireFocusReleased && focusedCellId.wrappedValue == cellId {
             return

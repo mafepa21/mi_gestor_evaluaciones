@@ -1450,6 +1450,50 @@ class NotebookViewModel(
         attachmentUris: List<String> = emptyList(),
     ) {
         val classId = activeClassId ?: return
+
+        // Actualización optimista inmediata en memoria para que la UI responda al instante
+        updateDataState { currentState ->
+            val updatedRows = currentState.sheet.rows.map { row ->
+                if (row.student.id == studentId) {
+                    val resolvedIcon = if (iconValue?.isBlank() == true) null else iconValue
+                    val updatedPersistedCells = row.persistedCells.map { cell ->
+                        if (cell.columnId == columnId) {
+                            val currentAnnotation = cell.annotation
+                            val finalIcon = resolvedIcon ?: (if (iconValue != null) null else currentAnnotation?.icon)
+                            val finalNote = note ?: currentAnnotation?.note
+                            val newAnnotation = NotebookCellAnnotation(
+                                note = finalNote,
+                                icon = finalIcon,
+                                colorHex = currentAnnotation?.colorHex,
+                                attachmentUris = if (attachmentUris.isNotEmpty()) attachmentUris else (currentAnnotation?.attachmentUris ?: emptyList())
+                            )
+                            cell.copy(
+                                iconValue = finalIcon,
+                                annotation = newAnnotation
+                            )
+                        } else cell
+                    }
+                    val hasCell = updatedPersistedCells.any { it.columnId == columnId }
+                    val finalCells = if (!hasCell) {
+                        val newAnnotation = NotebookCellAnnotation(
+                            note = note,
+                            icon = resolvedIcon,
+                            attachmentUris = attachmentUris
+                        )
+                        updatedPersistedCells + PersistedNotebookCell(
+                            classId = classId,
+                            studentId = studentId,
+                            columnId = columnId,
+                            iconValue = resolvedIcon,
+                            annotation = newAnnotation
+                        )
+                    } else updatedPersistedCells
+                    row.copy(persistedCells = finalCells)
+                } else row
+            }
+            currentState.copy(sheet = currentState.sheet.copy(rows = updatedRows))
+        }
+
         scope.launch {
             try {
                 notebookRepository.saveCell(
@@ -1460,8 +1504,7 @@ class NotebookViewModel(
                     iconValue = iconValue,
                     attachmentUris = attachmentUris
                 )
-                // No selectClass: la anotación es metadata de celda.
-                // El observer de grades/cells detectará el cambio y actualizará el estado.
+                NotebookRefreshBus.emitRefresh()
             } catch (e: Exception) {
                 println("Error saving notebook cell annotation: ${e.message}")
             }

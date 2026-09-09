@@ -12753,6 +12753,25 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    private func sanitizePersistedCellText(_ text: String, columnType: NotebookColumnType?) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard columnType != .icon else { return trimmed }
+
+        // Si es un nombre crudo de símbolo SF (ej. "trophy.fill", "star.fill")
+        if NotebookCellStampCatalog.item(for: trimmed) != nil || trimmed.hasSuffix(".fill") {
+            return ""
+        }
+
+        // Si contiene un símbolo crudo concatenado (ej. "9 trophy.fill")
+        for stamp in NotebookCellStampCatalog.allStamps {
+            if trimmed.contains(stamp.symbol) {
+                let cleaned = trimmed.replacingOccurrences(of: stamp.symbol, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                return cleaned
+            }
+        }
+        return trimmed
+    }
+
     private func notebookCellValueIndex() -> NotebookCellValueIndex? {
         guard let data = notebookState as? NotebookUiStateData else { return nil }
         let stateIdentity = ObjectIdentifier(data)
@@ -12762,18 +12781,25 @@ final class KmpBridge: ObservableObject {
 
         var index = NotebookCellValueIndex()
 
+        let columnTypesById = Dictionary(
+            data.sheet.columns.map { ($0.id, $0.type) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
         for row in data.sheet.rows {
             let studentId = row.student.id
 
             for persisted in row.persistedCells {
                 let key = cellKey(studentId: studentId, columnId: persisted.columnId)
+                let columnType = columnTypesById[persisted.columnId]
+
                 if let display = persisted.displayValue, !display.isEmpty {
-                    index.displayByKey[key] = display
+                    index.displayByKey[key] = sanitizePersistedCellText(display, columnType: columnType)
                 }
-                if let icon = persisted.iconValue, !icon.isEmpty {
+                if columnType == .icon, let icon = persisted.iconValue, !icon.isEmpty {
                     index.textByKey[key] = icon
                 } else if let text = persisted.textValue, !text.isEmpty {
-                    index.textByKey[key] = text
+                    index.textByKey[key] = sanitizePersistedCellText(text, columnType: columnType)
                 } else if let ordinal = persisted.ordinalValue, !ordinal.isEmpty {
                     index.textByKey[key] = ordinal
                 } else {

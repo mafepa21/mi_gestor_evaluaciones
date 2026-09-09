@@ -323,8 +323,8 @@ struct NotebookCellStampPickerPopover: View {
                 if initialIcon != nil || selectedStampId != nil {
                     Button(role: .destructive) {
                         selectedStampId = nil
-                        feedbackNote = ""
-                        onSave(nil, nil)
+                        let noteToKeep = feedbackNote.trimmingCharacters(in: .whitespacesAndNewlines)
+                        onSave(nil, noteToKeep.isEmpty ? nil : noteToKeep)
                         onClose()
                     } label: {
                         HStack(spacing: 5) {

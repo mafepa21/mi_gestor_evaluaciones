@@ -1952,6 +1952,7 @@ struct NotebookModuleView: View {
                 cellStampRequest = nil
             }
         )
+        .id(request.id)
     }
 
     func openCellStampPicker(for item: NotebookTableRow, column: NotebookColumnDefinition) {

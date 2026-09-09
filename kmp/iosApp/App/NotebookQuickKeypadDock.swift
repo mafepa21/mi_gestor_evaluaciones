@@ -207,6 +207,8 @@ struct NotebookQuickKeypadDock: View {
                             Circle()
                                 .stroke(EvaluationDesign.accent.opacity(0.25), lineWidth: 1)
                         )
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Sello formativo e icono")

@@ -771,6 +771,21 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-09-09 - Reactividad inmediata y retención optimista en celdas numéricas y de observación (iPad / Mac)
+
+Resumen:
+- Qué cambio se hizo:
+  1. En `KmpBridge.swift`, se incorporaron almacenes locales de borradores optimistas (`optimisticGradeDrafts` y `optimisticTextDrafts`) registrados síncronamente en `saveColumnGrade` / `saveColumnGradeDebounced` y volcados directamente sobre los índices de celda y accesores (`numericGradeText` y `cellText`), neutralizando el retraso de 150 ms del flujo asíncrono KMP.
+  2. En `NotebookModuleGridCells.swift`, se reconectó el snapshot de celdas de texto y observación en `default:` a `displayValue(for: item, column: column)` para consultar los borradores y accesores del puente en lugar de leer valores persistidos desactualizados.
+  3. En `NotebookEditableTableCell.swift`, se implementó retención optimista mediante `pendingNumericDraft` y `pendingTextDraft` que previene que recargas inmediatas de fila sobrescriban borradores locales antes de que el snapshot se asiente, se añadió sincronización en vivo mientras se teclea y se eliminó la restricción temporal de 500 ms que descartaba guardados legítimos al perder el foco.
+  4. En `NotebookViewModel.kt`, se ajustó la condición de actualización de `row.cells` en `updateDraft` para reconocer columnas asociadas por `evaluationId` aunque su `columnId` no posea el prefijo sintético `eval_`.
+- Por qué importa: elimina por completo el síntoma de valores que desaparecen o tardan en aparecer al editar notas numéricas o textos de observación en iPad y Mac, proporcionando una experiencia de introducción de datos totalmente fluida, nativa e instantánea.
+- Dónde vive el cambio: `kmp/iosApp/App/KmpBridge.swift`, `kmp/iosApp/App/NotebookModuleGridCells.swift`, `kmp/iosApp/App/NotebookEditableTableCell.swift` y `kmp/shared/src/commonMain/kotlin/com/migestor/shared/viewmodel/NotebookViewModel.kt`.
+- Validación realizada: `:shared:desktopTest` ejecutado con éxito (BUILD SUCCESSFUL, 108 tests verdes); `:shared:compileKotlinIosSimulatorArm64` exitoso; `./scripts/verify_apple_builds.sh` compiló correctamente macOS Native / Catalyst e iOS Simulator tras regenerar el proyecto XcodeGen.
+
+Notas para futuras conversaciones:
+- Cuando Swift invoca métodos de guardado en el ViewModel KMP, la propagación de vuelta a través de `Flow.asAsyncSequence` y el debounce del subject en Swift introduce una ventana de latencia (150 ms+). Para operaciones donde la UI de SwiftUI reacciona de inmediato (0 ms), es esencial mantener un almacenamiento optimista local en Swift hasta que la emisión del flujo confirme la persistencia.
+
 ### 2026-09-09 - Corrección de controles en Planificador iPad y guardado/renderizado de notas y sellos en Cuaderno (iPad/macOS)
 
 Resumen:

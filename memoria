@@ -3,6 +3,42 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-09 - Fase 8 del rediseño estilo iDoceo: Ficha 360º del Alumno con carrusel rápido, 5 pestañas pedagógicas integradas, salud EF e insights locales de Apple Intelligence
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se implementó la Fase 8 de la hoja de ruta de inspiración iDoceo: la Ficha 360º del Alumno (`StudentProfile360Sheet.swift`), una vista integral y multifacética que consolida toda la información académica, formativa, asistencial y personal del estudiante sin salir del flujo de trabajo.
+  2. Cabecera de identidad visual y carrusel de navegación ultra-rápido:
+     - Avatar con monograma de iniciales y anillo dinámico perimetral según estado (rojo si está lesionado, naranja ante alertas de absentismo o conducta, verde en estado normal).
+     - Datos del alumno: nombre completo, indicador de posición («Alumno X de N»), curso/grupo, badge de seguimiento físico y botón de correo electrónico seguro (`mailto:`) con sanitización y codificación de URLs.
+     - Carrusel táctil con botones `‹` y `›` (touch targets de 44×44pt, `.contentShape(Circle())`), atajos de teclado de hardware `⌘←` y `⌘→` y recambio de instancia mediante `.task(id: studentId)` y `.id(studentId)`.
+  3. Cinco pestañas temáticas 360º (`StudentProfile360Tab`):
+     - *Académico*: tarjeta heroica con la nota media ponderada actual, pastilla cualitativa LOMLOE (Sobresaliente, Notable, Bien, Suficiente, Insuficiente), barra comparativa contra la media del grupo con cálculo de delta relativo, desglose analítico de todas las columnas activas del cuaderno con sus tipos/notas, y colección visual de sellos formativos recibidos (`NotebookCellStampBadge`).
+     - *Asistencia*: porcentaje de asistencia global con etiqueta de estado semántica («Regular», «Atención», «Alerta absentismo»), tarjetas métricas de ausencias/retrasos y cronograma reciente de registros con iconos y notas.
+     - *Tutoría*: resumen de incidencias disciplinarias con títulos y observaciones, registro histórico de entrevistas con familias y botón de alta rápida («+ Añadir») enlazado con la modal `TutoringSessionFormSheet`.
+     - *Salud y Apoyo*: tarjeta de Educación Física con botón interactivo de un toque para activar/retirar limitación motriz o lesión (`toggleInjury` vía `bridge.updateStudentInjuryStatus`), junto al catálogo de medidas de respuesta educativa Nivel III/IV (NEAE) activas y retiradas.
+     - *Insights IA*: generación de resúmenes cualitativos con Apple Intelligence local (`AppleAIOrchestrator` con `capability: .studentInsight`), con indicador de progreso interactivo y recomendaciones pedagógicas orientadas a la acción docente y entrevistas tutoriales.
+  4. Botón de exportación rápida («Copiar resumen»):
+     - Genera un informe estructurado en texto plano con el balance académico, asistencia, tutoría y salud para copiar al portapapeles en un toque (`UIPasteboard` / `NSPasteboard`).
+     - Feedback háptico (`UIImpactFeedbackGenerator`) y confirmación visual inmediata durante 2 segundos (`checkmark.circle.fill`).
+  5. Integración transversal en el Cuaderno y Plano:
+     - Menú contextual de la fila de alumno en el Cuaderno (`fixedRowCell` en `NotebookModuleOrganization.swift`): opción «Ficha 360º del alumno…» con icono `person.text.rectangle.fill`.
+     - Plano de clase (`NotebookSeatingPlanView.swift`): botón «Ficha 360º» en el banner interactivo superior de alumno activo.
+     - Presentación adaptativa con detents `.large` en iOS/iPadOS y ventana modal fija en macOS (`680×740 pt`).
+- Por qué importa: Cumple una de las mayores fortalezas históricas de iDoceo, dotando al docente de una visión holística de 360 grados de cada alumno a un solo toque o atajo de teclado, permitiendo responder preguntas de familias, orientadores o jefatura de estudios al instante sin tener que bucear por múltiples módulos separados.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/StudentProfile360Sheet.swift` (componente modal integral 360º con 5 tabs y carrusel)
+  - `kmp/iosApp/App/NotebookModuleTypes.swift` (definición de `StudentProfile360Request`)
+  - `kmp/iosApp/App/NotebookModuleView.swift` (estado, presentación modal, resolución de alumnos y cálculo de media de clase)
+  - `kmp/iosApp/App/NotebookModuleOrganization.swift` (menú contextual en `fixedRowCell`)
+  - `kmp/iosApp/App/NotebookSeatingPlanView.swift` (botón en el banner interactivo superior)
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` (registro en proyecto Xcode)
+- Validación realizada:
+  - Compilación dual verificada y exitosa con `./scripts/verify_apple_builds.sh` en macOS Native (`MiGestorKMPMac`) e iOS Simulator (`MiGestorKMPiOS`).
+  - Revisión exhaustiva con subagente `reviewer` (dictamen: APROBADO tras resolver touch targets $\ge 44$pt, sanitización de `mailto:` y conexión de `TutoringSessionFormSheet`).
+  - Auditoría read-only de ramas y commits con subagente `janitor` (dictamen: 🟢 SEGURO PROCEDER AL MERGE).
+  - Fusión por fast-forward a `develop` (commits `2bedde6` y `ba33810`) y eliminación segura de la rama `codex/student-profile-360`.
+
 ## Avance 2026-09-09 - Fase 7 del rediseño estilo iDoceo: sellos formativos e iconos rápidos en celdas con catálogo pedagógico, micro-badges en relieve y avance masivo
 
 Resumen:

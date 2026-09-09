@@ -857,7 +857,8 @@ extension NotebookModuleView {
         case .attendance:
             return NotebookCellDisplaySnapshot(text: displayValue(for: item, column: column))
         default:
-            return NotebookCellDisplaySnapshot(text: persistedCell?.textValue ?? persistedCell?.displayValue ?? "")
+            let val = displayValue(for: item, column: column)
+            return NotebookCellDisplaySnapshot(text: !val.isEmpty ? val : (persistedCell?.textValue ?? persistedCell?.displayValue ?? ""))
         }
     }
 

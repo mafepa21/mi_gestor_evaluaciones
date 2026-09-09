@@ -658,6 +658,8 @@ private struct NotebookStatefulEditableTableCell: View {
     @State private var originalTextDraft = ""
     @State private var originalCheckDraft = false
     @State private var pendingCheckDraft: Bool?
+    @State private var pendingNumericDraft: String?
+    @State private var pendingTextDraft: String?
     @State private var numericDragStartValue: Double?
     @State private var numericDragLastWholeValue: Int?
     @State private var isNumericDragging = false
@@ -746,6 +748,23 @@ private struct NotebookStatefulEditableTableCell: View {
                 onSelect()
             } else {
                 saveFocusedDraftIfNeeded()
+            }
+        }
+        .appOnChange(of: textDraft) { newText in
+            guard focusedCellId.wrappedValue == cellId else { return }
+            if originalTextDraft != newText {
+                pendingTextDraft = newText
+                actions.saveColumnGradeDebounced(item.student.id, column, newText)
+            }
+        }
+        .appOnChange(of: numericDraft) { newNumeric in
+            guard focusedCellId.wrappedValue == cellId else { return }
+            let trimmed = newNumeric.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || (!trimmed.hasSuffix(",") && !trimmed.hasSuffix(".") && Double(trimmed.replacingOccurrences(of: ",", with: ".")) != nil) {
+                if originalNumericDraft != trimmed {
+                    pendingNumericDraft = trimmed
+                    actions.saveColumnGradeDebounced(item.student.id, column, trimmed)
+                }
             }
         }
     }
@@ -1547,9 +1566,30 @@ private struct NotebookStatefulEditableTableCell: View {
             }
             originalTextDraft = textDraft
         case .ordinal, .text, .icon:
-            textDraft = cell?.textValue ?? cell?.displayValue ?? ""
+            let resolvedSnapshotText = !displaySnapshot.text.isEmpty ? displaySnapshot.text : (cell?.textValue ?? cell?.displayValue ?? "")
+            if let pendingTextDraft {
+                if resolvedSnapshotText == pendingTextDraft {
+                    self.pendingTextDraft = nil
+                } else {
+                    textDraft = pendingTextDraft
+                    originalTextDraft = pendingTextDraft
+                    hasLoadedDrafts = true
+                    return
+                }
+            }
+            textDraft = resolvedSnapshotText
             originalTextDraft = textDraft
         case .numeric:
+            if let pendingNumericDraft {
+                if displaySnapshot.numericText == pendingNumericDraft {
+                    self.pendingNumericDraft = nil
+                } else {
+                    numericDraft = pendingNumericDraft
+                    originalNumericDraft = pendingNumericDraft
+                    hasLoadedDrafts = true
+                    return
+                }
+            }
             numericDraft = displaySnapshot.numericText
             originalNumericDraft = numericDraft
         default:
@@ -1574,6 +1614,7 @@ private struct NotebookStatefulEditableTableCell: View {
         if originalNumericDraft != numericDraft {
             onPrepareUndo(originalNumericDraft, originalNumericDraft)
             originalNumericDraft = numericDraft
+            pendingNumericDraft = numericDraft
             if immediate || column.inputKind == .time {
                 actions.flushPendingColumnGradeSave(item.student.id, column.id)
                 actions.saveColumnGrade(item.student.id, column, numericDraft)
@@ -1600,6 +1641,7 @@ private struct NotebookStatefulEditableTableCell: View {
         if originalTextDraft != textDraft {
             onPrepareUndo(originalTextDraft, originalTextDraft)
             originalTextDraft = textDraft
+            pendingTextDraft = textDraft
             if immediate {
                 actions.flushPendingColumnGradeSave(item.student.id, column.id)
                 actions.saveColumnGrade(item.student.id, column, textDraft)
@@ -1686,8 +1728,7 @@ private struct NotebookStatefulEditableTableCell: View {
         guard hasLoadedDrafts,
               activeChoiceCellId != cellId,
               !isNumericKeyboardPresented,
-              !showTextPopover,
-              Date().timeIntervalSince(lastExternalReloadTime) > 0.5
+              !showTextPopover
         else { return }
         if requireFocusReleased && focusedCellId.wrappedValue == cellId {
             return
@@ -1695,9 +1736,13 @@ private struct NotebookStatefulEditableTableCell: View {
 
         switch column.type {
         case .numeric:
-            saveNumeric(selectsCell: false, immediate: true)
+            if originalNumericDraft != numericDraft {
+                saveNumeric(selectsCell: false, immediate: true)
+            }
         case .text, .icon:
-            saveText(selectsCell: false, immediate: true)
+            if originalTextDraft != textDraft {
+                saveText(selectsCell: false, immediate: true)
+            }
         default:
             break
         }

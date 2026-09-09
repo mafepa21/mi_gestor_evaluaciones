@@ -998,7 +998,7 @@ class NotebookViewModel(
                 if (row.student.id == studentId) {
                     val column = currentState.sheet.columns.firstOrNull { it.id == columnId }
                     val updatedCells = row.cells.map { cell ->
-                        if (cell.evaluationId != null && columnId == "eval_${cell.evaluationId}") {
+                        if (cell.evaluationId != null && (columnId == "eval_${cell.evaluationId}" || column?.evaluationId == cell.evaluationId)) {
                             cell.copy(value = parseNotebookNumericValue(column?.inputKind, valStr))
                         } else cell
                     }

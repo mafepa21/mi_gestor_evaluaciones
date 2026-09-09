@@ -258,6 +258,9 @@ extension NotebookModuleView {
             onStartAtFirstStudent: {
                 startKeypadAtFirstStudent(data: data, rows: rows)
             },
+            onOpenStamps: {
+                openCellStampPickerForSelection(data: data, rows: rows)
+            },
             onClose: {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
                     isQuickKeypadPresented = false

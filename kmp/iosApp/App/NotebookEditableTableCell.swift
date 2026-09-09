@@ -697,26 +697,17 @@ private struct NotebookStatefulEditableTableCell: View {
                 VStack {
                     HStack {
                         Spacer()
-                        HStack(spacing: 4) {
-                            if let icon = persistedCell.annotation?.icon ?? persistedCell.iconValue, !icon.isEmpty {
-                                Text(icon)
-                            }
-                            let attachmentCount = persistedCell.annotation?.attachmentUris.count ?? 0
-                            if attachmentCount > 0 {
-                                Text("\(attachmentCount)")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(tint.opacity(0.14))
+                        NotebookCellStampBadge(
+                            iconValue: persistedCell.annotation?.icon ?? persistedCell.iconValue,
+                            note: persistedCell.annotation?.note,
+                            attachmentCount: persistedCell.annotation?.attachmentUris.count ?? 0,
+                            fallbackTint: tint,
+                            studentName: item.student.fullName
                         )
                     }
                     Spacer()
                 }
-                .padding(6)
+                .padding(4)
             }
 
             cellStateOverlay
@@ -1982,26 +1973,17 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
                 VStack {
                     HStack {
                         Spacer()
-                        HStack(spacing: 4) {
-                            if let icon = persistedCell.annotation?.icon ?? persistedCell.iconValue, !icon.isEmpty {
-                                Text(icon)
-                            }
-                            let attachmentCount = persistedCell.annotation?.attachmentUris.count ?? 0
-                            if attachmentCount > 0 {
-                                Text("\(attachmentCount)")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(tint.opacity(0.14))
+                        NotebookCellStampBadge(
+                            iconValue: persistedCell.annotation?.icon ?? persistedCell.iconValue,
+                            note: persistedCell.annotation?.note,
+                            attachmentCount: persistedCell.annotation?.attachmentUris.count ?? 0,
+                            fallbackTint: tint,
+                            studentName: item.student.fullName
                         )
                     }
                     Spacer()
                 }
-                .padding(6)
+                .padding(4)
             }
 
             cellStateOverlay

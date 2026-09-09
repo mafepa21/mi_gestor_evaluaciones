@@ -106,6 +106,7 @@ struct NotebookModuleView: View {
     @State var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
     @State var columnStatisticsRequest: NotebookColumnStatisticsRequest? = nil
+    @State var cellStampRequest: NotebookCellStampRequest? = nil
     @State var isAverageConfigurationPresented = false
     @State var averageExplanationRow: NotebookTableRow? = nil
     @State var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
@@ -1312,6 +1313,9 @@ struct NotebookModuleView: View {
                         classTitle: activeClassLabel
                     )
                 }
+                .sheet(item: $cellStampRequest) { request in
+                    cellStampSheet(request: request, data: data)
+                }
                 .sheet(isPresented: $isAverageConfigurationPresented) {
                     NotebookAverageEditorSheet(
                         classTitle: activeClassLabel,
@@ -1865,6 +1869,145 @@ struct NotebookModuleView: View {
             Text("No se encontró la columna")
                 .padding()
         }
+    }
+
+    @ViewBuilder
+    func cellStampSheet(request: NotebookCellStampRequest, data: NotebookUiStateData) -> some View {
+        let rows = filteredRows(data: data)
+        let currentIndex = rows.firstIndex(where: { $0.student.id == request.studentId })
+        let studentIndex = currentIndex.map { $0 + 1 }
+        let totalStudents = rows.count
+        let canAdvance = currentIndex != nil && currentIndex! + 1 < rows.count
+        let student = rows.first(where: { $0.student.id == request.studentId })?.student
+        let studentInitials = student.map { initials(for: $0) } ?? "—"
+        let category = data.sheet.columnCategories.first(where: { $0.id == request.column.categoryId })
+        let categoryColor = category.map { tint(for: $0) }
+
+        NotebookCellStampPickerPopover(
+            studentName: request.studentName,
+            studentInitials: studentInitials,
+            studentIndex: studentIndex,
+            totalStudents: totalStudents,
+            columnTitle: request.column.title,
+            columnSystemIcon: columnSystemIcon(for: request.column),
+            categoryTint: categoryColor,
+            currentValueText: request.currentValueText,
+            initialIcon: request.currentIcon,
+            initialNote: request.currentNote,
+            canAdvance: canAdvance,
+            onSave: { icon, note in
+                let currentItem = rows.first(where: { $0.student.id == request.studentId })
+                let persistedCell = currentItem?.row.persistedCells.first(where: { $0.columnId == request.column.id })
+                let currentAttachments = persistedCell?.annotation?.attachmentUris ?? []
+                bridge.saveNotebookCellAnnotation(
+                    studentId: request.studentId,
+                    columnId: request.column.id,
+                    note: note ?? "",
+                    iconValue: icon,
+                    attachmentUris: currentAttachments
+                )
+                reloadNotebookRow(request.studentId)
+                if let icon, let item = NotebookCellStampCatalog.item(for: icon) {
+                    showToast("Sello \(item.title) guardado", style: .success)
+                } else if icon == nil {
+                    showToast("Sello eliminado", style: .neutral)
+                } else {
+                    showToast("Anotación guardada", style: .success)
+                }
+            },
+            onSaveAndAdvance: { icon, note in
+                let currentItem = rows.first(where: { $0.student.id == request.studentId })
+                let persistedCell = currentItem?.row.persistedCells.first(where: { $0.columnId == request.column.id })
+                let currentAttachments = persistedCell?.annotation?.attachmentUris ?? []
+                bridge.saveNotebookCellAnnotation(
+                    studentId: request.studentId,
+                    columnId: request.column.id,
+                    note: note ?? "",
+                    iconValue: icon,
+                    attachmentUris: currentAttachments
+                )
+                reloadNotebookRow(request.studentId)
+
+                if let currentIndex, currentIndex + 1 < rows.count {
+                    let nextRow = rows[currentIndex + 1]
+                    let nextPersistedCell = nextRow.row.persistedCells.first(where: { $0.columnId == request.column.id })
+                    let nextIcon = nextPersistedCell?.annotation?.icon ?? nextPersistedCell?.iconValue
+                    let nextNote = nextPersistedCell?.annotation?.note
+                    let nextValue = displayValue(for: nextRow, column: request.column)
+                    cellStampRequest = NotebookCellStampRequest(
+                        studentId: nextRow.student.id,
+                        studentName: nextRow.student.fullName,
+                        column: request.column,
+                        currentIcon: nextIcon,
+                        currentNote: nextNote,
+                        currentValueText: nextValue.isEmpty ? nil : nextValue
+                    )
+                    showToast("Sello guardado · Siguiente: \(nextRow.student.fullName)", style: .info)
+                } else {
+                    cellStampRequest = nil
+                    showToast("¡Último alumno de la clase sellado!", style: .success)
+                }
+            },
+            onClose: {
+                cellStampRequest = nil
+            }
+        )
+    }
+
+    func openCellStampPicker(for item: NotebookTableRow, column: NotebookColumnDefinition) {
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let icon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
+        let note = persistedCell?.annotation?.note
+        let currentValue = displayValue(for: item, column: column)
+        cellStampRequest = NotebookCellStampRequest(
+            studentId: item.student.id,
+            studentName: item.student.fullName,
+            column: column,
+            currentIcon: icon,
+            currentNote: note,
+            currentValueText: currentValue.isEmpty ? nil : currentValue
+        )
+    }
+
+    func openCellStampPickerForSelection(data: NotebookUiStateData, rows: [NotebookTableRow]) {
+        guard let selected = selectedNotebookCell(data: data) else { return }
+        openCellStampPicker(for: selected.row, column: selected.column)
+    }
+
+    func applyQuickStamp(_ stamp: NotebookStampItem, for item: NotebookTableRow, column: NotebookColumnDefinition) {
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let note = persistedCell?.annotation?.note ?? ""
+        let attachmentUris = persistedCell?.annotation?.attachmentUris ?? []
+        bridge.saveNotebookCellAnnotation(
+            studentId: item.student.id,
+            columnId: column.id,
+            note: note,
+            iconValue: stamp.symbol,
+            attachmentUris: attachmentUris
+        )
+        reloadNotebookRow(item.student.id)
+        showToast("Sello \(stamp.title) aplicado", style: .success)
+    }
+
+    func removeStamp(for item: NotebookTableRow, column: NotebookColumnDefinition) {
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let note = persistedCell?.annotation?.note ?? ""
+        let attachmentUris = persistedCell?.annotation?.attachmentUris ?? []
+        bridge.saveNotebookCellAnnotation(
+            studentId: item.student.id,
+            columnId: column.id,
+            note: note,
+            iconValue: nil,
+            attachmentUris: attachmentUris
+        )
+        reloadNotebookRow(item.student.id)
+        showToast("Sello eliminado", style: .neutral)
+    }
+
+    func hasStampOrIcon(item: NotebookTableRow, column: NotebookColumnDefinition) -> Bool {
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let icon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
+        return icon != nil && !(icon?.isEmpty ?? true)
     }
 
     func formulaReferenceColumns(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> [NotebookColumnDefinition] {

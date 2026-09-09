@@ -748,6 +748,35 @@ extension NotebookModuleView {
                             notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
                         }
                     }
+
+                    Divider()
+
+                    Button {
+                        openCellStampPicker(for: item, column: column)
+                    } label: {
+                        Label("Sellos formativos e icono…", systemImage: "seal.fill")
+                    }
+
+                    Menu {
+                        ForEach(NotebookCellStampCatalog.quickStamps) { stamp in
+                            Button {
+                                applyQuickStamp(stamp, for: item, column: column)
+                            } label: {
+                                Label(stamp.title, systemImage: stamp.symbol)
+                            }
+                        }
+
+                        if hasStampOrIcon(item: item, column: column) {
+                            Divider()
+                            Button(role: .destructive) {
+                                removeStamp(for: item, column: column)
+                            } label: {
+                                Label("Quitar sello", systemImage: "trash")
+                            }
+                        }
+                    } label: {
+                        Label("Sellos rápidos", systemImage: "sparkles")
+                    }
                 }
             )
         case .collapsedCategory(let category, let columns):

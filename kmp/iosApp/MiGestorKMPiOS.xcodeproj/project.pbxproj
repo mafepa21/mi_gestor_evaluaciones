@@ -104,6 +104,7 @@
 		3433239DDE5DF8DCB8F79FF5 /* ScheduleGridPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B18D4606AA037B05A26A0280 /* ScheduleGridPDFRenderer.swift */; };
 		354BB6C805B6D3C6D26BB358 /* OnboardingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A92D241217A257758C98B290 /* OnboardingModels.swift */; };
 		35AF2B7E59ACB518BD851B4F /* NotebookCompactCommandBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B06388784ADA4E7EFF4FDB4 /* NotebookCompactCommandBar.swift */; };
+		35CE08146C413A10B6E6B72A /* NotebookCellStampCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06247DBCEF5FCAED33273150 /* NotebookCellStampCatalog.swift */; };
 		36BAB911C91FE8E529E29FE4 /* MacBackupsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320C2ED322845177EEDADD11 /* MacBackupsView.swift */; };
 		37F6AA5AB648A3885DEB6A1B /* PhysicalTestsImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F2744A2DF80ACFD0C00A1B /* PhysicalTestsImportPreviewSheet.swift */; };
 		380C5B0861247861C8158E36 /* LearningSituationDocumentImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */; };
@@ -224,6 +225,7 @@
 		6AC60723A6667FC8BB3DA923 /* OnboardingWelcomeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF237B13A7306DC8C6367BA /* OnboardingWelcomeSheet.swift */; };
 		6BE839B846E6739DA1A6885C /* AppleRoundedCorner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */; };
 		6CDD16F9ECA1589E81197BE4 /* DataSecuritySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C680A5ECE29A5E0CA5322A5A /* DataSecuritySettingsView.swift */; };
+		6D4D3F60E9631811986A464B /* NotebookCellStampCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06247DBCEF5FCAED33273150 /* NotebookCellStampCatalog.swift */; };
 		6F170E23E65199E795252101 /* NotebookFormulaEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82F349363D7DF9A0AD8CAD85 /* NotebookFormulaEvaluator.swift */; };
 		6F2534D44F3E87C86FBE5D2A /* PhysicalTestsMacInspectorState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C204C96BEAF51A14E6B410E /* PhysicalTestsMacInspectorState.swift */; };
 		6F49EEE801275B14334675CB /* MacPremiumComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD37D3647E23B5BBF18CD01E /* MacPremiumComponents.swift */; };
@@ -470,6 +472,7 @@
 		EB8692353B0AC344E01C9875 /* PlannerSessionDetailLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F3CFF561EADCCA10B3E865F /* PlannerSessionDetailLayoutTests.swift */; };
 		EB95D68513C49C45CD4C381E /* OnboardingStudentsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED64B03A28FA13E012596D4E /* OnboardingStudentsSheet.swift */; };
 		EBA60E4775B5E9606BA03D00 /* SupportMeasureBulkImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E65AEB66C13E89107AA8BA /* SupportMeasureBulkImportSheet.swift */; };
+		EBCA0E3AEB4B84287049C33D /* NotebookCellStampPickerPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 731B64EEED706F209FBB0774 /* NotebookCellStampPickerPopover.swift */; };
 		EBDC0553FE5545D4E7C33846 /* AppleFoundationReportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27176C9EB76172D41191833D /* AppleFoundationReportService.swift */; };
 		EBFA14CB12EE422338F2C3F5 /* NotebookSkeletonGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55519476F175FF4B59F1AB21 /* NotebookSkeletonGridView.swift */; };
 		EC465FA1A3AA49BBF03CF1B5 /* AppleBackupModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B44EBC79907A49017DC0CD /* AppleBackupModels.swift */; };
@@ -492,6 +495,7 @@
 		F5B53E702D8FF43EAC82D921 /* AddColumnSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */; };
 		F5D4B655C174800ABAD76329 /* AppleFoundationAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */; };
 		F6B4E75C853D144083E2E482 /* MacTrackpadSwipeHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 365A0156DBB041D3F8FD72CC /* MacTrackpadSwipeHelper.swift */; };
+		F7AC808DFF08C94B78AACDCC /* NotebookCellStampPickerPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 731B64EEED706F209FBB0774 /* NotebookCellStampPickerPopover.swift */; };
 		F7E918819272BFAF7EDD8F70 /* NotebookManualVerification.md in Resources */ = {isa = PBXBuildFile; fileRef = A5BA7E894D6807678659569D /* NotebookManualVerification.md */; };
 		F812D370A189E21F84E08454 /* BackupStatusHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78E88B21BBD0EF622338678A /* BackupStatusHero.swift */; };
 		F87C4CB8E1252A911F0BEFA7 /* ScheduleImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2383FA2AFCB17CB773F8D8C /* ScheduleImportPreviewSheet.swift */; };
@@ -561,6 +565,7 @@
 /* Begin PBXFileReference section */
 		0176FC5D534ADFA4ACFC6F20 /* PlannerJournalDetailPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerJournalDetailPane.swift; sourceTree = "<group>"; };
 		05FB1EEE057F9F3861BEECD8 /* LearningSituationsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSituationsWorkspaceView.swift; sourceTree = "<group>"; };
+		06247DBCEF5FCAED33273150 /* NotebookCellStampCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookCellStampCatalog.swift; sourceTree = "<group>"; };
 		064505192DE6C78C8E8249B0 /* NotebookInspectorPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookInspectorPanel.swift; sourceTree = "<group>"; };
 		0998A4D4BC5E85BB92250336 /* SettingsDangerZoneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDangerZoneView.swift; sourceTree = "<group>"; };
 		09BF8CB77031070DE6567B1A /* ScheduleImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImportTests.swift; sourceTree = "<group>"; };
@@ -680,6 +685,7 @@
 		70F49432D42F3A8BBD54876B /* SelectiveWipeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectiveWipeSheet.swift; sourceTree = "<group>"; };
 		71BEA9C12B3B5D07B2227901 /* ScheduleImportCatalogResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImportCatalogResolver.swift; sourceTree = "<group>"; };
 		72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingEvaluationPickerSheet.swift; sourceTree = "<group>"; };
+		731B64EEED706F209FBB0774 /* NotebookCellStampPickerPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookCellStampPickerPopover.swift; sourceTree = "<group>"; };
 		73E80A05F8F203CF9F01667C /* PlannerFloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerFloatingTabBar.swift; sourceTree = "<group>"; };
 		74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadWorkspaceShell.swift; sourceTree = "<group>"; };
 		75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacCommandCenterCoordinator.swift; sourceTree = "<group>"; };
@@ -1086,6 +1092,8 @@
 				C20918D0AFE00F50C0378076 /* MiGestorKMPiOSApp.swift */,
 				6DFB7CB99B772BA64AA591A9 /* NotebookAICommentSheet.swift */,
 				F0BFD8699A1E65C7A09163CF /* NotebookAverageEditorSheet.swift */,
+				06247DBCEF5FCAED33273150 /* NotebookCellStampCatalog.swift */,
+				731B64EEED706F209FBB0774 /* NotebookCellStampPickerPopover.swift */,
 				808AE922E0187FD7FAEA5FFC /* NotebookClassPickerComponents.swift */,
 				A1BA1A353C3D0548CC0C2E8A /* NotebookColumnOrganizerSheet.swift */,
 				FDEB71116492CCC22B09906C /* NotebookColumnStatisticsSheet.swift */,
@@ -1543,6 +1551,8 @@
 				A975D4B3164F464D03F652F2 /* NotebookAICommentSheet.swift in Sources */,
 				5E50EE7F3003F322C2F4D083 /* NotebookAverageEditorSheet.swift in Sources */,
 				C21D9DEB8533954E1AA81B74 /* NotebookAverageExplanationView.swift in Sources */,
+				6D4D3F60E9631811986A464B /* NotebookCellStampCatalog.swift in Sources */,
+				F7AC808DFF08C94B78AACDCC /* NotebookCellStampPickerPopover.swift in Sources */,
 				24D47EF106F8AC88D8F44F8C /* NotebookClassPickerComponents.swift in Sources */,
 				27FDE45A8D5EE651EBCF9133 /* NotebookColumnOrganizerSheet.swift in Sources */,
 				2488DE46081B98631BCC334D /* NotebookColumnStatisticsSheet.swift in Sources */,
@@ -1778,6 +1788,8 @@
 				59234820B563D9BA8FB23DE3 /* NotebookAICommentSheet.swift in Sources */,
 				CB0E2E7A3AD5055CA273F5E5 /* NotebookAverageEditorSheet.swift in Sources */,
 				3DED37E337999E20D43E7C6F /* NotebookAverageExplanationView.swift in Sources */,
+				35CE08146C413A10B6E6B72A /* NotebookCellStampCatalog.swift in Sources */,
+				EBCA0E3AEB4B84287049C33D /* NotebookCellStampPickerPopover.swift in Sources */,
 				404152863CFAC7A84D37B872 /* NotebookClassPickerComponents.swift in Sources */,
 				BBC2E9E58A19DA750557519E /* NotebookColumnOrganizerSheet.swift in Sources */,
 				39033AE9A5333567B878BD6A /* NotebookColumnStatisticsSheet.swift in Sources */,

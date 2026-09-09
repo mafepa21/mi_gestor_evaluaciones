@@ -82,6 +82,7 @@ struct NotebookQuickKeypadDock: View {
     let onBackspace: () -> Void
     let onNavigate: (NotebookNavigationDirection) -> Void
     let onStartAtFirstStudent: () -> Void
+    var onOpenStamps: (() -> Void)? = nil
     let onClose: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -191,6 +192,26 @@ struct NotebookQuickKeypadDock: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(EvaluationDesign.accent.opacity(0.08))
             )
+
+            if let onOpenStamps {
+                Button(action: onOpenStamps) {
+                    Image(systemName: "seal.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(EvaluationDesign.accent)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            Circle()
+                                .fill(EvaluationDesign.accent.opacity(0.12))
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(EvaluationDesign.accent.opacity(0.25), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("Sello formativo e icono")
+                .accessibilityLabel("Sello formativo e icono")
+            }
 
             // Close button
             Button(action: onClose) {

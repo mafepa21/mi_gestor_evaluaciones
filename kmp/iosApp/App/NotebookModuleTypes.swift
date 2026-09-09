@@ -220,11 +220,15 @@ struct NotebookAddColumnContext: Identifiable {
 enum NotebookToastStyle: Equatable {
     case success
     case warning
+    case info
+    case neutral
 
     var tint: Color {
         switch self {
         case .success: return NotebookStyle.successTint
         case .warning: return NotebookStyle.warningTint
+        case .info: return Color.accentColor
+        case .neutral: return Color.secondary
         }
     }
 }
@@ -289,6 +293,17 @@ struct NotebookColumnStatisticsRequest: Identifiable {
     let column: NotebookColumnDefinition
 
     var id: String { column.id }
+}
+
+struct NotebookCellStampRequest: Identifiable {
+    let studentId: Int64
+    let studentName: String
+    let column: NotebookColumnDefinition
+    let currentIcon: String?
+    let currentNote: String?
+    let currentValueText: String?
+
+    var id: String { "\(studentId)|\(column.id)" }
 }
 
 enum NotebookNavigationDirection: String, CaseIterable, Identifiable {

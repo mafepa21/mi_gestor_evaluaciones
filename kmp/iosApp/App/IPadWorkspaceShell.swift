@@ -730,6 +730,7 @@ struct AppWorkspaceShell: View {
     @State var classroomCaptureText = ""
     @State var isSavingClassroomCapture = false
     @State private var isClassPickerPresented = false
+    @State private var isWorkspaceClassPickerPresented = false
     @State private var isSearchPresented = false
 
     var activeNotebookClassLabel: String {
@@ -1230,29 +1231,39 @@ struct AppWorkspaceShell: View {
     }
 
     var workspaceClassMenu: some View {
-        Menu {
-            Button("Sin clase activa") {
-                updateGlobalClassContext(nil)
-            }
-            ForEach(bridge.classes, id: \.id) { schoolClass in
-                Button {
-                    updateGlobalClassContext(schoolClass.id)
-                } label: {
-                    HStack {
-                        Text(schoolClass.name)
-                        if selectedClassId == schoolClass.id {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
+        Button {
+            isWorkspaceClassPickerPresented = true
         } label: {
             Label(activeClassLabel, systemImage: "rectangle.3.group")
                 .lineLimit(1)
-                .frame(minWidth: 220, alignment: .leading)
+                .frame(minWidth: 180, maxWidth: 240, alignment: .leading)
         }
         .buttonStyle(.bordered)
         .disabled(bridge.classes.isEmpty)
+        .popover(isPresented: $isWorkspaceClassPickerPresented, arrowEdge: .top) {
+            NotebookClassPickerPopover(
+                classes: bridge.classes,
+                selectedClassId: selectedClassId,
+                bridge: bridge,
+                onSelectClass: { updateGlobalClassContext($0) },
+                onSelectShortcut: { classId, shortcut in
+                    updateGlobalClassContext(classId)
+                    switch shortcut {
+                    case .notebook:
+                        activeModule = .notebook
+                        layoutState.notebookSurfaceMode = "grid"
+                    case .seatingPlan:
+                        activeModule = .notebook
+                        layoutState.notebookSurfaceMode = "seatingPlan"
+                    case .attendance:
+                        activeModule = .attendance
+                    case .students:
+                        activeModule = .students
+                    }
+                },
+                onClose: { isWorkspaceClassPickerPresented = false }
+            )
+        }
         .accessibilityLabel("Cambiar clase activa")
     }
 
@@ -1698,7 +1709,23 @@ struct AppWorkspaceShell: View {
             NotebookClassPickerPopover(
                 classes: bridge.classes,
                 selectedClassId: selectedClassId,
+                bridge: bridge,
                 onSelectClass: { updateGlobalClassContext($0) },
+                onSelectShortcut: { classId, shortcut in
+                    updateGlobalClassContext(classId)
+                    switch shortcut {
+                    case .notebook:
+                        activeModule = .notebook
+                        layoutState.notebookSurfaceMode = "grid"
+                    case .seatingPlan:
+                        activeModule = .notebook
+                        layoutState.notebookSurfaceMode = "seatingPlan"
+                    case .attendance:
+                        activeModule = .attendance
+                    case .students:
+                        activeModule = .students
+                    }
+                },
                 onClose: { isClassPickerPresented = false }
             )
         }

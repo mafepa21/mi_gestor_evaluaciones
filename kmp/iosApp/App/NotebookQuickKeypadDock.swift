@@ -69,6 +69,7 @@ struct NotebookQuickKeypadDock: View {
     let columnSystemIcon: String?
     let categoryTint: Color?
     let currentValue: String
+    var currentStamp: String? = nil
     let isEditable: Bool
     let hasActiveSelection: Bool
     @Binding var advanceMode: NotebookKeypadAdvanceMode
@@ -86,6 +87,36 @@ struct NotebookQuickKeypadDock: View {
     let onClose: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+
+    private var cleanGradePreview: String {
+        let trimmed = currentValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if NotebookCellStampCatalog.item(for: trimmed) != nil || trimmed.hasSuffix(".fill") {
+            return ""
+        }
+        for stamp in NotebookCellStampCatalog.allStamps {
+            if trimmed.contains(stamp.symbol) {
+                let stripped = trimmed.replacingOccurrences(of: stamp.symbol, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                return stripped
+            }
+        }
+        return trimmed
+    }
+
+    private var detectedStampItem: NotebookStampItem? {
+        if let currentStamp, let item = NotebookCellStampCatalog.item(for: currentStamp) {
+            return item
+        }
+        let trimmed = currentValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let item = NotebookCellStampCatalog.item(for: trimmed) {
+            return item
+        }
+        for stamp in NotebookCellStampCatalog.allStamps {
+            if trimmed.contains(stamp.symbol) {
+                return stamp
+            }
+        }
+        return nil
+    }
 
     private let numberKeys = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     private let decimalFractions = [".25", ".50", ".75"]
@@ -175,16 +206,24 @@ struct NotebookQuickKeypadDock: View {
             Spacer(minLength: 8)
 
             // Current Grade Preview
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Text("Nota:")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                Text(currentValue.isEmpty ? "—" : currentValue)
+                let gradeText = cleanGradePreview
+                Text(gradeText.isEmpty ? "—" : gradeText)
                     .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(currentValue.isEmpty ? Color.secondary : EvaluationDesign.accent)
+                    .foregroundStyle(gradeText.isEmpty ? Color.secondary : EvaluationDesign.accent)
                     .contentTransition(.numericText())
                     .frame(minWidth: 38, alignment: .trailing)
+
+                if let stamp = detectedStampItem {
+                    Image(systemName: stamp.symbol)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(stamp.tintColor)
+                        .accessibilityLabel("Sello: \(stamp.title)")
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
@@ -306,7 +345,7 @@ struct NotebookQuickKeypadDock: View {
     // MARK: - Keypad Buttons
 
     private func numberButton(_ number: Int) -> some View {
-        let isCurrent = currentValue == "\(number)"
+        let isCurrent = cleanGradePreview == "\(number)"
 
         return Button {
             onApplyGrade("\(number)")

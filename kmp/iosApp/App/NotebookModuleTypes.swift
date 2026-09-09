@@ -285,6 +285,12 @@ struct NotebookSummarySheetRequest: Identifiable {
     var id: String { targetColumnId ?? "summary" }
 }
 
+struct NotebookColumnStatisticsRequest: Identifiable {
+    let column: NotebookColumnDefinition
+
+    var id: String { column.id }
+}
+
 enum NotebookNavigationDirection: String, CaseIterable, Identifiable {
     case up
     case down

@@ -963,6 +963,14 @@ extension NotebookModuleView {
 
     @ViewBuilder
     func columnContextMenu(_ column: NotebookColumnDefinition, data: NotebookUiStateData) -> some View {
+        Button {
+            columnStatisticsRequest = NotebookColumnStatisticsRequest(column: column)
+        } label: {
+            Label("Estadísticas de la columna…", systemImage: "chart.bar.xaxis")
+        }
+
+        Divider()
+
         Button("Renombrar") {
             editingColumnId = column.id
             columnDraft = column.title

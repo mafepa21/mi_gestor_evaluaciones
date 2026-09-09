@@ -105,6 +105,7 @@ struct NotebookModuleView: View {
     @State var pendingRubricCurrentStudentId: Int64? = nil
     @State var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
+    @State var columnStatisticsRequest: NotebookColumnStatisticsRequest? = nil
     @State var isAverageConfigurationPresented = false
     @State var averageExplanationRow: NotebookTableRow? = nil
     @State var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
@@ -923,6 +924,13 @@ struct NotebookModuleView: View {
             }
         case .column:
             Button {
+                showSelectedColumnStatistics(data: data)
+            } label: {
+                Label("Estadísticas", systemImage: "chart.bar.xaxis")
+            }
+            .help("Ver estadísticas y distribución de calificaciones de la columna")
+
+            Button {
                 editSelectedColumn(data: data)
             } label: {
                 Label("Editar", systemImage: "pencil")
@@ -1098,6 +1106,11 @@ struct NotebookModuleView: View {
             weight: column.countsTowardAverage ? 0 : max(column.weight, 1)
         )
         showToast(column.countsTowardAverage ? "Columna excluida de la media" : "Columna incluida en la media")
+    }
+
+    func showSelectedColumnStatistics(data: NotebookUiStateData) {
+        guard let column = selectedNotebookColumn(data: data) else { return }
+        columnStatisticsRequest = NotebookColumnStatisticsRequest(column: column)
     }
 
     func isToolbarEditableCellColumn(_ column: NotebookColumnDefinition) -> Bool {
@@ -1290,6 +1303,14 @@ struct NotebookModuleView: View {
                     ) { message, style in
                         showToast(message, style: style)
                     }
+                }
+                .sheet(item: $columnStatisticsRequest) { request in
+                    NotebookColumnStatisticsSheet(
+                        column: request.column,
+                        rows: data.sheet.rows,
+                        bridge: bridge,
+                        classTitle: activeClassLabel
+                    )
                 }
                 .sheet(isPresented: $isAverageConfigurationPresented) {
                     NotebookAverageEditorSheet(

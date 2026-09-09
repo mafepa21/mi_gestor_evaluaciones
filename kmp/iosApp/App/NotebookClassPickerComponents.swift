@@ -156,205 +156,202 @@ struct NotebookClassCoverCard: View {
     }
 
     var body: some View {
-        Button {
-            AppleInteractionFeedback.play(.selection)
-            onSelect()
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                // Superficie principal de la libreta
-                HStack(spacing: 0) {
-                    // Lomo de encuadernación lateral (Spine)
-                    ZStack {
-                        Rectangle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [theme.lomo, theme.lomo.opacity(0.88)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
+        ZStack(alignment: .topTrailing) {
+            // Superficie principal de la libreta
+            HStack(spacing: 0) {
+                // Lomo de encuadernación lateral (Spine)
+                ZStack {
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [theme.lomo, theme.lomo.opacity(0.88)],
+                                startPoint: .leading,
+                                endPoint: .trailing
                             )
+                        )
 
-                        // Pespunte de costura vertical punteada
-                        Rectangle()
-                            .stroke(
-                                Color.white.opacity(0.30),
-                                style: StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [3, 3])
-                            )
-                            .frame(width: 1)
-                            .padding(.vertical, 8)
+                    // Pespunte de costura vertical punteada
+                    Rectangle()
+                        .stroke(
+                            Color.white.opacity(0.30),
+                            style: StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [3, 3])
+                        )
+                        .frame(width: 1)
+                        .padding(.vertical, 8)
+                }
+                .frame(width: 18)
+                .overlay(
+                    // Separador sutil con sombra entre lomo y portada
+                    Rectangle()
+                        .fill(Color.black.opacity(0.32))
+                        .frame(width: 1),
+                    alignment: .trailing
+                )
+
+                // Área frontal de la portada
+                VStack(spacing: 6) {
+                    Spacer(minLength: 4)
+
+                    // Placa de título central en relieve (Embossed Plaque)
+                    VStack(spacing: 3) {
+                        // Píldora de etapa o curso
+                        HStack(spacing: 4) {
+                            Image(systemName: theme.icon)
+                                .font(.system(size: 9, weight: .bold))
+                            Text(theme.stageLabel)
+                                .font(.system(size: 9, weight: .black, design: .rounded))
+                        }
+                        .foregroundStyle(theme.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(theme.primary.opacity(0.12))
+                        )
+
+                        // Nombre del grupo
+                        Text(schoolClass.name)
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.primary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .minimumScaleFactor(0.85)
+
+                        // Asignatura asociada si existe
+                        if let subject = subjectName, !subject.isEmpty {
+                            Text(subject)
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.secondary)
+                                .lineLimit(1)
+                        }
+
+                        // Cápsula de alumnos integrada en la placa
+                        HStack(spacing: 3) {
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(studentCountText)
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                        }
+                        .foregroundStyle(Color.secondary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(
+                            Capsule()
+                                .fill(Color.primary.opacity(0.06))
+                        )
+                        .padding(.top, 1)
                     }
-                    .frame(width: 18)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 7)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(plaqueBackground.opacity(0.94))
+                            .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1.5)
+                    )
                     .overlay(
-                        // Separador sutil con sombra entre lomo y portada
-                        Rectangle()
-                            .fill(Color.black.opacity(0.32))
-                            .frame(width: 1),
-                        alignment: .trailing
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.black.opacity(0.08), lineWidth: 0.8)
                     )
 
-                    // Área frontal de la portada
-                    VStack(spacing: 8) {
-                        Spacer(minLength: 4)
+                    Spacer(minLength: 4)
 
-                        // Placa de título central en relieve (Embossed Plaque)
-                        VStack(spacing: 3) {
-                            // Píldora de etapa o curso
-                            HStack(spacing: 4) {
-                                Image(systemName: theme.icon)
-                                    .font(.system(size: 9, weight: .bold))
-                                Text(theme.stageLabel)
-                                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    // Banda inferior con accesos rápidos de un toque
+                    if let onShortcut {
+                        HStack(spacing: 6) {
+                            shortcutIconButton(
+                                icon: "tablecells",
+                                tooltip: "Abrir Cuaderno"
+                            ) {
+                                onShortcut(.notebook)
                             }
-                            .foregroundStyle(theme.primary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule()
-                                    .fill(theme.primary.opacity(0.12))
-                            )
 
-                            // Nombre del grupo
-                            Text(schoolClass.name)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color.primary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
-                                .minimumScaleFactor(0.85)
+                            shortcutIconButton(
+                                icon: "rectangle.inset.filled.and.person.filled",
+                                tooltip: "Abrir Plano de Clase"
+                            ) {
+                                onShortcut(.seatingPlan)
+                            }
 
-                            // Asignatura asociada si existe
-                            if let subject = subjectName, !subject.isEmpty {
-                                Text(subject)
-                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Color.secondary)
-                                    .lineLimit(1)
+                            shortcutIconButton(
+                                icon: "calendar.badge.clock",
+                                tooltip: "Abrir Asistencia"
+                            ) {
+                                onShortcut(.attendance)
                             }
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 8)
                         .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(plaqueBackground.opacity(0.94))
-                                .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1.5)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(Color.black.opacity(0.08), lineWidth: 0.8)
-                        )
-
-                        Spacer(minLength: 4)
-
-                        // Banda inferior con conteo de alumnos y accesos rápidos
-                        HStack(spacing: 4) {
-                            // Cápsula de número de alumnos
-                            HStack(spacing: 3) {
-                                Image(systemName: "person.2.fill")
-                                    .font(.system(size: 8, weight: .bold))
-                                Text(studentCountText)
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                            }
-                            .foregroundStyle(Color.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(
-                                Capsule()
-                                    .fill(Color.black.opacity(0.35))
-                            )
-
-                            Spacer(minLength: 0)
-
-                            // Atajos rápidos de un toque
-                            if let onShortcut {
-                                HStack(spacing: 2) {
-                                    shortcutIconButton(
-                                        icon: "tablecells",
-                                        tooltip: "Abrir Cuaderno"
-                                    ) {
-                                        onShortcut(.notebook)
-                                    }
-
-                                    shortcutIconButton(
-                                        icon: "rectangle.inset.filled.and.person.filled",
-                                        tooltip: "Abrir Plano"
-                                    ) {
-                                        onShortcut(.seatingPlan)
-                                    }
-
-                                    shortcutIconButton(
-                                        icon: "calendar.badge.clock",
-                                        tooltip: "Abrir Asistencia"
-                                    ) {
-                                        onShortcut(.attendance)
-                                    }
-                                }
-                            }
-                        }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 12)
                 }
-                .frame(width: 156, height: 212)
-                .background(
-                    ZStack {
-                        LinearGradient(
-                            colors: [theme.primary, theme.primary.opacity(0.85)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                .padding(.horizontal, 8)
+                .padding(.vertical, 10)
+            }
+            .frame(width: 156, height: 212)
+            .background(
+                ZStack {
+                    LinearGradient(
+                        colors: [theme.primary, theme.primary.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
 
-                        // Brillo satinado superior
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.14), Color.clear],
-                            startPoint: .top,
-                            endPoint: .center
-                        )
-                    }
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(
-                            isSelected ? EvaluationDesign.accent : Color.white.opacity(0.20),
-                            lineWidth: isSelected ? 2.5 : 1
-                        )
-                )
-                .shadow(
-                    color: isSelected
-                        ? EvaluationDesign.accent.opacity(0.40)
-                        : Color.black.opacity(isHovering ? 0.22 : 0.15),
-                    radius: isSelected ? 12 : (isHovering ? 8 : 4),
-                    x: 0,
-                    y: isSelected ? 5 : (isHovering ? 4 : 2)
-                )
-
-                // Cinta marcapáginas dorada de cuaderno activo
-                if isSelected {
-                    ZStack(alignment: .top) {
-                        NotebookRibbonShape()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.98, green: 0.82, blue: 0.28),
-                                        Color(red: 0.90, green: 0.68, blue: 0.18)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .frame(width: 16, height: 28)
-                            .shadow(color: Color.black.opacity(0.25), radius: 2, y: 2)
-
-                        Capsule()
-                            .fill(Color.white.opacity(0.40))
-                            .frame(width: 2, height: 16)
-                            .padding(.top, 2)
-                    }
-                    .offset(x: -16, y: -2)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    // Brillo satinado superior
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.14), Color.clear],
+                        startPoint: .top,
+                        endPoint: .center
+                    )
                 }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? EvaluationDesign.accent : Color.white.opacity(0.20),
+                        lineWidth: isSelected ? 2.5 : 1
+                    )
+            )
+            .shadow(
+                color: isSelected
+                    ? EvaluationDesign.accent.opacity(0.40)
+                    : Color.black.opacity(isHovering ? 0.22 : 0.15),
+                radius: isSelected ? 12 : (isHovering ? 8 : 4),
+                x: 0,
+                y: isSelected ? 5 : (isHovering ? 4 : 2)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .onTapGesture {
+                AppleInteractionFeedback.play(.selection)
+                onSelect()
+            }
+
+            // Cinta marcapáginas dorada de cuaderno activo
+            if isSelected {
+                ZStack(alignment: .top) {
+                    NotebookRibbonShape()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.98, green: 0.82, blue: 0.28),
+                                    Color(red: 0.90, green: 0.68, blue: 0.18)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 16, height: 28)
+                        .shadow(color: Color.black.opacity(0.25), radius: 2, y: 2)
+
+                    Capsule()
+                        .fill(Color.white.opacity(0.40))
+                        .frame(width: 2, height: 16)
+                        .padding(.top, 2)
+                }
+                .offset(x: -16, y: -2)
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .buttonStyle(NotebookScaleButtonStyle())
         .scaleEffect(isHovering ? 1.02 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isHovering)
         #if os(macOS)
@@ -375,9 +372,9 @@ struct NotebookClassCoverCard: View {
             action()
         } label: {
             Image(systemName: icon)
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(Color.white)
-                .frame(width: 20, height: 20)
+                .frame(width: 24, height: 24)
                 .background(
                     Circle()
                         .fill(Color.black.opacity(0.35))
@@ -386,7 +383,7 @@ struct NotebookClassCoverCard: View {
                     Circle()
                         .stroke(Color.white.opacity(0.25), lineWidth: 0.8)
                 )
-                .frame(width: 28, height: 28)
+                .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
         }
         .buttonStyle(NotebookScaleButtonStyle())

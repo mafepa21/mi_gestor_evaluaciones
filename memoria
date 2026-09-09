@@ -3,6 +3,28 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-09 - Fase 4 del rediseño estilo iDoceo: plano de clase 2.0 con tarjetas interactivas de pupitre, quick actions de asistencia/nota, distribuciones espaciales y selector de alumno activo
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se implementó la Fase 4 de la hoja de ruta de inspiración iDoceo: el plano de clase 2.0 interactivo (`NotebookSeatingPlanView.swift`).
+  2. Tarjetas de pupitre enriquecidas (`NotebookSeatCard`): avatar con iniciales y anillo dinámico perimetral de asistencia (presente en esmeralda, ausente en rojo, retraso en naranja, sin registrar en gris tenue), badge destacado de incidencias (`incidentCount > 0`), y doble modo de interacción contextual según la selección del docente.
+  3. Quick actions de asistencia táctiles: botones directos P (Presente), A (Ausente), R (Retraso) y botón de seguimiento/estrella con estado activo visible en relleno sólido de alto contraste (`contrastingTextColor`), borde completo y feedback sensorial háptico (`AppleInteractionFeedback.play(.selection)`).
+  4. Modo de calificación en pupitre: control numérico integrado con botones `-` y `+` con paso de 0.25 y pastilla central monospaced (`gradePill`) codificada cromáticamente mediante `RubricsStyle.gradeColor(forScoreOutOfTen:)`, permitiendo calificar desde el plano sin conmutar a la vista de rejilla.
+  5. Distribuciones espaciales automáticas (`SeatingLayoutPreset`): presets pedagógicos con animación elástica suave para Filas tradicionales (`.rows`), Mesas dobles / Parejas contiguas (`.pairs`) y Herradura perimetral en U (`.horseshoe`), con persistencia automática de coordenadas y protección contra divisiones por cero.
+  6. Snap magnético suave al soltar tras arrastre (`applyMagneticSnap`): atracción magnética por proximidad (desfase <0.025 en X y <0.03 en Y respecto a compañeros) para alinear filas y columnas con precisión milimétrica, con fallback a rejilla modular de 0.04/0.05 y clamping de seguridad para evitar desbordamientos del lienzo.
+  7. Lienzo orientado e indicador de pizarra: banner superior «PIZARRA · FRENTE DEL AULA» con tracking tipográfico refinado que orienta el punto de vista del docente.
+  8. Aula Activa y selector aleatorio 2.0: banner flotante en `.ultraThinMaterial` (`activeStudentBanner`) con avatar, datos, notas y acciones directas («Siguiente al azar» y «Abrir ficha»); atajo de teclado de hardware `⌘R` y botón en toolbar con ponderación pedagógica inversa por participaciones previas; efecto de halo resplandeciente (`halo pulse`) y escala a 1.04 en el pupitre del alumno seleccionado.
+  9. Badge de asistencia en tiempo real en la toolbar: desglose en pastilla (`X P · Y A · Z R`) que se actualiza instantáneamente con cada pulsación en los pupitres.
+  10. Cumplimiento estricto Apple HIG: touch target del botón de cierre ampliado a 44×44pt, contraste WCAG y compatibilidad nativa con puntero/hover en macOS.
+- Por qué importa: Convierte el plano de clase de un visor estático en el centro de control del aula interactiva que distingue a iDoceo, permitiendo pasar lista visualmente, calificar intervenciones orales al instante y dinamizar la participación de los alumnos de forma equitativa.
+- Dónde vive el cambio: `kmp/iosApp/App/NotebookSeatingPlanView.swift`.
+- Validación realizada:
+  - Compilación dual limpia y verificada con `./scripts/verify_apple_builds.sh` en macOS Native (MiGestorKMPMac) e iOS Simulator (MiGestorKMPiOS).
+  - Revisión exhaustiva de diseño y arquitectura SwiftUI por subagente `reviewer` (dictamen: APROBADO).
+  - Auditoría read-only de árbol y commits por subagente `janitor` (dictamen: SEGURO PROCEDER AL MERGE).
+  - Integración fast-forward en `develop` (commit `d1e7685`) y eliminación segura de la rama de trabajo `codex/seating-plan-idoceo`.
+
 ## Avance 2026-09-09 - Fase 3 del rediseño estilo iDoceo: selector visual de rúbricas con tarjetas de nivel pedagógicas y carrusel de alumnos
 
 Resumen:

@@ -3,6 +3,28 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-09 - Fase 5 del rediseño estilo iDoceo: estantería de cuadernos y selector visual de clases 2.0 con portadas de libreta, gradientes pedagógicos y accesos directos
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se implementó la Fase 5 de la hoja de ruta de inspiración iDoceo: la estantería digital de cuadernos y selector visual de clases 2.0 (`NotebookClassPickerComponents.swift` e `IPadWorkspaceShell.swift`).
+  2. Sustitución del popover textual básico de 250pt por una estantería interactiva (`NotebookClassPickerPopover`): cabecera temática con icono de biblioteca, barra de filtros segmentada por cursos («Todos», «1º ESO», «2º ESO», etc.), barra de búsqueda instantánea para docentes con más de 5 clases y cuadrícula adaptativa con rejilla de libretas escolares sobre repisa de madera/sombra ambiental.
+  3. Tarjeta de portada de libreta escolar (`NotebookClassCoverCard`): diseño inspirado en cuaderno físico de clase con lomo cosido lateral (`theme.lomo`) y pespunte vertical punteado, bisel y hendidura sombreada.
+  4. Cromática y taxonomía pedagógica automática (`NotebookCoverTheme`): gradientes diferenciados por etapa y nivel educativo (Azul Cobalto para 1º ESO, Esmeralda para 2º ESO, Púrpura para 3º ESO, Ámbar cálido para 4º ESO, Rubí para 1º Bachillerato, Marino para 2º Bachillerato, Turquesa para Primaria y Rosa para Infantil), con detección de Educación Física (`figure.run`).
+  5. Placa central en relieve (Embossed Plaque): pastilla con icono y etiqueta de etapa/curso, nombre del grupo en tipografía bold redondeada, asignatura y cápsula integrada con el recuento de alumnos (`X al.`), evocando una etiqueta de libreta real.
+  6. Cinta marcapáginas dorada (`NotebookRibbonShape`): corte de cola de milano (`swallowtail`) y brillo satinado en la esquina superior que identifica inequívocamente al cuaderno de la clase actualmente seleccionada en el espacio de trabajo.
+  7. Atajos rápidos de un toque por libreta: botones directos integrados en la base de la libreta para abrir Cuaderno (`tablecells`), Plano de clase (`rectangle.inset.filled.and.person.filled`) y Asistencia (`calendar.badge.clock`), con áreas táctiles ampliadas ($\ge 34$–$42\text{pt}$), aislamiento de toques sin antipatrón de botones anidados y tooltips nativos.
+  8. Integración completa en `IPadWorkspaceShell.swift`: soporte en `notebookClassSelectorButton` y en `workspaceClassMenu`, actualizando el contexto global de clase y conmutando al módulo correspondiente al pulsar cualquier atajo.
+- Por qué importa: Dota a la app de la identidad visual más celebrada y entrañable de iDoceo —la estantería de libretas escolares—, facilitando que el docente reconozca instantáneamente sus grupos por color de nivel y navegue entre el cuaderno, el plano y la asistencia con un solo toque desde cualquier pantalla.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/NotebookClassPickerComponents.swift` (componentes `NotebookShelfShortcut`, `NotebookRibbonShape`, `NotebookCoverTheme`, `NotebookClassCoverCard`, `NotebookClassPickerPopover`)
+  - `kmp/iosApp/App/IPadWorkspaceShell.swift` (conexión de la estantería, handlers de selección y navegación rápida a módulos)
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh` (macOS Native e iOS Simulator exitosos).
+  - Revisión exhaustiva con subagente `reviewer` (dictamen: APROBADO con pulidos aplicados).
+  - Auditoría read-only de commits y ramas con subagente `janitor` (dictamen: SEGURO PROCEDER AL MERGE).
+  - Fusión por fast-forward a `develop` (commits `eb4bd05` y `25e0bb8`) y eliminación segura de la rama `codex/notebook-class-shelf`.
+
 ## Avance 2026-09-09 - Fase 4 del rediseño estilo iDoceo: plano de clase 2.0 con tarjetas interactivas de pupitre, quick actions de asistencia/nota, distribuciones espaciales y selector de alumno activo
 
 Resumen:

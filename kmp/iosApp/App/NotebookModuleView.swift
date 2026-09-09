@@ -107,6 +107,7 @@ struct NotebookModuleView: View {
     @State var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
     @State var columnStatisticsRequest: NotebookColumnStatisticsRequest? = nil
     @State var cellStampRequest: NotebookCellStampRequest? = nil
+    @State var studentProfile360Request: StudentProfile360Request? = nil
     @State var isAverageConfigurationPresented = false
     @State var averageExplanationRow: NotebookTableRow? = nil
     @State var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
@@ -581,7 +582,8 @@ struct NotebookModuleView: View {
                     persistSeatPositions()
                 },
                 onOpenStudent: { studentId in
-                    openInspectorForStudent(studentId, data: data)
+                    let studentName = rows.first(where: { $0.student.id == studentId }).map { "\($0.student.firstName) \($0.student.lastName)" } ?? "Alumno"
+                    openStudentProfile360(studentId: studentId, studentName: studentName, data: data)
                 },
                 onMarkPresent: { studentId in
                     Task { await markAttendance(for: studentId, status: NotebookAttendanceStatus.present) }
@@ -1316,6 +1318,9 @@ struct NotebookModuleView: View {
                 .sheet(item: $cellStampRequest) { request in
                     cellStampSheet(request: request, data: data)
                 }
+                .sheet(item: $studentProfile360Request) { request in
+                    studentProfile360Sheet(request: request, data: data)
+                }
                 .sheet(isPresented: $isAverageConfigurationPresented) {
                     NotebookAverageEditorSheet(
                         classTitle: activeClassLabel,
@@ -2009,6 +2014,58 @@ struct NotebookModuleView: View {
         let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
         let icon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
         return icon != nil && !(icon?.isEmpty ?? true)
+    }
+
+    @ViewBuilder
+    func studentProfile360Sheet(request: StudentProfile360Request, data: NotebookUiStateData) -> some View {
+        let rows = filteredRows(data: data)
+        let allStudents = resolveStudentsForProfile(rows: rows)
+        let studentRow = rows.first(where: { $0.student.id == request.studentId })
+        let classAverage = calculateNotebookClassAverage(from: rows)
+
+        StudentProfile360Sheet(
+            studentId: request.studentId,
+            classId: request.classId ?? data.sheet.classId,
+            allStudents: allStudents,
+            notebookColumns: data.sheet.columns,
+            studentRow: studentRow,
+            classAverageScore: classAverage,
+            bridge: bridge,
+            onNavigateToStudent: { nextStudentId in
+                let nextName = allStudents.first(where: { $0.id == nextStudentId }).map { "\($0.firstName) \($0.lastName)" } ?? "Alumno"
+                studentProfile360Request = StudentProfile360Request(
+                    studentId: nextStudentId,
+                    studentName: nextName,
+                    classId: request.classId
+                )
+            },
+            onClose: {
+                studentProfile360Request = nil
+            }
+        )
+        .id(request.studentId)
+    }
+
+    func openStudentProfile360(studentId: Int64, studentName: String, data: NotebookUiStateData) {
+        studentProfile360Request = StudentProfile360Request(
+            studentId: studentId,
+            studentName: studentName,
+            classId: data.sheet.classId
+        )
+    }
+
+    func resolveStudentsForProfile(rows: [NotebookTableRow]) -> [Student] {
+        let rowStudents = rows.map(\.student)
+        if !rowStudents.isEmpty {
+            return rowStudents
+        }
+        return bridge.studentsInClass.isEmpty ? bridge.allStudents : bridge.studentsInClass
+    }
+
+    func calculateNotebookClassAverage(from rows: [NotebookTableRow]) -> Double? {
+        let averages = rows.compactMap { $0.row.weightedAverage?.doubleValue }
+        guard !averages.isEmpty else { return nil }
+        return averages.reduce(0.0, +) / Double(averages.count)
     }
 
     func formulaReferenceColumns(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> [NotebookColumnDefinition] {

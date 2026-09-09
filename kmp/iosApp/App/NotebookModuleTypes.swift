@@ -306,6 +306,14 @@ struct NotebookCellStampRequest: Identifiable {
     var id: String { "\(studentId)|\(column.id)" }
 }
 
+struct StudentProfile360Request: Identifiable {
+    let studentId: Int64
+    let studentName: String
+    let classId: Int64?
+
+    var id: String { "\(studentId)|\(classId ?? 0)" }
+}
+
 enum NotebookNavigationDirection: String, CaseIterable, Identifiable {
     case up
     case down

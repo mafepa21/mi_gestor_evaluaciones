@@ -417,7 +417,7 @@ struct NotebookSeatingPlanView: View {
             Button {
                 onOpenStudent(student.id)
             } label: {
-                Label("Abrir ficha", systemImage: "person.text.rectangle")
+                Label("Ficha 360º", systemImage: "person.text.rectangle.fill")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
             }
             .buttonStyle(.bordered)

@@ -180,6 +180,7 @@
 		57B71C3913C7F4D901323B42 /* PlannerFloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E80A05F8F203CF9F01667C /* PlannerFloatingTabBar.swift */; };
 		59234820B563D9BA8FB23DE3 /* NotebookAICommentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFB7CB99B772BA64AA591A9 /* NotebookAICommentSheet.swift */; };
 		59720E0A98318EF90A5FBFB9 /* NotebookInspectorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 064505192DE6C78C8E8249B0 /* NotebookInspectorPanel.swift */; };
+		5980AF103BC140E68048ACDC /* StudentProfile360Sheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2E6198F8A34293A814CE88 /* StudentProfile360Sheet.swift */; };
 		59D57BFC6882311B3CE5FB2A /* NotebookFormulaKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F88ED1497646466866123A /* NotebookFormulaKeyboard.swift */; };
 		5A06D3FAE61109EBEA5791A2 /* LearningSituationsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05FB1EEE057F9F3861BEECD8 /* LearningSituationsWorkspaceView.swift */; };
 		5AA56A1A703EDF8406F8B991 /* AttendanceWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 284EFC5D21CE71AE69E43094 /* AttendanceWorkspaceView.swift */; };
@@ -342,6 +343,7 @@
 		A917D167542448BDD9007211 /* ImportPreviewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */; };
 		A955FA3E7711CA5298A75589 /* IPadWorkspaceShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */; };
 		A975D4B3164F464D03F652F2 /* NotebookAICommentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFB7CB99B772BA64AA591A9 /* NotebookAICommentSheet.swift */; };
+		AA07DE1145FDD17B964237AB /* StudentProfile360Sheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2E6198F8A34293A814CE88 /* StudentProfile360Sheet.swift */; };
 		AA5712733DDC149C717E4A89 /* NotebookMacToolbarBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9280844A0EAABAC9BCD70218 /* NotebookMacToolbarBinding.swift */; };
 		AAA17E629A97BB63CD240D51 /* WebSubmissionTestBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C2E7C1B3A5F4520E560349 /* WebSubmissionTestBench.swift */; };
 		AD204E79F58440E3B5FEAB9B /* LibraryAndPEWorkspaceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DC16E368E9913D847BB6D51 /* LibraryAndPEWorkspaceViews.swift */; };
@@ -788,6 +790,7 @@
 		C8BFCF99CED1D1B0B14F406F /* PlannerWorkspaceViewModel+DayBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+DayBoard.swift"; sourceTree = "<group>"; };
 		CABF3C938060DE09EB0F96BB /* RubricsBuilderScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricsBuilderScreen.swift; sourceTree = "<group>"; };
 		CB79EE8F7050ABE5BF09C0BD /* WebSubmissionLinkEmailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionLinkEmailSheet.swift; sourceTree = "<group>"; };
+		CD2E6198F8A34293A814CE88 /* StudentProfile360Sheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentProfile360Sheet.swift; sourceTree = "<group>"; };
 		CEAAF5669D2AF30F91887B74 /* PlannerWorkspaceViewModel+Schedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Schedule.swift"; sourceTree = "<group>"; };
 		D0B03581E247976F1D0F9535 /* PlannerWorkspaceViewModel+BulkOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+BulkOperations.swift"; sourceTree = "<group>"; };
 		D2E833F8E8281D5E3F4BFB0F /* NotebookMacLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookMacLayout.swift; sourceTree = "<group>"; };
@@ -1183,6 +1186,7 @@
 				6AD7E95B759E25696F69EE87 /* SchoolCalendarPresetSheet.swift */,
 				66C430BD4F07BF647679F179 /* SettingsWorkspaceView.swift */,
 				964764E602D3B6EF684BD755 /* StudentImportSheet.swift */,
+				CD2E6198F8A34293A814CE88 /* StudentProfile360Sheet.swift */,
 				B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */,
 				E85D639D7643C83C84F0D6A0 /* StudentRubricInstrumentContent.swift */,
 				26E65AEB66C13E89107AA8BA /* SupportMeasureBulkImportSheet.swift */,
@@ -1674,6 +1678,7 @@
 				7BD5D86B7064BFED1422706E /* SettingsWorkspaceView.swift in Sources */,
 				C4D6907F72CCBB50F0B8A8FE /* StringHelpers.swift in Sources */,
 				620D07C339E42E89597D4757 /* StudentImportSheet.swift in Sources */,
+				5980AF103BC140E68048ACDC /* StudentProfile360Sheet.swift in Sources */,
 				BC2B7AE09356DAEE25AAB21B /* StudentProfilesWorkspaceView.swift in Sources */,
 				D91AFC9D2D96FFCE3A2AF2CF /* StudentRubricInstrumentContent.swift in Sources */,
 				F04314B826EF0638F9799A0B /* StudentSexInferenceService.swift in Sources */,
@@ -1908,6 +1913,7 @@
 				D88F460CF428FB95B06F0BB3 /* SettingsWorkspaceView.swift in Sources */,
 				2B8C387421A1620F71EB8F16 /* StringHelpers.swift in Sources */,
 				107B33FECB5C4C30230B96D1 /* StudentImportSheet.swift in Sources */,
+				AA07DE1145FDD17B964237AB /* StudentProfile360Sheet.swift in Sources */,
 				8A83E0FD7E5A964AAB5A36A1 /* StudentProfilesWorkspaceView.swift in Sources */,
 				63D04717FA020450A53B00BF /* StudentRubricInstrumentContent.swift in Sources */,
 				93248CEF462462672FC87F2C /* StudentSexInferenceService.swift in Sources */,

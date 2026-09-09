@@ -771,6 +771,22 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-09-09 - Corrección de controles en Planificador iPad y guardado/renderizado de notas y sellos en Cuaderno (iPad/macOS)
+
+Resumen:
+- Qué cambio se hizo:
+  1. En `PlannerWeekMiniatureLayout.swift`, se integró un `ScrollView(.vertical)` con altura acotada para la cuadrícula semanal en layout regular y se añadió `.layoutPriority(1)` a `PlannerToolbar` en `PlannerWorkspaceIOS.swift`, resolviendo el desbordamiento de 824 pt que empujaba los controles superiores fuera de pantalla en iPad landscape.
+  2. En `NotebookViewModel.kt`, se implementó actualización optimista del estado en memoria en `saveCellAnnotation` y emisión del evento `NotebookRefreshBus.emitRefresh()`, complementado en `NotebookEditableTableCell.swift` con observación reactiva de `displaySnapshot` y una ventana de seguridad de 500 ms frente a pérdidas de foco.
+  3. En `KmpBridge.swift`, se condicionó la asignación de `iconValue` a `textByKey` únicamente para columnas de tipo `.icon` y se añadió `sanitizePersistedCellText` para evitar que identificadores crudos de SF Symbol corrompan calificaciones numéricas persistidas.
+  4. En `NotebookModuleQuickKeypad.swift` y `NotebookQuickKeypadDock.swift`, se desvinculó el foco de celda activa (`focusedCellId = nil`) al pulsar botones del dock en macOS evitando que AppKit dispare guardados diferidos con notas antiguas, se añadieron utilidades numéricas seguras y se renderizaron los sellos como iconos gráficos SF Symbol con su color semántico en lugar de textos crudos como `"trophy.fill"`.
+- Por qué importa: devuelve la operatividad a la vista semanal del Planificador en iPad landscape, garantiza que la asignación de sellos formativos e iconos se visualice de inmediato en el Cuaderno sin reiniciar ni cambiar de grupo, y hace fiable la introducción de notas numéricas y la visualización de sellos desde el dock en macOS.
+- Dónde vive el cambio: `kmp/iosApp/App/PlannerWeekMiniatureLayout.swift`, `PlannerWorkspaceIOS.swift`, `NotebookViewModel.kt`, `KmpBridge.swift`, `NotebookEditableTableCell.swift`, `NotebookModuleQuickKeypad.swift` y `NotebookQuickKeypadDock.swift`.
+- Validación realizada: `:shared:compileKotlinIosSimulatorArm64` y `:shared:desktopTest` ejecutados con éxito (BUILD SUCCESSFUL); `./scripts/verify_apple_builds.sh` compiló correctamente macOS Native / Catalyst e iOS Simulator tras regenerar el proyecto XcodeGen.
+
+Notas para futuras conversaciones:
+- En macOS Catalyst / AppKit, hacer clic en un dock flotante fuera de la tabla causa un `focus loss` inmediato en el `TextField` de la celda. Para evitar que el guardado diferido pise un valor recién pulsado en el teclado rápido, es indispensable limpiar el `focusedCellId` antes del guardado o usar una ventana de amortiguación temporal.
+- Las anotaciones en `NotebookCellAnnotation` (`iconName`) deben mantenerse desacopladas del `textValue` numérico de la celda; nunca mapear `iconValue` a `textByKey` salvo en columnas configuradas explícitamente como tipo icono.
+
 ### 2026-09-02 - Compatibilidad de importación DOCX con formato pedagógico de Mislata (ESO y 1.º Bachillerato)
 
 Resumen:

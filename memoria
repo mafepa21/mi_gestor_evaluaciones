@@ -3,6 +3,43 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-09 - Fase 6 del rediseño estilo iDoceo: ficha de estadísticas de columna y distribución de notas con histograma LOMLOE y métricas descriptivas
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se implementó la Fase 6 de la hoja de ruta de inspiración iDoceo: la ficha analítica modal y popover de estadísticas de columna del Cuaderno (`NotebookColumnStatisticsSheet.swift`).
+  2. Motor analítico y descriptivo de cálculo (`NotebookColumnStatisticsReport` y `NotebookStatisticsExtractor`):
+     - Extracción transversal de notas sobre 10 para columnas numéricas, de rúbrica, fórmulas/cálculos y listas de control (check), con normalización de caracteres decimales y clamping estricto al intervalo [0.0 - 10.0].
+     - Métricas estadísticas rigurosas: Media aritmética, Mediana (interpolada en pares), Moda (frecuencia normalizada a 1 decimal para evitar fallos de flotante) y Desviación típica ($\sigma$) protegida contra colecciones unitarias.
+     - Indicadores de éxito pedagógico: Tasa de aprobados ($\ge 5.0$) vs suspensos ($< 5.0$) con recuentos y porcentajes, y barra segmentada bicolor (verde esmeralda / rojo coral).
+     - Detección de extremos: Calificación máxima y mínima con soporte para empates múltiples y visualización de los nombres de los estudiantes asociados.
+     - Cobertura de evaluación: Recuento de alumnado evaluado frente al total de la clase y porcentaje de progreso.
+  3. Histograma de distribución por tramos cualitativos oficiales LOMLOE (Real Decreto 217/2022 y 984/2021):
+     - Sobresaliente (9.0 – 10.0): Verde esmeralda (#249E66) con icono de estrella.
+     - Notable (7.0 – 8.9): Azul cobalto (#2975E0) con icono de destellos.
+     - Bien (6.0 – 6.9): Turquesa (#29A3BD) con icono de sello de verificación.
+     - Suficiente (5.0 – 5.9): Ámbar cálido (#DB8529) con icono de check circular.
+     - Insuficiente (0.0 – 4.9): Rojo coral (#D63D47) con icono de alerta.
+     - Barras horizontales proporcionales con relleno degradado y cifras monoespaciadas (`.monospacedDigit()`).
+     - Micro-desglose interactivo táctil: al pulsar sobre cualquier tramo del histograma, se despliega con animación elástica la lista de alumnos pertenecientes a ese tramo con sus notas individuales y feedback sensorial háptico.
+  4. Integración fluida en el Cuaderno docente:
+     - Acceso prioritario desde el menú contextual de la cabecera de columna (`columnContextMenu`) en `NotebookModuleGridCells.swift` («Estadísticas de la columna…» con glifo `chart.bar.xaxis`).
+     - Acceso directo desde la barra de comandos contextual (`nativeContextualToolbarActions` en `NotebookModuleView.swift` al seleccionar una columna).
+     - Presentación adaptativa mediante `.sheet(item: $columnStatisticsRequest)`: detents nativos (`.medium`, `.large`) en iOS/iPadOS y ventana acotada (580×640pt) en macOS.
+  5. Herramienta de exportación para actas y claustro:
+     - Botón «Copiar informe» que genera un texto estructurado en portapapeles con fecha, grupo, ponderación, media con etiqueta cualitativa, percentiles y desglose LOMLOE, listo para pegar en actas oficiales de evaluación o correos de coordinación docente.
+- Por qué importa: Dota al Cuaderno de la capacidad analítica más celebrada de iDoceo, permitiendo al profesorado interpretar los resultados de cualquier examen, rúbrica o situación de aprendizaje en segundos, detectar a alumnos en riesgo o sobresalientes sin salir del cuaderno y generar informes para el equipo docente al instante.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/NotebookColumnStatisticsSheet.swift` (componente nuevo con modelos, extractor y UI)
+  - `kmp/iosApp/App/NotebookModuleTypes.swift` (`NotebookColumnStatisticsRequest`)
+  - `kmp/iosApp/App/NotebookModuleGridCells.swift` (opción en `columnContextMenu`)
+  - `kmp/iosApp/App/NotebookModuleView.swift` (presentación modal y botón contextual en toolbar)
+- Validación realizada:
+  - Compilación dual limpia verificada con `./scripts/verify_apple_builds.sh` en macOS Native (`MiGestorKMPMac`) e iOS Simulator (`MiGestorKMPiOS`).
+  - Revisión exhaustiva con subagente `reviewer` (dictamen: APROBADO 🟢, destacando la robustez matemática ante colecciones vacías y la precisión normativa LOMLOE).
+  - Auditoría read-only de ramas y commits con subagente `janitor` (dictamen: SEGURO PROCEDER AL MERGE).
+  - Fusión por fast-forward a `develop` (commits `ea1d5d0` y `6f5fa27`) y eliminación segura de la rama `codex/notebook-column-statistics`.
+
 ## Avance 2026-09-09 - Fase 5 del rediseño estilo iDoceo: estantería de cuadernos y selector visual de clases 2.0 con portadas de libreta, gradientes pedagógicos y accesos directos
 
 Resumen:

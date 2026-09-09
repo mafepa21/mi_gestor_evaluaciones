@@ -1039,6 +1039,8 @@ final class KmpBridge: ObservableObject {
     private var cachedNotebookCellValueIndex: NotebookCellValueIndex? = nil
     private var lastNotebookAggregateSignature: String? = nil
     private var gradeOnTenFormatCache: [String: String] = [:]
+    private var optimisticGradeDrafts: [String: String] = [:]
+    private var optimisticTextDrafts: [String: String] = [:]
 
     private struct NotebookCellValueIndex {
         var textByKey: [String: String] = [:]
@@ -9237,6 +9239,15 @@ final class KmpBridge: ObservableObject {
     }
     
     func saveColumnGrade(studentId: Int64, column: NotebookColumnDefinition, value: String) {
+        let key = cellKey(studentId: studentId, columnId: column.id)
+        if column.type == .numeric || column.type == .rubric || column.type == .calculated {
+            optimisticGradeDrafts[key] = value
+            if let evalId = column.evaluationId?.int64Value {
+                optimisticGradeDrafts[cellKey(studentId: studentId, columnId: "eval_\(evalId)")] = value
+            }
+        } else {
+            optimisticTextDrafts[key] = value
+        }
         notebookViewModel.saveColumnGrade(studentId: studentId, column: column, value: value)
         invalidateNotebookCellValueIndexCache()
         if let classId = notebookViewModel.currentClassId?.int64Value {
@@ -9249,6 +9260,15 @@ final class KmpBridge: ObservableObject {
         column: NotebookColumnDefinition,
         value: String
     ) {
+        let key = cellKey(studentId: studentId, columnId: column.id)
+        if column.type == .numeric || column.type == .rubric || column.type == .calculated {
+            optimisticGradeDrafts[key] = value
+            if let evalId = column.evaluationId?.int64Value {
+                optimisticGradeDrafts[cellKey(studentId: studentId, columnId: "eval_\(evalId)")] = value
+            }
+        } else {
+            optimisticTextDrafts[key] = value
+        }
         notebookViewModel.saveColumnGrade(studentId: studentId, column: column, value: value)
         invalidateNotebookCellValueIndexCache()
         if let classId = notebookViewModel.currentClassId?.int64Value {
@@ -12843,14 +12863,24 @@ final class KmpBridge: ObservableObject {
             index.checkDraftByKey[rowKey] = value.boolValue
         }
 
+        for (key, value) in optimisticGradeDrafts {
+            index.numericDraftByKey[key] = value
+        }
+        for (key, value) in optimisticTextDrafts {
+            index.textDraftByKey[key] = value
+        }
+
         cachedNotebookStateIdentity = stateIdentity
         cachedNotebookCellValueIndex = index
         return index
     }
 
     func cellText(studentId: Int64, columnId: String) -> String {
-        guard let index = notebookCellValueIndex() else { return "" }
         let key = cellKey(studentId: studentId, columnId: columnId)
+        if let opt = optimisticTextDrafts[key] {
+            return opt
+        }
+        guard let index = notebookCellValueIndex() else { return "" }
         return index.textDraftByKey[key] ?? index.textByKey[key] ?? ""
     }
 
@@ -12861,8 +12891,11 @@ final class KmpBridge: ObservableObject {
     }
     
     func numericGradeText(studentId: Int64, columnId: String) -> String {
-        guard let index = notebookCellValueIndex() else { return "" }
         let key = cellKey(studentId: studentId, columnId: columnId)
+        if let opt = optimisticGradeDrafts[key] {
+            return opt
+        }
+        guard let index = notebookCellValueIndex() else { return "" }
         if let draft = index.numericDraftByKey[key] {
             return draft
         }

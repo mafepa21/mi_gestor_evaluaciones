@@ -55,6 +55,7 @@ struct StudentProfile360Sheet: View {
     @State private var tutoringSessions: [TutoringSessionRow] = []
     @State private var educationalInsight: StudentInsightDraft? = nil
     @State private var isLoading = true
+    @State private var isGeneratingInsight = false
     @State private var isTogglingInjury = false
     @State private var showCopiedAlert = false
     @State private var showTutoringSheet = false
@@ -150,7 +151,14 @@ struct StudentProfile360Sheet: View {
             }
         }
         .task(id: studentId) {
+            educationalInsight = nil
             await loadProfileData()
+        }
+        .sheet(isPresented: $showTutoringSheet) {
+            TutoringSessionFormSheet(studentId: studentId) {
+                Task { await loadProfileData() }
+            }
+            .environmentObject(bridge)
         }
         #if os(macOS)
         .frame(width: 680, height: 740)
@@ -216,13 +224,15 @@ struct StudentProfile360Sheet: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    if let email = currentStudent?.email, !email.isEmpty {
+                    if let cleanEmail = currentStudent?.email?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !cleanEmail.isEmpty,
+                       let emailUrl = URL(string: "mailto:\(cleanEmail)") ?? URL(string: "mailto:\(cleanEmail.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
                         Text("•")
                             .foregroundStyle(.tertiary)
-                        Link(destination: URL(string: "mailto:\(email)")!) {
+                        Link(destination: emailUrl) {
                             HStack(spacing: 3) {
                                 Image(systemName: "envelope.fill")
-                                Text(email)
+                                Text(cleanEmail)
                             }
                             .font(.caption)
                         }
@@ -233,16 +243,17 @@ struct StudentProfile360Sheet: View {
             Spacer(minLength: 8)
 
             // Controles de Carrusel (‹ Alumno anterior | Alumno siguiente ›)
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Button {
                     navigatePrevious()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 14, weight: .bold))
-                        .frame(width: 38, height: 38)
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 44, height: 44)
                         .background(cardBackground)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(NotebookGridStyle.gridLine, lineWidth: 1))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(!canNavigatePrevious)
@@ -254,11 +265,12 @@ struct StudentProfile360Sheet: View {
                     navigateNext()
                 } label: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .bold))
-                        .frame(width: 38, height: 38)
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 44, height: 44)
                         .background(cardBackground)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(NotebookGridStyle.gridLine, lineWidth: 1))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(!canNavigateNext)
@@ -279,13 +291,13 @@ struct StudentProfile360Sheet: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: tab.systemIcon)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 13, weight: .semibold))
                             Text(tab.title)
                                 .font(.system(size: 13, weight: isSelected ? .bold : .medium, design: .rounded))
                         }
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .frame(minHeight: 38)
+                        .frame(minHeight: 44)
                         .background(
                             Capsule()
                                 .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08))
@@ -295,6 +307,7 @@ struct StudentProfile360Sheet: View {
                                 .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
                         )
                         .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -675,8 +688,14 @@ struct StudentProfile360Sheet: View {
                     } label: {
                         Label("Añadir", systemImage: "plus.circle.fill")
                             .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.accentColor.opacity(0.12))
+                            .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .frame(minHeight: 44)
                     .foregroundStyle(Color.accentColor)
                 }
 
@@ -749,13 +768,15 @@ struct StudentProfile360Sheet: View {
                             Text(isInjured ? "Retirar lesión" : "Marcar lesión")
                         }
                         .font(.caption.weight(.bold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
                         .background(isInjured ? Color.green.opacity(0.15) : Color.red.opacity(0.12))
                         .foregroundStyle(isInjured ? Color.green : Color.red)
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .frame(minHeight: 44)
                     .disabled(isTogglingInjury)
                 }
 
@@ -894,6 +915,19 @@ struct StudentProfile360Sheet: View {
                     .background(Color.accentColor.opacity(0.06))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.accentColor.opacity(0.2), lineWidth: 1))
+                } else if isGeneratingInsight {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                        Text("Analizando perfil con Apple Intelligence local…")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text("Evaluando notas, asistencia, incidencias y medidas de apoyo.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(24)
                 } else {
                     VStack(spacing: 12) {
                         Text("Pulsa «Generar análisis» para obtener un resumen pedagógico local de su evolución, alertas tempranas y puntos fuertes.")
@@ -1029,7 +1063,9 @@ struct StudentProfile360Sheet: View {
     }
 
     private func generateInsight() async {
-        guard let profile else { return }
+        guard let profile, !isGeneratingInsight else { return }
+        isGeneratingInsight = true
+        defer { isGeneratingInsight = false }
         let avgVal = studentRow?.row.weightedAverage?.doubleValue ?? profile.averageScore
         let avgText = String(format: "%.1f", avgVal)
         let evidence = StudentInsightEvidence(

@@ -3,6 +3,51 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-09 - Fase 7 del rediseño estilo iDoceo: sellos formativos e iconos rápidos en celdas con catálogo pedagógico, micro-badges en relieve y avance masivo
+
+Resumen:
+- Qué cambio se hizo:
+  1. Se implementó la Fase 7 de la hoja de ruta de inspiración iDoceo: el sistema de sellos e iconos rápidos de feedback formativo en las celdas del Cuaderno docente (`NotebookCellStampCatalog.swift` y `NotebookCellStampPickerPopover.swift`).
+  2. Catálogo pedagógico de sellos formativos (`NotebookCellStampCatalog.swift`):
+     - Organizado en 4 categorías educativas alineadas con la docencia actual y LOMLOE:
+       - *Excelencia y Logro*: Sobresaliente (`star.fill`), Logro destacado (`trophy.fill`), Objetivo cumplido (`target`), Buen trabajo (`hand.thumbsup.fill`), Idea creativa (`lightbulb.fill`).
+       - *Esfuerzo y Actitud*: Gran energía (`bolt.fill`), Progresando (`chart.line.uptrend.xyaxis`), Cooperación (`person.2.fill`), Superación (`shield.fill`).
+       - *Atención y Refuerzo*: Necesita refuerzo (`exclamationmark.triangle.fill`), Prioritario (`flag.fill`), Entrega pendiente (`hourglass`), Nota formativa (`bubble.left.fill`), No superado (`xmark.circle.fill`).
+       - *EF y Bienestar*: Ritmo / Marca (`figure.run`), Juego limpio (`heart.fill`), Cronometrada (`stopwatch.fill`).
+     - Subconjunto `quickStamps` con 6 sellos de 1 toque para interacción directa e inmediata.
+     - Resolutor dinámico `item(for:)` compatible con identificadores de catálogo, nombres SF Symbols y emojis.
+  3. Micro-badge en relieve en celda (`NotebookCellStampBadge`):
+     - Sustitución del texto plano por una cápsula visual de precisión en la esquina superior derecha de las celdas editables y calculadas.
+     - Renderizado de icono con color semántico por categoría, fondo translúcido (`opacity: 0.16`), trazo fino y sombra de realce.
+     - Indicador contextual de notas escritas (`bubble.left.fill`, 8pt) y contador numérico de archivos adjuntos.
+     - Tooltip descriptivo (`.help`) en macOS que detalla alumno, significado pedagógico del sello, nota y adjuntos.
+     - Locución accesible VoiceOver unificada (`.accessibilityLabel`).
+  4. Selector visual modal (`NotebookCellStampPickerPopover.swift`):
+     - Cabecera con avatar, iniciales, nombre del alumno, posición en la clase («3 de 24»), calificación actual y badge de la columna.
+     - Selector por pestañas de categorías pedagógicas con micro-cápsulas dinámicas.
+     - Cuadrícula táctil con touch targets holgados ($\ge 48$pt), icono destacado, título y descripción formativa.
+     - Editor de observación formativa multilínea con botón para borrar texto.
+     - Botón «Quitar sello» que elimina el icono preservando las notas escritas si existen.
+     - Botón «Guardar» y botón destacado «Guardar y siguiente alumno (↓)» con recambio de estado por `.id(request.id)` para calificar tareas y actitudes masivamente en segundos.
+  5. Integración en el Cuaderno docente:
+     - Menú contextual de fila (`NotebookModuleGridCells.swift`): opción «Sellos formativos e icono…» y submenú «Sellos rápidos».
+     - Dock de teclado rápido (`NotebookQuickKeypadDock.swift` y `NotebookModuleQuickKeypad.swift`): botón `seal.fill` en cabecera con touch target de 44×44pt para abrir el selector mientras se califica numéricamente.
+     - Persistencia nativa a través de `KmpBridge.saveNotebookCellAnnotation(...)` y reactividad inmediata con `reloadNotebookRow(studentId)`.
+- Por qué importa: Incorpora al Cuaderno una de las funciones más queridas de iDoceo, permitiendo al profesorado ofrecer retroalimentación cualitativa y formativa visual sin esfuerzo, destacar conductas positivas, registrar incidencias y calificar revisiones de cuaderno o tareas a toda la clase a velocidad récord.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/NotebookCellStampCatalog.swift` (catálogo pedagógico, categorías y `NotebookCellStampBadge`)
+  - `kmp/iosApp/App/NotebookCellStampPickerPopover.swift` (modal interactivo de sellos y avance masivo)
+  - `kmp/iosApp/App/NotebookEditableTableCell.swift` (renderizado de badge en celdas editables y read-only)
+  - `kmp/iosApp/App/NotebookModuleGridCells.swift` (menú contextual y sellos rápidos)
+  - `kmp/iosApp/App/NotebookModuleTypes.swift` (`NotebookCellStampRequest`, variantes toast)
+  - `kmp/iosApp/App/NotebookModuleView.swift` (presentación modal, acciones y avance automático)
+  - `kmp/iosApp/App/NotebookQuickKeypadDock.swift` y `NotebookModuleQuickKeypad.swift` (acceso desde dock)
+- Validación realizada:
+  - Compilación dual limpia con `./scripts/verify_apple_builds.sh` (macOS Native e iOS Simulator exitosos).
+  - Revisión exhaustiva con subagente `reviewer` (dictamen: APROBADO 🟢, con pulidos de `.id(request.id)`, touch target 44pt y preservación de notas implementados).
+  - Auditoría read-only de ramas y commits con subagente `janitor` (dictamen: SEGURO PROCEDER AL MERGE).
+  - Fusión por fast-forward a `develop` (commits `d990e10` y `450caac`) y eliminación segura de la rama `codex/notebook-cell-stamps`.
+
 ## Avance 2026-09-09 - Fase 6 del rediseño estilo iDoceo: ficha de estadísticas de columna y distribución de notas con histograma LOMLOE y métricas descriptivas
 
 Resumen:

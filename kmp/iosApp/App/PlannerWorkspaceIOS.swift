@@ -185,6 +185,7 @@ struct PlannerWorkspaceIOS: View {
     private var plannerMainContent: some View {
         VStack(spacing: 0) {
             PlannerToolbar(vm: vm, onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) })
+                .layoutPriority(1)
             Group {
                 switch vm.activeSection {
                 case .week:

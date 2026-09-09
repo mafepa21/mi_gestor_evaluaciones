@@ -51,11 +51,13 @@ struct PlannerWeekMiniatureLayout: View {
             }
 
             HStack(alignment: .top, spacing: 16) {
-                grid
-                    .frame(height: gridHeight)
-                    .padding(16)
-                    .plannerGlassPanel(.content, cornerRadius: 24)
-                    .frame(maxWidth: .infinity, alignment: .top)
+                ScrollView(.vertical) {
+                    grid
+                        .frame(height: gridHeight)
+                        .padding(16)
+                }
+                .plannerGlassPanel(.content, cornerRadius: 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                 if isDetailPaneVisible {
                     ScrollView(.vertical) {
@@ -63,6 +65,7 @@ struct PlannerWeekMiniatureLayout: View {
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
                     .frame(width: 400)
+                    .frame(maxHeight: .infinity)
                     .plannerGlassPanel(.content, cornerRadius: 24)
                 }
             }

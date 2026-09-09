@@ -691,6 +691,7 @@ struct NotebookColumnStatisticsSheet: View {
                                 }
                                 .frame(width: 75, alignment: .trailing)
                             }
+                            .padding(.vertical, 5)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)

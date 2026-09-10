@@ -54,6 +54,7 @@ class LocalSyncServerAdoptionTest {
         server = LocalSyncServer(
             port = port,
             container = container,
+            secureStoreServiceName = "com.migestor.sync.test",
         )
         server.start()
         server.revokePairing()
@@ -79,6 +80,7 @@ class LocalSyncServerAdoptionTest {
 
     @After
     fun tearDown() {
+        server.revokePairing()
         server.stop()
         driver.close()
         tempDbFile.delete()
@@ -210,5 +212,25 @@ class LocalSyncServerAdoptionTest {
         assertEquals(200, statusConn.responseCode)
         val statusJson = Json.parseToJsonElement(statusConn.inputStream.bufferedReader().readText()).jsonObject
         assertEquals("staged", statusJson["status"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun rePairingWithValidPinReplacesDeviceWithout409() {
+        assertEquals("test-device", server.currentSnapshot().pairedDeviceId)
+
+        val currentPin = server.currentPin()
+        val conn = openHttpsConnection("/sync/handshake", "POST")
+        conn.doOutput = true
+        conn.outputStream.use {
+            it.write("""{"pin":"$currentPin","deviceId":"new-ipad-device"}""".toByteArray())
+        }
+
+        assertEquals(200, conn.responseCode)
+        val responseBody = conn.inputStream.bufferedReader().readText()
+        val json = Json.parseToJsonElement(responseBody).jsonObject
+        val newToken = json["token"]!!.jsonPrimitive.content
+        assertNotNull(newToken)
+        assertEquals("new-ipad-device", json["deviceId"]?.jsonPrimitive?.content)
+        assertEquals("new-ipad-device", server.currentSnapshot().pairedDeviceId)
     }
 }

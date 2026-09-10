@@ -13,6 +13,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Fixed
+
+- Desbloqueo y aislamiento de Keychain en SyncLAN (#229):
+  - Solucionado el error `already_paired` (409) al enlazar el iPad con el Mac: `LocalSyncServer` ahora permite re-emparejar cuando el cliente proporciona el PIN efímero actual mostrado en pantalla, reemplazando el vínculo anterior de forma transparente y rotando el PIN de un solo uso.
+  - Aislamiento en memoria para suites de tests: `DesktopSecureStore` utiliza `ConcurrentHashMap` cuando el nombre de servicio contiene `test` o `in-memory`, evitando que ejecuciones de Gradle (`:data:desktopTest`) contaminen el Keychain del sistema (`login.keychain-db`) con credenciales espurias de dispositivos de prueba (`test-device`).
+  - Capacidad de desvinculación nativa desde macOS: añadido botón «Desvincular» en las acciones rápidas y «Restablecer enlace» en diagnóstico avanzado de `MacSyncView`, soporte de flag `--reset-pairing` en `CommandCenterMain` y método `unpairDevice()` en `MacCommandCenterCoordinator` con purga proactiva de claves en el Keychain.
+
 ### Added
 
 - Detección de divergencia y huella de integridad en SyncLAN (`SyncDatasetFingerprint`): cómputo de recuentos de filas, timestamp máximo y hash determinista FNV-1a de 64 bits sobre 11 entidades clave de la base de datos para diagnosticar desalineación de datasets o incompatibilidad de esquemas; expuesto en `GET /sync/fingerprint` y en Swift como `LanSyncClient.fingerprint()` y `KmpBridge.syncDivergence`.

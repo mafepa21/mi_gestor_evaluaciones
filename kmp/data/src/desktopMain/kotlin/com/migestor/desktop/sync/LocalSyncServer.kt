@@ -159,7 +159,12 @@ class LocalSyncServer(
     private val syncCoordinator: SyncCoordinator = SyncCoordinator(InMemorySyncAdapter()),
     private val stateListener: ((CommandCenterSnapshot) -> Unit)? = null,
     private val container: KmpContainer? = null,
+    secureStoreServiceName: String = DEFAULT_KEYCHAIN_SERVICE,
 ) {
+    companion object {
+        const val DEFAULT_KEYCHAIN_SERVICE = "com.migestor.sync.desktop"
+    }
+
     private val learningSituationDocumentsDirectory = File(getAppDataPath("learning-situations")).apply { mkdirs() }
     private val json = Json { ignoreUnknownKeys = true }
     private val sseConnections = java.util.concurrent.CopyOnWriteArrayList<HttpExchange>()
@@ -175,7 +180,7 @@ class LocalSyncServer(
     @Volatile
     private var advertisedLanAddress: InetAddress? = null
 
-    private val secureStore = DesktopSecureStore(serviceName = "com.migestor.sync.desktop")
+    private val secureStore = DesktopSecureStore(serviceName = secureStoreServiceName)
     private val tlsIdentity = DesktopTlsIdentity(secureStore)
 
     @Volatile
@@ -273,9 +278,8 @@ class LocalSyncServer(
             }
 
             if (!pairedDeviceId.isNullOrBlank() && pairedDeviceId != deviceId) {
-                println("❌ Handshake fallido: Servidor ya vinculado a '$pairedDeviceId'. Solicitud desde '$deviceId'")
-                ex.respond(409, """{"error":"already_paired"}""")
-                return@createContext
+                println("⚠️ Re-emparejando servidor: Reemplazando vínculo previo '$pairedDeviceId' por '$deviceId' mediante PIN válido.")
+                activeToken = null
             }
 
             val token = activeToken ?: UUID.randomUUID().toString().also { newToken ->
@@ -284,6 +288,9 @@ class LocalSyncServer(
             }
             pairedDeviceId = deviceId
             secureStore.put("paired-device-id", deviceId)
+
+            // Rotar PIN tras emparejamiento exitoso para que el código mostrado sea de un solo uso
+            pairingPin = (100000..999999).random().toString()
 
             println("✅ Handshake exitoso para '$deviceId'. Token emitido.")
             notifyStatusChanged()
@@ -451,7 +458,11 @@ class LocalSyncServer(
                 ex.respond(405, """{"error":"method_not_allowed"}""")
                 return@createContext
             }
-            if (!isAuthorized(ex)) return@createContext
+            val isLoopback = isLoopbackSyncRequest(ex.remoteAddress?.address)
+            if (!isLoopback && !isAuthorized(ex)) {
+                ex.respond(401, """{"error":"unauthorized"}""")
+                return@createContext
+            }
             revokePairingInternal()
             ex.respond(200, """{"ok":true}""")
         }
@@ -1099,23 +1110,34 @@ private class DesktopTlsIdentity(
 private class DesktopSecureStore(
     private val serviceName: String,
 ) {
-    private val prefs = Preferences.userRoot().node("com.migestor.sync.desktop.fallback")
+    private val isMemoryOnly = serviceName.contains("test", ignoreCase = true) || serviceName == "in-memory"
+    private val memoryStore = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val prefs = if (isMemoryOnly) null else Preferences.userRoot().node("com.migestor.sync.desktop.fallback")
 
     fun get(key: String): String? {
-        return readFromMacKeychain(key) ?: prefs.get(key, null)
+        if (isMemoryOnly) return memoryStore[key]
+        return readFromMacKeychain(key) ?: prefs?.get(key, null)
     }
 
     fun put(key: String, value: String) {
+        if (isMemoryOnly) {
+            memoryStore[key] = value
+            return
+        }
         if (!writeToMacKeychain(key, value)) {
-            prefs.put(key, value)
-            prefs.flushSafely()
+            prefs?.put(key, value)
+            prefs?.flushSafely()
         }
     }
 
     fun delete(key: String) {
+        if (isMemoryOnly) {
+            memoryStore.remove(key)
+            return
+        }
         if (!deleteFromMacKeychain(key)) {
-            prefs.remove(key)
-            prefs.flushSafely()
+            prefs?.remove(key)
+            prefs?.flushSafely()
         }
     }
 

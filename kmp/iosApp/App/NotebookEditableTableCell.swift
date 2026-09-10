@@ -22,21 +22,29 @@ struct NotebookCellDisplaySnapshot: Equatable {
     let checkValue: Bool
     let calculatedText: String
     let rubricText: String
+    let stampIcon: String?
+    let hasNote: Bool
+    let attachmentCount: Int
 
     init(
         numericText: String = "",
         text: String = "",
         checkValue: Bool = false,
         calculatedText: String = "",
-        rubricText: String = ""
+        rubricText: String = "",
+        stampIcon: String? = nil,
+        hasNote: Bool = false,
+        attachmentCount: Int = 0
     ) {
         self.numericText = numericText
         self.text = text
         self.checkValue = checkValue
         self.calculatedText = calculatedText
         self.rubricText = rubricText
+        self.stampIcon = stampIcon
+        self.hasNote = hasNote
+        self.attachmentCount = attachmentCount
     }
-
 }
 
 struct NotebookCellActions {
@@ -135,6 +143,7 @@ struct NotebookEditableTableCell: View {
                 hasColumnColor: hasColumnColor,
                 formulaDisplay: formulaDisplay,
                 isSelected: isSelected,
+                reloadToken: reloadToken,
                 onSelect: onSelect,
                 onOpenStructuredInstrument: onOpenStructuredInstrument
             )
@@ -242,6 +251,7 @@ struct NotebookEditableTableCell: View {
                     hasColumnColor: hasColumnColor,
                     formulaDisplay: formulaDisplay,
                     isSelected: isSelected,
+                    reloadToken: reloadToken,
                     onSelect: onSelect,
                     onOpenRubricIndividual: onOpenRubricIndividual,
                     onOpenRubricBulk: onOpenRubricBulk
@@ -258,6 +268,7 @@ struct NotebookEditableTableCell: View {
                     hasColumnColor: hasColumnColor,
                     formulaDisplay: formulaDisplay,
                     isSelected: isSelected,
+                    reloadToken: reloadToken,
                     onSelect: onSelect,
                     onOpenFormula: onOpenFormula
                 )
@@ -1783,6 +1794,7 @@ private struct NotebookFormulaCell: View, Equatable {
     let hasColumnColor: Bool
     let formulaDisplay: NotebookFormulaCellDisplay?
     let isSelected: Bool
+    let reloadToken: Int
     let onSelect: () -> Void
     let onOpenFormula: () -> Void
 
@@ -1826,6 +1838,7 @@ private struct NotebookFormulaCell: View, Equatable {
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.reloadToken == rhs.reloadToken &&
             lhs.formulaDisplay?.text == rhs.formulaDisplay?.text &&
             lhs.formulaDisplay?.isError == rhs.formulaDisplay?.isError
     }
@@ -1841,6 +1854,7 @@ private struct NotebookRubricCell: View, Equatable {
     let hasColumnColor: Bool
     let formulaDisplay: NotebookFormulaCellDisplay?
     let isSelected: Bool
+    let reloadToken: Int
     let onSelect: () -> Void
     let onOpenRubricIndividual: () -> Void
     let onOpenRubricBulk: () -> Void
@@ -1890,7 +1904,8 @@ private struct NotebookRubricCell: View, Equatable {
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
             lhs.width == rhs.width &&
-            lhs.isSelected == rhs.isSelected
+            lhs.isSelected == rhs.isSelected &&
+            lhs.reloadToken == rhs.reloadToken
     }
 }
 
@@ -1904,6 +1919,7 @@ private struct NotebookReadOnlyCell: View, Equatable {
     let hasColumnColor: Bool
     let formulaDisplay: NotebookFormulaCellDisplay?
     let isSelected: Bool
+    let reloadToken: Int
     let onSelect: () -> Void
     let onOpenStructuredInstrument: () -> Void
 
@@ -1955,7 +1971,9 @@ private struct NotebookReadOnlyCell: View, Equatable {
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
             lhs.width == rhs.width &&
-            lhs.isSelected == rhs.isSelected
+            lhs.isSelected == rhs.isSelected &&
+            lhs.reloadToken == rhs.reloadToken &&
+            lhs.displayText == rhs.displayText
     }
 }
 

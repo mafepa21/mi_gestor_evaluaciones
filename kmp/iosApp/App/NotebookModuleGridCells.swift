@@ -836,29 +836,56 @@ extension NotebookModuleView {
         formulaDisplay: NotebookFormulaCellDisplay?
     ) -> NotebookCellDisplaySnapshot {
         let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let stampIcon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
+        let hasNote = !(persistedCell?.annotation?.note?.isEmpty ?? true)
+        let attachmentCount = persistedCell?.annotation?.attachmentUris.count ?? 0
 
         switch column.type {
         case .numeric:
             return NotebookCellDisplaySnapshot(
                 numericText: displayValue(for: item, column: column)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
             )
         case .check:
-            return NotebookCellDisplaySnapshot(checkValue: displayValue(for: item, column: column) == "Sí")
+            return NotebookCellDisplaySnapshot(
+                checkValue: displayValue(for: item, column: column) == "Sí",
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
+            )
         case .calculated:
             return NotebookCellDisplaySnapshot(
-                calculatedText: formulaDisplay?.text ?? displayValue(for: item, column: column)
+                calculatedText: formulaDisplay?.text ?? displayValue(for: item, column: column),
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
             )
         case .rubric:
             return NotebookCellDisplaySnapshot(
                 rubricText: displayValue(for: item, column: column)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
             )
         case .attendance:
-            return NotebookCellDisplaySnapshot(text: displayValue(for: item, column: column))
+            return NotebookCellDisplaySnapshot(
+                text: displayValue(for: item, column: column),
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
+            )
         default:
             let val = displayValue(for: item, column: column)
-            return NotebookCellDisplaySnapshot(text: !val.isEmpty ? val : (persistedCell?.textValue ?? persistedCell?.displayValue ?? ""))
+            return NotebookCellDisplaySnapshot(
+                text: !val.isEmpty ? val : (persistedCell?.textValue ?? persistedCell?.displayValue ?? ""),
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
+            )
         }
     }
 

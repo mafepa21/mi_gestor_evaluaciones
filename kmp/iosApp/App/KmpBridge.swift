@@ -1257,6 +1257,9 @@ final class KmpBridge: ObservableObject {
                     cell.textValue ?? "",
                     String(describing: cell.boolValue),
                     cell.iconValue ?? "",
+                    cell.annotation?.icon ?? "",
+                    cell.annotation?.note ?? "",
+                    "\(cell.annotation?.attachmentUris.count ?? 0)",
                     cell.ordinalValue ?? "",
                     cell.displayValue ?? ""
                 ].joined(separator: ":")
@@ -9819,6 +9822,7 @@ final class KmpBridge: ObservableObject {
         iconValue: String? = nil,
         attachmentUris: [String] = []
     ) {
+        lastNotebookAggregateSignature = nil
         notebookViewModel.saveCellAnnotation(
             studentId: studentId,
             columnId: columnId,
@@ -10215,6 +10219,10 @@ final class KmpBridge: ObservableObject {
             deviceId: localDeviceId,
             syncVersion: 1
         )
+        let key = cellKey(studentId: model.studentId, columnId: model.columnId)
+        optimisticTextDrafts[key] = summary.displayValue
+        invalidateNotebookCellValueIndexCache()
+        lastNotebookAggregateSignature = nil
         refreshCurrentNotebook()
         scheduleNotebookSnapshotSync(forClassId: model.classId)
         return summary
@@ -10322,6 +10330,7 @@ final class KmpBridge: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 if emitNotebookRefresh {
+                    self.lastNotebookAggregateSignature = nil
                     self.refreshCurrentNotebook()
                     if let classId = self.notebookViewModel.currentClassId?.int64Value {
                         self.scheduleNotebookSnapshotSync(forClassId: classId)
@@ -13023,6 +13032,14 @@ final class KmpBridge: ObservableObject {
         }
         for (key, value) in optimisticTextDrafts {
             index.textDraftByKey[key] = value
+            index.displayByKey[key] = value
+            if let b = Bool(value) {
+                index.checkDraftByKey[key] = b
+            } else if value == "1" {
+                index.checkDraftByKey[key] = true
+            } else if value == "0" {
+                index.checkDraftByKey[key] = false
+            }
         }
 
         cachedNotebookStateIdentity = stateIdentity
@@ -13040,8 +13057,11 @@ final class KmpBridge: ObservableObject {
     }
 
     func structuredCellDisplayText(studentId: Int64, columnId: String) -> String {
-        guard let index = notebookCellValueIndex() else { return "" }
         let key = cellKey(studentId: studentId, columnId: columnId)
+        if let opt = optimisticTextDrafts[key] {
+            return opt
+        }
+        guard let index = notebookCellValueIndex() else { return "" }
         return index.displayByKey[key] ?? index.textByKey[key] ?? ""
     }
     
@@ -13110,8 +13130,15 @@ final class KmpBridge: ObservableObject {
     }
 
     func cellCheck(studentId: Int64, columnId: String) -> Bool {
-        guard let index = notebookCellValueIndex() else { return false }
         let key = cellKey(studentId: studentId, columnId: columnId)
+        if let optText = optimisticTextDrafts[key] {
+            if let b = Bool(optText) {
+                return b
+            }
+            if optText == "1" { return true }
+            if optText == "0" { return false }
+        }
+        guard let index = notebookCellValueIndex() else { return false }
         if let draft = index.checkDraftByKey[key] {
             return draft
         }

@@ -1041,8 +1041,14 @@ final class KmpBridge: ObservableObject {
     private var cachedNotebookCellValueIndex: NotebookCellValueIndex? = nil
     private var lastNotebookAggregateSignature: String? = nil
     private var gradeOnTenFormatCache: [String: String] = [:]
+    private struct OptimisticAnnotation {
+        let note: String?
+        let icon: String?
+        let attachmentUris: [String]
+    }
     private var optimisticGradeDrafts: [String: String] = [:]
     private var optimisticTextDrafts: [String: String] = [:]
+    private var optimisticAnnotations: [String: OptimisticAnnotation] = [:]
 
     private struct NotebookCellValueIndex {
         var textByKey: [String: String] = [:]
@@ -9822,6 +9828,12 @@ final class KmpBridge: ObservableObject {
         iconValue: String? = nil,
         attachmentUris: [String] = []
     ) {
+        let key = cellKey(studentId: studentId, columnId: columnId)
+        optimisticAnnotations[key] = OptimisticAnnotation(
+            note: note.nilIfEmpty,
+            icon: iconValue?.nilIfEmpty,
+            attachmentUris: attachmentUris
+        )
         lastNotebookAggregateSignature = nil
         notebookViewModel.saveCellAnnotation(
             studentId: studentId,
@@ -13063,6 +13075,14 @@ final class KmpBridge: ObservableObject {
         }
         guard let index = notebookCellValueIndex() else { return "" }
         return index.displayByKey[key] ?? index.textByKey[key] ?? ""
+    }
+
+    func cellAnnotation(studentId: Int64, columnId: String) -> (note: String?, icon: String?, attachmentUris: [String])? {
+        let key = cellKey(studentId: studentId, columnId: columnId)
+        if let opt = optimisticAnnotations[key] {
+            return (note: opt.note, icon: opt.icon, attachmentUris: opt.attachmentUris)
+        }
+        return nil
     }
     
     func numericGradeText(studentId: Int64, columnId: String) -> String {

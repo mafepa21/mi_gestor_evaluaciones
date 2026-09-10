@@ -3,6 +3,37 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-10 - Cuaderno: reactividad instantánea en columnas no rúbricas (Checklist, Observación y Anotaciones) (PR #232)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Resolución de la causa raíz de persistencia asíncrona ensombrecedora:
+     - En `NotebookEditableTableCell.swift` (`NotebookReadOnlyCell.displayText`), se invirtió la precedencia para priorizar `displaySnapshot.text` si no está vacío sobre `persistedCell?.displayValue`. Anteriormente, como SQLite en Kotlin corre de forma asíncrona, `persistedCell` aún conservaba el valor previo o vacío en memoria, y al ser no-nulo en Swift (`""`), ensombrecía y descartaba el resumen optimista calculado por el bridge.
+     - En `NotebookReadOnlyCellChrome` y `NotebookStatefulEditableTableCell`, se incorporó `displaySnapshot` para el cálculo de `hasSignal` y los parámetros de `NotebookCellStampBadge` (`iconValue`, `note`, `attachmentCount`), haciendo que los sellos y notas añadidos desde el inspector o la hoja de sellos aparezcan inmediatamente.
+  2. Implementación de capa optimista para anotaciones en `KmpBridge.swift`:
+     - Añadido el almacenamiento `optimisticAnnotations: [String: OptimisticAnnotation]`.
+     - Registro inmediato en `saveNotebookCellAnnotation(...)` antes de lanzar la corrutina de persistencia.
+     - Accesor `@MainActor func cellAnnotation(studentId:columnId:)` para consultar notas, iconos y adjuntos en tiempo real.
+  3. Paridad en snapshots (`NotebookModuleGridCells.swift` y `NotebookDynamicCellsRow.swift`):
+     - `cellDisplaySnapshot` ahora resuelve `optAnnotation` para reflejar instantáneamente sellos y notas.
+     - En `NotebookDynamicCellsRow.swift`, el caso `default` de `cellDisplaySnapshot` resuelve `cellValue(for: column)` para garantizar que las columnas de instrumentos estructurados muestren su valor formateado sin depender de la recarga diferida de SQLite.
+- Por qué importa:
+  - Resuelve el bug por el cual las columnas que no eran rúbricas (Anotación/Texto, Checklist y Observación) no actualizaban su valor o insignias en el Cuaderno tras guardar, requiriendo navegar a otra pantalla y volver.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookEditableTableCell.swift`
+  - `kmp/iosApp/App/NotebookModuleGridCells.swift`
+  - `kmp/iosApp/App/NotebookDynamicCellsRow.swift`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests KMP compartidos ejecutados con éxito: `./gradlew :shared:desktopTest` (BUILD SUCCESSFUL).
+  - CI de GitHub Actions completo en PR #232:
+    - Shared and data tests: pass (5m3s)
+    - iOS and macOS build verification: pass (13m8s)
+  - Fusión limpia y verificada en `develop`.
+
 ## Avance 2026-09-10 - Cuaderno: reactividad instantánea al calificar y actualizar instrumentos en Mac e iPad (PR #231)
 
 Resumen:

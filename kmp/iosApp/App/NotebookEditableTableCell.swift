@@ -707,14 +707,19 @@ private struct NotebookStatefulEditableTableCell: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
-            if let persistedCell, hasContextualSignal(in: persistedCell) {
+            let hasSignal = (persistedCell != nil && hasContextualSignal(in: persistedCell!)) ||
+                displaySnapshot.hasNote ||
+                (displaySnapshot.stampIcon != nil && !displaySnapshot.stampIcon!.isEmpty) ||
+                displaySnapshot.attachmentCount > 0
+
+            if hasSignal {
                 VStack {
                     HStack {
                         Spacer()
                         NotebookCellStampBadge(
-                            iconValue: persistedCell.annotation?.icon ?? persistedCell.iconValue,
-                            note: persistedCell.annotation?.note,
-                            attachmentCount: persistedCell.annotation?.attachmentUris.count ?? 0,
+                            iconValue: displaySnapshot.stampIcon ?? persistedCell?.annotation?.icon ?? persistedCell?.iconValue,
+                            note: displaySnapshot.hasNote ? (persistedCell?.annotation?.note ?? " ") : persistedCell?.annotation?.note,
+                            attachmentCount: max(displaySnapshot.attachmentCount, persistedCell?.annotation?.attachmentUris.count ?? 0),
                             fallbackTint: tint,
                             studentName: item.student.fullName
                         )
@@ -1800,6 +1805,7 @@ private struct NotebookFormulaCell: View, Equatable {
 
     var body: some View {
         NotebookReadOnlyCellChrome(
+            displaySnapshot: displaySnapshot,
             item: item,
             column: column,
             width: width,
@@ -1865,6 +1871,7 @@ private struct NotebookRubricCell: View, Equatable {
 
     var body: some View {
         NotebookReadOnlyCellChrome(
+            displaySnapshot: displaySnapshot,
             item: item,
             column: column,
             width: width,
@@ -1928,13 +1935,18 @@ private struct NotebookReadOnlyCell: View, Equatable {
     }
 
     private var displayText: String {
-        let value = (persistedCell?.displayValue ?? persistedCell?.textValue ?? displaySnapshot.text)
+        let snapshotText = displaySnapshot.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !snapshotText.isEmpty {
+            return snapshotText
+        }
+        let value = (persistedCell?.displayValue ?? persistedCell?.textValue ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? "Pendiente" : value
     }
 
     var body: some View {
         NotebookReadOnlyCellChrome(
+            displaySnapshot: displaySnapshot,
             item: item,
             column: column,
             width: width,
@@ -1979,6 +1991,7 @@ private struct NotebookReadOnlyCell: View, Equatable {
 
 @MainActor
 private struct NotebookReadOnlyCellChrome<Content: View>: View {
+    let displaySnapshot: NotebookCellDisplaySnapshot?
     let item: NotebookTableRow
     let column: NotebookColumnDefinition
     let width: CGFloat
@@ -1991,6 +2004,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
     let content: Content
 
     init(
+        displaySnapshot: NotebookCellDisplaySnapshot? = nil,
         item: NotebookTableRow,
         column: NotebookColumnDefinition,
         width: CGFloat,
@@ -2002,6 +2016,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
         onSelect: @escaping () -> Void,
         @ViewBuilder content: () -> Content
     ) {
+        self.displaySnapshot = displaySnapshot
         self.item = item
         self.column = column
         self.width = width
@@ -2038,14 +2053,19 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
-            if let persistedCell, hasContextualSignal(in: persistedCell) {
+            let hasSignal = (persistedCell != nil && hasContextualSignal(in: persistedCell!)) ||
+                (displaySnapshot?.hasNote == true) ||
+                (displaySnapshot?.stampIcon != nil && !(displaySnapshot?.stampIcon?.isEmpty ?? true)) ||
+                (displaySnapshot?.attachmentCount ?? 0) > 0
+
+            if hasSignal {
                 VStack {
                     HStack {
                         Spacer()
                         NotebookCellStampBadge(
-                            iconValue: persistedCell.annotation?.icon ?? persistedCell.iconValue,
-                            note: persistedCell.annotation?.note,
-                            attachmentCount: persistedCell.annotation?.attachmentUris.count ?? 0,
+                            iconValue: displaySnapshot?.stampIcon ?? persistedCell?.annotation?.icon ?? persistedCell?.iconValue,
+                            note: displaySnapshot?.hasNote == true ? (persistedCell?.annotation?.note ?? " ") : persistedCell?.annotation?.note,
+                            attachmentCount: max(displaySnapshot?.attachmentCount ?? 0, persistedCell?.annotation?.attachmentUris.count ?? 0),
                             fallbackTint: tint,
                             studentName: item.student.fullName
                         )

@@ -836,9 +836,19 @@ extension NotebookModuleView {
         formulaDisplay: NotebookFormulaCellDisplay?
     ) -> NotebookCellDisplaySnapshot {
         let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
-        let stampIcon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
-        let hasNote = !(persistedCell?.annotation?.note?.isEmpty ?? true)
-        let attachmentCount = persistedCell?.annotation?.attachmentUris.count ?? 0
+        let optAnnotation = bridge.cellAnnotation(studentId: item.student.id, columnId: column.id)
+        let stampIcon: String?
+        let hasNote: Bool
+        let attachmentCount: Int
+        if let opt = optAnnotation {
+            stampIcon = opt.icon
+            hasNote = !(opt.note?.isEmpty ?? true)
+            attachmentCount = opt.attachmentUris.count
+        } else {
+            stampIcon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
+            hasNote = !(persistedCell?.annotation?.note?.isEmpty ?? true)
+            attachmentCount = persistedCell?.annotation?.attachmentUris.count ?? 0
+        }
 
         switch column.type {
         case .numeric:

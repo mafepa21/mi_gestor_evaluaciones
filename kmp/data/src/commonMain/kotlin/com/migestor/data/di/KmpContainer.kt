@@ -194,6 +194,23 @@ class KmpContainer(val driver: SqlDriver) {
         com.migestor.data.platform.wipeSelectiveUserData(driver, database, categories)
     }
 
+    @Throws(Throwable::class)
+    fun exportConsistentDatabaseCopy(targetPath: String): Boolean {
+        return try {
+            val escapedPath = targetPath.replace("'", "''")
+            driver.execute(null, "VACUUM INTO '$escapedPath'", 0)
+            true
+        } catch (e: Throwable) {
+            println("[KmpContainer] Error al exportar copia SQLite consistente: ${e.message}")
+            false
+        }
+    }
+
+    @Throws(Throwable::class)
+    suspend fun computeDatasetFingerprint(): com.migestor.data.sync.SyncDatasetFingerprint {
+        return com.migestor.data.sync.SyncDatasetFingerprint.compute(this)
+    }
+
     suspend fun seedDemoDataIfEmpty() {
         val now = Clock.System.now().toEpochMilliseconds()
         if (studentsRepository.listStudents().isNotEmpty()) return

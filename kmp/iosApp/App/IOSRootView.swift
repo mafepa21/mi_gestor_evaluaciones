@@ -60,7 +60,7 @@ struct IOSRootView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
         } detail: {
             VStack(spacing: 0) {
-                if activeModule != .notebook && !(activeModule == .attendance && horizontalSizeClass == .regular) {
+                if activeModule != .notebook && activeModule != .planner && !(activeModule == .attendance && horizontalSizeClass == .regular) {
                     IOSGlobalContextRow(
                         activeModule: activeModule,
                         layoutState: layoutState,

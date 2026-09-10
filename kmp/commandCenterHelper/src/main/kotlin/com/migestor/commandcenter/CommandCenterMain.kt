@@ -22,6 +22,7 @@ fun main(args: Array<String>) {
         val server = LocalSyncServer(
             syncCoordinator = SyncCoordinator(adapter),
             stateListener = ::emitSnapshotState,
+            container = container,
         )
         server.start()
 

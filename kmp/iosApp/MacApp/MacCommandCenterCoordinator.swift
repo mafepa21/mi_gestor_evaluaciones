@@ -564,6 +564,14 @@ final class MacCommandCenterCoordinator: ObservableObject {
             lastFailureMessage = friendlyMessage
             print("[Pairing] failed: \(message)")
             updateState(.failed(message: friendlyMessage), message: friendlyMessage)
+
+        case let .adoptStaged(source, digest):
+            print("[Pairing] adopt staged received: source=\(source ?? "unknown"), digest=\(digest ?? "none")")
+            NotificationCenter.default.post(
+                name: .syncAdoptionStagedOnMac,
+                object: nil,
+                userInfo: ["source": source ?? "iPad", "digest": digest ?? ""]
+            )
         }
     }
 
@@ -652,6 +660,7 @@ private enum HelperEvent {
     case networkError(message: String)
     case connected(deviceName: String?)
     case failed(message: String)
+    case adoptStaged(source: String?, digest: String?)
 
     static func parse(from text: String) -> HelperEvent? {
         let prefix = "[command-center] State: "
@@ -700,6 +709,14 @@ private enum HelperEvent {
             })
             return .connected(deviceName: values["device"])
 
+        case "adopt_staged":
+            let values = Dictionary(uniqueKeysWithValues: parts.dropFirst().compactMap { segment -> (String, String)? in
+                let pair = segment.split(separator: "=", maxSplits: 1).map(String.init)
+                guard pair.count == 2 else { return nil }
+                return (pair[0].lowercased(), pair[1])
+            })
+            return .adoptStaged(source: values["source"], digest: values["digest"])
+
         case "failed":
             let message = parts.dropFirst().joined(separator: "|")
             return .failed(message: message.isEmpty ? "El helper terminó con un error desconocido." : message)
@@ -707,6 +724,16 @@ private enum HelperEvent {
         default:
             return nil
         }
+    }
+}
+
+extension MacCommandCenterCoordinator {
+    static func relaunchApp() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = ["-n", Bundle.main.bundleURL.path]
+        try? task.run()
+        NSApp.terminate(nil)
     }
 }
 
@@ -718,4 +745,6 @@ extension Notification.Name {
     static let syncHelperBecameReady = Notification.Name("syncHelperBecameReady")
     /// Posted when the helper process has stopped (cleanly or due to error).
     static let syncHelperStopped = Notification.Name("syncHelperStopped")
+    /// Posted when a dataset snapshot from iPad has been staged on Mac and requires app relaunch to apply.
+    static let syncAdoptionStagedOnMac = Notification.Name("syncAdoptionStagedOnMac")
 }

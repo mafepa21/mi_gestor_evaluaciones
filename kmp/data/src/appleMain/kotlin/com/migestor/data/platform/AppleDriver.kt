@@ -29,6 +29,12 @@ internal fun createAppleDriver(
         legacySourcePaths = legacySourcePaths,
     )
 
+    applyPendingAdoptionIfNeeded(
+        basePath = basePath,
+        databasePath = databasePath,
+        databaseName = databaseName,
+    )
+
     fun openAndValidate(): NativeSqliteDriver {
         val d = NativeSqliteDriver(
             schema = AppleAppDatabaseSchema,
@@ -239,4 +245,97 @@ private fun getVersion(driver: SqlDriver): Long {
 
 private fun setVersion(driver: SqlDriver, version: Long) {
     driver.execute(null, "PRAGMA user_version = $version", 0)
+}
+
+@OptIn(ExperimentalForeignApi::class)
+internal fun applyPendingAdoptionIfNeeded(
+    basePath: String,
+    databasePath: String,
+    databaseName: String,
+) {
+    val fileManager = NSFileManager.defaultManager
+    val pendingMarkerPath = "$basePath/pending_adopt.json"
+    val pendingDbPath = "$basePath/pending_adopt.db"
+
+    if (!fileManager.fileExistsAtPath(pendingMarkerPath)) {
+        return
+    }
+
+    if (!fileManager.fileExistsAtPath(pendingDbPath)) {
+        println("[AppleDriver] Encontrado pending_adopt.json pero falta pending_adopt.db. Limpiando marcador huérfano.")
+        fileManager.removeItemAtPath(pendingMarkerPath, null)
+        return
+    }
+
+    val backupsDir = "$basePath/backups"
+    fileManager.createDirectoryAtPath(backupsDir, true, null, null)
+
+    val epoch = platform.posix.time(null)
+    val backupPath = "$backupsDir/${epoch}_pre_adopt_$databaseName"
+    val dbExists = fileManager.fileExistsAtPath(databasePath)
+
+    try {
+        if (dbExists) {
+            println("[AppleDriver] Creando backup de seguridad previo a adopción en $backupPath")
+            fileManager.copyItemAtPath(databasePath, backupPath, null)
+            for (suffix in listOf("-wal", "-shm")) {
+                val sidecar = "$databasePath$suffix"
+                if (fileManager.fileExistsAtPath(sidecar)) {
+                    fileManager.copyItemAtPath(sidecar, "$backupPath$suffix", null)
+                }
+            }
+        }
+
+        // 1. Borrar base de datos actual y sus sidecars
+        if (fileManager.fileExistsAtPath(databasePath)) {
+            fileManager.removeItemAtPath(databasePath, null)
+        }
+        for (suffix in listOf("-wal", "-shm")) {
+            val sidecar = "$databasePath$suffix"
+            if (fileManager.fileExistsAtPath(sidecar)) {
+                fileManager.removeItemAtPath(sidecar, null)
+            }
+        }
+
+        // 2. Mover pending_adopt.db a databasePath
+        val moved = fileManager.moveItemAtPath(pendingDbPath, databasePath, null)
+        if (!moved && !fileManager.fileExistsAtPath(databasePath)) {
+            throw IllegalStateException("No se pudo mover $pendingDbPath a $databasePath")
+        }
+
+        // 3. Eliminar marcador de staging
+        fileManager.removeItemAtPath(pendingMarkerPath, null)
+
+        // 4. Escribir last_adoption.json con éxito
+        val lastAdoptionJson = """{"status":"applied","backupPath":"${jsonEscape(backupPath)}","appliedAtEpochMs":${epoch * 1000L}}"""
+        val lastAdoptionPath = "$basePath/last_adoption.json"
+        val f = platform.posix.fopen(lastAdoptionPath, "w")
+        if (f != null) {
+            platform.posix.fputs(lastAdoptionJson, f)
+            platform.posix.fclose(f)
+        }
+        println("[AppleDriver] Adopción de dataset aplicada correctamente. Backup guardado en $backupPath")
+    } catch (e: Throwable) {
+        println("[AppleDriver] Error al aplicar adopción: ${e.message}. Ejecutando restauración de emergencia...")
+        if (dbExists && fileManager.fileExistsAtPath(backupPath)) {
+            fileManager.removeItemAtPath(databasePath, null)
+            fileManager.copyItemAtPath(backupPath, databasePath, null)
+            for (suffix in listOf("-wal", "-shm")) {
+                val backupSidecar = "$backupPath$suffix"
+                val sidecar = "$databasePath$suffix"
+                if (fileManager.fileExistsAtPath(backupSidecar)) {
+                    fileManager.removeItemAtPath(sidecar, null)
+                    fileManager.copyItemAtPath(backupSidecar, sidecar, null)
+                }
+            }
+        }
+        val failJson = """{"status":"failed","error":"${jsonEscape(e.message ?: e.toString())}","backupPath":"${jsonEscape(backupPath)}","failedAtEpochMs":${epoch * 1000L}}"""
+        val lastAdoptionPath = "$basePath/last_adoption.json"
+        val f = platform.posix.fopen(lastAdoptionPath, "w")
+        if (f != null) {
+            platform.posix.fputs(failJson, f)
+            platform.posix.fclose(f)
+        }
+        fileManager.removeItemAtPath(pendingMarkerPath, null)
+    }
 }

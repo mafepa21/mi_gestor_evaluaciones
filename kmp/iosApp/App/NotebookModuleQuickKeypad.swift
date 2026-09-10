@@ -28,6 +28,19 @@ extension NotebookModuleView {
 
     // MARK: - Quick Keypad Actions
 
+    private func cleanKeypadNumericString(_ raw: String) -> String {
+        var clean = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        for stamp in NotebookCellStampCatalog.allStamps {
+            if clean.contains(stamp.symbol) {
+                clean = clean.replacingOccurrences(of: stamp.symbol, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        if clean.hasSuffix(".fill") {
+            clean = ""
+        }
+        return clean.replacingOccurrences(of: ",", with: ".")
+    }
+
     func applyKeypadGrade(_ value: String, data: NotebookUiStateData, rows: [NotebookTableRow], advance: Bool = true) {
         guard let selected = selectedNotebookCell(data: data) else { return }
         guard isToolbarEditableCellColumn(selected.column) else {
@@ -35,6 +48,7 @@ extension NotebookModuleView {
             return
         }
 
+        focusedCellId = nil
         keypadAdvanceTask?.cancel()
         keypadAdvanceTask = nil
 
@@ -75,8 +89,10 @@ extension NotebookModuleView {
 
     func applyKeypadDelta(_ delta: Double, data: NotebookUiStateData, rows: [NotebookTableRow]) {
         guard let selected = selectedNotebookCell(data: data) else { return }
+        focusedCellId = nil
         let raw = displayValue(for: selected.row, column: selected.column)
-        let current = Double(raw.replacingOccurrences(of: ",", with: ".")) ?? 0.0
+        let clean = cleanKeypadNumericString(raw)
+        let current = Double(clean) ?? 0.0
         let nextValue = max(0.0, min(10.0, current + delta))
         let formatted = formatKeypadNumber(nextValue)
         applyKeypadGrade(formatted, data: data, rows: rows)
@@ -84,8 +100,9 @@ extension NotebookModuleView {
 
     func applyKeypadDecimalFraction(_ fraction: String, data: NotebookUiStateData, rows: [NotebookTableRow]) {
         guard let selected = selectedNotebookCell(data: data) else { return }
+        focusedCellId = nil
         let raw = displayValue(for: selected.row, column: selected.column)
-        let clean = raw.replacingOccurrences(of: ",", with: ".")
+        let clean = cleanKeypadNumericString(raw)
         let currentVal = Double(clean) ?? 0.0
         let intPart = Int(currentVal)
         if intPart >= 10 {
@@ -104,6 +121,7 @@ extension NotebookModuleView {
 
     func applyKeypadBackspace(data: NotebookUiStateData, rows: [NotebookTableRow]) {
         guard let selected = selectedNotebookCell(data: data) else { return }
+        focusedCellId = nil
         var current = displayValue(for: selected.row, column: selected.column)
         guard !current.isEmpty else { return }
         current.removeLast()
@@ -114,6 +132,7 @@ extension NotebookModuleView {
     }
 
     func applyKeypadClear(data: NotebookUiStateData, rows: [NotebookTableRow]) {
+        focusedCellId = nil
         applyKeypadGrade("", data: data, rows: rows, advance: false)
     }
 
@@ -217,6 +236,10 @@ extension NotebookModuleView {
             data.sheet.columnCategories.first(where: { $0.id == id }).map { tint(for: $0) }
         }
         let currentValue = selected.map { displayValue(for: $0.row, column: $0.column) } ?? ""
+        let persistedCell = selected.flatMap { item in
+            item.row.row.persistedCells.first(where: { $0.columnId == item.column.id })
+        }
+        let currentStamp = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
         let isEditable = column.map { isToolbarEditableCellColumn($0) } ?? false
 
         let canNavigatePrevious = (currentIndex ?? 0) > 0
@@ -231,6 +254,7 @@ extension NotebookModuleView {
             columnSystemIcon: colIcon,
             categoryTint: categoryTint,
             currentValue: currentValue,
+            currentStamp: currentStamp,
             isEditable: isEditable,
             hasActiveSelection: hasSelection,
             advanceMode: keypadAdvanceModeBinding,

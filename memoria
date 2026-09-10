@@ -3,6 +3,61 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-10 - SyncLAN: huella determinista de dataset FNV-1a y adopción explícita de snapshot SQLite ("Igualar dispositivos")
+
+Resumen:
+- Qué cambio se hizo:
+  1. Implementación completa de la Fase 0 y Fase 1 del plan de igualación SyncLAN para resolver la divergencia estructural y la colisión de IDs autoincrementales entre iPad y Mac.
+  2. Huella determinista de integridad de dataset (`SyncDatasetFingerprint.kt`):
+     - Inspección de 11 entidades clave (`academic_year`, `class`, `student`, `class_roster`, `evaluation`, `grade`, `attendance_record`, `tutoring_incident`, `tutoring_interview`, `rubric_template`, `planner_session`).
+     - Cálculo de recuentos de filas, timestamp máximo de actualización (`maxUpdatedAtEpochMs`) y hash determinista de 64 bits FNV-1a sobre tuplas ordenadas canónicamente `(id, content, updatedAtEpochMs)`.
+     - Exposición en el endpoint seguro `GET /sync/fingerprint` en `LocalSyncServer.kt` y consumo en `LanSyncClient.fingerprint()`, `KmpBridge.fetchDatasetFingerprints()` y `KmpBridge.syncDivergence`.
+  3. Protocolo de adopción íntegra de snapshot SQLite (`VACUUM INTO`):
+     - En KMP (`KmpContainer.exportConsistentDatabaseCopy`): generación de copias binarias consistentes de la base de datos sin bloqueos WAL ni transacciones pendientes.
+     - Endpoints dedicados `GET /sync/snapshot/db`, `POST /sync/snapshot/db` y `GET /sync/snapshot/status` en `LocalSyncServer.kt`:
+       - Límite de 512 MB.
+       - Validación de cabecera binaria `SQLite format 3\0`.
+       - Verificación de cabecera `X-Schema-Version` y `PRAGMA user_version` (rechaza desajustes con HTTP 409 Conflict).
+       - Almacenamiento en staging en `<basePath>/pending_adopt.db` y manifiesto `<basePath>/pending_adopt.json`.
+  4. Intercambio atómico en el arranque con copia de seguridad y rollback (`AppleDriver.kt`):
+     - `applyPendingAdoptionIfNeeded(...)` se ejecuta antes de instanciar `NativeSqliteDriver`.
+     - Copia de seguridad obligatoria e incondicional de la base de datos local y sus ficheros `-wal` y `-shm` a `<basePath>/backups/<timestamp>_pre_adopt_<dbName>`.
+     - Intercambio atómico de ficheros y limpieza de archivos WAL/SHM obsoletos.
+     - Rollback defensivo automático restaurando el backup y emitiendo `status: failed` en caso de anomalía.
+     - Limpieza de cursores antiguos (`sync.pending.changes.v2`, `sync.last.cursor`, `sync.notebook.cache.v1`) en `KmpBridge.adoptDataset(from:)`.
+  5. Interfaz de usuario SwiftUI adaptativa (`SyncAdoptionViews.swift`, `SyncPairingViews.swift`, `MacSyncView.swift`):
+     - Banner reactivo `SyncDivergenceBanner` ante discrepancia de datos o de versión de esquema tras ciclos de sync.
+     - Hoja modal `SyncAdoptionSheet` en 4 pasos: comparativa transparente de registros/fechas, selector de dispositivo origen sin preselección por defecto, advertencia de sustitución destructiva con confirmación interactiva por nombre de dispositivo, y progreso con aviso de reinicio.
+     - Botón manual de acción rápida "Igualar dispositivos…" en ajustes Sync LAN en iOS y macOS.
+     - Reinicio automatizado de la aplicación en macOS vía `MacCommandCenterCoordinator.relaunchApp()`.
+- Por qué importa:
+  - Elimina el riesgo de corrupción masiva de datos por colisión de IDs autoincrementales (`INSERT OR REPLACE` en tablas pobladas por separado) al descartar la fusión ciega de changelogs.
+  - Resuelve la asimetría histórica donde datos preexistentes del iPad nunca subían al Mac por ser la cola de salida un diario manual de eventos Swift en vez de un volcado completo de base de datos.
+  - Otorga una base idéntica bit a bit para que la sincronización incremental subsiguiente opere sobre entidades y claves primarias alineadas.
+- Dónde vive el cambio:
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/sync/SyncDatasetFingerprint.kt`
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/di/KmpContainer.kt`
+  - `kmp/data/src/desktopMain/kotlin/com/migestor/desktop/sync/LocalSyncServer.kt`
+  - `kmp/data/src/appleMain/kotlin/com/migestor/data/platform/AppleDriver.kt`
+  - `kmp/commandCenterHelper/src/main/kotlin/com/migestor/commandcenter/CommandCenterMain.kt`
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/AppleShared/SyncAdoptionViews.swift`
+  - `kmp/iosApp/AppleShared/SyncPairingViews.swift`
+  - `kmp/iosApp/MacApp/MacCommandCenterCoordinator.swift`
+  - `kmp/iosApp/MacApp/MacSyncView.swift`
+  - `kmp/data/src/desktopTest/kotlin/com/migestor/desktop/sync/SyncDatasetFingerprintTest.kt`
+  - `kmp/data/src/desktopTest/kotlin/com/migestor/desktop/sync/LocalSyncServerAdoptionTest.kt`
+  - `kmp/data/src/desktopTest/kotlin/com/migestor/desktop/sync/StartupAdoptionInterchangeTest.kt`
+  - `docs/architecture/adr_002_synclan_dataset_adoption.md`
+  - `.agents/skills/synclan-debug/SKILL.md`
+- Validación realizada:
+  - Tests unitarios KMP automatizados ejecutados vía Gradle `:data:desktopTest`: 100% pasando (`BUILD SUCCESSFUL` con suite de 10 pruebas cubriendo determinismo FNV-1a, endpoints HTTP de snapshot/fingerprint, validaciones 409/422 y prueba de intercambio en disco con rollback defensivo).
+  - Compilación dual Apple verificada con `./scripts/verify_apple_builds.sh`: compilan correctamente macOS Native (`MiGestorKMPMac`) e iOS Simulator (`MiGestorKMPiOS`).
+  - Prueba de integridad de intercambio en disco validada por test sintético en entorno aislado.
+
+Notas para futuras conversaciones:
+- Fase 2 pendiente (plan independiente): mover `SqlDelightSyncAdapter` de `desktopMain` a `commonMain` para dotar a iOS de `collectLocalChanges(since = 0)` nativo, retirando el diario manual en Swift (`pendingOutboundChanges`) y logrando simetría total en ambas direcciones.
+
 ## Avance 2026-09-09 - Fase 8 del rediseño estilo iDoceo: Ficha 360º del Alumno con carrusel rápido, 5 pestañas pedagógicas integradas, salud EF e insights locales de Apple Intelligence
 
 Resumen:

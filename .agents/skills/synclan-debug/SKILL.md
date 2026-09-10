@@ -28,6 +28,10 @@ Mac (app + helper)                        iPad(s) enlazados
 - `KmpBridge.swift` agrupa mutaciones locales con **debounce corto** y notifica al helper con `POST /sync/local-changes` (buscar `sync/local-changes` en `KmpBridge.swift`, zona ~10990). El helper **solo acepta ese POST desde loopback** — es una decisión de seguridad, no un bug.
 - El helper emite SSE a los iPads enlazados; el polling existe solo como fallback, no como mecanismo principal.
 - Emparejamiento y diagnóstico tienen UI propia (workspace Sync LAN, layout de dos zonas: emparejamiento | actividad/diagnóstico).
+- **Adopción de dataset ("Igualar dispositivos"):**
+  - Huella de integridad: `GET /sync/fingerprint` (11 entidades + hash FNV-1a de 64 bits).
+  - Transferencia de snapshot binario SQLite íntegro: `GET/POST /sync/snapshot/db` y `GET /sync/snapshot/status`.
+  - Aplicación en arranque: staging en `pending_adopt.db` y `pending_adopt.json`, sustitución atómica antes de abrir `NativeSqliteDriver` en `AppleDriver.kt` (`applyPendingAdoptionIfNeeded`), con copia de seguridad obligatoria en `backups/<timestamp>_pre_adopt_<dbName>` y rollback defensivo automático si falla.
 
 ## Causas conocidas (revisar en este orden)
 
@@ -36,6 +40,7 @@ Mac (app + helper)                        iPad(s) enlazados
 3. **Cambios agrupados que no se emiten** → el debounce del bridge agrupa mutaciones; verificar que la mutación en cuestión pasa por el camino que dispara la notificación local y no por una ruta de escritura que lo omita.
 4. **Helper zombi o duplicado** → hay historial de trabajo sobre el ciclo de vida del helper (rama `codex/fix-synclan-helper-lifecycle`); si el síntoma es "funciona tras reiniciar el Mac", sospechar del lifecycle antes que del protocolo.
 5. **Rechazo del POST** → solo se acepta desde 127.0.0.1; si alguien parametrizó el host, el helper responderá como si no llegara nada.
+6. **Los datos preexistentes del iPad nunca suben** → la cola de salida del iPad (`pendingOutboundChanges` en `KmpBridge.swift`) es un diario manual alimentado únicamente por llamadas explícitas a `enqueueLocalChange(...)` en mutaciones Swift; NO es un recorrido de la base de datos como el que hace el Mac con `collectLocalChanges(since = 0)`. Consecuencia: datos creados en el iPad antes de emparejar, o generados por vías de importación que omitan esa llamada, nunca viajarán al Mac vía sync incremental. Además, intentar fusionar changelogs colisiona las PKs autoincrementales (`Int64`). Solución: usar el flujo «Igualar dispositivos» (adopción íntegra de snapshot SQLite con backup preventivo).
 
 ## Cómo trabajar aquí
 

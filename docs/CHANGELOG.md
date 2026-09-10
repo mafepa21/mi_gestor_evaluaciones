@@ -15,6 +15,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Detección de divergencia y huella de integridad en SyncLAN (`SyncDatasetFingerprint`): cómputo de recuentos de filas, timestamp máximo y hash determinista FNV-1a de 64 bits sobre 11 entidades clave de la base de datos para diagnosticar desalineación de datasets o incompatibilidad de esquemas; expuesto en `GET /sync/fingerprint` y en Swift como `LanSyncClient.fingerprint()` y `KmpBridge.syncDivergence`.
+- Flujo "Igualar dispositivos" mediante adopción explícita de snapshot completo SQLite (`SyncAdoptionSheet` / `SyncDivergenceBanner`): comparativa visual transparente de entidades y fechas, selección explícita del dispositivo autoritativo (sin preselección por defecto), pantalla de advertencia destructiva con confirmación por nombre de dispositivo y endpoints dedicados `GET/POST /sync/snapshot/db` y `GET /sync/snapshot/status` con límite de 512 MB y comprobación de cabecera mágica y versión de esquema.
+- Intercambio seguro de dataset en arranque con copia de seguridad preventiva y rollback defensivo (`AppleDriver.applyPendingAdoptionIfNeeded`): almacenamiento en staging (`pending_adopt.db` / `pending_adopt.json`) y sustitución atómica antes de inicializar `NativeSqliteDriver`, con backup previo incondicional en `<basePath>/backups/<timestamp>_pre_adopt_<dbName>`, rollback automático ante fallos y reinicio asistido en macOS (`MacCommandCenterCoordinator.relaunchApp`).
+- Acceso rápido a igualación manual desde los paneles de sincronización en iOS/iPadOS (`SyncPairingViews`) y macOS (`MacSyncView`).
+
 - Tarjetas visuales de sección y formateador estructurado (`PlannerActivityDetailSectionCard` / `PlannerFormattedTextView`): descomposición automática de textos pedagógicos densos en bloques jerárquicos (zonas con badges turquesa/índigo/naranja, fases, rondas de rotación de grupos G1/G2/G3, consignas CLIL, listas de viñetas espaciadas y pares clave-valor) con iconos semánticos dedicados y fondo redondeado continuo.
 - Rediseño *at-a-glance* de la ficha de detalle de sesión en Planificación: barra de tiempo horizontal interactiva proporcional (`PlannerSessionTimelineBar`) con visualización de momentos pedagógicos y descanso legal de 15 minutos en bloques dobles LONG (80 minutos útiles).
 - Extracción de títulos lúdicos específicos: `PlannerSessionPresentationHelper.displayTitle` proyecta el nombre específico del juego o reto de pista entre comillas `«...»` o del guion pedagógico en vez de títulos genéricos repetitivos.
@@ -185,6 +190,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Tests automatizados en `:data:desktopTest`: `SyncDatasetFingerprintTest` (determinismo e invarianza de orden del hash FNV-1a), `LocalSyncServerAdoptionTest` (5 pruebas: fingerprint, exportación de snapshot, rechazo por schema mismatch 409, rechazo de no-SQLite 422, staging válido 200 y consulta de status), y `StartupAdoptionInterchangeTest` (intercambio exitoso en disco, rollback defensivo y no-op). Resultado: 100% pasando (`BUILD SUCCESSFUL`).
+- Compilación dual Apple con `./scripts/verify_apple_builds.sh`: XcodeGen y builds tanto para macOS Native / Catalyst como para iOS Simulator terminaron con éxito (`BUILD SUCCEEDED`).
 - `swiftc -parse` pasó para los cinco archivos Swift modificados; `xcodegen generate` pasó y `git diff --check` quedó limpio. `xcodebuild test` no pudo alcanzar la ejecución de tests porque el compilador Swift del entorno terminó con código 0 y sin salida al compilar el archivo preexistente `MacPhysicalTestsView.swift`; una verificación aislada del helper también quedó limitada por falta de espacio temporal.
 
 - Este ticket: el parser conserva un `LONG` como una franja planificable de 80 minutos con segmentos U## independientes; la cobertura sintética verifica los órdenes `[3, 6, 3]`/`[6, 3, 3]`, la frontera `BREAK` y la asociación de visuales por segmento. `swiftc -parse` pasó para los archivos Swift tocados. La ejecución completa de Xcode queda pendiente por la limitación de espacio temporal ya registrada arriba.
@@ -215,6 +222,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- ADR 002 (`docs/architecture/adr_002_synclan_dataset_adoption.md`): decisión arquitectónica de adopción íntegra de snapshot SQLite frente a fusión de changelogs ante colisión de claves autoincrementales independientes.
+- Guía de diagnóstico SyncLAN (`.agents/skills/synclan-debug/SKILL.md`): documentación de la topología de adopción/huella y causa raíz 6 sobre la asimetría del diario manual del iPad frente al volcado de base de datos del Mac.
 - ADR `ADR-2026-08-21-session-plan-v2-quick-view.md`: contrato versionado para QUICK VIEW, compatibilidad legacy y persistencia sin migración SQLDelight.
 - ADR `ADR-2026-08-15-bulk-learning-situation-reads.md`: decisión de centralizar las lecturas
   relacionadas con Situaciones en consultas bulk y resolver sus relaciones en memoria en la capa Apple.

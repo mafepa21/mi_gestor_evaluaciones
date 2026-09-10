@@ -3,6 +3,38 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-10 - SyncLAN: desbloqueo de re-emparejamiento con PIN válido, aislamiento en memoria de tests y desvinculación desde Mac
+
+Resumen:
+- Qué cambio se hizo:
+  1. Corrección de la causa raíz de `already_paired` (409):
+     - `DesktopSecureStore` ahora detecta servicios de prueba (`test` o `in-memory`) y opera puramente en memoria (`ConcurrentHashMap`), blindando el Keychain real de macOS (`com.migestor.sync.desktop`) contra contaminación por suites de tests automáticos (`:data:desktopTest`).
+     - `LocalSyncServer` permite re-emparejar cuando el cliente presenta el PIN efímero actual mostrado en pantalla, reemplazando el vínculo anterior (`pairedDeviceId`) y emitiendo un nuevo token de sesión sin devolver error 409.
+  2. Adición de capacidad de desvinculación desde macOS:
+     - Flag `--reset-pairing` en `CommandCenterMain` para revocar emparejamientos y resetear credenciales persistidas en el arranque.
+     - Métodos `unpairDevice()` y `purgeDesktopKeychainPairing()` en `MacCommandCenterCoordinator` con soporte de la notificación `.appleCommandCenterUnpairRequested`.
+     - Botón «Desvincular» en las acciones rápidas y «Restablecer enlace» en diagnóstico avanzado en `MacSyncView`.
+  3. Tests unitarios:
+     - Prueba de aislamiento y reemplazo con PIN válido `rePairingWithValidPinReplacesDeviceWithout409` en `LocalSyncServerAdoptionTest.kt`.
+- Por qué importa:
+  - Resuelve de forma definitiva el bloqueo de usuarios cuando desvinculan un iPad y vuelven a intentar emparejarlo con el PIN mostrado en el Mac.
+  - Elimina la contaminación silenciosa del Keychain del sistema que ocurría al correr pruebas de desarrollo.
+  - Otorga al usuario control total desde el Mac para desvincular o rotar credenciales en cualquier momento.
+- Dónde vive el cambio:
+  - `kmp/data/src/desktopMain/kotlin/com/migestor/desktop/sync/LocalSyncServer.kt`
+  - `kmp/data/src/desktopTest/kotlin/com/migestor/desktop/sync/LocalSyncServerAdoptionTest.kt`
+  - `kmp/commandCenterHelper/src/main/kotlin/com/migestor/commandcenter/CommandCenterMain.kt`
+  - `kmp/iosApp/MacApp/MacCommandCenterCoordinator.swift`
+  - `kmp/iosApp/MacApp/MacSyncView.swift`
+  - `docs/CHANGELOG.md`
+- Validación realizada:
+  - `./gradlew :data:desktopTest`: 7 tareas ejecutadas, 100% verde (incluyendo nuevo test de re-emparejamiento).
+  - Verificación de Keychain: `security find-generic-password -a "paired-device-id" -s "com.migestor.sync.desktop"` devolvió `CLEAN`.
+  - `./gradlew :commandCenterHelper:classes`: compilación exitosa.
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+
 ## Avance 2026-09-10 - Planificador iPad: optimización de espacio vertical, eliminación de franjas y controles redundantes
 
 Resumen:

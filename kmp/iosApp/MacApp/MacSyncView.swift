@@ -254,6 +254,14 @@ struct MacSyncView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(bridge.pairedSyncHost == nil && !isConnected)
+
+                Button {
+                    unpairDevice()
+                } label: {
+                    Label("Desvincular", systemImage: "link.badge.slash")
+                }
+                .buttonStyle(.bordered)
+                .disabled(commandCenter.serviceState == .stopped || commandCenter.serviceState == .starting)
             }
         }
     }
@@ -384,6 +392,14 @@ struct MacSyncView: View {
                             Label("Copiar diagnóstico", systemImage: "doc.on.doc")
                         }
                         .buttonStyle(.bordered)
+
+                        Button {
+                            unpairDevice()
+                        } label: {
+                            Label("Restablecer enlace", systemImage: "link.badge.slash")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(commandCenter.serviceState == .stopped || commandCenter.serviceState == .starting)
                     }
                     .padding(.vertical, 12)
                 }
@@ -495,6 +511,14 @@ struct MacSyncView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(payload, forType: .string)
         diagnosticFeedback = "Enlace de emparejamiento copiado."
+    }
+
+    private func unpairDevice() {
+        Task {
+            await bridge.unpairLanSync()
+            commandCenter.unpairDevice()
+            diagnosticFeedback = "Vínculo revocado. Nuevo PIN generado para enlazar."
+        }
     }
 
     private var currentDeviceName: String {

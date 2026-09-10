@@ -24,6 +24,10 @@ fun main(args: Array<String>) {
             stateListener = ::emitSnapshotState,
             container = container,
         )
+        if (options.resetPairing) {
+            println("[command-center] Resetting pairing on launch as requested by --reset-pairing")
+            server.revokePairing()
+        }
         server.start()
 
         Runtime.getRuntime().addShutdownHook(
@@ -72,16 +76,21 @@ private fun emitSnapshotState(snapshot: CommandCenterSnapshot) {
 private data class CommandCenterOptions(
     val databasePath: String?,
     val databaseName: String,
+    val resetPairing: Boolean,
 ) {
     companion object {
         fun parse(args: Array<String>): CommandCenterOptions {
             var dbPath: String? = null
+            var resetPairing = false
             var index = 0
             while (index < args.size) {
                 when (args[index]) {
                     "--db-path" -> {
                         dbPath = args.getOrNull(index + 1)
                         index += 1
+                    }
+                    "--reset-pairing" -> {
+                        resetPairing = true
                     }
                 }
                 index += 1
@@ -96,6 +105,7 @@ private data class CommandCenterOptions(
             return CommandCenterOptions(
                 databasePath = normalizedDbPath,
                 databaseName = databaseName,
+                resetPairing = resetPairing,
             )
         }
     }

@@ -14,6 +14,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
     private var stderrPipe: Pipe?
     private var observers: [NSObjectProtocol] = []
     private var shouldRestartAfterStop = false
+    private var shouldResetPairingOnNextLaunch = false
     private var stdoutBuffer = ""
     private var stderrBuffer = ""
 
@@ -59,6 +60,15 @@ final class MacCommandCenterCoordinator: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.restartForNewPin()
+            }
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .appleCommandCenterUnpairRequested,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.unpairDevice()
             }
         })
     }
@@ -108,6 +118,10 @@ final class MacCommandCenterCoordinator: ObservableObject {
         let launchedProcess = Process()
         launchedProcess.executableURL = executableURL
         var arguments = ["--sync-server-only"]
+        if shouldResetPairingOnNextLaunch {
+            arguments.append("--reset-pairing")
+            shouldResetPairingOnNextLaunch = false
+        }
         if let appSupportDirectory {
             let databasePath = appSupportDirectory
                 .appendingPathComponent("desktop_mi_gestor_kmp.db", isDirectory: false)
@@ -256,6 +270,42 @@ final class MacCommandCenterCoordinator: ObservableObject {
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
         process?.terminate()
+    }
+
+    func unpairDevice() {
+        print("[Pairing] unpair requested")
+        purgeDesktopKeychainPairing()
+        shouldResetPairingOnNextLaunch = true
+        lastFailureMessage = nil
+        lastRunningSnapshot = nil
+        lastLifecycleState = .starting
+        clearHelperBuffers()
+        updateState(.starting, message: "Desvinculando dispositivo y regenerando PIN...")
+
+        guard process?.isRunning == true else {
+            shouldRestartAfterStop = false
+            startIfNeeded()
+            return
+        }
+
+        shouldRestartAfterStop = true
+        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
+        stderrPipe?.fileHandleForReading.readabilityHandler = nil
+        process?.terminate()
+    }
+
+    private func purgeDesktopKeychainPairing() {
+        let process1 = Process()
+        process1.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process1.arguments = ["delete-generic-password", "-a", "paired-device-id", "-s", "com.migestor.sync.desktop"]
+        try? process1.run()
+        process1.waitUntilExit()
+
+        let process2 = Process()
+        process2.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process2.arguments = ["delete-generic-password", "-a", "paired-token", "-s", "com.migestor.sync.desktop"]
+        try? process2.run()
+        process2.waitUntilExit()
     }
 
     var environmentState: AppleCommandCenterState {
@@ -741,6 +791,7 @@ extension Notification.Name {
     static let appleCommandCenterStartRequested = Notification.Name("appleCommandCenterStartRequested")
     static let appleCommandCenterStopRequested = Notification.Name("appleCommandCenterStopRequested")
     static let appleCommandCenterRegeneratePinRequested = Notification.Name("appleCommandCenterRegeneratePinRequested")
+    static let appleCommandCenterUnpairRequested = Notification.Name("appleCommandCenterUnpairRequested")
     /// Posted when the helper process publishes a valid LAN IP. UserInfo: ["host": String, "port": Int].
     static let syncHelperBecameReady = Notification.Name("syncHelperBecameReady")
     /// Posted when the helper process has stopped (cleanly or due to error).

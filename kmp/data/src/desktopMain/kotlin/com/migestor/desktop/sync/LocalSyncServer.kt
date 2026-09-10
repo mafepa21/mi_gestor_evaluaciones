@@ -1,6 +1,11 @@
 package com.migestor.desktop.sync
 
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.migestor.data.db.AppDatabase
+import com.migestor.data.di.KmpContainer
 import com.migestor.data.platform.getAppDataPath
+import com.migestor.data.sync.SyncDatasetFingerprint
 import com.migestor.shared.sync.SyncAck
 import com.migestor.shared.sync.SyncChange
 import com.migestor.shared.sync.SyncCoordinator
@@ -153,10 +158,13 @@ class LocalSyncServer(
     private val port: Int = 8765,
     private val syncCoordinator: SyncCoordinator = SyncCoordinator(InMemorySyncAdapter()),
     private val stateListener: ((CommandCenterSnapshot) -> Unit)? = null,
+    private val container: KmpContainer? = null,
 ) {
     private val learningSituationDocumentsDirectory = File(getAppDataPath("learning-situations")).apply { mkdirs() }
     private val json = Json { ignoreUnknownKeys = true }
     private val sseConnections = java.util.concurrent.CopyOnWriteArrayList<HttpExchange>()
+    @Volatile
+    private var lastAdoptionStatus: String = "idle"
     private var server: HttpsServer? = null
     private var jmDns: JmDNS? = null
     private var serviceInfo: ServiceInfo? = null
@@ -446,6 +454,155 @@ class LocalSyncServer(
             if (!isAuthorized(ex)) return@createContext
             revokePairingInternal()
             ex.respond(200, """{"ok":true}""")
+        }
+
+        https.createContext("/sync/fingerprint") { ex ->
+            if (ex.requestMethod != "GET") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isAuthorized(ex)) return@createContext
+
+            val c = container
+            if (c == null) {
+                ex.respond(503, """{"error":"database_not_available"}""")
+                return@createContext
+            }
+            val fp = kotlinx.coroutines.runBlocking {
+                SyncDatasetFingerprint.compute(c)
+            }
+            ex.respond(200, fp.toJson())
+        }
+
+        https.createContext("/sync/snapshot/db") { ex ->
+            if (!isAuthorized(ex)) return@createContext
+            when (ex.requestMethod) {
+                "GET" -> {
+                    val c = container
+                    if (c == null) {
+                        ex.respond(503, """{"error":"database_not_available"}""")
+                        return@createContext
+                    }
+                    val tempFile = File.createTempFile("snapshot_export_", ".db")
+                    try {
+                        val exported = c.exportConsistentDatabaseCopy(tempFile.absolutePath)
+                        if (!exported || !tempFile.exists() || tempFile.length() == 0L) {
+                            ex.respond(500, """{"error":"export_failed"}""")
+                            return@createContext
+                        }
+                        val fp = kotlinx.coroutines.runBlocking {
+                            SyncDatasetFingerprint.compute(c)
+                        }
+                        ex.responseHeaders.add("X-Schema-Version", AppDatabase.Schema.version.toString())
+                        ex.responseHeaders.add("X-Dataset-Digest", fp.digest)
+                        ex.respondBinary(200, tempFile.readBytes(), "application/x-sqlite3")
+                    } catch (t: Throwable) {
+                        ex.respond(500, """{"error":"export_failed","detail":"${t.message ?: "unknown"}"}""")
+                    } finally {
+                        tempFile.delete()
+                    }
+                }
+                "POST" -> {
+                    val clientSchemaVersion = ex.requestHeaders.getFirst("X-Schema-Version")?.toLongOrNull()
+                    if (clientSchemaVersion == null || clientSchemaVersion != AppDatabase.Schema.version) {
+                        ex.respond(409, """{"error":"schema_mismatch","expected":${AppDatabase.Schema.version}}""")
+                        return@createContext
+                    }
+
+                    val maxDbSizeBytes = 512L * 1024L * 1024L
+                    val bytes = runCatching {
+                        ex.requestBody.use { input ->
+                            val buffer = java.io.ByteArrayOutputStream()
+                            val chunk = ByteArray(8192)
+                            var total = 0L
+                            var read: Int
+                            while (input.read(chunk).also { read = it } != -1) {
+                                total += read
+                                if (total > maxDbSizeBytes) {
+                                    return@use null
+                                }
+                                buffer.write(chunk, 0, read)
+                            }
+                            buffer.toByteArray()
+                        }
+                    }.getOrNull()
+
+                    if (bytes == null) {
+                        ex.respond(413, """{"error":"payload_too_large"}""")
+                        return@createContext
+                    }
+
+                    val sqliteHeader = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
+                    if (bytes.size < 16 || !bytes.sliceArray(0 until 16).contentEquals(sqliteHeader)) {
+                        ex.respond(422, """{"error":"invalid_sqlite_database"}""")
+                        return@createContext
+                    }
+
+                    val stagingFile = File(getAppDataPath("pending_adopt.db"))
+                    stagingFile.writeBytes(bytes)
+
+                    val isValid = runCatching {
+                        val testDriver = JdbcSqliteDriver("jdbc:sqlite:${stagingFile.absolutePath}")
+                        val version = testDriver.executeQuery(
+                            null,
+                            "PRAGMA user_version",
+                            { cursor ->
+                                val ver = if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L
+                                QueryResult.Value(ver)
+                            },
+                            0
+                        ).value
+                        testDriver.close()
+                        version == AppDatabase.Schema.version
+                    }.getOrDefault(false)
+
+                    if (!isValid) {
+                        stagingFile.delete()
+                        ex.respond(422, """{"error":"invalid_database_version"}""")
+                        return@createContext
+                    }
+
+                    val clientDigest = ex.requestHeaders.getFirst("X-Dataset-Digest") ?: ""
+                    val sourceDeviceId = pairedDeviceId ?: "unknown"
+                    val stagedAt = System.currentTimeMillis()
+                    val markerJson = buildJsonObject {
+                        put("sourceDeviceId", JsonPrimitive(sourceDeviceId))
+                        put("schemaVersion", JsonPrimitive(AppDatabase.Schema.version))
+                        put("digest", JsonPrimitive(clientDigest))
+                        put("stagedAtEpochMs", JsonPrimitive(stagedAt))
+                    }.toString()
+                    File(getAppDataPath("pending_adopt.json")).writeText(markerJson)
+                    lastAdoptionStatus = "staged"
+                    println("[command-center] State: adopt_staged|source=$sourceDeviceId|digest=$clientDigest")
+                    ex.respond(200, """{"staged":true}""")
+                }
+                else -> ex.respond(405, """{"error":"method_not_allowed"}""")
+            }
+        }
+
+        https.createContext("/sync/snapshot/status") { ex ->
+            if (ex.requestMethod != "GET") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isAuthorized(ex)) return@createContext
+
+            val pendingFile = File(getAppDataPath("pending_adopt.json"))
+            val lastFile = File(getAppDataPath("last_adoption.json"))
+            val currentStatus = when {
+                pendingFile.exists() -> "staged"
+                lastFile.exists() -> {
+                    runCatching {
+                        val content = lastFile.readText()
+                        val obj = json.parseToJsonElement(content).jsonObject
+                        obj["status"]?.jsonPrimitive?.contentOrNull ?: "idle"
+                    }.getOrDefault("idle")
+                }
+                else -> lastAdoptionStatus
+            }
+            ex.respond(200, buildJsonObject {
+                put("status", JsonPrimitive(currentStatus))
+            }.toString())
         }
 
         https.start()

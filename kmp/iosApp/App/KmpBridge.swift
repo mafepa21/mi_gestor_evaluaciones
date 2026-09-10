@@ -289,6 +289,8 @@ final class KmpBridge: ObservableObject {
     @Published var syncPendingChanges: Int = 0
     @Published var syncLastRunAt: Date? = nil
     @Published var pairedSyncHost: String? = nil
+    @Published var syncDivergence: SyncDivergenceReport? = nil
+    private var lastDivergenceCheckAt: Date = .distantPast
 
     var hasPersistedLanPairing: Bool {
         !(syncToken?.isEmpty ?? true) && !((pairedServerId?.isEmpty ?? true) && (pairedServerFingerprint?.isEmpty ?? true))
@@ -8716,6 +8718,159 @@ final class KmpBridge: ObservableObject {
         try await performPushSync(silent: false)
     }
 
+    public enum SyncAdoptionSource: Equatable {
+        case thisDevice
+        case pairedMac
+    }
+
+    public enum SyncAdoptionOutcome {
+        case needsRestart(backupHint: String?)
+        case stagedOnMac
+    }
+
+    func fetchDatasetFingerprints() async throws -> (local: LanDatasetFingerprint, remote: LanDatasetFingerprint) {
+        guard let host = pairedSyncHost, let token = syncToken else {
+            throw NSError(domain: "Sync", code: -401, userInfo: [NSLocalizedDescriptionKey: "Dispositivo no emparejado."])
+        }
+        let remote = try await lanSyncClient.fingerprint(
+            host: host,
+            token: token,
+            pinnedFingerprint: pairedServerFingerprint
+        )
+        let kmpLocal = try await container.computeDatasetFingerprint()
+        let local = try JSONDecoder().decode(LanDatasetFingerprint.self, from: Data(kmpLocal.toJson().utf8))
+        return (local, remote)
+    }
+
+    func checkSyncDivergence(force: Bool = false) async {
+        guard pairedSyncHost != nil, syncToken != nil else { return }
+        let now = Date()
+        if !force && now.timeIntervalSince(lastDivergenceCheckAt) < 60 {
+            return
+        }
+        lastDivergenceCheckAt = now
+
+        do {
+            let (localFp, remoteFp) = try await fetchDatasetFingerprints()
+
+            if localFp.schemaVersion != remoteFp.schemaVersion {
+                let divergence = SyncDivergenceReport(
+                    kind: .schemaMismatch(localVersion: localFp.schemaVersion, remoteVersion: remoteFp.schemaVersion),
+                    localFingerprint: localFp,
+                    remoteFingerprint: remoteFp,
+                    divergentEntities: []
+                )
+                await MainActor.run {
+                    self.syncDivergence = divergence
+                }
+                return
+            }
+
+            if localFp.digest != remoteFp.digest {
+                var divergentEntities: [String] = []
+                let allKeys = Set(localFp.countsByEntity.keys).union(remoteFp.countsByEntity.keys)
+                for key in allKeys {
+                    let localCount = localFp.countsByEntity[key] ?? 0
+                    let remoteCount = remoteFp.countsByEntity[key] ?? 0
+                    if localCount != remoteCount {
+                        divergentEntities.append(key)
+                    }
+                }
+                let divergence = SyncDivergenceReport(
+                    kind: .datasetDifference,
+                    localFingerprint: localFp,
+                    remoteFingerprint: remoteFp,
+                    divergentEntities: divergentEntities.sorted()
+                )
+                await MainActor.run {
+                    self.syncDivergence = divergence
+                }
+            } else {
+                await MainActor.run {
+                    self.syncDivergence = nil
+                }
+            }
+        } catch {
+            print("[KmpBridge] Error al comprobar divergencia de sincronización: \(error)")
+        }
+    }
+
+    func adoptDataset(from source: SyncAdoptionSource) async throws -> SyncAdoptionOutcome {
+        guard let host = pairedSyncHost, let token = syncToken else {
+            throw NSError(domain: "Sync", code: -401, userInfo: [NSLocalizedDescriptionKey: "Dispositivo no emparejado."])
+        }
+
+        guard let dbURL = getDatabaseURL() else {
+            throw NSError(domain: "Sync", code: -500, userInfo: [NSLocalizedDescriptionKey: "No se pudo determinar el directorio de base de datos."])
+        }
+        let appSupportDir = dbURL.deletingLastPathComponent()
+
+        switch source {
+        case .pairedMac:
+            let pendingDbURL = appSupportDir.appendingPathComponent("pending_adopt.db")
+            let pendingJsonURL = appSupportDir.appendingPathComponent("pending_adopt.json")
+
+            let (schemaVersion, digest) = try await lanSyncClient.downloadSnapshot(
+                host: host,
+                token: token,
+                destinationURL: pendingDbURL,
+                pinnedFingerprint: pairedServerFingerprint
+            )
+
+            let marker: [String: Any] = [
+                "sourceDeviceId": pairedServerId ?? "mac",
+                "schemaVersion": schemaVersion,
+                "digest": digest,
+                "stagedAtEpochMs": Int64(Date().timeIntervalSince1970 * 1000)
+            ]
+            let markerData = try JSONSerialization.data(withJSONObject: marker, options: [.prettyPrinted])
+            try markerData.write(to: pendingJsonURL)
+
+            await MainActor.run {
+                self.clearLocalSyncTrackingState()
+                self.syncDivergence = nil
+            }
+
+            return .needsRestart(backupHint: appSupportDir.appendingPathComponent("backups").path)
+
+        case .thisDevice:
+            let tempExportURL = FileManager.default.temporaryDirectory.appendingPathComponent("adopt_export_\(UUID().uuidString).db")
+            defer {
+                try? FileManager.default.removeItem(at: tempExportURL)
+            }
+
+            let exportSuccess = try container.exportConsistentDatabaseCopy(targetPath: tempExportURL.path)
+            guard exportSuccess && FileManager.default.fileExists(atPath: tempExportURL.path) else {
+                throw NSError(domain: "Sync", code: -500, userInfo: [NSLocalizedDescriptionKey: "No se pudo generar la copia consistente de la base de datos local."])
+            }
+
+            let kmpFp = try await container.computeDatasetFingerprint()
+            try await lanSyncClient.uploadSnapshot(
+                host: host,
+                token: token,
+                fileURL: tempExportURL,
+                schemaVersion: kmpFp.schemaVersion,
+                digest: kmpFp.digest,
+                pinnedFingerprint: pairedServerFingerprint
+            )
+
+            await MainActor.run {
+                self.clearLocalSyncTrackingState()
+                self.syncDivergence = nil
+            }
+
+            return .stagedOnMac
+        }
+    }
+
+    private func clearLocalSyncTrackingState() {
+        UserDefaults.standard.removeObject(forKey: "sync.pending.changes.v2")
+        UserDefaults.standard.removeObject(forKey: "sync.last.cursor")
+        UserDefaults.standard.removeObject(forKey: "sync.notebook.cache.v1")
+        pendingOutboundChanges.removeAll()
+        syncPendingChanges = 0
+    }
+
     private func performPullSync(silent: Bool, sinceEpochMsOverride: Int64? = nil) async throws {
         try await performPullSync(
             silent: silent,
@@ -13646,6 +13801,12 @@ final class KmpBridge: ObservableObject {
                 }
                 lastSuccessfulSyncAt = now
 
+                if pendingOutboundChanges.isEmpty {
+                    Task { [weak self] in
+                        await self?.checkSyncDivergence()
+                    }
+                }
+
                 if !silent {
                     publishSyncState {
                         $0.syncStatusMessage = "Sincronizado (\(reason))"
@@ -13847,6 +14008,44 @@ private struct LanPushResponse: Codable {
     let ignored: Int?
     let failed: Int?
     let desktopAuthoritative: Bool?
+}
+
+public struct LanDatasetFingerprint: Codable, Equatable {
+    public let schemaVersion: Int64
+    public let countsByEntity: [String: Int]
+    public let digest: String
+    public let computedAtEpochMs: Int64
+
+    public init(schemaVersion: Int64, countsByEntity: [String: Int], digest: String, computedAtEpochMs: Int64) {
+        self.schemaVersion = schemaVersion
+        self.countsByEntity = countsByEntity
+        self.digest = digest
+        self.computedAtEpochMs = computedAtEpochMs
+    }
+}
+
+public struct SyncDivergenceReport: Equatable {
+    public enum DivergenceKind: Equatable {
+        case datasetDifference
+        case schemaMismatch(localVersion: Int64, remoteVersion: Int64)
+    }
+
+    public let kind: DivergenceKind
+    public let localFingerprint: LanDatasetFingerprint
+    public let remoteFingerprint: LanDatasetFingerprint
+    public let divergentEntities: [String]
+
+    public var isSchemaMismatch: Bool {
+        if case .schemaMismatch = kind { return true }
+        return false
+    }
+
+    public init(kind: DivergenceKind, localFingerprint: LanDatasetFingerprint, remoteFingerprint: LanDatasetFingerprint, divergentEntities: [String]) {
+        self.kind = kind
+        self.localFingerprint = localFingerprint
+        self.remoteFingerprint = remoteFingerprint
+        self.divergentEntities = divergentEntities
+    }
 }
 
 final class LanSyncClient {
@@ -14073,6 +14272,125 @@ final class LanSyncClient {
             throw NSError(domain: "Sync", code: -212, userInfo: [NSLocalizedDescriptionKey: "Documento no disponible en el dispositivo emparejado."])
         }
         return data
+    }
+
+    func fingerprint(
+        host: String,
+        token: String,
+        pinnedFingerprint: String?
+    ) async throws -> LanDatasetFingerprint {
+        let url = try buildURL(host: Self.normalizeHost(host), path: "/sync/fingerprint")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 20
+        let (data, response) = try await executeDataTask(
+            request: request,
+            pinnedFingerprint: pinnedFingerprint,
+            operation: "fingerprint",
+            host: host
+        )
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(domain: "Sync", code: -200, userInfo: [NSLocalizedDescriptionKey: "Respuesta no es HTTP"])
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "(sin cuerpo)"
+            throw NSError(domain: "Sync", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "Error al obtener huella remota (\(http.statusCode)): \(body)"
+            ])
+        }
+        return try JSONDecoder().decode(LanDatasetFingerprint.self, from: data)
+    }
+
+    func downloadSnapshot(
+        host: String,
+        token: String,
+        destinationURL: URL,
+        pinnedFingerprint: String?
+    ) async throws -> (schemaVersion: Int64, digest: String) {
+        let url = try buildURL(host: Self.normalizeHost(host), path: "/sync/snapshot/db")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 60
+        let (data, response) = try await executeDataTask(
+            request: request,
+            pinnedFingerprint: pinnedFingerprint,
+            operation: "downloadSnapshot",
+            host: host
+        )
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(domain: "Sync", code: -200, userInfo: [NSLocalizedDescriptionKey: "Respuesta no es HTTP"])
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "(sin cuerpo)"
+            throw NSError(domain: "Sync", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "Error al descargar snapshot (\(http.statusCode)): \(body)"
+            ])
+        }
+        let schemaVersionStr = http.value(forHTTPHeaderField: "X-Schema-Version") ?? "0"
+        let schemaVersion = Int64(schemaVersionStr) ?? 0
+        let digest = http.value(forHTTPHeaderField: "X-Dataset-Digest") ?? ""
+        try data.write(to: destinationURL, options: .atomic)
+        return (schemaVersion, digest)
+    }
+
+    func uploadSnapshot(
+        host: String,
+        token: String,
+        fileURL: URL,
+        schemaVersion: Int64,
+        digest: String,
+        pinnedFingerprint: String?
+    ) async throws {
+        let url = try buildURL(host: Self.normalizeHost(host), path: "/sync/snapshot/db")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/x-sqlite3", forHTTPHeaderField: "Content-Type")
+        request.setValue("\(schemaVersion)", forHTTPHeaderField: "X-Schema-Version")
+        request.setValue(digest, forHTTPHeaderField: "X-Dataset-Digest")
+        request.timeoutInterval = 90
+        request.httpBody = try Data(contentsOf: fileURL)
+        let (data, response) = try await executeDataTask(
+            request: request,
+            pinnedFingerprint: pinnedFingerprint,
+            operation: "uploadSnapshot",
+            host: host
+        )
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(domain: "Sync", code: -200, userInfo: [NSLocalizedDescriptionKey: "Respuesta no es HTTP"])
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "(sin cuerpo)"
+            throw NSError(domain: "Sync", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "Error al enviar snapshot al servidor (\(http.statusCode)): \(body)"
+            ])
+        }
+    }
+
+    func fetchSnapshotStatus(
+        host: String,
+        token: String,
+        pinnedFingerprint: String?
+    ) async throws -> String {
+        let url = try buildURL(host: Self.normalizeHost(host), path: "/sync/snapshot/status")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15
+        let (data, response) = try await executeDataTask(
+            request: request,
+            pinnedFingerprint: pinnedFingerprint,
+            operation: "snapshotStatus",
+            host: host
+        )
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            return "unknown"
+        }
+        struct StatusResp: Codable { let status: String }
+        let resp = try? JSONDecoder().decode(StatusResp.self, from: data)
+        return resp?.status ?? "unknown"
     }
 
     private func makeSession(pinnedFingerprint: String?) -> URLSession {

@@ -6,9 +6,16 @@ struct MacSyncView: View {
     @ObservedObject var commandCenter: MacCommandCenterCoordinator
     @State private var diagnosticFeedback: String?
     @State private var showsAdvancedDiagnostics = false
+    @State private var showingAdoptionSheet = false
+    @State private var showingStagedAdoptionAlert = false
 
     private var connectionSummary: SyncConnectionSummary {
         SyncConnectionSummary(serviceState: commandCenter.serviceState)
+    }
+
+    private var isConnected: Bool {
+        if case .connected = connectionSummary { return true }
+        return false
     }
 
     private var healthSummary: SyncHealthSummary {
@@ -70,6 +77,9 @@ struct MacSyncView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
                     pageHeader
+                    if let divergence = bridge.syncDivergence {
+                        SyncDivergenceBanner(divergence: divergence)
+                    }
                     observabilitySection
                     quickActionsSection
                     if let diagnosticFeedback, !diagnosticFeedback.contains("Error") {
@@ -95,6 +105,21 @@ struct MacSyncView: View {
             .frame(width: 400)
         }
         .background(MacAppStyle.pageBackground)
+        .sheet(isPresented: $showingAdoptionSheet) {
+            SyncAdoptionSheet()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .syncAdoptionStagedOnMac)) { _ in
+            showingStagedAdoptionAlert = true
+        }
+        .alert("Datos de iPad recibidos", isPresented: $showingStagedAdoptionAlert) {
+            Button("Reiniciar ahora", role: .destructive) {
+                commandCenter.stop()
+                MacCommandCenterCoordinator.relaunchApp()
+            }
+            Button("Más tarde", role: .cancel) {}
+        } message: {
+            Text("Se ha recibido la base de datos completa del iPad. Para completar la adopción, este Mac debe reiniciar la app. Se creará una copia de seguridad de los datos actuales automáticamente.")
+        }
     }
 
     private var pageHeader: some View {
@@ -221,6 +246,14 @@ struct MacSyncView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(commandCenter.serviceState.pairingPayload == nil)
+
+                Button {
+                    showingAdoptionSheet = true
+                } label: {
+                    Label("Igualar dispositivos", systemImage: "equal.circle")
+                }
+                .buttonStyle(.bordered)
+                .disabled(bridge.pairedSyncHost == nil && !isConnected)
             }
         }
     }

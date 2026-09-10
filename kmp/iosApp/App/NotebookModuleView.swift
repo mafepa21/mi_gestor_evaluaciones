@@ -109,6 +109,7 @@ struct NotebookModuleView: View {
     @State var cellStampRequest: NotebookCellStampRequest? = nil
     @State var studentProfile360Request: StudentProfile360Request? = nil
     @State var isAverageConfigurationPresented = false
+    @State private var averageSheetSeed = UUID()
     @State var averageExplanationRow: NotebookTableRow? = nil
     @State var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
     @State var auditObservationTask: Task<Void, Never>? = nil
@@ -1329,11 +1330,15 @@ struct NotebookModuleView: View {
                     ) { updates in
                         saveAverageConfiguration(updates)
                     }
+                    .id(averageSheetSeed)
                     #if os(macOS)
                     .frame(width: 560, height: 640)
                     #else
                     .presentationDetents([.large])
                     #endif
+                }
+                .appOnChange(of: isAverageConfigurationPresented) { isOpen in
+                    if isOpen { averageSheetSeed = UUID() }
                 }
                 .sheet(item: $formulaEditRequest) { request in
                     formulaEditorSheet(request: request, data: data)

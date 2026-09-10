@@ -15,6 +15,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Menú de media no reflejaba los cambios del toggle "Cuenta para la media" en columnas (`NotebookAverageEditorSheet`):
+  - `averageEligibility` ampliado para reconocer instrumentos estructurados (checklists, observaciones, formularios, quiz) con tipo `.text` que sí son evaluables, y para rúbricas/numéricas estructuradas; antes todas caían en `notEvaluable` y no aparecían en el editor de media.
+  - `buildUpdates()` corregido: columnas no visibles en el editor ya preservan su estado actual (`countsTowardAverage` / `weight`) en lugar de sobreescribirse a `false`.
+  - Reactividad añadida: `.appOnChange(of: firma_columnas)` dentro de la sheet re-sincroniza los borradores en tiempo real si el docente conmuta el toggle mientras la sheet está abierta.
+  - `averageSheetSeed` (UUID) en `NotebookModuleView` fuerza reinicialización completa del `@State draftsByColumnId` cada vez que se reabre la sheet, eliminando el stale-state de sesiones anteriores.
+  - Botones duplicados en macOS/Catalyst corregidos: el footer oculta "Cancelar" y "Guardar" en Mac (los `ToolbarItem` los cubren); en iOS se conservan ambos para comodidad.
+
 - Desbloqueo y aislamiento de Keychain en SyncLAN (#229):
   - Solucionado el error `already_paired` (409) al enlazar el iPad con el Mac: `LocalSyncServer` ahora permite re-emparejar cuando el cliente proporciona el PIN efímero actual mostrado en pantalla, reemplazando el vínculo anterior de forma transparente y rotando el PIN de un solo uso.
   - Aislamiento en memoria para suites de tests: `DesktopSecureStore` utiliza `ConcurrentHashMap` cuando el nombre de servicio contiene `test` o `in-memory`, evitando que ejecuciones de Gradle (`:data:desktopTest`) contaminen el Keychain del sistema (`login.keychain-db`) con credenciales espurias de dispositivos de prueba (`test-device`).

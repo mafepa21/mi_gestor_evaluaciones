@@ -115,8 +115,31 @@ struct NotebookAverageEditorSheet: View {
                     .disabled(!canSave)
                 }
             }
+            .appOnChange(of: columns.map { "\($0.id):\($0.countsTowardAverage):\($0.weight)" }) { _ in
+                // Re-sincronizar borradores cuando cambia el estado de media de las columnas externas
+                // (ej: el usuario activa/desactiva "cuenta para la media" mientras la sheet está abierta)
+                for column in columns {
+                    guard draftsByColumnId[column.id] != nil else {
+                        // Columna nueva: crear borrador
+                        draftsByColumnId[column.id] = NotebookAverageColumnDraft(
+                            isIncluded: Self.initialIncludedState(for: column),
+                            weightText: Self.formatWeight(column.weight > 0 ? column.weight : Self.defaultWeight(for: column))
+                        )
+                        continue
+                    }
+                    // Columna existente: actualizar solo si countsTowardAverage cambió externamente
+                    let currentDraft = draftsByColumnId[column.id]!
+                    if column.countsTowardAverage != currentDraft.isIncluded {
+                        draftsByColumnId[column.id] = NotebookAverageColumnDraft(
+                            isIncluded: Self.initialIncludedState(for: column),
+                            weightText: currentDraft.weightText
+                        )
+                    }
+                }
+            }
         }
     }
+
 
     private var header: some View {
         NotebookSurface(cornerRadius: NotebookStyle.cardRadius, fill: NotebookStyle.surfaceMuted, padding: 20) {
@@ -231,6 +254,7 @@ struct NotebookAverageEditorSheet: View {
             .buttonStyle(.bordered)
             .disabled(selectedColumnCount == 0 || totalWeight == nil || abs((totalWeight ?? 0) - 100) <= 0.01)
 
+            #if !targetEnvironment(macCatalyst) && !os(macOS)
             Button("Cancelar") { dismiss() }
                 .buttonStyle(.bordered)
 
@@ -240,6 +264,7 @@ struct NotebookAverageEditorSheet: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!canSave)
+            #endif
         }
     }
 
@@ -351,12 +376,22 @@ struct NotebookAverageEditorSheet: View {
     private func buildUpdates() -> [NotebookAverageColumnUpdate] {
         let configurableIds = Set(configurableColumns.map(\.id))
         return columns.map { column in
-            let isIncluded = configurableIds.contains(column.id) && draftsByColumnId[column.id]?.isIncluded == true
-            return NotebookAverageColumnUpdate(
-                column: column,
-                isIncluded: isIncluded,
-                weight: isIncluded ? (parsedWeight(for: column) ?? 0) : 0
-            )
+            if configurableIds.contains(column.id) {
+                // Columna visible en el editor: usar el borrador del usuario
+                let isIncluded = draftsByColumnId[column.id]?.isIncluded == true
+                return NotebookAverageColumnUpdate(
+                    column: column,
+                    isIncluded: isIncluded,
+                    weight: isIncluded ? (parsedWeight(for: column) ?? 0) : 0
+                )
+            } else {
+                // Columna no visible en el editor: preservar su estado actual persistido
+                return NotebookAverageColumnUpdate(
+                    column: column,
+                    isIncluded: column.countsTowardAverage,
+                    weight: column.weight
+                )
+            }
         }
     }
 
@@ -416,15 +451,39 @@ struct NotebookAverageEditorSheet: View {
             if column.instrumentKind == .physicalTest {
                 return Self.isPhysicalRawMeasure(column) ? .excludedByDefault("Marca bruta") : .recommended("Nota baremada")
             }
+            // Instrumentos estructurados con puntuación numérica (checklists, rejillas, etc.)
+            if column.inputKind.isStructuredInstrument {
+                return .manual(Self.structuredInstrumentLabel(for: column))
+            }
             return .recommended("Numérica")
         case .rubric:
+            // Rúbricas estructuradas o clásicas
+            if column.inputKind.isStructuredInstrument {
+                return .manual("Rúbrica estructurada")
+            }
             return .recommended("Rúbrica")
         case .calculated:
             return .manual("Fórmula numérica")
         case .check:
             return .manual("Lista de control")
+        case .text:
+            // Texto con instrumento estructurado que materializa nota (ej. auto/coevaluación)
+            if column.inputKind.isStructuredInstrument && column.countsTowardAverage {
+                return .manual(Self.structuredInstrumentLabel(for: column))
+            }
+            return .notEvaluable
         default:
             return .notEvaluable
+        }
+    }
+
+    private static func structuredInstrumentLabel(for column: NotebookColumnDefinition) -> String {
+        switch column.inputKind {
+        case .structuredChecklist: return "Checklist"
+        case .structuredObservation: return "Observación"
+        case .structuredForm: return "Formulario"
+        case .structuredQuiz: return "Quiz"
+        default: return "Instrumento"
         }
     }
 
@@ -435,6 +494,9 @@ struct NotebookAverageEditorSheet: View {
             return !isPhysicalRawMeasure(column)
         case .check:
             return true
+        case .text:
+            // Columna de texto con instrumento estructurado evaluable
+            return column.inputKind.isStructuredInstrument
         default:
             return false
         }

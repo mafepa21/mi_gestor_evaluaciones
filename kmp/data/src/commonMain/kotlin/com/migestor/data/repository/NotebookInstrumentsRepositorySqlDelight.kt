@@ -216,6 +216,7 @@ class NotebookInstrumentsRepositorySqlDelight(
         val derived = deriveObservationGridScore(detail.items, responsesByItem)
             ?: deriveStudentRubricScore(detail.items, responsesByItem)
             ?: deriveProportionalChecklistScore(detail.items, responsesByItem)
+            ?: deriveGenericScale14Score(detail.items, responsesByItem)
         derived?.let { derivedScore ->
             gradesRepository.saveGrade(
                 classId = classId,
@@ -299,6 +300,19 @@ class NotebookInstrumentsRepositorySqlDelight(
         if (checkItems.isEmpty()) return null
         val checked = checkItems.count { responsesByItem[it.id]?.boolValue == true }
         return checked.toDouble() / checkItems.size.toDouble() * 10.0
+    }
+
+    /// Traduce cualquier instrumento con indicadores de escala 1-4 (SCALE_1_4) que no sigan las
+    /// convenciones anteriores en la media numérica 1-4 de los indicadores respondidos.
+    private fun deriveGenericScale14Score(
+        items: List<NotebookInstrumentItem>,
+        responsesByItem: Map<String, NotebookInstrumentResponse>,
+    ): Double? {
+        val scaleItems = items.filter { it.type == NotebookInstrumentItemType.SCALE_1_4 }
+        if (scaleItems.isEmpty()) return null
+        val values = scaleItems.mapNotNull { responsesByItem[it.id]?.numberValue }
+        if (values.isEmpty()) return null
+        return values.average()
     }
 
     private fun summarize(

@@ -15,6 +15,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Reactividad instantánea en el Cuaderno (iPad / Mac):
+  - Solucionado el problema por el cual al calificar o actualizar un elemento (nota, sello, checklist, observación, instrumento estructurado), los cambios se guardaban en la base de datos pero no se reflejaban en pantalla sin navegar a otro módulo y volver.
+  - Se incorporaron las anotaciones (`cell.annotation?.icon`, `cell.annotation?.note`, `attachmentUris.count`) en la signatura de agregación `notebookAggregateSignature` de `KmpBridge.swift` y en el digest por columna `NotebookRowFingerprintProvider.cellDigestByColumnId` en `NotebookGridContent.swift`, evitando el descarte de emisiones de estado en el puente y forzando la invalidación reactiva de la fila.
+  - Se extendió `NotebookCellDisplaySnapshot` en `NotebookEditableTableCell.swift` para incluir `stampIcon`, `hasNote` y `attachmentCount`, de modo que las celdas comparadas con `.equatable()` detecten inmediatamente cambios en sellos y notas.
+  - Se propagó `reloadToken` y la comparación de display value a `NotebookReadOnlyCell`, `NotebookRubricCell` y `NotebookFormulaCell`, garantizando el re-renderizado inmediato al guardar instrumentos estructurados.
+  - Se añadió resolución optimista de texto, booleanos y resúmenes de instrumentos en `cellCheck`, `structuredCellDisplayText` y `saveStructuredInstrumentEvaluation`.
+
 - Desbloqueo y aislamiento de Keychain en SyncLAN (#229):
   - Solucionado el error `already_paired` (409) al enlazar el iPad con el Mac: `LocalSyncServer` ahora permite re-emparejar cuando el cliente proporciona el PIN efímero actual mostrado en pantalla, reemplazando el vínculo anterior de forma transparente y rotando el PIN de un solo uso.
   - Aislamiento en memoria para suites de tests: `DesktopSecureStore` utiliza `ConcurrentHashMap` cuando el nombre de servicio contiene `test` o `in-memory`, evitando que ejecuciones de Gradle (`:data:desktopTest`) contaminen el Keychain del sistema (`login.keychain-db`) con credenciales espurias de dispositivos de prueba (`test-device`).

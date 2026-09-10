@@ -232,6 +232,9 @@ private struct NotebookRowFingerprintProvider {
                 cell.textValue ?? "",
                 cell.displayValue ?? "",
                 cell.iconValue ?? "",
+                cell.annotation?.icon ?? "",
+                cell.annotation?.note ?? "",
+                "\(cell.annotation?.attachmentUris.count ?? 0)",
                 cell.boolValue?.boolValue == true ? "1" : "0"
             ].joined(separator: ":")
         }

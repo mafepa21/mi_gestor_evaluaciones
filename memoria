@@ -3,6 +3,35 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-10 - Cuaderno: reactividad instantánea al calificar y actualizar instrumentos en Mac e iPad (PR #231)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Identificación y resolución de la cadena de bloqueos de reactividad:
+     - En `KmpBridge.swift`, `notebookAggregateSignature(for:)` omitía las anotaciones de las celdas (`icon`, `note`, recuento de adjuntos), provocando que emisiones reactivas del `StateFlow` fuesen descartadas por considerarse idénticas a la última signatura. Se incluyeron los campos de anotación y se añadió la invalidación `lastNotebookAggregateSignature = nil` al guardar sellos, notas, rúbricas e instrumentos estructurados.
+     - En `NotebookGridContent.swift`, `NotebookRowFingerprintProvider.cellDigestByColumnId` no computaba sellos ni notas, impidiendo que `NotebookEquatableGridRow` detectara cambios locales y omitiendo el re-render de la fila.
+     - En `NotebookEditableTableCell.swift`, `NotebookCellDisplaySnapshot` no contenía `stampIcon`, `hasNote` ni `attachmentCount`. Las celdas con `.equatable()` ignoraban las actualizaciones de feedback formativo. Se propagó además `reloadToken` y la comparación de display value a `NotebookReadOnlyCell`, `NotebookRubricCell` y `NotebookFormulaCell`.
+     - En `NotebookModuleGridCells.swift` y `NotebookDynamicCellsRow.swift`, se extraen los campos visuales de `annotation` al generar los snapshots.
+     - En `saveStructuredInstrumentEvaluation`, `structuredCellDisplayText` y `cellCheck`, se implementó caché optimista en memoria para que las notas/conteos de instrumentos y checks booleanos aparezcan de inmediato en pantalla.
+- Por qué importa:
+  - Elimina el bug crítico y molesto en Mac e iPad donde calificar una celda, asignar un sello o evaluar un checklist requería cambiar de pantalla y regresar para ver los datos reflejados. Ahora la actualización es 100% instantánea.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookGridContent.swift`
+  - `kmp/iosApp/App/NotebookEditableTableCell.swift`
+  - `kmp/iosApp/App/NotebookModuleGridCells.swift`
+  - `kmp/iosApp/App/NotebookDynamicCellsRow.swift`
+  - `docs/CHANGELOG.md`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests KMP compartidos ejecutados con éxito: `./kmp/gradlew :shared:desktopTest` (BUILD SUCCESSFUL, 100% verde).
+  - CI de GitHub Actions completo en PR #231:
+    - Shared and data tests: pass (5m21s)
+    - iOS and macOS build verification: pass (21m37s)
+  - Fusión limpia y verificada en `develop`.
+
 ## Avance 2026-09-10 - SyncLAN: desbloqueo de re-emparejamiento con PIN válido, aislamiento en memoria de tests y desvinculación desde Mac
 
 Resumen:

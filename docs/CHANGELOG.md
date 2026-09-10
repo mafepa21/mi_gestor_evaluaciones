@@ -32,7 +32,14 @@ El formato sigue una variante practica de Keep a Changelog:
 - Importador narrativo de Bachillerato: reconoce los ledgers de SA0 y otras SA tal como están redactados, conserva las rutas `shortFirst`/`longFirst`, agrupa cualquier unidad `U##` en bloques operativos y mantiene referencias estables a las imágenes embebidas del DOCX.
 - Actividades narrativas compactas: cada segmento curricular `U##` presenta `Explicación inicial`, `Activación`, `Actividad principal` y `Reflexión` cuando existe; un `LONG` con dos unidades conserva sus ocho momentos en orden, las adaptaciones se integran en la actividad principal y las imágenes relacionadas se muestran también en su ficha.
 - Fichas de sesión operativas: cada bloque separa `QUICK VIEW` y `ACTIVITY DETAILS`, usa `Activity ID` estable (`Wnn-L/S-nn`) y permite abrir una actividad concreta desde timeline, desplegable o botones Anterior/Siguiente.
-- `session-plan-v2` conserva por actividad los contextos explícitos `prepares` y `consolidates`, disponibles tanto en la previsualización de importación como en la ficha operativa.
+### Changed
+
+- Optimización de espacio y simplificación de la vista iPad del Planificador:
+  - Exclusión de `.planner` de `IOSGlobalContextRow` en `IOSRootView.swift` para eliminar la cabecera genérica duplicada ("PREPARACIÓN LECTIVA / Planner / Clase global") y ganar ~65 pt de altura útil.
+  - Eliminación de la barra flotante inferior `plannerFloatingControls`, su inset vacío de 96 pt y su margen de 32 pt en la vista Semana, permitiendo que la rejilla horaria aproveche todo el alto de la pantalla sin cortar las franjas lectivas inferiores (como P6).
+  - Unificación de controles en una cabecera compacta de dos filas en `PlannerToolbar`: fila superior con selector de vista (`[Semana | Día | Secuencia | Resumen]`), selector de grupo, buscador, menú secundario de `... Acciones` (densidad, sincronización, selección múltiple, etc.) y botón `+ Nueva sesión`; fila de contexto temporal con cluster `< Hoy >` único, etiqueta de semana/fechas/hitos, botón de progreso y botón para mostrar/ocultar el panel de detalle lateral (`sidebar.right`).
+  - Eliminación de la fila intermedia redundante con el título "Semana" en `PlannerWeekMiniatureLayout.swift`, sincronizando la visibilidad del inspector lateral vía `@AppStorage("planner_week_detail_pane_visible")`.
+  - Fijación de la vista Semana como predeterminada al abrir el Planificador mediante la retirada del desvío automático de `autoNavigateToTodayIfSchoolHours()`.
 
 ### Fixed
 

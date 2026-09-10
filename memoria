@@ -3,6 +3,32 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-10 - Planificador iPad: optimización de espacio vertical, eliminación de franjas y controles redundantes
+
+Resumen:
+- Qué cambio se hizo:
+  1. Exclusión del módulo `.planner` de `IOSGlobalContextRow` en `IOSRootView.swift` para iPad, eliminando el banner genérico "PREPARACIÓN LECTIVA / Planner / Clase global" y su divisor (~65 pt recuperados).
+  2. Supresión de la barra flotante inferior `plannerFloatingControls`, su inset vacío de 96 pt (`safeAreaInset(edge: .bottom)`) y su padding de 32 pt en la vista Semana de `PlannerWorkspaceIOS.swift`, extendiendo la cuadrícula de planificación hasta el borde inferior sin cortar franjas lectivas (P6).
+  3. Reestructuración de `PlannerToolbar` en dos filas compactas y limpias (~76 pt totales frente a los >190 pt anteriores):
+     - Fila 1: Pestañas de sección (`[Semana | Día | Secuencia | Resumen]`), selector de grupo (`1º BAC A`), buscador rápido, menú desplegable `... Acciones` (con densidad, sincronización, multiselección, etc.) y botón destacado `+ Nueva sesión`.
+     - Fila 2: Cluster de navegación temporal `<` `Hoy` `>`, etiqueta de semana y fechas (`Semana XX, YYYY · fechas`), hitos de calendario, contador de sesiones/progreso y botón para mostrar/ocultar el panel de detalle lateral (`sidebar.right`).
+  4. Supresión de la fila intermedia redundante `Text("Semana")` + botón de detalle en `PlannerWeekMiniatureLayout.swift`, sincronizando la visibilidad del inspector lateral mediante `@AppStorage("planner_week_detail_pane_visible")`.
+  5. Retirada de la lógica `autoNavigateToTodayIfSchoolHours()` para asegurar que la vista predeterminada al abrir el Planificador sea siempre la vista Semana (`.week`).
+- Por qué importa:
+  - Recupera más de 230 puntos de altura de pantalla útil en iPad, permitiendo que la totalidad de los períodos lectivos se visualicen cómodamente sin cortes ni desplazamientos innecesarios.
+  - Elimina todas las duplicidades de navegación (`< Hoy >` y selector de grupo repetidos arriba y abajo).
+  - Mantiene el 100% de la funcionalidad (acciones secundarias, multiselección, densidad, panel de detalle) con un acceso más rápido y estándar en la cabecera.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/IOSRootView.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceIOS.swift`
+  - `kmp/iosApp/App/PlannerWeekMiniatureLayout.swift`
+  - `docs/CHANGELOG.md`
+- Validación realizada:
+  - Regeneración con `xcodegen generate`.
+  - Verificación dual de compilación mediante `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+
 ## Avance 2026-09-10 - SyncLAN: huella determinista de dataset FNV-1a y adopción explícita de snapshot SQLite ("Igualar dispositivos")
 
 Resumen:

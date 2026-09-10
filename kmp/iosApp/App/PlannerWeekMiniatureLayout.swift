@@ -18,7 +18,7 @@ struct PlannerWeekMiniatureLayout: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
-    @State private var isDetailPaneVisible = true
+    @AppStorage("planner_week_detail_pane_visible") private var isDetailPaneVisible = true
 
     private var isRegularWidth: Bool {
         #if os(iOS)
@@ -41,38 +41,28 @@ struct PlannerWeekMiniatureLayout: View {
     /// iPad apaisado y Mac: grid a la izquierda, detalle como panel lateral
     /// persistente (estilo inspector) para poder ver ambos a la vez.
     private var regularLayout: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text("Semana")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                detailPaneToggle
+        HStack(alignment: .top, spacing: 16) {
+            ScrollView(.vertical) {
+                grid
+                    .frame(height: gridHeight)
+                    .padding(16)
             }
+            .plannerGlassPanel(.content, cornerRadius: 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            HStack(alignment: .top, spacing: 16) {
+            if isDetailPaneVisible {
                 ScrollView(.vertical) {
-                    grid
-                        .frame(height: gridHeight)
-                        .padding(16)
+                    detailPane
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+                .frame(width: 400)
+                .frame(maxHeight: .infinity)
                 .plannerGlassPanel(.content, cornerRadius: 24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-                if isDetailPaneVisible {
-                    ScrollView(.vertical) {
-                        detailPane
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                    .frame(width: 400)
-                    .frame(maxHeight: .infinity)
-                    .plannerGlassPanel(.content, cornerRadius: 24)
-                }
             }
         }
         .padding(.horizontal, EvaluationDesign.screenPadding)
-        .padding(.top, 8)
-        .padding(.bottom, 24)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
     }
 
     private var detailPaneToggle: some View {

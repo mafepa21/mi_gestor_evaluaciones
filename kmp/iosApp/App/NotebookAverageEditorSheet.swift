@@ -360,7 +360,7 @@ struct NotebookAverageEditorSheet: View {
 
     private func numericValue(for row: NotebookRow, column: NotebookColumnDefinition) -> Double? {
         if let value = row.persistedGrades.first(where: { $0.columnId == column.id })?.value?.doubleValue {
-            return value
+            return rescaleNumericGrade(value, for: column)
         }
         if column.type == .check,
            let value = row.persistedCells.first(where: { $0.columnId == column.id })?.boolValue?.boolValue {
@@ -368,9 +368,21 @@ struct NotebookAverageEditorSheet: View {
         }
         if let evaluationId = column.evaluationId?.int64Value,
            let value = row.cells.first(where: { $0.evaluationId == evaluationId })?.value?.doubleValue {
-            return value
+            return rescaleNumericGrade(value, for: column)
+        }
+        if let cell = row.persistedCells.first(where: { $0.columnId == column.id }) {
+            if let display = cell.displayValue, let num = Double(display.replacingOccurrences(of: ",", with: ".")) {
+                return rescaleNumericGrade(num, for: column)
+            }
         }
         return nil
+    }
+
+    private func rescaleNumericGrade(_ rawValue: Double, for column: NotebookColumnDefinition) -> Double {
+        if column.scaleKind == .fourLevel || (column.inputKind.isStructuredInstrument && rawValue >= 1.0 && rawValue <= 4.0 && column.scaleKind != .tenPoint) {
+            return (min(max(rawValue, 1.0), 4.0) - 1.0) / 3.0 * 10.0
+        }
+        return rawValue
     }
 
     private func buildUpdates() -> [NotebookAverageColumnUpdate] {

@@ -21,6 +21,7 @@ El formato sigue una variante practica de Keep a Changelog:
   - Reactividad añadida: `.appOnChange(of: firma_columnas)` dentro de la sheet re-sincroniza los borradores en tiempo real si el docente conmuta el toggle mientras la sheet está abierta.
   - `averageSheetSeed` (UUID) en `NotebookModuleView` fuerza reinicialización completa del `@State draftsByColumnId` cada vez que se reabre la sheet, eliminando el stale-state de sesiones anteriores.
   - Botones duplicados en macOS/Catalyst corregidos: el footer oculta "Cancelar" y "Guardar" en Mac (los `ToolbarItem` los cubren); en iOS se conservan ambos para comodidad.
+  - Cálculo de media ponderada en KMP y Swift habilitado para instrumentos estructurados: `countsTowardAverage()` en `Models.kt` ahora reconoce columnas estructuradas evaluables con peso $> 0$; `gradeValueFor` y `rescaleNumericGrade` resuelven y rescalan notas numéricas; y `NotebookInstrumentsRepositorySqlDelight.kt` añade `deriveGenericScale14Score` para derivar la nota automáticamente desde indicadores de escala 1–4.
 
 - Desbloqueo y aislamiento de Keychain en SyncLAN (#229):
   - Solucionado el error `already_paired` (409) al enlazar el iPad con el Mac: `LocalSyncServer` ahora permite re-emparejar cuando el cliente proporciona el PIN efímero actual mostrado en pantalla, reemplazando el vínculo anterior de forma transparente y rotando el PIN de un solo uso.

@@ -3,6 +3,87 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-11 - Diario de Aula: Bitácora continua de curso, filtros trimestrales y exportador de informes PDF maquetados en iPadOS y macOS
+
+Resumen:
+- Qué cambio se hizo:
+  1. Modelo de navegación y proyección de bitácora continua (`DiaryTimelineModels.swift`):
+     - `DiaryViewMode`: conmutación limpia entre vista `.week` ("Semanal") y `.timeline` ("Bitácora continua") con iconos SF Symbols.
+     - `DiaryTimelineQuarter`: segmentación por trimestres escolares (`all`, `q1`, `q2`, `q3`) ajustada al calendario lectivo estándar (Q1: Sep-22 Dic, Q2: 7 Ene-31 Mar, Q3: Abr-Jun).
+     - Proyección determinista de fechas de sesión (`DiaryTimelineEntry`) a partir de `PlanningSession(year, weekNumber, dayOfWeek)` bajo ISO 8601.
+  2. Motor de maquetación y renderizado de informes PDF (`DiaryClassPDFRenderer.swift`):
+     - Implementación 100% nativa con CoreText y CoreGraphics (sin dependencias de AppKit ni UIKit, compatible en iPadOS y macOS Native).
+     - Paginación dinámica en formato A4 estándar con `CTFramesetter` y `CTFrameDraw`, con límite de seguridad de 300 páginas.
+     - Tipografía editorial institucional: encabezado con nombre de centro y curso, franja azul de métricas globales (sesiones analizadas, completadas y con incidencias), tarjetas cronológicas con fecha formateada en español, unidades didácticas, objetivos previstos, actividades programadas, notas reales de desarrollo en aula (itálica verde oliva), decisiones pedagógicas destacadas (ámbar) y advertencias de incidencias (rojo semántico).
+  3. Interfaz interactiva de bitácora y exportación (`DiaryContinuousTimelineView.swift` y `DiaryExportPDFSheet.swift`):
+     - Feed cronológico continuo agrupado por meses lectivos con carril temporal y nodos circulares conectados.
+     - Barra de métricas en tiempo real con recuento dinámico de sesiones según filtros activos (Total, Completadas, Pendientes, Incidencias).
+     - Buscador reactivo que evalúa unidad didáctica, objetivos, actividades y reflexiones de aula concurrentemente.
+     - Tarjetas con distintivo ordinal (`#N`), píldoras de estado, reflexiones docentes y botones de acción rápida ("Editar diario", "Asistencia", "Cuaderno").
+     - Modal de exportación con `ProgressView` asíncrono, opciones configurables (reflexiones, incidencias, solo completadas) y botón `ShareLink` para AirDrop, Mail o Archivos.
+  4. Integración fluida en `DiaryWorkspaceView.swift`:
+     - Barra superior con `Picker` segmentado para alternar entre vista semanal y bitácora continua.
+  5. Cobertura de tests unitarios (`DiaryTimelineProjectionTests.swift`):
+     - 4 tests unitarios validando enums, proyección de fechas ISO 8601, matching de trimestres y renderizado de PDF sintáctico con firma mágica `%PDF-`.
+- Por qué importa:
+  - Responde a la Prioridad 3 del roadmap inspirado en iDoceo: proporciona una visión histórica continua de lo ocurrido en cada clase durante el curso y permite exportar memorias o informes pedagógicos oficiales maquetados en PDF en segundos para inspección, claustro o jefatura.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/DiaryTimelineModels.swift`
+  - `kmp/iosApp/App/DiaryClassPDFRenderer.swift`
+  - `kmp/iosApp/App/DiaryContinuousTimelineView.swift`
+  - `kmp/iosApp/App/DiaryExportPDFSheet.swift`
+  - `kmp/iosApp/App/DiaryWorkspaceView.swift`
+  - `kmp/iosApp/PlannerTests/DiaryTimelineProjectionTests.swift`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `DiaryTimelineProjectionTests` (4 de 4 pasados, 0 fallos).
+  - Suite completa `MiGestorPlannerTests` ejecutada con éxito (113 tests pasados, 0 fallos).
+  - Auditoría de código aprobada por subagente `reviewer`.
+  - Auditoría Git previa al merge aprobada por subagente `janitor`.
+  - Fusión limpia fast-forward en rama `develop` (commit `4c7b8ed`).
+
+## Avance 2026-09-11 - Asistencia: Sábana Global 2D bidireccional y Pase de Lista Relámpago en iPadOS y macOS
+
+Resumen:
+- Qué cambio se hizo:
+  1. Cuadrícula bidireccional matricial de asistencia (`AttendanceMatrixGridView.swift`):
+     - Columna fija de alumnado a la izquierda con avatar, nombre completo e indicador de exención/lesión física.
+     - Columnas de fechas con cabecera de día de la semana, número de día y formato localizado en español, con resaltado visual del día de "Hoy".
+     - Celdas interactivas con estados LOMLOE estándar (Presente, Ausente, Retraso, Justificada, Médico, Exento, Sin registrar) y selector popover táctil.
+     - Columnas fijas a la derecha con cómputo en tiempo real de porcentaje de asistencia (código de color semántico), ausencias, retrasos y justificaciones.
+     - Fila inferior de totales por sesión con porcentaje de asistencia media del grupo y recuento de alumnos presentes.
+  2. Pase de lista relámpago ("Marcar todos hoy (P)"):
+     - Botón de un toque para marcar a todo el alumnado como presente en la fecha actual, con guardas que preservan estados ya justificados o exenciones médicas.
+     - Persistencia masiva en una sola transacción eficiente con `bridge.saveAttendanceBatch` y actualización optimista instantánea en UI.
+  3. Exportación y utilidades:
+     - Copiado rápido al portapapeles de la sábana de asistencia en formato tabulado compatible con Numbers, Excel y Google Sheets.
+     - Buscador dinámico de alumnos por nombre o apellidos integrado en la barra de herramientas.
+  4. Paridad de plataformas:
+     - Selector de modo (Pase diario vs Sábana global) integrado en `AttendanceWorkspaceView.swift`, `IPadWorkspaceShell.swift`, `IOSRootView.swift` y `MacAttendanceView.swift`.
+  5. Cobertura de tests unitarios (`AttendanceMatrixStatsTests.swift`):
+     - Validación de cálculo de porcentajes, casos extremos con 0 sesiones y rangos de asistencia.
+- Por qué importa:
+  - Responde a la Prioridad 2 del roadmap inspirado en iDoceo: transforma la gestión de asistencia permitiendo pasar lista en 2 segundos y supervisar de un solo vistazo el absentismo de todo el trimestre.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/AttendanceShared.swift`
+  - `kmp/iosApp/App/AttendanceMatrixGridView.swift`
+  - `kmp/iosApp/App/AttendanceWorkspaceView.swift`
+  - `kmp/iosApp/App/IPadWorkspaceShell.swift`
+  - `kmp/iosApp/App/IOSRootView.swift`
+  - `kmp/iosApp/MacApp/MacAttendanceView.swift`
+  - `kmp/iosApp/MacApp/MacRootView.swift`
+  - `kmp/iosApp/PlannerTests/AttendanceMatrixStatsTests.swift`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `AttendanceMatrixStatsTests` (4 de 4 pasados, 0 fallos).
+  - Suite completa `MiGestorPlannerTests` ejecutada con éxito (111 tests pasados, 0 fallos).
+  - Auditorías aprobadas por `reviewer` y `janitor`.
+  - Fusión limpia fast-forward en `develop` (commit `6b78025`).
+
 ## Avance 2026-09-11 - Planificación: Vista de Calendario Mensual 2.0 en iPadOS y macOS
 
 Resumen:

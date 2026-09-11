@@ -568,7 +568,7 @@ struct IOSRootView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 240)
+            .frame(width: 290)
         }
 
         if bridge.syncPendingChanges > 0 {

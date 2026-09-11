@@ -940,7 +940,7 @@ struct MacRootView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
+                .frame(maxWidth: 320)
 
                 Menu {
                     Button("Todos los cursos") {

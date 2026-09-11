@@ -348,7 +348,7 @@ struct MacAttendanceView: View {
                 MacMetricCard(label: "Pendientes hoy", value: "\(classOverviews.map(\.pendingTodayCount).reduce(0, +))", tint: .orange, systemImage: "clock")
                 MacMetricCard(label: "Media periodo", value: "\(averageOverviewRate)%", tint: .indigo, systemImage: "chart.line.uptrend.xyaxis")
             }
-        } else {
+        } else if mode == .day {
             HStack(spacing: MacAppStyle.cardSpacing) {
                 MacMetricCard(label: "Presentes", value: "\(boardSummary.present)", tint: MacAppStyle.successTint, systemImage: "checkmark.circle")
                 MacMetricCard(label: "Ausencias", value: "\(boardSummary.absent)", tint: MacAppStyle.dangerTint, systemImage: "xmark.circle")
@@ -365,6 +365,20 @@ struct MacAttendanceView: View {
             coursesContent
         case .day:
             dayContent
+        case .matrix:
+            if let classId = selectedClassId {
+                AttendanceMatrixGridView(
+                    bridge: bridge,
+                    attendanceStore: attendanceStore,
+                    selectedClassId: classId,
+                    onSelectStudent: { student in
+                        historySelection = nil
+                        selectedStudentId = student.id
+                    }
+                )
+            } else {
+                coursesContent
+            }
         case .history:
             historyContent
         }

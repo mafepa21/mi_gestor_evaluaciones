@@ -341,6 +341,21 @@ struct AttendanceWorkspaceView: View {
             coursesOverviewContent
         case .day:
             dayRollCallContent
+        case .matrix:
+            if let classId = selectedClassId {
+                AttendanceMatrixGridView(
+                    bridge: bridge,
+                    attendanceStore: attendanceStore,
+                    selectedClassId: classId,
+                    onSelectStudent: { student in
+                        historySelection = nil
+                        selectedStudentId = student.id
+                        AppleInteractionFeedback.play(.selection)
+                    }
+                )
+            } else {
+                coursesOverviewContent
+            }
         case .history:
             monthlyHistoryContent
         }

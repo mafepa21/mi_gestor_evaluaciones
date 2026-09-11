@@ -1319,7 +1319,7 @@ struct AppWorkspaceShell: View {
                 attendanceActionsMenu
                 Spacer(minLength: 8)
                 attendanceDatePicker
-                attendanceModePicker(width: 250)
+                attendanceModePicker(width: 320)
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -1331,7 +1331,7 @@ struct AppWorkspaceShell: View {
                     attendanceDatePicker
                 }
                 HStack(spacing: 12) {
-                    attendanceModePicker(width: 280)
+                    attendanceModePicker(width: 320)
                 }
             }
         }
@@ -1420,9 +1420,9 @@ struct AppWorkspaceShell: View {
                 set: { layoutState.setAttendanceBoardMode($0) }
             )
         ) {
-            Text("Cursos").tag("Cursos")
-            Text("Día").tag("Día")
-            Text("Historial").tag("Historial")
+            ForEach(AttendanceBoardMode.allCases) { mode in
+                Text(mode.rawValue).tag(mode.rawValue)
+            }
         }
         .pickerStyle(.segmented)
         // minWidth prevents AppKit from compressing below its intrinsic minimum,

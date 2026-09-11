@@ -2728,3 +2728,51 @@ Resumen:
 - **Validación realizada**:
   - Compilación exitosa en `macOS Native / Catalyst` y en `iOS Simulator` con `./scripts/verify_apple_builds.sh`.
   - Paso del 100% de `MiGestorPlannerTests` en macOS (exit code 0).
+
+### 2026-09-11 - Vista de Calendario Mensual 2.0 en Planificación (iPad / macOS)
+
+Resumen:
+- **Cambios realizados**:
+  - Se incorporó la sección `PlannerWorkspaceSection.month` («Mes») al planificador didáctico, con icono SF Symbol `calendar`.
+  - **Cuadrícula mensual bidireccional (`PlannerMonthCalendarView`)**: Cuadrícula de 7 columnas (Lunes a Domingo) con proyección de semanas y padding de días limítrofes (35 o 42 celdas), resaltado visual de «Hoy», y navegación por mes (‹, Hoy, ›).
+  - **Píldoras y badges de sesión**: Sesiones coloreadas con el tinte pedagógico del grupo y franja horaria, con indicador de desbordamiento (+X más) y popover contextual interactivo para días con múltiples sesiones.
+  - **Integración fluida**: Apertura directa del detalle de sesión (`PlannerSessionDetailSheet`) al pulsar cualquier píldora, filtrado por grupo/curso y atajos de teclado de selección rápida en macOS.
+- **Por qué importa**: Dota al planificador de una vista a vista de pájaro de 30 días similar a iDoceo o Google Calendar, permitiendo a los docentes visualizar la carga trimestral y distribución de unidades didácticas sin desplazarse semana a semana.
+- **Rutas afectadas**:
+  - `PlannerMonthCalendarView.swift`
+  - `PlannerWorkspaceViewModel+MonthBoard.swift`
+  - `PlannerWorkspaceViewModel.swift`
+  - `PlannerWorkspaceIOS.swift`
+  - `MacPlannerView.swift`
+  - `MacRootView.swift`
+  - `PlannerMonthGridTests.swift`
+- **Validación realizada**:
+  - Compilación exitosa de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh`.
+  - Pruebas unitarias completas en `PlannerMonthGridTests` superadas al 100%.
+
+### 2026-09-11 - Sábana / Matriz Global de Asistencia 2D y Pase de Lista Relámpago (iPad / macOS)
+
+Resumen:
+- **Cambios realizados**:
+  - Se añadió el modo `AttendanceBoardMode.matrix` («Matriz») con icono SF Symbol `tablecells` a la barra de vistas de asistencia.
+  - **Sábana matricial bidireccional (`AttendanceMatrixGridView`)**: Matriz 2D con listado de alumnos a la izquierda (con avatar, nombre completo e indicador de lesión en EF), cabeceras de columnas por fecha con día de la semana y fecha localizada (`dd/MM`), y celdas de estado interactivas (`P`, `A`, `R`, `J`, `M`, `E`, `·`).
+  - **Selector contextual de estado en celda (`AttendanceMatrixStatusPicker`)**: Popover compacto de selección rápida con feedback táctil háptico (`AppleInteractionFeedback.play(.selection)`) y actualización optimista inmediata.
+  - **Pase de lista relámpago («Marcar todos hoy (P)»)**: Botón destacado en barra de control que marca a todo el grupo presente hoy en un solo toque, respetando exclusiones previas de alumnos justificados o exentos, y persistiendo masivamente en una única transacción mediante `bridge.saveAttendanceBatch`.
+  - **Métricas acumuladas y totales por columna**: Columnas a la derecha con porcentaje global de asistencia con código de color dinámico (verde ≥90%, amarillo ≥80%, rojo <80%), conteo de faltas, retrasos y justificadas, más pie de tabla con totales de asistencia por fecha y media global del grupo.
+  - **Selector de rango temporal pedagógico (`AttendanceMatrixRange`)**: Permite filtrar entre *Mes actual*, *1.er Trimestre*, *2.º Trimestre*, *3.er Trimestre* y *Todo el curso*.
+  - **Exportación estructurada**: Botón «Copiar resumen» con formato tabulado listo para pegar en Excel/Numbers y confirmación visual instantánea.
+- **Por qué importa**: Ofrece la funcionalidad más demandada de iDoceo en gestión de asistencia: visualizar en un solo golpe de vista la asistencia acumulada de todo el curso, editar cualquier fecha pasada o presente con un toque y agilizar el pase diario con un botón de lote.
+- **Rutas afectadas**:
+  - `AttendanceMatrixGridView.swift`
+  - `AttendanceShared.swift`
+  - `AttendanceWorkspaceView.swift`
+  - `MacAttendanceView.swift`
+  - `IPadWorkspaceShell.swift`
+  - `IOSRootView.swift`
+  - `MacRootView.swift`
+  - `AttendanceMatrixStatsTests.swift`
+- **Validación realizada**:
+  - Compilación verificada para `macOS Native / Catalyst` e `iOS Simulator` mediante `./scripts/verify_apple_builds.sh`.
+  - Suite de 6 pruebas unitarias `AttendanceMatrixStatsTests` ejecutada con éxito (`BUILD SUCCEEDED`, 0 fallos).
+  - Auditoría técnica completa aprobada por subagentes especializados `reviewer` y `janitor`.
+

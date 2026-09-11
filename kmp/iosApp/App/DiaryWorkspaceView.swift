@@ -13,6 +13,7 @@ struct DiaryWorkspaceView: View {
     let onNavigationContextChange: (PlannerNavigationContext) -> Void
 
     @StateObject var vm = PlannerWorkspaceViewModel()
+    @State var diaryViewMode: DiaryViewMode = .timeline
     @State var selectedFilter: DiaryStatusFilter = .all
     @State var selectedDayFilter = "Todos"
     @State var selectedUnitFilter = "Todas"
@@ -82,8 +83,50 @@ struct DiaryWorkspaceView: View {
         "\(selectedSession?.id ?? -1)-\(showingInspector)"
     }
 
+    private var topModeBar: some View {
+        HStack(spacing: 12) {
+            Picker("Vista", selection: $diaryViewMode) {
+                ForEach(DiaryViewMode.allCases) { mode in
+                    Label(mode.rawValue, systemImage: mode.systemImage).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 320)
+
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(appPageBackground(for: colorScheme))
+    }
+
     var body: some View {
-        diaryWorkspaceContent
+        VStack(spacing: 0) {
+            topModeBar
+
+            Divider()
+
+            if diaryViewMode == .timeline {
+                DiaryContinuousTimelineView(
+                    bridge: bridge,
+                    selectedClassId: selectedClassId,
+                    onSelectSession: { session in
+                        Task {
+                            await vm.select(session: session)
+                            diaryViewMode = .week
+                        }
+                    },
+                    onOpenAttendance: { classId in
+                        onOpenModule(.attendance, classId, nil)
+                    },
+                    onOpenNotebook: { classId in
+                        onOpenModule(.notebook, classId, nil)
+                    }
+                )
+            } else {
+                diaryWorkspaceContent
+            }
+        }
         .task {
             await vm.bind(bridge: bridge)
             await vm.applyExternalContext(

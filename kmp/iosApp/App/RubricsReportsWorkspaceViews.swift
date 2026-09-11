@@ -18,6 +18,7 @@ struct RubricsWorkspaceView: View {
     @State var teachingUnits: [TeachingUnit] = []
     @State var expandedGroupKeys: Set<String> = []
     @State var expandedCriterionIds: Set<Int64> = []
+    @State var showingTemplateCatalog: Bool = false
 
     var availableFilters: [String] {
         ["Todas", "Vinculadas", "Sin vincular", "Con evaluaciones activas", "Sin uso"]
@@ -135,10 +136,17 @@ struct RubricsWorkspaceView: View {
                     }
 
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 16) {
+                        HStack(spacing: 12) {
                             rubricFilterControls
 
                             Spacer()
+
+                            Button {
+                                showingTemplateCatalog = true
+                            } label: {
+                                Label("Catálogo", systemImage: "square.grid.2x2")
+                            }
+                            .buttonStyle(.bordered)
 
                             Button {
                                 onOpenBuilder()
@@ -151,12 +159,21 @@ struct RubricsWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             rubricFilterControls
 
-                            Button {
-                                onOpenBuilder()
-                            } label: {
-                                Label("Nueva rúbrica", systemImage: "plus")
+                            HStack(spacing: 12) {
+                                Button {
+                                    showingTemplateCatalog = true
+                                } label: {
+                                    Label("Catálogo", systemImage: "square.grid.2x2")
+                                }
+                                .buttonStyle(.bordered)
+
+                                Button {
+                                    onOpenBuilder()
+                                } label: {
+                                    Label("Nueva rúbrica", systemImage: "plus")
+                                }
+                                .buttonStyle(.borderedProminent)
                             }
-                            .buttonStyle(.borderedProminent)
                         }
                     }
                 }
@@ -293,6 +310,12 @@ struct RubricsWorkspaceView: View {
                                 onOpenBuilder()
                             }
                             .buttonStyle(.borderedProminent)
+
+                            Button("Catálogo de plantillas") {
+                                showingTemplateCatalog = true
+                            }
+                            .buttonStyle(.bordered)
+
                             Button("Ver uso evaluativo") {
                                 onOpenModule(.evaluationHub, selectedClassId, nil)
                             }
@@ -345,6 +368,11 @@ struct RubricsWorkspaceView: View {
         }
         .appOnChange(of: selectedRubricId) { _ in
             Task { await reloadUsageSummary() }
+        }
+        .sheet(isPresented: $showingTemplateCatalog) {
+            RubricTemplateCatalogSheet(targetClassId: selectedClassId) { importedId in
+                selectedRubricId = importedId
+            }
         }
     }
 

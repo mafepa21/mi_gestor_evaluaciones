@@ -4223,6 +4223,55 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    func updateStudentFull(
+        student: Student,
+        firstName: String,
+        lastName: String,
+        email: String?,
+        isInjured: Bool,
+        sex: StudentSex,
+        birthDate: LocalDate?
+    ) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let normalizedEmail = email?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let sexSource: StudentSexSource = (sex == student.sex)
+            ? student.sexSource
+            : (sex == .unspecified ? StudentSexSource.unknown : StudentSexSource.manual)
+
+        _ = try await container.studentsRepository.saveStudent(
+            id: KotlinLong(value: student.id),
+            firstName: firstName,
+            lastName: lastName,
+            email: normalizedEmail,
+            photoPath: student.photoPath,
+            isInjured: isInjured,
+            sex: sex,
+            sexSource: sexSource,
+            birthDate: birthDate,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: student.trace.syncVersion + 1
+        )
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+        enqueueLocalChange(
+            entity: "student",
+            id: "\(student.id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": student.id,
+                "firstName": firstName,
+                "lastName": lastName,
+                "email": normalizedEmail ?? NSNull(),
+                "photoPath": student.photoPath ?? NSNull(),
+                "isInjured": isInjured,
+                "sex": sex.name,
+                "sexSource": sexSource.name,
+                "birthDate": birthDate == nil ? NSNull() : birthDate!.description()
+            ]
+        )
+    }
+
     func updateStudentInjuryStatus(
         studentId: Int64,
         isInjured: Bool,
@@ -8494,6 +8543,38 @@ final class KmpBridge: ObservableObject {
             updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
             payload: ["id": studentId]
         )
+    }
+
+    func assignStudentToClass(studentId: Int64, classId: Int64) async throws {
+        try await container.classesRepository.addStudentToClass(classId: classId, studentId: studentId)
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+        enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000))
+    }
+
+    func listClassesForStudent(studentId: Int64) async throws -> [SchoolClass] {
+        let allClasses = try await container.classesRepository.listClasses()
+        var matched: [SchoolClass] = []
+        for schoolClass in allClasses {
+            let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
+            if roster.contains(where: { $0.id == studentId }) {
+                matched.append(schoolClass)
+            }
+        }
+        return matched
+    }
+
+    func unassignedStudentIds() async throws -> Set<Int64> {
+        let allClasses = try await container.classesRepository.listClasses()
+        var assignedIds = Set<Int64>()
+        for schoolClass in allClasses {
+            let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
+            for student in roster {
+                assignedIds.insert(student.id)
+            }
+        }
+        let allStudents = try await container.studentsRepository.listStudents()
+        return Set(allStudents.map(\.id)).subtracting(assignedIds)
     }
 
     private static let stableDayCalendar: Calendar = {

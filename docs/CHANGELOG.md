@@ -13,6 +13,20 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- Gestión integral de alumnado en iPadOS, iOS y macOS:
+  - **Eliminación y desmatriculación de alumnos**:
+    - Opciones contextuales y de inspector para «Quitar de clase» (si el alumno pertenece al grupo seleccionado o activo) y «Eliminar de toda la app» (borrado permanente de base de datos local y sincronización con advertencia destructiva).
+    - Diálogos nativos de confirmación (`confirmationDialog`) con explicación clara del impacto en iOS/iPadOS y macOS.
+  - **Asignación de alumnos sin curso a un curso escolar**:
+    - Nueva vista modal adaptativa `AssignStudentToClassSheet` (con detents nativos en iOS/iPadOS y ventana de diálogo compacta en macOS).
+    - Filtro de seguimiento «Sin curso» (`.sinCurso` en iOS, `sin_curso` en macOS) para listar inmediatamente los alumnos sin grupo asignado.
+    - Badges visuales de advertencia «Sin curso», banners informativos con botón directo «Asignar curso», swipe actions en listado y opciones en menú contextual / clic derecho en tabla.
+  - **Edición completa de datos del alumno**:
+    - Soporte completo para editar nombre, apellidos, correo electrónico, estado de lesión (`isInjured`), sexo biológico (`StudentSex`: no especificado, masculino, femenino, otro) y fecha de nacimiento (`birthDate: LocalDate?`) mediante `updateStudentFull` en `KmpBridge`.
+    - Integración de selectores nativos en `StudentEditorSheet` (iOS/iPadOS) y `MacStudentEditorSheet` (macOS).
+
 ### Changed
 
 - Batería de optimizaciones de rendimiento y eficiencia energética P1-P6:

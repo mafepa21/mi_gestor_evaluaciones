@@ -3,6 +3,36 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-11 - Gestión avanzada de Alumnos: eliminación, asignación de cursos y edición completa (iOS/iPadOS/macOS)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Habilitación de eliminación y desmatriculación de alumnos:
+     - Distinción clara en UI entre «Quitar de clase» (si el alumno pertenece a un grupo) y «Eliminar de toda la app» (eliminación permanente del alumno, matrículas y datos asociados en SQLite mediante `deleteStudentEverywhere`).
+     - Diálogos de confirmación destructiva nativos en `StudentProfilesWorkspaceView` (iOS/iPadOS) y `MacStudentsView` (macOS).
+  2. Asignación de alumnos sin curso:
+     - Nuevo filtro «Sin curso» en los filtros de seguimiento de Alumnos (`StudentTrackingFilter.sinCurso` en iOS y `sin_curso` en macOS).
+     - Identificación reactiva mediante `unassignedStudentIds()`, badges indicadores («Sin curso»), callout con botón directo de asignación en el perfil e inspector, swipe action en la lista y opción en menú contextual.
+     - Componente compartido `AssignStudentToClassSheet` en `kmp/iosApp/AppleShared/` con selección de curso y asignación atómica a través de `bridge.assignStudentToClass`.
+  3. Edición ampliada de información del alumno:
+     - Método `updateStudentFull(student:firstName:lastName:email:isInjured:sex:birthDate:)` en `KmpBridge.swift`.
+     - Actualización de `StudentEditorSheet` (iOS/iPadOS) y `MacStudentEditorSheet` (macOS) permitiendo editar nombre, apellidos, correo, estado de lesión, sexo (`StudentSex`) y fecha de nacimiento (`LocalDate?`).
+- Por qué importa:
+  - Permite a los docentes organizar adecuadamente a los alumnos huérfanos o recién creados/importados sin clase asignada, mantener al día sus datos fisiológicos y personales, y corregir o depurar listas eliminando registros innecesarios de forma segura.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/StudentProfilesWorkspaceView.swift`
+  - `kmp/iosApp/AppleShared/AssignStudentToClassSheet.swift`
+  - `kmp/iosApp/MacApp/MacStudentsView.swift`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Regeneración de proyecto Xcode con XcodeGen exitosa.
+
 ## Avance 2026-09-11 - Optimización integral de rendimiento, batería, SyncLAN y arquitectura (P1 a P6)
 
 Resumen:

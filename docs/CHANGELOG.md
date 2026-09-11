@@ -13,6 +13,23 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Changed
+
+- Batería de optimizaciones de rendimiento y eficiencia energética P1-P6:
+  - **P1 (Batería y SyncLAN)**: Pausa total del bucle de sincronización periódica en segundo plano (`autoSyncLoopTask`) al entrar la app en background (`onAppDidEnterBackground`); reactivación al volver a primer plano (`onAppDidBecomeActive`). Detección reactiva de conexión SSE en `SyncEventListener` con backoff exponencial y dilatación del intervalo de consulta de 2-4 segundos a 5 minutos (300 s) como latido defensivo cuando el canal push está enlazado.
+  - **P2 (Velocidad de I/O en SQLite)**: Configuración de PRAGMAs de alto rendimiento en el driver nativo Apple (`AppleDriver.kt`) y de escritorio (`DesktopDriver.kt`): `synchronous = NORMAL` (seguro con WAL, reduce fsync continuos), `cache_size = -64000` (64 MB de caché en RAM), `mmap_size = 268435456` (256 MB de mapeo directo a memoria en Apple) y `temp_store = MEMORY`.
+  - **P3 (Paridad completa de SyncLAN)**: Traslado de `SqlDelightSyncAdapter` de `desktopMain` a `commonMain` en el módulo `:data`, permitiendo soporte nativo multiplataforma de importación/exportación diferencial. Exposición de `syncStoreAdapter` en `KmpContainer` y provisión de `typealias` retrocompatible para clientes de escritorio.
+  - **P4 (Fluidez UI y ahorro de CPU)**: Reemplazo de temporizadores reactivos periódicos `Timer.publish(every: 1.0)` en `PEActiveDurationStat` y `PEActiveDurationMetric` por la API nativa de SwiftUI `Text(timerStart, style: .timer)`, delegando el refresco por segundo al RenderServer del sistema sin despertar el hilo principal ni invalidar vistas (0% uso de CPU durante cronometraje de sesión).
+  - **P5 (Higiene de almacenamiento y rotación de copias de seguridad)**: Purga de ficheros de log huérfanos generados durante builds; actualización de `.gitignore` para omitir `*.log` y `build_*.txt`. Introducción de política de retención con rotación a un máximo de 5 copias pre-adopción en `AppleDriver.kt` (`pruneOldPreAdoptBackups`) y `AppleBackupService.swift` (`retentionLimit = 5`), con reemplazo atómico `replaceItemAt` resistente a `SQLITE_IOERR`.
+  - **P6 (Modularización y deuda técnica en KmpBridge)**: Extracción de 1.294 líneas de lógica contextual y analítica de IA desde `KmpBridge.swift` al nuevo archivo `Bridge/KmpBridge+ContextualAI.swift`, reduciendo la complejidad del monolito y facilitando compilaciones incrementales limpias.
+
+### Verification
+
+- Validación de compilación dual limpia (macOS Native / Catalyst e iOS Simulator) con `./scripts/verify_apple_builds.sh`.
+- Ejecución completa de tests unitarios de Apple (`MiGestorPlannerTests`): 124 tests ejecutados con éxito (0 fallos).
+- Ejecución completa de tests de persistencia y lógica KMP (`:data:desktopTest`, `:shared:desktopTest`): `BUILD SUCCESSFUL`.
+- Auditoría de código, seguridad y concurrencia (`reviewer`) y auditoría de limpieza Git (`janitor`) aprobadas formalmente.
+
 ### Fixed
 
 - Reactividad instantánea en el Cuaderno (iPad / Mac):

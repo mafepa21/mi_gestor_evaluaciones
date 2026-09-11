@@ -3,6 +3,53 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-11 - Optimización integral de rendimiento, batería, SyncLAN y arquitectura (P1 a P6)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Optimización del consumo de batería y bucle de SyncLAN (P1):
+     - Detección de ciclo de vida de la aplicación en `KmpBridge.swift`: el bucle de sincronización (`autoSyncLoopTask`) se pausa por completo cuando la app entra en segundo plano (`onAppDidEnterBackground`) y se reactiva al volver a primer plano (`onAppDidBecomeActive`).
+     - Tracking de conexión de `SyncEventListener` con bloqueo atómico `NSLock`, backoff exponencial en reconexión (hasta 30 s) y dilatación del polling periódico a 5 minutos (300 s) cuando la conexión SSE está activa y operativa.
+  2. Ajuste de PRAGMAs de SQLite de alto rendimiento en KMP (P2):
+     - En `AppleDriver.kt` y `DesktopDriver.kt`, configuración de PRAGMAs optimizados: `synchronous = NORMAL` (100% seguro con WAL y elimina sincronizaciones I/O excesivas), `cache_size = -64000` (64 MB de caché en RAM), `mmap_size = 268435456` (256 MB de acceso mapeado en memoria en arquitecturas de 64 bits) y `temp_store = MEMORY`.
+  3. Paridad multiplataforma completa de SyncLAN (P3):
+     - Migración de `SqlDelightSyncAdapter.kt` de `desktopMain` a `commonMain` en el módulo `:data`, permitiendo exportación e importación diferencial en todas las plataformas soportadas por KMP.
+     - Inyección perezosa (`lazy`) de `syncStoreAdapter` en `KmpContainer.kt` y `typealias` retrocompatible en `desktopMain` para no alterar tests existentes.
+  4. Temporizadores nativos de hardware en SwiftUI (P4):
+     - Sustitución de publicaciones por segundo `Timer.publish(every: 1.0)` en `LibraryAndPEWorkspaceViews.swift` (`PEActiveDurationStat` y `PEActiveDurationMetric`) por `Text(timerStart, style: .timer).monospacedDigit()`, ejecutado en el RenderServer del sistema (0% consumo de CPU en reposo).
+  5. Higiene de almacenamiento y rotación de copias de seguridad (P5):
+     - Purga de ficheros de registro huérfanos generados en compilaciones y actualización de `.gitignore` con reglas preventivas (`*.log`, `build_*.txt`).
+     - Política de retención estricta con rotación a un máximo de 5 snapshots pre-adopción en `AppleDriver.kt` (`pruneOldPreAdoptBackups`) y `AppleBackupService.swift` (`retentionLimit = 5`), con reemplazo atómico `replaceItemAt` seguro ante bloqueos.
+  6. Desacoplamiento y modularización de KmpBridge (P6):
+     - Extracción de 1.294 líneas de lógica analítica e IA contextual de `KmpBridge.swift` a `kmp/iosApp/App/Bridge/KmpBridge+ContextualAI.swift`.
+     - Regeneración limpia del proyecto Xcode con `xcodegen`, reduciendo el tiempo de compilación incremental y la deuda técnica en el puente KMP.
+- Por qué importa:
+  - Resuelve las principales fuentes de degradación de rendimiento y consumo excesivo de batería en iPad y Mac reportadas por el usuario: bucles de red activos en background, I/O síncrono recurrente en disco, temporizadores periódicos en el hilo principal de SwiftUI y crecimiento desmedido del almacenamiento local por copias de seguridad acumuladas.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/SyncEventListener.swift`
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/Bridge/KmpBridge+ContextualAI.swift`
+  - `kmp/data/src/appleMain/kotlin/com/migestor/data/platform/AppleDriver.kt`
+  - `kmp/data/src/desktopMain/kotlin/com/migestor/data/platform/DesktopDriver.kt`
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/sync/SqlDelightSyncAdapter.kt`
+  - `kmp/data/src/desktopMain/kotlin/com/migestor/desktop/sync/SqlDelightSyncAdapter.kt`
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/di/KmpContainer.kt`
+  - `kmp/data/build.gradle.kts`
+  - `kmp/iosApp/App/LibraryAndPEWorkspaceViews.swift`
+  - `kmp/iosApp/AppleShared/AppleBackupService.swift`
+  - `.gitignore`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios en Apple: `MiGestorPlannerTests` ejecutados con 124 tests pasados (0 fallos).
+  - Tests de persistencia y lógica KMP: `./gradlew :data:desktopTest :shared:desktopTest` (`BUILD SUCCESSFUL`).
+  - Auditoría de código, seguridad y concurrencia por subagente `reviewer`: APROBADO.
+  - Auditoría de limpieza Git y worktrees por subagente `janitor`: APROBADO.
+
 ## Avance 2026-09-11 - Integración del Tablero de Capacidad y Encaje en la Programación de Situaciones de Aprendizaje (LearningSituationScheduleSheet)
 
 Resumen:

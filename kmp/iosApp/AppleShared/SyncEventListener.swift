@@ -1,8 +1,22 @@
 import Foundation
 
-final class SyncEventListener {
+final class SyncEventListener: @unchecked Sendable {
     private var eventTask: Task<Void, Never>?
     private var currentConnectionKey: String?
+    private let stateLock = NSLock()
+    private var _isConnected: Bool = false
+
+    var isConnected: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _isConnected
+    }
+
+    private func setConnected(_ value: Bool) {
+        stateLock.lock()
+        _isConnected = value
+        stateLock.unlock()
+    }
 
     /// Backoff sequence (nanoseconds): 250ms → 500ms → 1s → 2s → 5s → 10s → 30s.
     /// Starts fast so reconnects after pairing are quick, then slows to avoid spam.
@@ -44,6 +58,7 @@ final class SyncEventListener {
     }
 
     func stop() {
+        setConnected(false)
         eventTask?.cancel()
         eventTask = nil
         currentConnectionKey = nil
@@ -123,6 +138,8 @@ final class SyncEventListener {
                 throw URLError(.badServerResponse)
             }
             didOpenStream = true
+            setConnected(true)
+            defer { setConnected(false) }
 
             var frameLines: [String] = []
             for try await line in bytes.lines {
@@ -139,8 +156,10 @@ final class SyncEventListener {
                 }
             }
         } catch is CancellationError {
+            setConnected(false)
             throw CancellationError()
         } catch {
+            setConnected(false)
             if didOpenStream {
                 throw OpenedStreamError(underlying: error)
             }

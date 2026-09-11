@@ -58,6 +58,8 @@ import kotlinx.datetime.Clock
 import com.migestor.data.repository.NotebookConfigRepositorySqlDelight
 import com.migestor.shared.repository.*
 import com.migestor.shared.usecase.*
+import com.migestor.shared.sync.SyncStoreAdapter
+import com.migestor.data.sync.SqlDelightSyncAdapter
 
 class KmpContainer(val driver: SqlDriver) {
     val database = AppDatabase(driver)
@@ -100,6 +102,7 @@ class KmpContainer(val driver: SqlDriver) {
     val plannedSessionRepository: PlannedSessionRepository = PlannedSessionRepositorySqlDelight(database)
     val learningSituationsRepository: LearningSituationsRepository = LearningSituationsRepositorySqlDelight(database)
     val syncTombstoneRepository = SyncTombstoneRepositorySqlDelight(database)
+    val syncStoreAdapter: SyncStoreAdapter by lazy { SqlDelightSyncAdapter(this) }
     val aiTrendsRepository: AITrendsRepository = AITrendsRepositorySqlDelight(database)
     val teacherScheduleRepository: TeacherScheduleRepository = TeacherScheduleRepositorySqlDelight(
         db = database,

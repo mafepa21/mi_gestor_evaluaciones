@@ -186,6 +186,7 @@
 		56234DAACC18188F7C681066 /* AppleLifecycleNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */; };
 		565A5DD311EB69A97F331722 /* WorkspaceSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */; };
 		56AC9CE1CBF37A30F9BCA8DA /* PlannerSessionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E409AC49E4C2F349EEC469ED /* PlannerSessionDetailSheet.swift */; };
+		575F872AB42351EA1601BB72 /* KmpBridge+ContextualAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44BE29B25A1BD3726E186BDF /* KmpBridge+ContextualAI.swift */; };
 		5765367BFF3B25A005AD911A /* TournamentModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB05410ADED16A84A47A761 /* TournamentModule.swift */; };
 		57A5317C5BC18AA83AD50E93 /* PlannerDayQuickJournalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E02793302768B092E8BA3154 /* PlannerDayQuickJournalSheet.swift */; };
 		57B71C3913C7F4D901323B42 /* PlannerFloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E80A05F8F203CF9F01667C /* PlannerFloatingTabBar.swift */; };
@@ -363,6 +364,7 @@
 		A891426FA79E3A7AB4670107 /* KmpBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B819027ADD26559CC96B1BDB /* KmpBridge.swift */; };
 		A8C1A2062C3815D1FAC4C4BE /* LearningSituationsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05FB1EEE057F9F3861BEECD8 /* LearningSituationsWorkspaceView.swift */; };
 		A917D167542448BDD9007211 /* ImportPreviewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */; };
+		A94AD541531545C35BB4C00B /* KmpBridge+ContextualAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44BE29B25A1BD3726E186BDF /* KmpBridge+ContextualAI.swift */; };
 		A955FA3E7711CA5298A75589 /* IPadWorkspaceShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */; };
 		A975D4B3164F464D03F652F2 /* NotebookAICommentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFB7CB99B772BA64AA591A9 /* NotebookAICommentSheet.swift */; };
 		AA07DE1145FDD17B964237AB /* StudentProfile360Sheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2E6198F8A34293A814CE88 /* StudentProfile360Sheet.swift */; };
@@ -680,6 +682,7 @@
 		4309F19FDFC6A480E12806A8 /* SettingsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRow.swift; sourceTree = "<group>"; };
 		438FE85184775DE1F77E9FBD /* WorkspaceModuleSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceModuleSwitcher.swift; sourceTree = "<group>"; };
 		44666CD26B297BBB70CA88A9 /* AttendanceMatrixGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceMatrixGridView.swift; sourceTree = "<group>"; };
+		44BE29B25A1BD3726E186BDF /* KmpBridge+ContextualAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+ContextualAI.swift"; sourceTree = "<group>"; };
 		466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleViewCompatibility.swift; sourceTree = "<group>"; };
 		467B02D2576A83946B6237BA /* MiGestorKMPiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MiGestorKMPiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		49A987A394056D0AA6774110 /* PhysicalTestsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestsWorkspaceView.swift; sourceTree = "<group>"; };
@@ -1085,6 +1088,14 @@
 			path = Recursos;
 			sourceTree = "<group>";
 		};
+		796F0A2453E323BD1C3BE3F6 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				44BE29B25A1BD3726E186BDF /* KmpBridge+ContextualAI.swift */,
+			);
+			path = Bridge;
+			sourceTree = "<group>";
+		};
 		93715BBAC7A38E8F669C02AE /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -1284,6 +1295,7 @@
 				0FB9B3E078267BD94A53D6B2 /* WorkspaceLayoutState+Extensions.swift */,
 				438FE85184775DE1F77E9FBD /* WorkspaceModuleSwitcher.swift */,
 				0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */,
+				796F0A2453E323BD1C3BE3F6 /* Bridge */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -1605,6 +1617,7 @@
 				A955FA3E7711CA5298A75589 /* IPadWorkspaceShell.swift in Sources */,
 				9886188422D810036E17FDCD /* ImportPreviewModels.swift in Sources */,
 				0DE95BC2B10B415D1AECA7A5 /* InstrumentEvaluationChrome.swift in Sources */,
+				A94AD541531545C35BB4C00B /* KmpBridge+ContextualAI.swift in Sources */,
 				A891426FA79E3A7AB4670107 /* KmpBridge.swift in Sources */,
 				3A77A11B8A5081671AE092FB /* KmpBridgeObservationStores.swift in Sources */,
 				4A5932D5157D5B56166B9246 /* LearningSituationAssessmentInstrumentsImportService.swift in Sources */,
@@ -1883,6 +1896,7 @@
 				86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */,
 				A917D167542448BDD9007211 /* ImportPreviewModels.swift in Sources */,
 				3E5486419EB17E40023CA271 /* InstrumentEvaluationChrome.swift in Sources */,
+				575F872AB42351EA1601BB72 /* KmpBridge+ContextualAI.swift in Sources */,
 				B7CB07BCB74E309D55528193 /* KmpBridge.swift in Sources */,
 				DE0B12080EEE1DBB3FB8F826 /* KmpBridgeObservationStores.swift in Sources */,
 				5AB3FE7CC733C2337A6B0624 /* LearningSituationAssessmentInstrumentsImportService.swift in Sources */,

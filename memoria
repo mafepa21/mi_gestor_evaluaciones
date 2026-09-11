@@ -3,6 +3,50 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-11 - Planificación: Vista de Calendario Mensual 2.0 en iPadOS y macOS
+
+Resumen:
+- Qué cambio se hizo:
+  1. Modelo de navegación ampliado:
+     - Añadido `case month = "Mes"` a `PlannerWorkspaceSection` con icono SF Symbol `calendar` (y `calendar.badge.clock` para la sección de Semana).
+     - Atajos de teclado en `AppleAppCommands.swift`: `⌘⌥1` Mes, `⌘⌥2` Semana, `⌘⌥3` Día, `⌘⌥4` Secuencia, `⌘⌥5` Resumen.
+  2. Motor de proyección mensual determinista (`PlannerWorkspaceViewModel+MonthBoard.swift`):
+     - Cálculo de matriz mensual de 7 columnas (Lunes a Domingo) mediante `Calendar(identifier: .iso8601)` con padding cronológico previo y posterior (35 o 42 celdas).
+     - Mapeo determinista de sesiones de clase (`PlanningSession`) por `(yearForWeekOfYear, weekOfYear, weekday)` sin desfasajes de huso horario ni saltos de DST.
+     - Detección de día actual ("Hoy"), hitos escolares y festivos (`PlannerDayMilestone`), y filtrado reactivo por grupo (`selectedGroupId`).
+     - Sincronización automática de sesiones en caliente tras cualquier mutación (`reloadSessionsOnly`).
+  3. Interfaz de usuario adaptativa (`PlannerMonthCalendarView.swift`):
+     - Cabecera con selector de mes/año, botones `‹`, `Hoy`, `›`, conteo de sesiones del mes y botón "Nueva sesión".
+     - Cuadrícula de 7 columnas con cabeceras de días (LUN a DOM), atenuación sutil de fines de semana y días de meses contiguos.
+     - Celdas de día con indicador numérico (badge circular para Hoy), badges de hitos y festivos, y píldoras de sesión con color pedagógico del grupo, franja/hora y título.
+     - Manejo de desbordamiento mediante botón `+X más` que abre `PlannerMonthDaySessionsSheet` (con `.presentationDetents` en iOS y frame fijo en macOS).
+     - Integración con detalle de sesión (`PlannerSessionDetailSheet`), apertura de composer por fecha y salto rápido a la vista Día.
+  4. Paridad de plataformas:
+     - En iPadOS: integrado fluidamente en la barra flotante Liquid Glass (`PlannerFloatingTabBar`).
+     - En macOS: soporte en toolbar nativa con navegación `‹`, `Hoy`, `›` y atajos de teclado sin redundancia en el canvas.
+  5. Cobertura de tests:
+     - Añadida suite `PlannerMonthGridTests.swift` validando la estructura de 35 celdas para septiembre de 2026 y el filtrado por grupos.
+- Por qué importa:
+  - Responde a la Prioridad 1 del roadmap inspirado en iDoceo: permite al docente visualizar su programación didáctica con perspectiva mensual macro, consultar festivos y exámenes, y navegar fluidamente hacia la semana o el día.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/PlannerModels.swift`
+  - `kmp/iosApp/App/PlannerMonthCalendarView.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceViewModel+MonthBoard.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceViewModel.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceIOS.swift`
+  - `kmp/iosApp/AppleShared/AppleAppCommands.swift`
+  - `kmp/iosApp/MacApp/MacPlannerView.swift`
+  - `kmp/iosApp/MacApp/MacRootView.swift`
+  - `kmp/iosApp/PlannerTests/PlannerMonthGridTests.swift`
+- Validación realizada:
+  - Compilación dual con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `xcodebuild test ... -only-testing:MiGestorPlannerTests/PlannerMonthGridTests` (Testing passed, exit code 0).
+  - Auditoría de código aprobada por subagente `reviewer`.
+  - Auditoría Git previa al merge aprobada por subagente `janitor`.
+  - Fusión limpia fast-forward en rama `develop`.
+
 ## Avance 2026-09-10 - Cuaderno: reactividad instantánea en columnas no rúbricas (Checklist, Observación y Anotaciones) (PR #232)
 
 Resumen:

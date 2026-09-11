@@ -304,6 +304,11 @@ struct MacPlannerView: View {
                 onOpenSession: openMacSession,
                 showsInlineGroupFilter: false
             )
+        case .term:
+            PlannerTermBoardView(
+                vm: vm,
+                onOpenSession: openMacSession
+            )
         case .summary:
             PlannerSummaryDashboard(
                 vm: vm,

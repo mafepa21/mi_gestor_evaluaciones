@@ -71,6 +71,15 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var isGeneratingScheduleSessions = false
     @Published var lastCascadeMove: SessionCascadeMoveResult?
 
+    // MARK: - Term Session Board
+    @Published var selectedTermPeriodId: Int64?
+    @Published var simulatedSituationId: Int64?
+    @Published var termBoardSlots: [TermClassSlot] = []
+    @Published var termCapacityMetrics: TermCapacityMetrics?
+    @Published var isTermBoardLoading = false
+    @Published var termBoardErrorMessage: String?
+    @Published var isApplyingSimulation = false
+
     weak var bridge: KmpBridge?
     var autosaveTask: Task<Void, Never>?
     var isHydratingDraft = false

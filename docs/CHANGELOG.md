@@ -29,6 +29,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Tablero de Capacidad y Encaje de Sesiones de la Evaluación (`PlannerTermBoardView`):
+  - Nueva vista interactiva de planificación curricular por evaluación/trimestre (`PlannerWorkspaceSection.term`), integrada en iPadOS y macOS.
+  - Proyección determinista de sesiones lectivas reales (`TermBoardProjectionEngine`) calculadas a partir del horario docente (`TeacherScheduleSlot`), saltando automáticamente festivos y días no lectivos del calendario escolar sin consumir orden lectivo.
+  - Simulador predictivo de encaje de Situaciones de Aprendizaje (ghost simulation): previsualización secuencial de las sesiones pedagógicas de una SA sobre los huecos libres disponibles, respetando sesiones ya impartidas o planificadas.
+  - Diagnóstico visual de capacidad y holgura lectiva (`TermCapacityMetrics`): tarjetas de métricas en diseño Liquid Glass (Total Lectivas, Festivos, Ya Ocupadas, Libres), detección de huecos sobrantes para insertar sesiones extra/comodín (`+ Crear sesión comodín/extra`) y alertas destacadas por desbordamiento de la fecha límite de la evaluación.
+  - Barra inferior flotante (`GlassEffectContainer`) para confirmar la simulación persistiendo las sesiones en el calendario real o descartarla sin efectos secundarios.
+  - Cobertura de tests unitarios exhaustiva (`PlannerTermBoardTests`): 6 tests cubriendo proyección lectiva, omisión de festivos, asignación de huecos libres, simulación de SA y detección de desbordamiento de plazos.
+
 - Detección de divergencia y huella de integridad en SyncLAN (`SyncDatasetFingerprint`): cómputo de recuentos de filas, timestamp máximo y hash determinista FNV-1a de 64 bits sobre 11 entidades clave de la base de datos para diagnosticar desalineación de datasets o incompatibilidad de esquemas; expuesto en `GET /sync/fingerprint` y en Swift como `LanSyncClient.fingerprint()` y `KmpBridge.syncDivergence`.
 - Flujo "Igualar dispositivos" mediante adopción explícita de snapshot completo SQLite (`SyncAdoptionSheet` / `SyncDivergenceBanner`): comparativa visual transparente de entidades y fechas, selección explícita del dispositivo autoritativo (sin preselección por defecto), pantalla de advertencia destructiva con confirmación por nombre de dispositivo y endpoints dedicados `GET/POST /sync/snapshot/db` y `GET /sync/snapshot/status` con límite de 512 MB y comprobación de cabecera mágica y versión de esquema.
 - Intercambio seguro de dataset en arranque con copia de seguridad preventiva y rollback defensivo (`AppleDriver.applyPendingAdoptionIfNeeded`): almacenamiento en staging (`pending_adopt.db` / `pending_adopt.json`) y sustitución atómica antes de inicializar `NativeSqliteDriver`, con backup previo incondicional en `<basePath>/backups/<timestamp>_pre_adopt_<dbName>`, rollback automático ante fallos y reinicio asistido en macOS (`MacCommandCenterCoordinator.relaunchApp`).

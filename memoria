@@ -3,6 +3,61 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-11 - Tablero de Capacidad y Encaje de Sesiones de la Evaluación (PlannerTermBoardView)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Modelo de datos de proyección temporal y encaje de evaluación (`PlannerModels.swift`):
+     - Nueva sección `.term = "Evaluación"` (`calendar.badge.checkmark`) en `PlannerWorkspaceSection` tanto para iPadOS como macOS.
+     - Enumeración `TermSlotKind` representando estados de franja: `.holiday(name)`, `.schoolEvent(name)`, `.occupied(session)`, `.free`, `.preview(lessonNumber, title, saTitle, saCode, isExtra)`.
+     - Estructura `TermClassSlot` con cálculo temporal, día de semana, período lectivo, índice ordinal de sesión lectiva (`lessonIndex`) e indicador de rebase de fecha límite de evaluación (`isAfterEvaluationDeadline`).
+     - Estructura `TermCapacityMetrics` con conteo de sesiones lectivas totales, festivos, sesiones ya ocupadas, sesiones libres, sesiones requeridas por la SA simulada, sesiones libres restantes tras simulación y sesiones desbordadas fuera de plazo.
+  2. Motor determinista de cálculo de calendario y simulación de SA (`PlannerWorkspaceViewModel+TermBoard.swift`):
+     - `TermBoardProjectionEngine`: proyección pura y desacoplada del horario semanal (`TeacherScheduleSlot`) del docente sobre el rango de fechas del período de evaluación (`TermPeriod`).
+     - Identificación y salto de festivos (`CalendarDay` con `isTeachingDay == false`), sin consumir numeración lectiva de la asignatura.
+     - Mapeo de sesiones existentes programadas (`PlannedSession`) para el grupo seleccionado.
+     - Simulación "fantasma" (`ghost simulation`): encaje secuencial de las sesiones pedagógicas de una Situación de Aprendizaje en los huecos libres disponibles, respetando orden lectivo y detectando si sobrepasan la fecha fin del trimestre.
+     - Diagnóstico de capacidad: detección automática de holgura (sesiones libres sobrantes para sesiones de refuerzo o comodín) o déficit (la SA requiere más sesiones que las disponibles antes del cierre del trimestre).
+  3. Interfaz nativa Apple HIG & Liquid Glass (`PlannerTermBoardView.swift`):
+     - Cabecera con selector de evaluación (`TermPeriod`), selector de clase/grupo y menú de simulación de SA con botón de limpieza.
+     - Franja de métricas resumidas con tarjetas de diseño líquido (`.plannerGlassPanel`): Total Lectivas, Festivos, Ya Ocupadas, Huecos Libres.
+     - Banner de diagnóstico reactivo: advertencia con icono ámbar de sesiones sobrantes o alerta roja de desbordamiento de evaluación.
+     - Cronograma visual ordenado por semanas con tarjetas diferenciadas:
+       - Tarjeta de festivo / no lectivo (rojo/naranja suave con badge "FESTIVO").
+       - Tarjeta de sesión ocupada con badge de hitos de evaluación (rúbrica vinculada, checklist, etc.).
+       - Tarjeta de previsualización de SA con borde cian punteado y etiqueta de orden de sesión.
+       - Tarjeta de hueco libre con botón interactivo rápido "+ Crear sesión comodín/extra".
+     - Barra inferior flotante (`GlassEffectContainer` / material fallback) para aplicar o descartar la simulación en el calendario real.
+  4. Integración fluida en los espacios de trabajo iPadOS y macOS:
+     - iPadOS (`PlannerWorkspaceIOS.swift`): Añadido picker de sección `[Semana | Día | Secuencia | Resumen | Evaluación]` en la barra de herramientas y navegación hacia `PlannerTermBoardView`.
+     - macOS (`MacPlannerView.swift`): Integrado en el selector de vistas y renderizado en el módulo principal con navegación a la ficha de sesión.
+     - macOS (`MacRootView.swift`): Ampliado el ancho máximo del selector de secciones a 480 pt para albergar la nueva sección con legibilidad óptima.
+  5. Cobertura de tests unitarios (`PlannerTermBoardTests.swift`):
+     - 6 tests unitarios deterministas para el target `MiGestorPlannerTests`:
+       - Presencia de la sección `.term` en el enum.
+       - Proyección precisa de días de clase según horario docente.
+       - Detección y salto de días festivos sin consumir índice de sesión.
+       - Reconocimiento de sesiones existentes ya planificadas.
+       - Simulación de encaje de SA en huecos libres y cálculo de métricas.
+       - Detección de desbordamiento de la fecha límite de la evaluación.
+- Por qué importa:
+  - Responde de forma precisa y directa a la necesidad del docente de saber con exactitud de cuántas sesiones dispone en un trimestre, ver el impacto real de los festivos en su asignatura y simular cómo encajan las sesiones de una Situación de Aprendizaje antes de consolidarlas, identificando si faltan días o si tiene margen para intercalar sesiones de refuerzo, repaso o evaluación.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/PlannerModels.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceViewModel.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceViewModel+TermBoard.swift`
+  - `kmp/iosApp/App/PlannerTermBoardView.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceIOS.swift`
+  - `kmp/iosApp/MacApp/MacPlannerView.swift`
+  - `kmp/iosApp/MacApp/MacRootView.swift`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+  - `kmp/iosApp/PlannerTests/PlannerTermBoardTests.swift`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `PlannerTermBoardTests` (6 de 6 pasados en 0.009 s, 0 fallos).
+
 ## Avance 2026-09-11 - Rúbricas 2.0: Catálogo oficial de plantillas LOMLOE / EF e informe individual PDF maquetado para familias
 
 Resumen:

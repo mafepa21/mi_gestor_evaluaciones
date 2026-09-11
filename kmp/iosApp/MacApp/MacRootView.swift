@@ -1078,8 +1078,8 @@ struct MacRootView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 380)
-                .help("Cambiar de sección del planificador (⌘⌥1–5)")
+                .frame(maxWidth: 480)
+                .help("Cambiar de sección del planificador (⌘⌥1–6)")
 
                 if plannerSection == .day {
                     Button(action: plannerToolbarActions.onPreviousDay) {

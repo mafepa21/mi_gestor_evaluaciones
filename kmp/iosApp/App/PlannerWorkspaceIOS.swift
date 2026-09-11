@@ -220,6 +220,8 @@ struct PlannerWorkspaceIOS: View {
                     PlannerDayView(vm: vm, onOpenSession: openSessionInDiary)
                 case .sequence:
                     PlannerSequenceGanttView(vm: vm, onOpenSession: openSessionInDiary)
+                case .term:
+                    PlannerTermBoardView(vm: vm, onOpenSession: openSessionInDiary)
                 case .summary:
                     PlannerSummaryDashboard(vm: vm, onOpenSettings: { showingScheduleSettings = true }, onOpenSession: openSessionInDiary)
                 }

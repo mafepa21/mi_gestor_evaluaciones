@@ -50,6 +50,7 @@ enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
     case week = "Semana"
     case day = "Día"
     case sequence = "Secuencia"
+    case term = "Evaluación"
     case summary = "Resumen"
 
     var id: String { rawValue }
@@ -60,6 +61,7 @@ enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
         case .week: return "calendar.badge.clock"
         case .day: return "calendar.day.timeline.left"
         case .sequence: return "point.3.connected.trianglepath.dotted"
+        case .term: return "calendar.badge.checkmark"
         case .summary: return "chart.bar.doc.horizontal"
         }
     }
@@ -740,3 +742,100 @@ struct PlannerRangeData {
         weeks: []
     )
 }
+
+// MARK: - Tablero de Encaje de la Evaluación (Term Session Board)
+
+enum TermSlotKind: Equatable {
+    case holiday(name: String)
+    case schoolEvent(title: String)
+    case occupied(session: PlanningSession)
+    case free
+    case preview(sessionNumber: Int, title: String, objective: String, hasEvaluation: Bool, planId: Int64?)
+}
+
+struct TermClassSlot: Identifiable, Equatable {
+    let id: String
+    let date: Date
+    let dateIso: String
+    let dayOfWeek: Int
+    let period: Int
+    let startTime: String
+    let endTime: String
+    let teacherScheduleSlotId: Int64?
+    let lessonIndex: Int? // Número de clase lectiva (1, 2, 3...)
+    var kind: TermSlotKind
+    let isAfterEvaluationDeadline: Bool
+
+    init(
+        id: String,
+        date: Date,
+        dateIso: String,
+        dayOfWeek: Int,
+        period: Int,
+        startTime: String,
+        endTime: String,
+        teacherScheduleSlotId: Int64?,
+        lessonIndex: Int?,
+        kind: TermSlotKind,
+        isAfterEvaluationDeadline: Bool
+    ) {
+        self.id = id
+        self.date = date
+        self.dateIso = dateIso
+        self.dayOfWeek = dayOfWeek
+        self.period = period
+        self.startTime = startTime
+        self.endTime = endTime
+        self.teacherScheduleSlotId = teacherScheduleSlotId
+        self.lessonIndex = lessonIndex
+        self.kind = kind
+        self.isAfterEvaluationDeadline = isAfterEvaluationDeadline
+    }
+}
+
+struct TermCapacityMetrics: Equatable {
+    let totalLectivas: Int
+    let totalFestivos: Int
+    let totalOcupadas: Int
+    let totalLibres: Int
+    let evaluationPeriodName: String
+    let startDate: Date
+    let endDate: Date
+    let deadlineDate: Date?
+    let simulationActive: Bool
+    let simulationSituationTitle: String?
+    let simulationSessionCount: Int
+    let simulationOverflowCount: Int
+    let simulationRemainingFreeCount: Int
+
+    public init(
+        totalLectivas: Int,
+        totalFestivos: Int,
+        totalOcupadas: Int,
+        totalLibres: Int,
+        evaluationPeriodName: String,
+        startDate: Date,
+        endDate: Date,
+        deadlineDate: Date? = nil,
+        simulationActive: Bool = false,
+        simulationSituationTitle: String? = nil,
+        simulationSessionCount: Int = 0,
+        simulationOverflowCount: Int = 0,
+        simulationRemainingFreeCount: Int = 0
+    ) {
+        self.totalLectivas = totalLectivas
+        self.totalFestivos = totalFestivos
+        self.totalOcupadas = totalOcupadas
+        self.totalLibres = totalLibres
+        self.evaluationPeriodName = evaluationPeriodName
+        self.startDate = startDate
+        self.endDate = endDate
+        self.deadlineDate = deadlineDate
+        self.simulationActive = simulationActive
+        self.simulationSituationTitle = simulationSituationTitle
+        self.simulationSessionCount = simulationSessionCount
+        self.simulationOverflowCount = simulationOverflowCount
+        self.simulationRemainingFreeCount = simulationRemainingFreeCount
+    }
+}
+

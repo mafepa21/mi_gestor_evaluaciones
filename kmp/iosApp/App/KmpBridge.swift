@@ -2797,7 +2797,7 @@ final class KmpBridge: ObservableObject {
         let preview = appleImportFacade.previewStudentsFromTsv(text: tsv)
         let existingStudents = try await container.studentsRepository.listStudents()
         let existingByFullName = Dictionary(
-            existingStudents.map { (normalizedStudentName(firstName: $0.firstName, lastName: $0.lastName), $0.fullName) },
+            existingStudents.map { (normalizedStudentName(firstName: $0.firstName, lastName: $0.lastName), $0) },
             uniquingKeysWith: { first, _ in first }
         )
         let existingLastNames = Set(existingStudents.map { normalizedNamePart($0.lastName) }.filter { !$0.isEmpty })
@@ -2806,15 +2806,19 @@ final class KmpBridge: ObservableObject {
             let normalizedLastName = normalizedNamePart(student.lastName)
             let duplicateStatus: AppleStudentDuplicateStatus
             let duplicateDetail: String?
-            if let existingName = existingByFullName[normalizedFullName] {
+            let existingStudentId: Int64?
+            if let existingStudent = existingByFullName[normalizedFullName] {
                 duplicateStatus = .alreadyExists
-                duplicateDetail = existingName
+                duplicateDetail = existingStudent.fullName
+                existingStudentId = existingStudent.id
             } else if !normalizedLastName.isEmpty && existingLastNames.contains(normalizedLastName) {
                 duplicateStatus = .possibleDuplicate
                 duplicateDetail = "Coinciden apellidos"
+                existingStudentId = nil
             } else {
                 duplicateStatus = .new
                 duplicateDetail = nil
+                existingStudentId = nil
             }
             return AppleParsedStudent(
                 id: Int(student.rowNumber),
@@ -2823,7 +2827,8 @@ final class KmpBridge: ObservableObject {
                 firstName: student.firstName,
                 lastName: student.lastName,
                 duplicateStatus: duplicateStatus,
-                duplicateDetail: duplicateDetail
+                duplicateDetail: duplicateDetail,
+                existingStudentId: existingStudentId
             )
         }
 
@@ -2846,10 +2851,10 @@ final class KmpBridge: ObservableObject {
         }
 
         let selectedRowSet = Set(selectedRows)
-        let studentsToImport = preview.students.filter { student in
+        let studentsToProcess = preview.students.filter { student in
             selectedRowSet.contains(student.rowNumber) && (!omitDuplicates || student.duplicateStatus == .new)
         }
-        guard !studentsToImport.isEmpty else {
+        guard !studentsToProcess.isEmpty else {
             throw NSError(domain: "KmpBridge", code: -62, userInfo: [NSLocalizedDescriptionKey: "Selecciona al menos un alumno para importar."])
         }
 
@@ -2857,45 +2862,50 @@ final class KmpBridge: ObservableObject {
         defer { isImportingStudents = false }
 
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        var importedIds: [Int64] = []
+        var studentIdsToEnroll: [Int64] = []
 
-        for student in studentsToImport {
-            let studentId = try await container.studentsRepository.saveStudent(
-                id: nil,
-                firstName: student.firstName,
-                lastName: student.lastName,
-                email: nil,
-                photoPath: nil,
-                isInjured: false,
-                sex: .unspecified,
-                sexSource: .imported,
-                birthDate: nil,
-                updatedAtEpochMs: nowMs,
-                deviceId: localDeviceId,
-                syncVersion: 1
-            ).int64Value
-            importedIds.append(studentId)
+        for student in studentsToProcess {
+            if let existingId = student.existingStudentId {
+                // Alumno ya existente en la base de datos: no lo duplicamos, usamos su id existente
+                studentIdsToEnroll.append(existingId)
+            } else {
+                let studentId = try await container.studentsRepository.saveStudent(
+                    id: nil,
+                    firstName: student.firstName,
+                    lastName: student.lastName,
+                    email: nil,
+                    photoPath: nil,
+                    isInjured: false,
+                    sex: .unspecified,
+                    sexSource: .imported,
+                    birthDate: nil,
+                    updatedAtEpochMs: nowMs,
+                    deviceId: localDeviceId,
+                    syncVersion: 1
+                ).int64Value
+                studentIdsToEnroll.append(studentId)
 
-            enqueueLocalChange(
-                entity: "student",
-                id: "\(studentId)",
-                updatedAtEpochMs: nowMs,
-                payload: [
-                    "id": studentId,
-                    "firstName": student.firstName,
-                    "lastName": student.lastName,
-                    "email": NSNull(),
-                    "photoPath": NSNull(),
-                    "isInjured": false,
-                    "sex": StudentSex.unspecified.name,
-                    "sexSource": StudentSexSource.imported.name,
-                    "birthDate": NSNull()
-                ]
-            )
+                enqueueLocalChange(
+                    entity: "student",
+                    id: "\(studentId)",
+                    updatedAtEpochMs: nowMs,
+                    payload: [
+                        "id": studentId,
+                        "firstName": student.firstName,
+                        "lastName": student.lastName,
+                        "email": NSNull(),
+                        "photoPath": NSNull(),
+                        "isInjured": false,
+                        "sex": StudentSex.unspecified.name,
+                        "sexSource": StudentSexSource.imported.name,
+                        "birthDate": NSNull()
+                    ]
+                )
+            }
         }
 
         if let targetClassId {
-            for studentId in importedIds {
+            for studentId in studentIdsToEnroll {
                 try await container.classesRepository.addStudentToClass(classId: targetClassId, studentId: studentId)
             }
             enqueueRosterSnapshot(forClassId: targetClassId, updatedAtEpochMs: nowMs)

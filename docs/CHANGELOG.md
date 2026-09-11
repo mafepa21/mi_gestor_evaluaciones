@@ -51,6 +51,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Aislamiento e idempotencia en la importación de alumnos desde Excel/hojas de cálculo:
+  - **Aislamiento de matriculación entre cursos**: Corregido el problema por el cual al importar un segundo archivo Excel y asignarlo a un nuevo curso, se matriculaban los alumnos del nuevo archivo más los alumnos previamente importados en otros cursos.
+  - **Reutilización de alumnos existentes sin duplicación**: `KmpBridge.confirmStudentImport` ahora asocia el `existingStudentId` detectado durante la previsualización (`previewStudentImport`) matriculándolo en la clase de destino mediante `addStudentToClass` sin duplicar la entidad `Student` en la base de datos local ni crear registros redundantes.
+  - **Limpieza de selecciones residuales por lote**: Tanto en `MacStudentsView` como en `StudentProfilesWorkspaceView`, se limpia automáticamente la selección múltiple (`selectedStudentIds.removeAll()` y reseteo de modo múltiple) al cambiar de curso o al finalizar la importación, impidiendo que selecciones previas se mezclen con asignaciones masivas posteriores.
+  - **Detección inteligente y asignación inicial de curso en importador**: `StudentImportSheet` recibe ahora la clase activa (`initialClassId`) y analiza heurísticamente el nombre del curso detectado en la hoja (`preview.className`) para sugerir automáticamente el curso correspondiente.
+  - **Lectura robusta de hojas XLSX vacías**: `AppleSpreadsheetReader.readXLSX` selecciona la primera hoja que contenga filas con datos en lugar de asumir estrictamente la primera hoja del libro, evitando errores cuando un Excel contiene hojas preliminares vacías.
+
 - Reactividad instantánea en el Cuaderno (iPad / Mac):
   - Solucionado el problema por el cual al calificar o actualizar un elemento (nota, sello, checklist, observación, instrumento estructurado), los cambios se guardaban en la base de datos pero no se reflejaban en pantalla sin navegar a otro módulo y volver.
   - Se incorporaron las anotaciones (`cell.annotation?.icon`, `cell.annotation?.note`, `attachmentUris.count`) en la signatura de agregación `notebookAggregateSignature` de `KmpBridge.swift` y en el digest por columna `NotebookRowFingerprintProvider.cellDigestByColumnId` en `NotebookGridContent.swift`, evitando el descarte de emisiones de estado en el puente y forzando la invalidación reactiva de la fila.

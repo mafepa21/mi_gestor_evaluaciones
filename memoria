@@ -3,6 +3,43 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-11 - Integración del Tablero de Capacidad y Encaje en la Programación de Situaciones de Aprendizaje (LearningSituationScheduleSheet)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Unificación y modernización del flujo de programación de Situaciones de Aprendizaje (`LearningSituationScheduleSheet.swift`):
+     - Sustituido el modal antiguo con lista de casillas/toggles ciegos por una experiencia visual interactiva enriquecida basada en el Tablero de Capacidad del trimestre.
+     - Precarga directa de la Situación de Aprendizaje seleccionada, mostrando título, materia, reto y número total de sesiones.
+     - Selectores compactos de grupo (`SchoolClass`) y período de evaluación (`PlannerEvaluationPeriod`) con autoselección del trimestre lectivo en curso.
+  2. Componentes visuales desacoplados y compartidos (`PlannerTermBoardComponents.swift`):
+     - `TermBoardMetricsStrip`: franja de 4 tarjetas Liquid Glass (Clases lectivas reales, Festivos omitidos, Ocupadas, Huecos tras SA) con banner diagnóstico reactivo (alertas de desbordamiento de plazos en rojo o holgura de clases libres en amarillo/azul).
+     - `TermBoardTimelineView`: cronograma interactivo por semanas con tarjetas diferenciadas de festivos, sesiones ocupadas, sesiones proyectadas de la SA (#1, #2, ...) y huecos libres.
+     - Refactorización de `PlannerTermBoardView.swift` para consumir estos mismos componentes compartidos, eliminando duplicidad de código.
+  3. Soporte opcional de secuenciación detallada DOCX e itinerarios:
+     - Tarjeta colapsable `DisclosureGroup` para adjuntar documentos de secuenciación DOCX o seleccionar itinerarios de Bachillerato (`shortFirst` / `longFirst`).
+     - Al importar o modificar planes, el motor recalcula en tiempo real el encaje y proyecta los títulos pedagógicos en las tarjetas del cronograma.
+  4. Barra inferior flotante y persistencia atómica:
+     - Resumen en tiempo real del número de sesiones encajadas (`previewSlotsCount` de `targetSessionCount`).
+     - Botón "Programar sesiones" que convierte las franjas proyectadas en `[LearningSituationScheduledSlot]` y las persiste de forma atómica a través de `bridge.programLearningSituationSessions(...)`, creando la `TeachingUnit` y las sesiones planificadas vinculadas.
+  5. Desacoplamiento arquitectónico:
+     - Extracción de `LearningSituationScheduleSheet` de `LearningSituationsWorkspaceView.swift` (reduciendo ese archivo en ~740 líneas y mejorando la mantenibilidad general).
+  6. Pruebas unitarias:
+     - Nuevo test `testTermBoardProjection_ConvertsPreviewSlotsToScheduledSlotsForLearningSituation` en `PlannerTermBoardTests.swift` validando la conversión exacta de franjas proyectadas a destinos de programación para SA.
+- Por qué importa:
+  - Elimina el solapamiento y la fricción entre el Planificador y las Situaciones de Aprendizaje. Ahora, programar una SA en el calendario ya no es un proceso a ciegas mediante casillas, sino que el docente visualiza al instante cómo encajan sus sesiones en el trimestre, qué festivos le afectan y si tiene holgura para intercalar sesiones de repaso antes de las notas.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/LearningSituationScheduleSheet.swift`
+  - `kmp/iosApp/App/PlannerTermBoardComponents.swift`
+  - `kmp/iosApp/App/PlannerTermBoardView.swift`
+  - `kmp/iosApp/App/LearningSituationsWorkspaceView.swift`
+  - `kmp/iosApp/PlannerTests/PlannerTermBoardTests.swift`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `PlannerTermBoardTests` (7 de 7 pasados, 0 fallos).
+
 ## Avance 2026-09-11 - Tablero de Capacidad y Encaje de Sesiones de la Evaluación (PlannerTermBoardView)
 
 Resumen:

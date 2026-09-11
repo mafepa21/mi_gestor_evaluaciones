@@ -29,6 +29,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Integración del Tablero de Capacidad y Encaje en la Programación de Situaciones de Aprendizaje (`LearningSituationScheduleSheet`):
+  - Sustitución de la antigua ventana modal de toggles ciegos por la experiencia interactiva rica del Tablero de Evaluación (`TermBoardMetricsStrip` y `TermBoardTimelineView`).
+  - Preselección automática de la Situación de Aprendizaje activa con visualización de capacidad del trimestre, detección de festivos oficiales e impacto en el horario lectivo real.
+  - Proyección fantasma interactiva de las sesiones de la SA en los huecos libres disponibles con diagnóstico reactivo de holgura y desbordamiento de plazos de evaluación.
+  - Soporte para secuenciación detallada DOCX e itinerarios de Bachillerato (`shortFirst` / `longFirst`) en tarjeta colapsable con recálculo en tiempo real.
+  - Barra inferior flotante Liquid Glass para consolidación atómica en SQLite mediante `bridge.programLearningSituationSessions(...)`.
+  - Extracción desacoplada de `LearningSituationScheduleSheet` fuera de `LearningSituationsWorkspaceView.swift` y componentes reutilizables en `PlannerTermBoardComponents.swift`.
+  - Cobertura de tests unitarios: validación de la conversión determinista de franjas proyectadas a destinos de programación (`testTermBoardProjection_ConvertsPreviewSlotsToScheduledSlotsForLearningSituation`).
+
 - Tablero de Capacidad y Encaje de Sesiones de la Evaluación (`PlannerTermBoardView`):
   - Nueva vista interactiva de planificación curricular por evaluación/trimestre (`PlannerWorkspaceSection.term`), integrada en iPadOS y macOS.
   - Proyección determinista de sesiones lectivas reales (`TermBoardProjectionEngine`) calculadas a partir del horario docente (`TeacherScheduleSlot`), saltando automáticamente festivos y días no lectivos del calendario escolar sin consumir orden lectivo.

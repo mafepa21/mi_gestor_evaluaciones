@@ -316,4 +316,72 @@ final class PlannerTermBoardTests: XCTestCase {
         // 2 sesiones caen fuera de plazo
         XCTAssertEqual(metrics.simulationOverflowCount, 2)
     }
+
+    func testTermBoardProjection_ConvertsPreviewSlotsToScheduledSlotsForLearningSituation() {
+        let classId: Int64 = 101
+        let scheduleSlots = [
+            TeacherScheduleSlot(
+                id: 42,
+                teacherScheduleId: 1,
+                schoolClassId: classId,
+                subjectLabel: "EF",
+                unitLabel: "1B",
+                dayOfWeek: 3,
+                startTime: "10:00",
+                endTime: "11:00",
+                weeklyTemplateId: nil
+            )
+        ]
+
+        let simPlans = [
+            TermSimulationPlanItem(planId: 10, sessionNumber: 1, title: "Calentamiento y juego", objective: "Activar", hasEvaluation: false),
+            TermSimulationPlanItem(planId: 11, sessionNumber: 2, title: "Torneo de pista", objective: "Evaluar", hasEvaluation: true)
+        ]
+
+        let (slots, _) = TermBoardProjectionEngine.project(
+            periodName: "1ª Evaluación",
+            startDateIso: "2026-09-14",
+            endDateIso: "2026-09-28",
+            classId: classId,
+            scheduleSlots: scheduleSlots,
+            nonTeachingEvents: [],
+            existingSessions: [],
+            simulationPlans: simPlans
+        )
+
+        let previewSlots = slots.filter { slot in
+            if case .preview = slot.kind { return true }
+            return false
+        }
+
+        XCTAssertEqual(previewSlots.count, 2)
+
+        let scheduledSlots: [LearningSituationScheduledSlot] = previewSlots.compactMap { slot in
+            guard case .preview(let num, _, _, _, _) = slot.kind else { return nil }
+            return LearningSituationScheduledSlot(
+                date: slot.date,
+                period: slot.period,
+                teacherScheduleSlotId: slot.teacherScheduleSlotId,
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                planSessionNumber: num,
+                occupiedPeriods: [slot.period],
+                occupiedScheduleSlots: [
+                    LearningSituationScheduledDestination(
+                        period: slot.period,
+                        teacherScheduleSlotId: slot.teacherScheduleSlotId,
+                        startTime: slot.startTime,
+                        endTime: slot.endTime
+                    )
+                ]
+            )
+        }
+
+        XCTAssertEqual(scheduledSlots.count, 2)
+        XCTAssertEqual(scheduledSlots[0].planSessionNumber, 1)
+        XCTAssertEqual(scheduledSlots[0].teacherScheduleSlotId, 42)
+        XCTAssertEqual(scheduledSlots[1].planSessionNumber, 2)
+        XCTAssertEqual(scheduledSlots[1].teacherScheduleSlotId, 42)
+    }
 }
+

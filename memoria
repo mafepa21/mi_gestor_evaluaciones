@@ -27,18 +27,22 @@ Resumen:
      - Accesible directamente desde la evaluación de rúbricas (`RubricEvaluationView.swift`) mediante icono `doc.text.badge.plus`.
      - Edición rápida de metadatos (centro, departamento, profesor) y redacción de feedback formativo y propuestas de trabajo para la familia.
      - Generación asíncrona y exportación nativa con `ShareLink` para AirDrop, Mail o Archivos.
-  5. Integración en `RubricsReportsWorkspaceViews.swift`:
-     - Botón "Catálogo" en la barra de herramientas del módulo de rúbricas con presentación de hoja adaptativa en iPadOS y macOS.
+  5. Integración multiplataforma completa (iPadOS y macOS Native):
+     - iPadOS (`RubricsReportsWorkspaceViews.swift`): Botón "Catálogo" en la barra de herramientas del módulo de rúbricas con presentación modal adaptativa.
+     - macOS (`MacRubricsView.swift`): Acción secundaria "Catálogo" (`books.vertical`) en `MacPremiumModuleHeader` junto a "Importar rúbrica", abriendo la hoja modal del catálogo con inyección de bridge y vinculación a la clase filtrada.
+     - Evaluación masiva macOS (`RubricBulkEvaluationSheet.swift`): Acción "Informe familiar PDF…" (`doc.text.badge.plus`) en el menú de acciones (`ellipsis.circle`) de cada estudiante y en el menú contextual del `scorePill`, permitiendo emitir el informe A4 maquetado directamente para cualquier alumno evaluado en el Mac.
   6. Cobertura de tests unitarios (`RubricFamilyPDFAndCatalogTests.swift`):
      - 4 tests unitarios deterministas: integridad del catálogo, filtros temáticos, escala de notas LOMLOE y renderizado binario de informe PDF con firma `%PDF-`.
 - Por qué importa:
-  - Culmina la Prioridad 4 del roadmap de inspiración en iDoceo. Ofrece al docente un repositorio oficial de rúbricas de Educación Física y competencias clave listo para evaluar sin redactar desde cero, y permite generar en segundos un informe individual con rigor editorial para entregar o enviar a las familias en tutorías y evaluaciones.
+  - Culmina la Prioridad 4 del roadmap de inspiración en iDoceo con paridad completa 100% entre iPadOS y macOS Native. Ofrece al docente un repositorio oficial de rúbricas de Educación Física y competencias clave listo para evaluar sin redactar desde cero, y permite generar en segundos un informe individual con rigor editorial para entregar o enviar a las familias en tutorías y evaluaciones tanto desde iPad como desde Mac.
 - Dónde vive el cambio:
   - `kmp/iosApp/App/RubricTemplateCatalog.swift`
   - `kmp/iosApp/App/RubricTemplateCatalogSheet.swift`
   - `kmp/iosApp/App/RubricFamilyReportPDFRenderer.swift`
   - `kmp/iosApp/App/RubricExportFamilyPDFSheet.swift`
   - `kmp/iosApp/App/RubricsReportsWorkspaceViews.swift`
+  - `kmp/iosApp/MacApp/MacRubricsView.swift`
+  - `kmp/iosApp/App/RubricBulkEvaluationSheet.swift`
   - `kmp/iosApp/App/RubricEvaluationView.swift`
   - `kmp/iosApp/PlannerTests/RubricFamilyPDFAndCatalogTests.swift`
 - Validación realizada:
@@ -48,7 +52,7 @@ Resumen:
   - Tests unitarios ejecutados con éxito: `RubricFamilyPDFAndCatalogTests` (4 de 4 pasados, 0 fallos).
   - Revisión de código completada con dictamen APROBADO por subagente `reviewer`.
   - Auditoría Git completada con dictamen APROBADO por subagente `janitor`.
-  - Fusión limpia en rama `develop` (commit `e4345bc`).
+  - Fusión limpia en rama `develop` (commit `7db4feb`).
 
 ## Avance 2026-09-11 - Diario de Aula: Bitácora continua de curso, filtros trimestrales y exportador de informes PDF maquetados en iPadOS y macOS
 

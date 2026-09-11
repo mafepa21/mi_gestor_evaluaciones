@@ -16,6 +16,11 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Added
 
 - Gestión integral de alumnado en iPadOS, iOS y macOS:
+  - **Selección múltiple para operaciones en lote (iOS/iPadOS y macOS)**:
+    - Modo de selección múltiple interactivo en `StudentProfilesWorkspaceView` (iOS/iPadOS) con casillas de verificación, opción «Todos / Deseleccionar» y barra de acciones por lote inferior («Asignar curso», «Eliminar»).
+    - Soporte nativo de selección múltiple en `Table` de `MacStudentsView` (macOS) vía `$store.selectedStudentIds`, barra contextual de acciones rápidas para lotes y opciones en menú contextual («Asignar N alumnos a un curso...», «Eliminar N alumnos...»).
+    - Asignación por lote a una clase elegida mediante `AssignStudentToClassSheet(students:availableClasses:)` y `bridge.assignStudentsToClass(...)`.
+    - Eliminación por lote con confirmación destructiva personalizada («Quitar N alumnos del grupo» vs «Eliminar N alumnos de toda la app») mediante `bridge.removeStudentsFromClass(...)` y `bridge.deleteStudentsEverywhere(...)`.
   - **Eliminación y desmatriculación de alumnos**:
     - Opciones contextuales y de inspector para «Quitar de clase» (si el alumno pertenece al grupo seleccionado o activo) y «Eliminar de toda la app» (borrado permanente de base de datos local y sincronización con advertencia destructiva).
     - Diálogos nativos de confirmación (`confirmationDialog`) con explicación clara del impacto en iOS/iPadOS y macOS.

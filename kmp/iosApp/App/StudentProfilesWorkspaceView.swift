@@ -56,6 +56,10 @@ struct StudentProfilesWorkspaceView: View {
     @State private var pendingDeleteSupportMeasure: SupportMeasureRow?
     @State private var editingStudent: Student?
     @State private var editingSupportMeasure: SupportMeasureRow?
+    @State private var isMultiSelectActive = false
+    @State private var selectedStudentIds: Set<Int64> = []
+    @State private var assigningMultipleStudents: [Student]?
+    @State private var pendingDeleteMultipleStudents: [Student]?
 
     // MARK: - Computed
 
@@ -163,6 +167,21 @@ struct StudentProfilesWorkspaceView: View {
             }
             .sheet(
                 isPresented: Binding(
+                    get: { assigningMultipleStudents != nil },
+                    set: { if !$0 { assigningMultipleStudents = nil } }
+                )
+            ) {
+                if let students = assigningMultipleStudents {
+                    AssignStudentToClassSheet(
+                        students: students,
+                        availableClasses: studentsBridgeStore.classes
+                    ) { targetClassId in
+                        Task { await assignMultipleStudents(students, toClassId: targetClassId) }
+                    }
+                }
+            }
+            .sheet(
+                isPresented: Binding(
                     get: { editingStudent != nil },
                     set: { if !$0 { editingStudent = nil } }
                 )
@@ -207,6 +226,32 @@ struct StudentProfilesWorkspaceView: View {
                     Text("\(student.firstName) \(student.lastName) tiene evaluaciones, asistencia y medidas vinculadas. Elige si quieres quitarlo solo de este grupo o eliminarlo por completo de la aplicación.")
                 } else {
                     Text("Se eliminará a \(student.firstName) \(student.lastName) y todos sus datos vinculados de forma definitiva en toda la app.")
+                }
+            }
+            .confirmationDialog(
+                "Eliminar alumnos seleccionados",
+                isPresented: Binding(
+                    get: { pendingDeleteMultipleStudents != nil },
+                    set: { if !$0 { pendingDeleteMultipleStudents = nil } }
+                ),
+                presenting: pendingDeleteMultipleStudents
+            ) { students in
+                if selectedClassId != nil {
+                    Button("Quitar \(students.count) alumnos del grupo", role: .destructive) {
+                        Task { await removeMultipleStudentsFromClass(students) }
+                    }
+                }
+                Button("Eliminar \(students.count) de toda la app", role: .destructive) {
+                    Task { await deleteMultipleStudentsEverywhere(students) }
+                }
+                Button("Cancelar", role: .cancel) {
+                    pendingDeleteMultipleStudents = nil
+                }
+            } message: { students in
+                if selectedClassId != nil {
+                    Text("Se han seleccionado \(students.count) alumnos. Elige si deseas quitarlos solo de este grupo o eliminarlos definitivamente de la aplicación.")
+                } else {
+                    Text("Se eliminarán \(students.count) alumnos y todos sus datos asociados permanentemente de toda la app.")
                 }
             }
             .confirmationDialog(
@@ -290,7 +335,22 @@ struct StudentProfilesWorkspaceView: View {
 
             // Filters
             VStack(spacing: 10) {
-                IOSSearchField(text: $searchText, placeholder: "Buscar alumno…")
+                HStack(spacing: 8) {
+                    IOSSearchField(text: $searchText, placeholder: "Buscar alumno…")
+
+                    Button(isMultiSelectActive ? "Listo" : "Seleccionar") {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isMultiSelectActive.toggle()
+                            if !isMultiSelectActive {
+                                selectedStudentIds.removeAll()
+                            }
+                        }
+                    }
+                    .font(IOSAppStyle.captionText.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .tint(isMultiSelectActive ? IOSAppStyle.info : .secondary)
+                    .controlSize(.small)
+                }
 
                 Picker("Filtro", selection: $trackingFilter) {
                     ForEach(StudentTrackingFilter.allCases, id: \.self) { filter in
@@ -303,7 +363,32 @@ struct StudentProfilesWorkspaceView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
 
-            Divider().opacity(0.15)
+            if isMultiSelectActive {
+                HStack(spacing: 12) {
+                    Button(selectedStudentIds.count == filteredStudents.count ? "Deseleccionar todos" : "Todos (\(filteredStudents.count))") {
+                        if selectedStudentIds.count == filteredStudents.count {
+                            selectedStudentIds.removeAll()
+                        } else {
+                            selectedStudentIds = Set(filteredStudents.map(\.id))
+                        }
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(IOSAppStyle.info)
+
+                    Spacer()
+
+                    Text("\(selectedStudentIds.count) seleccionados")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(Color.secondary.opacity(0.08))
+
+                Divider().opacity(0.15)
+            } else {
+                Divider().opacity(0.15)
+            }
 
             // Student list
             if filteredStudents.isEmpty {
@@ -322,14 +407,32 @@ struct StudentProfilesWorkspaceView: View {
                     StudentListRow(
                         student: student,
                         isSelected: selectedStudentId == student.id,
-                        isUnassigned: unassignedStudentIds.contains(student.id)
+                        isUnassigned: unassignedStudentIds.contains(student.id),
+                        isMultiSelectActive: isMultiSelectActive,
+                        isChecked: selectedStudentIds.contains(student.id),
+                        onToggleCheck: {
+                            if selectedStudentIds.contains(student.id) {
+                                selectedStudentIds.remove(student.id)
+                            } else {
+                                selectedStudentIds.insert(student.id)
+                            }
+                        }
                     )
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(uiFeatureFlags.interactionAnimation) {
-                            selectedStudentId = student.id
+                        if isMultiSelectActive {
+                            if selectedStudentIds.contains(student.id) {
+                                selectedStudentIds.remove(student.id)
+                            } else {
+                                selectedStudentIds.insert(student.id)
+                            }
+                            AppleInteractionFeedback.play(.selection)
+                        } else {
+                            withAnimation(uiFeatureFlags.interactionAnimation) {
+                                selectedStudentId = student.id
+                            }
+                            AppleInteractionFeedback.play(.selection)
                         }
-                        AppleInteractionFeedback.play(.selection)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button("Eliminar", role: .destructive) {
@@ -380,8 +483,10 @@ struct StudentProfilesWorkspaceView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                     .listRowBackground(
                         RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous)
-                            .fill(selectedStudentId == student.id
+                            .fill((selectedStudentId == student.id && !isMultiSelectActive)
                                   ? IOSAppStyle.info.opacity(0.10)
+                                  : (selectedStudentIds.contains(student.id) && isMultiSelectActive)
+                                  ? IOSAppStyle.info.opacity(0.08)
                                   : Color.clear)
                             .padding(.horizontal, 4)
                     )
@@ -392,12 +497,43 @@ struct StudentProfilesWorkspaceView: View {
 
             Divider().opacity(0.15)
 
-            // Footer count
-            Text("\(filteredStudents.count) alumno\(filteredStudents.count == 1 ? "" : "s")")
-                .font(IOSAppStyle.captionText)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .center)
+            // Batch action bar or footer count
+            if isMultiSelectActive && !selectedStudentIds.isEmpty {
+                HStack(spacing: 8) {
+                    Button {
+                        let selected = filteredStudents.filter { selectedStudentIds.contains($0.id) }
+                        assigningMultipleStudents = selected
+                    } label: {
+                        Label("Asignar curso", systemImage: "person.badge.plus")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(IOSAppStyle.info)
+                    .controlSize(.small)
+
+                    Spacer()
+
+                    Button(role: .destructive) {
+                        let selected = filteredStudents.filter { selectedStudentIds.contains($0.id) }
+                        pendingDeleteMultipleStudents = selected
+                    } label: {
+                        Label("Eliminar", systemImage: "trash")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(IOSAppStyle.danger)
+                    .controlSize(.small)
+                }
+                .padding(.horizontal, 14)
                 .padding(.vertical, 8)
+                .background(IOSAppStyle.cardBackground)
+            } else {
+                Text("\(filteredStudents.count) alumno\(filteredStudents.count == 1 ? "" : "s")")
+                    .font(IOSAppStyle.captionText)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
+            }
         }
         .background(IOSAppStyle.cardBackground)
     }
@@ -1166,6 +1302,82 @@ struct StudentProfilesWorkspaceView: View {
     }
 
     @MainActor
+    private func assignMultipleStudents(_ students: [Student], toClassId classId: Int64) async {
+        assigningMultipleStudents = nil
+        let ids = students.map(\.id)
+        updatingStudentIds.formUnion(ids)
+        defer {
+            ids.forEach { updatingStudentIds.remove($0) }
+            selectedStudentIds.removeAll()
+            isMultiSelectActive = false
+        }
+
+        do {
+            try await bridge.assignStudentsToClass(studentIds: ids, classId: classId)
+            for id in ids { unassignedStudentIds.remove(id) }
+            await bridge.selectStudentsClass(classId: selectedClassId)
+            await reloadProfile()
+            let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
+            bridge.status = "\(students.count) alumnos asignados a \(className)."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudieron asignar los alumnos: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func removeMultipleStudentsFromClass(_ students: [Student]) async {
+        pendingDeleteMultipleStudents = nil
+        guard let classId = selectedClassId else { return }
+        let ids = students.map(\.id)
+        updatingStudentIds.formUnion(ids)
+        defer {
+            ids.forEach { updatingStudentIds.remove($0) }
+            selectedStudentIds.removeAll()
+            isMultiSelectActive = false
+        }
+
+        do {
+            try await bridge.removeStudentsFromClass(studentIds: ids, classId: classId)
+            if let currentSelected = selectedStudentId, ids.contains(currentSelected) {
+                selectedStudentId = studentsBridgeStore.studentsInClass.first(where: { !ids.contains($0.id) })?.id
+            }
+            await reloadProfile()
+            bridge.status = "Se han quitado \(students.count) alumnos del grupo."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudieron quitar los alumnos: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func deleteMultipleStudentsEverywhere(_ students: [Student]) async {
+        pendingDeleteMultipleStudents = nil
+        let ids = students.map(\.id)
+        updatingStudentIds.formUnion(ids)
+        defer {
+            ids.forEach { updatingStudentIds.remove($0) }
+            selectedStudentIds.removeAll()
+            isMultiSelectActive = false
+        }
+
+        do {
+            try await bridge.deleteStudentsEverywhere(studentIds: ids)
+            if let currentSelected = selectedStudentId, ids.contains(currentSelected) {
+                selectedStudentId = studentsBridgeStore.allStudents.first(where: { !ids.contains($0.id) })?.id
+            }
+            await reloadProfile()
+            bridge.status = "Se han eliminado \(students.count) alumnos de toda la app."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudieron eliminar los alumnos: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
     private func updateStudent(
         _ student: Student,
         firstName: String,
@@ -1243,9 +1455,23 @@ private struct StudentListRow: View {
     let student: Student
     let isSelected: Bool
     var isUnassigned: Bool = false
+    var isMultiSelectActive: Bool = false
+    var isChecked: Bool = false
+    var onToggleCheck: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 11) {
+            if isMultiSelectActive {
+                Button {
+                    onToggleCheck?()
+                } label: {
+                    Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isChecked ? IOSAppStyle.info : Color.secondary.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+            }
+
             // Avatar
             ZStack {
                 Circle()
@@ -1287,7 +1513,7 @@ private struct StudentListRow: View {
 
             Spacer(minLength: 4)
 
-            if isSelected {
+            if isSelected && !isMultiSelectActive {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(IOSAppStyle.info.opacity(0.7))

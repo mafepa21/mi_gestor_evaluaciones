@@ -2,17 +2,40 @@ import SwiftUI
 import MiGestorKit
 
 struct AssignStudentToClassSheet: View {
-    let student: Student
+    let students: [Student]
     let availableClasses: [SchoolClass]
     let onAssign: (Int64) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selectedClassId: Int64?
 
     init(student: Student, availableClasses: [SchoolClass], onAssign: @escaping (Int64) -> Void) {
-        self.student = student
+        self.students = [student]
         self.availableClasses = availableClasses
         self.onAssign = onAssign
         _selectedClassId = State(initialValue: availableClasses.first?.id)
+    }
+
+    init(students: [Student], availableClasses: [SchoolClass], onAssign: @escaping (Int64) -> Void) {
+        self.students = students
+        self.availableClasses = availableClasses
+        self.onAssign = onAssign
+        _selectedClassId = State(initialValue: availableClasses.first?.id)
+    }
+
+    private var targetTitle: String {
+        if students.count == 1, let first = students.first {
+            return "\(first.firstName) \(first.lastName)"
+        } else {
+            return "\(students.count) alumnos seleccionados"
+        }
+    }
+
+    private var targetSubtitle: String {
+        if students.count == 1 {
+            return "Selecciona el curso o grupo al que deseas matricular a este alumno."
+        } else {
+            return "Selecciona el curso o grupo al que deseas matricular a los \(students.count) alumnos seleccionados."
+        }
     }
 
     var body: some View {
@@ -26,9 +49,9 @@ struct AssignStudentToClassSheet: View {
                 Form {
                     Section {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("\(student.firstName) \(student.lastName)")
+                            Text(targetTitle)
                                 .font(.headline)
-                            Text("Selecciona el curso o grupo al que deseas matricular a este alumno.")
+                            Text(targetSubtitle)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -95,7 +118,7 @@ struct AssignStudentToClassSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Asignar a curso")
                     .font(.headline)
-                Text("\(student.firstName) \(student.lastName)")
+                Text(targetTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

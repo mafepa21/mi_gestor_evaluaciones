@@ -20,6 +20,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var classColorHexById: [Int64: String] = [:]
     @Published var sessions: [PlanningSession] = []
     @Published var filteredSessions: [PlanningSession] = []
+    @Published var monthViewDate: Date = Date()
+    @Published var monthSessions: [PlanningSession] = []
+    @Published var monthMilestones: [PlannerDayMilestone] = []
     @Published var sessionPlansById: [Int64: LearningSituationSessionPlan] = [:]
     @Published var sequenceGroupsEnriched: [PlannerSequenceGroup] = []
     @Published var isLoadingSequences = false

@@ -1078,8 +1078,8 @@ struct MacRootView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
-                .help("Cambiar de sección del planificador (⌘⌥1–4)")
+                .frame(maxWidth: 380)
+                .help("Cambiar de sección del planificador (⌘⌥1–5)")
 
                 if plannerSection == .day {
                     Button(action: plannerToolbarActions.onPreviousDay) {
@@ -1097,6 +1097,22 @@ struct MacRootView: View {
                     }
                     .keyboardShortcut(.rightArrow, modifiers: .command)
                     .help("Día siguiente (⌘→)")
+                } else if plannerSection == .month {
+                    Button(action: plannerToolbarActions.onPreviousMonth) {
+                        Label("Mes anterior", systemImage: "chevron.left")
+                    }
+                    .keyboardShortcut(.leftArrow, modifiers: .command)
+                    .help("Mes anterior (⌘←)")
+
+                    Button("Hoy", action: plannerToolbarActions.onTodayMonth)
+                        .keyboardShortcut("t", modifiers: .command)
+                        .help("Ir al mes actual (⌘T)")
+
+                    Button(action: plannerToolbarActions.onNextMonth) {
+                        Label("Mes siguiente", systemImage: "chevron.right")
+                    }
+                    .keyboardShortcut(.rightArrow, modifiers: .command)
+                    .help("Mes siguiente (⌘→)")
                 } else if plannerSection == .week || plannerSection == .summary {
                     Button(action: plannerToolbarActions.onPreviousWeek) {
                         Label("Semana anterior", systemImage: "chevron.left")

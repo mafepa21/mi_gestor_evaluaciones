@@ -46,6 +46,7 @@ struct PlannerNavigationContext: Equatable {
 }
 
 enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
+    case month = "Mes"
     case week = "Semana"
     case day = "Día"
     case sequence = "Secuencia"
@@ -55,12 +56,41 @@ enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .week: return "calendar"
+        case .month: return "calendar"
+        case .week: return "calendar.badge.clock"
         case .day: return "calendar.day.timeline.left"
         case .sequence: return "point.3.connected.trianglepath.dotted"
         case .summary: return "chart.bar.doc.horizontal"
         }
     }
+}
+
+struct PlannerMonthDay: Identifiable, Hashable {
+    var id: String { dateIso }
+    let date: Date
+    let dateIso: String
+    let dayNumber: Int
+    let month: Int
+    let year: Int
+    let dayOfWeek: Int
+    let isCurrentMonth: Bool
+    let isToday: Bool
+    let isWeekend: Bool
+    let milestones: [PlannerDayMilestone]
+    let sessions: [PlanningSession]
+
+    var isHoliday: Bool {
+        milestones.contains(where: { $0.category == .holiday || $0.isBlocking })
+    }
+}
+
+struct PlannerMonthGrid: Identifiable {
+    var id: String { "\(year)-\(month)" }
+    let year: Int
+    let month: Int
+    let monthName: String
+    let weeks: [[PlannerMonthDay]]
+    let totalSessionsCount: Int
 }
 
 enum PlannerDensity: String, CaseIterable, Identifiable {

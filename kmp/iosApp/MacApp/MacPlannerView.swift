@@ -19,6 +19,9 @@ struct PlannerMacToolbarActions {
     let isSelectionModeActive: Bool
     let canCopySelection: Bool
     let shareText: String
+    let onPreviousMonth: () -> Void
+    let onNextMonth: () -> Void
+    let onTodayMonth: () -> Void
     let onPreviousWeek: () -> Void
     let onNextWeek: () -> Void
     let onToday: () -> Void
@@ -188,6 +191,9 @@ struct MacPlannerView: View {
                 isSelectionModeActive: vm.selectionMode,
                 canCopySelection: !vm.selectedSessionIds.isEmpty,
                 shareText: vm.exportText(),
+                onPreviousMonth: { Task { await vm.previousMonth() } },
+                onNextMonth: { Task { await vm.nextMonth() } },
+                onTodayMonth: { Task { await vm.goToTodayMonth() } },
                 onPreviousWeek: { Task { await vm.previousWeek() } },
                 onNextWeek: { Task { await vm.nextWeek() } },
                 onToday: { Task { await vm.goToCurrentWeek() } },
@@ -263,6 +269,12 @@ struct MacPlannerView: View {
     @ViewBuilder
     private var plannerCenterContent: some View {
         switch vm.activeSection {
+        case .month:
+            PlannerMonthCalendarView(
+                vm: vm,
+                onOpenSession: openMacSession,
+                onOpenSettings: { showingScheduleSettings = true }
+            )
         case .week:
             PlannerWeekMiniatureLayout(
                 weekBoard: vm.weekBoard,

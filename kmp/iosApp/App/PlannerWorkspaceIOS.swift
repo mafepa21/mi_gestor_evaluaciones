@@ -190,6 +190,12 @@ struct PlannerWorkspaceIOS: View {
             .layoutPriority(1)
             Group {
                 switch vm.activeSection {
+                case .month:
+                    PlannerMonthCalendarView(
+                        vm: vm,
+                        onOpenSession: openSessionInDiary,
+                        onOpenSettings: { showingScheduleSettings = true }
+                    )
                 case .week:
                     PlannerWeekMiniatureLayout(
                         weekBoard: vm.weekBoard,
@@ -274,6 +280,8 @@ struct PlannerToolbar: View {
 
             if vm.activeSection == .week {
                 compactWeekHeader
+            } else if vm.activeSection == .month {
+                // En vista mensual, la cabecera propia de PlannerMonthCalendarView gestiona la navegación de mes
             } else {
                 expandedProgressHeader
             }
@@ -294,7 +302,7 @@ struct PlannerToolbar: View {
     private var primaryNavigationRow: some View {
         HStack(spacing: 8) {
             PlannerFloatingTabBar(activeSection: $vm.activeSection)
-                .frame(maxWidth: 360)
+                .frame(maxWidth: 420)
 
             Picker("Grupo", selection: Binding(
                 get: { vm.selectedGroupId },

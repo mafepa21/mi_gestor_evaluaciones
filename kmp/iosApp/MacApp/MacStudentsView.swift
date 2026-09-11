@@ -13,6 +13,7 @@ final class MacStudentsStore: ObservableObject {
     @Published var rows: [KmpBridge.MacStudentRowSnapshot] = []
     @Published var profile: KmpBridge.StudentProfileSnapshot?
     @Published var localSelectedStudentId: Int64?
+    @Published var selectedStudentIds: Set<Int64> = []
     @Published var searchText = ""
     @Published var trackingFilter = "todos"
     @Published var workGroupFilter = "Todos"
@@ -56,7 +57,9 @@ struct MacStudentsView: View {
     @State private var showGroupOverviewSheet = false
     @State private var showSexInferenceSheet = false
     @State private var assigningStudent: Student?
+    @State private var assigningMultipleStudents: [Student]?
     @State private var pendingDeleteRow: KmpBridge.MacStudentRowSnapshot?
+    @State private var pendingDeleteMultipleRows: [KmpBridge.MacStudentRowSnapshot]?
     @State private var studentImportPreview: AppleStudentImportPreview?
     @State private var importErrorMessage: String?
     @FocusState private var isSearchFocused: Bool
@@ -141,6 +144,9 @@ struct MacStudentsView: View {
         .appOnChange(of: store.localSelectedStudentId) { _, newValue in
             handleLocalSelectedStudentIdChange(newValue)
         }
+        .appOnChange(of: store.selectedStudentIds) { _, newSet in
+            handleSelectedStudentIdsChange(newSet)
+        }
         .appOnChange(of: selectedStudentId) { _, newValue in
             handleSelectedStudentIdChange(newValue)
         }
@@ -183,6 +189,21 @@ struct MacStudentsView: View {
                 Task { await assignStudentToClass(student, classId: targetClassId) }
             }
         }
+        .sheet(
+            isPresented: Binding(
+                get: { assigningMultipleStudents != nil },
+                set: { if !$0 { assigningMultipleStudents = nil } }
+            )
+        ) {
+            if let students = assigningMultipleStudents {
+                AssignStudentToClassSheet(
+                    students: students,
+                    availableClasses: studentsBridgeStore.classes
+                ) { targetClassId in
+                    Task { await assignMultipleStudentsToClass(students, classId: targetClassId) }
+                }
+            }
+        }
         .confirmationDialog(
             "Eliminar alumno",
             isPresented: Binding(
@@ -207,6 +228,33 @@ struct MacStudentsView: View {
                 Text("\(row.student.fullName) está matriculado en \(row.className). Elige si deseas quitarlo solo de esta clase o eliminarlo por completo de la aplicación.")
             } else {
                 Text("Se eliminará a \(row.student.fullName) y todos sus datos de la app de forma definitiva.")
+            }
+        }
+        .confirmationDialog(
+            "Eliminar alumnos seleccionados",
+            isPresented: Binding(
+                get: { pendingDeleteMultipleRows != nil },
+                set: { if !$0 { pendingDeleteMultipleRows = nil } }
+            ),
+            presenting: pendingDeleteMultipleRows
+        ) { rows in
+            if let classId = selectedClassId {
+                let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "esta clase"
+                Button("Quitar \(rows.count) alumnos de \(className)", role: .destructive) {
+                    Task { await removeMultipleStudentsFromClass(rows, classId: classId) }
+                }
+            }
+            Button("Eliminar \(rows.count) alumnos de toda la app", role: .destructive) {
+                Task { await deleteMultipleStudentsEverywhere(rows) }
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteMultipleRows = nil
+            }
+        } message: { rows in
+            if selectedClassId != nil {
+                Text("Se han seleccionado \(rows.count) alumnos. Elige si deseas quitarlos solo de esta clase o eliminarlos por completo de la aplicación.")
+            } else {
+                Text("Se eliminarán \(rows.count) alumnos y todos sus datos vinculados de la app de forma definitiva.")
             }
         }
         .sheet(isPresented: $showTutoringSheet) {
@@ -364,6 +412,19 @@ struct MacStudentsView: View {
         loadProfileForSelection(newValue)
     }
 
+    private func handleSelectedStudentIdsChange(_ newSet: Set<Int64>) {
+        guard ownsStudentSideEffects else { return }
+        if newSet.count == 1, let singleId = newSet.first {
+            if store.localSelectedStudentId != singleId {
+                store.localSelectedStudentId = singleId
+            }
+        } else if newSet.isEmpty {
+            // Keep localSelectedStudentId or clear if none
+        } else if let local = store.localSelectedStudentId, !newSet.contains(local) {
+            store.localSelectedStudentId = newSet.first
+        }
+    }
+
     private func handleSelectedStudentIdChange(_ newValue: Int64?) {
         guard ownsStudentSideEffects, store.didBootstrap else { return }
         guard let newValue else {
@@ -439,10 +500,53 @@ struct MacStudentsView: View {
     private var studentsList: some View {
         VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
             studentsHeader
+            if store.selectedStudentIds.count > 1 {
+                studentsBatchActionBar
+            }
             studentsTable
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(MacAppStyle.pagePadding)
+    }
+
+    private var studentsBatchActionBar: some View {
+        let count = store.selectedStudentIds.count
+        let selectedRows = store.rows.filter { store.selectedStudentIds.contains($0.id) }
+        return HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Color.accentColor)
+            Text("\(count) alumnos seleccionados")
+                .font(.system(size: 13, weight: .semibold))
+
+            Spacer()
+
+            Button {
+                let students = selectedRows.map(\.student)
+                assigningMultipleStudents = students
+            } label: {
+                Label("Asignar a curso...", systemImage: "person.badge.plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+
+            Button(role: .destructive) {
+                pendingDeleteMultipleRows = selectedRows
+            } label: {
+                Label("Eliminar (\(count))...", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Button("Deseleccionar") {
+                store.selectedStudentIds.removeAll()
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(Color.accentColor.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var studentsFilters: some View {
@@ -599,7 +703,7 @@ struct MacStudentsView: View {
             )
             .frame(maxWidth: .infinity, minHeight: 320)
         } else {
-            Table(filteredRows, selection: $store.localSelectedStudentId) {
+            Table(filteredRows, selection: $store.selectedStudentIds) {
                 TableColumn("Nombre") { row in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(row.student.fullName)
@@ -659,7 +763,21 @@ struct MacStudentsView: View {
             }
             .tableStyle(.inset(alternatesRowBackgrounds: true))
             .contextMenu(forSelectionType: Int64.self) { selectedIds in
-                if let id = selectedIds.first, let row = store.rows.first(where: { $0.id == id }) {
+                if selectedIds.count > 1 {
+                    let rows = store.rows.filter { selectedIds.contains($0.id) }
+                    Button {
+                        let students = rows.map(\.student)
+                        assigningMultipleStudents = students
+                    } label: {
+                        Label("Asignar \(selectedIds.count) alumnos a un curso...", systemImage: "person.badge.plus")
+                    }
+                    Divider()
+                    Button(role: .destructive) {
+                        pendingDeleteMultipleRows = rows
+                    } label: {
+                        Label("Eliminar \(selectedIds.count) alumnos...", systemImage: "trash")
+                    }
+                } else if let id = selectedIds.first, let row = store.rows.first(where: { $0.id == id }) {
                     Button {
                         store.studentEditorMode = .edit(row: row)
                     } label: {
@@ -1163,6 +1281,13 @@ struct MacStudentsView: View {
             } else {
                 store.localSelectedStudentId = visibleIds.first
             }
+            if let activeId = store.localSelectedStudentId {
+                if store.selectedStudentIds.isEmpty || !store.selectedStudentIds.contains(activeId) {
+                    store.selectedStudentIds = [activeId]
+                }
+            } else {
+                store.selectedStudentIds.removeAll()
+            }
             selectedStudentId = store.localSelectedStudentId
             loadProfileForSelection(store.localSelectedStudentId)
         } catch {
@@ -1390,6 +1515,49 @@ struct MacStudentsView: View {
             bridge.status = "\(student.fullName) se ha asignado a \(className)."
         } catch {
             store.errorMessage = "No se pudo asignar al curso: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func assignMultipleStudentsToClass(_ students: [Student], classId: Int64) async {
+        assigningMultipleStudents = nil
+        let ids = students.map(\.id)
+        do {
+            try await bridge.assignStudentsToClass(studentIds: ids, classId: classId)
+            store.selectedStudentIds.removeAll()
+            await reloadRows(preferredStudentId: ids.first)
+            let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
+            bridge.status = "\(students.count) alumnos asignados a \(className)."
+        } catch {
+            store.errorMessage = "No se pudieron asignar los alumnos: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func removeMultipleStudentsFromClass(_ rows: [KmpBridge.MacStudentRowSnapshot], classId: Int64) async {
+        pendingDeleteMultipleRows = nil
+        let ids = rows.map(\.id)
+        do {
+            try await bridge.removeStudentsFromClass(studentIds: ids, classId: classId)
+            store.selectedStudentIds.removeAll()
+            await reloadRows()
+            bridge.status = "Se han quitado \(rows.count) alumnos del grupo."
+        } catch {
+            store.errorMessage = "No se pudieron quitar los alumnos: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func deleteMultipleStudentsEverywhere(_ rows: [KmpBridge.MacStudentRowSnapshot]) async {
+        pendingDeleteMultipleRows = nil
+        let ids = rows.map(\.id)
+        do {
+            try await bridge.deleteStudentsEverywhere(studentIds: ids)
+            store.selectedStudentIds.removeAll()
+            await reloadRows()
+            bridge.status = "Se han eliminado \(rows.count) alumnos de la app."
+        } catch {
+            store.errorMessage = "No se pudieron eliminar los alumnos: \(error.localizedDescription)"
         }
     }
 

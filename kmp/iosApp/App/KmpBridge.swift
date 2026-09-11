@@ -8552,6 +8552,38 @@ final class KmpBridge: ObservableObject {
         enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000))
     }
 
+    func assignStudentsToClass(studentIds: [Int64], classId: Int64) async throws {
+        for studentId in studentIds {
+            try await container.classesRepository.addStudentToClass(classId: classId, studentId: studentId)
+        }
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+        enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000))
+    }
+
+    func removeStudentsFromClass(studentIds: [Int64], classId: Int64) async throws {
+        for studentId in studentIds {
+            try await container.classesRepository.removeStudentFromClass(classId: classId, studentId: studentId)
+        }
+        try await refreshStudentsDirectory()
+        enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000))
+    }
+
+    func deleteStudentsEverywhere(studentIds: [Int64]) async throws {
+        let nowEpochMs = Int64(Date().timeIntervalSince1970 * 1000)
+        for studentId in studentIds {
+            try await container.studentsRepository.deleteStudent(studentId: studentId)
+            enqueueLocalChange(
+                entity: "student_deleted",
+                id: "\(studentId)",
+                updatedAtEpochMs: nowEpochMs,
+                payload: ["id": studentId]
+            )
+        }
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+    }
+
     func listClassesForStudent(studentId: Int64) async throws -> [SchoolClass] {
         let allClasses = try await container.classesRepository.listClasses()
         var matched: [SchoolClass] = []

@@ -265,9 +265,10 @@ private struct RubricTemplateCard: View {
                     Label("Usar esta plantilla", systemImage: "plus.circle.fill")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(contrastingTextColor(for: Color.accentColor))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
                         .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }

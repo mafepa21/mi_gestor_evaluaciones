@@ -183,6 +183,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             await reloadScheduleOnly()
         }
         await reloadWeekSessions(keepSelection: keepSelection)
+        await reloadMonthData()
     }
 
     func reloadScheduleOnly() async {

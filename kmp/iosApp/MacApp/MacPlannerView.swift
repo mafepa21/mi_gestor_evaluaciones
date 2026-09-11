@@ -273,7 +273,9 @@ struct MacPlannerView: View {
             PlannerMonthCalendarView(
                 vm: vm,
                 onOpenSession: openMacSession,
-                onOpenSettings: { showingScheduleSettings = true }
+                onOpenSettings: { showingScheduleSettings = true },
+                showsInlineNavigation: false,
+                showsInlineGroupFilter: false
             )
         case .week:
             PlannerWeekMiniatureLayout(

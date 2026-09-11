@@ -5,6 +5,8 @@ struct PlannerMonthCalendarView: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     var onOpenSession: ((PlanningSession) -> Void)? = nil
     var onOpenSettings: (() -> Void)? = nil
+    var showsInlineNavigation: Bool = true
+    var showsInlineGroupFilter: Bool = true
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @State private var selectedOverflowDay: PlannerMonthDay? = nil
@@ -47,40 +49,42 @@ struct PlannerMonthCalendarView: View {
     @ViewBuilder
     private func monthHeader(grid: PlannerMonthGrid) -> some View {
         HStack(spacing: 12) {
-            HStack(spacing: 6) {
-                Button {
-                    Task { await vm.previousMonth() }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 13, weight: .bold))
-                        .frame(width: 32, height: 32)
-                }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .accessibilityLabel("Mes anterior")
+            if showsInlineNavigation {
+                HStack(spacing: 6) {
+                    Button {
+                        Task { await vm.previousMonth() }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .bold))
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .accessibilityLabel("Mes anterior")
 
-                Button {
-                    Task { await vm.goToTodayMonth() }
-                } label: {
-                    Text("Hoy")
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .frame(height: 32)
-                }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .accessibilityLabel("Ir al mes actual")
+                    Button {
+                        Task { await vm.goToTodayMonth() }
+                    } label: {
+                        Text("Hoy")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .frame(height: 32)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .accessibilityLabel("Ir al mes actual")
 
-                Button {
-                    Task { await vm.nextMonth() }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .bold))
-                        .frame(width: 32, height: 32)
+                    Button {
+                        Task { await vm.nextMonth() }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .accessibilityLabel("Mes siguiente")
                 }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .accessibilityLabel("Mes siguiente")
             }
 
             Text(grid.monthName)
@@ -101,21 +105,23 @@ struct PlannerMonthCalendarView: View {
 
             Spacer()
 
-            Picker("Grupo", selection: Binding(
-                get: { vm.selectedGroupId },
-                set: { vm.selectGroup($0) }
-            )) {
-                Text("Todos los grupos").tag(Optional<Int64>.none)
-                ForEach(vm.groups, id: \.id) { group in
-                    Text(group.name).tag(Optional(group.id))
+            if showsInlineGroupFilter {
+                Picker("Grupo", selection: Binding(
+                    get: { vm.selectedGroupId },
+                    set: { vm.selectGroup($0) }
+                )) {
+                    Text("Todos los grupos").tag(Optional<Int64>.none)
+                    ForEach(vm.groups, id: \.id) { group in
+                        Text(group.name).tag(Optional(group.id))
+                    }
                 }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .frame(maxWidth: 160)
             }
-            .pickerStyle(.menu)
-            .controlSize(.small)
-            .frame(maxWidth: 160)
 
             Button {
-                vm.openComposer()
+                vm.openComposerForDate(vm.monthViewDate)
             } label: {
                 Label("Nueva sesión", systemImage: "plus")
             }
@@ -542,6 +548,10 @@ struct PlannerMonthDaySessionsSheet: View {
                 }
             }
         }
+        #if os(iOS)
+        .presentationDetents([.medium, .large])
+        #else
         .frame(minWidth: 460, minHeight: 480)
+        #endif
     }
 }

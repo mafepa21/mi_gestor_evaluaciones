@@ -3,6 +3,38 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-11 - Aislamiento e idempotencia en la importación de alumnos desde Excel (sin acumulación entre cursos)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Aislamiento riguroso de matriculación por archivo Excel:
+     - En `KmpBridge.confirmStudentImport`, se corrigió la lógica de matriculación masiva. Anteriormente, si `omitDuplicates` estaba activo o si se importaban alumnos ya presentes en la base de datos, el filtro descartaba o duplicaba registros, o provocaba que se matricularan alumnos de importaciones previas.
+     - Ahora, `confirmStudentImport` utiliza `existingStudentId` (capturado en la previsualización `previewStudentImport` cuando el alumno coincide por nombre y apellidos con uno existente). Los alumnos existentes se matriculan directamente en la clase de destino mediante `classesRepository.addStudentToClass` usando su `studentId` existente, sin crear duplicados en la base de datos ni omitir su alta en el nuevo curso. Los alumnos nuevos se insertan normalmente en SQLite y se matriculan de forma aislada.
+  2. Sincronización y limpieza de selecciones en lote residuales:
+     - En `MacStudentsView` y `StudentProfilesWorkspaceView`, se introdujo el reseteo explícito de `selectedStudentIds` y el modo de selección múltiple cada vez que el usuario cambia de clase (`selectedClassId`) o cuando se cierra el modal de importación tras confirmar.
+     - Esto evita que los IDs de alumnos seleccionados en una clase previa o en la vista "Todas" queden en memoria y se asignen erróneamente en lote al curso siguiente.
+  3. Preselección y detección de curso en `StudentImportSheet`:
+     - El sheet de importación recibe `initialClassId: selectedClassId`, respetando el curso en el que se encontraba el docente.
+     - Se añadió un heurístico en `.onAppear` que compara el nombre de clase detectado en el encabezado del archivo con los cursos existentes en `bridge.classes`, preseleccionando automáticamente el curso adecuado si no se había especificado uno.
+  4. Robustez en lectura de hojas Excel (`AppleSpreadsheetReader.swift`):
+     - `readXLSX` ahora busca la primera hoja que contenga datos (`!$0.rows.isEmpty`) antes de recurrir a la primera por defecto, evitando fallos cuando los libros contienen hojas preliminares vacías generadas por software de gestión escolar.
+- Por qué importa:
+  - Garantiza que al importar listas de diferentes cursos sucesivamente (por ejemplo, 1º ESO A, luego 1º ESO B), cada curso contenga estrictamente a sus propios alumnos, sin arrastrar a los del archivo anterior ni generar registros duplicados en el centro.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/ImportPreviewModels.swift`
+  - `kmp/iosApp/AppleShared/AppleSpreadsheetReader.swift`
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/StudentImportSheet.swift`
+  - `kmp/iosApp/App/StudentProfilesWorkspaceView.swift`
+  - `kmp/iosApp/MacApp/MacStudentsView.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Regeneración de proyecto Xcode con XcodeGen exitosa.
+
 ## Avance 2026-09-11 - Gestión avanzada de Alumnos: selección múltiple por lote, eliminación, asignación de cursos y edición completa (iOS/iPadOS/macOS)
 
 Resumen:

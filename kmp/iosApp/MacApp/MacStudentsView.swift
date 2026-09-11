@@ -367,7 +367,7 @@ struct MacStudentsView: View {
             Task { await handleStudentImportFile(result) }
         }
         .sheet(item: $studentImportPreview) { preview in
-            StudentImportSheet(preview: preview)
+            StudentImportSheet(preview: preview, initialClassId: selectedClassId)
                 .environmentObject(bridge)
                 .frame(minWidth: 720, minHeight: 620)
                 .onDisappear(perform: reloadRowsAfterStudentImportPreview)
@@ -398,6 +398,7 @@ struct MacStudentsView: View {
 
     private func handleClassIdChange(_ newClassId: Int64?) {
         guard ownsStudentSideEffects, store.didBootstrap else { return }
+        store.selectedStudentIds.removeAll()
         Task {
             await bridge.selectStudentsClass(classId: newClassId)
             await reloadRows()
@@ -474,6 +475,10 @@ struct MacStudentsView: View {
     }
 
     private func reloadRowsAfterStudentImportPreview() {
+        store.selectedStudentIds.removeAll()
+        if let targetClassId = bridge.selectedStudentsClassId, selectedClassId != targetClassId {
+            selectedClassId = targetClassId
+        }
         Task { await reloadRows() }
     }
 

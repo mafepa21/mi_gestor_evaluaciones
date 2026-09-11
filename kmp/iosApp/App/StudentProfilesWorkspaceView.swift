@@ -104,6 +104,8 @@ struct StudentProfilesWorkspaceView: View {
                 await reloadProfile()
             }
             .appOnChange(of: selectedClassId) { _ in
+                selectedStudentIds.removeAll()
+                isMultiSelectActive = false
                 Task {
                     await bridge.selectStudentsClass(classId: selectedClassId)
                     if selectedStudentId == nil {

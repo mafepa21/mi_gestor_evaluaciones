@@ -30,16 +30,27 @@ enum EducamosSMXlsxWriterError: LocalizedError {
 
 /// Valor a escribir en una celda del xlsx.
 enum EducamosSMCellValue {
-    case numeric(Int)       // Nota entera 0-10
+    case integer(Int)       // Nota entera 0-10
+    case decimal(Double)    // Nota decimal (ej. 9.38)
+    case numeric(Int)       // Compatibilidad retroactiva
     case text(String)       // Comentario de texto
 
     var xmlFragment: String {
         switch self {
-        case .numeric(let value):
-            // Celda numérica: <v>7</v>
+        case .integer(let value), .numeric(let value):
             return "<v>\(value)</v>"
+        case .decimal(let value):
+            let formatted = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), value)
+            let clean: String
+            if formatted.hasSuffix(".00") {
+                clean = String(formatted.dropLast(3))
+            } else if formatted.hasSuffix("0") && formatted.contains(".") {
+                clean = String(formatted.dropLast(1))
+            } else {
+                clean = formatted
+            }
+            return "<v>\(clean)</v>"
         case .text(let value):
-            // Celda con inline string: <is><t>texto</t></is>
             let escaped = value.xmlEscaped
             return "<is><t>\(escaped)</t></is>"
         }
@@ -48,7 +59,7 @@ enum EducamosSMCellValue {
     /// Atributo de tipo para la celda. Numéricos no necesitan tipo; texto usa `t="inlineStr"`.
     var typeAttribute: String? {
         switch self {
-        case .numeric: return nil
+        case .integer, .decimal, .numeric: return nil
         case .text: return "inlineStr"
         }
     }
@@ -108,13 +119,23 @@ enum EducamosSMXlsxWriter {
         // 2. Ruta del XML de la hoja principal dentro del ZIP
         let sheetXMLPath = template.mainSheetPath
 
-        // 3. Leer el XML de la hoja desde el ZIP
-        guard let archive = Archive(url: outputURL, accessMode: .update) else {
+        // 3. Modificar el XML dentro de un scope para asegurar flush del ZIP antes de retornar
+        try modifySheetArchive(at: outputURL, sheetPath: sheetXMLPath, cells: cells)
+
+        return outputURL
+    }
+
+    private static func modifySheetArchive(
+        at fileURL: URL,
+        sheetPath: String,
+        cells: [CellWrite]
+    ) throws {
+        guard let archive = Archive(url: fileURL, accessMode: .update) else {
             throw EducamosSMXlsxWriterError.cannotOpenArchive
         }
 
-        guard let sheetEntry = archive[sheetXMLPath] else {
-            throw EducamosSMXlsxWriterError.sheetNotFound(sheetXMLPath)
+        guard let sheetEntry = archive[sheetPath] else {
+            throw EducamosSMXlsxWriterError.sheetNotFound(sheetPath)
         }
 
         var xmlData = Data()
@@ -126,7 +147,7 @@ enum EducamosSMXlsxWriter {
             throw EducamosSMXlsxWriterError.cannotReadSheetXML
         }
 
-        // 4. Inyectar valores en las celdas
+        // Inyectar valores en las celdas
         for cell in cells {
             xmlString = injectCellValue(
                 xml: xmlString,
@@ -135,40 +156,53 @@ enum EducamosSMXlsxWriter {
             )
         }
 
-        // 5. Reemplazar la entrada en el ZIP
         guard let modifiedData = xmlString.data(using: .utf8) else {
             throw EducamosSMXlsxWriterError.cannotWriteSheetXML
         }
 
-        // Eliminar la entrada antigua y añadir la nueva
+        // Eliminar la entrada antigua y añadir la nueva con compresión deflate
         try archive.remove(sheetEntry)
         try archive.addEntry(
-            with: sheetXMLPath,
+            with: sheetPath,
             type: .file,
             uncompressedSize: Int64(modifiedData.count),
+            compressionMethod: .deflate,
             provider: { position, size in
                 let start = Int(position)
                 let end = min(start + size, modifiedData.count)
                 return modifiedData[start..<end]
             }
         )
-
-        return outputURL
     }
 
     // MARK: - XML manipulation
 
+    /// Convierte una referencia de celda tipo "M13" en letras de columna, índice numérico de columna y número de fila.
+    private static func parseCellReference(_ ref: String) -> (colLetters: String, colNumber: Int, rowNumber: Int)? {
+        var letters = ""
+        var digits = ""
+        for ch in ref {
+            if ch.isLetter {
+                letters.append(ch)
+            } else if ch.isNumber {
+                digits.append(ch)
+            }
+        }
+        guard !letters.isEmpty, let rowNum = Int(digits) else { return nil }
+        var colNum = 0
+        for ch in letters.uppercased() {
+            guard let scalar = ch.unicodeScalars.first, scalar.value >= 65 && scalar.value <= 90 else { return nil }
+            colNum = colNum * 26 + Int(scalar.value - 64)
+        }
+        return (letters.uppercased(), colNum, rowNum)
+    }
+
     /// Inyecta un valor en una celda específica del XML del worksheet.
     ///
-    /// El XML de OpenXML tiene celdas con formato:
-    /// `<c r="M13" s="53"/>` (vacía, self-closing)
-    /// `<c r="M13" s="53"></c>` (vacía, con closing tag)
-    /// `<c r="M13" t="s" s="53"><v>42</v></c>` (con valor)
-    ///
-    /// Esta función busca la celda por su referencia y:
-    /// - Si es self-closing (`/>`): la convierte a tag con contenido
-    /// - Si tiene closing tag pero sin valor: inyecta el valor
-    /// - Si ya tiene valor: lo reemplaza
+    /// Esta función busca la celda por su referencia:
+    /// - Si ya existe y es self-closing (`/>`): la expande e inyecta el valor.
+    /// - Si ya existe con closing tag (`</c>`): reemplaza su contenido interior.
+    /// - Si no existe en la fila (formato sparse): la inserta en el orden alfabético correcto dentro de `<row>`.
     private static func injectCellValue(
         xml: String,
         cellReference: String,
@@ -176,83 +210,106 @@ enum EducamosSMXlsxWriter {
     ) -> String {
         var result = xml
 
-        // Patrón para encontrar la celda por su referencia
-        // Buscar: <c r="M13" ... /> (self-closing) o <c r="M13" ...>...</c>
         let refPattern = "r=\"\(cellReference)\""
 
-        // Buscar la posición de la celda en el XML
-        guard let refRange = result.range(of: refPattern) else {
-            // La celda no existe — no se puede añadir sin romper la estructura
-            return result
-        }
-
-        // Encontrar el inicio del tag <c que contiene esta referencia
-        let searchBackStart = result.startIndex
-        let refStart = refRange.lowerBound
-        guard let tagStart = result[searchBackStart..<refStart].range(of: "<c ", options: .backwards)?.lowerBound else {
-            return result
-        }
-
-        // Determinar si el tag es self-closing o tiene closing tag
-        let afterRef = refRange.upperBound
-        let remainingFromTag = result[tagStart...]
-
-        if let selfCloseRange = result[afterRef...].range(of: "/>") {
-            // Verificar que el self-close pertenece a este tag (no hay otro < antes)
-            let between = result[afterRef..<selfCloseRange.lowerBound]
-            if !between.contains("<") {
-                // Self-closing: <c r="M13" s="53"/>
-                // Reemplazar con: <c r="M13" s="53" [t="inlineStr"]><v>7</v></c>
-                //             o: <c r="M13" s="53" t="inlineStr"><is><t>texto</t></is></c>
-                let endOfSelfClose = selfCloseRange.upperBound
-
-                // Extraer los atributos existentes del tag
-                let existingTag = String(result[tagStart..<selfCloseRange.lowerBound])
-
-                // Construir el nuevo tag
-                var newTag = existingTag
-                // Eliminar atributo t="s" si existe (shared string reference)
-                newTag = newTag.replacingOccurrences(
-                    of: " t=\"s\"",
-                    with: ""
-                )
-                // Añadir type attribute si es necesario
-                if let typeAttr = value.typeAttribute {
-                    newTag += " t=\"\(typeAttr)\""
-                }
-                newTag += ">\(value.xmlFragment)</c>"
-
-                result.replaceSubrange(tagStart..<endOfSelfClose, with: newTag)
+        // 1. La celda ya existe en el XML
+        if let refRange = result.range(of: refPattern) {
+            let searchBackStart = result.startIndex
+            let refStart = refRange.lowerBound
+            guard let tagStart = result[searchBackStart..<refStart].range(of: "<c ", options: .backwards)?.lowerBound else {
                 return result
             }
+
+            let afterRef = refRange.upperBound
+
+            // A) Self-closing: <c r="M13" s="53"/>
+            if let selfCloseRange = result[afterRef...].range(of: "/>") {
+                let between = result[afterRef..<selfCloseRange.lowerBound]
+                if !between.contains("<") {
+                    let endOfSelfClose = selfCloseRange.upperBound
+                    let existingTag = String(result[tagStart..<selfCloseRange.lowerBound])
+
+                    var newTag = existingTag.replacingOccurrences(of: " t=\"s\"", with: "")
+                    if let typeAttr = value.typeAttribute {
+                        newTag += " t=\"\(typeAttr)\""
+                    }
+                    newTag += ">\(value.xmlFragment)</c>"
+
+                    result.replaceSubrange(tagStart..<endOfSelfClose, with: newTag)
+                    return result
+                }
+            }
+
+            // B) Con closing tag: <c r="M13" ...>...</c>
+            if let closeRange = result[afterRef...].range(of: "</c>") {
+                let between = result[afterRef..<closeRange.lowerBound]
+                if !between.contains("</c>") {
+                    if let openTagEnd = result[afterRef...].range(of: ">") {
+                        let openEnd = openTagEnd.upperBound
+                        var openTag = String(result[tagStart..<openEnd])
+                        openTag = openTag.replacingOccurrences(of: " t=\"s\"", with: "")
+                        if let typeAttr = value.typeAttribute {
+                            if !openTag.contains("t=\"\(typeAttr)\"") {
+                                openTag = openTag.replacingOccurrences(of: ">", with: " t=\"\(typeAttr)\">")
+                            }
+                        }
+
+                        let newContent = openTag + value.xmlFragment + "</c>"
+                        let endOfClose = closeRange.upperBound
+                        result.replaceSubrange(tagStart..<endOfClose, with: newContent)
+                        return result
+                    }
+                }
+            }
+
+            return result
         }
 
-        // Tiene closing tag: <c r="M13" ...>...</c>
-        if let closeRange = result[afterRef...].range(of: "</c>") {
-            let between = result[afterRef..<closeRange.lowerBound]
-            if !between.contains("</c>") {
-                // Encontrar el fin del tag de apertura
-                if let openTagEnd = result[afterRef...].range(of: ">") {
-                    let openEnd = openTagEnd.upperBound
+        // 2. La celda no existe: inserción sparse ordenada dentro de <row>
+        guard let parsed = parseCellReference(cellReference) else { return result }
+        let rowPattern = "<row r=\"\(parsed.rowNumber)\""
+        guard let rowRange = result.range(of: rowPattern) else { return result }
 
-                    // Extraer el tag de apertura completo
-                    var openTag = String(result[tagStart..<openEnd])
-                    // Eliminar t="s" si existe
-                    openTag = openTag.replacingOccurrences(of: " t=\"s\"", with: "")
-                    // Añadir type attribute si necesario
-                    if let typeAttr = value.typeAttribute {
-                        if !openTag.contains("t=\"\(typeAttr)\"") {
-                            openTag = openTag.replacingOccurrences(of: ">", with: " t=\"\(typeAttr)\">")
+        let searchFrom = rowRange.lowerBound
+        guard let rowTagClose = result[searchFrom...].range(of: ">") else { return result }
+
+        // Si la fila completa era self-closing: <row r="14".../>
+        let beforeRowTagClose = result.index(before: rowTagClose.lowerBound)
+        if result[beforeRowTagClose] == "/" {
+            var newCellTag = "<c r=\"\(cellReference)\""
+            if let typeAttr = value.typeAttribute { newCellTag += " t=\"\(typeAttr)\"" }
+            newCellTag += ">\(value.xmlFragment)</c>"
+            let replacement = ">\(newCellTag)</row>"
+            result.replaceSubrange(beforeRowTagClose...rowTagClose.lowerBound, with: replacement)
+            return result
+        }
+
+        guard let endRowRange = result[rowTagClose.upperBound...].range(of: "</row>") else { return result }
+        let rowContent = String(result[rowTagClose.upperBound..<endRowRange.lowerBound])
+
+        var insertOffset = rowContent.count
+        let regex = try? NSRegularExpression(pattern: "<c [^>]*r=\"([A-Za-z]+)\(parsed.rowNumber)\"")
+        if let matches = regex?.matches(in: rowContent, range: NSRange(rowContent.startIndex..., in: rowContent)) {
+            for m in matches {
+                if let r = Range(m.range(at: 1), in: rowContent) {
+                    let colLetters = String(rowContent[r])
+                    if let otherParsed = parseCellReference("\(colLetters)\(parsed.rowNumber)"),
+                       otherParsed.colNumber > parsed.colNumber {
+                        if let matchRange = Range(m.range, in: rowContent) {
+                            insertOffset = rowContent.distance(from: rowContent.startIndex, to: matchRange.lowerBound)
+                            break
                         }
                     }
-
-                    let newContent = openTag + value.xmlFragment + "</c>"
-                    let endOfClose = closeRange.upperBound
-                    result.replaceSubrange(tagStart..<endOfClose, with: newContent)
                 }
             }
         }
 
+        var cellXML = "<c r=\"\(cellReference)\""
+        if let typeAttr = value.typeAttribute { cellXML += " t=\"\(typeAttr)\"" }
+        cellXML += ">\(value.xmlFragment)</c>"
+
+        let insertIndex = result.index(rowTagClose.upperBound, offsetBy: insertOffset)
+        result.insert(contentsOf: cellXML, at: insertIndex)
         return result
     }
 }

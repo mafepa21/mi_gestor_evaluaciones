@@ -28,6 +28,8 @@ struct EducamosSMElement {
     var isNotaFinal: Bool { tipoColumna == 1 }
     var isRecuperacion: Bool { tipoColumna == 2 }
     var isComentarios: Bool { tipoColumna == 20 }
+    var isInstrumento: Bool { tipoColumna == 14 }
+    var isCategoriaSA: Bool { tipoColumna == 15 }
     var isElemento: Bool { tipoColumna == 14 || tipoColumna == 15 }
 }
 
@@ -51,6 +53,16 @@ struct EducamosSMTemplate {
     /// Columna de Nota final (TipoColumna=1)
     var notaFinalElement: EducamosSMElement? {
         elements.first(where: \.isNotaFinal)
+    }
+
+    /// Elementos correspondientes a instrumentos individuales (TipoColumna=14)
+    var instrumentElements: [EducamosSMElement] {
+        elements.filter(\.isInstrumento)
+    }
+
+    /// Elementos correspondientes a Situaciones de Aprendizaje / Categorías (TipoColumna=15)
+    var categoriaElements: [EducamosSMElement] {
+        elements.filter(\.isCategoriaSA)
     }
 
     /// Columna de Comentarios del profesor (TipoColumna=20)

@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 
 /// Sheet que guía al docente para exportar las notas del cuaderno al formato Educamos SM.
 ///
-/// Flujo: Importar plantilla → Revisar matching alumnos → Generar y compartir xlsx.
+/// Flujo: Importar plantilla → Revisar matching de alumnos e instrumentos → Generar y compartir xlsx.
 struct EducamosSMExportSheet: View {
     let data: NotebookUiStateData
     let bridge: KmpBridge
@@ -14,7 +14,9 @@ struct EducamosSMExportSheet: View {
 
     @State private var step: ExportStep = .selectFile
     @State private var template: EducamosSMTemplate?
+    @State private var matchedColumns: [MatchedColumn] = []
     @State private var matchedStudents: [StudentMatch] = []
+    @State private var totalGradesToExport: Int = 0
     @State private var isFileImporterPresented = false
     @State private var errorMessage: String?
     @State private var isProcessing = false
@@ -26,13 +28,54 @@ struct EducamosSMExportSheet: View {
         case export
     }
 
+    struct MatchedColumn: Identifiable {
+        let id: String // columnLetter ("G", "H", "I", "M"...)
+        let educamosElement: EducamosSMElement
+        let appColumn: NotebookColumnDefinition?
+        let isCategorySA: Bool
+        let appTabTitle: String?
+
+        var isMatched: Bool {
+            appColumn != nil || appTabTitle != nil || educamosElement.isNotaFinal
+        }
+
+        var sourceTitle: String {
+            if let col = appColumn {
+                return col.title
+            } else if let tab = appTabTitle {
+                return tab
+            } else if educamosElement.isNotaFinal {
+                return "Media evaluación"
+            }
+            return "-"
+        }
+
+        var kindDescription: String {
+            if educamosElement.isNotaFinal {
+                return "Nota final evaluación"
+            } else if isCategorySA {
+                return "Media Situación de Aprendizaje"
+            } else {
+                return "Instrumento de evaluación"
+            }
+        }
+    }
+
+    struct StudentGradeEntry: Identifiable {
+        var id: String { columnLetter }
+        let columnLetter: String
+        let value: EducamosSMCellValue
+        let displayLabel: String
+    }
+
     struct StudentMatch: Identifiable {
         let id: String // PersonaId de Educamos
         let educamosStudent: EducamosSMStudent
         var appStudent: Student?
-        var notaFinal: Int?
+        var grades: [StudentGradeEntry] = []
 
         var hasMatch: Bool { appStudent != nil }
+        var hasGrades: Bool { !grades.isEmpty }
     }
 
     var body: some View {
@@ -80,7 +123,7 @@ struct EducamosSMExportSheet: View {
                 Text("Exportar notas a Educamos SM")
                     .font(.headline)
 
-                Text("Selecciona el archivo .xlsx que has descargado de Educamos para rellenar las notas automáticamente con las medias del cuaderno.")
+                Text("Selecciona el archivo .xlsx descargado de Educamos. La app completará las columnas de instrumentos, la media de la Situación de Aprendizaje y la nota final.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -126,39 +169,74 @@ struct EducamosSMExportSheet: View {
                 }
 
                 Section {
+                    ForEach(matchedColumns) { col in
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text("\(col.educamosElement.shortName)")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("Columna \(col.id)")
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(col.kindDescription)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            if col.isMatched {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                    Text(col.sourceTitle)
+                                        .font(.caption.weight(.medium))
+                                        .foregroundStyle(.primary)
+                                }
+                            } else {
+                                Text("Sin columna en cuaderno")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Columnas detectadas")
+                } footer: {
+                    let matchedCount = matchedColumns.filter(\.isMatched).count
+                    Text("\(matchedCount) de \(matchedColumns.count) columnas emparejadas con el cuaderno.")
+                }
+
+                Section {
                     ForEach(matchedStudents) { match in
-                        HStack {
-                            // Número de orden
-                            Text("\(match.educamosStudent.orderNumber)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            // Número de orden
+                        HStack(spacing: 10) {
                             Text("\(match.educamosStudent.orderNumber)")
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                                 .frame(width: 24, alignment: .trailing)
 
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 3) {
                                 if !match.educamosStudent.rawName.isEmpty && match.educamosStudent.rawName != "\(match.educamosStudent.orderNumber)" {
                                     Text(match.educamosStudent.rawName)
                                         .font(.subheadline.weight(.medium))
                                 }
 
                                 if let student = match.appStudent {
-                                    HStack(spacing: 6) {
+                                    HStack(spacing: 4) {
                                         Text("\(student.lastName), \(student.firstName)")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
+                                    }
 
-                                        if let nota = match.notaFinal {
-                                            Text("·  Nota: \(nota)")
-                                                .font(.caption.weight(.semibold))
-                                                .foregroundStyle(.blue)
-                                        } else {
-                                            Text("·  Sin nota")
-                                                .font(.caption)
-                                                .foregroundStyle(.orange)
-                                        }
+                                    if !match.grades.isEmpty {
+                                        Text(match.grades.map(\.displayLabel).joined(separator: " · "))
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.blue)
+                                    } else {
+                                        Text("Sin calificaciones registradas")
+                                            .font(.caption)
+                                            .foregroundStyle(.orange)
                                     }
                                 } else {
                                     Text("Sin coincidencia en el grupo")
@@ -169,25 +247,21 @@ struct EducamosSMExportSheet: View {
 
                             Spacer()
 
-                            // Indicador de estado
-                            Image(systemName: match.hasMatch ? "checkmark.circle.fill" : "exclamationmark.circle")
-                                .foregroundStyle(match.hasMatch ? .green : .red)
+                            Image(systemName: match.hasMatch ? (match.hasGrades ? "checkmark.circle.fill" : "exclamationmark.triangle.fill") : "xmark.circle")
+                                .foregroundStyle(match.hasMatch ? (match.hasGrades ? .green : .orange) : .red)
                         }
                     }
                 } header: {
                     Text("Matching de alumnos")
                 } footer: {
                     let matchCount = matchedStudents.filter(\.hasMatch).count
-                    let withGrade = matchedStudents.filter { $0.notaFinal != nil }.count
-                    Text("\(matchCount) alumnos emparejados · \(withGrade) con nota")
+                    let withGradesCount = matchedStudents.filter(\.hasGrades).count
+                    Text("\(matchCount) alumnos emparejados · \(withGradesCount) con notas registradas (\(totalGradesToExport) calificaciones a escribir)")
                 }
             }
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 12) {
-                let matchCount = matchedStudents.filter(\.hasMatch).count
-                let withGrade = matchedStudents.filter { $0.notaFinal != nil }.count
-
                 Button {
                     Task { await generateExport() }
                 } label: {
@@ -196,7 +270,7 @@ struct EducamosSMExportSheet: View {
                             .frame(maxWidth: .infinity)
                     } else {
                         Label(
-                            "Generar archivo (\(withGrade) notas)",
+                            "Generar archivo (\(totalGradesToExport) calificaciones)",
                             systemImage: "doc.badge.arrow.up"
                         )
                         .frame(maxWidth: .infinity)
@@ -204,7 +278,7 @@ struct EducamosSMExportSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(withGrade == 0 || isProcessing)
+                .disabled(totalGradesToExport == 0 || isProcessing)
             }
             .padding()
             .background(.bar)
@@ -222,13 +296,14 @@ struct EducamosSMExportSheet: View {
                 .foregroundStyle(.green)
 
             VStack(spacing: 8) {
-                Text("Archivo generado")
+                Text("Archivo generado con éxito")
                     .font(.headline)
 
-                let withGrade = matchedStudents.filter { $0.notaFinal != nil }.count
-                Text("\(withGrade) notas rellenadas en el archivo de Educamos.")
+                Text("Se han rellenado \(totalGradesToExport) calificaciones en las columnas de instrumentos, Situación de Aprendizaje y nota final del archivo de Educamos.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
             }
 
             if let url = generatedFileURL {
@@ -290,23 +365,71 @@ struct EducamosSMExportSheet: View {
         }
     }
 
-    /// Empareja alumnos de Educamos con los de la app por coincidencia de nombre (tokens) o por orden.
+    /// Empareja columnas, pestañas de SA y alumnos de Educamos con los datos del cuaderno.
     private func buildMatching(template: EducamosSMTemplate) {
         let appStudents = filteredAppStudents
 
+        // 1. Emparejar columnas e instrumentos
+        var columnMatches: [MatchedColumn] = []
+
+        for element in template.elements {
+            if element.isInstrumento {
+                // Buscar columna del cuaderno cuyo título coincida con el nombre corto
+                let matchedCol = data.sheet.columns.first { col in
+                    col.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .localizedCaseInsensitiveCompare(element.shortName) == .orderedSame
+                } ?? data.sheet.columns.first { col in
+                    col.title.localizedCaseInsensitiveContains(element.shortName)
+                }
+
+                columnMatches.append(MatchedColumn(
+                    id: element.columnLetter,
+                    educamosElement: element,
+                    appColumn: matchedCol,
+                    isCategorySA: false,
+                    appTabTitle: nil
+                ))
+            } else if element.isCategoriaSA {
+                // Buscar pestaña (SA) cuyo título coincida con el nombre corto (ej. "Handball" <-> "Hand")
+                let matchedTab = data.sheet.tabs.first { tab in
+                    tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .localizedCaseInsensitiveCompare(element.shortName) == .orderedSame
+                } ?? data.sheet.tabs.first { tab in
+                    tab.title.localizedCaseInsensitiveContains(element.shortName) ||
+                    element.shortName.localizedCaseInsensitiveContains(tab.title)
+                }
+
+                columnMatches.append(MatchedColumn(
+                    id: element.columnLetter,
+                    educamosElement: element,
+                    appColumn: nil,
+                    isCategorySA: true,
+                    appTabTitle: matchedTab?.title
+                ))
+            } else if element.isNotaFinal {
+                columnMatches.append(MatchedColumn(
+                    id: element.columnLetter,
+                    educamosElement: element,
+                    appColumn: nil,
+                    isCategorySA: false,
+                    appTabTitle: nil
+                ))
+            }
+        }
+
+        matchedColumns = columnMatches
+
+        // 2. Emparejar alumnos
         matchedStudents = template.students.map { educamosStudent in
             var matchedAppStudent: Student? = nil
 
-            // 1. Coincidencia por nombre (normalizado) si el archivo de Educamos trae nombres
             let educamosTokens = Set(normalizedTokens(educamosStudent.rawName))
             if !educamosTokens.isEmpty {
-                // Coincidencia exacta de conjunto de palabras ("Apellidos, Nombre" <-> "Nombre Apellidos")
                 matchedAppStudent = appStudents.first { candidate in
                     let candidateTokens = Set(normalizedTokens("\(candidate.firstName) \(candidate.lastName)"))
                     return candidateTokens == educamosTokens
                 }
 
-                // Coincidencia por inclusión si un lado omite un apellido o segundo nombre
                 if matchedAppStudent == nil {
                     matchedAppStudent = appStudents.first { candidate in
                         let firstTokens = Set(normalizedTokens(candidate.firstName))
@@ -317,7 +440,6 @@ struct EducamosSMExportSheet: View {
                 }
             }
 
-            // 2. Fallback a coincidencia por número de orden (1-based)
             if matchedAppStudent == nil {
                 let index = educamosStudent.orderNumber - 1
                 if index >= 0 && index < appStudents.count {
@@ -325,12 +447,57 @@ struct EducamosSMExportSheet: View {
                 }
             }
 
-            // 3. Calcular nota final redondeada a entero 0-10
-            var notaFinal: Int?
+            // 3. Extraer calificaciones para las columnas emparejadas
+            var studentGrades: [StudentGradeEntry] = []
+
             if let student = matchedAppStudent {
-                let row = data.sheet.rows.first { $0.student.id == student.id }
-                if let avg = row?.weightedAverage?.doubleValue {
-                    notaFinal = max(0, min(10, Int(avg.rounded())))
+                let tableRow = data.sheet.rows.first { $0.student.id == student.id }
+
+                for colMatch in columnMatches {
+                    let el = colMatch.educamosElement
+
+                    // A) Instrumento individual
+                    if let appCol = colMatch.appColumn {
+                        let raw: String = {
+                            switch appCol.type {
+                            case .rubric:
+                                return bridge.rubricGradeOnTenText(studentId: student.id, column: appCol)
+                            case .numeric, .calculated:
+                                return bridge.numericGradeText(studentId: student.id, column: appCol)
+                            default:
+                                return bridge.cellText(studentId: student.id, columnId: appCol.id)
+                            }
+                        }()
+
+                        if let num = NotebookFormulaDisplay.parseNumber(raw) {
+                            studentGrades.append(StudentGradeEntry(
+                                columnLetter: el.columnLetter,
+                                value: .decimal(num),
+                                displayLabel: "\(el.shortName): \(IosFormatting.decimal(num))"
+                            ))
+                        }
+                    }
+                    // B) Media de Situación de Aprendizaje (SA)
+                    else if colMatch.isCategorySA && colMatch.appTabTitle != nil {
+                        if let avg = tableRow?.weightedAverage?.doubleValue {
+                            studentGrades.append(StudentGradeEntry(
+                                columnLetter: el.columnLetter,
+                                value: .decimal(avg),
+                                displayLabel: "\(el.shortName) (SA): \(IosFormatting.decimal(avg))"
+                            ))
+                        }
+                    }
+                    // C) Nota final de evaluación (entero 0-10)
+                    else if el.isNotaFinal {
+                        if let avg = tableRow?.weightedAverage?.doubleValue {
+                            let intGrade = max(0, min(10, Int(avg.rounded())))
+                            studentGrades.append(StudentGradeEntry(
+                                columnLetter: el.columnLetter,
+                                value: .integer(intGrade),
+                                displayLabel: "Nota: \(intGrade)"
+                            ))
+                        }
+                    }
                 }
             }
 
@@ -338,9 +505,11 @@ struct EducamosSMExportSheet: View {
                 id: educamosStudent.personaId,
                 educamosStudent: educamosStudent,
                 appStudent: matchedAppStudent,
-                notaFinal: notaFinal
+                grades: studentGrades
             )
         }
+
+        totalGradesToExport = matchedStudents.reduce(0) { $0 + $1.grades.count }
     }
 
     private func normalizedTokens(_ text: String) -> [String] {
@@ -358,25 +527,19 @@ struct EducamosSMExportSheet: View {
         defer { isProcessing = false }
 
         do {
-            // Construir la lista de celdas a rellenar
             var cellWrites: [EducamosSMXlsxWriter.CellWrite] = []
 
             for match in matchedStudents {
                 guard match.hasMatch else { continue }
                 let row = match.educamosStudent.rowIndex
 
-                // Nota final
-                if let nota = match.notaFinal,
-                   let notaElement = template.notaFinalElement {
-                    let cellRef = "\(notaElement.columnLetter)\(row)"
+                for grade in match.grades {
+                    let cellRef = "\(grade.columnLetter)\(row)"
                     cellWrites.append(.init(
                         cellReference: cellRef,
-                        value: .numeric(nota)
+                        value: grade.value
                     ))
                 }
-
-                // Comentarios (si hay observaciones en la app)
-                // Por ahora dejamos vacío — se puede expandir en fases futuras
             }
 
             let outputURL = try EducamosSMXlsxWriter.fillGrades(

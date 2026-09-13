@@ -109,6 +109,7 @@ struct NotebookModuleView: View {
     @State var cellStampRequest: NotebookCellStampRequest? = nil
     @State var studentProfile360Request: StudentProfile360Request? = nil
     @State var isAverageConfigurationPresented = false
+    @State var isEducamosSMExportPresented = false
     @State var averageExplanationRow: NotebookTableRow? = nil
     @State var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
     @State var auditObservationTask: Task<Void, Never>? = nil
@@ -809,6 +810,12 @@ struct NotebookModuleView: View {
         ShareLink(item: exportText(data: data)) {
             Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
         }
+
+        Button {
+            isEducamosSMExportPresented = true
+        } label: {
+            Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+        }
     }
 
     @ViewBuilder
@@ -1335,6 +1342,14 @@ struct NotebookModuleView: View {
                     .presentationDetents([.large])
                     #endif
                 }
+                .sheet(isPresented: $isEducamosSMExportPresented) {
+                    EducamosSMExportSheet(data: data, bridge: bridge)
+                        #if os(macOS)
+                        .frame(width: 560, height: 640)
+                        #else
+                        .presentationDetents([.large])
+                        #endif
+                }
                 .sheet(item: $formulaEditRequest) { request in
                     formulaEditorSheet(request: request, data: data)
                 }
@@ -1533,6 +1548,12 @@ struct NotebookModuleView: View {
                                 // 7. Exportar
                                 ShareLink(item: exportText(data: data)) {
                                     Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
+                                }
+
+                                Button {
+                                    isEducamosSMExportPresented = true
+                                } label: {
+                                    Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
                                 }
 
                                 // 9. Configuración de media

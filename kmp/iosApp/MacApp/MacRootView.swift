@@ -785,6 +785,14 @@ struct MacRootView: View {
                 }
             }
 
+            if notebookToolbarActions.exportSMAction != nil {
+                Button {
+                    notebookToolbarActions.exportSM()
+                } label: {
+                    Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                }
+            }
+
             Button {
                 notebookToolbarActions.undo()
             } label: {

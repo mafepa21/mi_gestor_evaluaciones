@@ -3,6 +3,32 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-13 - Exportación de notas a Educamos SM: edición in-place OpenXML de celdas, coincidencia de nombre original y guardado directo en Descargas
+
+Resumen:
+- Qué cambio se hizo:
+  1. Corrección in-place OpenXML en celdas de calificaciones (`EducamosSMXlsxWriter.swift`):
+     - Se corrigió la causa raíz del error «Invalid cell name» que arrojaba la plataforma Educamos SM (basada en Aspose.Cells) al importar el archivo generado por la app.
+     - En las plantillas de Educamos SM, las celdas de datos (columnas B a R) omiten el atributo `r="..."` de referencia explícita por compacidad OpenXML. Anteriormente, el escritor buscaba la referencia literal (ej. `r="G14"`), no la encontraba y añadía una celda duplicada al final de la fila después de la columna 18 (R), rompiendo el orden de columnas y corrompiendo la definición de coordenadas.
+     - Ahora, `updateRowInPlace` analiza posicionalmente las celdas de cada fila (columna 1=A hasta 18=R), localiza la celda en su índice exacto (índice 6 para G, 7 para H, 8 para I, 12 para M...), conserva los atributos de estilo existentes (`s="70"`, `s="72"`...), actualiza el valor numérico en el slot existente y no añade celdas desordenadas ni duplicadas.
+  2. Preservación del nombre original del archivo:
+     - El archivo `.xlsx` exportado por la app ahora se genera manteniendo exactamente el nombre del archivo original importado de Educamos (ej. `EFI1_1BAHA_EVA1_20260913_222921.xlsx` o `EFI1_1BACB_EVA1_20260913_210535.xlsx`), facilitando la sustitución directa y asegurando la compatibilidad con validaciones por nombre en la plataforma.
+  3. Guardado directo en la carpeta de Descargas en Mac (`EducamosSMExportSheet.swift`):
+     - Al completar la exportación en macOS / Mac Catalyst, el archivo se guarda automáticamente de forma directa en `~/Downloads` con el nombre original, mostrando un banner de confirmación con botón «Mostrar» para abrirlo en Finder mediante `NSWorkspace.shared.activateFileViewerSelecting`.
+     - Se mantiene disponible `ShareLink` para compartir o guardar con diálogo estándar en cualquier plataforma.
+- Por qué importa:
+  - Permite a los docentes evaluar cómodamente con la app y subir sus notas a Educamos SM en segundos, sin errores de formato, sin renombrar archivos y sin pasos manuales intermedios.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/EducamosSMTemplateService.swift`
+  - `kmp/iosApp/AppleShared/EducamosSMXlsxWriter.swift`
+  - `kmp/iosApp/App/EducamosSMExportSheet.swift`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Validación de parsing y estructura XML in-place con openpyxl en plantillas reales (`EFI1_1BAHA_EVA1_...xlsx` y `EFI1_1BACB_EVA1_...xlsx`).
+
 ## Avance 2026-09-11 - Aislamiento e idempotencia en la importación de alumnos desde Excel (sin acumulación entre cursos)
 
 Resumen:

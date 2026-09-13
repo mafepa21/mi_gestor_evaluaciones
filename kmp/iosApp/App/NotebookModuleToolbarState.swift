@@ -260,6 +260,9 @@ extension NotebookModuleView {
             },
             onGenerateSummary: {
                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
+            },
+            onExportSM: {
+                isEducamosSMExportPresented = true
             }
         )
 
@@ -318,6 +321,9 @@ extension NotebookModuleView {
             },
             onRefresh: {
                 Task { await refreshNotebookSignals() }
+            },
+            onExportSM: {
+                isEducamosSMExportPresented = true
             }
         )
     }

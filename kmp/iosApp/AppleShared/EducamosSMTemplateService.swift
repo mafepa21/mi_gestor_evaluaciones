@@ -1,5 +1,5 @@
-import CoreXLSX
 import Foundation
+import ZIPFoundation
 
 // MARK: - Models
 
@@ -36,6 +36,7 @@ struct EducamosSMStudent {
     let rowIndex: Int               // Fila en el Excel (1-based: 13, 14, 15...)
     let personaId: String           // UUID del alumno en Educamos
     let orderNumber: Int            // Número de orden (1, 2, 3...)
+    let rawName: String             // Nombre en Educamos ("Apellidos, Nombre" o alias)
     let clase: String               // "1BACB"
 }
 
@@ -44,8 +45,7 @@ struct EducamosSMTemplate {
     let metadata: EducamosSMMetadata
     let elements: [EducamosSMElement]
     let students: [EducamosSMStudent]
-    let mainSheetName: String       // Nombre de la hoja principal
-    let mainSheetIndex: Int         // Índice de la hoja en el workbook (0-based)
+    let mainSheetPath: String       // Ruta dentro del zip: "xl/worksheets/sheet2.xml"
     let sourceURL: URL
 
     /// Columna de Nota final (TipoColumna=1)
@@ -70,20 +70,131 @@ enum EducamosSMTemplateError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unreadableFile:
-            return "No se ha podido leer el archivo de Educamos."
+            return "No se ha podido leer el archivo de Educamos. Asegúrate de seleccionar un archivo .xlsx válido."
         case .invalidFormat(let detail):
             return "El archivo no tiene el formato esperado de Educamos SM: \(detail)"
         case .noMainSheet:
-            return "No se ha encontrado la hoja principal con datos de alumnos."
+            return "No se ha encontrado la hoja principal con datos de alumnos y materias."
         case .noStudents:
             return "No se han encontrado alumnos en el archivo."
         }
     }
 }
 
+// MARK: - XML Parsers (Foundation XMLParser)
+
+private final class EducamosSMXMLParser: NSObject, XMLParserDelegate {
+    private(set) var rows: [[String]] = []
+    private var currentRow: [Int: String] = [:]
+    private var currentCellColIndex: Int = 0
+    private var currentCellRef: String = ""
+    private var currentCellType: String = ""
+    private var currentElement: String = ""
+    private var currentText: String = ""
+    private let sharedStrings: [String]
+    private var rowIndex: Int = 0
+
+    init(sharedStrings: [String]) {
+        self.sharedStrings = sharedStrings
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
+        currentElement = elementName
+        currentText = ""
+
+        if elementName == "row" {
+            currentRow = [:]
+            if let r = attributeDict["r"], let idx = Int(r) {
+                rowIndex = idx
+            } else {
+                rowIndex += 1
+            }
+            currentCellColIndex = 0
+        } else if elementName == "c" {
+            currentCellRef = attributeDict["r"] ?? ""
+            currentCellType = attributeDict["t"] ?? ""
+
+            if !currentCellRef.isEmpty {
+                currentCellColIndex = colIndex(from: currentCellRef)
+            } else {
+                currentCellColIndex += 1
+            }
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        currentText += string
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+        if elementName == "v" {
+            let text = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if currentCellType == "s", let sIndex = Int(text), sIndex >= 0 && sIndex < sharedStrings.count {
+                currentRow[currentCellColIndex] = sharedStrings[sIndex]
+            } else {
+                currentRow[currentCellColIndex] = text
+            }
+        } else if elementName == "t" && currentElement == "t" {
+            if currentCellType == "inlineStr" {
+                currentRow[currentCellColIndex] = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        } else if elementName == "row" {
+            guard let maxCol = currentRow.keys.max() else {
+                rows.append([])
+                return
+            }
+            let rowArray = (0...maxCol).map { currentRow[$0] ?? "" }
+            rows.append(rowArray)
+        }
+    }
+
+    private func colIndex(from cellRef: String) -> Int {
+        var colLetters = ""
+        for char in cellRef {
+            if char.isLetter {
+                colLetters.append(char)
+            } else {
+                break
+            }
+        }
+        var index = 0
+        for char in colLetters.uppercased() {
+            guard let scalar = char.unicodeScalars.first, scalar.value >= 65 && scalar.value <= 90 else { continue }
+            index = index * 26 + Int(scalar.value - 64)
+        }
+        return max(0, index - 1)
+    }
+}
+
+private final class SharedStringsXMLParser: NSObject, XMLParserDelegate {
+    private(set) var strings: [String] = []
+    private var currentString = ""
+    private var insideSi = false
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
+        if elementName == "si" {
+            insideSi = true
+            currentString = ""
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        if insideSi {
+            currentString += string
+        }
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+        if elementName == "si" {
+            insideSi = false
+            strings.append(currentString)
+        }
+    }
+}
+
 // MARK: - Service
 
-/// Parsea un `.xlsx` exportado de Educamos SM y extrae su estructura.
+/// Parsea un `.xlsx` exportado de Educamos SM y extrae su estructura de forma robusta.
 enum EducamosSMTemplateService {
 
     /// Parsea la plantilla de Educamos SM y devuelve un modelo estructurado.
@@ -95,22 +206,59 @@ enum EducamosSMTemplateService {
             }
         }
 
-        // Leer todas las hojas como texto plano (reutilizando AppleSpreadsheetReader)
-        let allSheets = try AppleSpreadsheetReader.readAllXLSXSheets(from: url)
+        guard let archive = Archive(url: url, accessMode: .read) else {
+            throw EducamosSMTemplateError.unreadableFile
+        }
 
-        // Encontrar la hoja principal: la que tiene "ClaseMateriaId" o "PersonaId" en alguna fila
-        guard let (mainSheetIndex, mainSheet) = findMainSheet(in: allSheets) else {
+        // 1. Extraer sharedStrings.xml si existe
+        var sharedStrings: [String] = []
+        if let ssEntry = archive["xl/sharedStrings.xml"] {
+            var data = Data()
+            _ = try archive.extract(ssEntry) { data.append($0) }
+            let parser = SharedStringsXMLParser()
+            let xmlParser = XMLParser(data: data)
+            xmlParser.delegate = parser
+            xmlParser.parse()
+            sharedStrings = parser.strings
+        }
+
+        // 2. Buscar todas las hojas en el ZIP
+        let sheetEntries = archive.filter { $0.path.hasPrefix("xl/worksheets/sheet") && $0.path.hasSuffix(".xml") }
+            .sorted { $0.path < $1.path }
+
+        guard !sheetEntries.isEmpty else {
             throw EducamosSMTemplateError.noMainSheet
         }
 
-        // Parsear metadata de las filas de cabecera
-        let metadata = try parseMetadata(from: mainSheet.rows)
+        // 3. Parsear hojas hasta encontrar la principal
+        var mainSheetPath: String?
+        var mainRows: [[String]] = []
 
-        // Parsear tipos de columna y UUIDs de elementos
-        let elements = parseElements(from: mainSheet.rows)
+        for entry in sheetEntries {
+            var data = Data()
+            _ = try archive.extract(entry) { data.append($0) }
+            let parser = EducamosSMXMLParser(sharedStrings: sharedStrings)
+            let xmlParser = XMLParser(data: data)
+            xmlParser.delegate = parser
+            xmlParser.parse()
 
-        // Parsear alumnos
-        let students = parseStudents(from: mainSheet.rows, claseMateriaId: metadata.claseMateriaId)
+            for row in parser.rows {
+                if row.contains("ClaseMateriaId") || row.contains("PersonaId") {
+                    mainSheetPath = entry.path
+                    mainRows = parser.rows
+                    break
+                }
+            }
+            if mainSheetPath != nil { break }
+        }
+
+        guard let sheetPath = mainSheetPath, !mainRows.isEmpty else {
+            throw EducamosSMTemplateError.noMainSheet
+        }
+
+        let metadata = try parseMetadata(from: mainRows)
+        let elements = parseElements(from: mainRows)
+        let students = parseStudents(from: mainRows, claseMateriaId: metadata.claseMateriaId)
 
         guard !students.isEmpty else {
             throw EducamosSMTemplateError.noStudents
@@ -120,32 +268,12 @@ enum EducamosSMTemplateService {
             metadata: metadata,
             elements: elements,
             students: students,
-            mainSheetName: mainSheet.name,
-            mainSheetIndex: mainSheetIndex,
+            mainSheetPath: sheetPath,
             sourceURL: url
         )
     }
 
     // MARK: - Private helpers
-
-    private static func findMainSheet(
-        in sheets: [(name: String, rows: [[String]])]
-    ) -> (Int, (name: String, rows: [[String]]))? {
-        for (index, sheet) in sheets.enumerated() {
-            for row in sheet.rows {
-                if row.contains("ClaseMateriaId") || row.contains("PersonaId") {
-                    return (index, sheet)
-                }
-            }
-        }
-        // Fallback: buscar la hoja con más filas que no sea "Export Summary" ni "Leyenda"
-        let candidates = sheets.enumerated().filter { (_, sheet) in
-            !sheet.name.lowercased().contains("export") &&
-            !sheet.name.lowercased().contains("leyenda") &&
-            !sheet.name.lowercased().contains("descripci")
-        }
-        return candidates.max(by: { $0.1.rows.count < $1.1.rows.count })
-    }
 
     private static func parseMetadata(from rows: [[String]]) throws -> EducamosSMMetadata {
         func findRow(label: String) -> [String]? {
@@ -243,24 +371,38 @@ enum EducamosSMTemplateService {
 
         for rowIdx in dataStartIndex..<rows.count {
             let row = rows[rowIdx]
-            guard row.count >= 3 else { continue }
+            guard row.count >= 2 else { continue }
 
             let personaId = row[1].trimmingCharacters(in: .whitespacesAndNewlines)
-            let orderStr = row[2].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard personaId.contains("-") else { continue }
 
-            guard personaId.contains("-"),
-                  let orderNumber = Int(orderStr)
-            else { continue }
-
+            var orderNumber = 0
+            var rawName = ""
             var clase = ""
+
+            // Buscar orden y nombre en columnas 2, 3, 4
+            for colIdx in 2...min(4, row.count - 1) {
+                let val = row[colIdx].trimmingCharacters(in: .whitespacesAndNewlines)
+                if let num = Int(val), orderNumber == 0 {
+                    orderNumber = num
+                } else if !val.isEmpty && !val.contains("-") && rawName.isEmpty {
+                    rawName = val
+                }
+            }
+
+            if orderNumber == 0 {
+                orderNumber = students.count + 1
+            }
+
             if row.count > 5 {
                 clase = row[5].trimmingCharacters(in: .whitespacesAndNewlines)
             }
 
             students.append(EducamosSMStudent(
-                rowIndex: rowIdx + 1, // Convertir a 1-based (fila Excel)
+                rowIndex: rowIdx + 1,
                 personaId: personaId,
                 orderNumber: orderNumber,
+                rawName: rawName,
                 clase: clase
             ))
         }

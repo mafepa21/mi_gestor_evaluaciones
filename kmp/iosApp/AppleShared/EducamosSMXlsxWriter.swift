@@ -105,9 +105,8 @@ enum EducamosSMXlsxWriter {
             throw EducamosSMXlsxWriterError.cannotCopyTemplate
         }
 
-        // 2. Determinar la ruta del XML de la hoja principal dentro del ZIP
-        //    Educamos usa sheet2.xml para la hoja principal (índice 1, 0-based)
-        let sheetXMLPath = "xl/worksheets/sheet\(template.mainSheetIndex + 1).xml"
+        // 2. Ruta del XML de la hoja principal dentro del ZIP
+        let sheetXMLPath = template.mainSheetPath
 
         // 3. Leer el XML de la hoja desde el ZIP
         guard let archive = Archive(url: outputURL, accessMode: .update) else {

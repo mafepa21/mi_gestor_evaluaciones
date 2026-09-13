@@ -132,26 +132,39 @@ struct EducamosSMExportSheet: View {
                             Text("\(match.educamosStudent.orderNumber)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .frame(width: 24)
+                            // Número de orden
+                            Text("\(match.educamosStudent.orderNumber)")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 24, alignment: .trailing)
 
-                            // Nombre del alumno de la app
-                            if let student = match.appStudent {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(student.lastName), \(student.firstName)")
-                                        .font(.body)
-                                    if let nota = match.notaFinal {
-                                        Text("Nota: \(nota)")
-                                            .font(.caption)
-                                            .foregroundStyle(.blue)
-                                    } else {
-                                        Text("Sin nota")
-                                            .font(.caption)
-                                            .foregroundStyle(.orange)
-                                    }
+                            VStack(alignment: .leading, spacing: 2) {
+                                if !match.educamosStudent.rawName.isEmpty && match.educamosStudent.rawName != "\(match.educamosStudent.orderNumber)" {
+                                    Text(match.educamosStudent.rawName)
+                                        .font(.subheadline.weight(.medium))
                                 }
-                            } else {
-                                Text("Sin asignar")
-                                    .foregroundStyle(.red)
+
+                                if let student = match.appStudent {
+                                    HStack(spacing: 6) {
+                                        Text("\(student.lastName), \(student.firstName)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+
+                                        if let nota = match.notaFinal {
+                                            Text("·  Nota: \(nota)")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.blue)
+                                        } else {
+                                            Text("·  Sin nota")
+                                                .font(.caption)
+                                                .foregroundStyle(.orange)
+                                        }
+                                    }
+                                } else {
+                                    Text("Sin coincidencia en el grupo")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                }
                             }
 
                             Spacer()
@@ -277,18 +290,44 @@ struct EducamosSMExportSheet: View {
         }
     }
 
-    /// Empareja alumnos de Educamos con alumnos de la app por número de orden.
+    /// Empareja alumnos de Educamos con los de la app por coincidencia de nombre (tokens) o por orden.
     private func buildMatching(template: EducamosSMTemplate) {
         let appStudents = filteredAppStudents
 
         matchedStudents = template.students.map { educamosStudent in
-            // Matching por número de orden (1-based)
-            let index = educamosStudent.orderNumber - 1
-            let appStudent = index >= 0 && index < appStudents.count ? appStudents[index] : nil
+            var matchedAppStudent: Student? = nil
 
-            // Calcular nota final redondeada
+            // 1. Coincidencia por nombre (normalizado) si el archivo de Educamos trae nombres
+            let educamosTokens = Set(normalizedTokens(educamosStudent.rawName))
+            if !educamosTokens.isEmpty {
+                // Coincidencia exacta de conjunto de palabras ("Apellidos, Nombre" <-> "Nombre Apellidos")
+                matchedAppStudent = appStudents.first { candidate in
+                    let candidateTokens = Set(normalizedTokens("\(candidate.firstName) \(candidate.lastName)"))
+                    return candidateTokens == educamosTokens
+                }
+
+                // Coincidencia por inclusión si un lado omite un apellido o segundo nombre
+                if matchedAppStudent == nil {
+                    matchedAppStudent = appStudents.first { candidate in
+                        let firstTokens = Set(normalizedTokens(candidate.firstName))
+                        let lastTokens = Set(normalizedTokens(candidate.lastName))
+                        return (firstTokens.isSubset(of: educamosTokens) && !lastTokens.intersection(educamosTokens).isEmpty)
+                            || (lastTokens.isSubset(of: educamosTokens) && !firstTokens.intersection(educamosTokens).isEmpty)
+                    }
+                }
+            }
+
+            // 2. Fallback a coincidencia por número de orden (1-based)
+            if matchedAppStudent == nil {
+                let index = educamosStudent.orderNumber - 1
+                if index >= 0 && index < appStudents.count {
+                    matchedAppStudent = appStudents[index]
+                }
+            }
+
+            // 3. Calcular nota final redondeada a entero 0-10
             var notaFinal: Int?
-            if let student = appStudent {
+            if let student = matchedAppStudent {
                 let row = data.sheet.rows.first { $0.student.id == student.id }
                 if let avg = row?.weightedAverage?.doubleValue {
                     notaFinal = max(0, min(10, Int(avg.rounded())))
@@ -298,10 +337,18 @@ struct EducamosSMExportSheet: View {
             return StudentMatch(
                 id: educamosStudent.personaId,
                 educamosStudent: educamosStudent,
-                appStudent: appStudent,
+                appStudent: matchedAppStudent,
                 notaFinal: notaFinal
             )
         }
+    }
+
+    private func normalizedTokens(_ text: String) -> [String] {
+        let folded = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "es_ES"))
+        return folded
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .map { $0.uppercased() }
     }
 
     private func generateExport() async {

@@ -1,6 +1,9 @@
 import MiGestorKit
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 // MARK: - Export Sheet
 
@@ -21,6 +24,7 @@ struct EducamosSMExportSheet: View {
     @State private var errorMessage: String?
     @State private var isProcessing = false
     @State private var generatedFileURL: URL?
+    @State private var savedToDownloadsPath: String?
 
     enum ExportStep {
         case selectFile
@@ -306,14 +310,71 @@ struct EducamosSMExportSheet: View {
                     .padding(.horizontal, 32)
             }
 
-            if let url = generatedFileURL {
-                ShareLink(item: url) {
-                    Label("Compartir archivo", systemImage: "square.and.arrow.up")
-                        .frame(maxWidth: .infinity)
+            if let savedPath = savedToDownloadsPath {
+                HStack(spacing: 12) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.green)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Guardado en Descargas")
+                            .font(.subheadline.weight(.semibold))
+                        Text(URL(fileURLWithPath: savedPath).lastPathComponent)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+
+                    Spacer()
+
+                    #if os(macOS)
+                    Button("Mostrar") {
+                        let url = URL(fileURLWithPath: savedPath)
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    #endif
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .padding(.horizontal, 40)
+                .padding()
+                .background(Color.green.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 32)
+            } else {
+                #if os(macOS) || targetEnvironment(macCatalyst)
+                if let url = generatedFileURL {
+                    Button {
+                        saveToDownloads(sourceURL: url)
+                    } label: {
+                        Label("Guardar en Descargas", systemImage: "arrow.down.circle")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .padding(.horizontal, 40)
+                }
+                #endif
+            }
+
+            if let url = generatedFileURL {
+                if savedToDownloadsPath != nil {
+                    ShareLink(item: url) {
+                        Label("Compartir archivo", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .padding(.horizontal, 40)
+                } else {
+                    ShareLink(item: url) {
+                        Label("Compartir archivo", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .padding(.horizontal, 40)
+                }
             }
 
             Button {
@@ -564,10 +625,33 @@ struct EducamosSMExportSheet: View {
             )
 
             generatedFileURL = outputURL
+
+            #if os(macOS) || targetEnvironment(macCatalyst)
+            saveToDownloads(sourceURL: outputURL)
+            #endif
+
             withAnimation { step = .export }
 
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func saveToDownloads(sourceURL: URL) {
+        guard let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            return
+        }
+        let destURL = downloadsURL.appendingPathComponent(sourceURL.lastPathComponent)
+        do {
+            if FileManager.default.fileExists(atPath: destURL.path) {
+                try FileManager.default.removeItem(at: destURL)
+            }
+            try FileManager.default.copyItem(at: sourceURL, to: destURL)
+            withAnimation {
+                savedToDownloadsPath = destURL.path
+            }
+        } catch {
+            print("EducamosSM: no se pudo guardar en Descargas: \(error.localizedDescription)")
         }
     }
 }

@@ -49,6 +49,7 @@ struct EducamosSMTemplate {
     let students: [EducamosSMStudent]
     let mainSheetPath: String       // Ruta dentro del zip: "xl/worksheets/sheet2.xml"
     let sourceURL: URL
+    let originalFilename: String
 
     /// Columna de Nota final (TipoColumna=1)
     var notaFinalElement: EducamosSMElement? {
@@ -281,7 +282,8 @@ enum EducamosSMTemplateService {
             elements: elements,
             students: students,
             mainSheetPath: sheetPath,
-            sourceURL: url
+            sourceURL: url,
+            originalFilename: url.lastPathComponent
         )
     }
 

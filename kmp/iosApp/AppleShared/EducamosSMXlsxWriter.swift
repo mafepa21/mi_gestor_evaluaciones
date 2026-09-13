@@ -90,13 +90,9 @@ enum EducamosSMXlsxWriter {
         template: EducamosSMTemplate,
         cells: [CellWrite]
     ) throws -> URL {
-        // 1. Copiar la plantilla a un directorio temporal
+        // 1. Copiar la plantilla a un directorio temporal conservando el nombre original
         let tempDir = FileManager.default.temporaryDirectory
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-            .replacingOccurrences(of: ":", with: "")
-            .replacingOccurrences(of: "-", with: "")
-        let outputFilename = "Educamos_\(template.metadata.materia)_\(timestamp).xlsx"
-            .replacingOccurrences(of: " ", with: "_")
+        let outputFilename = template.originalFilename.isEmpty ? "Educamos_export.xlsx" : template.originalFilename
         let outputURL = tempDir.appendingPathComponent(outputFilename)
 
         // Limpiar si existe un archivo previo
@@ -147,13 +143,28 @@ enum EducamosSMXlsxWriter {
             throw EducamosSMXlsxWriterError.cannotReadSheetXML
         }
 
-        // Inyectar valores en las celdas
+        // Agrupar modificaciones por fila y por número de columna
+        var writesByRow: [Int: [Int: ParsedWrite]] = [:]
         for cell in cells {
-            xmlString = injectCellValue(
-                xml: xmlString,
-                cellReference: cell.cellReference,
-                value: cell.value
-            )
+            if let parsed = parseCellReference(cell.cellReference) {
+                let write = ParsedWrite(
+                    cellReference: cell.cellReference,
+                    colLetters: parsed.colLetters,
+                    colNumber: parsed.colNumber,
+                    rowNumber: parsed.rowNumber,
+                    value: cell.value
+                )
+                writesByRow[parsed.rowNumber, default: [:]][parsed.colNumber] = write
+            }
+        }
+
+        // Actualizar cada fila en el XML in-place
+        // Ordenamos las filas de mayor a menor para que la sustitución de rangos no desplace los índices anteriores
+        let sortedRowNumbers = writesByRow.keys.sorted(by: >)
+        for rowNum in sortedRowNumbers {
+            if let colWrites = writesByRow[rowNum] {
+                xmlString = updateRowInPlace(xml: xmlString, rowNumber: rowNum, colWrites: colWrites)
+            }
         }
 
         guard let modifiedData = xmlString.data(using: .utf8) else {
@@ -175,7 +186,22 @@ enum EducamosSMXlsxWriter {
         )
     }
 
-    // MARK: - XML manipulation
+    // MARK: - Row & Cell parsing and in-place updates
+
+    private struct ParsedWrite {
+        let cellReference: String
+        let colLetters: String
+        let colNumber: Int      // 1-based (A=1, B=2, G=7, H=8, I=9, M=13)
+        let rowNumber: Int
+        let value: EducamosSMCellValue
+    }
+
+    private struct RawCell {
+        let rawXML: String
+        let colNumber: Int
+        let hasExplicitR: Bool
+        let styleAttribute: String?     // e.g. "s=\"70\""
+    }
 
     /// Convierte una referencia de celda tipo "M13" en letras de columna, índice numérico de columna y número de fila.
     private static func parseCellReference(_ ref: String) -> (colLetters: String, colNumber: Int, rowNumber: Int)? {
@@ -197,120 +223,189 @@ enum EducamosSMXlsxWriter {
         return (letters.uppercased(), colNum, rowNum)
     }
 
-    /// Inyecta un valor en una celda específica del XML del worksheet.
-    ///
-    /// Esta función busca la celda por su referencia:
-    /// - Si ya existe y es self-closing (`/>`): la expande e inyecta el valor.
-    /// - Si ya existe con closing tag (`</c>`): reemplaza su contenido interior.
-    /// - Si no existe en la fila (formato sparse): la inserta en el orden alfabético correcto dentro de `<row>`.
-    private static func injectCellValue(
+    /// Actualiza una fila completa in-place dentro del XML de la hoja.
+    private static func updateRowInPlace(
         xml: String,
-        cellReference: String,
-        value: EducamosSMCellValue
+        rowNumber: Int,
+        colWrites: [Int: ParsedWrite]
     ) -> String {
+        guard let bounds = findRowBounds(in: xml, rowNumber: rowNumber) else {
+            return xml
+        }
+
+        // Si la fila era self-closing (<row r="14"... />)
+        if bounds.isSelfClosing {
+            // Expandir fila y crear celdas ordenadas
+            let rowTagOpen = xml[bounds.openTagRange]
+            var cleanOpen = String(rowTagOpen).trimmingCharacters(in: .whitespaces)
+            if cleanOpen.hasSuffix("/>") {
+                cleanOpen = String(cleanOpen.dropLast(2)) + ">"
+            }
+            var cellStrings: [String] = []
+            for (_, write) in colWrites.sorted(by: { $0.key < $1.key }) {
+                var attrs = ["r=\"\(write.cellReference)\""]
+                if let t = write.value.typeAttribute { attrs.append("t=\"\(t)\"") }
+                let attrStr = " " + attrs.joined(separator: " ")
+                cellStrings.append("<c\(attrStr)>\(write.value.xmlFragment)</c>")
+            }
+            let replacement = cleanOpen + cellStrings.joined() + "</row>"
+            var result = xml
+            result.replaceSubrange(bounds.fullRowRange, with: replacement)
+            return result
+        }
+
+        let rowContent = String(xml[bounds.contentRange])
+        let existingCells = parseCells(from: rowContent, rowNumber: rowNumber)
+
+        var newCellStrings: [String] = []
+        var handledCols: Set<Int> = []
+
+        for cell in existingCells {
+            if let write = colWrites[cell.colNumber] {
+                handledCols.insert(cell.colNumber)
+                // Construir la nueva celda conservando el estilo y la convención de atributo 'r'
+                var attrs: [String] = []
+                if cell.hasExplicitR {
+                    attrs.append("r=\"\(write.cellReference)\"")
+                }
+                if let s = cell.styleAttribute {
+                    attrs.append(s)
+                }
+                if let t = write.value.typeAttribute {
+                    attrs.append("t=\"\(t)\"")
+                }
+                let attrStr = attrs.isEmpty ? "" : " " + attrs.joined(separator: " ")
+                newCellStrings.append("<c\(attrStr)>\(write.value.xmlFragment)</c>")
+            } else {
+                newCellStrings.append(cell.rawXML)
+            }
+        }
+
+        // Si alguna columna solicitada no existía en la fila (formato sparse), insertarla ordenada
+        let unhandled = colWrites.filter { !handledCols.contains($0.key) }
+            .sorted { $0.key < $1.key }
+        if !unhandled.isEmpty {
+            for (_, write) in unhandled {
+                var attrs = ["r=\"\(write.cellReference)\""]
+                if let t = write.value.typeAttribute {
+                    attrs.append("t=\"\(t)\"")
+                }
+                let attrStr = " " + attrs.joined(separator: " ")
+                newCellStrings.append("<c\(attrStr)>\(write.value.xmlFragment)</c>")
+            }
+        }
+
+        let newRowContent = newCellStrings.joined()
         var result = xml
-
-        let refPattern = "r=\"\(cellReference)\""
-
-        // 1. La celda ya existe en el XML
-        if let refRange = result.range(of: refPattern) {
-            let searchBackStart = result.startIndex
-            let refStart = refRange.lowerBound
-            guard let tagStart = result[searchBackStart..<refStart].range(of: "<c ", options: .backwards)?.lowerBound else {
-                return result
-            }
-
-            let afterRef = refRange.upperBound
-
-            // A) Self-closing: <c r="M13" s="53"/>
-            if let selfCloseRange = result[afterRef...].range(of: "/>") {
-                let between = result[afterRef..<selfCloseRange.lowerBound]
-                if !between.contains("<") {
-                    let endOfSelfClose = selfCloseRange.upperBound
-                    let existingTag = String(result[tagStart..<selfCloseRange.lowerBound])
-
-                    var newTag = existingTag.replacingOccurrences(of: " t=\"s\"", with: "")
-                    if let typeAttr = value.typeAttribute {
-                        newTag += " t=\"\(typeAttr)\""
-                    }
-                    newTag += ">\(value.xmlFragment)</c>"
-
-                    result.replaceSubrange(tagStart..<endOfSelfClose, with: newTag)
-                    return result
-                }
-            }
-
-            // B) Con closing tag: <c r="M13" ...>...</c>
-            if let closeRange = result[afterRef...].range(of: "</c>") {
-                let between = result[afterRef..<closeRange.lowerBound]
-                if !between.contains("</c>") {
-                    if let openTagEnd = result[afterRef...].range(of: ">") {
-                        let openEnd = openTagEnd.upperBound
-                        var openTag = String(result[tagStart..<openEnd])
-                        openTag = openTag.replacingOccurrences(of: " t=\"s\"", with: "")
-                        if let typeAttr = value.typeAttribute {
-                            if !openTag.contains("t=\"\(typeAttr)\"") {
-                                openTag = openTag.replacingOccurrences(of: ">", with: " t=\"\(typeAttr)\">")
-                            }
-                        }
-
-                        let newContent = openTag + value.xmlFragment + "</c>"
-                        let endOfClose = closeRange.upperBound
-                        result.replaceSubrange(tagStart..<endOfClose, with: newContent)
-                        return result
-                    }
-                }
-            }
-
-            return result
-        }
-
-        // 2. La celda no existe: inserción sparse ordenada dentro de <row>
-        guard let parsed = parseCellReference(cellReference) else { return result }
-        let rowPattern = "<row r=\"\(parsed.rowNumber)\""
-        guard let rowRange = result.range(of: rowPattern) else { return result }
-
-        let searchFrom = rowRange.lowerBound
-        guard let rowTagClose = result[searchFrom...].range(of: ">") else { return result }
-
-        // Si la fila completa era self-closing: <row r="14".../>
-        let beforeRowTagClose = result.index(before: rowTagClose.lowerBound)
-        if result[beforeRowTagClose] == "/" {
-            var newCellTag = "<c r=\"\(cellReference)\""
-            if let typeAttr = value.typeAttribute { newCellTag += " t=\"\(typeAttr)\"" }
-            newCellTag += ">\(value.xmlFragment)</c>"
-            let replacement = ">\(newCellTag)</row>"
-            result.replaceSubrange(beforeRowTagClose...rowTagClose.lowerBound, with: replacement)
-            return result
-        }
-
-        guard let endRowRange = result[rowTagClose.upperBound...].range(of: "</row>") else { return result }
-        let rowContent = String(result[rowTagClose.upperBound..<endRowRange.lowerBound])
-
-        var insertOffset = rowContent.count
-        let regex = try? NSRegularExpression(pattern: "<c [^>]*r=\"([A-Za-z]+)\(parsed.rowNumber)\"")
-        if let matches = regex?.matches(in: rowContent, range: NSRange(rowContent.startIndex..., in: rowContent)) {
-            for m in matches {
-                if let r = Range(m.range(at: 1), in: rowContent) {
-                    let colLetters = String(rowContent[r])
-                    if let otherParsed = parseCellReference("\(colLetters)\(parsed.rowNumber)"),
-                       otherParsed.colNumber > parsed.colNumber {
-                        if let matchRange = Range(m.range, in: rowContent) {
-                            insertOffset = rowContent.distance(from: rowContent.startIndex, to: matchRange.lowerBound)
-                            break
-                        }
-                    }
-                }
-            }
-        }
-
-        var cellXML = "<c r=\"\(cellReference)\""
-        if let typeAttr = value.typeAttribute { cellXML += " t=\"\(typeAttr)\"" }
-        cellXML += ">\(value.xmlFragment)</c>"
-
-        let insertIndex = result.index(rowTagClose.upperBound, offsetBy: insertOffset)
-        result.insert(contentsOf: cellXML, at: insertIndex)
+        result.replaceSubrange(bounds.contentRange, with: newRowContent)
         return result
+    }
+
+    private struct RowBounds {
+        let fullRowRange: Range<String.Index>
+        let openTagRange: Range<String.Index>
+        let contentRange: Range<String.Index>
+        let isSelfClosing: Bool
+    }
+
+    /// Localiza los límites de un `<row>` específico por su número de fila.
+    private static func findRowBounds(in xml: String, rowNumber: Int) -> RowBounds? {
+        let pattern = "r=\"\(rowNumber)\""
+        var searchStart = xml.startIndex
+
+        while searchStart < xml.endIndex {
+            guard let rRange = xml[searchStart...].range(of: pattern) else { return nil }
+            let beforeR = xml[..<rRange.lowerBound]
+
+            if let rowStart = beforeR.range(of: "<row", options: .backwards) {
+                // Verificar que no hay un '>' entre "<row" y "r=\"...\""
+                let between = xml[rowStart.upperBound..<rRange.lowerBound]
+                if !between.contains(">") {
+                    guard let tagEnd = xml[rRange.upperBound...].range(of: ">") else { return nil }
+                    let openTag = xml[rowStart.lowerBound..<tagEnd.upperBound]
+                    let isSelfClosing = openTag.trimmingCharacters(in: .whitespaces).hasSuffix("/>")
+
+                    if isSelfClosing {
+                        return RowBounds(
+                            fullRowRange: rowStart.lowerBound..<tagEnd.upperBound,
+                            openTagRange: rowStart.lowerBound..<tagEnd.upperBound,
+                            contentRange: tagEnd.lowerBound..<tagEnd.lowerBound,
+                            isSelfClosing: true
+                        )
+                    }
+
+                    guard let closeTag = xml[tagEnd.upperBound...].range(of: "</row>") else { return nil }
+                    return RowBounds(
+                        fullRowRange: rowStart.lowerBound..<closeTag.upperBound,
+                        openTagRange: rowStart.lowerBound..<tagEnd.upperBound,
+                        contentRange: tagEnd.upperBound..<closeTag.lowerBound,
+                        isSelfClosing: false
+                    )
+                }
+            }
+            searchStart = rRange.upperBound
+        }
+        return nil
+    }
+
+    /// Parsea secuencialmente las celdas `<c>` dentro del contenido de una fila.
+    private static func parseCells(from content: String, rowNumber: Int) -> [RawCell] {
+        var cells: [RawCell] = []
+        var idx = content.startIndex
+        var currentCol = 0
+
+        while idx < content.endIndex {
+            guard let cStart = content[idx...].range(of: "<c")?.lowerBound else { break }
+            guard let tagEnd = content[cStart...].range(of: ">") else { break }
+
+            let cellRaw: String
+            let preTagEnd = content[cStart..<tagEnd.lowerBound].trimmingCharacters(in: .whitespaces)
+            let isSelfClosing = preTagEnd.hasSuffix("/")
+
+            if isSelfClosing {
+                cellRaw = String(content[cStart..<tagEnd.upperBound])
+                idx = tagEnd.upperBound
+            } else {
+                guard let cClose = content[tagEnd.upperBound...].range(of: "</c>") else { break }
+                cellRaw = String(content[cStart..<cClose.upperBound])
+                idx = cClose.upperBound
+            }
+
+            // Determinar columna del cell
+            var hasExplicitR = false
+            if let rRange = cellRaw.range(of: "r=\"") {
+                let afterQuote = cellRaw[rRange.upperBound...]
+                if let endQuote = afterQuote.range(of: "\"") {
+                    let ref = String(afterQuote[..<endQuote.lowerBound])
+                    if let parsed = parseCellReference(ref) {
+                        currentCol = parsed.colNumber
+                        hasExplicitR = true
+                    }
+                }
+            }
+            if !hasExplicitR {
+                currentCol += 1
+            }
+
+            // Extraer atributo de estilo s="..."
+            var styleAttr: String? = nil
+            if let sRange = cellRaw.range(of: "s=\"") {
+                let afterQuote = cellRaw[sRange.upperBound...]
+                if let endQuote = afterQuote.range(of: "\"") {
+                    let sVal = String(afterQuote[..<endQuote.lowerBound])
+                    styleAttr = "s=\"\(sVal)\""
+                }
+            }
+
+            cells.append(RawCell(
+                rawXML: cellRaw,
+                colNumber: currentCol,
+                hasExplicitR: hasExplicitR,
+                styleAttribute: styleAttr
+            ))
+        }
+
+        return cells
     }
 }
 

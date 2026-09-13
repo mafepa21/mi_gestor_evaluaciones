@@ -461,7 +461,8 @@ struct EducamosSMExportSheet: View {
                         let raw: String = {
                             switch appCol.type {
                             case .rubric:
-                                return bridge.rubricGradeOnTenText(studentId: student.id, column: appCol)
+                                let direct = bridge.rubricGradeText(studentId: student.id, column: appCol)
+                                return !direct.isEmpty ? direct : bridge.rubricGradeOnTenText(studentId: student.id, column: appCol)
                             case .numeric, .calculated:
                                 return bridge.numericGradeText(studentId: student.id, column: appCol)
                             default:
@@ -469,7 +470,7 @@ struct EducamosSMExportSheet: View {
                             }
                         }()
 
-                        if let num = NotebookFormulaDisplay.parseNumber(raw) {
+                        if let num = parseGradeNumber(raw) {
                             studentGrades.append(StudentGradeEntry(
                                 columnLetter: el.columnLetter,
                                 value: .decimal(num),
@@ -510,6 +511,21 @@ struct EducamosSMExportSheet: View {
         }
 
         totalGradesToExport = matchedStudents.reduce(0) { $0 + $1.grades.count }
+    }
+
+    /// Parsea una calificación numérica admitiendo formato decimal con coma o punto,
+    /// y eliminando automáticamente sufijos de escala como "/ 10" habituales en rúbricas.
+    private func parseGradeNumber(_ raw: String) -> Double? {
+        var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+
+        // Si viene con formato "9.38 / 10" o "9,38/10", tomar la parte anterior a la barra
+        if let slashIndex = cleaned.firstIndex(of: "/") {
+            cleaned = String(cleaned[..<slashIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        let normalized = cleaned.replacingOccurrences(of: ",", with: ".")
+        return Double(normalized)
     }
 
     private func normalizedTokens(_ text: String) -> [String] {

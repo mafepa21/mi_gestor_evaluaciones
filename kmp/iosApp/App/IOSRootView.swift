@@ -515,6 +515,14 @@ struct IOSRootView: View {
                     }
                 }
 
+                if layoutState.notebookExportSMAction != nil {
+                    Button {
+                        layoutState.notebookExportSM()
+                    } label: {
+                        Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                    }
+                }
+
                 Button {
                     layoutState.notebookUndo()
                 } label: {

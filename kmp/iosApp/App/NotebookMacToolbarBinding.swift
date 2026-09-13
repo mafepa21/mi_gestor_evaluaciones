@@ -24,6 +24,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     private var advancedMenuAction: (() -> Void)?
     private var summaryAction: (() -> Void)?
     private var refreshAction: (() -> Void)?
+    private(set) var exportSMAction: (() -> Void)?
 
     private func publishDeferred(_ mutation: @escaping @MainActor () -> Void) {
         Task { @MainActor in
@@ -53,7 +54,8 @@ final class NotebookMacToolbarActions: ObservableObject {
         onOpenGroupManagement: @escaping () -> Void,
         onOpenAdvancedMenu: @escaping () -> Void,
         onGenerateSummary: @escaping () -> Void,
-        onRefresh: @escaping () -> Void
+        onRefresh: @escaping () -> Void,
+        onExportSM: (() -> Void)? = nil
     ) {
         publishDeferred {
             self.canMarkAllPresent = canMarkAllPresent
@@ -77,6 +79,7 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.advancedMenuAction = onOpenAdvancedMenu
             self.summaryAction = onGenerateSummary
             self.refreshAction = onRefresh
+            self.exportSMAction = onExportSM
         }
     }
 
@@ -103,6 +106,7 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.advancedMenuAction = nil
             self.summaryAction = nil
             self.refreshAction = nil
+            self.exportSMAction = nil
         }
     }
 
@@ -117,4 +121,5 @@ final class NotebookMacToolbarActions: ObservableObject {
     func openAdvancedMenu() { advancedMenuAction?() }
     func generateSummary() { summaryAction?() }
     func refresh() { refreshAction?() }
+    func exportSM() { exportSMAction?() }
 }

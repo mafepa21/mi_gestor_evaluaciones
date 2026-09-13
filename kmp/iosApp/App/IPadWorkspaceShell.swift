@@ -50,6 +50,7 @@ final class WorkspaceLayoutState: ObservableObject {
     var notebookMarkAllPresentAction: (() -> Void)?
     var notebookRefreshAction: (() -> Void)?
     var notebookGenerateSummaryAction: (() -> Void)?
+    var notebookExportSMAction: (() -> Void)?
 
     var dashboardInspectorAction: (() -> Void)?
     var dashboardRefreshAction: (() -> Void)?
@@ -102,7 +103,8 @@ final class WorkspaceLayoutState: ObservableObject {
         onToggleAttendanceQuickMode: (() -> Void)? = nil,
         onMarkAllPresent: (() -> Void)? = nil,
         onRefresh: (() -> Void)? = nil,
-        onGenerateSummary: (() -> Void)? = nil
+        onGenerateSummary: (() -> Void)? = nil,
+        onExportSM: (() -> Void)? = nil
     ) {
         publishDeferred {
             self.notebookInspectorAvailable = inspectorAvailable
@@ -130,6 +132,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookMarkAllPresentAction = onMarkAllPresent
             self.notebookRefreshAction = onRefresh
             self.notebookGenerateSummaryAction = onGenerateSummary
+            self.notebookExportSMAction = onExportSM
         }
     }
 
@@ -189,6 +192,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookMarkAllPresentAction = nil
             self.notebookRefreshAction = nil
             self.notebookGenerateSummaryAction = nil
+            self.notebookExportSMAction = nil
         }
     }
 
@@ -218,6 +222,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func notebookGenerateSummary() {
         notebookGenerateSummaryAction?()
+    }
+
+    func notebookExportSM() {
+        notebookExportSMAction?()
     }
 
     func setNotebookSearchText(_ value: String) {
@@ -1775,6 +1783,14 @@ struct AppWorkspaceShell: View {
                 }
             }
 
+            if layoutState.notebookExportSMAction != nil {
+                Button {
+                    layoutState.notebookExportSM()
+                } label: {
+                    Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                }
+            }
+
             Button {
                 layoutState.notebookUndo()
             } label: {
@@ -1921,6 +1937,14 @@ struct AppWorkspaceShell: View {
                     layoutState.notebookGenerateSummary()
                 } label: {
                     Label("Generar síntesis", systemImage: "apple.intelligence")
+                }
+
+                if layoutState.notebookExportSMAction != nil {
+                    Button {
+                        layoutState.notebookExportSM()
+                    } label: {
+                        Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                    }
                 }
 
                 Button {

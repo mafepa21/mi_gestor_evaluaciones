@@ -3,6 +3,34 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-14 - Rediseño de Gestión de Datos en Ajustes: selector rápido, filtros contextuales y borrado masivo por lotes
+
+Resumen:
+- Qué cambio se hizo:
+  1. Sección especializada para Columnas del Cuaderno (`NotebookColumnsBulkDeleteSection` en `DataManagementSettingsView.swift`):
+     - **Filtros contextuales de Curso y Pestaña**: Menú interactivo («Todos los cursos» o clase específica como «1º BAC A») que aísla de inmediato las columnas del grupo elegido. Al seleccionar un curso, se activa un selector de pestaña («Todas las pestañas» o «1º Trimestre», etc.) para enfocar solo el bloque deseado.
+     - **Buscador en tiempo real**: Campo de texto con lupa y botón de limpieza inmediata (`TextField` + `xmark.circle.fill`) para filtrar instantáneamente por título de columna, evidencia o nombre de pestaña.
+     - **Agrupación visual por Curso**: Cuando no hay filtro de curso específico, las columnas se presentan agrupadas por clase con cabecera diferenciada, contador de columnas y botón de marcado rápido de todo el grupo.
+     - **Atajos de selección rápida en un toque**:
+       - «Todas (N)»: selecciona todas las columnas visibles bajo el filtro activo.
+       - «Ninguna»: desmarca la selección actual.
+       - «Invertir»: invierte la selección de las columnas visibles.
+       - Menú «Por curso»: permite marcar o desmarcar de un plumazo todas las columnas de una clase concreta.
+  2. Atajos rápidos de selección en `CollapsibleBulkDeleteSection`:
+     - Menú contextual con «Seleccionar todo», «Deseleccionar todo» e «Invertir selección» disponible en el modo de selección de todas las entidades (Cursos, Asignaturas, Pestañas, Sesiones del Planner, Situaciones y Rúbricas).
+  3. Optimización del borrado por lote:
+     - Sustitución del bucle secuencial individual de `deleteColumn` por la llamada por lote `bridge.deleteColumns(idsAndEvalIds:)`, reduciendo la latencia de guardado y evitando la saturación de recargas en el cuaderno.
+- Por qué importa:
+  - Elimina la saturación y pérdida de contexto provocada por listas kilométricas no segmentadas a medida que avanza el curso académico, permitiendo al docente depurar y limpiar columnas por error en segundos de forma segura y transparente.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/DataManagementSettingsView.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+
 ## Avance 2026-09-14 - Soporte multi-grupo en importación de SA: evaluación simultánea en cuadernos y programación comparada a 2 columnas
 
 Resumen:

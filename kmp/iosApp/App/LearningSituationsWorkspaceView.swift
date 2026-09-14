@@ -1740,7 +1740,8 @@ private struct LearningSituationEvaluationSheet: View {
     let initialClassId: Int64?
     let onSaved: () -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var classId: Int64?
+    @State private var selectedClassIds: Set<Int64> = []
+    @State private var linkedClassIds: Set<Int64> = []
     @State private var proposals: [LearningSituationEvaluationDraft] = []
     @State private var activeProposalId: UUID?
     @State private var showingInstrumentImporter = false
@@ -1751,8 +1752,8 @@ private struct LearningSituationEvaluationSheet: View {
     @State private var showingPhysicalTestsImporter = false
     @State private var physicalTestsImportDraft: PhysicalTestsImportDraft?
     @State private var physicalTestsImportPreview: PhysicalTestsImportDraft?
-    @State private var instrumentTargetTabs: [NotebookTab] = []
-    @State private var selectedInstrumentTargetTabId: String?
+    @State private var targetTabTitle: String = "Evaluación"
+    @State private var availableTabTitles: [String] = []
     @State private var isNewTargetTabAlertPresented = false
     @State private var newTargetTabName = ""
     @State private var isImportingInstrumentDocument = false
@@ -1765,17 +1766,17 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     private var canSave: Bool {
+        guard !selectedClassIds.isEmpty else { return false }
+        let hasTargetTab = !targetTabTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if let physicalTestsImportDraft {
-            let hasTargetTab = instrumentTargetTabs.isEmpty || selectedInstrumentTargetTabId != nil
-            return classId != nil && !physicalTestsImportDraft.testDefinitions.isEmpty && hasTargetTab
+            return !physicalTestsImportDraft.testDefinitions.isEmpty && hasTargetTab
         }
         if instrumentImportDraft != nil {
-            let hasTargetTab = instrumentTargetTabs.isEmpty || selectedInstrumentTargetTabId != nil
-            return classId != nil && !selectedImportedInstruments.isEmpty && hasTargetTab
+            return !selectedImportedInstruments.isEmpty && hasTargetTab
         }
-        return classId != nil &&
-            !selectedProposals.isEmpty &&
-            selectedProposals.allSatisfy { $0.rubricId != nil }
+        return !selectedProposals.isEmpty &&
+            selectedProposals.allSatisfy { $0.rubricId != nil } &&
+            hasTargetTab
     }
 
     private var selectedImportedInstruments: [AssessmentInstrumentDraft] {
@@ -1789,8 +1790,33 @@ private struct LearningSituationEvaluationSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Picker("Grupo", selection: $classId) {
-                    ForEach(bridge.classes, id: \.id) { Text($0.name).tag(Optional($0.id)) }
+                Section("Grupos destino (\(selectedClassIds.count) seleccionados)") {
+                    ForEach(bridge.classes, id: \.id) { schoolClass in
+                        Toggle(isOn: Binding(
+                            get: { selectedClassIds.contains(schoolClass.id) },
+                            set: { isSelected in
+                                if isSelected {
+                                    selectedClassIds.insert(schoolClass.id)
+                                } else {
+                                    selectedClassIds.remove(schoolClass.id)
+                                }
+                                Task { await loadTabTitles() }
+                            }
+                        )) {
+                            HStack {
+                                Text(schoolClass.name)
+                                Spacer()
+                                if linkedClassIds.contains(schoolClass.id) {
+                                    Text("Asociado a SA")
+                                        .font(.caption2.weight(.semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(EvaluationDesign.accentSoft, in: Capsule())
+                                        .foregroundStyle(EvaluationDesign.accent)
+                                }
+                            }
+                        }
+                    }
                 }
                 Section("Documento de instrumentos") {
                     Button {
@@ -1854,48 +1880,27 @@ private struct LearningSituationEvaluationSheet: View {
                         .font(.caption)
                         importedInstrumentRows
                     }
-                    Section("Pestaña del cuaderno") {
-                        if instrumentTargetTabs.isEmpty {
-                            Label("Se creará la pestaña Evaluación si el grupo no tiene pestañas.", systemImage: "folder.badge.plus")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Picker("Añadir en", selection: $selectedInstrumentTargetTabId) {
-                                Text("Selecciona pestaña")
-                                    .tag(nil as String?)
-                                ForEach(instrumentTargetTabs, id: \.id) { tab in
-                                    Text(tab.title).tag(Optional(tab.id))
-                                }
+                }
+                Section("Pestaña del cuaderno") {
+                    if availableTabTitles.isEmpty {
+                        Label("Se creará la pestaña \"\(targetTabTitle)\" en los \(selectedClassIds.count) grupos.", systemImage: "folder.badge.plus")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Pestaña destino", selection: $targetTabTitle) {
+                            ForEach(availableTabTitles, id: \.self) { title in
+                                Text(title).tag(title)
                             }
                         }
-                        Button {
-                            newTargetTabName = ""
-                            isNewTargetTabAlertPresented = true
-                        } label: {
-                            Label("Crear pestaña nueva…", systemImage: "folder.badge.plus")
-                        }
+                        Text("Se añadirán las columnas en la pestaña \"\(targetTabTitle)\" en cada grupo (creándola si aún no existe).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                } else {
-                    Section("Pestaña del cuaderno") {
-                        if instrumentTargetTabs.isEmpty {
-                            Label("Se creará la pestaña Evaluación si el grupo no tiene pestañas.", systemImage: "folder.badge.plus")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Picker("Añadir en", selection: $selectedInstrumentTargetTabId) {
-                                Text("Selecciona pestaña")
-                                    .tag(nil as String?)
-                                ForEach(instrumentTargetTabs, id: \.id) { tab in
-                                    Text(tab.title).tag(Optional(tab.id))
-                                }
-                            }
-                        }
-                        Button {
-                            newTargetTabName = ""
-                            isNewTargetTabAlertPresented = true
-                        } label: {
-                            Label("Crear pestaña nueva…", systemImage: "folder.badge.plus")
-                        }
+                    Button {
+                        newTargetTabName = ""
+                        isNewTargetTabAlertPresented = true
+                    } label: {
+                        Label("Crear pestaña nueva…", systemImage: "folder.badge.plus")
                     }
                 }
                 Text(statusMessage)
@@ -1906,8 +1911,10 @@ private struct LearningSituationEvaluationSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Crear seleccionadas") { Task { await save() } }
-                        .disabled(!canSave)
+                    Button("Crear en \(selectedClassIds.count) grupo\(selectedClassIds.count == 1 ? "" : "s")") {
+                        Task { await save() }
+                    }
+                    .disabled(!canSave)
                 }
             }
             .fileImporter(
@@ -1987,20 +1994,22 @@ private struct LearningSituationEvaluationSheet: View {
         .presentationDragIndicator(.visible)
 #endif
         .onAppear {
-            classId = initialClassId ?? bridge.classes.first?.id
             proposals = (try? JSONDecoder().decode(LearningSituationImportDraft.self, from: Data(situation.payloadJson.utf8)))?.evaluationItems ?? []
             Task {
+                let links = (try? await bridge.learningSituationClassLinks(id: situation.id)) ?? []
+                let linked = Set(links.map(\.classId))
+                linkedClassIds = linked
+                if !linked.isEmpty {
+                    selectedClassIds = linked
+                } else if let initial = initialClassId {
+                    selectedClassIds = [initial]
+                } else if let first = bridge.classes.first?.id {
+                    selectedClassIds = [first]
+                }
                 try? await bridge.refreshRubrics()
                 try? await bridge.refreshRubricClassLinks()
-                await loadNotebookTabsAndRepairImport()
+                await loadTabTitles()
             }
-        }
-        .appOnChange(of: classId) { newValue in
-            if let newValue {
-                bridge.selectClass(id: newValue)
-                bridge.selectRubricClass(newValue)
-            }
-            Task { await loadNotebookTabsAndRepairImport() }
         }
     }
 
@@ -2113,9 +2122,14 @@ private struct LearningSituationEvaluationSheet: View {
     private var availableRubrics: [RubricDetail] {
         bridge.rubrics
             .filter { rubric in
-                guard let classId else { return true }
+                if selectedClassIds.isEmpty { return true }
                 let directClassId = rubric.rubric.classId?.int64Value
-                return directClassId == nil || directClassId == classId || bridge.rubricClassLinks[rubric.rubric.id]?.contains(classId) == true
+                if directClassId == nil { return true }
+                if let direct = directClassId, selectedClassIds.contains(direct) { return true }
+                if let links = bridge.rubricClassLinks[rubric.rubric.id], !links.isDisjoint(with: selectedClassIds) {
+                    return true
+                }
+                return false
             }
             .sorted { $0.rubric.name.localizedCaseInsensitiveCompare($1.rubric.name) == .orderedAscending }
     }
@@ -2123,10 +2137,10 @@ private struct LearningSituationEvaluationSheet: View {
     private func startRubricBuilder(for proposal: LearningSituationEvaluationDraft) {
         activeProposalId = proposal.id
         bridge.resetRubricBuilder()
-        if let classId {
-            bridge.selectRubricClass(classId)
+        if let firstClassId = selectedClassIds.first {
+            bridge.selectRubricClass(firstClassId)
             Task {
-                if let unitId = try? await bridge.ensureTeachingUnitForLearningSituation(situation: situation, classId: classId) {
+                if let unitId = try? await bridge.ensureTeachingUnitForLearningSituation(situation: situation, classId: firstClassId) {
                     bridge.selectRubricTeachingUnit(unitId)
                 }
             }
@@ -2218,8 +2232,8 @@ private struct LearningSituationEvaluationSheet: View {
     private func confirmRubricImport(_ preview: AppleRubricImportPreview) async {
         do {
             try await bridge.importRubricDraft(tsv: preview.tsv)
-            if let classId {
-                bridge.selectRubricClass(classId)
+            if let firstClassId = selectedClassIds.first {
+                bridge.selectRubricClass(firstClassId)
             }
             rubricImportPreview = nil
             showingRubricBuilder = true
@@ -2236,32 +2250,34 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     @MainActor
-    private func loadNotebookTabsAndRepairImport() async {
-        guard let classId else {
-            instrumentTargetTabs = []
-            selectedInstrumentTargetTabId = nil
-            return
-        }
-        do {
-            let tabs = try await bridge.learningSituationNotebookTabs(for: classId)
-            instrumentTargetTabs = tabs
-            if let selectedInstrumentTargetTabId,
-               tabs.contains(where: { $0.id == selectedInstrumentTargetTabId }) {
-                return
+    private func loadTabTitles() async {
+        var titlesSet = Set<String>()
+        for id in selectedClassIds {
+            if let tabs = try? await bridge.learningSituationNotebookTabs(for: id) {
+                for tab in tabs {
+                    titlesSet.insert(tab.title)
+                }
             }
-            selectedInstrumentTargetTabId = tabs.first?.id
-            try await bridge.repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: classId)
-        } catch {
-            errorMessage = error.localizedDescription
+        }
+        let titles = Array(titlesSet).sorted()
+        availableTabTitles = titles
+        if !titles.contains(targetTabTitle) {
+            if let first = titles.first {
+                targetTabTitle = first
+            } else if targetTabTitle.isEmpty {
+                targetTabTitle = "Evaluación"
+            }
         }
     }
 
     @MainActor
     private func createInstrumentTargetTab() async {
         let name = newTargetTabName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, let createdId = bridge.createTab(title: name) else { return }
-        await loadNotebookTabsAndRepairImport()
-        selectedInstrumentTargetTabId = createdId
+        guard !name.isEmpty else { return }
+        if !availableTabTitles.contains(name) {
+            availableTabTitles.append(name)
+        }
+        targetTabTitle = name
         newTargetTabName = ""
     }
 
@@ -2293,24 +2309,33 @@ private struct LearningSituationEvaluationSheet: View {
 
     @MainActor
     private func save() async {
-        guard let classId else { return }
+        guard !selectedClassIds.isEmpty else { return }
+        let target = targetTabTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedTabName = target.isEmpty ? "Evaluación" : target
         do {
-            if let physicalTestsImportDraft {
-                try await bridge.materializeLearningSituationPhysicalTests(
-                    situation: situation,
-                    classId: classId,
-                    draft: physicalTestsImportDraft,
-                    targetTabId: selectedInstrumentTargetTabId
-                )
-            } else if let instrumentImportDraft {
-                try await bridge.materializeLearningSituationAssessmentInstruments(
-                    situation: situation,
-                    classId: classId,
-                    draft: instrumentImportDraft,
-                    targetTabId: selectedInstrumentTargetTabId
-                )
-            } else {
-                try await bridge.materializeLearningSituationEvaluations(situation: situation, classId: classId, proposals: proposals)
+            for classId in selectedClassIds {
+                if let physicalTestsImportDraft {
+                    try await bridge.materializeLearningSituationPhysicalTests(
+                        situation: situation,
+                        classId: classId,
+                        draft: physicalTestsImportDraft,
+                        targetTabId: resolvedTabName
+                    )
+                } else if let instrumentImportDraft {
+                    try await bridge.materializeLearningSituationAssessmentInstruments(
+                        situation: situation,
+                        classId: classId,
+                        draft: instrumentImportDraft,
+                        targetTabId: resolvedTabName
+                    )
+                } else {
+                    try await bridge.materializeLearningSituationEvaluations(
+                        situation: situation,
+                        classId: classId,
+                        proposals: proposals,
+                        targetTabId: resolvedTabName
+                    )
+                }
             }
             dismiss()
             onSaved()

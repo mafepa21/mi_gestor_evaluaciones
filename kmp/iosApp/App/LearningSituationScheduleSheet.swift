@@ -2,6 +2,28 @@ import SwiftUI
 import UniformTypeIdentifiers
 import MiGestorKit
 
+struct GroupScheduleState: Identifiable {
+    let classId: Int64
+    let className: String
+    var isIncluded: Bool
+    var startDate: Date = Date()
+    var slots: [TermClassSlot] = []
+    var metrics: TermCapacityMetrics?
+
+    var id: Int64 { classId }
+
+    var previewSlots: [TermClassSlot] {
+        slots.filter { slot in
+            if case .preview = slot.kind { return true }
+            return false
+        }
+    }
+
+    var previewCount: Int {
+        previewSlots.count
+    }
+}
+
 struct LearningSituationScheduleSheet: View {
     let situation: LearningSituation
     let bridge: KmpBridge
@@ -11,11 +33,11 @@ struct LearningSituationScheduleSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
-    @State private var selectedClassId: Int64?
+    @State private var groupStates: [GroupScheduleState] = []
+    @State private var selectedCompactClassId: Int64?
     @State private var selectedTermPeriodId: Int64?
+    @State private var situationStartDate = Date()
     @State private var evaluationPeriods: [PlannerEvaluationPeriod] = []
-    @State private var termBoardSlots: [TermClassSlot] = []
-    @State private var termCapacityMetrics: TermCapacityMetrics?
 
     @State private var isLoading = false
     @State private var isSaving = false
@@ -33,11 +55,27 @@ struct LearningSituationScheduleSheet: View {
         evaluationPeriods.sorted { ($0.sortOrder, $0.startDateIso) < ($1.sortOrder, $1.startDateIso) }
     }
 
-    private var selectedClassName: String {
-        guard let id = selectedClassId, let schoolClass = bridge.classes.first(where: { $0.id == id }) else {
-            return "Sin grupo"
+    private var activePeriod: PlannerEvaluationPeriod? {
+        if let id = selectedTermPeriodId, let match = evaluationPeriods.first(where: { $0.id == id }) {
+            return match
         }
-        return schoolClass.name
+        return sortedEvaluationPeriods.first
+    }
+
+    private var selectedPeriodDateRange: ClosedRange<Date> {
+        let calendar = Calendar(identifier: .iso8601)
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.calendar = calendar
+
+        if let period = activePeriod,
+           let start = df.date(from: period.startDateIso),
+           let end = df.date(from: period.endDateIso),
+           start <= end {
+            return start...end
+        }
+        let now = Date()
+        return now...calendar.date(byAdding: .month, value: 3, to: now)!
     }
 
     private var routeVariants: [LearningSituationWeeklySequenceRoute: [LearningSituationSessionPlanDraft]] {
@@ -63,16 +101,17 @@ struct LearningSituationScheduleSheet: View {
         return max(1, Int(situation.sessionCount))
     }
 
-    private var previewSlotsCount: Int {
-        termBoardSlots.filter { slot in
-            if case .preview = slot.kind { return true }
-            return false
-        }.count
+    private var includedGroups: [GroupScheduleState] {
+        groupStates.filter(\.isIncluded)
+    }
+
+    private var totalPreviewSlotsCount: Int {
+        includedGroups.map(\.previewCount).reduce(0, +)
     }
 
     private var canProgram: Bool {
-        guard !isSaving && !isLoading && selectedClassId != nil else { return false }
-        return previewSlotsCount > 0
+        guard !isSaving && !isLoading else { return false }
+        return includedGroups.contains { $0.previewCount > 0 }
     }
 
     var body: some View {
@@ -84,29 +123,21 @@ struct LearningSituationScheduleSheet: View {
                     .padding(.top, 16)
                     .padding(.bottom, 12)
 
-                // Capacity Metrics Strip
-                if let metrics = termCapacityMetrics {
-                    TermBoardMetricsStrip(metrics: metrics)
-                        .padding(.horizontal, EvaluationDesign.screenPadding)
-                        .padding(.bottom, 12)
-                }
-
                 // Main Content
-                if isLoading && termBoardSlots.isEmpty {
+                if isLoading && groupStates.allSatisfy({ $0.slots.isEmpty }) {
                     loadingView
-                } else if termBoardSlots.isEmpty {
-                    emptySlotsView
+                } else if includedGroups.isEmpty {
+                    noGroupsSelectedView
                 } else {
                     ScrollView(.vertical) {
                         VStack(spacing: 16) {
-                            // Optional Collapsible Sequence Details (DOCX / Route options)
                             sequenceDetailsCard
 
-                            // Timeline of weeks
-                            TermBoardTimelineView(
-                                slots: termBoardSlots,
-                                bottomPadding: 24
-                            )
+                            if includedGroups.count == 1, let single = includedGroups.first {
+                                singleGroupView(single)
+                            } else {
+                                multiGroupAdaptiveView
+                            }
                         }
                         .padding(.horizontal, EvaluationDesign.screenPadding)
                         .padding(.bottom, 96)
@@ -140,19 +171,21 @@ struct LearningSituationScheduleSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 840, minHeight: 740)
+        .frame(minWidth: 1040, minHeight: 740)
         #else
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         #endif
         .task {
-            selectedClassId = initialClassId ?? bridge.classes.first?.id
             await loadPeriodsAndProject()
         }
-        .appOnChange(of: selectedClassId) { _ in
+        .appOnChange(of: selectedTermPeriodId) { _ in
             Task { await loadAndProject() }
         }
-        .appOnChange(of: selectedTermPeriodId) { _ in
+        .appOnChange(of: situationStartDate) { newDate in
+            for i in groupStates.indices {
+                groupStates[i].startDate = newDate
+            }
             Task { await loadAndProject() }
         }
     }
@@ -193,25 +226,8 @@ struct LearningSituationScheduleSheet: View {
                 Spacer()
             }
 
-            // Controls: Class & Period Selectors
+            // Controls: Period Picker, Start Date Picker & DOCX Import
             HStack(spacing: 12) {
-                // Group Picker
-                HStack(spacing: 6) {
-                    Image(systemName: "person.2.fill")
-                        .font(.caption)
-                        .foregroundStyle(EvaluationDesign.accent)
-                    Picker("Grupo", selection: $selectedClassId) {
-                        ForEach(bridge.classes, id: \.id) { group in
-                            Text(group.name).tag(Optional(group.id))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                // Period Picker
                 if !sortedEvaluationPeriods.isEmpty {
                     HStack(spacing: 6) {
                         Image(systemName: "calendar")
@@ -229,9 +245,28 @@ struct LearningSituationScheduleSheet: View {
                     .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
+                HStack(spacing: 6) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(EvaluationDesign.accent)
+                    Text("Inicio común:")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    DatePicker(
+                        "",
+                        selection: $situationStartDate,
+                        in: selectedPeriodDateRange,
+                        displayedComponents: [.date]
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
                 Spacer()
 
-                // Button to attach DOCX sequence
                 Button {
                     isSequenceImporterPresented = true
                 } label: {
@@ -244,9 +279,172 @@ struct LearningSituationScheduleSheet: View {
                 .buttonStyle(.bordered)
                 .tint(sequenceDraft == nil ? .secondary : EvaluationDesign.accent)
             }
+
+            // Group Selection Strip
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Text("Grupos:")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    ForEach($groupStates) { $group in
+                        Toggle(isOn: $group.isIncluded) {
+                            HStack(spacing: 4) {
+                                Image(systemName: group.isIncluded ? "checkmark.circle.fill" : "circle")
+                                Text("\(group.className) (\(group.previewCount)/\(targetSessionCount))")
+                            }
+                            .font(.caption.weight(.semibold))
+                        }
+                        .toggleStyle(.button)
+                        .buttonStyle(.bordered)
+                        .tint(group.isIncluded ? EvaluationDesign.accent : .secondary)
+                    }
+
+                    let unaddedClasses = bridge.classes.filter { c in !groupStates.contains(where: { $0.classId == c.id }) }
+                    if !unaddedClasses.isEmpty {
+                        Menu {
+                            ForEach(unaddedClasses, id: \.id) { sc in
+                                Button(sc.name) {
+                                    addGroup(classId: sc.id, className: sc.name)
+                                }
+                            }
+                        } label: {
+                            Label("Añadir grupo", systemImage: "plus")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
         }
         .padding(14)
         .plannerGlassPanel(.content, cornerRadius: 16)
+    }
+
+    // MARK: - Body Views (Single & Multi-Group Adaptive)
+
+    private func groupStartDatePicker(for group: GroupScheduleState) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.caption2)
+                .foregroundStyle(EvaluationDesign.accent)
+            Text("Inicio:")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+            DatePicker(
+                "",
+                selection: Binding(
+                    get: { group.startDate },
+                    set: { newDate in
+                        if let idx = groupStates.firstIndex(where: { $0.classId == group.classId }) {
+                            groupStates[idx].startDate = newDate
+                            Task { await loadAndProject() }
+                        }
+                    }
+                ),
+                in: selectedPeriodDateRange,
+                displayedComponents: [.date]
+            )
+            .labelsHidden()
+            .datePickerStyle(.compact)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func singleGroupView(_ group: GroupScheduleState) -> some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text(group.className)
+                    .font(.headline.weight(.bold))
+                Spacer()
+                groupStartDatePicker(for: group)
+            }
+
+            if let metrics = group.metrics {
+                TermBoardMetricsStrip(metrics: metrics)
+            }
+            if group.slots.isEmpty {
+                emptySlotsView(for: group.className)
+            } else {
+                TermBoardTimelineView(
+                    slots: group.slots,
+                    bottomPadding: 24
+                )
+            }
+        }
+    }
+
+    private var multiGroupAdaptiveView: some View {
+        ViewThatFits(in: .horizontal) {
+            // 1. Regular Horizontal View (iPad landscape, macOS): Two columns side by side!
+            twoColumnHorizontalView
+
+            // 2. Compact Fallback (iPhone, iPad portrait / split 1/3): Segmented selector
+            compactSegmentedView
+        }
+    }
+
+    private var twoColumnHorizontalView: some View {
+        HStack(alignment: .top, spacing: 16) {
+            ForEach(includedGroups) { group in
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(group.className)
+                                .font(.headline.weight(.bold))
+                            Text("\(group.previewCount) de \(targetSessionCount) sesiones")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(group.previewCount >= targetSessionCount ? NotebookStyle.successTint : NotebookStyle.warningTint)
+                        }
+                        Spacer()
+                        groupStartDatePicker(for: group)
+                    }
+
+                    if let metrics = group.metrics {
+                        TermBoardMetricsStrip(metrics: metrics)
+                    }
+
+                    if group.slots.isEmpty {
+                        emptySlotsView(for: group.className)
+                    } else {
+                        TermBoardTimelineView(
+                            slots: group.slots,
+                            bottomPadding: 24
+                        )
+                    }
+                }
+                .padding(14)
+                .plannerGlassPanel(.content, cornerRadius: 16)
+                #if os(macOS)
+                .frame(minWidth: 440)
+                #endif
+            }
+        }
+    }
+
+    private var compactSegmentedView: some View {
+        VStack(spacing: 12) {
+            Picker("Grupo", selection: Binding(
+                get: {
+                    if let selected = selectedCompactClassId, includedGroups.contains(where: { $0.classId == selected }) {
+                        return selected
+                    }
+                    return includedGroups.first?.classId ?? 0
+                },
+                set: { selectedCompactClassId = $0 }
+            )) {
+                ForEach(includedGroups) { grp in
+                    Text("\(grp.className) (\(grp.previewCount))").tag(grp.classId)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if let active = includedGroups.first(where: { $0.classId == (selectedCompactClassId ?? includedGroups.first?.classId) }) {
+                singleGroupView(active)
+            }
+        }
     }
 
     // MARK: - Sequence Details Card
@@ -348,10 +546,10 @@ struct LearningSituationScheduleSheet: View {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar.badge.clock")
                         .foregroundStyle(EvaluationDesign.accent)
-                    Text("\(previewSlotsCount) de \(targetSessionCount) sesiones encajadas")
+                    Text("\(totalPreviewSlotsCount) de \(targetSessionCount * max(1, includedGroups.count)) sesiones encajadas")
                         .font(.headline)
                 }
-                Text("Se asignarán en \(selectedClassName) respetando festivos")
+                Text(includedGroups.map { "\($0.className): \($0.previewCount) ses." }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -372,7 +570,7 @@ struct LearningSituationScheduleSheet: View {
                         .tint(.white)
                         .frame(minWidth: 100)
                 } else {
-                    Label("Programar sesiones", systemImage: "checkmark.circle.fill")
+                    Label("Programar en \(includedGroups.count) grupo\(includedGroups.count == 1 ? "" : "s")", systemImage: "checkmark.circle.fill")
                         .font(.subheadline.weight(.semibold))
                 }
             }
@@ -394,27 +592,43 @@ struct LearningSituationScheduleSheet: View {
         VStack(spacing: 16) {
             ProgressView()
                 .controlSize(.large)
-            Text("Proyectando encaje en el calendario lectivo…")
+            Text("Proyectando encaje en los calendarios lectivos…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var emptySlotsView: some View {
+    private func emptySlotsView(for groupName: String? = nil) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "calendar.badge.exclamationmark")
                 .font(.system(size: 44))
                 .foregroundStyle(.secondary)
             Text("Sin franjas lectivas encontradas")
                 .font(.headline)
-            Text("El grupo seleccionado (\(selectedClassName)) no tiene franjas horarias configuradas en este periodo de evaluación.")
+            Text("El grupo \(groupName ?? "") no tiene franjas horarias configuradas en este periodo de evaluación.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 180)
+    }
+
+    private var noGroupsSelectedView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "person.2.slash")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+            Text("Ningún grupo seleccionado")
+                .font(.headline)
+            Text("Activa al menos un grupo arriba para ver su proyección horaria y programar sesiones.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
     }
 
     // MARK: - Projection & Persistence Logic
@@ -426,14 +640,43 @@ struct LearningSituationScheduleSheet: View {
             evaluationPeriods = try await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)
             if let current = currentPeriodForToday() {
                 selectedTermPeriodId = current.id
-            } else {
-                selectedTermPeriodId = sortedEvaluationPeriods.first?.id
+                situationStartDate = Date()
+            } else if let first = sortedEvaluationPeriods.first {
+                selectedTermPeriodId = first.id
+                let df = DateFormatter()
+                df.dateFormat = "yyyy-MM-dd"
+                df.calendar = Calendar(identifier: .iso8601)
+                situationStartDate = df.date(from: first.startDateIso) ?? Date()
             }
+
+            // Discover linked groups from SA
+            let links = (try? await bridge.learningSituationClassLinks(id: situation.id)) ?? []
+            var initialGroupIds = links.map(\.classId)
+            if initialGroupIds.isEmpty, let initial = initialClassId {
+                initialGroupIds = [initial]
+            } else if initialGroupIds.isEmpty, let first = bridge.classes.first?.id {
+                initialGroupIds = [first]
+            }
+
+            self.groupStates = initialGroupIds.compactMap { cid in
+                guard let schoolClass = bridge.classes.first(where: { $0.id == cid }) else { return nil }
+                return GroupScheduleState(classId: cid, className: schoolClass.name, isIncluded: true, startDate: situationStartDate)
+            }
+            if selectedCompactClassId == nil {
+                selectedCompactClassId = groupStates.first?.classId
+            }
+
             await loadAndProject()
         } catch {
             errorMessage = error.localizedDescription
             showingErrorAlert = true
         }
+    }
+
+    private func addGroup(classId: Int64, className: String) {
+        guard !groupStates.contains(where: { $0.classId == classId }) else { return }
+        groupStates.append(GroupScheduleState(classId: classId, className: className, isIncluded: true, startDate: situationStartDate))
+        Task { await loadAndProject() }
     }
 
     private func currentPeriodForToday() -> PlannerEvaluationPeriod? {
@@ -450,7 +693,7 @@ struct LearningSituationScheduleSheet: View {
 
     @MainActor
     private func loadAndProject() async {
-        guard let classId = selectedClassId else { return }
+        guard !groupStates.isEmpty else { return }
         isLoading = true
         defer { isLoading = false }
 
@@ -473,11 +716,7 @@ struct LearningSituationScheduleSheet: View {
             }
 
             let allScheduleSlots = try await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)
-
             let globalNonTeaching = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
-            let classNonTeaching = try await bridge.plannerNonTeachingCalendarEvents(classId: classId)
-            let allNonTeaching = globalNonTeaching + classNonTeaching
-
             let allSessions = try await bridge.plannerListAllSessions()
             let visibleSlots = bridge.plannerTimeSlots().map {
                 PlannerVisibleSlot(period: Int($0.period), startTime: $0.startTime, endTime: $0.endTime)
@@ -532,22 +771,52 @@ struct LearningSituationScheduleSheet: View {
                 }
             }
 
-            let projection = TermBoardProjectionEngine.project(
-                periodName: resolvedPeriod.name,
-                startDateIso: resolvedPeriod.startDateIso,
-                endDateIso: resolvedPeriod.endDateIso,
-                deadlineDateIso: nil,
-                classId: classId,
-                scheduleSlots: allScheduleSlots,
-                nonTeachingEvents: allNonTeaching,
-                existingSessions: allSessions,
-                simulationPlans: simPlans,
-                simulationSituationTitle: situation.title,
-                defaultTimeSlots: visibleSlots
-            )
+            let calendar = Calendar(identifier: .iso8601)
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            df.calendar = calendar
 
-            self.termBoardSlots = projection.slots
-            self.termCapacityMetrics = projection.metrics
+            let pStart = df.date(from: resolvedPeriod.startDateIso)
+            let pEnd = df.date(from: resolvedPeriod.endDateIso)
+
+            // Ensure situationStartDate falls within the resolved period range
+            if let pStart, let pEnd {
+                if situationStartDate < pStart || situationStartDate > pEnd {
+                    situationStartDate = pStart
+                }
+            }
+
+            for index in groupStates.indices {
+                // Ensure individual group startDate falls within the period range
+                if let pStart, let pEnd {
+                    if groupStates[index].startDate < pStart || groupStates[index].startDate > pEnd {
+                        groupStates[index].startDate = situationStartDate
+                    }
+                }
+                let groupSimStartDateIso = df.string(from: groupStates[index].startDate)
+
+                let classId = groupStates[index].classId
+                let classNonTeaching = try await bridge.plannerNonTeachingCalendarEvents(classId: classId)
+                let allNonTeaching = globalNonTeaching + classNonTeaching
+
+                let projection = TermBoardProjectionEngine.project(
+                    periodName: resolvedPeriod.name,
+                    startDateIso: resolvedPeriod.startDateIso,
+                    endDateIso: resolvedPeriod.endDateIso,
+                    deadlineDateIso: nil,
+                    classId: classId,
+                    scheduleSlots: allScheduleSlots,
+                    nonTeachingEvents: allNonTeaching,
+                    existingSessions: allSessions,
+                    simulationPlans: simPlans,
+                    simulationSituationTitle: situation.title,
+                    simulationStartDateIso: groupSimStartDateIso,
+                    defaultTimeSlots: visibleSlots
+                )
+
+                groupStates[index].slots = projection.slots
+                groupStates[index].metrics = projection.metrics
+            }
         } catch {
             errorMessage = error.localizedDescription
             showingErrorAlert = true
@@ -601,54 +870,49 @@ struct LearningSituationScheduleSheet: View {
 
     @MainActor
     private func save() async {
-        guard let classId = selectedClassId,
-              let schoolClass = bridge.classes.first(where: { $0.id == classId }) else { return }
-
-        let previewSlots = termBoardSlots.filter { slot in
-            if case .preview = slot.kind { return true }
-            return false
-        }
-
-        guard !previewSlots.isEmpty else {
-            errorMessage = "No hay sesiones proyectadas en los huecos libres para programar."
-            showingErrorAlert = true
-            return
-        }
-
-        let scheduledSlots: [LearningSituationScheduledSlot] = previewSlots.compactMap { slot in
-            guard case .preview(let sessionNumber, _, _, _, _) = slot.kind else { return nil }
-            return LearningSituationScheduledSlot(
-                date: slot.date,
-                period: slot.period,
-                teacherScheduleSlotId: slot.teacherScheduleSlotId,
-                startTime: slot.startTime,
-                endTime: slot.endTime,
-                planSessionNumber: sessionNumber,
-                blockKind: nil,
-                occupiedPeriods: [slot.period],
-                occupiedScheduleSlots: [
-                    LearningSituationScheduledDestination(
-                        period: slot.period,
-                        teacherScheduleSlotId: slot.teacherScheduleSlotId,
-                        startTime: slot.startTime,
-                        endTime: slot.endTime
-                    )
-                ],
-                isSelected: true
-            )
-        }
+        let targets = groupStates.filter(\.isIncluded)
+        guard !targets.isEmpty else { return }
 
         isSaving = true
         defer { isSaving = false }
 
         do {
-            try await bridge.programLearningSituationSessions(
-                situation: situation,
-                classId: classId,
-                groupName: schoolClass.name,
-                scheduledSlots: scheduledSlots,
-                sequenceDraft: sequenceDraft
-            )
+            for group in targets {
+                guard let schoolClass = bridge.classes.first(where: { $0.id == group.classId }) else { continue }
+                let previewSlots = group.previewSlots
+                guard !previewSlots.isEmpty else { continue }
+
+                let scheduledSlots: [LearningSituationScheduledSlot] = previewSlots.compactMap { slot in
+                    guard case .preview(let sessionNumber, _, _, _, _) = slot.kind else { return nil }
+                    return LearningSituationScheduledSlot(
+                        date: slot.date,
+                        period: slot.period,
+                        teacherScheduleSlotId: slot.teacherScheduleSlotId,
+                        startTime: slot.startTime,
+                        endTime: slot.endTime,
+                        planSessionNumber: sessionNumber,
+                        blockKind: nil,
+                        occupiedPeriods: [slot.period],
+                        occupiedScheduleSlots: [
+                            LearningSituationScheduledDestination(
+                                period: slot.period,
+                                teacherScheduleSlotId: slot.teacherScheduleSlotId,
+                                startTime: slot.startTime,
+                                endTime: slot.endTime
+                            )
+                        ],
+                        isSelected: true
+                    )
+                }
+
+                try await bridge.programLearningSituationSessions(
+                    situation: situation,
+                    classId: group.classId,
+                    groupName: schoolClass.name,
+                    scheduledSlots: scheduledSlots,
+                    sequenceDraft: sequenceDraft
+                )
+            }
             dismiss()
             onSaved()
         } catch {

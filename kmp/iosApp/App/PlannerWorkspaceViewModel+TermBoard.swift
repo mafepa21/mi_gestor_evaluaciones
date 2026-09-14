@@ -36,6 +36,7 @@ enum TermBoardProjectionEngine {
         existingSessions: [PlanningSession],
         simulationPlans: [TermSimulationPlanItem]? = nil,
         simulationSituationTitle: String? = nil,
+        simulationStartDateIso: String? = nil,
         defaultTimeSlots: [PlannerVisibleSlot] = []
     ) -> (slots: [TermClassSlot], metrics: TermCapacityMetrics) {
         let calendar = Calendar(identifier: .iso8601)
@@ -60,6 +61,7 @@ enum TermBoardProjectionEngine {
         }
 
         let deadlineDate = deadlineDateIso.flatMap { dateFormatter.date(from: $0) }
+        let simulationStartDate = simulationStartDateIso.flatMap { dateFormatter.date(from: $0) }
 
         // Filter schedule slots for this class
         let classSlots = scheduleSlots
@@ -175,7 +177,15 @@ enum TermBoardProjectionEngine {
                         // Slot is free!
                         totalLibresCount += 1
 
-                        if !pendingSimPlans.isEmpty {
+                        let isEligibleForSimulation: Bool = {
+                            guard !pendingSimPlans.isEmpty else { return false }
+                            if let simStart = simulationStartDate {
+                                return cursor >= calendar.startOfDay(for: simStart)
+                            }
+                            return true
+                        }()
+
+                        if isEligibleForSimulation {
                             let simPlan = pendingSimPlans.removeFirst()
                             placedSimPlansCount += 1
                             resultSlots.append(

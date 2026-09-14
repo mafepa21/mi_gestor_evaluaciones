@@ -6,6 +6,7 @@ struct GroupScheduleState: Identifiable {
     let classId: Int64
     let className: String
     var isIncluded: Bool
+    var startDate: Date = Date()
     var slots: [TermClassSlot] = []
     var metrics: TermCapacityMetrics?
 
@@ -181,7 +182,10 @@ struct LearningSituationScheduleSheet: View {
         .appOnChange(of: selectedTermPeriodId) { _ in
             Task { await loadAndProject() }
         }
-        .appOnChange(of: situationStartDate) { _ in
+        .appOnChange(of: situationStartDate) { newDate in
+            for i in groupStates.indices {
+                groupStates[i].startDate = newDate
+            }
             Task { await loadAndProject() }
         }
     }
@@ -245,7 +249,7 @@ struct LearningSituationScheduleSheet: View {
                     Image(systemName: "play.circle.fill")
                         .font(.caption)
                         .foregroundStyle(EvaluationDesign.accent)
-                    Text("Inicio:")
+                    Text("Inicio común:")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                     DatePicker(
@@ -319,8 +323,45 @@ struct LearningSituationScheduleSheet: View {
 
     // MARK: - Body Views (Single & Multi-Group Adaptive)
 
+    private func groupStartDatePicker(for group: GroupScheduleState) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.caption2)
+                .foregroundStyle(EvaluationDesign.accent)
+            Text("Inicio:")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+            DatePicker(
+                "",
+                selection: Binding(
+                    get: { group.startDate },
+                    set: { newDate in
+                        if let idx = groupStates.firstIndex(where: { $0.classId == group.classId }) {
+                            groupStates[idx].startDate = newDate
+                            Task { await loadAndProject() }
+                        }
+                    }
+                ),
+                in: selectedPeriodDateRange,
+                displayedComponents: [.date]
+            )
+            .labelsHidden()
+            .datePickerStyle(.compact)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
     private func singleGroupView(_ group: GroupScheduleState) -> some View {
         VStack(spacing: 16) {
+            HStack {
+                Text(group.className)
+                    .font(.headline.weight(.bold))
+                Spacer()
+                groupStartDatePicker(for: group)
+            }
+
             if let metrics = group.metrics {
                 TermBoardMetricsStrip(metrics: metrics)
             }
@@ -350,12 +391,15 @@ struct LearningSituationScheduleSheet: View {
             ForEach(includedGroups) { group in
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text(group.className)
-                            .font(.headline.weight(.bold))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(group.className)
+                                .font(.headline.weight(.bold))
+                            Text("\(group.previewCount) de \(targetSessionCount) sesiones")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(group.previewCount >= targetSessionCount ? NotebookStyle.successTint : NotebookStyle.warningTint)
+                        }
                         Spacer()
-                        Text("\(group.previewCount) de \(targetSessionCount) sesiones")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(group.previewCount >= targetSessionCount ? NotebookStyle.successTint : NotebookStyle.warningTint)
+                        groupStartDatePicker(for: group)
                     }
 
                     if let metrics = group.metrics {
@@ -616,7 +660,7 @@ struct LearningSituationScheduleSheet: View {
 
             self.groupStates = initialGroupIds.compactMap { cid in
                 guard let schoolClass = bridge.classes.first(where: { $0.id == cid }) else { return nil }
-                return GroupScheduleState(classId: cid, className: schoolClass.name, isIncluded: true)
+                return GroupScheduleState(classId: cid, className: schoolClass.name, isIncluded: true, startDate: situationStartDate)
             }
             if selectedCompactClassId == nil {
                 selectedCompactClassId = groupStates.first?.classId
@@ -631,7 +675,7 @@ struct LearningSituationScheduleSheet: View {
 
     private func addGroup(classId: Int64, className: String) {
         guard !groupStates.contains(where: { $0.classId == classId }) else { return }
-        groupStates.append(GroupScheduleState(classId: classId, className: className, isIncluded: true))
+        groupStates.append(GroupScheduleState(classId: classId, className: className, isIncluded: true, startDate: situationStartDate))
         Task { await loadAndProject() }
     }
 
@@ -732,16 +776,25 @@ struct LearningSituationScheduleSheet: View {
             df.dateFormat = "yyyy-MM-dd"
             df.calendar = calendar
 
+            let pStart = df.date(from: resolvedPeriod.startDateIso)
+            let pEnd = df.date(from: resolvedPeriod.endDateIso)
+
             // Ensure situationStartDate falls within the resolved period range
-            if let pStart = df.date(from: resolvedPeriod.startDateIso),
-               let pEnd = df.date(from: resolvedPeriod.endDateIso) {
+            if let pStart, let pEnd {
                 if situationStartDate < pStart || situationStartDate > pEnd {
                     situationStartDate = pStart
                 }
             }
-            let simStartDateIso = df.string(from: situationStartDate)
 
             for index in groupStates.indices {
+                // Ensure individual group startDate falls within the period range
+                if let pStart, let pEnd {
+                    if groupStates[index].startDate < pStart || groupStates[index].startDate > pEnd {
+                        groupStates[index].startDate = situationStartDate
+                    }
+                }
+                let groupSimStartDateIso = df.string(from: groupStates[index].startDate)
+
                 let classId = groupStates[index].classId
                 let classNonTeaching = try await bridge.plannerNonTeachingCalendarEvents(classId: classId)
                 let allNonTeaching = globalNonTeaching + classNonTeaching
@@ -757,7 +810,7 @@ struct LearningSituationScheduleSheet: View {
                     existingSessions: allSessions,
                     simulationPlans: simPlans,
                     simulationSituationTitle: situation.title,
-                    simulationStartDateIso: simStartDateIso,
+                    simulationStartDateIso: groupSimStartDateIso,
                     defaultTimeSlots: visibleSlots
                 )
 

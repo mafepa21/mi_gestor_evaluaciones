@@ -21,12 +21,13 @@ El formato sigue una variante practica de Keep a Changelog:
     - Configuración unificada de pestaña de destino (`targetTabName`): permite asociar las columnas a una pestaña compartida por nombre o crearla automáticamente en todos los grupos si no existe.
     - Creación coordinada y concurrente de instrumentos de evaluación en los cuadernos de cada clase (`bridge.materializeLearningSituationEvaluations`), evitando trabajo duplicado grupo a grupo.
     - Detección y reutilización transparente de rúbricas existentes (`saveAssessmentInstrumentRubricIfNeeded`) para que todos los grupos compartan la misma rúbrica sin generar entradas redundantes en la base de datos.
-  - **Programación temporal comparada a dos columnas con selector de fecha de inicio (`LearningSituationScheduleSheet`)**:
-    - Selector interactivo «Inicio: [Fecha]» (`DatePicker`) para indicar el día lectivo a partir del cual comenzará la Situación de Aprendizaje, acotado dentro del rango de la evaluación.
-    - El motor de proyección (`TermBoardProjectionEngine.project`) respeta `simulationStartDateIso`: mantiene como libres los slots lectivos anteriores a dicha fecha y encaja las sesiones de la SA a partir del día indicado.
+  - **Programación temporal comparada a dos columnas con selector de fecha de inicio por grupo (`LearningSituationScheduleSheet`)**:
+    - Selector interactivo maestro «Inicio común: [Fecha]» en cabecera que propaga la fecha a todos los grupos de la SA dentro del rango de la evaluación.
+    - Selector individual de fecha de inicio por grupo («Inicio: [Fecha]» en cada tarjeta de columna y vista compacta), permitiendo programar diferentes fechas de comienzo para cada grupo (por ejemplo, 1º ESO A el día 15 y 1º ESO B el 22) para compensar festivos y asimetrías de horario lectivo.
+    - El motor de proyección (`TermBoardProjectionEngine.project`) respeta `simulationStartDateIso`: mantiene como libres los slots lectivos anteriores a dicha fecha y encaja las sesiones de la SA a partir del día indicado individualmente para cada grupo.
     - Visualización en paralelo de calendarios lectivos y festivos entre grupos del mismo curso mediante layout adaptativo iPad-first con `ViewThatFits(in: .horizontal)`.
-    - Modo 2 columnas (`twoColumnHorizontalView`) en macOS e iPad landscape con scroll independiente, tarjetas de sesión, métricas de capacidad (`TermBoardMetricsStrip`) y timeline de sesiones (`TermBoardTimelineView`).
-    - Modo compacto (`compactSegmentedView`) con selector segmentado para iPhone o vistas divididas estrechas.
+    - Modo 2 columnas (`twoColumnHorizontalView`) en macOS e iPad landscape con scroll independiente, tarjetas de sesión, métricas de capacidad (`TermBoardMetricsStrip`), selector de inicio por grupo y timeline de sesiones (`TermBoardTimelineView`).
+    - Modo compacto (`compactSegmentedView`) con selector segmentado y selector de inicio individual para iPhone o vistas divididas estrechas.
     - Programación atómica simultánea de sesiones en las unidades didácticas correspondientes de cada grupo (`bridge.programLearningSituationSessions`), garantizando el aislamiento de unidades por `classId`.
 
 - Gestión integral de alumnado en iPadOS, iOS y macOS:

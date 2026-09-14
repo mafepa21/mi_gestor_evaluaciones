@@ -189,20 +189,8 @@ struct MacStudentsView: View {
                 Task { await assignStudentToClass(student, classId: targetClassId) }
             }
         }
-        .sheet(
-            isPresented: Binding(
-                get: { assigningMultipleStudents != nil },
-                set: { if !$0 { assigningMultipleStudents = nil } }
-            )
-        ) {
-            if let students = assigningMultipleStudents {
-                AssignStudentToClassSheet(
-                    students: students,
-                    availableClasses: studentsBridgeStore.classes
-                ) { targetClassId in
-                    Task { await assignMultipleStudentsToClass(students, classId: targetClassId) }
-                }
-            }
+        .sheet(isPresented: isAssigningMultiplePresented) {
+            assigningMultipleStudentsSheetContent
         }
         .confirmationDialog(
             "Eliminar alumno",
@@ -344,6 +332,29 @@ struct MacStudentsView: View {
             Button("Aceptar", role: .cancel) {}
         } message: {
             Text(importErrorMessage ?? "")
+        }
+    }
+
+    private var isAssigningMultiplePresented: Binding<Bool> {
+        Binding(
+            get: { assigningMultipleStudents != nil },
+            set: { isPresent in
+                if !isPresent {
+                    assigningMultipleStudents = nil
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var assigningMultipleStudentsSheetContent: some View {
+        if let students = assigningMultipleStudents {
+            AssignStudentToClassSheet(
+                students: students,
+                availableClasses: studentsBridgeStore.classes
+            ) { targetClassId in
+                Task { await assignMultipleStudentsToClass(students, classId: targetClassId) }
+            }
         }
     }
 

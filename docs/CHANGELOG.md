@@ -15,6 +15,20 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Rediseño, selector rápido y filtrado de columnas en Gestión de Datos (`DataManagementSettingsView`)**:
+  - **Sección especializada de Columnas de Cuaderno (`NotebookColumnsBulkDeleteSection`)**:
+    - **Filtro contextual por Curso y Pestaña**: menú desplegable para aislar rápidamente las columnas de un curso concreto (ej. «1º BAC A») o pestaña/evaluación, eliminando la sobrecarga de scroll y listas planas infinitas.
+    - **Buscador en tiempo real**: campo de búsqueda integrado con limpieza instantánea para localizar columnas por nombre de actividad, evidencia o pestaña.
+    - **Agrupación visual por Curso**: visualización ordenada con cabeceras de grupo, badges de recuento y botones de acción rápida «Marcar/Desmarcar grupo» cuando se visualizan todos los cursos.
+    - **Barra de atajos de selección en bloque**:
+      - Botones de 1 toque: «Todas las visibles», «Ninguna», «Invertir selección».
+      - Menú «Por curso» para seleccionar o deseleccionar en lote todas las columnas de una clase en un solo toque.
+  - **Atajos rápidos de selección en `CollapsibleBulkDeleteSection`**:
+    - Menú de acciones rápidas («Seleccionar todo», «Deseleccionar todo», «Invertir selección») accesible en todas las secciones colapsables (Cursos, Asignaturas, Pestañas, Sesiones, Situaciones y Rúbricas).
+  - **Borrado atómico en lote optimizado**:
+    - Uso de `bridge.deleteColumns(idsAndEvalIds:)` en lote para eliminar múltiples columnas de evaluación y recalcular sincronizaciones de forma agregada sin bloquear la interfaz.
+
+
 - **Soporte multi-grupo en importación y despliegue de Situaciones de Aprendizaje (SA)**:
   - **Materialización de evaluación multi-grupo (`LearningSituationEvaluationSheet`)**:
     - Selección simultánea de múltiples grupos vinculados a la SA mediante chips interactivos (`selectedClassIds`).

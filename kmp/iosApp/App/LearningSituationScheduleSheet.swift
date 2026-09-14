@@ -9,6 +9,8 @@ struct GroupScheduleState: Identifiable {
     var startDate: Date = Date()
     var slots: [TermClassSlot] = []
     var metrics: TermCapacityMetrics?
+    var scheduledSlots: [LearningSituationScheduledSlot] = []
+    var inferredRoute: LearningSituationWeeklySequenceRoute?
 
     var id: Int64 { classId }
 
@@ -20,7 +22,14 @@ struct GroupScheduleState: Identifiable {
     }
 
     var previewCount: Int {
-        previewSlots.count
+        if !scheduledSlots.isEmpty {
+            return scheduledSlots.count
+        }
+        let uniqueSessions = Set(previewSlots.compactMap { slot -> Int? in
+            if case .preview(let num, _, _, _, _) = slot.kind { return num }
+            return nil
+        })
+        return uniqueSessions.isEmpty ? previewSlots.count : uniqueSessions.count
     }
 }
 
@@ -88,6 +97,11 @@ struct LearningSituationScheduleSheet: View {
 
     private var routeOptions: [LearningSituationWeeklySequenceRoute] {
         routeVariants.keys.sorted { $0.rawValue < $1.rawValue }
+    }
+
+    private var activeInferredRoute: LearningSituationWeeklySequenceRoute? {
+        let active = includedGroups.first(where: { $0.classId == (selectedCompactClassId ?? includedGroups.first?.classId) }) ?? groupStates.first
+        return active?.inferredRoute
     }
 
     private var targetSessionCount: Int {
@@ -458,9 +472,22 @@ struct LearningSituationScheduleSheet: View {
 
                     if isRouteAwareDocument {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Itinerario de franjas horarias:")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                            HStack {
+                                Text("Itinerario de franjas horarias:")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                Spacer()
+
+                                if selectedSequenceRoute == nil, let inferred = activeInferredRoute {
+                                    Text("Detectado: \(inferred.displayName)")
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(EvaluationDesign.accent)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(EvaluationDesign.accentSoft, in: Capsule())
+                                }
+                            }
 
                             Picker(
                                 "Itinerario",
@@ -796,26 +823,160 @@ struct LearningSituationScheduleSheet: View {
                 let groupSimStartDateIso = df.string(from: groupStates[index].startDate)
 
                 let classId = groupStates[index].classId
+                let classSlots = allScheduleSlots.filter { $0.schoolClassId == classId }
                 let classNonTeaching = try await bridge.plannerNonTeachingCalendarEvents(classId: classId)
                 let allNonTeaching = globalNonTeaching + classNonTeaching
+                var nonTeachingDates = Set<Date>()
+                for event in allNonTeaching {
+                    let eventStart = Date(timeIntervalSince1970: Double(event.startAt.toEpochMilliseconds()) / 1000.0)
+                    let eventEnd = Date(timeIntervalSince1970: Double(event.endAt.toEpochMilliseconds()) / 1000.0)
+                    var cursor = calendar.startOfDay(for: eventStart)
+                    let endDay = calendar.startOfDay(for: eventEnd)
+                    while cursor <= endDay {
+                        nonTeachingDates.insert(cursor)
+                        guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+                        cursor = next
+                    }
+                }
 
-                let projection = TermBoardProjectionEngine.project(
-                    periodName: resolvedPeriod.name,
-                    startDateIso: resolvedPeriod.startDateIso,
-                    endDateIso: resolvedPeriod.endDateIso,
-                    deadlineDateIso: nil,
-                    classId: classId,
-                    scheduleSlots: allScheduleSlots,
-                    nonTeachingEvents: allNonTeaching,
-                    existingSessions: allSessions,
-                    simulationPlans: simPlans,
-                    simulationSituationTitle: situation.title,
-                    simulationStartDateIso: groupSimStartDateIso,
-                    defaultTimeSlots: visibleSlots
-                )
+                if let draft = sequenceDraft {
+                    let inferred = LearningSituationScheduleProjection.inferRouteForFirstBlock(
+                        startDate: groupStates[index].startDate,
+                        template: classSlots,
+                        periodForSlot: { slot in
+                            visibleSlots.first(where: { $0.startTime == slot.startTime && $0.endTime == slot.endTime })?.period ?? 1
+                        },
+                        excludedDates: nonTeachingDates
+                    )
+                    groupStates[index].inferredRoute = inferred
 
-                groupStates[index].slots = projection.slots
-                groupStates[index].metrics = projection.metrics
+                    let effectiveRoute: LearningSituationWeeklySequenceRoute = {
+                        if let explicit = selectedSequenceRoute {
+                            return explicit
+                        }
+                        if let inferred, draft.routeVariants[inferred] != nil {
+                            return inferred
+                        }
+                        return draft.routeVariants[.shortFirst] != nil ? .shortFirst : (routeOptions.first ?? .shortFirst)
+                    }()
+
+                    let groupPlans = draft.routeVariants[effectiveRoute] ?? draft.plans
+                    let targetCount = LearningSituationScheduleProjection.targetSessionCount(
+                        plans: groupPlans,
+                        annualSessionCount: Int(situation.sessionCount),
+                        sequenceKind: LearningSituationScheduleProjection.sequenceKind(for: groupPlans)
+                    )
+
+                    let projectionResult = LearningSituationScheduleProjection.planAwareSlots(
+                        plans: groupPlans,
+                        startDate: groupStates[index].startDate,
+                        template: classSlots,
+                        periodForSlot: { slot in
+                            visibleSlots.first(where: { $0.startTime == slot.startTime && $0.endTime == slot.endTime })?.period ?? 1
+                        },
+                        targetSessionCount: targetCount,
+                        excludedDates: nonTeachingDates
+                    )
+                    groupStates[index].scheduledSlots = projectionResult.slots
+
+                    // Base timeline from TermBoardProjectionEngine (holidays, existing sessions, free slots)
+                    let baseProjection = TermBoardProjectionEngine.project(
+                        periodName: resolvedPeriod.name,
+                        startDateIso: resolvedPeriod.startDateIso,
+                        endDateIso: resolvedPeriod.endDateIso,
+                        deadlineDateIso: nil,
+                        classId: classId,
+                        scheduleSlots: allScheduleSlots,
+                        nonTeachingEvents: allNonTeaching,
+                        existingSessions: allSessions,
+                        simulationPlans: nil,
+                        simulationSituationTitle: situation.title,
+                        simulationStartDateIso: groupSimStartDateIso,
+                        defaultTimeSlots: visibleSlots
+                    )
+
+                    var updatedSlots = baseProjection.slots
+                    var placedPeriodsCount = 0
+
+                    for assigned in projectionResult.slots {
+                        guard let planNumber = assigned.planSessionNumber else { continue }
+                        let plan = groupPlans.first(where: { $0.sessionNumber == planNumber })
+                        let assignedDateIso = df.string(from: assigned.date)
+                        let isLong = assigned.occupiedPeriods.count > 1
+
+                        for (destinationIndex, destination) in assigned.destinationSlots.enumerated() {
+                            if let slotIndex = updatedSlots.firstIndex(where: {
+                                $0.dateIso == assignedDateIso && $0.period == destination.period
+                            }) {
+                                if case .free = updatedSlots[slotIndex].kind {
+                                    let suffix = (isLong && destinationIndex > 0) ? " (cont.)" : ""
+                                    let title = (plan?.title.isEmpty == false ? plan!.title : "Sesión \(planNumber)") + suffix
+                                    let objective = destinationIndex == 0 ? (plan?.objective ?? "") : "Continuación de la sesión doble"
+                                    let hasEvaluation = destinationIndex == 0 ? (!(plan?.criteria.isEmpty ?? true)) : false
+
+                                    updatedSlots[slotIndex] = TermClassSlot(
+                                        id: updatedSlots[slotIndex].id,
+                                        date: updatedSlots[slotIndex].date,
+                                        dateIso: updatedSlots[slotIndex].dateIso,
+                                        dayOfWeek: updatedSlots[slotIndex].dayOfWeek,
+                                        period: updatedSlots[slotIndex].period,
+                                        startTime: destination.startTime.isEmpty ? updatedSlots[slotIndex].startTime : destination.startTime,
+                                        endTime: destination.endTime.isEmpty ? updatedSlots[slotIndex].endTime : destination.endTime,
+                                        teacherScheduleSlotId: destination.teacherScheduleSlotId ?? updatedSlots[slotIndex].teacherScheduleSlotId,
+                                        lessonIndex: updatedSlots[slotIndex].lessonIndex,
+                                        kind: .preview(
+                                            sessionNumber: planNumber,
+                                            title: title,
+                                            objective: objective,
+                                            hasEvaluation: hasEvaluation,
+                                            planId: nil
+                                        ),
+                                        isAfterEvaluationDeadline: updatedSlots[slotIndex].isAfterEvaluationDeadline
+                                    )
+                                    placedPeriodsCount += 1
+                                }
+                            }
+                        }
+                    }
+
+                    let updatedMetrics = TermCapacityMetrics(
+                        totalLectivas: baseProjection.metrics.totalLectivas,
+                        totalFestivos: baseProjection.metrics.totalFestivos,
+                        totalOcupadas: baseProjection.metrics.totalOcupadas,
+                        totalLibres: max(0, baseProjection.metrics.totalLibres - placedPeriodsCount),
+                        evaluationPeriodName: baseProjection.metrics.evaluationPeriodName,
+                        startDate: baseProjection.metrics.startDate,
+                        endDate: baseProjection.metrics.endDate
+                    )
+
+                    groupStates[index].slots = updatedSlots
+                    groupStates[index].metrics = updatedMetrics
+                } else {
+                    let projection = TermBoardProjectionEngine.project(
+                        periodName: resolvedPeriod.name,
+                        startDateIso: resolvedPeriod.startDateIso,
+                        endDateIso: resolvedPeriod.endDateIso,
+                        deadlineDateIso: nil,
+                        classId: classId,
+                        scheduleSlots: allScheduleSlots,
+                        nonTeachingEvents: allNonTeaching,
+                        existingSessions: allSessions,
+                        simulationPlans: simPlans,
+                        simulationSituationTitle: situation.title,
+                        simulationStartDateIso: groupSimStartDateIso,
+                        defaultTimeSlots: visibleSlots
+                    )
+
+                    groupStates[index].slots = projection.slots
+                    groupStates[index].metrics = projection.metrics
+                }
+            }
+
+            if selectedSequenceRoute == nil, let draft = sequenceDraft {
+                let activeGrp = includedGroups.first(where: { $0.classId == (selectedCompactClassId ?? includedGroups.first?.classId) }) ?? groupStates.first
+                if let activeGrp, let inferred = activeGrp.inferredRoute, let plans = draft.routeVariants[inferred] {
+                    self.sequenceDraft?.plans = plans
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -826,8 +987,7 @@ struct LearningSituationScheduleSheet: View {
     private func selectRoute(_ route: LearningSituationWeeklySequenceRoute?) {
         selectedSequenceRoute = route
         guard let sequenceDraft else { return }
-        let fallback = route ?? (routeVariants[.shortFirst] != nil ? .shortFirst : (routeOptions.first ?? .shortFirst))
-        if let plans = sequenceDraft.routeVariants[fallback] {
+        if let route, let plans = sequenceDraft.routeVariants[route] {
             self.sequenceDraft?.plans = plans
             expandedPlanNumbers = Set(plans.prefix(3).map(\.sessionNumber))
         }
@@ -879,30 +1039,47 @@ struct LearningSituationScheduleSheet: View {
         do {
             for group in targets {
                 guard let schoolClass = bridge.classes.first(where: { $0.id == group.classId }) else { continue }
-                let previewSlots = group.previewSlots
-                guard !previewSlots.isEmpty else { continue }
+                
+                let scheduledSlots: [LearningSituationScheduledSlot]
+                if !group.scheduledSlots.isEmpty {
+                    scheduledSlots = group.scheduledSlots
+                } else {
+                    let previewSlots = group.previewSlots
+                    guard !previewSlots.isEmpty else { continue }
 
-                let scheduledSlots: [LearningSituationScheduledSlot] = previewSlots.compactMap { slot in
-                    guard case .preview(let sessionNumber, _, _, _, _) = slot.kind else { return nil }
-                    return LearningSituationScheduledSlot(
-                        date: slot.date,
-                        period: slot.period,
-                        teacherScheduleSlotId: slot.teacherScheduleSlotId,
-                        startTime: slot.startTime,
-                        endTime: slot.endTime,
-                        planSessionNumber: sessionNumber,
-                        blockKind: nil,
-                        occupiedPeriods: [slot.period],
-                        occupiedScheduleSlots: [
-                            LearningSituationScheduledDestination(
-                                period: slot.period,
-                                teacherScheduleSlotId: slot.teacherScheduleSlotId,
-                                startTime: slot.startTime,
-                                endTime: slot.endTime
-                            )
-                        ],
-                        isSelected: true
-                    )
+                    scheduledSlots = previewSlots.compactMap { slot in
+                        guard case .preview(let sessionNumber, _, _, _, _) = slot.kind else { return nil }
+                        return LearningSituationScheduledSlot(
+                            date: slot.date,
+                            period: slot.period,
+                            teacherScheduleSlotId: slot.teacherScheduleSlotId,
+                            startTime: slot.startTime,
+                            endTime: slot.endTime,
+                            planSessionNumber: sessionNumber,
+                            blockKind: nil,
+                            occupiedPeriods: [slot.period],
+                            occupiedScheduleSlots: [
+                                LearningSituationScheduledDestination(
+                                    period: slot.period,
+                                    teacherScheduleSlotId: slot.teacherScheduleSlotId,
+                                    startTime: slot.startTime,
+                                    endTime: slot.endTime
+                                )
+                            ],
+                            isSelected: true
+                        )
+                    }
+                }
+                guard !scheduledSlots.isEmpty else { continue }
+
+                var groupSequenceDraft = sequenceDraft
+                if let draft = sequenceDraft, isRouteAwareDocument {
+                    let effectiveRoute = selectedSequenceRoute ?? group.inferredRoute ?? .shortFirst
+                    if let routePlans = draft.routeVariants[effectiveRoute] {
+                        var modifiedDraft = draft
+                        modifiedDraft.plans = routePlans
+                        groupSequenceDraft = modifiedDraft
+                    }
                 }
 
                 try await bridge.programLearningSituationSessions(
@@ -910,7 +1087,7 @@ struct LearningSituationScheduleSheet: View {
                     classId: group.classId,
                     groupName: schoolClass.name,
                     scheduledSlots: scheduledSlots,
-                    sequenceDraft: sequenceDraft
+                    sequenceDraft: groupSequenceDraft
                 )
             }
             dismiss()

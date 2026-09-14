@@ -206,56 +206,21 @@ struct MacStudentsView: View {
         }
         .confirmationDialog(
             "Eliminar alumno",
-            isPresented: Binding(
-                get: { pendingDeleteRow != nil },
-                set: { if !$0 { pendingDeleteRow = nil } }
-            ),
+            isPresented: isDeleteSinglePresented,
             presenting: pendingDeleteRow
         ) { row in
-            if let classId = row.classId {
-                Button("Quitar de \(row.className)", role: .destructive) {
-                    Task { await removeStudentFromClass(row.student, classId: classId) }
-                }
-            }
-            Button("Eliminar de toda la app", role: .destructive) {
-                Task { await deleteStudentEverywhere(row.student) }
-            }
-            Button("Cancelar", role: .cancel) {
-                pendingDeleteRow = nil
-            }
+            singleDeleteDialogActions(for: row)
         } message: { row in
-            if row.classId != nil {
-                Text("\(row.student.fullName) está matriculado en \(row.className). Elige si deseas quitarlo solo de esta clase o eliminarlo por completo de la aplicación.")
-            } else {
-                Text("Se eliminará a \(row.student.fullName) y todos sus datos de la app de forma definitiva.")
-            }
+            singleDeleteDialogMessage(for: row)
         }
         .confirmationDialog(
             "Eliminar alumnos seleccionados",
-            isPresented: Binding(
-                get: { pendingDeleteMultipleRows != nil },
-                set: { if !$0 { pendingDeleteMultipleRows = nil } }
-            ),
+            isPresented: isDeleteMultiplePresented,
             presenting: pendingDeleteMultipleRows
         ) { rows in
-            if let classId = selectedClassId {
-                let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "esta clase"
-                Button("Quitar \(rows.count) alumnos de \(className)", role: .destructive) {
-                    Task { await removeMultipleStudentsFromClass(rows, classId: classId) }
-                }
-            }
-            Button("Eliminar \(rows.count) alumnos de toda la app", role: .destructive) {
-                Task { await deleteMultipleStudentsEverywhere(rows) }
-            }
-            Button("Cancelar", role: .cancel) {
-                pendingDeleteMultipleRows = nil
-            }
+            multipleDeleteDialogActions(for: rows)
         } message: { rows in
-            if selectedClassId != nil {
-                Text("Se han seleccionado \(rows.count) alumnos. Elige si deseas quitarlos solo de esta clase o eliminarlos por completo de la aplicación.")
-            } else {
-                Text("Se eliminarán \(rows.count) alumnos y todos sus datos vinculados de la app de forma definitiva.")
-            }
+            multipleDeleteDialogMessage(for: rows)
         }
         .sheet(isPresented: $showTutoringSheet) {
             if let studentId = store.localSelectedStudentId ?? selectedRow?.id {
@@ -379,6 +344,77 @@ struct MacStudentsView: View {
             Button("Aceptar", role: .cancel) {}
         } message: {
             Text(importErrorMessage ?? "")
+        }
+    }
+
+    private var isDeleteSinglePresented: Binding<Bool> {
+        Binding(
+            get: { pendingDeleteRow != nil },
+            set: { isPresent in
+                if !isPresent {
+                    pendingDeleteRow = nil
+                }
+            }
+        )
+    }
+
+    private var isDeleteMultiplePresented: Binding<Bool> {
+        Binding(
+            get: { pendingDeleteMultipleRows != nil },
+            set: { isPresent in
+                if !isPresent {
+                    pendingDeleteMultipleRows = nil
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func singleDeleteDialogActions(for row: KmpBridge.MacStudentRowSnapshot) -> some View {
+        if let classId = row.classId {
+            Button("Quitar de \(row.className)", role: .destructive) {
+                Task { await removeStudentFromClass(row.student, classId: classId) }
+            }
+        }
+        Button("Eliminar de toda la app", role: .destructive) {
+            Task { await deleteStudentEverywhere(row.student) }
+        }
+        Button("Cancelar", role: .cancel) {
+            pendingDeleteRow = nil
+        }
+    }
+
+    @ViewBuilder
+    private func singleDeleteDialogMessage(for row: KmpBridge.MacStudentRowSnapshot) -> some View {
+        if row.classId != nil {
+            Text("\(row.student.fullName) está matriculado en \(row.className). Elige si deseas quitarlo solo de esta clase o eliminarlo por completo de la aplicación.")
+        } else {
+            Text("Se eliminará a \(row.student.fullName) y todos sus datos de la app de forma definitiva.")
+        }
+    }
+
+    @ViewBuilder
+    private func multipleDeleteDialogActions(for rows: [KmpBridge.MacStudentRowSnapshot]) -> some View {
+        if let classId = selectedClassId {
+            let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "esta clase"
+            Button("Quitar \(rows.count) alumnos de \(className)", role: .destructive) {
+                Task { await removeMultipleStudentsFromClass(rows, classId: classId) }
+            }
+        }
+        Button("Eliminar \(rows.count) alumnos de toda la app", role: .destructive) {
+            Task { await deleteMultipleStudentsEverywhere(rows) }
+        }
+        Button("Cancelar", role: .cancel) {
+            pendingDeleteMultipleRows = nil
+        }
+    }
+
+    @ViewBuilder
+    private func multipleDeleteDialogMessage(for rows: [KmpBridge.MacStudentRowSnapshot]) -> some View {
+        if selectedClassId != nil {
+            Text("Se han seleccionado \(rows.count) alumnos. Elige si deseas quitarlos solo de esta clase o eliminarlos por completo de la aplicación.")
+        } else {
+            Text("Se eliminarán \(rows.count) alumnos y todos sus datos vinculados de la app de forma definitiva.")
         }
     }
 

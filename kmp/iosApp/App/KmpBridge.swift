@@ -3200,20 +3200,13 @@ final class KmpBridge: ObservableObject {
         classId: Int64,
         evaluationId: Int64,
         title: String,
-        rubricId: Int64?
+        rubricId: Int64?,
+        targetTabId: String? = nil
     ) async throws {
         if try await container.notebookRepository.getColumnIdForEvaluation(evaluationId: evaluationId) != nil {
             return
         }
-        let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
-        let targetTabId: String
-        if let first = tabs.first?.id {
-            targetTabId = first
-        } else {
-            let createdTitle = try await container.notebookRepository.createTab(classId: classId, tabName: "Evaluación")
-            let refreshedTabs = try await container.notebookConfigRepository.listTabs(classId: classId)
-            targetTabId = refreshedTabs.first(where: { $0.title == createdTitle })?.id ?? refreshedTabs.first?.id ?? "TAB_\(classId)"
-        }
+        let resolvedTabId = try await resolveNotebookTargetTabId(classId: classId, preferredTabId: targetTabId)
 
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
@@ -3233,7 +3226,7 @@ final class KmpBridge: ObservableObject {
             unitOrSituation: nil,
             competencyCriteriaIds: [],
             scaleKind: .tenPoint,
-            tabIds: [targetTabId],
+            tabIds: [resolvedTabId],
             sessions: [],
             sharedAcrossTabs: false,
             colorHex: nil,
@@ -6558,25 +6551,7 @@ final class KmpBridge: ObservableObject {
             detailedPlanIds = [:]
         }
         let orderedDraftPlans = sequenceDraft?.plans.sorted { $0.sessionNumber < $1.sessionNumber } ?? []
-        let unit = TeachingUnit(
-            id: 0,
-            name: situation.title,
-            description: "Situación de aprendizaje: \(situation.challenge)",
-            colorHex: plannerCourseColor(for: classId),
-            groupId: KotlinLong(value: classId),
-            schoolClassId: KotlinLong(value: classId),
-            startDate: nil,
-            endDate: nil
-        )
-        let unitId = try await container.plannerRepository.upsertTeachingUnit(unit: unit).int64Value
-        try await saveLearningSituationLinkedResource(
-            situationId: situation.id,
-            kind: .teachingUnit,
-            resourceId: "\(unitId)",
-            classId: classId,
-            label: situation.title,
-            trace: situation.trace
-        )
+        let unitId = try await ensureTeachingUnitForLearningSituation(situation: situation, classId: classId)
         let calendar = Calendar(identifier: .iso8601)
         for (index, slot) in scheduledSlots.enumerated() {
             let detailedDraft: LearningSituationSessionPlanDraft?
@@ -6734,7 +6709,8 @@ final class KmpBridge: ObservableObject {
     func materializeLearningSituationEvaluations(
         situation: LearningSituation,
         classId: Int64,
-        proposals: [LearningSituationEvaluationDraft]
+        proposals: [LearningSituationEvaluationDraft],
+        targetTabId: String? = nil
     ) async throws {
         for (index, proposal) in proposals.filter(\.isSelected).enumerated() {
             let code = "SA\(situation.id)-E\(index + 1)"
@@ -6755,7 +6731,7 @@ final class KmpBridge: ObservableObject {
                 deviceId: localDeviceId,
                 syncVersion: 1
             ).int64Value
-            try await ensureNotebookColumnForEvaluation(classId: classId, evaluationId: evaluationId, title: proposal.title, rubricId: proposal.rubricId)
+            try await ensureNotebookColumnForEvaluation(classId: classId, evaluationId: evaluationId, title: proposal.title, rubricId: proposal.rubricId, targetTabId: targetTabId)
             try await saveLearningSituationLinkedResource(
                 situationId: situation.id,
                 kind: .evaluation,
@@ -6765,6 +6741,8 @@ final class KmpBridge: ObservableObject {
                 trace: situation.trace
             )
         }
+        refreshCurrentNotebook()
+        scheduleNotebookSnapshotSync(forClassId: classId)
     }
 
     func materializeLearningSituationPhysicalTests(
@@ -7238,7 +7216,9 @@ final class KmpBridge: ObservableObject {
         classId: Int64
     ) async throws -> Int64 {
         let linkedResources = try await container.learningSituationsRepository.listLinkedResources(learningSituationId: situation.id)
-        if let existingResource = linkedResources.first(where: { $0.kind == .teachingUnit }),
+        if let existingResource = linkedResources.first(where: {
+            $0.kind == .teachingUnit && ($0.classId == nil || $0.classId?.int64Value == classId)
+        }),
            let unitId = Int64(existingResource.resourceId) {
             return unitId
         }
@@ -7373,6 +7353,13 @@ final class KmpBridge: ObservableObject {
         guard instrument.kind == .rubric else { return nil }
         guard let rubric = instrument.rubric, !rubric.criteria.isEmpty, !rubric.levels.isEmpty else {
             return nil
+        }
+        let existingRubrics = try await container.rubricsRepository.listRubrics()
+        if let matching = existingRubrics.first(where: {
+            $0.rubric.name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) ==
+            instrument.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        }) {
+            return matching.rubric.id
         }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let rubricId = try await container.rubricsRepository.saveRubric(
@@ -7520,6 +7507,14 @@ final class KmpBridge: ObservableObject {
         let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
         if let preferredTabId, tabs.contains(where: { $0.id == preferredTabId }) {
             return preferredTabId
+        }
+        if let candidateTitle = preferredTabId?.trimmingCharacters(in: .whitespacesAndNewlines), !candidateTitle.isEmpty {
+            if let match = tabs.first(where: { $0.title.caseInsensitiveCompare(candidateTitle) == .orderedSame }) {
+                return match.id
+            }
+            let createdTitle = try await container.notebookRepository.createTab(classId: classId, tabName: candidateTitle)
+            let refreshedTabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+            return refreshedTabs.first(where: { $0.title.caseInsensitiveCompare(createdTitle) == .orderedSame })?.id ?? refreshedTabs.first?.id ?? "TAB_\(classId)"
         }
         if let first = tabs.first?.id {
             return first

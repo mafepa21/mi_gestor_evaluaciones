@@ -3,6 +3,37 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-14 - Soporte multi-grupo en importación de SA: evaluación simultánea en cuadernos y programación comparada a 2 columnas
+
+Resumen:
+- Qué cambio se hizo:
+  1. Materialización de evaluación multi-grupo (`LearningSituationEvaluationSheet`):
+     - Soporte para seleccionar múltiples clases vinculadas a la SA (por ejemplo, 1º ESO A y 1º ESO B) a la vez mediante chips de selección interactivos.
+     - Sección unificada de pestaña destino: permite reutilizar pestañas existentes o crear automáticamente una pestaña con el mismo nombre en todos los grupos si no existe.
+     - En `KmpBridge.swift`, `resolveNotebookTargetTabId` busca la pestaña por ID o por título exacto en la clase; si no existe, la crea dinámicamente y la vincula.
+     - En `KmpBridge.saveAssessmentInstrumentRubricIfNeeded`, se comprueba si ya existe una rúbrica con el mismo título para asociar el mismo `rubricId` a las evaluaciones de ambos grupos, evitando duplicados redundantes en la base de datos de rúbricas.
+  2. Programación temporal comparativa a 2 columnas (`LearningSituationScheduleSheet`):
+     - Proyección paralela del calendario de sesiones para cada grupo vinculado utilizando `TermBoardProjectionEngine.project`.
+     - Layout adaptativo iPad-first con `ViewThatFits(in: .horizontal)`:
+       - Modo 2 columnas (`twoColumnHorizontalView`) en macOS e iPad landscape: visualización lado a lado de calendarios, festivos y slots lectivos para comparar el ritmo de ambos grupos.
+       - Modo compacto (`compactSegmentedView`): selector segmentado de grupo para iPhone o ventanas estrechas en split view.
+       - Selector superior de grupos (chips con estado activo/inactivo y botón para añadir más clases).
+       - Programación concurrente de sesiones mediante `bridge.programLearningSituationSessions` asegurando unidades didácticas aisladas por clase (`ensureTeachingUnitForLearningSituation(situation:classId:)`).
+- Por qué importa:
+  - Elimina la fricción de tener que repetir todo el proceso de importación, creación de pestañas/columnas y programación de sesiones de una Situación de Aprendizaje grupo por grupo cuando un docente imparte la misma materia a varios grupos del mismo nivel.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/LearningSituationsWorkspaceView.swift`
+  - `kmp/iosApp/App/LearningSituationScheduleSheet.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios de Apple (`MiGestorPlannerTests`): 124 tests ejecutados con éxito en macOS (0 fallos).
+  - Tests KMP compartidos (`:shared:desktopTest` y `:data:desktopTest`): BUILD SUCCESSFUL (0 fallos).
+
 ## Avance 2026-09-13 - Exportación de notas a Educamos SM: edición in-place OpenXML de celdas, coincidencia de nombre original y guardado directo en Descargas
 
 Resumen:

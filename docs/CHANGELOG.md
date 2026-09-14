@@ -15,6 +15,18 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Soporte multi-grupo en importación y despliegue de Situaciones de Aprendizaje (SA)**:
+  - **Materialización de evaluación multi-grupo (`LearningSituationEvaluationSheet`)**:
+    - Selección simultánea de múltiples grupos vinculados a la SA mediante chips interactivos (`selectedClassIds`).
+    - Configuración unificada de pestaña de destino (`targetTabName`): permite asociar las columnas a una pestaña compartida por nombre o crearla automáticamente en todos los grupos si no existe.
+    - Creación coordinada y concurrente de instrumentos de evaluación en los cuadernos de cada clase (`bridge.materializeLearningSituationEvaluations`), evitando trabajo duplicado grupo a grupo.
+    - Detección y reutilización transparente de rúbricas existentes (`saveAssessmentInstrumentRubricIfNeeded`) para que todos los grupos compartan la misma rúbrica sin generar entradas redundantes en la base de datos.
+  - **Programación temporal comparada a dos columnas (`LearningSituationScheduleSheet`)**:
+    - Visualización en paralelo de calendarios lectivos y festivos entre grupos del mismo curso mediante layout adaptativo iPad-first con `ViewThatFits(in: .horizontal)`.
+    - Modo 2 columnas (`twoColumnHorizontalView`) en macOS e iPad landscape con scroll independiente, tarjetas de sesión, métricas de capacidad (`TermBoardMetricsStrip`) y timeline de sesiones (`TermBoardTimelineView`).
+    - Modo compacto (`compactSegmentedView`) con selector segmentado para iPhone o vistas divididas estrechas.
+    - Programación atómica simultánea de sesiones en las unidades didácticas correspondientes de cada grupo (`bridge.programLearningSituationSessions`), garantizando el aislamiento de unidades por `classId`.
+
 - Gestión integral de alumnado en iPadOS, iOS y macOS:
   - **Selección múltiple para operaciones en lote (iOS/iPadOS y macOS)**:
     - Modo de selección múltiple interactivo en `StudentProfilesWorkspaceView` (iOS/iPadOS) con casillas de verificación, opción «Todos / Deseleccionar» y barra de acciones por lote inferior («Asignar curso», «Eliminar»).

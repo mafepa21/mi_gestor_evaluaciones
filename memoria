@@ -12,7 +12,9 @@ Resumen:
      - Sección unificada de pestaña destino: permite reutilizar pestañas existentes o crear automáticamente una pestaña con el mismo nombre en todos los grupos si no existe.
      - En `KmpBridge.swift`, `resolveNotebookTargetTabId` busca la pestaña por ID o por título exacto en la clase; si no existe, la crea dinámicamente y la vincula.
      - En `KmpBridge.saveAssessmentInstrumentRubricIfNeeded`, se comprueba si ya existe una rúbrica con el mismo título para asociar el mismo `rubricId` a las evaluaciones de ambos grupos, evitando duplicados redundantes en la base de datos de rúbricas.
-  2. Programación temporal comparativa a 2 columnas (`LearningSituationScheduleSheet`):
+  2. Programación temporal comparativa a 2 columnas y selector de fecha de inicio (`LearningSituationScheduleSheet`):
+     - Selector de fecha nativo («Inicio: [Fecha]») en cabecera para acotar el inicio de la SA dentro del trimestre.
+     - `TermBoardProjectionEngine.project` ampliado con `simulationStartDateIso: String?`: preserva como libres los slots anteriores a la fecha y encaja las sesiones de la SA a partir del día seleccionado.
      - Proyección paralela del calendario de sesiones para cada grupo vinculado utilizando `TermBoardProjectionEngine.project`.
      - Layout adaptativo iPad-first con `ViewThatFits(in: .horizontal)`:
        - Modo 2 columnas (`twoColumnHorizontalView`) en macOS e iPad landscape: visualización lado a lado de calendarios, festivos y slots lectivos para comparar el ritmo de ambos grupos.

@@ -383,5 +383,72 @@ final class PlannerTermBoardTests: XCTestCase {
         XCTAssertEqual(scheduledSlots[1].planSessionNumber, 2)
         XCTAssertEqual(scheduledSlots[1].teacherScheduleSlotId, 42)
     }
+
+    func testTermBoardProjection_RespectsSimulationStartDate() {
+        let classId: Int64 = 101
+        let scheduleSlots = [
+            TeacherScheduleSlot(
+                id: 1,
+                teacherScheduleId: 1,
+                schoolClassId: classId,
+                subjectLabel: "EF",
+                unitLabel: "1B",
+                dayOfWeek: 2, // Martes: 15 sep, 22 sep, 29 sep, 6 oct
+                startTime: "09:00",
+                endTime: "10:00",
+                weeklyTemplateId: nil
+            )
+        ]
+
+        // 4 semanas del 14 sep al 11 oct = 4 martes
+        let simPlans = [
+            TermSimulationPlanItem(planId: 1, sessionNumber: 1, title: "S1", objective: "Obj1"),
+            TermSimulationPlanItem(planId: 2, sessionNumber: 2, title: "S2", objective: "Obj2")
+        ]
+
+        // Queremos que la SA empiece a partir del 28 de septiembre (por lo tanto, el 15 y 22 sep deben quedar libres)
+        let (slots, metrics) = TermBoardProjectionEngine.project(
+            periodName: "1ª Evaluación",
+            startDateIso: "2026-09-14",
+            endDateIso: "2026-10-11",
+            classId: classId,
+            scheduleSlots: scheduleSlots,
+            nonTeachingEvents: [],
+            existingSessions: [],
+            simulationPlans: simPlans,
+            simulationSituationTitle: "SA 2",
+            simulationStartDateIso: "2026-09-28"
+        )
+
+        XCTAssertEqual(slots.count, 4)
+        XCTAssertEqual(metrics.totalLectivas, 4)
+        XCTAssertEqual(metrics.totalLibres, 4)
+
+        // Slot 0 (15 sep): antes del 28 sep -> queda .free
+        XCTAssertEqual(slots[0].kind, TermSlotKind.free)
+        XCTAssertEqual(slots[0].dateIso, "2026-09-15")
+
+        // Slot 1 (22 sep): antes del 28 sep -> queda .free
+        XCTAssertEqual(slots[1].kind, TermSlotKind.free)
+        XCTAssertEqual(slots[1].dateIso, "2026-09-22")
+
+        // Slot 2 (29 sep): en o después del 28 sep -> recibe S1 (.preview)
+        if case .preview(let num, let title, _, _, _) = slots[2].kind {
+            XCTAssertEqual(num, 1)
+            XCTAssertEqual(title, "S1")
+        } else {
+            XCTFail("Se esperaba .preview en el slot 2 (29 sep)")
+        }
+        XCTAssertEqual(slots[2].dateIso, "2026-09-29")
+
+        // Slot 3 (6 oct): en o después del 28 sep -> recibe S2 (.preview)
+        if case .preview(let num, let title, _, _, _) = slots[3].kind {
+            XCTAssertEqual(num, 2)
+            XCTAssertEqual(title, "S2")
+        } else {
+            XCTFail("Se esperaba .preview en el slot 3 (6 oct)")
+        }
+        XCTAssertEqual(slots[3].dateIso, "2026-10-06")
+    }
 }
 

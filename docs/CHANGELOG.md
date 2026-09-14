@@ -21,7 +21,9 @@ El formato sigue una variante practica de Keep a Changelog:
     - Configuración unificada de pestaña de destino (`targetTabName`): permite asociar las columnas a una pestaña compartida por nombre o crearla automáticamente en todos los grupos si no existe.
     - Creación coordinada y concurrente de instrumentos de evaluación en los cuadernos de cada clase (`bridge.materializeLearningSituationEvaluations`), evitando trabajo duplicado grupo a grupo.
     - Detección y reutilización transparente de rúbricas existentes (`saveAssessmentInstrumentRubricIfNeeded`) para que todos los grupos compartan la misma rúbrica sin generar entradas redundantes en la base de datos.
-  - **Programación temporal comparada a dos columnas (`LearningSituationScheduleSheet`)**:
+  - **Programación temporal comparada a dos columnas con selector de fecha de inicio (`LearningSituationScheduleSheet`)**:
+    - Selector interactivo «Inicio: [Fecha]» (`DatePicker`) para indicar el día lectivo a partir del cual comenzará la Situación de Aprendizaje, acotado dentro del rango de la evaluación.
+    - El motor de proyección (`TermBoardProjectionEngine.project`) respeta `simulationStartDateIso`: mantiene como libres los slots lectivos anteriores a dicha fecha y encaja las sesiones de la SA a partir del día indicado.
     - Visualización en paralelo de calendarios lectivos y festivos entre grupos del mismo curso mediante layout adaptativo iPad-first con `ViewThatFits(in: .horizontal)`.
     - Modo 2 columnas (`twoColumnHorizontalView`) en macOS e iPad landscape con scroll independiente, tarjetas de sesión, métricas de capacidad (`TermBoardMetricsStrip`) y timeline de sesiones (`TermBoardTimelineView`).
     - Modo compacto (`compactSegmentedView`) con selector segmentado para iPhone o vistas divididas estrechas.

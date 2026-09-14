@@ -35,6 +35,7 @@ struct LearningSituationScheduleSheet: View {
     @State private var groupStates: [GroupScheduleState] = []
     @State private var selectedCompactClassId: Int64?
     @State private var selectedTermPeriodId: Int64?
+    @State private var situationStartDate = Date()
     @State private var evaluationPeriods: [PlannerEvaluationPeriod] = []
 
     @State private var isLoading = false
@@ -51,6 +52,29 @@ struct LearningSituationScheduleSheet: View {
 
     private var sortedEvaluationPeriods: [PlannerEvaluationPeriod] {
         evaluationPeriods.sorted { ($0.sortOrder, $0.startDateIso) < ($1.sortOrder, $1.startDateIso) }
+    }
+
+    private var activePeriod: PlannerEvaluationPeriod? {
+        if let id = selectedTermPeriodId, let match = evaluationPeriods.first(where: { $0.id == id }) {
+            return match
+        }
+        return sortedEvaluationPeriods.first
+    }
+
+    private var selectedPeriodDateRange: ClosedRange<Date> {
+        let calendar = Calendar(identifier: .iso8601)
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.calendar = calendar
+
+        if let period = activePeriod,
+           let start = df.date(from: period.startDateIso),
+           let end = df.date(from: period.endDateIso),
+           start <= end {
+            return start...end
+        }
+        let now = Date()
+        return now...calendar.date(byAdding: .month, value: 3, to: now)!
     }
 
     private var routeVariants: [LearningSituationWeeklySequenceRoute: [LearningSituationSessionPlanDraft]] {
@@ -157,6 +181,9 @@ struct LearningSituationScheduleSheet: View {
         .appOnChange(of: selectedTermPeriodId) { _ in
             Task { await loadAndProject() }
         }
+        .appOnChange(of: situationStartDate) { _ in
+            Task { await loadAndProject() }
+        }
     }
 
     // MARK: - Header
@@ -195,7 +222,7 @@ struct LearningSituationScheduleSheet: View {
                 Spacer()
             }
 
-            // Controls: Period Picker & DOCX Import
+            // Controls: Period Picker, Start Date Picker & DOCX Import
             HStack(spacing: 12) {
                 if !sortedEvaluationPeriods.isEmpty {
                     HStack(spacing: 6) {
@@ -213,6 +240,26 @@ struct LearningSituationScheduleSheet: View {
                     .padding(.vertical, 6)
                     .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
+
+                HStack(spacing: 6) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(EvaluationDesign.accent)
+                    Text("Inicio:")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    DatePicker(
+                        "",
+                        selection: $situationStartDate,
+                        in: selectedPeriodDateRange,
+                        displayedComponents: [.date]
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 Spacer()
 
@@ -549,8 +596,13 @@ struct LearningSituationScheduleSheet: View {
             evaluationPeriods = try await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)
             if let current = currentPeriodForToday() {
                 selectedTermPeriodId = current.id
-            } else {
-                selectedTermPeriodId = sortedEvaluationPeriods.first?.id
+                situationStartDate = Date()
+            } else if let first = sortedEvaluationPeriods.first {
+                selectedTermPeriodId = first.id
+                let df = DateFormatter()
+                df.dateFormat = "yyyy-MM-dd"
+                df.calendar = Calendar(identifier: .iso8601)
+                situationStartDate = df.date(from: first.startDateIso) ?? Date()
             }
 
             // Discover linked groups from SA
@@ -675,6 +727,20 @@ struct LearningSituationScheduleSheet: View {
                 }
             }
 
+            let calendar = Calendar(identifier: .iso8601)
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            df.calendar = calendar
+
+            // Ensure situationStartDate falls within the resolved period range
+            if let pStart = df.date(from: resolvedPeriod.startDateIso),
+               let pEnd = df.date(from: resolvedPeriod.endDateIso) {
+                if situationStartDate < pStart || situationStartDate > pEnd {
+                    situationStartDate = pStart
+                }
+            }
+            let simStartDateIso = df.string(from: situationStartDate)
+
             for index in groupStates.indices {
                 let classId = groupStates[index].classId
                 let classNonTeaching = try await bridge.plannerNonTeachingCalendarEvents(classId: classId)
@@ -691,6 +757,7 @@ struct LearningSituationScheduleSheet: View {
                     existingSessions: allSessions,
                     simulationPlans: simPlans,
                     simulationSituationTitle: situation.title,
+                    simulationStartDateIso: simStartDateIso,
                     defaultTimeSlots: visibleSlots
                 )
 

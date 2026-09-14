@@ -348,6 +348,82 @@ class NotebookInstrumentsRepositorySqlDelightTest {
     }
 
     @Test
+    fun `saveResponses derives a grade from a direct indicator observation grid without session keys`() = runTest {
+        val fixture = createFixture()
+        val studentId = fixture.students.saveStudent(firstName = "Fran", lastName = "Abad", email = null)
+        val classId = fixture.classes.saveClass(name = "1 BAC A", course = 1, description = null)
+        fixture.classes.addStudentToClass(classId, studentId)
+        fixture.config.saveColumn(
+            classId,
+            NotebookColumnDefinition(
+                id = "obs_direct_col",
+                title = "Rejilla de observacion sistematica de fair play, autoarbitraje e inclusion",
+                type = NotebookColumnType.NUMERIC,
+                inputKind = NotebookCellInputKind.STRUCTURED_OBSERVATION,
+                scaleKind = NotebookScaleKind.FOUR_LEVEL,
+                weight = 0.25,
+            )
+        )
+        val indicators = listOf(
+            "Aceptacion de decisiones arbitrales sin protestas",
+            "Autoarbitraje honesto y resolucion dialogada de dudas de tanteo o linea",
+            "Inclusion de todo el equipo en la rotacion y el juego colectivo",
+        )
+        fixture.instruments.saveTemplate(
+            template = NotebookInstrumentTemplate(
+                id = "template_obs_direct_col",
+                classId = classId,
+                columnId = "obs_direct_col",
+                title = "Rejilla de observacion sistematica",
+                kind = NotebookInstrumentTemplateKind.OBSERVATION,
+                inputKind = NotebookCellInputKind.STRUCTURED_OBSERVATION,
+            ),
+            items = indicators.mapIndexed { index, title ->
+                NotebookInstrumentItem(
+                    id = "template_obs_direct_col_obs_i$index",
+                    templateId = "template_obs_direct_col",
+                    key = "obs_i$index",
+                    title = title,
+                    type = NotebookInstrumentItemType.SCALE_1_4,
+                    options = emptyList(),
+                    required = true,
+                    order = index,
+                    helpText = null,
+                )
+            }
+        )
+
+        // Indicadores puntuados como en el caso real: 4, 2, 4 -> media 1-4 = 3.3333333333333335
+        val responses = listOf(4.0, 2.0, 4.0).mapIndexed { index, value ->
+            NotebookInstrumentResponse(
+                classId = classId,
+                studentId = studentId,
+                columnId = "obs_direct_col",
+                itemId = "template_obs_direct_col_obs_i$index",
+                numberValue = value,
+            )
+        }
+
+        fixture.instruments.saveResponses(
+            classId = classId,
+            studentId = studentId,
+            columnId = "obs_direct_col",
+            responses = responses,
+            updatedAtEpochMs = 1L,
+            deviceId = "test",
+            syncVersion = 1L,
+        )
+
+        val grade = fixture.grades.listGradesForStudentInClass(studentId, classId).single()
+        assertEquals(3.3333333333333335, grade.value)
+
+        val sheet = fixture.notebook.loadNotebookSnapshot(classId)
+        val row = sheet.rows.single { it.student.id == studentId }
+        val column = sheet.columns.single { it.id == "obs_direct_col" }
+        assertEquals(7.777777777777778, row.gradeValueFor(column))
+    }
+
+    @Test
     fun `saveResponses derives a self-assessment score from the rubric items and ignores the open questions`() = runTest {
         val fixture = createFixture()
         val studentId = fixture.students.saveStudent(firstName = "Aitana", lastName = "Ferri", email = null)

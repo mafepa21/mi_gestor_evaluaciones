@@ -1333,6 +1333,12 @@ private struct NotebookStatefulEditableTableCell: View {
     }
 
     private var structuredDisplayText: String {
+        if column.type == .numeric {
+            let num = numericDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !num.isEmpty { return num }
+            let snapshotNum = displaySnapshot.numericText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !snapshotNum.isEmpty { return snapshotNum }
+        }
         let value = (persistedCell?.displayValue ?? persistedCell?.textValue ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? "Pendiente" : value

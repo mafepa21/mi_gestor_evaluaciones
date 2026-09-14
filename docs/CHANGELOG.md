@@ -80,6 +80,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Derivación de nota numérica y visualización en Rejilla de Observación Sistemática**:
+  - **Cálculo de nota en indicadores directos (`NotebookInstrumentsRepositorySqlDelight`)**: `deriveObservationGridScore` ahora procesa tanto las rejillas con desglose sesión × indicador (`obs_s..._i...`) como las rejillas de observación directa de escala 1–4 con claves secuenciales (`obs_i...`, `field_...`), derivando la media de los indicadores respondidos y persistiendo la calificación en `gradesRepository.saveGrade` (escala 1–4, FOUR_LEVEL).
+  - **Ponderación efectiva en la media del Cuaderno**: Al persistir la nota en `gradesRepository`, la columna materializada aplica su peso porcentual configurado (ej. 25%) y contribuye numéricamente a la Media Ponderada del alumno.
+  - **Visualización de calificación en la celda del Cuaderno (`NotebookModuleDisplayFormatting` y `NotebookEditableTableCell`)**: En columnas numéricas asociadas a instrumentos estructurados (`structuredObservation`), la cuadrícula muestra la nota obtenida (ej. «3,3») en lugar del texto fijo «Completo», manteniendo el botón interactivo para consultar o editar la rejilla.
+  - **Importación estructurada (`LearningSituationAssessmentInstrumentsImportService`)**: `makeObservationFields` asigna claves estructuradas `obs_i<index>` y escala `1-4` por defecto al importar tablas de observación sin cabecera de sesión.
+
 - Aislamiento e idempotencia en la importación de alumnos desde Excel/hojas de cálculo:
   - **Aislamiento de matriculación entre cursos**: Corregido el problema por el cual al importar un segundo archivo Excel y asignarlo a un nuevo curso, se matriculaban los alumnos del nuevo archivo más los alumnos previamente importados en otros cursos.
   - **Reutilización de alumnos existentes sin duplicación**: `KmpBridge.confirmStudentImport` ahora asocia el `existingStudentId` detectado durante la previsualización (`previewStudentImport`) matriculándolo en la clase de destino mediante `addStudentToClass` sin duplicar la entidad `Student` en la base de datos local ni crear registros redundantes.

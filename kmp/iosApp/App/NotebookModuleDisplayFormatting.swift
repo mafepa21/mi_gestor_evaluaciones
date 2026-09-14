@@ -377,6 +377,12 @@ extension NotebookModuleView {
 
     func uncachedDisplayValue(for item: NotebookTableRow, column: NotebookColumnDefinition) -> String {
         if column.inputKind.isStructuredInstrument {
+            if column.type == .numeric {
+                let grade = bridge.numericGradeText(studentId: item.student.id, column: column)
+                if !grade.isEmpty {
+                    return grade
+                }
+            }
             return bridge.structuredCellDisplayText(studentId: item.student.id, columnId: column.id)
         }
         switch column.type {

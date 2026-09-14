@@ -240,12 +240,13 @@ class NotebookInstrumentsRepositorySqlDelight(
         summary
     }
 
-    /// Traduce las respuestas 1-4 de una rejilla de observación "sesión × indicador"
-    /// (items con key `obs_s<sesión>_i<indicador>`, ver LearningSituationAssessmentInstrumentsImportService.swift
-    /// en el cliente Apple) en una nota numérica: media de indicadores respondidos por
-    /// sesión, y luego media de las sesiones con al menos un indicador respondido.
-    /// Devuelve `null` si el instrumento no sigue esta convención (checklists, quizzes,
-    /// formularios genéricos) — no afecta a ningún otro tipo de instrumento.
+    /// Traduce las respuestas 1-4 de una rejilla de observación en una nota numérica:
+    /// 1. Si los ítems siguen la convención de sesión × indicador (`obs_s<sesión>_i<indicador>`),
+    ///    calcula la media de indicadores por sesión y luego la media de sesiones respondidas.
+    /// 2. Si los ítems son indicadores de observación directa sin desglose de sesiones (claves
+    ///    `obs_i<n>`, `obs_<n>` o `field_<n>`, excluyendo las rúbricas `rub_<n>`), calcula la
+    ///    media directa de los indicadores respondidos con escala 1-4.
+    /// Devuelve `null` si no hay indicadores 1-4 respondidos.
     private fun deriveObservationGridScore(
         items: List<NotebookInstrumentItem>,
         responsesByItem: Map<String, NotebookInstrumentResponse>,
@@ -259,9 +260,19 @@ class NotebookInstrumentsRepositorySqlDelight(
                 match.groupValues[1].toInt() to value
             }
             .groupBy({ it.first }, { it.second })
-        if (valuesBySession.isEmpty()) return null
-        val sessionAverages = valuesBySession.values.map { it.average() }
-        return sessionAverages.average()
+        if (valuesBySession.isNotEmpty()) {
+            val sessionAverages = valuesBySession.values.map { it.average() }
+            return sessionAverages.average()
+        }
+
+        val rubPattern = Regex("""^rub_\d+$""")
+        val directObservationItems = items.filter {
+            it.type == NotebookInstrumentItemType.SCALE_1_4 && !rubPattern.matches(it.key)
+        }
+        if (directObservationItems.isEmpty()) return null
+        val values = directObservationItems.mapNotNull { responsesByItem[it.id]?.numberValue }
+        if (values.isEmpty()) return null
+        return values.average()
     }
 
     /// Traduce la rúbrica pequeña de un instrumento de autoevaluación/coevaluación (el que

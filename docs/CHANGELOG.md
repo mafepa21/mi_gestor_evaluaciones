@@ -15,6 +15,19 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Importación de grupos de trabajo desde Excel en la Gestión de Grupos del Cuaderno (`NotebookGroupManagementSheet`)**:
+  - **Servicio de lectura y emparejamiento (`NotebookWorkGroupImportService`)**:
+    - Parser adaptativo para hojas de cálculo matriciales como `Generador_de_grupos.xlsx` (cabeceras con nombres de grupo en columnas y alumnos en filas) y tablas en dos columnas (Grupo / Alumno).
+    - Emparejamiento fonético y diacrítico de alumnos con la lista de estudiantes de la clase activa en el cuaderno mediante `StudentNameLookup` (coincidencia de Nombre Apellidos, Apellidos Nombre y tokens principales insensible a tildes y mayúsculas).
+  - **Hoja de previsualización (`NotebookGroupImportPreviewSheet`)**:
+    - Tarjetas interactivas con resumen de grupos detectados, alumnos emparejados y advertencias destacadas para nombres que no coincidan con ningún estudiante del cuaderno.
+    - Opciones para seleccionar grupos a importar y alternar entre reemplazo de grupos existentes o adición acumulativa con sufijo numérico.
+  - **Integración fluida en la interfaz**:
+    - Acción «Importar grupos desde Excel» accesible directamente en `NotebookGroupManagementSheet` con selector de archivos del sistema (`.fileImporter` para `.xlsx`, `.csv` y `.tsv`).
+    - Creación y asignación de alumnos inmediata reflejada en el cuaderno y en el modo «Agrupar por grupos».
+  - **Suite de pruebas unitarias (`NotebookWorkGroupImportTests`)**:
+    - Verificación del parser matricial sobre `Generador_de_grupos.xlsx`, soporte para tablas de dos columnas y variaciones fonéticas/ortográficas de nombres.
+
 - **Rediseño, selector rápido y filtrado de columnas en Gestión de Datos (`DataManagementSettingsView`)**:
   - **Sección especializada de Columnas de Cuaderno (`NotebookColumnsBulkDeleteSection`)**:
     - **Filtro contextual por Curso y Pestaña**: menú desplegable para aislar rápidamente las columnas de un curso concreto (ej. «1º BAC A») o pestaña/evaluación, eliminando la sobrecarga de scroll y listas planas infinitas.

@@ -10,6 +10,10 @@ struct NotebookGroupManagementSheet: View {
     @State private var editGroupTarget: NotebookWorkGroup? = nil
     @State private var showingEditSheet = false
 
+    @State private var showingFileImporter = false
+    @State private var importPreview: NotebookWorkGroupImportPreview? = nil
+    @State private var importErrorMessage: String? = nil
+
     @State private var loadingSituations = false
     @State private var classSituations: [LearningSituation] = []
 
@@ -184,6 +188,12 @@ struct NotebookGroupManagementSheet: View {
                     } label: {
                         Label("Nuevo grupo de trabajo", systemImage: "person.2.badge.plus")
                     }
+
+                    Button {
+                        showingFileImporter = true
+                    } label: {
+                        Label("Importar grupos desde Excel", systemImage: "arrow.down.doc")
+                    }
                 }
             }
             #if os(iOS)
@@ -201,6 +211,29 @@ struct NotebookGroupManagementSheet: View {
                         dismiss()
                     }
                 }
+            }
+            .fileImporter(
+                isPresented: $showingFileImporter,
+                allowedContentTypes: [.xlsx, .commaSeparatedText, .tabSeparatedText],
+                allowsMultipleSelection: false
+            ) { result in
+                handleFileImport(result)
+            }
+            .sheet(item: $importPreview) { preview in
+                NotebookGroupImportPreviewSheet(
+                    preview: preview,
+                    existingGroupNames: currentGroups.map(\.name)
+                ) { confirmedGroups, clearExisting in
+                    applyImportedGroups(confirmedGroups, clearExisting: clearExisting)
+                }
+            }
+            .alert("No se pudo importar", isPresented: Binding(
+                get: { importErrorMessage != nil },
+                set: { if !$0 { importErrorMessage = nil } }
+            )) {
+                Button("Aceptar", role: .cancel) {}
+            } message: {
+                Text(importErrorMessage ?? "")
             }
             .sheet(isPresented: $showingEditSheet) {
                 NotebookGroupEditSheet(
@@ -236,6 +269,57 @@ struct NotebookGroupManagementSheet: View {
                 loadClassLearningSituations()
             }
         }
+    }
+
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        do {
+            guard let url = try result.get().first else { return }
+            let rows = try AppleSpreadsheetReader.readRows(from: url)
+            guard let data = data else {
+                throw NotebookWorkGroupImportError.emptySpreadsheet
+            }
+            let classStudents = data.sheet.rows.map(\.student)
+            let service = NotebookWorkGroupImportService()
+            let preview = try service.preview(
+                rows: rows,
+                sourceName: url.lastPathComponent,
+                classStudents: classStudents
+            )
+            self.importPreview = preview
+        } catch {
+            self.importErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyImportedGroups(_ groups: [ImportedNotebookGroup], clearExisting: Bool) {
+        guard let data = data else { return }
+        let classId = data.sheet.classId
+        let tabId = activeTabId
+
+        if clearExisting {
+            for existing in currentGroups {
+                bridge.deleteNotebookWorkGroup(groupId: existing.id)
+            }
+        }
+
+        for group in groups {
+            let matchedStudentIds = group.members.compactMap(\.matchedStudentId)
+            bridge.saveNotebookWorkGroup(name: group.name, learningSituationId: nil)
+
+            // Asignar los alumnos al grupo recién guardado en el tab
+            // Esperar un breve instante para que el grupo se guarde o invocar la asignación
+            if !matchedStudentIds.isEmpty {
+                // Para asignación inmediata por nombre en el tab:
+                bridge.assignStudentToNotebookGroup(groupName: group.name, studentId: matchedStudentIds[0])
+                if matchedStudentIds.count > 1 {
+                    for studentId in matchedStudentIds.dropFirst() {
+                        bridge.assignStudentToNotebookGroup(groupName: group.name, studentId: studentId)
+                    }
+                }
+            }
+        }
+
+        onToast("\(groups.count) grupos importados", .success)
     }
 
     private func memberCount(_ groupId: Int64) -> Int {

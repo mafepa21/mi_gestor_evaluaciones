@@ -46,8 +46,11 @@ struct NotebookGroupManagementSheet: View {
 
     private func courseLabel(for schoolClass: SchoolClass) -> String {
         let lowercasedName = schoolClass.name.lowercased()
-        if lowercasedName.contains("bach") {
+        if lowercasedName.contains("bach") || lowercasedName.contains("bac") || lowercasedName.contains("bto") || lowercasedName.contains("bat") {
             return "\(schoolClass.course)º Bachillerato"
+        }
+        if lowercasedName.contains("prim") || lowercasedName.contains("pri") {
+            return "\(schoolClass.course)º Primaria"
         }
         if lowercasedName.contains("eso") || (1...4).contains(schoolClass.course) {
             return "\(schoolClass.course)º ESO"
@@ -55,47 +58,95 @@ struct NotebookGroupManagementSheet: View {
         return "\(schoolClass.course)º"
     }
 
-    private func cleanLabel(_ label: String) -> String {
-        let lower = label.lowercased()
-        let charactersToKeep = "0123456789abcdefghijklmnopqrstuvwxyz"
-        let filtered = lower.filter { charactersToKeep.contains($0) }
-        return filtered
-            .replacingOccurrences(of: "bachillerato", with: "bach")
-            .replacingOccurrences(of: "de", with: "")
+    private func extractCourseNumber(from text: String) -> Int? {
+        let regex = try? NSRegularExpression(pattern: "\\b([1-6])(?:º|ª|o|a)?\\b", options: .caseInsensitive)
+        let range = NSRange(text.startIndex..., in: text)
+        if let match = regex?.firstMatch(in: text, options: [], range: range),
+           let digitRange = Range(match.range(at: 1), in: text),
+           let num = Int(text[digitRange]) {
+            return num
+        }
+        return nil
     }
 
-    private func isSituation(_ situation: LearningSituation, matchingClass schoolClass: SchoolClass) -> Bool {
-        let classLabel = courseLabel(for: schoolClass)
-        let sitLabel = situation.courseLabel
-        
-        let cleanClass = cleanLabel(classLabel)
-        let cleanSit = cleanLabel(sitLabel)
-        
-        return cleanClass == cleanSit
+    private func isSituation(_ situation: LearningSituation, matchingClassName rawClassName: String, course: Int) -> Bool {
+        let sitCourseLabel = situation.courseLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sitStageLabel = situation.stageLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sitCombined = "\(sitCourseLabel) \(sitStageLabel)".lowercased()
+        let className = rawClassName.lowercased()
+
+        // 1. Número de curso (1, 2, 3, 4, etc.)
+        let expectedCourse: Int = course > 0 ? course : (extractCourseNumber(from: className) ?? 0)
+        let sitCourseNumber = extractCourseNumber(from: sitCourseLabel) ?? extractCourseNumber(from: sitCombined)
+
+        if expectedCourse > 0, let sitNum = sitCourseNumber {
+            if sitNum != expectedCourse {
+                return false
+            }
+        }
+
+        // 2. Etapa educativa
+        let isClassBach = className.contains("bach") || className.contains("bac") || className.contains("bto") || className.contains("bat")
+        let isClassEso = className.contains("eso") || className.contains("secundaria")
+        let isClassPrimaria = className.contains("prim") || className.contains("pri")
+
+        let isSitBach = sitCombined.contains("bach") || sitCombined.contains("bac") || sitCombined.contains("bto") || sitCombined.contains("bat")
+        let isSitEso = sitCombined.contains("eso") || sitCombined.contains("secundaria")
+        let isSitPrimaria = sitCombined.contains("prim") || sitCombined.contains("pri")
+
+        if isClassBach {
+            return isSitBach || (!isSitEso && !isSitPrimaria)
+        } else if isClassEso {
+            return isSitEso || (!isSitBach && !isSitPrimaria)
+        } else if isClassPrimaria {
+            return isSitPrimaria
+        }
+
+        // 3. Fallback a etiqueta de curso si no se identificó etapa especial
+        let sitLabel = sitCourseLabel.lowercased().filter { $0.isLetter || $0.isNumber }
+        let classLabel = className.filter { $0.isLetter || $0.isNumber }
+        return !sitLabel.isEmpty && (classLabel.contains(sitLabel) || sitLabel.contains(classLabel))
     }
 
     private func loadClassLearningSituations() {
         guard let classId = data?.sheet.classId else { return }
-        guard let schoolClass = bridge.classes.first(where: { $0.id == classId }) else { return }
         loadingSituations = true
         Task {
+            // Resolver información de la clase desde el bridge
+            let targetClass = bridge.classes.first(where: { $0.id == classId })
+            let className = targetClass?.name ?? ""
+            let classCourse = targetClass != nil ? Int(targetClass!.course) : (extractCourseNumber(from: className) ?? 1)
+
             do {
                 let situations = try await bridge.learningSituations()
+                let allLinks = (try? await bridge.learningSituationClassLinksAll()) ?? []
+                let directLinkedIds = Set(
+                    allLinks.lazy
+                        .filter { $0.classId == classId }
+                        .map(\.learningSituationId)
+                )
+
                 var linked: [LearningSituation] = []
                 var other: [LearningSituation] = []
+
                 for sit in situations {
-                    guard isSituation(sit, matchingClass: schoolClass) else { continue }
-                    
-                    let links = try await bridge.learningSituationClassLinks(id: sit.id)
-                    if links.contains(where: { $0.classId == classId }) {
+                    let hasDirectLink = directLinkedIds.contains(sit.id)
+                    let matches = isSituation(sit, matchingClassName: className, course: classCourse)
+
+                    // Estricto: debe pertenecer a la clase (bien por link directo o por coincidir en curso)
+                    guard hasDirectLink || matches else { continue }
+
+                    if hasDirectLink {
                         linked.append(sit)
                     } else {
                         other.append(sit)
                     }
                 }
+
                 linked.sort { $0.title.localizedCompare($1.title) == .orderedAscending }
                 other.sort { $0.title.localizedCompare($1.title) == .orderedAscending }
                 let finalFiltered = linked + other
+
                 await MainActor.run {
                     self.classSituations = finalFiltered
                     self.loadingSituations = false
@@ -240,7 +291,8 @@ struct NotebookGroupManagementSheet: View {
                 NotebookGroupEditSheet(
                     bridge: bridge,
                     group: editGroupTarget,
-                    classSituations: classSituations
+                    classSituations: classSituations,
+                    isLoadingSituations: loadingSituations
                 ) { name, situationId in
                     let classId = data?.sheet.classId
                     Task {
@@ -344,6 +396,7 @@ struct NotebookGroupEditSheet: View {
     let bridge: KmpBridge
     let group: NotebookWorkGroup?
     let classSituations: [LearningSituation]
+    var isLoadingSituations: Bool = false
     let onSave: (String, Int64?) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -358,9 +411,16 @@ struct NotebookGroupEditSheet: View {
                 }
 
                 Section(header: Text("Situación de aprendizaje"), footer: Text("Asociar el grupo a una situación de aprendizaje permite organizarlo por proyectos. Puedes crear y vincular situaciones desde la pestaña 'Situaciones' del menú principal.")) {
-                    if classSituations.isEmpty {
+                    if isLoadingSituations {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Buscando situaciones del curso...")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if classSituations.isEmpty {
                         Picker("Situación asociada", selection: $selectedSituationId) {
-                            Text("No hay situaciones creadas")
+                            Text("No hay situaciones para este curso")
                                 .tag(nil as Int64?)
                         }
                         .disabled(true)

@@ -3,6 +3,31 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-16 - Detección y filtrado preciso de Situaciones de Aprendizaje (SA) por curso en grupos de trabajo
+ 
+Resumen:
+- Qué cambio se hizo:
+  1. Corrección y enriquecimiento del parser semántico de niveles y cursos:
+     - `KmpBridge.swift`: `courseLabel(for:)` ampliado para identificar variantes de Bachillerato (`bac`, `bto`, `bat`) y Primaria (`prim`, `pri`) antes de evaluar el rango numérico de ESO, eliminando el fallo por el cual clases como «1º BAC B» se etiquetaban como ESO.
+     - `NotebookGroupManagementSheet.swift`: `isSituation` refactorizado para comparar de forma estricta tanto el número ordinal del curso (1, 2, 3, 4) como la etapa educativa (Bachillerato, ESO, Primaria), garantizando que solo se listen las SA del curso en cuestión.
+  2. Resolución asíncrona de la clase activa en `loadClassLearningSituations()`:
+     - Carga garantizada sin abortos prematuros si `bridge.classes` se encuentra resolviendo en segundo plano.
+     - Enlace prioritario de las situaciones que ya cuenten con `LearningSituationClassLink` en SQLite para la clase activa.
+  3. Experiencia de usuario en selectores de SA:
+     - Estado de carga explícito (`isLoadingSituations`) con spinner sutil y texto «Buscando situaciones del curso...».
+     - Mensaje adaptado «No hay situaciones para este curso» en lugar de un genérico «No hay situaciones creadas» cuando el curso no tiene SAs importadas.
+- Por qué importa:
+  - Corrige el problema reportado donde las situaciones de aprendizaje importadas no aparecían en el selector de creación o importación de grupos para clases de Bachillerato, asegurando a la vez que no se mezclen SAs de otros cursos.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS (MiGestorKMPMac): ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator (MiGestorKMPiOS): ✓ COMPILADO CORRECTAMENTE
+
 ## Avance 2026-09-16 - Asociación de grupos a SA, persistencia atómica de miembros y ordenación visual en el Cuaderno
 
 Resumen:

@@ -13,6 +13,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Fixed
+
+- **Detección y filtrado preciso de Situaciones de Aprendizaje (SA) por curso en grupos de trabajo (`NotebookGroupManagementSheet` y `KmpBridge`)**:
+  - Corrección en la función de emparejamiento de curso (`courseLabel(for:)` e `isSituation`) para reconocer nomenclaturas abreviadas de Bachillerato (`bac`, `bto`, `bat`), Primaria (`prim`, `pri`) y ESO, evitando que clases como «1º BAC B» se cataloguen incorrectamente como ESO.
+  - Filtrado estricto por curso en `loadClassLearningSituations()`: ahora solo se muestran las Situaciones de Aprendizaje correspondientes al curso y etapa de la clase activa (o con vínculo directo en base de datos), excluyendo de forma rigurosa SAs de cursos diferentes.
+  - Resolución robusta de la clase activa sin abortos silenciosos ni bloqueos de concurrencia al abrir la hoja de grupos.
+  - Indicador de carga asíncrono y mensajes contextuales precisos («Buscando situaciones del curso...» y «No hay situaciones para este curso») en el selector de SA de `NotebookGroupEditSheet` y `NotebookGroupImportPreviewSheet`.
+
 ### Added
 
 - **Asociación de grupos de trabajo a Situaciones de Aprendizaje (SA), persistencia atómica y distinción visual por grupos en el Cuaderno**:

@@ -8657,8 +8657,11 @@ final class KmpBridge: ObservableObject {
 
     func courseLabel(for schoolClass: SchoolClass) -> String {
         let lowercasedName = schoolClass.name.lowercased()
-        if lowercasedName.contains("bach") {
+        if lowercasedName.contains("bach") || lowercasedName.contains("bac") || lowercasedName.contains("bto") || lowercasedName.contains("bat") {
             return "\(schoolClass.course)º Bachillerato"
+        }
+        if lowercasedName.contains("prim") || lowercasedName.contains("pri") {
+            return "\(schoolClass.course)º Primaria"
         }
         if lowercasedName.contains("eso") || (1...4).contains(schoolClass.course) {
             return "\(schoolClass.course)º ESO"

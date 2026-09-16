@@ -487,6 +487,13 @@ interface NotebookRepository {
         studentIds: List<Long>,
     )
     @Throws(Throwable::class)
+    suspend fun replaceWorkGroups(
+        classId: Long,
+        tabId: String,
+        groups: List<NotebookWorkGroupBatchItem>,
+        clearExisting: Boolean = false,
+    )
+    @Throws(Throwable::class)
     suspend fun saveCell(
         classId: Long,
         studentId: Long,

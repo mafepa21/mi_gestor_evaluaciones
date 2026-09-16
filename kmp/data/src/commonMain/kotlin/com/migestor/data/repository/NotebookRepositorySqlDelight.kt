@@ -427,6 +427,15 @@ class NotebookRepositorySqlDelight(
         notebookConfigRepository.clearStudentsFromWorkGroup(classId, tabId, studentIds)
     }
 
+    override suspend fun replaceWorkGroups(
+        classId: Long,
+        tabId: String,
+        groups: List<NotebookWorkGroupBatchItem>,
+        clearExisting: Boolean,
+    ) {
+        notebookConfigRepository.replaceWorkGroups(classId, tabId, groups, clearExisting)
+    }
+
     override suspend fun deleteColumn(columnId: String) {
         val columnRow = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull()
         if (columnRow?.is_locked == 1L) {

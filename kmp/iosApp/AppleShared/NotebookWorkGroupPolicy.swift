@@ -78,15 +78,9 @@ enum NotebookWorkGroupPolicy {
             let sitGroups = groups.filter { $0.learningSituationId?.int64Value == sitId }
             selected = sitGroups.isEmpty ? inFamily : sitGroups
         } else {
-            let general = inFamily.filter { $0.learningSituationId == nil }
-            if general.contains(where: hasMembers) {
-                selected = general
-            } else if general.isEmpty {
-                selected = inFamily.isEmpty ? groups : inFamily
-            } else {
-                let filled = groups.filter(hasMembers)
-                selected = filled.isEmpty ? general : filled
-            }
+            let candidates = inFamily.isEmpty ? groups : inFamily
+            let filled = candidates.filter(hasMembers)
+            selected = filled.isEmpty ? candidates : filled
         }
 
         return selected.sorted {

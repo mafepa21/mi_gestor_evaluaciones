@@ -15,6 +15,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Corrección de persistencia y sincronización al modificar grupos de trabajo en tablero y lista (PR #240)**:
+  - **Sincronización bidireccional limpia en `WorkGroupBoardDraft`**: Eliminada la condición que abortaba la ingesta cuando la base de datos tenía menos miembros (desasignación de alumnos a «Sin grupo» o borrado de grupos), y eliminada la re-inyección local que resucitaba asignaciones previas.
+  - **Arrastre y soltado sobre grupos en creación (`handleDrop`)**: Resolución automática de IDs provisionales hacia IDs persistidos reales para permitir asignar o desasignar alumnos sin rechazo de gestos.
+  - **Detección inmediata de cambios en grupos (`groupSignature`)**: `NotebookGroupBoardView` ahora observa la firma completa (id, nombre, orden y SA) para que renombrar o cambiar la SA de un grupo existente se refleje de inmediato en el tablero.
+  - **Actualización reactiva en edición y borrado**: Actualización en caliente de `boardDraft` al renombrar o eliminar grupos desde la hoja de gestión.
+  - **Selección inclusiva en `NotebookWorkGroupPolicy.activeGroups`**: En el modo de ordenación general del cuaderno, la presencia de grupos generales ya no oculta los grupos asignados a Situaciones de Aprendizaje de la misma pestaña.
+
 - **Importar Excel volvió al tablero y los grupos automáticos quedan del mismo tamaño (PR #240)**:
   - El botón «Importar Excel» está otra vez en el tablero, no solo en Lista.
   - Un recargo vacío del cuaderno ya no borra un reparto que el tablero acaba de hacer.

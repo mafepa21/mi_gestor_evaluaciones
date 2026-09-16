@@ -19,14 +19,6 @@ final class WorkGroupBoardDraft: ObservableObject {
     func ingest(groups remoteGroups: [NotebookWorkGroup], members: [NotebookWorkGroupMember], force: Bool = false) {
         remapTemporaryIds(from: remoteGroups)
 
-        let remoteMembership = Dictionary(uniqueKeysWithValues: members.map { ($0.studentId, $0.groupId) })
-        if !force, remoteMembership.count < membership.count {
-            return
-        }
-        if !force, remoteGroups.isEmpty, !groups.isEmpty {
-            return
-        }
-
         var nextGroups = remoteGroups
             .sorted { lhs, rhs in
                 if lhs.order != rhs.order { return lhs.order < rhs.order }
@@ -42,22 +34,27 @@ final class WorkGroupBoardDraft: ObservableObject {
                 )
             }
 
-        let unmatchedTemps = groups.filter { temp in
-            temp.isTemporary && !nextGroups.contains(where: { $0.name == temp.name })
+        let pendingTemps = groups.filter { temp in
+            temp.isTemporary && !nextGroups.contains(where: {
+                $0.id == temp.id || $0.name.trimmingCharacters(in: .whitespaces).localizedCaseInsensitiveCompare(temp.name.trimmingCharacters(in: .whitespaces)) == .orderedSame
+            })
         }
-        nextGroups.append(contentsOf: unmatchedTemps)
+        nextGroups.append(contentsOf: pendingTemps)
 
+        let remoteMembership = Dictionary(uniqueKeysWithValues: members.map { ($0.studentId, $0.groupId) })
         var nextMembership = remoteMembership
-        for (studentId, groupId) in membership where nextMembership[studentId] == nil {
-            nextMembership[studentId] = groupId
+
+        let pendingTempIds = Set(pendingTemps.map(\.id))
+        for (studentId, groupId) in membership {
+            if pendingTempIds.contains(groupId) {
+                nextMembership[studentId] = groupId
+            }
         }
 
         groups = nextGroups
         membership = nextMembership
         lastLocalMemberCount = nextMembership.count
-        if remoteMembership.count >= lastLocalMemberCount {
-            pendingMutations = 0
-        }
+        pendingMutations = 0
     }
 
     private func remapTemporaryIds(from remoteGroups: [NotebookWorkGroup]) {
@@ -67,7 +64,9 @@ final class WorkGroupBoardDraft: ObservableObject {
         for index in nextGroups.indices {
             let local = nextGroups[index]
             guard local.isTemporary,
-                  let remote = remoteGroups.first(where: { $0.name == local.name }) else { continue }
+                  let remote = remoteGroups.first(where: {
+                      $0.name.trimmingCharacters(in: .whitespaces).localizedCaseInsensitiveCompare(local.name.trimmingCharacters(in: .whitespaces)) == .orderedSame
+                  }) else { continue }
             remapped[local.id] = remote.id
             nextGroups[index] = GroupItem(
                 id: remote.id,
@@ -86,6 +85,13 @@ final class WorkGroupBoardDraft: ObservableObject {
             }
         }
         membership = nextMembership
+    }
+
+    func updateGroup(id: Int64, name: String, learningSituationId: Int64?) {
+        if let index = groups.firstIndex(where: { $0.id == id }) {
+            groups[index].name = name
+            groups[index].learningSituationId = learningSituationId
+        }
     }
 
     func addTemporaryGroup(name: String, tabId: String, learningSituationId: Int64?) {
@@ -280,7 +286,7 @@ struct NotebookGroupBoardView: View {
         .onAppear {
             seedDraft()
         }
-        .appOnChange(of: groups.map(\.id)) { _ in
+        .appOnChange(of: groupSignature) { _ in
             seedDraft()
         }
         .appOnChange(of: memberSignature) { _ in
@@ -310,6 +316,10 @@ struct NotebookGroupBoardView: View {
                 }
             }
         }
+    }
+
+    private var groupSignature: String {
+        groups.map { "\($0.id):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }.joined(separator: "|")
     }
 
     private var memberSignature: String {
@@ -386,15 +396,36 @@ struct NotebookGroupBoardView: View {
     private func handleDrop(items: [String], groupId: Int64?) -> Bool {
         let studentIds = items.compactMap { Int64($0) }
         guard !studentIds.isEmpty else { return false }
+
+        let resolvedGroupId: Int64?
         if let groupId, groupId < 0 {
-            return false
+            if let temp = draft.groups.first(where: { $0.id == groupId }),
+               let real = groups.first(where: {
+                   $0.name.trimmingCharacters(in: .whitespaces).localizedCaseInsensitiveCompare(temp.name.trimmingCharacters(in: .whitespaces)) == .orderedSame
+               }) {
+                resolvedGroupId = real.id
+            } else {
+                resolvedGroupId = groupId
+            }
+        } else {
+            resolvedGroupId = groupId
         }
-        draft.move(studentIds: studentIds, to: groupId)
-        bridge.assignStudentsToNotebookGroup(
-            groupId: groupId,
-            studentIds: studentIds,
-            tabId: draft.groups.first(where: { $0.id == groupId })?.tabId
-        )
+
+        draft.move(studentIds: studentIds, to: resolvedGroupId)
+        if let targetId = resolvedGroupId, targetId >= 0 {
+            let tabId = draft.groups.first(where: { $0.id == targetId })?.tabId ?? groups.first(where: { $0.id == targetId })?.tabId
+            bridge.assignStudentsToNotebookGroup(
+                groupId: targetId,
+                studentIds: studentIds,
+                tabId: tabId
+            )
+        } else if resolvedGroupId == nil {
+            bridge.assignStudentsToNotebookGroup(
+                groupId: nil,
+                studentIds: studentIds,
+                tabId: groups.first?.tabId
+            )
+        }
         return true
     }
 }

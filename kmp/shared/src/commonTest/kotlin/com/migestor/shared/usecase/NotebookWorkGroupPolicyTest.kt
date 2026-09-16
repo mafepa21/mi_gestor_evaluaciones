@@ -65,6 +65,26 @@ class NotebookWorkGroupPolicyTest {
     }
 
     @Test
+    fun `general mode includes both filled general and filled SA groups in tab family`() {
+        val groups = listOf(
+            group(1, "ROOT", "General 1", situationId = null),
+            group(2, "ROOT", "Equipo SA", situationId = 7L),
+        )
+        val members = listOf(
+            member(1, 20L, "ROOT"),
+            member(2, 10L, "ROOT"),
+        )
+        val active = NotebookWorkGroupPolicy.activeGroups(
+            groups = groups,
+            members = members,
+            tabs = tabs,
+            activeTabId = "CHILD",
+            mode = NotebookWorkGroupPolicy.MODE_GENERAL,
+        )
+        assertEquals(listOf(1L, 2L), active.map { it.id })
+    }
+
+    @Test
     fun `member lookup uses group id even if the member tab differs`() {
         val group = group(5, "ROOT", "Equipo", situationId = 1L)
         val members = listOf(member(5, 42L, "CHILD"))

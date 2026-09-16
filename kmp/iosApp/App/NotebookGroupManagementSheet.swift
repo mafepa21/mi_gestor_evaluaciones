@@ -205,6 +205,7 @@ struct NotebookGroupManagementSheet: View {
                         await MainActor.run {
                             let tabId = activeTabId ?? ""
                             if let target = editGroupTarget {
+                                boardDraft.updateGroup(id: target.id, name: name, learningSituationId: situationId)
                                 bridge.updateNotebookWorkGroup(groupId: target.id, name: name, learningSituationId: situationId, tabId: tabId)
                                 onToast("Grupo actualizado", .success)
                             } else {
@@ -371,6 +372,7 @@ struct NotebookGroupManagementSheet: View {
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
+                                boardDraft.removeGroup(id: group.id)
                                 bridge.deleteNotebookWorkGroup(groupId: group.id)
                                 onToast("Grupo eliminado", .warning)
                             } label: {

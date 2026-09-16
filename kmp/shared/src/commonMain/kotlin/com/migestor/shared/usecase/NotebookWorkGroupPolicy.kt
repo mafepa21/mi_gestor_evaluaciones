@@ -76,12 +76,9 @@ object NotebookWorkGroupPolicy {
             val sitGroups = groups.filter { it.learningSituationId == sitId }
             sitGroups.ifEmpty { inFamily }
         } else {
-            val general = inFamily.filter { it.learningSituationId == null }
-            when {
-                general.any(hasMembers) -> general
-                general.isEmpty() -> inFamily.ifEmpty { groups }
-                else -> groups.filter(hasMembers).ifEmpty { general }
-            }
+            val candidates = inFamily.ifEmpty { groups }
+            val filled = candidates.filter(hasMembers)
+            filled.ifEmpty { candidates }
         }
 
         return selected.sortedWith(compareBy<NotebookWorkGroup> { it.order }.thenBy { it.id })

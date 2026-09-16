@@ -15,9 +15,15 @@ final class WorkGroupBoardDraft: ObservableObject {
 
     private var pendingMutations = 0
     private var lastLocalMemberCount = 0
+    private var pendingAssignments: [Int64: Set<Int64>] = [:]
 
-    func ingest(groups remoteGroups: [NotebookWorkGroup], members: [NotebookWorkGroupMember], force: Bool = false) {
-        remapTemporaryIds(from: remoteGroups)
+    func ingest(
+        groups remoteGroups: [NotebookWorkGroup],
+        members: [NotebookWorkGroupMember],
+        force: Bool = false,
+        onResolvePendingAssignments: ((_ realGroupId: Int64, _ studentIds: [Int64], _ tabId: String?) -> Void)? = nil
+    ) {
+        let remapped = remapTemporaryIds(from: remoteGroups, onResolve: onResolvePendingAssignments)
 
         var nextGroups = remoteGroups
             .sorted { lhs, rhs in
@@ -45,8 +51,12 @@ final class WorkGroupBoardDraft: ObservableObject {
         var nextMembership = remoteMembership
 
         let pendingTempIds = Set(pendingTemps.map(\.id))
+        let resolvedRealGroupIds = Set(remapped.values)
+
         for (studentId, groupId) in membership {
             if pendingTempIds.contains(groupId) {
+                nextMembership[studentId] = groupId
+            } else if resolvedRealGroupIds.contains(groupId) && remoteMembership[studentId] != groupId {
                 nextMembership[studentId] = groupId
             }
         }
@@ -57,8 +67,12 @@ final class WorkGroupBoardDraft: ObservableObject {
         pendingMutations = 0
     }
 
-    private func remapTemporaryIds(from remoteGroups: [NotebookWorkGroup]) {
-        guard groups.contains(where: \.isTemporary) else { return }
+    @discardableResult
+    private func remapTemporaryIds(
+        from remoteGroups: [NotebookWorkGroup],
+        onResolve: ((_ realGroupId: Int64, _ studentIds: [Int64], _ tabId: String?) -> Void)? = nil
+    ) -> [Int64: Int64] {
+        guard groups.contains(where: \.isTemporary) else { return [:] }
         var remapped: [Int64: Int64] = [:]
         var nextGroups = groups
         for index in nextGroups.indices {
@@ -75,8 +89,13 @@ final class WorkGroupBoardDraft: ObservableObject {
                 learningSituationId: remote.learningSituationId?.int64Value,
                 isTemporary: false
             )
+
+            if let pendingStudentIds = pendingAssignments[local.id], !pendingStudentIds.isEmpty {
+                onResolve?(remote.id, Array(pendingStudentIds), remote.tabId)
+                pendingAssignments.removeValue(forKey: local.id)
+            }
         }
-        guard !remapped.isEmpty else { return }
+        guard !remapped.isEmpty else { return [:] }
         groups = nextGroups
         var nextMembership = membership
         for (studentId, groupId) in membership {
@@ -85,6 +104,7 @@ final class WorkGroupBoardDraft: ObservableObject {
             }
         }
         membership = nextMembership
+        return remapped
     }
 
     func updateGroup(id: Int64, name: String, learningSituationId: Int64?) {
@@ -110,6 +130,7 @@ final class WorkGroupBoardDraft: ObservableObject {
 
     func applyComposed(_ composed: [ComposedWorkGroup], tabId: String, learningSituationId: Int64?) {
         pendingMutations += 1
+        pendingAssignments.removeAll()
         var nextGroups: [GroupItem] = []
         var nextMembership: [Int64: Int64] = [:]
         let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -139,6 +160,7 @@ final class WorkGroupBoardDraft: ObservableObject {
         learningSituationId: Int64?
     ) {
         pendingMutations += 1
+        pendingAssignments.removeAll()
         var nextGroups: [GroupItem] = []
         var nextMembership: [Int64: Int64] = [:]
         let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -165,8 +187,17 @@ final class WorkGroupBoardDraft: ObservableObject {
     func move(studentIds: [Int64], to groupId: Int64?) {
         pendingMutations += 1
         for studentId in studentIds {
+            for tempId in pendingAssignments.keys {
+                pendingAssignments[tempId]?.remove(studentId)
+                if pendingAssignments[tempId]?.isEmpty == true {
+                    pendingAssignments.removeValue(forKey: tempId)
+                }
+            }
             if let groupId {
                 membership[studentId] = groupId
+                if groupId < 0 {
+                    pendingAssignments[groupId, default: []].insert(studentId)
+                }
             } else {
                 membership.removeValue(forKey: studentId)
             }
@@ -178,6 +209,7 @@ final class WorkGroupBoardDraft: ObservableObject {
         pendingMutations += 1
         groups.removeAll { $0.id == id }
         membership = membership.filter { $0.value != id }
+        pendingAssignments.removeValue(forKey: id)
         lastLocalMemberCount = membership.count
     }
 
@@ -329,7 +361,13 @@ struct NotebookGroupBoardView: View {
 
     private func seedDraft() {
         guard let data else { return }
-        draft.ingest(groups: groups, members: data.sheet.workGroupMembers)
+        draft.ingest(groups: groups, members: data.sheet.workGroupMembers) { realGroupId, studentIds, tabId in
+            bridge.assignStudentsToNotebookGroup(
+                groupId: realGroupId,
+                studentIds: studentIds,
+                tabId: tabId
+            )
+        }
     }
 
     private func boardColumn(

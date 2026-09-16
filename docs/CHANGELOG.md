@@ -16,6 +16,8 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Fixed
 
 - **Corrección de persistencia y sincronización al modificar grupos de trabajo en tablero y lista (PR #240)**:
+  - **Cola de asignaciones pendientes en `WorkGroupBoardDraft`**: Incorporada la cola `pendingAssignments` para registrar qué alumnos se mueven a grupos temporales (recién creados o auto-agrupados con `id < 0`), despachándolos de forma automática al bridge KMP en el momento en que `remapTemporaryIds` descubre su ID persistido en base de datos.
+  - **Reconciliación no destructiva en `ingest()`**: Protección del estado optimista para evitar que la sobreescritura de `remoteMembership` devuelva alumnos a «Sin grupo» mientras SQLite confirma asíncronamente las asignaciones resueltas.
   - **Sincronización bidireccional limpia en `WorkGroupBoardDraft`**: Eliminada la condición que abortaba la ingesta cuando la base de datos tenía menos miembros (desasignación de alumnos a «Sin grupo» o borrado de grupos), y eliminada la re-inyección local que resucitaba asignaciones previas.
   - **Arrastre y soltado sobre grupos en creación (`handleDrop`)**: Resolución automática de IDs provisionales hacia IDs persistidos reales para permitir asignar o desasignar alumnos sin rechazo de gestos.
   - **Detección inmediata de cambios en grupos (`groupSignature`)**: `NotebookGroupBoardView` ahora observa la firma completa (id, nombre, orden y SA) para que renombrar o cambiar la SA de un grupo existente se refleje de inmediato en el tablero.

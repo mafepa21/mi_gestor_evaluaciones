@@ -3,6 +3,94 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-16 - Sincronización resiliente de asignaciones y resolución de IDs temporales en tablero de grupos (PR #240)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Encolado de asignaciones sobre grupos provisionales (`pendingAssignments` en `WorkGroupBoardDraft`):
+     - Se añadió `pendingAssignments: [Int64: Set<Int64>]` para almacenar la intención de asignación de alumnos arrastrados a grupos temporales (`groupId < 0`).
+     - Al mover alumnos en `move(studentIds:to:)`, se limpia cualquier asignación provisional anterior del alumno y se encola en el nuevo grupo si su ID es negativo.
+     - En `removeGroup(id:)`, se limpian las asignaciones provisionales pendientes asociadas.
+     - En `applyComposed` y `applyImported`, se reinicia la cola para no heredar residuos de configuraciones previas.
+  2. Resolución reactiva hacia el bridge KMP (`remapTemporaryIds`):
+     - `remapTemporaryIds` acepta el callback `onResolve: ((realGroupId: Int64, studentIds: [Int64], tabId: String?) -> Void)?`.
+     - Cuando un grupo temporal se empareja por nombre con un grupo confirmado en `remoteGroups`, se despachan automáticamente sus alumnos pendientes hacia KMP (`bridge.assignStudentsToNotebookGroup`) y se vacía la cola.
+  3. Reconciliación no destructiva del estado en `ingest()`:
+     - Durante la actualización de `membership`, se protegen no solo los grupos temporales aún no materializados (`pendingTempIds`), sino también los alumnos de grupos recién resueltos (`resolvedRealGroupIds`) cuya asignación en BD aún se encuentra en tránsito asíncrono, evitando que `remoteMembership` los sobreescriba devolviéndolos a «Sin grupo».
+  4. Cableado en `NotebookGroupBoardView`:
+     - `seedDraft()` suministra el callback a `draft.ingest` para persistir las asignaciones en KMP a través de `bridge.assignStudentsToNotebookGroup`.
+- Por qué importa:
+  - Elimina definitivamente la condición de carrera donde mover alumnos a un grupo recién creado o auto-agrupado se revertía a los pocos segundos por la sobreescritura de la emisión asíncrona de SQLite.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/NotebookGroupBoardView.swift`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst (MiGestorKMPMac): ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator (MiGestorKMPiOS): ✓ COMPILADO CORRECTAMENTE
+
+## Avance 2026-09-16 - Persistencia atómica de grupos de trabajo con SA y corrección de ordenación en Cuaderno (PR #240)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Operación transaccional por lotes en SQLite (`replaceWorkGroups`):
+     - `kmp/shared`: Añadido `NotebookWorkGroupBatchItem` y contrato `replaceWorkGroups` en `NotebookConfigRepository` y `NotebookRepository`.
+     - `kmp/data`: Implementación en `NotebookConfigRepositorySqlDelight` dentro de un único bloque `db.transaction`, limpiando los grupos/miembros previos si se solicita e insertando secuencialmente cada grupo con sus miembros antes de emitir un único `NotebookRefreshBus.emitRefresh()`.
+     - `NotebookViewModel`: Añadido parámetro `tabId: String? = null` a `saveWorkGroup` y `assignStudentsToWorkGroup`, y método `replaceWorkGroups` para coordinar el reemplazo seguro.
+  2. Firma de agregación e invalidación de caché en Swift (`KmpBridge` y `NotebookModuleColumnModel`):
+     - `KmpBridge.swift`: `notebookAggregateSignature` ahora mapea exhaustivamente cada grupo (`id:tabId:name:order:saId`) y miembro (`tabId:groupId:studentId`), evitando que reasignaciones o cambios de nombre mantengan la firma estática y silencien las emisiones de estado.
+     - `KmpBridge.swift`: Expuesto `importNotebookWorkGroups(classId:tabId:groups:clearExisting:)` para invocar el guardado por lotes atómico desde Swift.
+     - `NotebookModuleColumnModel.swift`: `groupsVersion` en la clave de caché de filas ahora incluye el nombre del grupo.
+  3. Corrección de cálculo de grupos activos (`activeGroups`) en ordenación del Cuaderno:
+     - En modo `general`, si no existen grupos con SA nula pero sí grupos definidos en la pestaña/clase, se realiza un fallback a los grupos disponibles en lugar de dejarlos vacíos con alumnos en "Sin grupo".
+     - Al resolver los miembros de cada grupo en `buildVisibleRows`, se comprueba tanto `tabId == activeTabId` como `tabId == group.tabId` para no descartar alumnos si la pestaña activa difiere.
+  4. Paridad de filtrado de SA y refresco automático:
+     - `NotebookGroupManagementSheet.swift`: Extraído `NotebookLearningSituationMatcher` reutilizable.
+     - `NotebookModuleView.swift`: `loadClassLearningSituations` actualizado con la misma lógica de coincidencia semántica por curso y etapa, y refresco en `onDismiss` de la hoja de gestión de grupos.
+     - `NotebookGroupManagementSheet.swift`: `applyImportedGroups` migrado a `bridge.importNotebookWorkGroups`, y guardado manual con `tabId` explícito.
+- Por qué importa:
+  - Corrige el fallo donde los grupos importados o creados con SA no persistían en el cuaderno o quedaban vacíos tras pulsar "Listo", garantizando que la ordenación por grupos refleje de inmediato los alumnos y equipos asignados.
+- Dónde vive el cambio:
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/repository/NotebookConfigRepositorySqlDelight.kt`
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/repository/NotebookRepositorySqlDelight.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/repository/Contracts.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/repository/NotebookConfigRepository.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/viewmodel/NotebookViewModel.kt`
+  - `kmp/shared/src/commonTest/kotlin/com/migestor/shared/viewmodel/NotebookViewModelTest.kt`
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift`
+  - `kmp/iosApp/App/NotebookModuleColumnModel.swift`
+  - `kmp/iosApp/App/NotebookModuleView.swift`
+- Validación realizada:
+  - Pruebas unitarias de KMP: `./gradlew :shared:desktopTest :data:desktopTest` pasando con éxito (108 tests).
+  - Verificación Apple: `./scripts/verify_apple_builds.sh` completado con éxito:
+    - macOS (MiGestorKMPMac): ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator (MiGestorKMPiOS): ✓ COMPILADO CORRECTAMENTE
+
+## Avance 2026-09-16 - Detección y filtrado preciso de Situaciones de Aprendizaje (SA) por curso en grupos de trabajo
+ 
+Resumen:
+- Qué cambio se hizo:
+  1. Corrección y enriquecimiento del parser semántico de niveles y cursos:
+     - `KmpBridge.swift`: `courseLabel(for:)` ampliado para identificar variantes de Bachillerato (`bac`, `bto`, `bat`) y Primaria (`prim`, `pri`) antes de evaluar el rango numérico de ESO, eliminando el fallo por el cual clases como «1º BAC B» se etiquetaban como ESO.
+     - `NotebookGroupManagementSheet.swift`: `isSituation` refactorizado para comparar de forma estricta tanto el número ordinal del curso (1, 2, 3, 4) como la etapa educativa (Bachillerato, ESO, Primaria), garantizando que solo se listen las SA del curso en cuestión.
+  2. Resolución asíncrona de la clase activa en `loadClassLearningSituations()`:
+     - Carga garantizada sin abortos prematuros si `bridge.classes` se encuentra resolviendo en segundo plano.
+     - Enlace prioritario de las situaciones que ya cuenten con `LearningSituationClassLink` en SQLite para la clase activa.
+  3. Experiencia de usuario en selectores de SA:
+     - Estado de carga explícito (`isLoadingSituations`) con spinner sutil y texto «Buscando situaciones del curso...».
+     - Mensaje adaptado «No hay situaciones para este curso» en lugar de un genérico «No hay situaciones creadas» cuando el curso no tiene SAs importadas.
+- Por qué importa:
+  - Corrige el problema reportado donde las situaciones de aprendizaje importadas no aparecían en el selector de creación o importación de grupos para clases de Bachillerato, asegurando a la vez que no se mezclen SAs de otros cursos.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS (MiGestorKMPMac): ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator (MiGestorKMPiOS): ✓ COMPILADO CORRECTAMENTE
+
 ## Avance 2026-09-16 - Asociación de grupos a SA, persistencia atómica de miembros y ordenación visual en el Cuaderno
 
 Resumen:
@@ -1450,6 +1538,31 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 - Documentar decisiones de arquitectura cuando afecten a persistencia, sync o ownership de estado.
 
 ## 10. Bitácora de avances significativos
+
+### 2026-09-16 - El tablero de grupos ya no se deshace y muestra todas las columnas
+
+Resumen:
+- Qué cambio se hizo: el tablero guarda el reparto en local al crear, arrastrar o agrupar, y no se deja pisar por un recargo viejo. El id del grupo se lee de la fila insertada. La ventana es más ancha y las columnas se reparte el ancho para ver el alumnado sin recortar nombres.
+- Por qué importa: en Mac los grupos se creaban y volvían a «Sin grupo» antes de pulsar Listo, y la primera columna quedaba cortada.
+- Dónde vive el cambio: `NotebookGroupBoardView.swift`, `NotebookGroupManagementSheet.swift`, `NotebookConfigRepositorySqlDelight.kt`.
+- Validación realizada: tests KMP de grupos verdes. iOS Simulator compiló. macOS falló en el helper de Command Center (`libskiko-macos-arm64.dylib.sha256` ausente), no en el Swift de grupos.
+
+Notas para futuras conversaciones:
+- No pintar el tablero solo desde `notebookState` recargado. Hace falta un borrador local mientras el guardado termina.
+- `last_insert_rowid()` no es fiable para miembros de grupo en Apple. Usar `MAX(id)` de `notebook_work_groups` dentro de la misma transacción.
+
+### 2026-09-16 - Grupos de trabajo persistentes, tablero visual y agrupado automático
+
+Resumen:
+- Qué cambio se hizo: los grupos de trabajo se guardan en la pestaña raíz de la evaluación y se leen por `groupId`. Un grupo ligado a una SA se ve en toda la clase. Un grupo general se ve en esa evaluación y en sus hijas. Importar, crear, arrastrar o pulsar Listo recarga el cuaderno. Hay un tablero para arrastrar alumnado y un agrupado automático por nota, sexo y lesionados.
+- Por qué importa: al pulsar Listo los grupos dejaban de verse en el cuaderno porque se guardaban en una pestaña y se buscaban en otra.
+- Dónde vive el cambio: `NotebookWorkGroupPolicy.kt`, `ComposeWorkGroupsUseCase.kt`, `NotebookConfigRepositorySqlDelight.kt`, `NotebookViewModel.kt`, `NotebookGroupManagementSheet.swift`, `NotebookGroupBoardView.swift`, `NotebookModuleColumnModel.swift`, `KmpBridge.swift`.
+- Validación realizada: `cd kmp && ./gradlew :shared:desktopTest :data:desktopTest` filtrado a policy, compose, NotebookViewModel y NotebookConfigRepository, BUILD SUCCESSFUL. `./scripts/verify_apple_builds.sh`: macOS e iOS Simulator compilados.
+
+Notas para futuras conversaciones:
+- No filtrar miembros de grupo por `tabId` al pintar el cuaderno. El identificador del grupo basta.
+- Al asignar un alumno, borrar primero su pertenencia en toda la clase (`deleteWorkGroupMemberByStudent`) y luego insertar en la pestaña del grupo.
+- El modo general no debe preferir grupos vacíos sin SA si hay grupos de SA con alumnos.
 
 ### 2026-09-09 - Reactividad inmediata y retención optimista en celdas numéricas y de observación (iPad / Mac)
 

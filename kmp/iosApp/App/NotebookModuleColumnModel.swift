@@ -147,7 +147,7 @@ final class NotebookGridLayoutModel: ObservableObject {
             hiddenColumnsRevision: renderCacheKey?.hiddenColumnsRevision ?? 0,
             structuralRevision: renderCacheKey?.structuralRevision ?? 0,
             rowsVersion: Self.version(data.sheet.rows.map { "\($0.student.id):\($0.student.firstName):\($0.student.lastName):\($0.weightedAverage ?? -1)" }),
-            groupsVersion: Self.version(data.sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
+            groupsVersion: Self.version(data.sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
             membersVersion: Self.version(data.sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" })
         )
         if let rowsCache, rowsCache.key == key {
@@ -480,33 +480,22 @@ final class NotebookGridLayoutModel: ObservableObject {
     ) -> [NotebookTableRow] {
         let rows: [NotebookTableRow]
         if groupByWorkGroupMode != "none" {
-            let activeGroups: [NotebookWorkGroup]
-
-            if groupByWorkGroupMode == "general" {
-                activeGroups = data.sheet.workGroups.filter {
-                    ($0.tabId == activeTabId || activeTabId == nil) && $0.learningSituationId == nil
-                }
-            } else if groupByWorkGroupMode.hasPrefix("situation_"),
-                      let sitId = Int64(groupByWorkGroupMode.dropFirst(10)) {
-                activeGroups = data.sheet.workGroups.filter {
-                    ($0.tabId == activeTabId || activeTabId == nil) && $0.learningSituationId?.int64Value == sitId
-                }
-            } else {
-                activeGroups = data.sheet.workGroups.filter { $0.tabId == activeTabId || activeTabId == nil }
-            }
-
-            let sortedActiveGroups = activeGroups.sorted {
-                if $0.order != $1.order { return $0.order < $1.order }
-                return $0.id < $1.id
-            }
+            let sortedActiveGroups = NotebookWorkGroupPolicy.activeGroups(
+                groups: data.sheet.workGroups,
+                members: data.sheet.workGroupMembers,
+                tabs: data.sheet.tabs,
+                activeTabId: activeTabId,
+                mode: groupByWorkGroupMode
+            )
 
             var resultRows: [NotebookTableRow] = []
             var groupedStudentIds = Set<Int64>()
 
             for group in sortedActiveGroups {
-                let memberIds = Set(data.sheet.workGroupMembers
-                    .filter { $0.groupId == group.id && ($0.tabId == activeTabId || activeTabId == nil) }
-                    .map(\.studentId))
+                let memberIds = NotebookWorkGroupPolicy.memberIds(
+                    group: group,
+                    members: data.sheet.workGroupMembers
+                )
 
                 let groupRows = data.sheet.rows.filter { memberIds.contains($0.student.id) }
                 for row in groupRows {
@@ -525,7 +514,7 @@ final class NotebookGridLayoutModel: ObservableObject {
         } else {
             rows = data.sheet.rows.map { row in
                 let memberGroupId = data.sheet.workGroupMembers.first(where: {
-                    $0.studentId == row.student.id && ($0.tabId == activeTabId || activeTabId == nil)
+                    $0.studentId == row.student.id
                 })?.groupId
                 let groupName = memberGroupId.flatMap { groupId in
                     data.sheet.workGroups.first(where: { $0.id == groupId })?.name
@@ -566,9 +555,18 @@ final class NotebookGridLayoutModel: ObservableObject {
     }
 
     private func groupId(for studentId: Int64, activeTabId: String?, data: NotebookUiStateData) -> Int64? {
-        data.sheet.workGroupMembers
-            .first(where: { $0.studentId == studentId && (activeTabId == nil || $0.tabId == activeTabId) })?
-            .groupId
+        let active = NotebookWorkGroupPolicy.activeGroups(
+            groups: data.sheet.workGroups,
+            members: data.sheet.workGroupMembers,
+            tabs: data.sheet.tabs,
+            activeTabId: activeTabId,
+            mode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "general"
+        )
+        return NotebookWorkGroupPolicy.groupIdForStudent(
+            studentId: studentId,
+            members: data.sheet.workGroupMembers,
+            activeGroups: active
+        )
     }
 }
 

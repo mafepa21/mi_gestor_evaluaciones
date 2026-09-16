@@ -70,6 +70,9 @@ struct NotebookModuleView: View {
     var groupByWorkGroup: Bool {
         groupByWorkGroupMode != "none"
     }
+    var currentClassId: Int64? {
+        (bridge.notebookState as? NotebookUiStateData)?.sheet.classId
+    }
     /// Color semántico de nota + heat de celda (rediseño radical del grid).
     /// Toggle propio en el menú de acciones; `NotebookStatefulEditableTableCell`
     /// lee la misma clave con su propio `@AppStorage` (ver `NotebookGridStyle`).
@@ -696,14 +699,35 @@ struct NotebookModuleView: View {
         Task {
             do {
                 let situations = try await bridge.learningSituations()
-                let links = try await bridge.learningSituationClassLinksAll()
-                let situationIds = Set(
+                let links = (try? await bridge.learningSituationClassLinksAll()) ?? []
+                let directLinkedIds = Set(
                     links.lazy
                         .filter { $0.classId == classId }
                         .map(\.learningSituationId)
                 )
-                let filtered = situations.filter { situationIds.contains($0.id) }
-                let finalFiltered = filtered
+
+                let targetClass = bridge.classes.first(where: { $0.id == classId })
+                let className = targetClass?.name ?? ""
+                let classCourse = targetClass != nil ? Int(targetClass!.course) : (NotebookLearningSituationMatcher.extractCourseNumber(from: className) ?? 1)
+
+                var linked: [LearningSituation] = []
+                var other: [LearningSituation] = []
+
+                for sit in situations {
+                    let hasDirectLink = directLinkedIds.contains(sit.id)
+                    let matches = NotebookLearningSituationMatcher.isSituation(sit, matchingClassName: className, course: classCourse)
+                    guard hasDirectLink || matches else { continue }
+                    if hasDirectLink {
+                        linked.append(sit)
+                    } else {
+                        other.append(sit)
+                    }
+                }
+
+                linked.sort { $0.title.localizedCompare($1.title) == .orderedAscending }
+                other.sort { $0.title.localizedCompare($1.title) == .orderedAscending }
+                let finalFiltered = linked + other
+
                 await MainActor.run {
                     self.classSituations = finalFiltered
                 }
@@ -1400,12 +1424,19 @@ struct NotebookModuleView: View {
                     .presentationDetents([.large])
                     #endif
                 }
-                .sheet(isPresented: $isGroupManagementPresented) {
+                .sheet(isPresented: $isGroupManagementPresented, onDismiss: {
+                    bridge.refreshCurrentNotebook()
+                    if let classId = currentClassId {
+                        loadClassLearningSituations(classId: classId)
+                    }
+                }) {
                     NotebookGroupManagementSheet(bridge: bridge) { message, style in
                         showToast(message, style: style)
                     }
                     #if os(macOS)
-                    .frame(minWidth: 550, minHeight: 480)
+                    .frame(minWidth: 1100, minHeight: 760)
+                    #else
+                    .presentationDetents([.large])
                     #endif
                 }
                 .appFullScreenCover(isPresented: Binding(

@@ -13,7 +13,51 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Fixed
+
+- **Corrección de persistencia y sincronización al modificar grupos de trabajo en tablero y lista (PR #240)**:
+  - **Cola de asignaciones pendientes en `WorkGroupBoardDraft`**: Incorporada la cola `pendingAssignments` para registrar qué alumnos se mueven a grupos temporales (recién creados o auto-agrupados con `id < 0`), despachándolos de forma automática al bridge KMP en el momento en que `remapTemporaryIds` descubre su ID persistido en base de datos.
+  - **Reconciliación no destructiva en `ingest()`**: Protección del estado optimista para evitar que la sobreescritura de `remoteMembership` devuelva alumnos a «Sin grupo» mientras SQLite confirma asíncronamente las asignaciones resueltas.
+  - **Sincronización bidireccional limpia en `WorkGroupBoardDraft`**: Eliminada la condición que abortaba la ingesta cuando la base de datos tenía menos miembros (desasignación de alumnos a «Sin grupo» o borrado de grupos), y eliminada la re-inyección local que resucitaba asignaciones previas.
+  - **Arrastre y soltado sobre grupos en creación (`handleDrop`)**: Resolución automática de IDs provisionales hacia IDs persistidos reales para permitir asignar o desasignar alumnos sin rechazo de gestos.
+  - **Detección inmediata de cambios en grupos (`groupSignature`)**: `NotebookGroupBoardView` ahora observa la firma completa (id, nombre, orden y SA) para que renombrar o cambiar la SA de un grupo existente se refleje de inmediato en el tablero.
+  - **Actualización reactiva en edición y borrado**: Actualización en caliente de `boardDraft` al renombrar o eliminar grupos desde la hoja de gestión.
+  - **Selección inclusiva en `NotebookWorkGroupPolicy.activeGroups`**: En el modo de ordenación general del cuaderno, la presencia de grupos generales ya no oculta los grupos asignados a Situaciones de Aprendizaje de la misma pestaña.
+
+- **Importar Excel volvió al tablero y los grupos automáticos quedan del mismo tamaño (PR #240)**:
+  - El botón «Importar Excel» está otra vez en el tablero, no solo en Lista.
+  - Un recargo vacío del cuaderno ya no borra un reparto que el tablero acaba de hacer.
+  - Al agrupar automáticamente, los grupos quedan lo más iguales posible (por ejemplo 9-9-9-8 con 35 alumnos).
+
+- **Los grupos se deshacían en el tablero antes de pulsar Listo (PR #240)**:
+  - El tablero guarda el reparto en local al crear, arrastrar o agrupar automáticamente, y no se deja pisar por un recargo viejo del cuaderno.
+  - El id de cada grupo nuevo se lee de la fila insertada (`MAX(id)`), no de `last_insert_rowid`, para que los alumnos queden en el grupo correcto.
+  - La ventana de grupos es más ancha y el tablero reparte las columnas para ver alumnado y grupos a la vez.
+
+- **Los grupos de trabajo se quedaban vacíos al pulsar Listo y ordenar el Cuaderno (PR #240)**:
+  - Una sola regla de pestaña (`NotebookWorkGroupPolicy`): los grupos se guardan en la pestaña raíz de la evaluación; los de una SA se ven en toda la clase; los generales se ven en esa evaluación y en sus pestañas hijas.
+  - La pertenencia de un alumno se busca por `groupId`, no por pestaña. Asignar o borrar un alumno limpia su sitio anterior en toda la clase.
+  - Importar, crear, arrastrar o pulsar Listo recarga el cuaderno de verdad.
+  - «Ordenar por grupos de trabajo» ya no se queda con grupos vacíos si hay grupos de SA con alumnos.
+
+- **Persistencia atómica de grupos de trabajo con SA y corrección de ordenación en Cuaderno (PR #240)**:
+  - **Operación transaccional por lotes (`replaceWorkGroups`)**: Contrato y método en `NotebookConfigRepositorySqlDelight` que ejecuta en una sola transacción SQLite la eliminación y creación de grupos con sus alumnos, evitando condiciones de carrera concurrentes durante la importación.
+  - **Coordinación de pestañas (`tabId`)**: Inclusión de parámetro `tabId` explícito en `NotebookViewModel` y `KmpBridge` para `saveNotebookWorkGroup`, `updateNotebookWorkGroup` y `assignStudentsToNotebookGroup`.
+  - **Detección e invalidación de caché en `KmpBridge`**: `notebookAggregateSignature` ahora incluye los nombres, IDs, situación y miembros de cada grupo, impidiendo que cambios de alumnos o reasignaciones mantengan firmas estáticas obsoletas.
+  - **Resolución de grupos activos en Cuaderno (`NotebookModuleColumnModel`)**: Fallback en modo `general` a los grupos disponibles en la pestaña cuando todos los grupos tienen SA asignada, impidiendo que el cuaderno quede vacío con alumnos en "Sin grupo".
+  - **Paridad y refresco de Situaciones de Aprendizaje**: `NotebookLearningSituationMatcher` compartido entre `NotebookGroupManagementSheet` y `NotebookModuleView`, con refresco automático de situaciones al cerrar la hoja de gestión de grupos.
+
+- **Detección y filtrado preciso de Situaciones de Aprendizaje (SA) por curso en grupos de trabajo (`NotebookGroupManagementSheet` y `KmpBridge`)**:
+  - Corrección en la función de emparejamiento de curso (`courseLabel(for:)` e `isSituation`) para reconocer nomenclaturas abreviadas de Bachillerato (`bac`, `bto`, `bat`), Primaria (`prim`, `pri`) y ESO, evitando que clases como «1º BAC B» se cataloguen incorrectamente como ESO.
+  - Filtrado estricto por curso en `loadClassLearningSituations()`: ahora solo se muestran las Situaciones de Aprendizaje correspondientes al curso y etapa de la clase activa (o con vínculo directo en base de datos), excluyendo de forma rigurosa SAs de cursos diferentes.
+  - Resolución robusta de la clase activa sin abortos silenciosos ni bloqueos de concurrencia al abrir la hoja de grupos.
+  - Indicador de carga asíncrono y mensajes contextuales precisos («Buscando situaciones del curso...» y «No hay situaciones para este curso») en el selector de SA de `NotebookGroupEditSheet` y `NotebookGroupImportPreviewSheet`.
+
 ### Added
+
+- **Tablero visual y agrupado automático de grupos de trabajo (PR #240)**:
+  - Vista Tablero en `NotebookGroupManagementSheet` con columnas tipo lista (Sin grupo + cada grupo) y arrastre nativo de alumnado.
+  - Botón «Agrupar automáticamente» con tamaño de grupo, heterogéneos/homogéneos por nota, azar equilibrado, mezcla de chicos y chicas y reparto de alumnado lesionado (`ComposeWorkGroupsUseCase`).
 
 - **Asociación de grupos de trabajo a Situaciones de Aprendizaje (SA), persistencia atómica y distinción visual por grupos en el Cuaderno**:
   - **Asociación a SA en importación y edición**:

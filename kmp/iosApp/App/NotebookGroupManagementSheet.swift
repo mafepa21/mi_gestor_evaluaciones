@@ -59,53 +59,11 @@ struct NotebookGroupManagementSheet: View {
     }
 
     private func extractCourseNumber(from text: String) -> Int? {
-        let regex = try? NSRegularExpression(pattern: "\\b([1-6])(?:º|ª|o|a)?\\b", options: .caseInsensitive)
-        let range = NSRange(text.startIndex..., in: text)
-        if let match = regex?.firstMatch(in: text, options: [], range: range),
-           let digitRange = Range(match.range(at: 1), in: text),
-           let num = Int(text[digitRange]) {
-            return num
-        }
-        return nil
+        NotebookLearningSituationMatcher.extractCourseNumber(from: text)
     }
 
     private func isSituation(_ situation: LearningSituation, matchingClassName rawClassName: String, course: Int) -> Bool {
-        let sitCourseLabel = situation.courseLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-        let sitStageLabel = situation.stageLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-        let sitCombined = "\(sitCourseLabel) \(sitStageLabel)".lowercased()
-        let className = rawClassName.lowercased()
-
-        // 1. Número de curso (1, 2, 3, 4, etc.)
-        let expectedCourse: Int = course > 0 ? course : (extractCourseNumber(from: className) ?? 0)
-        let sitCourseNumber = extractCourseNumber(from: sitCourseLabel) ?? extractCourseNumber(from: sitCombined)
-
-        if expectedCourse > 0, let sitNum = sitCourseNumber {
-            if sitNum != expectedCourse {
-                return false
-            }
-        }
-
-        // 2. Etapa educativa
-        let isClassBach = className.contains("bach") || className.contains("bac") || className.contains("bto") || className.contains("bat")
-        let isClassEso = className.contains("eso") || className.contains("secundaria")
-        let isClassPrimaria = className.contains("prim") || className.contains("pri")
-
-        let isSitBach = sitCombined.contains("bach") || sitCombined.contains("bac") || sitCombined.contains("bto") || sitCombined.contains("bat")
-        let isSitEso = sitCombined.contains("eso") || sitCombined.contains("secundaria")
-        let isSitPrimaria = sitCombined.contains("prim") || sitCombined.contains("pri")
-
-        if isClassBach {
-            return isSitBach || (!isSitEso && !isSitPrimaria)
-        } else if isClassEso {
-            return isSitEso || (!isSitBach && !isSitPrimaria)
-        } else if isClassPrimaria {
-            return isSitPrimaria
-        }
-
-        // 3. Fallback a etiqueta de curso si no se identificó etapa especial
-        let sitLabel = sitCourseLabel.lowercased().filter { $0.isLetter || $0.isNumber }
-        let classLabel = className.filter { $0.isLetter || $0.isNumber }
-        return !sitLabel.isEmpty && (classLabel.contains(sitLabel) || sitLabel.contains(classLabel))
+        NotebookLearningSituationMatcher.isSituation(situation, matchingClassName: rawClassName, course: course)
     }
 
     private func loadClassLearningSituations() {
@@ -304,11 +262,12 @@ struct NotebookGroupManagementSheet: View {
                             }
                         }
                         await MainActor.run {
+                            let tabId = activeTabId
                             if let target = editGroupTarget {
-                                bridge.updateNotebookWorkGroup(groupId: target.id, name: name, learningSituationId: situationId)
+                                bridge.updateNotebookWorkGroup(groupId: target.id, name: name, learningSituationId: situationId, tabId: tabId)
                                 onToast("Grupo actualizado", .success)
                             } else {
-                                bridge.saveNotebookWorkGroup(name: name, learningSituationId: situationId)
+                                bridge.saveNotebookWorkGroup(name: name, learningSituationId: situationId, tabId: tabId)
                                 onToast("Grupo creado", .success)
                             }
                         }
@@ -351,34 +310,32 @@ struct NotebookGroupManagementSheet: View {
     ) {
         guard let data = data else { return }
         let classId = data.sheet.classId
-        let tabId = activeTabId
-
-        if let tabId = tabId, bridge.selectedNotebookTabId != tabId {
-            bridge.setSelectedNotebookTab(id: tabId)
-        }
-
-        if clearExisting {
-            for existing in currentGroups {
-                bridge.deleteNotebookWorkGroup(groupId: existing.id)
-            }
-        }
+        let resolvedTabId = activeTabId ?? data.sheet.tabs.first?.id ?? ""
 
         Task {
             if let situationId = learningSituationId {
                 try? await bridge.addLearningSituationClassLink(situationId: situationId, classId: classId)
             }
 
-            await MainActor.run {
-                for group in groups {
-                    let matchedStudentIds = group.members.compactMap(\.matchedStudentId)
-                    bridge.saveNotebookWorkGroup(
-                        name: group.name,
-                        learningSituationId: learningSituationId,
-                        studentIds: matchedStudentIds
-                    )
-                }
+            let batchGroups: [(name: String, studentIds: [Int64], learningSituationId: Int64?)] = groups.map { group in
+                let matchedStudentIds = group.members.compactMap(\.matchedStudentId)
+                return (name: group.name, studentIds: matchedStudentIds, learningSituationId: learningSituationId)
+            }
 
-                onToast("\(groups.count) grupos importados con éxito", .success)
+            do {
+                try await bridge.importNotebookWorkGroups(
+                    classId: classId,
+                    tabId: resolvedTabId,
+                    groups: batchGroups,
+                    clearExisting: clearExisting
+                )
+                await MainActor.run {
+                    onToast("\(groups.count) grupos importados con éxito", .success)
+                }
+            } catch {
+                await MainActor.run {
+                    onToast("Error al importar grupos", .warning)
+                }
             }
         }
     }
@@ -585,13 +542,14 @@ private struct GroupMembersView: View {
     }
 
     private func toggleStudentMembership(_ studentId: Int64, isMember: Bool) {
-        if let tabId = activeTabId, bridge.selectedNotebookTabId != tabId {
+        let tabId = activeTabId
+        if let tabId = tabId, bridge.selectedNotebookTabId != tabId {
             bridge.setSelectedNotebookTab(id: tabId)
         }
         if isMember {
-            bridge.assignStudentsToNotebookGroup(groupId: nil, studentIds: [studentId])
+            bridge.assignStudentsToNotebookGroup(groupId: nil, studentIds: [studentId], tabId: tabId)
         } else {
-            bridge.assignStudentsToNotebookGroup(groupId: group.id, studentIds: [studentId])
+            bridge.assignStudentsToNotebookGroup(groupId: group.id, studentIds: [studentId], tabId: tabId)
         }
     }
 }
@@ -622,3 +580,56 @@ private struct SearchBar: View {
         .cornerRadius(10)
     }
 }
+
+enum NotebookLearningSituationMatcher {
+    static func extractCourseNumber(from text: String) -> Int? {
+        let regex = try? NSRegularExpression(pattern: "\\b([1-6])(?:º|ª|o|a)?\\b", options: .caseInsensitive)
+        let range = NSRange(text.startIndex..., in: text)
+        if let match = regex?.firstMatch(in: text, options: [], range: range),
+           let digitRange = Range(match.range(at: 1), in: text),
+           let num = Int(text[digitRange]) {
+            return num
+        }
+        return nil
+    }
+
+    static func isSituation(_ situation: LearningSituation, matchingClassName rawClassName: String, course: Int) -> Bool {
+        let sitCourseLabel = situation.courseLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sitStageLabel = situation.stageLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sitCombined = "\(sitCourseLabel) \(sitStageLabel)".lowercased()
+        let className = rawClassName.lowercased()
+
+        // 1. Número de curso (1, 2, 3, 4, etc.)
+        let expectedCourse: Int = course > 0 ? course : (extractCourseNumber(from: className) ?? 0)
+        let sitCourseNumber = extractCourseNumber(from: sitCourseLabel) ?? extractCourseNumber(from: sitCombined)
+
+        if expectedCourse > 0, let sitNum = sitCourseNumber {
+            if sitNum != expectedCourse {
+                return false
+            }
+        }
+
+        // 2. Etapa educativa
+        let isClassBach = className.contains("bach") || className.contains("bac") || className.contains("bto") || className.contains("bat")
+        let isClassEso = className.contains("eso") || className.contains("secundaria")
+        let isClassPrimaria = className.contains("prim") || className.contains("pri")
+
+        let isSitBach = sitCombined.contains("bach") || sitCombined.contains("bac") || sitCombined.contains("bto") || sitCombined.contains("bat")
+        let isSitEso = sitCombined.contains("eso") || sitCombined.contains("secundaria")
+        let isSitPrimaria = sitCombined.contains("prim") || sitCombined.contains("pri")
+
+        if isClassBach {
+            return isSitBach || (!isSitEso && !isSitPrimaria)
+        } else if isClassEso {
+            return isSitEso || (!isSitBach && !isSitPrimaria)
+        } else if isClassPrimaria {
+            return isSitPrimaria
+        }
+
+        // 3. Fallback a etiqueta de curso si no se identificó etapa especial
+        let sitLabel = sitCourseLabel.lowercased().filter { $0.isLetter || $0.isNumber }
+        let classLabel = className.filter { $0.isLetter || $0.isNumber }
+        return !sitLabel.isEmpty && (classLabel.contains(sitLabel) || sitLabel.contains(classLabel))
+    }
+}
+

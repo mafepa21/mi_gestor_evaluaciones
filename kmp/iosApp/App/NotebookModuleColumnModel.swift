@@ -147,7 +147,7 @@ final class NotebookGridLayoutModel: ObservableObject {
             hiddenColumnsRevision: renderCacheKey?.hiddenColumnsRevision ?? 0,
             structuralRevision: renderCacheKey?.structuralRevision ?? 0,
             rowsVersion: Self.version(data.sheet.rows.map { "\($0.student.id):\($0.student.firstName):\($0.student.lastName):\($0.weightedAverage ?? -1)" }),
-            groupsVersion: Self.version(data.sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
+            groupsVersion: Self.version(data.sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
             membersVersion: Self.version(data.sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" })
         )
         if let rowsCache, rowsCache.key == key {
@@ -483,14 +483,17 @@ final class NotebookGridLayoutModel: ObservableObject {
             let activeGroups: [NotebookWorkGroup]
 
             if groupByWorkGroupMode == "general" {
-                activeGroups = data.sheet.workGroups.filter {
-                    ($0.tabId == activeTabId || activeTabId == nil) && $0.learningSituationId == nil
-                }
+                let tabGroups = data.sheet.workGroups.filter { $0.tabId == activeTabId || activeTabId == nil }
+                let generalOnly = tabGroups.filter { $0.learningSituationId == nil }
+                activeGroups = generalOnly.isEmpty ? tabGroups : generalOnly
             } else if groupByWorkGroupMode.hasPrefix("situation_"),
                       let sitId = Int64(groupByWorkGroupMode.dropFirst(10)) {
-                activeGroups = data.sheet.workGroups.filter {
+                let sitGroups = data.sheet.workGroups.filter {
                     ($0.tabId == activeTabId || activeTabId == nil) && $0.learningSituationId?.int64Value == sitId
                 }
+                activeGroups = sitGroups.isEmpty
+                    ? data.sheet.workGroups.filter { $0.tabId == activeTabId || activeTabId == nil }
+                    : sitGroups
             } else {
                 activeGroups = data.sheet.workGroups.filter { $0.tabId == activeTabId || activeTabId == nil }
             }
@@ -505,7 +508,7 @@ final class NotebookGridLayoutModel: ObservableObject {
 
             for group in sortedActiveGroups {
                 let memberIds = Set(data.sheet.workGroupMembers
-                    .filter { $0.groupId == group.id && ($0.tabId == activeTabId || activeTabId == nil) }
+                    .filter { $0.groupId == group.id && ($0.tabId == activeTabId || activeTabId == nil || $0.tabId == group.tabId) }
                     .map(\.studentId))
 
                 let groupRows = data.sheet.rows.filter { memberIds.contains($0.student.id) }

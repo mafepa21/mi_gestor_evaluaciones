@@ -1285,7 +1285,8 @@ final class KmpBridge: ObservableObject {
             "numeric:\(data.numericDrafts.description)",
             "text:\(data.textDrafts.description)",
             "check:\(data.checkDrafts.description)",
-            "groups:\(sheet.workGroups.count):\(sheet.workGroupMembers.count)"
+            "groups:\(sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }.joined(separator: ";"))",
+            "groupMembers:\(sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" }.joined(separator: ";"))"
         ].joined(separator: "¬")
     }
 
@@ -9648,26 +9649,26 @@ final class KmpBridge: ObservableObject {
         }
     }
 
-    func saveNotebookWorkGroup(name: String, learningSituationId: Int64? = nil, studentIds: [Int64] = []) {
+    func saveNotebookWorkGroup(name: String, learningSituationId: Int64? = nil, studentIds: [Int64] = [], tabId: String? = nil) {
         let situationKotlin = KotlinLong(value: learningSituationId ?? -1)
         let studentsKotlin = studentIds.map { KotlinLong(value: $0) }
-        notebookViewModel.saveWorkGroup(name: name, groupId: nil, studentIds: studentsKotlin, learningSituationId: situationKotlin)
+        notebookViewModel.saveWorkGroup(name: name, groupId: nil, studentIds: studentsKotlin, learningSituationId: situationKotlin, tabId: tabId)
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
     }
 
-    func updateNotebookWorkGroup(groupId: Int64, name: String, learningSituationId: Int64? = nil, studentIds: [Int64] = []) {
+    func updateNotebookWorkGroup(groupId: Int64, name: String, learningSituationId: Int64? = nil, studentIds: [Int64] = [], tabId: String? = nil) {
         let situationKotlin = KotlinLong(value: learningSituationId ?? -1)
         let studentsKotlin = studentIds.map { KotlinLong(value: $0) }
-        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: studentsKotlin, learningSituationId: situationKotlin)
+        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: studentsKotlin, learningSituationId: situationKotlin, tabId: tabId)
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
     }
 
     func renameNotebookWorkGroup(groupId: Int64, name: String) {
-        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: [], learningSituationId: nil)
+        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: [], learningSituationId: nil, tabId: nil)
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
@@ -9687,13 +9688,38 @@ final class KmpBridge: ObservableObject {
         }
     }
 
-    func assignStudentsToNotebookGroup(groupId: Int64?, studentIds: [Int64]) {
+    func assignStudentsToNotebookGroup(groupId: Int64?, studentIds: [Int64], tabId: String? = nil) {
         notebookViewModel.assignStudentsToWorkGroup(
             groupId: groupId.map { KotlinLong(value: $0) },
-            studentIds: studentIds.map { KotlinLong(value: $0) }
+            studentIds: studentIds.map { KotlinLong(value: $0) },
+            tabId: tabId
         )
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
+        }
+    }
+
+    func importNotebookWorkGroups(
+        classId: Int64,
+        tabId: String,
+        groups: [(name: String, studentIds: [Int64], learningSituationId: Int64?)],
+        clearExisting: Bool = false
+    ) async throws {
+        let batchItems: [NotebookWorkGroupBatchItem] = groups.map { item in
+            NotebookWorkGroupBatchItem(
+                name: item.name,
+                studentIds: item.studentIds.map { KotlinLong(value: $0) },
+                learningSituationId: item.learningSituationId.map { KotlinLong(value: $0) }
+            )
+        }
+        try await container.notebookRepository.replaceWorkGroups(
+            classId: classId,
+            tabId: tabId,
+            groups: batchItems,
+            clearExisting: clearExisting
+        )
+        await MainActor.run {
+            self.scheduleNotebookSnapshotSync(forClassId: classId)
         }
     }
     

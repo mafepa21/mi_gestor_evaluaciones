@@ -1724,11 +1724,18 @@ class NotebookViewModel(
         return firstChild?.id ?: firstRoot?.id ?: tabs.firstOrNull()?.id
     }
 
-    fun saveWorkGroup(name: String, groupId: Long? = null, studentIds: List<Long> = emptyList(), learningSituationId: Long? = null) {
+    fun saveWorkGroup(
+        name: String,
+        groupId: Long? = null,
+        studentIds: List<Long> = emptyList(),
+        learningSituationId: Long? = null,
+        tabId: String? = null,
+    ) {
         val classId = activeClassId ?: return
         val currentState = _state.value as? NotebookUiState.Data ?: return
         scope.launch {
-            val tabId = _selectedTabId.value
+            val resolvedTabId = tabId
+                ?: _selectedTabId.value
                 ?: currentState.sheet.tabs.firstOrNull()?.id
                 ?: run {
                     val tabName = "Evaluación"
@@ -1738,11 +1745,11 @@ class NotebookViewModel(
                     newTabId
                 }
             val existing = currentState.sheet.workGroups.firstOrNull { it.id == groupId }
-            val nextOrder = currentState.sheet.workGroups.filter { it.tabId == tabId }.maxOfOrNull { it.order }?.plus(1) ?: 0
+            val nextOrder = currentState.sheet.workGroups.filter { it.tabId == resolvedTabId }.maxOfOrNull { it.order }?.plus(1) ?: 0
             val baseName = name.trim().ifBlank { existing?.name ?: "Grupo ${nextOrder + 1}" }
             val uniqueName = buildUniqueWorkGroupName(
                 baseName = baseName,
-                tabId = tabId,
+                tabId = resolvedTabId,
                 workGroups = currentState.sheet.workGroups,
                 excludedGroupId = groupId,
             )
@@ -1751,7 +1758,7 @@ class NotebookViewModel(
                 workGroup = NotebookWorkGroup(
                     id = existing?.id ?: groupId ?: 0L,
                     classId = classId,
-                    tabId = tabId,
+                    tabId = resolvedTabId,
                     name = uniqueName,
                     order = existing?.order ?: nextOrder,
                     learningSituationId = when (learningSituationId) {
@@ -1763,8 +1770,25 @@ class NotebookViewModel(
                 )
             )
             if (studentIds.isNotEmpty()) {
-                notebookRepository.assignStudentsToWorkGroup(classId, tabId, savedId, studentIds)
+                notebookRepository.assignStudentsToWorkGroup(classId, resolvedTabId, savedId, studentIds)
             }
+            selectClass(classId, force = true)
+        }
+    }
+
+    fun replaceWorkGroups(
+        tabId: String,
+        groups: List<NotebookWorkGroupBatchItem>,
+        clearExisting: Boolean = false,
+    ) {
+        val classId = activeClassId ?: return
+        scope.launch {
+            notebookRepository.replaceWorkGroups(
+                classId = classId,
+                tabId = tabId,
+                groups = groups,
+                clearExisting = clearExisting,
+            )
             selectClass(classId, force = true)
         }
     }
@@ -1779,7 +1803,7 @@ class NotebookViewModel(
         val groupId = groupName?.let { name ->
             currentState.sheet.workGroups.firstOrNull { it.tabId == tabId && it.name == name }?.id
         }
-        assignStudentsToWorkGroup(groupId = groupId, studentIds = listOf(studentId))
+        assignStudentsToWorkGroup(groupId = groupId, studentIds = listOf(studentId), tabId = tabId)
     }
 
     fun deleteWorkGroup(groupId: Long) {
@@ -1802,24 +1826,28 @@ class NotebookViewModel(
             .map { it.name.trim().lowercase() }
             .toSet()
 
-        var candidate = baseName.trim()
+        if (!existingNames.contains(baseName.lowercase())) {
+            return baseName
+        }
+
         var suffix = 2
-        while (candidate.lowercase() in existingNames) {
+        var candidate = "$baseName ($suffix)"
+        while (existingNames.contains(candidate.lowercase())) {
+            suffix += 1
             candidate = "$baseName ($suffix)"
-            suffix++
         }
         return candidate
     }
 
-    fun assignStudentsToWorkGroup(groupId: Long?, studentIds: List<Long>) {
+    fun assignStudentsToWorkGroup(groupId: Long?, studentIds: List<Long>, tabId: String? = null) {
         val classId = activeClassId ?: return
         val currentState = _state.value as? NotebookUiState.Data ?: return
-        val tabId = _selectedTabId.value ?: currentState.sheet.tabs.firstOrNull()?.id ?: return
+        val resolvedTabId = tabId ?: _selectedTabId.value ?: currentState.sheet.tabs.firstOrNull()?.id ?: return
         scope.launch {
             if (groupId == null) {
-                notebookRepository.clearStudentsFromWorkGroup(classId, tabId, studentIds)
+                notebookRepository.clearStudentsFromWorkGroup(classId, resolvedTabId, studentIds)
             } else {
-                notebookRepository.assignStudentsToWorkGroup(classId, tabId, groupId, studentIds)
+                notebookRepository.assignStudentsToWorkGroup(classId, resolvedTabId, groupId, studentIds)
             }
             selectClass(classId, force = true)
         }

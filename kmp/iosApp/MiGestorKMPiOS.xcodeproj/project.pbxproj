@@ -27,6 +27,7 @@
 		07C8F017EE7EF64E6F167A8F /* ScheduleWeekGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE3C26A04796CFACD4AB0C44 /* ScheduleWeekGridView.swift */; };
 		07DD7F7A52E311EBDBA7F322 /* PlannerTermBoardComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10B8BD2DBAD5F50708C3A47 /* PlannerTermBoardComponents.swift */; };
 		07E42225A1164B198086D3AA /* BackupRestorePreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41D847221EF034B6A7ED4339 /* BackupRestorePreviewSheet.swift */; };
+		099689EBA9E98BA1364417F4 /* KmpBridge+Meetings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 212337E509470CFD689BB7F8 /* KmpBridge+Meetings.swift */; };
 		09F8FF2F1C0C6AF0075371AD /* LanSyncDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 412BDB0BE52A021D8CFE19FE /* LanSyncDiscovery.swift */; };
 		0A94F3EA584945A698FC6F74 /* PlannerSequenceGanttView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D56DE443EAEED31903DC305 /* PlannerSequenceGanttView.swift */; };
 		0B33E01BA1D995654A80EA9C /* SettingsDangerZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0998A4D4BC5E85BB92250336 /* SettingsDangerZoneView.swift */; };
@@ -353,6 +354,7 @@
 		98D40380AAFFBC98265BEBBC /* PlannerSessionGlance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316939D68DF5F8E07E2635E9 /* PlannerSessionGlance.swift */; };
 		99477595C5C16D4BD799DBE9 /* PlannerPedagogyShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657CDD06E0754BF4AA3BD7E4 /* PlannerPedagogyShared.swift */; };
 		9979AC19393471656C45C439 /* PlannerWorkspaceViewModel+Report.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16469D20A02679E669EF5AFE /* PlannerWorkspaceViewModel+Report.swift */; };
+		9997DB2E60398DAC601544E2 /* KmpBridge+Meetings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 212337E509470CFD689BB7F8 /* KmpBridge+Meetings.swift */; };
 		999AD638514A03DA2C933DA3 /* CoreXLSX in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2806E8CC764E9D8FD6409 /* CoreXLSX */; };
 		9A0540F813120813D331EA7F /* PlannerLiquidGlassControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C94B9DDCF7110BC8C2A4DB /* PlannerLiquidGlassControls.swift */; };
 		9A31C548996D137897FA1C75 /* AppleBridgeBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */; };
@@ -672,6 +674,7 @@
 		1EF86338D46B7FB6436CC9A5 /* PlannerTermBoardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerTermBoardTests.swift; sourceTree = "<group>"; };
 		1F35C9D8B845906EBBC39C56 /* PhysicalScaleCatalogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalScaleCatalogView.swift; sourceTree = "<group>"; };
 		20EE80FA20BE8E0C4C732321 /* NotebookWorkGroupImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookWorkGroupImportTests.swift; sourceTree = "<group>"; };
+		212337E509470CFD689BB7F8 /* KmpBridge+Meetings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+Meetings.swift"; sourceTree = "<group>"; };
 		219075A940430441ED71DF42 /* WebSubmissionsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionsWorkspaceView.swift; sourceTree = "<group>"; };
 		246EEFCF796608A3FDAE0AEA /* NotebookWorkGroupPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookWorkGroupPolicy.swift; sourceTree = "<group>"; };
 		26E65AEB66C13E89107AA8BA /* SupportMeasureBulkImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportMeasureBulkImportSheet.swift; sourceTree = "<group>"; };
@@ -1143,6 +1146,7 @@
 			children = (
 				704B902594B5C72A796944D4 /* InstrumentEvaluationModels.swift */,
 				44BE29B25A1BD3726E186BDF /* KmpBridge+ContextualAI.swift */,
+				212337E509470CFD689BB7F8 /* KmpBridge+Meetings.swift */,
 				EAB9EAD726530D8C61519E3E /* KmpBridge+WebForms.swift */,
 				88590DE40405667ADB84E5CF /* KmpFlowSupport.swift */,
 				0A721D85250D04A5EF2F4512 /* LanSyncClient.swift */,
@@ -1683,6 +1687,7 @@
 				0DE95BC2B10B415D1AECA7A5 /* InstrumentEvaluationChrome.swift in Sources */,
 				F9AC280AFCF1F805FFEB44D1 /* InstrumentEvaluationModels.swift in Sources */,
 				A94AD541531545C35BB4C00B /* KmpBridge+ContextualAI.swift in Sources */,
+				099689EBA9E98BA1364417F4 /* KmpBridge+Meetings.swift in Sources */,
 				0DB15A5D839EF35D8A33E231 /* KmpBridge+WebForms.swift in Sources */,
 				A891426FA79E3A7AB4670107 /* KmpBridge.swift in Sources */,
 				3A77A11B8A5081671AE092FB /* KmpBridgeObservationStores.swift in Sources */,
@@ -1976,6 +1981,7 @@
 				3E5486419EB17E40023CA271 /* InstrumentEvaluationChrome.swift in Sources */,
 				5BE361076C0318424B56137F /* InstrumentEvaluationModels.swift in Sources */,
 				575F872AB42351EA1601BB72 /* KmpBridge+ContextualAI.swift in Sources */,
+				9997DB2E60398DAC601544E2 /* KmpBridge+Meetings.swift in Sources */,
 				CC871883DB2586C8F0FD5293 /* KmpBridge+WebForms.swift in Sources */,
 				B7CB07BCB74E309D55528193 /* KmpBridge.swift in Sources */,
 				DE0B12080EEE1DBB3FB8F826 /* KmpBridgeObservationStores.swift in Sources */,

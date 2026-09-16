@@ -1811,14 +1811,14 @@ class NotebookViewModel(
         learningSituationId: Long? = null,
         tabId: String? = null,
         clearExisting: Boolean = true,
-    ) {
-        if (activeClassId == null) return
-        val currentState = _state.value as? NotebookUiState.Data ?: return
+    ): List<ComposedWorkGroup> {
+        if (activeClassId == null) return emptyList()
+        val currentState = _state.value as? NotebookUiState.Data ?: return emptyList()
         val resolvedTabId = NotebookWorkGroupPolicy.canonicalTabId(
             tabs = currentState.sheet.tabs,
             requestedTabId = tabId,
             selectedTabId = _selectedTabId.value,
-        ) ?: currentState.sheet.tabs.firstOrNull()?.id ?: return
+        ) ?: currentState.sheet.tabs.firstOrNull()?.id ?: return emptyList()
         val parsedStrategy = when (strategy) {
             "homogeneous_grade" -> WorkGroupComposeStrategy.HOMOGENEOUS_GRADE
             "random_balanced" -> WorkGroupComposeStrategy.RANDOM_BALANCED
@@ -1853,6 +1853,7 @@ class NotebookViewModel(
             },
             clearExisting = clearExisting,
         )
+        return composed
     }
 
     fun renameWorkGroup(groupId: Long, name: String) {

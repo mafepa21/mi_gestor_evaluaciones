@@ -15,6 +15,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Los grupos se deshacían en el tablero antes de pulsar Listo (PR #240)**:
+  - El tablero guarda el reparto en local al crear, arrastrar o agrupar automáticamente, y no se deja pisar por un recargo viejo del cuaderno.
+  - El id de cada grupo nuevo se lee de la fila insertada (`MAX(id)`), no de `last_insert_rowid`, para que los alumnos queden en el grupo correcto.
+  - La ventana de grupos es más ancha y el tablero reparte las columnas para ver alumnado y grupos a la vez.
+
 - **Los grupos de trabajo se quedaban vacíos al pulsar Listo y ordenar el Cuaderno (PR #240)**:
   - Una sola regla de pestaña (`NotebookWorkGroupPolicy`): los grupos se guardan en la pestaña raíz de la evaluación; los de una SA se ven en toda la clase; los generales se ven en esa evaluación y en sus pestañas hijas.
   - La pertenencia de un alumno se busca por `groupId`, no por pestaña. Asignar o borrar un alumno limpia su sitio anterior en toda la clase.

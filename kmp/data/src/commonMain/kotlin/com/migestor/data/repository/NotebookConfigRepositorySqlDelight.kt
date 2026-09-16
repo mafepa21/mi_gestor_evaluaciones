@@ -612,11 +612,16 @@ class NotebookConfigRepositorySqlDelight(
                     device_id = workGroup.trace.deviceId,
                     sync_version = workGroup.trace.syncVersion,
                 )
-                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+                insertedWorkGroupId(classId, workGroup.tabId)
             }
         }
         NotebookRefreshBus.emitRefresh()
         savedId
+    }
+
+    private fun insertedWorkGroupId(classId: Long, tabId: String): Long {
+        return db.appDatabaseQueries.selectLatestWorkGroupId(classId, tabId).executeAsOne().id
+            ?: error("No se pudo obtener el identificador del grupo de trabajo")
     }
 
     private suspend fun resolveUniqueWorkGroupName(
@@ -754,7 +759,7 @@ class NotebookConfigRepositorySqlDelight(
                     device_id = null,
                     sync_version = 0,
                 )
-                val groupId = db.appDatabaseQueries.lastInsertedId().executeAsOne()
+                val groupId = insertedWorkGroupId(classId, tabId)
                 group.studentIds.forEach { studentId ->
                     db.appDatabaseQueries.deleteWorkGroupMemberByStudent(classId, studentId)
                     db.appDatabaseQueries.upsertWorkGroupMember(

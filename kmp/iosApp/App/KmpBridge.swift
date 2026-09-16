@@ -9724,6 +9724,7 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    @discardableResult
     func autoComposeNotebookWorkGroups(
         groupCount: Int32,
         strategy: String,
@@ -9732,9 +9733,9 @@ final class KmpBridge: ObservableObject {
         learningSituationId: Int64? = nil,
         tabId: String? = nil,
         clearExisting: Bool = true
-    ) {
+    ) -> [ComposedWorkGroup] {
         let situationKotlin = learningSituationId.map { KotlinLong(value: $0) }
-        notebookViewModel.autoComposeWorkGroups(
+        let composed = notebookViewModel.autoComposeWorkGroups(
             groupCount: groupCount,
             strategy: strategy,
             mixSex: mixSex,
@@ -9746,6 +9747,7 @@ final class KmpBridge: ObservableObject {
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
+        return composed
     }
     
     func createTab(title: String, parentTabId: String? = nil) -> String? {

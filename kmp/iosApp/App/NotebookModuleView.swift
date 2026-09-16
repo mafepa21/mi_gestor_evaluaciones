@@ -1434,7 +1434,9 @@ struct NotebookModuleView: View {
                         showToast(message, style: style)
                     }
                     #if os(macOS)
-                    .frame(minWidth: 550, minHeight: 480)
+                    .frame(minWidth: 1100, minHeight: 760)
+                    #else
+                    .presentationDetents([.large])
                     #endif
                 }
                 .appFullScreenCover(isPresented: Binding(

@@ -1514,6 +1514,18 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-09-16 - El tablero de grupos ya no se deshace y muestra todas las columnas
+
+Resumen:
+- Qué cambio se hizo: el tablero guarda el reparto en local al crear, arrastrar o agrupar, y no se deja pisar por un recargo viejo. El id del grupo se lee de la fila insertada. La ventana es más ancha y las columnas se reparte el ancho para ver el alumnado sin recortar nombres.
+- Por qué importa: en Mac los grupos se creaban y volvían a «Sin grupo» antes de pulsar Listo, y la primera columna quedaba cortada.
+- Dónde vive el cambio: `NotebookGroupBoardView.swift`, `NotebookGroupManagementSheet.swift`, `NotebookConfigRepositorySqlDelight.kt`.
+- Validación realizada: tests KMP de grupos verdes. iOS Simulator compiló. macOS falló en el helper de Command Center (`libskiko-macos-arm64.dylib.sha256` ausente), no en el Swift de grupos.
+
+Notas para futuras conversaciones:
+- No pintar el tablero solo desde `notebookState` recargado. Hace falta un borrador local mientras el guardado termina.
+- `last_insert_rowid()` no es fiable para miembros de grupo en Apple. Usar `MAX(id)` de `notebook_work_groups` dentro de la misma transacción.
+
 ### 2026-09-16 - Grupos de trabajo persistentes, tablero visual y agrupado automático
 
 Resumen:

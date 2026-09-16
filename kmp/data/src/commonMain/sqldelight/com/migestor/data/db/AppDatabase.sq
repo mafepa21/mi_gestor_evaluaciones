@@ -2420,6 +2420,9 @@ INSERT INTO notebook_work_groups(
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
+selectLatestWorkGroupId:
+SELECT MAX(id) AS id FROM notebook_work_groups WHERE class_id = ? AND tab_id = ?;
+
 updateWorkGroup:
 UPDATE notebook_work_groups
 SET class_id = ?,

@@ -16,7 +16,8 @@ struct NotebookGroupManagementSheet: View {
 
     @State private var loadingSituations = false
     @State private var classSituations: [LearningSituation] = []
-    @State private var boardMode = false
+    @State private var boardMode = true
+    @StateObject private var boardDraft = WorkGroupBoardDraft()
 
     private var data: NotebookUiStateData? {
         bridge.notebookState as? NotebookUiStateData
@@ -119,6 +120,7 @@ struct NotebookGroupManagementSheet: View {
                 if boardMode {
                     NotebookGroupBoardView(
                         bridge: bridge,
+                        draft: boardDraft,
                         groups: currentGroups,
                         classSituations: classSituations,
                         onToast: onToast,
@@ -146,7 +148,6 @@ struct NotebookGroupManagementSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Listo") {
-                        bridge.refreshCurrentNotebook()
                         dismiss()
                     }
                 }
@@ -192,11 +193,12 @@ struct NotebookGroupManagementSheet: View {
                             }
                         }
                         await MainActor.run {
-                            let tabId = activeTabId
+                            let tabId = activeTabId ?? ""
                             if let target = editGroupTarget {
                                 bridge.updateNotebookWorkGroup(groupId: target.id, name: name, learningSituationId: situationId, tabId: tabId)
                                 onToast("Grupo actualizado", .success)
                             } else {
+                                boardDraft.addTemporaryGroup(name: name, tabId: tabId, learningSituationId: situationId)
                                 bridge.saveNotebookWorkGroup(name: name, learningSituationId: situationId, tabId: tabId)
                                 onToast("Grupo creado", .success)
                             }
@@ -204,7 +206,7 @@ struct NotebookGroupManagementSheet: View {
                     }
                 }
                 #if os(macOS)
-                .frame(width: 420, height: 280)
+                .frame(minWidth: 480, minHeight: 360)
                 #endif
             }
             .onAppear {
@@ -276,6 +278,22 @@ struct NotebookGroupManagementSheet: View {
         return data.sheet.workGroupMembers.filter { $0.groupId == groupId }.count
     }
 
+    private func memberSummary(for groupId: Int64) -> String {
+        guard let data else { return "Sin alumnado" }
+        let ids = Set(data.sheet.workGroupMembers.filter { $0.groupId == groupId }.map(\.studentId))
+        let names = data.sheet.rows.map(\.student).filter { ids.contains($0.id) }
+            .sorted {
+                "\($0.lastName) \($0.firstName)".localizedStandardCompare("\($1.lastName) \($1.firstName)") == .orderedAscending
+            }
+            .prefix(4)
+            .map { "\($0.lastName), \($0.firstName)" }
+        if names.isEmpty { return "Sin alumnado" }
+        if ids.count > names.count {
+            return names.joined(separator: " · ") + "…"
+        }
+        return names.joined(separator: " · ")
+    }
+
     @ViewBuilder
     private var groupsList: some View {
         List {
@@ -309,6 +327,10 @@ struct NotebookGroupManagementSheet: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(group.name)
                                         .font(.headline)
+                                    Text(memberSummary(for: group.id))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
                                     HStack(spacing: 6) {
                                         Text("\(memberCount(group.id)) alumnos")
                                             .font(.caption)

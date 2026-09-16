@@ -15,6 +15,20 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Asociación de grupos de trabajo a Situaciones de Aprendizaje (SA), persistencia atómica y distinción visual por grupos en el Cuaderno**:
+  - **Asociación a SA en importación y edición**:
+    - Selector de Situación de Aprendizaje integrado en `NotebookGroupImportPreviewSheet` para vincular los grupos importados a una SA existente o mantenerlos como generales.
+    - Persistencia del vínculo de la SA con la clase activa en el cuaderno mediante `addLearningSituationClassLink`.
+  - **Persistencia atómica de alumnos en grupos (`KmpBridge` + `NotebookViewModel`)**:
+    - `saveNotebookWorkGroup` y `updateNotebookWorkGroup` ampliados para admitir `studentIds: [Int64]`.
+    - Eliminación de condiciones de carrera en la importación: el grupo y la asignación de sus miembros se ejecutan en una sola operación atómica en Kotlin/SQLDelight, garantizando que los alumnos asignados permanezcan guardados de forma persistente.
+    - Sincronización explícita del `tabId` activo en `GroupMembersView` al marcar o desmarcar alumnos: los alumnos deseleccionados permanecen sin grupo permanentemente salvo que se vuelvan a seleccionar.
+  - **Ordenación por grupos y distintivo visual en el Cuaderno**:
+    - Detección de primer alumno por grupo (`isFirstInGroup`) y recuento de integrantes en `NotebookTableRow` al ordenar por grupos (`groupByWorkGroupMode != "none"`).
+    - Cabeceras de grupo integradas con píldoras de estilo Organic Precision (icono `person.2.fill` / `person.slash`, nombre del grupo y badge de integrantes).
+    - Separación visual vertical aumentada entre grupos distintos respecto a la separación habitual entre alumnos del mismo grupo, con alturas perfectamente sincronizadas entre columnas fijas y desplazables en `NotebookGridContainer`.
+    - Menús directos de «Organizar por grupos» en la cabecera de la columna de alumnos y en el menú de filtrado del cuaderno.
+
 - **Importación de grupos de trabajo desde Excel en la Gestión de Grupos del Cuaderno (`NotebookGroupManagementSheet`)**:
   - **Servicio de lectura y emparejamiento (`NotebookWorkGroupImportService`)**:
     - Parser adaptativo para hojas de cálculo matriciales como `Generador_de_grupos.xlsx` (cabeceras con nombres de grupo en columnas y alumnos en filas) y tablas en dos columnas (Grupo / Alumno).

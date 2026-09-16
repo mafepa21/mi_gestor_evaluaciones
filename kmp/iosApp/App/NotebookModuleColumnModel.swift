@@ -539,11 +539,30 @@ final class NotebookGridLayoutModel: ObservableObject {
             }
         }
 
-        return rows.filter { item in
+        let filteredRows = rows.filter { item in
             let matchesSearch = searchText.isEmpty || "\(item.student.firstName) \(item.student.lastName)".localizedCaseInsensitiveContains(searchText)
             let matchesGroup = selectedGroupId == nil || groupId(for: item.student.id, activeTabId: activeTabId, data: data) == selectedGroupId
             return matchesSearch && matchesGroup
         }
+
+        if groupByWorkGroupMode != "none" {
+            var countsByGroup: [String: Int] = [:]
+            for item in filteredRows {
+                countsByGroup[item.groupName, default: 0] += 1
+            }
+            return filteredRows.enumerated().map { index, item in
+                let isFirst = index == 0 || item.groupName != filteredRows[index - 1].groupName
+                return NotebookTableRow(
+                    student: item.student,
+                    row: item.row,
+                    groupName: item.groupName,
+                    isFirstInGroup: isFirst,
+                    groupMemberCount: countsByGroup[item.groupName] ?? 0
+                )
+            }
+        }
+
+        return filteredRows
     }
 
     private func groupId(for studentId: Int64, activeTabId: String?, data: NotebookUiStateData) -> Int64? {

@@ -9645,17 +9645,19 @@ final class KmpBridge: ObservableObject {
         }
     }
 
-    func saveNotebookWorkGroup(name: String, learningSituationId: Int64? = nil) {
+    func saveNotebookWorkGroup(name: String, learningSituationId: Int64? = nil, studentIds: [Int64] = []) {
         let situationKotlin = KotlinLong(value: learningSituationId ?? -1)
-        notebookViewModel.saveWorkGroup(name: name, groupId: nil, studentIds: [], learningSituationId: situationKotlin)
+        let studentsKotlin = studentIds.map { KotlinLong(value: $0) }
+        notebookViewModel.saveWorkGroup(name: name, groupId: nil, studentIds: studentsKotlin, learningSituationId: situationKotlin)
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
     }
 
-    func updateNotebookWorkGroup(groupId: Int64, name: String, learningSituationId: Int64? = nil) {
+    func updateNotebookWorkGroup(groupId: Int64, name: String, learningSituationId: Int64? = nil, studentIds: [Int64] = []) {
         let situationKotlin = KotlinLong(value: learningSituationId ?? -1)
-        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: [], learningSituationId: situationKotlin)
+        let studentsKotlin = studentIds.map { KotlinLong(value: $0) }
+        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: studentsKotlin, learningSituationId: situationKotlin)
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }

@@ -222,9 +222,10 @@ struct NotebookGroupManagementSheet: View {
             .sheet(item: $importPreview) { preview in
                 NotebookGroupImportPreviewSheet(
                     preview: preview,
-                    existingGroupNames: currentGroups.map(\.name)
-                ) { confirmedGroups, clearExisting in
-                    applyImportedGroups(confirmedGroups, clearExisting: clearExisting)
+                    existingGroupNames: currentGroups.map(\.name),
+                    classSituations: classSituations
+                ) { confirmedGroups, clearExisting, situationId in
+                    applyImportedGroups(confirmedGroups, clearExisting: clearExisting, learningSituationId: situationId)
                 }
             }
             .alert("No se pudo importar", isPresented: Binding(
@@ -291,10 +292,18 @@ struct NotebookGroupManagementSheet: View {
         }
     }
 
-    private func applyImportedGroups(_ groups: [ImportedNotebookGroup], clearExisting: Bool) {
+    private func applyImportedGroups(
+        _ groups: [ImportedNotebookGroup],
+        clearExisting: Bool,
+        learningSituationId: Int64? = nil
+    ) {
         guard let data = data else { return }
         let classId = data.sheet.classId
         let tabId = activeTabId
+
+        if let tabId = tabId, bridge.selectedNotebookTabId != tabId {
+            bridge.setSelectedNotebookTab(id: tabId)
+        }
 
         if clearExisting {
             for existing in currentGroups {
@@ -302,24 +311,24 @@ struct NotebookGroupManagementSheet: View {
             }
         }
 
-        for group in groups {
-            let matchedStudentIds = group.members.compactMap(\.matchedStudentId)
-            bridge.saveNotebookWorkGroup(name: group.name, learningSituationId: nil)
+        Task {
+            if let situationId = learningSituationId {
+                try? await bridge.addLearningSituationClassLink(situationId: situationId, classId: classId)
+            }
 
-            // Asignar los alumnos al grupo recién guardado en el tab
-            // Esperar un breve instante para que el grupo se guarde o invocar la asignación
-            if !matchedStudentIds.isEmpty {
-                // Para asignación inmediata por nombre en el tab:
-                bridge.assignStudentToNotebookGroup(groupName: group.name, studentId: matchedStudentIds[0])
-                if matchedStudentIds.count > 1 {
-                    for studentId in matchedStudentIds.dropFirst() {
-                        bridge.assignStudentToNotebookGroup(groupName: group.name, studentId: studentId)
-                    }
+            await MainActor.run {
+                for group in groups {
+                    let matchedStudentIds = group.members.compactMap(\.matchedStudentId)
+                    bridge.saveNotebookWorkGroup(
+                        name: group.name,
+                        learningSituationId: learningSituationId,
+                        studentIds: matchedStudentIds
+                    )
                 }
+
+                onToast("\(groups.count) grupos importados con éxito", .success)
             }
         }
-
-        onToast("\(groups.count) grupos importados", .success)
     }
 
     private func memberCount(_ groupId: Int64) -> Int {
@@ -516,6 +525,9 @@ private struct GroupMembersView: View {
     }
 
     private func toggleStudentMembership(_ studentId: Int64, isMember: Bool) {
+        if let tabId = activeTabId, bridge.selectedNotebookTabId != tabId {
+            bridge.setSelectedNotebookTab(id: tabId)
+        }
         if isMember {
             bridge.assignStudentsToNotebookGroup(groupId: nil, studentIds: [studentId])
         } else {

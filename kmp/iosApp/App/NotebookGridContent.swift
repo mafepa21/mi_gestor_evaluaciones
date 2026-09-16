@@ -57,7 +57,10 @@ struct NotebookGridContent<
             isFixedColumnResizing: isFixedColumnResizing,
             topAccessoryHeight: topAccessoryHeight,
             headerHeight: headerHeight,
-            rowHeight: rowHeight
+            rowHeight: rowHeight,
+            groupHeaderInfo: { row in
+                (isFirst: row.isFirstInGroup, groupName: row.groupName, count: row.groupMemberCount)
+            }
         ) {
             emptyContent()
         } seatingContent: { rows in

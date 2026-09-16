@@ -122,7 +122,8 @@ extension NotebookModuleView {
                             groupByWorkGroupMode = "none"
                         } label: {
                             HStack {
-                                Text("No agrupar")
+                                Label("Orden alfabético (sin agrupar)", systemImage: "textformat.abc")
+                                Spacer()
                                 if groupByWorkGroupMode == "none" {
                                     Image(systemName: "checkmark")
                                 }
@@ -133,7 +134,8 @@ extension NotebookModuleView {
                             groupByWorkGroupMode = "general"
                         } label: {
                             HStack {
-                                Text("Grupos generales")
+                                Label("Ordenar por grupos de trabajo", systemImage: "person.2.fill")
+                                Spacer()
                                 if groupByWorkGroupMode == "general" {
                                     Image(systemName: "checkmark")
                                 }
@@ -147,7 +149,8 @@ extension NotebookModuleView {
                                     groupByWorkGroupMode = "situation_\(situation.id)"
                                 } label: {
                                     HStack {
-                                        Text("Grupos: \(situation.title)")
+                                        Label("Grupos de SA: \(situation.title)", systemImage: "folder.fill")
+                                        Spacer()
                                         if groupByWorkGroupMode == "situation_\(situation.id)" {
                                             Image(systemName: "checkmark")
                                         }

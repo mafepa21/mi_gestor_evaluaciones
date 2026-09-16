@@ -825,9 +825,38 @@ struct NotebookModuleView: View {
             Button("Sin filtros disponibles") {}
                 .disabled(true)
         } else {
+            Menu {
+                Button {
+                    groupByWorkGroupMode = "none"
+                } label: {
+                    Label("Orden alfabético", systemImage: groupByWorkGroupMode == "none" ? "checkmark" : "textformat.abc")
+                }
+                Button {
+                    groupByWorkGroupMode = "general"
+                } label: {
+                    Label("Ordenar por grupos de trabajo", systemImage: groupByWorkGroupMode == "general" ? "checkmark" : "person.2.fill")
+                }
+                if !classSituations.isEmpty {
+                    Divider()
+                    ForEach(classSituations, id: \.id) { situation in
+                        Button {
+                            let targetMode = "situation_\(situation.id)"
+                            groupByWorkGroupMode = groupByWorkGroupMode == targetMode ? "none" : targetMode
+                        } label: {
+                            Label(
+                                "Grupos: \(situation.title)",
+                                systemImage: groupByWorkGroupMode == "situation_\(situation.id)" ? "checkmark" : "folder"
+                            )
+                        }
+                    }
+                }
+            } label: {
+                Label("Organizar por grupos", systemImage: groupByWorkGroup ? "person.2.fill" : "person.2")
+            }
+
             if !groups.isEmpty {
                 Menu {
-                    Button("Grupo completo") {
+                    Button("Todos los alumnos") {
                         selectedGroupId = nil
                     }
                     ForEach(groups, id: \.id) { group in

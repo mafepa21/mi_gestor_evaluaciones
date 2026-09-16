@@ -13,6 +13,55 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
+  - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
+  - Detección automática en la app de la SA asociada a la columna del cuaderno y los grupos de trabajo vinculados para generar los pares de evaluación.
+  - Resolución inclusiva de grupos de trabajo (`detectPeerGroupsForColumn`): busca grupos por SA directa y, si no los hay o la columna no tiene SA, aplica *fallback* a los grupos de la pestaña de la columna (o familia de pestañas según `NotebookWorkGroupPolicy`) y a los grupos de la clase, permitiendo coevaluar con grupos generales creados en el Cuaderno.
+  - Soporte en la PWA de Vercel y en la app para esquemas v2 con fragmentos hash privados (`&t=<base64url>`) que suministran a cada alumno evaluador exclusivamente los alias y nombres completos de sus compañeros de grupo, sin exponer nombres al servidor web ni alterar la URL visible.
+  - Asignación transparente de autoevaluación individual convencional para el alumnado sin grupo asignado en la SA.
+  - Importación directa al cuaderno con cálculo de la media aritmética simple de la autoevaluación y las coevaluaciones recibidas por cada alumno, y registro de autoría individual en el ledger criptográfico.
+  - Nueva interfaz con selector de dos modos en la hoja de publicación (`WebSubmissionPublishSheet`) y distintivos visuales en la bandeja (`WebSubmissionsWorkspaceView`).
+
+### Changed
+
+- **Modularización y partición estructural de `KmpBridge.swift`**:
+  - Reducción del monolito central de 15.160 líneas a 727 líneas (reducción >95%), conservando intacta la API pública, las firmas de métodos y el comportamiento funcional de la app.
+  - Creación del subdirectorio `kmp/iosApp/App/Bridge/` con 13 nuevos archivos modulares por dominio de responsabilidad:
+    - `InstrumentEvaluationModels.swift`: Modelos de evaluación de instrumentos estructurados, rúbricas y formato.
+    - `KmpFlowSupport.swift`: Adaptadores de Combine y AsyncSequence para StateFlows de Kotlin.
+    - `LanSyncModels.swift`: DTOs, hashes y eventos de sincronización de área local.
+    - `LanSyncClient.swift`: Cliente de red HTTP/TLS, pinned certificates y keychain.
+    - `LanSyncDiscovery.swift`: Descubrimiento Bonjour / NWBrowser de helpers locales.
+    - `KmpBridgeModels.swift`: Snapshots y structs de datos anidados en `KmpBridge`.
+    - `KmpBridge+WebForms.swift`: Publicación web, formularios y recepción de entregas.
+    - `KmpBridge+Meetings.swift`: Reuniones de claustro, actas pedagógicas y planes semanales.
+    - `KmpBridge+Rubrics.swift`: Editor, banco de rúbricas y evaluación masiva.
+    - `KmpBridge+SyncLAN.swift`: Orquestador de sincronización, polling y merge de snapshots.
+    - `KmpBridge+Planner.swift`: Planificador didáctico, sesiones, plantillas, drag & drop y SA asociadas.
+    - `KmpBridge+Students.swift`: Alumnado, grupos, fotos, importación TSV, asistencia, incidencias, medidas de apoyo y tutorías.
+    - `KmpBridge+LearningSituations.swift`: Situaciones de Aprendizaje, importación/exportación de documentos y materialización de instrumentos.
+    - `KmpBridge+PhysicalEducation.swift`: Pruebas físicas, baterías, baremos y sesiones de EF.
+    - `KmpBridge+Notebook.swift`: Cuaderno de evaluación, pestañas, columnas, fórmulas, medias y celdas.
+    - `KmpBridge+Dashboard.swift`: Métricas del dashboard operativo, filtros y acciones rápidas.
+    - `KmpBridge+TypeConverters.swift`: Conversores bidireccionales Swift <-> Kotlin y helpers de deserialización.
+  - `KmpBridge.swift` queda acotado exclusivamente como orquestador `@MainActor ObservableObject` central: inyección de dependencias `KmpContainer`, propiedades reactivas `@Published`, observadores de StateFlow y bootstrap del ciclo de vida.
+
+### Data
+
+- **Migración 43.sqm y persistencia de coevaluaciones en SQLDelight**:
+  - Columna `mode TEXT NOT NULL DEFAULT 'self'` en la tabla `web_form_instances`.
+  - Nueva tabla `web_peer_targets` con índices para persistir las correspondencias privadas `(form_instance_id, evaluator_alias, target_alias, target_student_id, target_display_name, created_at)`.
+  - Actualización de repositorios y contratos Kotlin (`WebSubmissionsContracts.kt` y `WebSubmissionsRepositorySqlDelight.kt`).
+
+### Verification
+
+- `./scripts/verify_apple_builds.sh`: macOS Native / Catalyst y iOS Simulator compilados con éxito.
+- `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: suites de SQLDelight y contratos KMP completadas con 0 fallos.
+- `npm test` en `entregas-alumnado`: 50/50 pruebas de contrato, esquemas v2 y cifrado superadas.
+- Suite de interoperabilidad criptográfica `interop_entregas_web`: 75/75 pruebas superadas (0 fallidas).
+
 ### Fixed
 
 - **Corrección de persistencia y sincronización al modificar grupos de trabajo en tablero y lista (PR #240)**:

@@ -1,0 +1,25 @@
+-- Migration 43: soporte para coevaluación en entregas web
+--
+-- 1. Añade la columna `mode` a `web_form_instances` ('self' o 'peer').
+-- 2. Crea la tabla `web_peer_targets` para guardar la correspondencia privada
+--    (form_instance_id, evaluator_alias, target_alias) -> target_student_id.
+--    No lleva device_id ni sync_version porque vive únicamente en el dispositivo
+--    donde se originó el formulario para salvaguardar la privacidad.
+
+ALTER TABLE web_form_instances ADD COLUMN mode TEXT NOT NULL DEFAULT 'self';
+
+CREATE TABLE IF NOT EXISTS web_peer_targets (
+    form_instance_id TEXT NOT NULL,
+    evaluator_alias TEXT NOT NULL,
+    target_alias TEXT NOT NULL,
+    target_student_id INTEGER NOT NULL,
+    target_display_name TEXT NOT NULL DEFAULT '',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (form_instance_id, evaluator_alias, target_alias),
+    FOREIGN KEY (form_instance_id) REFERENCES web_form_instances(form_instance_id) ON DELETE CASCADE,
+    FOREIGN KEY (target_student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_peer_targets_form ON web_peer_targets(form_instance_id);
+CREATE INDEX IF NOT EXISTS idx_web_peer_targets_evaluator ON web_peer_targets(form_instance_id, evaluator_alias);
+CREATE INDEX IF NOT EXISTS idx_web_peer_targets_student ON web_peer_targets(target_student_id);

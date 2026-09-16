@@ -35,6 +35,16 @@ enum WebSubmissionPublisher {
         let aliases: [(alias: String, studentId: Int64)]
         /// Enlaces personales, en el orden del alumnado que se pasó.
         let links: [(studentId: Int64, studentName: String, url: String)]
+        /// Modo del formulario: "self" o "peer"
+        let mode: String
+        /// Coevaluación: asignaciones (evaluatorAlias, targetAlias, targetStudentId, targetName)
+        let peerTargets: [(evaluatorAlias: String, targetAlias: String, targetStudentId: Int64, targetName: String)]
+    }
+
+    struct PeerTargetToPublish {
+        let evaluatorStudentId: Int64
+        let targetStudentId: Int64
+        let targetName: String
     }
 
     struct ItemToPublish {
@@ -100,7 +110,9 @@ enum WebSubmissionPublisher {
         /// fichero pero NO puede rellenar el destinatario.
         deliveryEmail: String?,
         expiresAtEpochMs: Int64,
-        formInstanceId: String = UUID().uuidString
+        formInstanceId: String = UUID().uuidString,
+        mode: String = "self",
+        peerTargets: [PeerTargetToPublish] = []
     ) throws -> PublishedForm {
         guard !items.isEmpty else { throw PublishError.noItems }
         guard !students.isEmpty else { throw PublishError.noStudents }
@@ -148,7 +160,7 @@ enum WebSubmissionPublisher {
         }
 
         var manifiesto: [String: Any] = [
-            "schemaVersion": 1,
+            "schemaVersion": mode == "peer" ? 2 : 1,
             "formInstanceId": formInstanceId,
             "title": title,
             "locale": locale,
@@ -157,6 +169,9 @@ enum WebSubmissionPublisher {
             "publisherKey": publisherKey,
             "expiresAt": iso8601(expiresAtEpochMs),
         ]
+        if mode == "peer" {
+            manifiesto["mode"] = "peer"
+        }
         if let subtitle, !subtitle.isEmpty { manifiesto["subtitle"] = subtitle }
         if let deliveryEmail, !deliveryEmail.isEmpty {
             manifiesto["deliveryEmail"] = deliveryEmail
@@ -191,11 +206,47 @@ enum WebSubmissionPublisher {
         var usados = Set<String>()
         let base = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
 
+        var studentAliasById: [Int64: String] = [:]
         for alumno in students {
             var alias: String
             repeat { alias = randomAlias() } while usados.contains(alias)
             usados.insert(alias)
             aliases.append((alias: alias, studentId: alumno.id))
+            studentAliasById[alumno.id] = alias
+        }
+
+        var targetsByEvaluator: [Int64: [PeerTargetToPublish]] = [:]
+        for pt in peerTargets {
+            targetsByEvaluator[pt.evaluatorStudentId, default: []].append(pt)
+        }
+
+        var publishedPeerTargets: [(evaluatorAlias: String, targetAlias: String, targetStudentId: Int64, targetName: String)] = []
+
+        for alumno in students {
+            guard let alias = studentAliasById[alumno.id] else { continue }
+            let evalTargets = targetsByEvaluator[alumno.id] ?? []
+
+            var targetParam = ""
+            if mode == "peer" && !evalTargets.isEmpty {
+                var targetsList: [[String: String]] = []
+                for pt in evalTargets {
+                    var targetAlias: String
+                    repeat { targetAlias = randomAlias() } while usados.contains(targetAlias)
+                    usados.insert(targetAlias)
+                    publishedPeerTargets.append((
+                        evaluatorAlias: alias,
+                        targetAlias: targetAlias,
+                        targetStudentId: pt.targetStudentId,
+                        targetName: pt.targetName
+                    ))
+                    targetsList.append(["a": targetAlias, "n": pt.targetName])
+                }
+                if let jsonData = try? JSONSerialization.data(withJSONObject: targetsList, options: []),
+                   let b64 = Data(jsonData).base64URLEncodedString as String? {
+                    targetParam = "&t=\(b64)"
+                }
+            }
+
             // Los dos datos van en el FRAGMENTO: el navegador no lo envía al
             // servidor, así que ningún registro de acceso ve nunca quién es quién.
             //
@@ -206,7 +257,7 @@ enum WebSubmissionPublisher {
             links.append((
                 studentId: alumno.id,
                 studentName: alumno.name,
-                url: "\(base)/#f=\(formInstanceId)&a=\(alias)"
+                url: "\(base)/#f=\(formInstanceId)&a=\(alias)\(targetParam)"
             ))
         }
 
@@ -219,7 +270,9 @@ enum WebSubmissionPublisher {
             expiresAtEpochMs: expiresAtEpochMs,
             itemMap: itemMap,
             aliases: aliases,
-            links: links
+            links: links,
+            mode: mode,
+            peerTargets: publishedPeerTargets
         )
     }
 

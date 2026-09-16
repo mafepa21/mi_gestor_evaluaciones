@@ -127,6 +127,9 @@ struct NotebookGroupManagementSheet: View {
                         onCreateGroup: {
                             editGroupTarget = nil
                             showingEditSheet = true
+                        },
+                        onImportExcel: {
+                            showingFileImporter = true
                         }
                     )
                 } else {
@@ -145,6 +148,13 @@ struct NotebookGroupManagementSheet: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 220)
+                }
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        showingFileImporter = true
+                    } label: {
+                        Label("Importar Excel", systemImage: "square.and.arrow.down")
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Listo") {
@@ -254,6 +264,15 @@ struct NotebookGroupManagementSheet: View {
                 return (name: group.name, studentIds: matchedStudentIds, learningSituationId: learningSituationId)
             }
 
+            await MainActor.run {
+                boardDraft.applyImported(
+                    batchGroups.map { ($0.name, $0.studentIds) },
+                    tabId: resolvedTabId,
+                    learningSituationId: learningSituationId
+                )
+                boardMode = true
+            }
+
             do {
                 try await bridge.importNotebookWorkGroups(
                     classId: classId,
@@ -262,7 +281,6 @@ struct NotebookGroupManagementSheet: View {
                     clearExisting: clearExisting
                 )
                 await MainActor.run {
-                    bridge.refreshCurrentNotebook()
                     onToast("\(groups.count) grupos importados con éxito", .success)
                 }
             } catch {

@@ -17,18 +17,13 @@ final class WorkGroupBoardDraft: ObservableObject {
     private var lastLocalMemberCount = 0
 
     func ingest(groups remoteGroups: [NotebookWorkGroup], members: [NotebookWorkGroupMember], force: Bool = false) {
+        remapTemporaryIds(from: remoteGroups)
+
         let remoteMembership = Dictionary(uniqueKeysWithValues: members.map { ($0.studentId, $0.groupId) })
-        let remoteIds = Set(remoteGroups.map(\.id))
-        if !force, pendingMutations > 0 {
-            let remoteCount = remoteMembership.count
-            if remoteCount < lastLocalMemberCount {
-                return
-            }
-            if remoteGroups.count < groups.filter({ !$0.isTemporary }).count {
-                return
-            }
+        if !force, remoteMembership.count < membership.count {
+            return
         }
-        if !force, pendingMutations > 0, remoteMembership.count < membership.count {
+        if !force, remoteGroups.isEmpty, !groups.isEmpty {
             return
         }
 
@@ -53,21 +48,44 @@ final class WorkGroupBoardDraft: ObservableObject {
         nextGroups.append(contentsOf: unmatchedTemps)
 
         var nextMembership = remoteMembership
-        for (studentId, groupId) in membership {
-            if groupId < 0, let temp = groups.first(where: { $0.id == groupId }),
-               let resolved = nextGroups.first(where: { $0.name == temp.name && !$0.isTemporary }) {
-                nextMembership[studentId] = resolved.id
-            } else if pendingMutations > 0, nextMembership[studentId] == nil {
-                nextMembership[studentId] = groupId
-            }
+        for (studentId, groupId) in membership where nextMembership[studentId] == nil {
+            nextMembership[studentId] = groupId
         }
 
         groups = nextGroups
         membership = nextMembership
         lastLocalMemberCount = nextMembership.count
-        if remoteIds.isSuperset(of: Set(nextGroups.filter { !$0.isTemporary }.map(\.id))) {
-            pendingMutations = max(0, pendingMutations - 1)
+        if remoteMembership.count >= lastLocalMemberCount {
+            pendingMutations = 0
         }
+    }
+
+    private func remapTemporaryIds(from remoteGroups: [NotebookWorkGroup]) {
+        guard groups.contains(where: \.isTemporary) else { return }
+        var remapped: [Int64: Int64] = [:]
+        var nextGroups = groups
+        for index in nextGroups.indices {
+            let local = nextGroups[index]
+            guard local.isTemporary,
+                  let remote = remoteGroups.first(where: { $0.name == local.name }) else { continue }
+            remapped[local.id] = remote.id
+            nextGroups[index] = GroupItem(
+                id: remote.id,
+                name: remote.name,
+                tabId: remote.tabId,
+                learningSituationId: remote.learningSituationId?.int64Value,
+                isTemporary: false
+            )
+        }
+        guard !remapped.isEmpty else { return }
+        groups = nextGroups
+        var nextMembership = membership
+        for (studentId, groupId) in membership {
+            if let resolved = remapped[groupId] {
+                nextMembership[studentId] = resolved
+            }
+        }
+        membership = nextMembership
     }
 
     func addTemporaryGroup(name: String, tabId: String, learningSituationId: Int64?) {
@@ -102,6 +120,35 @@ final class WorkGroupBoardDraft: ObservableObject {
             )
             for studentId in group.studentIds {
                 nextMembership[kotlinInt64(studentId)] = id
+            }
+        }
+        groups = nextGroups
+        membership = nextMembership
+        lastLocalMemberCount = nextMembership.count
+    }
+
+    func applyImported(
+        _ imported: [(name: String, studentIds: [Int64])],
+        tabId: String,
+        learningSituationId: Int64?
+    ) {
+        pendingMutations += 1
+        var nextGroups: [GroupItem] = []
+        var nextMembership: [Int64: Int64] = [:]
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        for (index, group) in imported.enumerated() {
+            let id = -(now + Int64(index) + 1)
+            nextGroups.append(
+                GroupItem(
+                    id: id,
+                    name: group.name,
+                    tabId: tabId,
+                    learningSituationId: learningSituationId,
+                    isTemporary: true
+                )
+            )
+            for studentId in group.studentIds {
+                nextMembership[studentId] = id
             }
         }
         groups = nextGroups
@@ -156,6 +203,7 @@ struct NotebookGroupBoardView: View {
     let classSituations: [LearningSituation]
     let onToast: (String, NotebookToastStyle) -> Void
     let onCreateGroup: () -> Void
+    let onImportExcel: () -> Void
 
     @State private var showingAutoCompose = false
 
@@ -177,6 +225,11 @@ struct NotebookGroupBoardView: View {
             HStack(spacing: 8) {
                 Button(action: onCreateGroup) {
                     Label("Nuevo grupo", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: onImportExcel) {
+                    Label("Importar Excel", systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.bordered)
 

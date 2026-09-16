@@ -15,6 +15,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Importar Excel volvió al tablero y los grupos automáticos quedan del mismo tamaño (PR #240)**:
+  - El botón «Importar Excel» está otra vez en el tablero, no solo en Lista.
+  - Un recargo vacío del cuaderno ya no borra un reparto que el tablero acaba de hacer.
+  - Al agrupar automáticamente, los grupos quedan lo más iguales posible (por ejemplo 9-9-9-8 con 35 alumnos).
+
 - **Los grupos se deshacían en el tablero antes de pulsar Listo (PR #240)**:
   - El tablero guarda el reparto en local al crear, arrastrar o agrupar automáticamente, y no se deja pisar por un recargo viejo del cuaderno.
   - El id de cada grupo nuevo se lee de la fila insertada (`MAX(id)`), no de `last_insert_rowid`, para que los alumnos queden en el grupo correcto.

@@ -88,4 +88,24 @@ class ComposeWorkGroupsUseCaseTest {
             assertTrue(injuredCount <= 1)
         }
     }
+
+    @Test
+    fun `groups stay as even as possible`() {
+        val students = (1L..35L).map { id ->
+            WorkGroupStudentInput(studentId = id, average = id.toDouble(), isInjured = id <= 3)
+        }
+        val groups = useCase.compose(
+            students,
+            WorkGroupComposeOptions(
+                groupCount = 4,
+                mixSex = true,
+                spreadInjured = true,
+                random = Random(7),
+            ),
+        )
+        val sizes = groups.map { it.studentIds.size }
+        assertEquals(35, sizes.sum())
+        assertEquals(1, sizes.maxOrNull()!! - sizes.minOrNull()!!)
+        assertTrue(sizes.all { it == 8 || it == 9 })
+    }
 }

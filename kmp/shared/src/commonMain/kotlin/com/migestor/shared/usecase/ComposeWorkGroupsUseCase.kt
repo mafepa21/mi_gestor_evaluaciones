@@ -54,6 +54,7 @@ class ComposeWorkGroupsUseCase {
         if (options.mixSex) {
             rebalanceSex(buckets)
         }
+        equalizeSizes(buckets)
 
         return buckets.mapIndexed { index, members ->
             ComposedWorkGroup(
@@ -136,6 +137,17 @@ class ComposeWorkGroupsUseCase {
             val male = buckets[richest][maleIndex]
             buckets[richest][maleIndex] = buckets[poorest][femaleIndex]
             buckets[poorest][femaleIndex] = male
+        }
+    }
+
+    private fun equalizeSizes(buckets: List<MutableList<WorkGroupStudentInput>>) {
+        if (buckets.isEmpty()) return
+        val total = buckets.sumOf { it.size }
+        repeat(total) {
+            val largest = buckets.indices.maxBy { buckets[it].size }
+            val smallest = buckets.indices.minBy { buckets[it].size }
+            if (buckets[largest].size - buckets[smallest].size <= 1) return
+            buckets[smallest].add(buckets[largest].removeAt(buckets[largest].lastIndex))
         }
     }
 }

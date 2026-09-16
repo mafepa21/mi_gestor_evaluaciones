@@ -24,6 +24,30 @@ El formato sigue una variante practica de Keep a Changelog:
   - Importación directa al cuaderno con cálculo de la media aritmética simple de la autoevaluación y las coevaluaciones recibidas por cada alumno, y registro de autoría individual en el ledger criptográfico.
   - Nueva interfaz con selector de dos modos en la hoja de publicación (`WebSubmissionPublishSheet`) y distintivos visuales en la bandeja (`WebSubmissionsWorkspaceView`).
 
+### Changed
+
+- **Modularización y partición estructural de `KmpBridge.swift`**:
+  - Reducción del monolito central de 15.160 líneas a 727 líneas (reducción >95%), conservando intacta la API pública, las firmas de métodos y el comportamiento funcional de la app.
+  - Creación del subdirectorio `kmp/iosApp/App/Bridge/` con 13 nuevos archivos modulares por dominio de responsabilidad:
+    - `InstrumentEvaluationModels.swift`: Modelos de evaluación de instrumentos estructurados, rúbricas y formato.
+    - `KmpFlowSupport.swift`: Adaptadores de Combine y AsyncSequence para StateFlows de Kotlin.
+    - `LanSyncModels.swift`: DTOs, hashes y eventos de sincronización de área local.
+    - `LanSyncClient.swift`: Cliente de red HTTP/TLS, pinned certificates y keychain.
+    - `LanSyncDiscovery.swift`: Descubrimiento Bonjour / NWBrowser de helpers locales.
+    - `KmpBridgeModels.swift`: Snapshots y structs de datos anidados en `KmpBridge`.
+    - `KmpBridge+WebForms.swift`: Publicación web, formularios y recepción de entregas.
+    - `KmpBridge+Meetings.swift`: Reuniones de claustro, actas pedagógicas y planes semanales.
+    - `KmpBridge+Rubrics.swift`: Editor, banco de rúbricas y evaluación masiva.
+    - `KmpBridge+SyncLAN.swift`: Orquestador de sincronización, polling y merge de snapshots.
+    - `KmpBridge+Planner.swift`: Planificador didáctico, sesiones, plantillas, drag & drop y SA asociadas.
+    - `KmpBridge+Students.swift`: Alumnado, grupos, fotos, importación TSV, asistencia, incidencias, medidas de apoyo y tutorías.
+    - `KmpBridge+LearningSituations.swift`: Situaciones de Aprendizaje, importación/exportación de documentos y materialización de instrumentos.
+    - `KmpBridge+PhysicalEducation.swift`: Pruebas físicas, baterías, baremos y sesiones de EF.
+    - `KmpBridge+Notebook.swift`: Cuaderno de evaluación, pestañas, columnas, fórmulas, medias y celdas.
+    - `KmpBridge+Dashboard.swift`: Métricas del dashboard operativo, filtros y acciones rápidas.
+    - `KmpBridge+TypeConverters.swift`: Conversores bidireccionales Swift <-> Kotlin y helpers de deserialización.
+  - `KmpBridge.swift` queda acotado exclusivamente como orquestador `@MainActor ObservableObject` central: inyección de dependencias `KmpContainer`, propiedades reactivas `@Published`, observadores de StateFlow y bootstrap del ciclo de vida.
+
 ### Data
 
 - **Migración 43.sqm y persistencia de coevaluaciones en SQLDelight**:

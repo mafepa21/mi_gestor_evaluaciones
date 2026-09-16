@@ -3,6 +3,40 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-16 - Modularización y partición estructural de KmpBridge.swift
+
+Resumen:
+- Qué cambio se hizo:
+  1. Fraccionamiento del archivo monolítico `KmpBridge.swift` (~15.160 líneas) reduciéndolo a 727 líneas (reducción >95%) mediante extensiones temáticas agrupadas en `kmp/iosApp/App/Bridge/`.
+  2. Creación de módulos por dominio funcional:
+     - `InstrumentEvaluationModels.swift`: DTOs de instrumentos estructurados, rúbricas y coordinadores.
+     - `KmpFlowSupport.swift`: Adaptadores Combine/AsyncSequence para StateFlows KMP.
+     - `LanSyncModels.swift`, `LanSyncClient.swift`, `LanSyncDiscovery.swift`: Infraestructura de red LAN Sync, certificados y descubrimiento.
+     - `KmpBridgeModels.swift`: Snapshots y tipos anidados del puente (`KmpBridge.ActivityGroup`, `KmpBridge.CourseInspectorSnapshot`, etc.).
+     - `KmpBridge+WebForms.swift`: Formularios web y recepción/procesamiento de entregas del alumnado.
+     - `KmpBridge+Meetings.swift`: Reuniones de centro, actas B-2 y planes pedagógicos semanales B-3.
+     - `KmpBridge+Rubrics.swift`: Banco de rúbricas, editor y evaluación masiva.
+     - `KmpBridge+SyncLAN.swift`: Orquestador de sincronización LAN, snapshots, hashes y resolución de divergencias.
+     - `KmpBridge+Planner.swift`: Planificador docente, sesiones, plantillas, traslados y vinculación con SA.
+     - `KmpBridge+Students.swift`: Alumnado, grupos, fotos, importación TSV, asistencia, incidencias, medidas de apoyo y tutorías.
+     - `KmpBridge+LearningSituations.swift`: Situaciones de Aprendizaje, secuencias didácticas y materialización de instrumentos.
+     - `KmpBridge+PhysicalEducation.swift`: Pruebas físicas, baremos, baterías y sesiones de EF.
+     - `KmpBridge+Notebook.swift`: Cuaderno de evaluación, pestañas, columnas, fórmulas, medias y celdas.
+     - `KmpBridge+Dashboard.swift`: Métricas operativas, filtros y acciones rápidas.
+     - `KmpBridge+TypeConverters.swift`: Conversores de interoperabilidad Swift <-> Kotlin y mapeos de tipos.
+  3. `KmpBridge.swift` preserva estrictamente el rol de núcleo `@MainActor ObservableObject`: inyección de dependencias `KmpContainer`, propiedades `@Published`, conexión de observers de StateFlows y ciclo de vida (`bootstrap`).
+  4. Cero cambios en la API pública: todas las vistas SwiftUI, servicios de IA local e inspectores mantienen sus llamadas idénticas sin modificación.
+- Por qué importa:
+  - Transforma un archivo inmanejable de más de 15.000 líneas en una arquitectura modular limpia, escalable y mantenible por dominios claros, acelerando los tiempos de indexación del IDE, previniendo conflictos de git y facilitando el trabajo paralelo seguro entre agentes y desarrolladores.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/Bridge/*` (17 archivos modulares)
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Verificación dual continua tras cada commit atómico de extracción.
+
 ## Avance 2026-09-16 - Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web
 
 Resumen:

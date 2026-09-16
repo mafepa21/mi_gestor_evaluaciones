@@ -3,6 +3,44 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-16 - Persistencia atómica de grupos de trabajo con SA y corrección de ordenación en Cuaderno (PR #240)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Operación transaccional por lotes en SQLite (`replaceWorkGroups`):
+     - `kmp/shared`: Añadido `NotebookWorkGroupBatchItem` y contrato `replaceWorkGroups` en `NotebookConfigRepository` y `NotebookRepository`.
+     - `kmp/data`: Implementación en `NotebookConfigRepositorySqlDelight` dentro de un único bloque `db.transaction`, limpiando los grupos/miembros previos si se solicita e insertando secuencialmente cada grupo con sus miembros antes de emitir un único `NotebookRefreshBus.emitRefresh()`.
+     - `NotebookViewModel`: Añadido parámetro `tabId: String? = null` a `saveWorkGroup` y `assignStudentsToWorkGroup`, y método `replaceWorkGroups` para coordinar el reemplazo seguro.
+  2. Firma de agregación e invalidación de caché en Swift (`KmpBridge` y `NotebookModuleColumnModel`):
+     - `KmpBridge.swift`: `notebookAggregateSignature` ahora mapea exhaustivamente cada grupo (`id:tabId:name:order:saId`) y miembro (`tabId:groupId:studentId`), evitando que reasignaciones o cambios de nombre mantengan la firma estática y silencien las emisiones de estado.
+     - `KmpBridge.swift`: Expuesto `importNotebookWorkGroups(classId:tabId:groups:clearExisting:)` para invocar el guardado por lotes atómico desde Swift.
+     - `NotebookModuleColumnModel.swift`: `groupsVersion` en la clave de caché de filas ahora incluye el nombre del grupo.
+  3. Corrección de cálculo de grupos activos (`activeGroups`) en ordenación del Cuaderno:
+     - En modo `general`, si no existen grupos con SA nula pero sí grupos definidos en la pestaña/clase, se realiza un fallback a los grupos disponibles en lugar de dejarlos vacíos con alumnos en "Sin grupo".
+     - Al resolver los miembros de cada grupo en `buildVisibleRows`, se comprueba tanto `tabId == activeTabId` como `tabId == group.tabId` para no descartar alumnos si la pestaña activa difiere.
+  4. Paridad de filtrado de SA y refresco automático:
+     - `NotebookGroupManagementSheet.swift`: Extraído `NotebookLearningSituationMatcher` reutilizable.
+     - `NotebookModuleView.swift`: `loadClassLearningSituations` actualizado con la misma lógica de coincidencia semántica por curso y etapa, y refresco en `onDismiss` de la hoja de gestión de grupos.
+     - `NotebookGroupManagementSheet.swift`: `applyImportedGroups` migrado a `bridge.importNotebookWorkGroups`, y guardado manual con `tabId` explícito.
+- Por qué importa:
+  - Corrige el fallo donde los grupos importados o creados con SA no persistían en el cuaderno o quedaban vacíos tras pulsar "Listo", garantizando que la ordenación por grupos refleje de inmediato los alumnos y equipos asignados.
+- Dónde vive el cambio:
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/repository/NotebookConfigRepositorySqlDelight.kt`
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/repository/NotebookRepositorySqlDelight.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/repository/Contracts.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/repository/NotebookConfigRepository.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/viewmodel/NotebookViewModel.kt`
+  - `kmp/shared/src/commonTest/kotlin/com/migestor/shared/viewmodel/NotebookViewModelTest.kt`
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift`
+  - `kmp/iosApp/App/NotebookModuleColumnModel.swift`
+  - `kmp/iosApp/App/NotebookModuleView.swift`
+- Validación realizada:
+  - Pruebas unitarias de KMP: `./gradlew :shared:desktopTest :data:desktopTest` pasando con éxito (108 tests).
+  - Verificación Apple: `./scripts/verify_apple_builds.sh` completado con éxito:
+    - macOS (MiGestorKMPMac): ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator (MiGestorKMPiOS): ✓ COMPILADO CORRECTAMENTE
+
 ## Avance 2026-09-16 - Detección y filtrado preciso de Situaciones de Aprendizaje (SA) por curso en grupos de trabajo
  
 Resumen:

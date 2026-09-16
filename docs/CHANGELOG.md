@@ -15,6 +15,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Persistencia atómica de grupos de trabajo con SA y corrección de ordenación en Cuaderno (PR #240)**:
+  - **Operación transaccional por lotes (`replaceWorkGroups`)**: Contrato y método en `NotebookConfigRepositorySqlDelight` que ejecuta en una sola transacción SQLite la eliminación y creación de grupos con sus alumnos, evitando condiciones de carrera concurrentes durante la importación.
+  - **Coordinación de pestañas (`tabId`)**: Inclusión de parámetro `tabId` explícito en `NotebookViewModel` y `KmpBridge` para `saveNotebookWorkGroup`, `updateNotebookWorkGroup` y `assignStudentsToNotebookGroup`.
+  - **Detección e invalidación de caché en `KmpBridge`**: `notebookAggregateSignature` ahora incluye los nombres, IDs, situación y miembros de cada grupo, impidiendo que cambios de alumnos o reasignaciones mantengan firmas estáticas obsoletas.
+  - **Resolución de grupos activos en Cuaderno (`NotebookModuleColumnModel`)**: Fallback en modo `general` a los grupos disponibles en la pestaña cuando todos los grupos tienen SA asignada, impidiendo que el cuaderno quede vacío con alumnos en "Sin grupo".
+  - **Paridad y refresco de Situaciones de Aprendizaje**: `NotebookLearningSituationMatcher` compartido entre `NotebookGroupManagementSheet` y `NotebookModuleView`, con refresco automático de situaciones al cerrar la hoja de gestión de grupos.
+
 - **Detección y filtrado preciso de Situaciones de Aprendizaje (SA) por curso en grupos de trabajo (`NotebookGroupManagementSheet` y `KmpBridge`)**:
   - Corrección en la función de emparejamiento de curso (`courseLabel(for:)` e `isSituation`) para reconocer nomenclaturas abreviadas de Bachillerato (`bac`, `bto`, `bat`), Primaria (`prim`, `pri`) y ESO, evitando que clases como «1º BAC B» se cataloguen incorrectamente como ESO.
   - Filtrado estricto por curso en `loadClassLearningSituations()`: ahora solo se muestran las Situaciones de Aprendizaje correspondientes al curso y etapa de la clase activa (o con vínculo directo en base de datos), excluyendo de forma rigurosa SAs de cursos diferentes.

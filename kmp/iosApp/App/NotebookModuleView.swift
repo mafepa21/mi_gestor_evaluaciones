@@ -1425,6 +1425,7 @@ struct NotebookModuleView: View {
                     #endif
                 }
                 .sheet(isPresented: $isGroupManagementPresented, onDismiss: {
+                    bridge.refreshCurrentNotebook()
                     if let classId = currentClassId {
                         loadClassLearningSituations(classId: classId)
                     }

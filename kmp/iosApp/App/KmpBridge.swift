@@ -9719,7 +9719,32 @@ final class KmpBridge: ObservableObject {
             clearExisting: clearExisting
         )
         await MainActor.run {
+            self.notebookViewModel.selectClass(classId: classId, force: true)
             self.scheduleNotebookSnapshotSync(forClassId: classId)
+        }
+    }
+
+    func autoComposeNotebookWorkGroups(
+        groupCount: Int32,
+        strategy: String,
+        mixSex: Bool,
+        spreadInjured: Bool,
+        learningSituationId: Int64? = nil,
+        tabId: String? = nil,
+        clearExisting: Bool = true
+    ) {
+        let situationKotlin = learningSituationId.map { KotlinLong(value: $0) }
+        notebookViewModel.autoComposeWorkGroups(
+            groupCount: groupCount,
+            strategy: strategy,
+            mixSex: mixSex,
+            spreadInjured: spreadInjured,
+            learningSituationId: situationKotlin,
+            tabId: tabId,
+            clearExisting: clearExisting
+        )
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleNotebookSnapshotSync(forClassId: classId)
         }
     }
     

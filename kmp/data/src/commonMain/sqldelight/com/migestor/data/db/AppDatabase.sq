@@ -2457,6 +2457,10 @@ deleteWorkGroupMember:
 DELETE FROM notebook_work_group_members
 WHERE class_id = ? AND tab_id = ? AND student_id = ?;
 
+deleteWorkGroupMemberByStudent:
+DELETE FROM notebook_work_group_members
+WHERE class_id = ? AND student_id = ?;
+
 upsertColumn:
 INSERT OR REPLACE INTO notebook_columns(
     id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight,

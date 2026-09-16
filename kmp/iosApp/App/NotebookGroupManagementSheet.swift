@@ -16,6 +16,7 @@ struct NotebookGroupManagementSheet: View {
 
     @State private var loadingSituations = false
     @State private var classSituations: [LearningSituation] = []
+    @State private var boardMode = false
 
     private var data: NotebookUiStateData? {
         bridge.notebookState as? NotebookUiStateData
@@ -23,25 +24,20 @@ struct NotebookGroupManagementSheet: View {
 
     private var activeTabId: String? {
         guard let data = data else { return nil }
-        let tabs = data.sheet.tabs.filter { $0.parentTabId == nil }
-        let source = tabs.isEmpty ? data.sheet.tabs : tabs
-        let orderedTabs = source.sorted {
-            if $0.order != $1.order { return $0.order < $1.order }
-            return $0.id < $1.id
-        }
-        if let selected = bridge.selectedNotebookTabId,
-           orderedTabs.contains(where: { $0.id == selected }) {
-            return selected
-        }
-        return orderedTabs.first?.id
+        return NotebookWorkGroupPolicy.canonicalTabId(
+            tabs: data.sheet.tabs,
+            requestedTabId: bridge.selectedNotebookTabId,
+            selectedTabId: bridge.selectedNotebookTabId
+        )
     }
 
     private var currentGroups: [NotebookWorkGroup] {
         guard let data = data else { return [] }
-        let tabId = activeTabId
-        return data.sheet.workGroups
-            .filter { tabId == nil || $0.tabId == tabId }
-            .sorted { $0.order < $1.order }
+        return NotebookWorkGroupPolicy.groupsForManagement(
+            groups: data.sheet.workGroups,
+            tabs: data.sheet.tabs,
+            selectedTabId: bridge.selectedNotebookTabId
+        )
     }
 
     private func courseLabel(for schoolClass: SchoolClass) -> String {
@@ -119,104 +115,38 @@ struct NotebookGroupManagementSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if currentGroups.isEmpty {
-                    Section {
-                        VStack(spacing: 16) {
-                            Image(systemName: "person.2.slash")
-                                .font(.system(size: 44))
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 24)
-
-                            Text("Sin grupos de trabajo")
-                                .font(.headline)
-
-                            Text("Crea grupos para organizar tu alumnado y agruparlos en el cuaderno.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 32)
-                                .padding(.bottom, 24)
+            Group {
+                if boardMode {
+                    NotebookGroupBoardView(
+                        bridge: bridge,
+                        groups: currentGroups,
+                        classSituations: classSituations,
+                        onToast: onToast,
+                        onCreateGroup: {
+                            editGroupTarget = nil
+                            showingEditSheet = true
                         }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    }
+                    )
                 } else {
-                    Section("Grupos actuales") {
-                        ForEach(currentGroups, id: \.id) { group in
-                            NavigationLink {
-                                GroupMembersView(bridge: bridge, group: group)
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(group.name)
-                                            .font(.headline)
-                                        HStack(spacing: 6) {
-                                            Text("\(memberCount(group.id)) alumnos")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                            
-                                            if let sitId = group.learningSituationId?.int64Value,
-                                               let situation = classSituations.first(where: { $0.id == sitId }) {
-                                                Text("•")
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
-                                                Text(situation.title)
-                                                    .font(.caption)
-                                                    .foregroundStyle(NotebookStyle.primaryTint)
-                                                    .lineLimit(1)
-                                            }
-                                        }
-                                    }
-                                    Spacer()
-                                }
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    bridge.deleteNotebookWorkGroup(groupId: group.id)
-                                    onToast("Grupo eliminado", .warning)
-                                } label: {
-                                    Label("Eliminar", systemImage: "trash")
-                                }
-
-                                Button {
-                                    editGroupTarget = group
-                                    showingEditSheet = true
-                                } label: {
-                                    Label("Editar", systemImage: "pencil")
-                                }
-                                .tint(NotebookStyle.primaryTint)
-                            }
-                        }
-                    }
-                }
-
-                Section {
-                    Button {
-                        editGroupTarget = nil
-                        showingEditSheet = true
-                    } label: {
-                        Label("Nuevo grupo de trabajo", systemImage: "person.2.badge.plus")
-                    }
-
-                    Button {
-                        showingFileImporter = true
-                    } label: {
-                        Label("Importar grupos desde Excel", systemImage: "arrow.down.doc")
-                    }
+                    groupsList
                 }
             }
-            #if os(iOS)
-            .listStyle(.insetGrouped)
-            #else
-            .listStyle(.inset)
-            #endif
             .navigationTitle("Grupos de trabajo")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker("Vista", selection: $boardMode) {
+                        Text("Lista").tag(false)
+                        Text("Tablero").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 220)
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Listo") {
+                        bridge.refreshCurrentNotebook()
                         dismiss()
                     }
                 }
@@ -330,6 +260,7 @@ struct NotebookGroupManagementSheet: View {
                     clearExisting: clearExisting
                 )
                 await MainActor.run {
+                    bridge.refreshCurrentNotebook()
                     onToast("\(groups.count) grupos importados con éxito", .success)
                 }
             } catch {
@@ -342,10 +273,108 @@ struct NotebookGroupManagementSheet: View {
 
     private func memberCount(_ groupId: Int64) -> Int {
         guard let data = data else { return 0 }
-        let tabId = activeTabId
-        return data.sheet.workGroupMembers
-            .filter { $0.groupId == groupId && (tabId == nil || $0.tabId == tabId) }
-            .count
+        return data.sheet.workGroupMembers.filter { $0.groupId == groupId }.count
+    }
+
+    @ViewBuilder
+    private var groupsList: some View {
+        List {
+            if currentGroups.isEmpty {
+                Section {
+                    VStack(spacing: 16) {
+                        Image(systemName: "person.2.slash")
+                            .font(.system(size: 44))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 24)
+
+                        Text("Sin grupos de trabajo")
+                            .font(.headline)
+
+                        Text("Crea grupos para organizar tu alumnado y agruparlos en el cuaderno.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                            .padding(.bottom, 24)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
+            } else {
+                Section("Grupos actuales") {
+                    ForEach(currentGroups, id: \.id) { group in
+                        NavigationLink {
+                            GroupMembersView(bridge: bridge, group: group)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(group.name)
+                                        .font(.headline)
+                                    HStack(spacing: 6) {
+                                        Text("\(memberCount(group.id)) alumnos")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+
+                                        if let sitId = group.learningSituationId?.int64Value,
+                                           let situation = classSituations.first(where: { $0.id == sitId }) {
+                                            Text("•")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                            Text(situation.title)
+                                                .font(.caption)
+                                                .foregroundStyle(NotebookStyle.primaryTint)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                }
+                                Spacer()
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                bridge.deleteNotebookWorkGroup(groupId: group.id)
+                                onToast("Grupo eliminado", .warning)
+                            } label: {
+                                Label("Eliminar", systemImage: "trash")
+                            }
+
+                            Button {
+                                editGroupTarget = group
+                                showingEditSheet = true
+                            } label: {
+                                Label("Editar", systemImage: "pencil")
+                            }
+                            .tint(NotebookStyle.primaryTint)
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Button {
+                    editGroupTarget = nil
+                    showingEditSheet = true
+                } label: {
+                    Label("Nuevo grupo de trabajo", systemImage: "person.2.badge.plus")
+                }
+
+                Button {
+                    showingFileImporter = true
+                } label: {
+                    Label("Importar grupos desde Excel", systemImage: "arrow.down.doc")
+                }
+
+                Button {
+                    boardMode = true
+                } label: {
+                    Label("Organizar en tablero", systemImage: "rectangle.split.3x1")
+                }
+            }
+        }
+        #if os(iOS)
+        .listStyle(.insetGrouped)
+        #else
+        .listStyle(.inset)
+        #endif
     }
 }
 
@@ -434,21 +463,6 @@ private struct GroupMembersView: View {
         bridge.notebookState as? NotebookUiStateData
     }
 
-    private var activeTabId: String? {
-        guard let data = data else { return nil }
-        let tabs = data.sheet.tabs.filter { $0.parentTabId == nil }
-        let source = tabs.isEmpty ? data.sheet.tabs : tabs
-        let orderedTabs = source.sorted {
-            if $0.order != $1.order { return $0.order < $1.order }
-            return $0.id < $1.id
-        }
-        if let selected = bridge.selectedNotebookTabId,
-           orderedTabs.contains(where: { $0.id == selected }) {
-            return selected
-        }
-        return orderedTabs.first?.id
-    }
-
     private var sortedStudents: [Student] {
         guard let data = data else { return [] }
         return data.sheet.rows.map(\.student).sorted {
@@ -525,31 +539,25 @@ private struct GroupMembersView: View {
 
     private func isStudentInCurrentGroup(_ studentId: Int64) -> Bool {
         guard let data = data else { return false }
-        let tabId = activeTabId
         return data.sheet.workGroupMembers.contains {
-            $0.studentId == studentId && $0.groupId == group.id && (tabId == nil || $0.tabId == tabId)
+            $0.studentId == studentId && $0.groupId == group.id
         }
     }
 
     private func studentOtherGroupName(_ studentId: Int64) -> String? {
         guard let data = data else { return nil }
-        let tabId = activeTabId
         guard let member = data.sheet.workGroupMembers.first(where: {
-            $0.studentId == studentId && $0.groupId != group.id && (tabId == nil || $0.tabId == tabId)
+            $0.studentId == studentId && $0.groupId != group.id
         }) else { return nil }
 
         return data.sheet.workGroups.first(where: { $0.id == member.groupId })?.name
     }
 
     private func toggleStudentMembership(_ studentId: Int64, isMember: Bool) {
-        let tabId = activeTabId
-        if let tabId = tabId, bridge.selectedNotebookTabId != tabId {
-            bridge.setSelectedNotebookTab(id: tabId)
-        }
         if isMember {
-            bridge.assignStudentsToNotebookGroup(groupId: nil, studentIds: [studentId], tabId: tabId)
+            bridge.assignStudentsToNotebookGroup(groupId: nil, studentIds: [studentId], tabId: group.tabId)
         } else {
-            bridge.assignStudentsToNotebookGroup(groupId: group.id, studentIds: [studentId], tabId: tabId)
+            bridge.assignStudentsToNotebookGroup(groupId: group.id, studentIds: [studentId], tabId: group.tabId)
         }
     }
 }

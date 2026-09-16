@@ -1514,6 +1514,19 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-09-16 - Grupos de trabajo persistentes, tablero visual y agrupado automático
+
+Resumen:
+- Qué cambio se hizo: los grupos de trabajo se guardan en la pestaña raíz de la evaluación y se leen por `groupId`. Un grupo ligado a una SA se ve en toda la clase. Un grupo general se ve en esa evaluación y en sus hijas. Importar, crear, arrastrar o pulsar Listo recarga el cuaderno. Hay un tablero para arrastrar alumnado y un agrupado automático por nota, sexo y lesionados.
+- Por qué importa: al pulsar Listo los grupos dejaban de verse en el cuaderno porque se guardaban en una pestaña y se buscaban en otra.
+- Dónde vive el cambio: `NotebookWorkGroupPolicy.kt`, `ComposeWorkGroupsUseCase.kt`, `NotebookConfigRepositorySqlDelight.kt`, `NotebookViewModel.kt`, `NotebookGroupManagementSheet.swift`, `NotebookGroupBoardView.swift`, `NotebookModuleColumnModel.swift`, `KmpBridge.swift`.
+- Validación realizada: `cd kmp && ./gradlew :shared:desktopTest :data:desktopTest` filtrado a policy, compose, NotebookViewModel y NotebookConfigRepository, BUILD SUCCESSFUL. `./scripts/verify_apple_builds.sh`: macOS e iOS Simulator compilados.
+
+Notas para futuras conversaciones:
+- No filtrar miembros de grupo por `tabId` al pintar el cuaderno. El identificador del grupo basta.
+- Al asignar un alumno, borrar primero su pertenencia en toda la clase (`deleteWorkGroupMemberByStudent`) y luego insertar en la pestaña del grupo.
+- El modo general no debe preferir grupos vacíos sin SA si hay grupos de SA con alumnos.
+
 ### 2026-09-09 - Reactividad inmediata y retención optimista en celdas numéricas y de observación (iPad / Mac)
 
 Resumen:

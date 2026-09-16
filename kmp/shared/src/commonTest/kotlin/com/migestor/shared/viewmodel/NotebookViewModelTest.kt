@@ -660,6 +660,67 @@ class NotebookViewModelTest {
     }
 
     @Test
+    fun `saveWorkGroup stores groups on the root tab when a child tab is selected`() = runTest {
+        val classId = 1L
+        val tabs = listOf(
+            NotebookTab(id = "ROOT", title = "1ª Evaluación", order = 0),
+            NotebookTab(id = "CHILD", title = "Unidad", order = 0, parentTabId = "ROOT"),
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = tabs,
+                columns = emptyList(),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        viewModel.setSelectedTabId("CHILD")
+
+        viewModel.saveWorkGroup(name = "Equipo A", tabId = "CHILD", learningSituationId = 12L)
+        advanceUntilIdle()
+
+        val saved = repository.savedWorkGroups.single()
+        assertEquals("ROOT", saved.tabId)
+        assertEquals(12L, saved.learningSituationId)
+    }
+
+    @Test
+    fun `assignStudentsToWorkGroup uses the group's own tab even if another tab is selected`() = runTest {
+        val classId = 1L
+        val group = NotebookWorkGroup(
+            id = 9L,
+            classId = classId,
+            tabId = "ROOT",
+            name = "Equipo A",
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = listOf(
+                    NotebookTab(id = "ROOT", title = "1ª Evaluación"),
+                    NotebookTab(id = "CHILD", title = "Unidad", parentTabId = "ROOT"),
+                ),
+                columns = emptyList(),
+                rows = emptyList(),
+                workGroups = listOf(group),
+            )
+        )
+        val viewModel = createViewModel(repository)
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        viewModel.setSelectedTabId("CHILD")
+
+        viewModel.assignStudentsToWorkGroup(groupId = 9L, studentIds = listOf(101L, 102L), tabId = "CHILD")
+        advanceUntilIdle()
+
+        assertEquals(listOf("ROOT" to 9L), repository.assignedWorkGroupCalls.map { it.tabId to it.groupId })
+        assertEquals(listOf(101L, 102L), repository.assignedWorkGroupCalls.single().studentIds)
+    }
+
+    @Test
     fun `deleteColumn by evaluation id deletes custom column id when found`() = runTest {
         val classId = 1L
         val evaluationId = 123L
@@ -1273,7 +1334,12 @@ private class FakeNotebookRepository(
     }
     override suspend fun deleteWorkGroup(groupId: Long) = Unit
     override suspend fun listWorkGroupMembers(classId: Long, tabId: String?): List<com.migestor.shared.domain.NotebookWorkGroupMember> = emptyList()
-    override suspend fun assignStudentsToWorkGroup(classId: Long, tabId: String, groupId: Long, studentIds: List<Long>) = Unit
+    data class AssignedWorkGroupCall(val tabId: String, val groupId: Long, val studentIds: List<Long>)
+    val assignedWorkGroupCalls = mutableListOf<AssignedWorkGroupCall>()
+
+    override suspend fun assignStudentsToWorkGroup(classId: Long, tabId: String, groupId: Long, studentIds: List<Long>) {
+        assignedWorkGroupCalls += AssignedWorkGroupCall(tabId, groupId, studentIds)
+    }
     override suspend fun clearStudentsFromWorkGroup(classId: Long, tabId: String, studentIds: List<Long>) = Unit
     override suspend fun replaceWorkGroups(
         classId: Long,

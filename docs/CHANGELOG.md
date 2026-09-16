@@ -15,6 +15,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Los grupos de trabajo se quedaban vacíos al pulsar Listo y ordenar el Cuaderno (PR #240)**:
+  - Una sola regla de pestaña (`NotebookWorkGroupPolicy`): los grupos se guardan en la pestaña raíz de la evaluación; los de una SA se ven en toda la clase; los generales se ven en esa evaluación y en sus pestañas hijas.
+  - La pertenencia de un alumno se busca por `groupId`, no por pestaña. Asignar o borrar un alumno limpia su sitio anterior en toda la clase.
+  - Importar, crear, arrastrar o pulsar Listo recarga el cuaderno de verdad.
+  - «Ordenar por grupos de trabajo» ya no se queda con grupos vacíos si hay grupos de SA con alumnos.
+
 - **Persistencia atómica de grupos de trabajo con SA y corrección de ordenación en Cuaderno (PR #240)**:
   - **Operación transaccional por lotes (`replaceWorkGroups`)**: Contrato y método en `NotebookConfigRepositorySqlDelight` que ejecuta en una sola transacción SQLite la eliminación y creación de grupos con sus alumnos, evitando condiciones de carrera concurrentes durante la importación.
   - **Coordinación de pestañas (`tabId`)**: Inclusión de parámetro `tabId` explícito en `NotebookViewModel` y `KmpBridge` para `saveNotebookWorkGroup`, `updateNotebookWorkGroup` y `assignStudentsToNotebookGroup`.
@@ -29,6 +35,10 @@ El formato sigue una variante practica de Keep a Changelog:
   - Indicador de carga asíncrono y mensajes contextuales precisos («Buscando situaciones del curso...» y «No hay situaciones para este curso») en el selector de SA de `NotebookGroupEditSheet` y `NotebookGroupImportPreviewSheet`.
 
 ### Added
+
+- **Tablero visual y agrupado automático de grupos de trabajo (PR #240)**:
+  - Vista Tablero en `NotebookGroupManagementSheet` con columnas tipo lista (Sin grupo + cada grupo) y arrastre nativo de alumnado.
+  - Botón «Agrupar automáticamente» con tamaño de grupo, heterogéneos/homogéneos por nota, azar equilibrado, mezcla de chicos y chicas y reparto de alumnado lesionado (`ComposeWorkGroupsUseCase`).
 
 - **Asociación de grupos de trabajo a Situaciones de Aprendizaje (SA), persistencia atómica y distinción visual por grupos en el Cuaderno**:
   - **Asociación a SA en importación y edición**:

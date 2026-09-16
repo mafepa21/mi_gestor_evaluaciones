@@ -21,6 +21,7 @@ import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.NotebookEmptyCellPolicy
 import com.migestor.shared.repository.NotebookConfigRepository
 import com.migestor.shared.repository.NotebookWorkGroupBatchItem
+import com.migestor.shared.usecase.NotebookWorkGroupPolicy
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -696,17 +697,19 @@ class NotebookConfigRepositorySqlDelight(
         studentIds: List<Long>,
     ) = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
-        studentIds.forEach { studentId ->
-            db.appDatabaseQueries.deleteWorkGroupMember(classId, tabId, studentId)
-            db.appDatabaseQueries.upsertWorkGroupMember(
-                class_id = classId,
-                tab_id = tabId,
-                group_id = groupId,
-                student_id = studentId,
-                updated_at_epoch_ms = now,
-                device_id = null,
-                sync_version = 0
-            )
+        db.transaction {
+            studentIds.forEach { studentId ->
+                db.appDatabaseQueries.deleteWorkGroupMemberByStudent(classId, studentId)
+                db.appDatabaseQueries.upsertWorkGroupMember(
+                    class_id = classId,
+                    tab_id = tabId,
+                    group_id = groupId,
+                    student_id = studentId,
+                    updated_at_epoch_ms = now,
+                    device_id = null,
+                    sync_version = 0
+                )
+            }
         }
         NotebookRefreshBus.emitRefresh()
     }
@@ -717,7 +720,7 @@ class NotebookConfigRepositorySqlDelight(
         studentIds: List<Long>,
     ) = withContext(Dispatchers.Default) {
         studentIds.forEach { studentId ->
-            db.appDatabaseQueries.deleteWorkGroupMember(classId, tabId, studentId)
+            db.appDatabaseQueries.deleteWorkGroupMemberByStudent(classId, studentId)
         }
         NotebookRefreshBus.emitRefresh()
     }
@@ -728,10 +731,12 @@ class NotebookConfigRepositorySqlDelight(
         groups: List<NotebookWorkGroupBatchItem>,
         clearExisting: Boolean,
     ) = withContext(Dispatchers.Default) {
+        val tabs = listTabs(classId)
+        val familyIds = NotebookWorkGroupPolicy.tabFamilyIds(tabs, tabId)
         db.transaction {
             if (clearExisting) {
-                val existing = db.appDatabaseQueries.selectWorkGroupsByClassAndTab(classId, tabId).executeAsList()
-                existing.forEach { row ->
+                val existing = db.appDatabaseQueries.selectWorkGroupsByClass(classId).executeAsList()
+                existing.filter { familyIds.isEmpty() || it.tab_id in familyIds }.forEach { row ->
                     db.appDatabaseQueries.deleteWorkGroup(row.id)
                 }
             }
@@ -751,7 +756,7 @@ class NotebookConfigRepositorySqlDelight(
                 )
                 val groupId = db.appDatabaseQueries.lastInsertedId().executeAsOne()
                 group.studentIds.forEach { studentId ->
-                    db.appDatabaseQueries.deleteWorkGroupMember(classId, tabId, studentId)
+                    db.appDatabaseQueries.deleteWorkGroupMemberByStudent(classId, studentId)
                     db.appDatabaseQueries.upsertWorkGroupMember(
                         class_id = classId,
                         tab_id = tabId,

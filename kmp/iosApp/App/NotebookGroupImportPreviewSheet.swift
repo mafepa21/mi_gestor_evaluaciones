@@ -7,21 +7,27 @@ public struct NotebookGroupImportPreviewSheet: View {
 
     public let preview: NotebookWorkGroupImportPreview
     public let existingGroupNames: Set<String>
-    public let onConfirm: ([ImportedNotebookGroup], Bool) -> Void
+    public let classSituations: [LearningSituation]
+    public let onConfirm: ([ImportedNotebookGroup], Bool, Int64?) -> Void
 
     @State private var selectedGroupIds: Set<UUID>
+    @State private var selectedSituationId: Int64? = nil
     @State private var clearExistingGroups: Bool = false
     @State private var isProcessing: Bool = false
 
     public init(
         preview: NotebookWorkGroupImportPreview,
         existingGroupNames: [String],
-        onConfirm: @escaping ([ImportedNotebookGroup], Bool) -> Void
+        classSituations: [LearningSituation] = [],
+        initialSituationId: Int64? = nil,
+        onConfirm: @escaping ([ImportedNotebookGroup], Bool, Int64?) -> Void
     ) {
         self.preview = preview
         self.existingGroupNames = Set(existingGroupNames.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        self.classSituations = classSituations
         self.onConfirm = onConfirm
         _selectedGroupIds = State(initialValue: Set(preview.groups.map(\.id)))
+        _selectedSituationId = State(initialValue: initialSituationId)
     }
 
     public var body: some View {
@@ -102,6 +108,31 @@ public struct NotebookGroupImportPreviewSheet: View {
                     metricView("Sin emparejar", "\(preview.totalUnmatchedStudents)", isWarning: true)
                 }
                 Spacer()
+            }
+
+            if !classSituations.isEmpty {
+                Divider()
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("SITUACIÓN DE APRENDIZAJE ASOCIADA")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+
+                    Picker("Situación de aprendizaje", selection: $selectedSituationId) {
+                        Text("Ninguna (Grupos generales)")
+                            .tag(nil as Int64?)
+
+                        ForEach(classSituations, id: \.id) { situation in
+                            Text(situation.title)
+                                .tag(situation.id as Int64?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Text("Vincular los grupos a una situación permite organizarlos y evaluarlos por situaciones de aprendizaje en el cuaderno.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Divider()
@@ -275,7 +306,7 @@ public struct NotebookGroupImportPreviewSheet: View {
             Button {
                 isProcessing = true
                 let toImport = preview.groups.filter { selectedGroupIds.contains($0.id) }
-                onConfirm(toImport, clearExistingGroups)
+                onConfirm(toImport, clearExistingGroups, selectedSituationId)
                 dismiss()
             } label: {
                 Label(isProcessing ? "Importando..." : "Importar grupos", systemImage: "arrow.down.doc.fill")

@@ -63,6 +63,8 @@ struct NotebookTableRow: Identifiable {
     let student: Student
     let row: NotebookRow
     let groupName: String
+    var isFirstInGroup: Bool = false
+    var groupMemberCount: Int = 0
 
     var id: Int64 { student.id }
 }

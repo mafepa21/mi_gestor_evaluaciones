@@ -3,6 +3,43 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-16 - Asociación de grupos a SA, persistencia atómica de miembros y ordenación visual en el Cuaderno
+
+Resumen:
+- Qué cambio se hizo:
+  1. Asociación de grupos de trabajo a Situaciones de Aprendizaje (SA):
+     - `NotebookGroupImportPreviewSheet.swift`: Se añadió selector de Situación de Aprendizaje para asociar los grupos importados desde Excel a una SA concreta del grupo o dejarlos como generales.
+     - Se propagó la vinculación de la SA con la clase activa en el cuaderno mediante `addLearningSituationClassLink`.
+  2. Persistencia atómica de alumnos asignados a grupos de trabajo:
+     - `KmpBridge.swift`: Se ampliaron `saveNotebookWorkGroup` y `updateNotebookWorkGroup` para aceptar `studentIds: [Int64]`.
+     - `NotebookGroupManagementSheet.swift`: En `applyImportedGroups`, se eliminó la condición de carrera donde se llamaba a `assignStudentToNotebookGroup` antes de que el grupo se hubiera persistido en base de datos. Ahora se guarda de forma atómica en una única transacción de Kotlin y SQLite.
+     - En `GroupMembersView`, se aseguró la sincronización del `activeTabId` con `bridge.selectedNotebookTabId` tanto al seleccionar como al deseleccionar alumnos, garantizando que el estado persista permanentemente en la base de datos hasta una acción explícita del usuario.
+  3. Ordenación por grupos y distintivo visual en el Cuaderno:
+     - `NotebookModuleColumnModel.swift` y `NotebookModuleTypes.swift`: Detección del primer alumno de cada grupo (`isFirstInGroup`) y recuento de integrantes cuando el cuaderno está ordenado por grupos (`groupByWorkGroupMode != "none"`).
+     - `NotebookGridContainer.swift`: Cabecera de grupo diferenciada con estilo Organic Precision (píldora con icono `person.2.fill` o `person.slash`, nombre del grupo y badge numérico de miembros) en la columna fija de nombres de alumnos.
+     - Separación visual vertical aumentada entre grupos distintos con bandas de fondo idénticas en todas las secciones (`fixed`, `scrollable`, `trailing`), preservando la alineación pixel-perfect de las filas y el scroll sincronizado.
+     - Menús contextuales claros de «Organizar por grupos» añadidos a la cabecera de la columna de alumnos y al menú de filtros del cuaderno.
+- Por qué importa:
+  - Permite a los docentes trabajar por proyectos y situaciones de aprendizaje agrupando al alumnado sin perder la asignación de miembros ni sufrir desincronizaciones, facilitando una lectura visual inmediata del cuaderno dividida por equipos.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookGroupImportPreviewSheet.swift`
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift`
+  - `kmp/iosApp/App/NotebookGridContainer.swift`
+  - `kmp/iosApp/App/NotebookGridContent.swift`
+  - `kmp/iosApp/App/NotebookModuleColumnModel.swift`
+  - `kmp/iosApp/App/NotebookModuleGridCells.swift`
+  - `kmp/iosApp/App/NotebookModuleTypes.swift`
+  - `kmp/iosApp/App/NotebookModuleView.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `xcodegen generate` ejecutado sin errores.
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS (MiGestorKMPMac): ✓ BUILD SUCCEEDED
+    - iOS Simulator (MiGestorKMPiOS): ✓ BUILD SUCCEEDED
+  - `./kmp/gradlew -p kmp :shared:desktopTest`: ✓ BUILD SUCCESSFUL (12 tareas, 0 fallos).
+
 ## Avance 2026-09-14 - Rediseño de Gestión de Datos en Ajustes: selector rápido, filtros contextuales y borrado masivo por lotes
 
 Resumen:

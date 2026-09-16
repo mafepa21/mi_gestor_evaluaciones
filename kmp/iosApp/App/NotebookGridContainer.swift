@@ -32,6 +32,53 @@ struct NotebookGridContainer<
     let trailingFixedRow: (Int, Row) -> TrailingFixedRow
     let scrollRow: (Int, Row) -> ScrollRow
 
+    let groupHeaderHeight: CGFloat
+    let groupHeaderInfo: ((Row) -> (isFirst: Bool, groupName: String, count: Int))?
+
+    init(
+        rows: [Row],
+        surfaceMode: NotebookSurfaceMode,
+        fixedColumnWidth: CGFloat,
+        trailingFixedColumnWidth: CGFloat,
+        isFixedColumnResizing: Bool,
+        topAccessoryHeight: CGFloat,
+        headerHeight: CGFloat,
+        rowHeight: CGFloat,
+        groupHeaderHeight: CGFloat = 34,
+        groupHeaderInfo: ((Row) -> (isFirst: Bool, groupName: String, count: Int))? = nil,
+        @ViewBuilder emptyContent: @escaping () -> EmptyContent,
+        @ViewBuilder seatingContent: @escaping ([Row]) -> SeatingContent,
+        @ViewBuilder topAccessory: @escaping () -> TopAccessory,
+        @ViewBuilder dividerHandle: @escaping () -> DividerHandle,
+        @ViewBuilder fixedHeader: @escaping () -> FixedHeader,
+        @ViewBuilder trailingFixedHeader: @escaping () -> TrailingFixedHeader,
+        @ViewBuilder scrollHeader: @escaping () -> ScrollHeader,
+        @ViewBuilder fixedRow: @escaping (Int, Row) -> FixedRow,
+        @ViewBuilder trailingFixedRow: @escaping (Int, Row) -> TrailingFixedRow,
+        @ViewBuilder scrollRow: @escaping (Int, Row) -> ScrollRow
+    ) {
+        self.rows = rows
+        self.surfaceMode = surfaceMode
+        self.fixedColumnWidth = fixedColumnWidth
+        self.trailingFixedColumnWidth = trailingFixedColumnWidth
+        self.isFixedColumnResizing = isFixedColumnResizing
+        self.topAccessoryHeight = topAccessoryHeight
+        self.headerHeight = headerHeight
+        self.rowHeight = rowHeight
+        self.groupHeaderHeight = groupHeaderHeight
+        self.groupHeaderInfo = groupHeaderInfo
+        self.emptyContent = emptyContent
+        self.seatingContent = seatingContent
+        self.topAccessory = topAccessory
+        self.dividerHandle = dividerHandle
+        self.fixedHeader = fixedHeader
+        self.trailingFixedHeader = trailingFixedHeader
+        self.scrollHeader = scrollHeader
+        self.fixedRow = fixedRow
+        self.trailingFixedRow = trailingFixedRow
+        self.scrollRow = scrollRow
+    }
+
     @State private var hoveredRowId: Row.ID? = nil
 
     var body: some View {
@@ -61,17 +108,24 @@ struct NotebookGridContainer<
             } scrollHeader: {
                 scrollHeader()
             } fixedRows: {
-                rowStack(rows: rows, rowContent: fixedRow)
+                rowStack(rows: rows, pane: .fixed, rowContent: fixedRow)
             } trailingFixedRows: {
-                rowStack(rows: rows, rowContent: trailingFixedRow)
+                rowStack(rows: rows, pane: .trailingFixed, rowContent: trailingFixedRow)
             } scrollRows: {
-                rowStack(rows: rows, rowContent: scrollRow)
+                rowStack(rows: rows, pane: .scroll, rowContent: scrollRow)
             }
         }
     }
 
+    private enum PaneKind {
+        case fixed
+        case trailingFixed
+        case scroll
+    }
+
     private func rowStack<Content: View>(
         rows: [Row],
+        pane: PaneKind,
         @ViewBuilder rowContent: @escaping (Int, Row) -> Content
     ) -> some View {
         let rowIndexesById = Dictionary(uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, $0.offset) })
@@ -79,28 +133,114 @@ struct NotebookGridContainer<
         return LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(rows) { item in
                 let isHovered = hoveredRowId == item.id
-                rowContent(rowIndexesById[item.id] ?? 0, item)
-                    .frame(height: rowHeight)
-                    .background(isHovered ? hoverColor : Color.clear)
-                    .contentShape(Rectangle())
-                    #if os(macOS)
-                    .onHover { hovering in
-                        // Sin animación: coincide con el comportamiento nativo de
-                        // NSTableView, que no anima su hover.
-                        hoveredRowId = hovering ? item.id : nil
+                let header = groupHeaderInfo?(item)
+                let showHeader = header?.isFirst ?? false
+
+                VStack(alignment: .leading, spacing: 0) {
+                    if showHeader, let header = header {
+                        groupHeaderView(for: header, pane: pane)
                     }
-                    #endif
-                    .overlay(
-                        VStack {
-                            Spacer()
-                            Rectangle()
-                                .fill(NotebookGridStyle.gridLine)
-                                .frame(height: 0.5)
+
+                    rowContent(rowIndexesById[item.id] ?? 0, item)
+                        .frame(height: rowHeight)
+                        .background(isHovered ? hoverColor : Color.clear)
+                        .contentShape(Rectangle())
+                        #if os(macOS)
+                        .onHover { hovering in
+                            // Sin animación: coincide con el comportamiento nativo de
+                            // NSTableView, que no anima su hover.
+                            hoveredRowId = hovering ? item.id : nil
                         }
-                    )
+                        #endif
+                        .overlay(
+                            VStack {
+                                Spacer()
+                                Rectangle()
+                                    .fill(NotebookGridStyle.gridLine)
+                                    .frame(height: 0.5)
+                            }
+                        )
+                }
             }
         }
         .padding(.bottom, 16)
+    }
+
+    @ViewBuilder
+    private func groupHeaderView(for header: (isFirst: Bool, groupName: String, count: Int), pane: PaneKind) -> some View {
+        let isUngrouped = header.groupName == "Sin grupo"
+        switch pane {
+        case .fixed:
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: isUngrouped ? "person.slash" : "person.2.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(isUngrouped ? Color.secondary : NotebookStyle.primaryTint)
+
+                    Text(header.groupName)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(isUngrouped ? Color.secondary : Color.primary)
+                        .lineLimit(1)
+
+                    if header.count > 0 {
+                        Text("\(header.count)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(isUngrouped ? Color.secondary : NotebookStyle.primaryTint)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(
+                                Capsule().fill(isUngrouped ? Color.secondary.opacity(0.12) : NotebookStyle.primaryTint.opacity(0.14))
+                            )
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3.5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isUngrouped ? Color.secondary.opacity(0.08) : NotebookStyle.primaryTint.opacity(0.10))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(isUngrouped ? Color.secondary.opacity(0.15) : NotebookStyle.primaryTint.opacity(0.25), lineWidth: 0.5)
+                )
+
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: groupHeaderHeight)
+            .background(appSecondarySystemBackgroundColor().opacity(0.75))
+            .overlay(
+                VStack {
+                    Rectangle()
+                        .fill(NotebookGridStyle.gridLine)
+                        .frame(height: 0.5)
+                    Spacer()
+                    Rectangle()
+                        .fill(NotebookGridStyle.gridLine)
+                        .frame(height: 0.5)
+                }
+            )
+
+        case .scroll, .trailingFixed:
+            HStack {
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: groupHeaderHeight)
+            .background(appSecondarySystemBackgroundColor().opacity(0.75))
+            .overlay(
+                VStack {
+                    Rectangle()
+                        .fill(NotebookGridStyle.gridLine)
+                        .frame(height: 0.5)
+                    Spacer()
+                    Rectangle()
+                        .fill(NotebookGridStyle.gridLine)
+                        .frame(height: 0.5)
+                }
+            )
+        }
     }
 
     private var hoverColor: Color {

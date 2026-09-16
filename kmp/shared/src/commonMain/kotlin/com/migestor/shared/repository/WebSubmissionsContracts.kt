@@ -45,6 +45,8 @@ data class WebFormInstance(
      * y claves publicas.
      */
     val manifestJson: String,
+    /** Modo del formulario: "self" para autoevaluación o "peer" para coevaluación (43.sqm). */
+    val mode: String = "self",
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
 )
@@ -54,6 +56,15 @@ data class WebAliasEntry(
     val alias: String,
     val studentId: Long,
     val createdAtEpochMs: Long,
+)
+
+/** Correspondencia de coevaluación: evaluador -> compañero evaluado (43.sqm). */
+data class WebPeerTargetEntry(
+    val evaluatorAlias: String,
+    val targetAlias: String,
+    val targetStudentId: Long,
+    val targetDisplayName: String,
+    val createdAtEpochMs: Long = 0L,
 )
 
 /** `webItemId` -> `notebook_instrument_items.id`. */
@@ -139,6 +150,18 @@ interface WebSubmissionsRepository {
 
     @Throws(Throwable::class)
     suspend fun saveItemMap(formInstanceId: String, entries: List<WebItemMapEntry>)
+
+    /** Lista todas las correspondencias de coevaluación para un formulario. */
+    @Throws(Throwable::class)
+    suspend fun listPeerTargets(formInstanceId: String): List<WebPeerTargetEntry>
+
+    /** Lista los compañeros a evaluar por un alumno específico (por su alias de evaluador). */
+    @Throws(Throwable::class)
+    suspend fun listPeerTargetsForEvaluator(formInstanceId: String, evaluatorAlias: String): List<WebPeerTargetEntry>
+
+    /** Guarda las correspondencias de coevaluación en bloque. */
+    @Throws(Throwable::class)
+    suspend fun savePeerTargets(formInstanceId: String, entries: List<WebPeerTargetEntry>)
 
     @Throws(Throwable::class)
     suspend fun getLedgerEntry(submissionId: String): WebLedgerEntry?

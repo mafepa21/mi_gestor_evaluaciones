@@ -1828,7 +1828,8 @@ final class KmpBridge: ObservableObject {
                     isArchived: instancia.archived,
                     expiresAtEpochMs: instancia.expiresAtEpochMs,
                     importedCount: importadas.count,
-                    lastImportedAtEpochMs: importadas.map(\.importedAtEpochMs).max()
+                    lastImportedAtEpochMs: importadas.map(\.importedAtEpochMs).max(),
+                    mode: instancia.mode
                 )
             )
         }
@@ -1894,6 +1895,131 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    struct WebPeerGroupInfo: Identifiable, Hashable {
+        var id: Int64 { groupId }
+        let groupId: Int64
+        let groupName: String
+        let studentIds: [Int64]
+    }
+
+    struct WebPeerDetectionResult: Hashable {
+        let learningSituationId: Int64?
+        let learningSituationTitle: String?
+        let groups: [WebPeerGroupInfo]
+        let assignedStudentCount: Int
+        let unassignedStudentCount: Int
+        let totalStudents: Int
+    }
+
+    /// Detecta la Situación de Aprendizaje vinculada a una columna y los grupos de trabajo asociados a ella.
+    func detectPeerGroupsForColumn(classId: Int64, columnId: String) async -> WebPeerDetectionResult {
+        let alumnado = (try? await container.classesRepository.listStudentsInClass(classId: classId)) ?? []
+        let totalStudents = alumnado.count
+        guard totalStudents > 0 else {
+            return WebPeerDetectionResult(
+                learningSituationId: nil,
+                learningSituationTitle: nil,
+                groups: [],
+                assignedStudentCount: 0,
+                unassignedStudentCount: 0,
+                totalStudents: 0
+            )
+        }
+
+        let snapshot = try? await container.notebookRepository.loadNotebookSnapshot(classId: classId)
+        let colDef = snapshot?.columns.first(where: { $0.id == columnId })
+        let tabs = snapshot?.tabs ?? []
+
+        // 1. Buscar si hay una Situación de Aprendizaje asociada a la columna
+        let situaciones = (try? await container.learningSituationsRepository.listSituations()) ?? []
+        var detectedSituationId: Int64?
+        var detectedSituationTitle: String?
+
+        for sit in situaciones {
+            let recursos = (try? await container.learningSituationsRepository.listLinkedResources(learningSituationId: sit.id)) ?? []
+            if recursos.contains(where: { $0.resourceId == columnId }) {
+                detectedSituationId = sit.id
+                detectedSituationTitle = sit.title
+                break
+            }
+        }
+
+        // Si no se encontró por recurso enlazado, comprobar si coincide por el título de la unidad/situación en la columna
+        if detectedSituationId == nil, let unit = colDef?.unitOrSituation?.trimmingCharacters(in: .whitespacesAndNewlines), !unit.isEmpty {
+            if let coincidencia = situaciones.first(where: { $0.title.localizedCaseInsensitiveCompare(unit) == .orderedSame }) {
+                detectedSituationId = coincidencia.id
+                detectedSituationTitle = coincidencia.title
+            }
+        }
+
+        // 2. Cargar grupos y miembros de la clase
+        let allGroups = (try? await container.notebookConfigRepository.listWorkGroups(classId: classId, tabId: nil)) ?? []
+        let allMembers = (try? await container.notebookConfigRepository.listWorkGroupMembers(classId: classId, tabId: nil)) ?? []
+
+        // 3. Resolución inclusiva de grupos:
+        //    a) Grupos asignados a la SA vinculada
+        //    b) Fallback: grupos de la pestaña de la columna (o familia de pestañas)
+        //    c) Fallback: grupos generales de la clase
+        var candidateGroups: [NotebookWorkGroup] = []
+        if let situationId = detectedSituationId {
+            let saGroups = allGroups.filter { $0.learningSituationId?.int64Value == situationId }
+            if !saGroups.isEmpty {
+                candidateGroups = saGroups
+            }
+        }
+
+        if candidateGroups.isEmpty {
+            let colTabIds = Set(colDef?.tabIds ?? [])
+            let tabFamilies: Set<String> = Set(colTabIds.flatMap { tabId in
+                NotebookWorkGroupPolicy.tabFamilyIds(tabs: tabs, activeTabId: tabId)
+            })
+            let relevantTabIds = tabFamilies.isEmpty ? colTabIds : tabFamilies
+
+            let tabGroups = allGroups.filter { relevantTabIds.contains($0.tabId) }
+            if !tabGroups.isEmpty {
+                candidateGroups = tabGroups
+            } else {
+                candidateGroups = allGroups
+            }
+        }
+
+        var detectedGroups: [WebPeerGroupInfo] = []
+        var assignedStudentIds = Set<Int64>()
+
+        for g in candidateGroups.sorted(by: { $0.order < $1.order }) {
+            let memberIds = allMembers.filter { $0.groupId == g.id }.map { $0.studentId }
+            if !memberIds.isEmpty {
+                detectedGroups.append(WebPeerGroupInfo(groupId: g.id, groupName: g.name, studentIds: memberIds))
+                for sId in memberIds {
+                    assignedStudentIds.insert(sId)
+                }
+            }
+        }
+
+        let assignedCount = assignedStudentIds.count
+        let unassignedCount = max(0, totalStudents - assignedCount)
+
+        let titleToDisplay: String?
+        if let detectedTitle = detectedSituationTitle {
+            titleToDisplay = detectedTitle
+        } else if let unit = colDef?.unitOrSituation?.trimmingCharacters(in: .whitespacesAndNewlines), !unit.isEmpty {
+            titleToDisplay = unit
+        } else if let firstTabId = colDef?.tabIds.first, let tabTitle = tabs.first(where: { $0.id == firstTabId })?.title {
+            titleToDisplay = "Grupos de «\(tabTitle)»"
+        } else {
+            titleToDisplay = "Grupos de trabajo del Cuaderno"
+        }
+
+        return WebPeerDetectionResult(
+            learningSituationId: detectedSituationId,
+            learningSituationTitle: titleToDisplay,
+            groups: detectedGroups,
+            assignedStudentCount: assignedCount,
+            unassignedStudentCount: unassignedCount,
+            totalStudents: totalStudents
+        )
+    }
+
     /// Publica un formulario: genera claves, construye y firma el manifiesto, lo
     /// guarda con sus alias y su mapa de ítems, mete la clave privada en el llavero
     /// y escribe los dos ficheros que necesita el docente.
@@ -1907,7 +2033,8 @@ final class KmpBridge: ObservableObject {
         columnId: String,
         baseURL: String,
         deliveryEmail: String?,
-        expiresAt: Date
+        expiresAt: Date,
+        mode: String = "self"
     ) async throws -> WebPublishResult {
         guard let detalle = try await container.notebookInstrumentsRepository
             .getTemplateForColumn(columnId: columnId) else {
@@ -1944,6 +2071,37 @@ final class KmpBridge: ObservableObject {
                 )
             }
 
+        var peerTargetsToPublish: [WebSubmissionPublisher.PeerTargetToPublish] = []
+        if mode == "peer" {
+            let detection = await detectPeerGroupsForColumn(classId: classId, columnId: columnId)
+            let studentNameMap = Dictionary(uniqueKeysWithValues: alumnado.map {
+                ($0.id, "\($0.firstName) \($0.lastName)".trimmingCharacters(in: .whitespaces))
+            })
+            for group in detection.groups {
+                for evaluatorId in group.studentIds {
+                    // 1. Autoevaluación propia del alumno
+                    peerTargetsToPublish.append(
+                        WebSubmissionPublisher.PeerTargetToPublish(
+                            evaluatorStudentId: evaluatorId,
+                            targetStudentId: evaluatorId,
+                            targetName: "Mi autoevaluación"
+                        )
+                    )
+                    // 2. Coevaluación de sus compañeros de equipo
+                    for targetId in group.studentIds where targetId != evaluatorId {
+                        let targetName = studentNameMap[targetId] ?? "Compañero"
+                        peerTargetsToPublish.append(
+                            WebSubmissionPublisher.PeerTargetToPublish(
+                                evaluatorStudentId: evaluatorId,
+                                targetStudentId: targetId,
+                                targetName: targetName
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
         let publicado = try WebSubmissionPublisher.publish(
             title: detalle.template_.title,
             subtitle: nil,
@@ -1958,7 +2116,9 @@ final class KmpBridge: ObservableObject {
             },
             baseURL: baseURL,
             deliveryEmail: deliveryEmail,
-            expiresAtEpochMs: Int64(expiresAt.timeIntervalSince1970 * 1000)
+            expiresAtEpochMs: Int64(expiresAt.timeIntervalSince1970 * 1000),
+            mode: mode,
+            peerTargets: peerTargetsToPublish
         )
 
         // La clave primero: un formulario registrado sin clave en el llavero no se
@@ -1989,6 +2149,7 @@ final class KmpBridge: ObservableObject {
                 revoked: false,
                 archived: false,
                 manifestJson: publicado.manifestJSON,
+                mode: publicado.mode,
                 createdAtEpochMs: ahora,
                 updatedAtEpochMs: ahora
             )
@@ -2005,6 +2166,20 @@ final class KmpBridge: ObservableObject {
                 WebAliasEntry(alias: $0.alias, studentId: $0.studentId, createdAtEpochMs: ahora)
             }
         )
+        if !publicado.peerTargets.isEmpty {
+            try await container.webSubmissionsRepository.savePeerTargets(
+                formInstanceId: publicado.formInstanceId,
+                entries: publicado.peerTargets.map { pt in
+                    WebPeerTargetEntry(
+                        evaluatorAlias: pt.evaluatorAlias,
+                        targetAlias: pt.targetAlias,
+                        targetStudentId: pt.targetStudentId,
+                        targetDisplayName: pt.targetName,
+                        createdAtEpochMs: ahora
+                    )
+                }
+            )
+        }
 
         let carpeta = try Self.writePublishedFiles(publicado, title: detalle.template_.title)
 
@@ -2093,12 +2268,19 @@ final class KmpBridge: ObservableObject {
             .listLedgerForForm(formInstanceId: formInstanceId)) ?? []
         let alumnado = (try? await container.classesRepository
             .listStudentsInClass(classId: instancia.classId)) ?? []
+        let peerTargets = (try? await container.webSubmissionsRepository
+            .listPeerTargets(formInstanceId: formInstanceId)) ?? []
 
         var studentIdByAlias: [String: Int64] = [:]
         for entrada in alias { studentIdByAlias[entrada.alias] = entrada.studentId }
 
         var itemIdByWebItemId: [String: String] = [:]
         for entrada in items { itemIdByWebItemId[entrada.webItemId] = entrada.itemId }
+
+        var peerTargetMap: [String: Int64] = [:]
+        for pt in peerTargets {
+            peerTargetMap["\(pt.evaluatorAlias)|\(pt.targetAlias)"] = pt.targetStudentId
+        }
 
         // Solo cuenta como duplicado lo que se importó de verdad. Una entrega
         // registrada como rechazada debe poder reintentarse: si el motivo era un
@@ -2130,7 +2312,9 @@ final class KmpBridge: ObservableObject {
             itemIdByWebItemId: itemIdByWebItemId,
             studentNames: nombres,
             importedAtBySubmissionId: importedAt,
-            roster: roster
+            roster: roster,
+            mode: instancia.mode,
+            peerTargetStudentIdByEvaluatorTarget: peerTargetMap
         )
     }
 
@@ -2142,9 +2326,9 @@ final class KmpBridge: ObservableObject {
     /// `INSERT` en `notebook_instrument_responses` dejaría la respuesta guardada
     /// pero sin nota y sin refrescar el Cuaderno.
     ///
-    /// Una llamada por celda con la entrega completa, igual que hace la ingesta de
-    /// Sync LAN. Y una entrega que falla no detiene a las demás: se anota y se
-    /// sigue, porque tener 24 de 25 importadas es mejor que tener 0.
+    /// Para coevaluación con múltiples evaluaciones por alumno, agrupa las
+    /// respuestas recibidas por celda e ítem y calcula la media aritmética simple
+    /// de los valores numéricos/escalas antes de consolidar.
     func importWebSubmissions(
         _ decisions: [WebSubmissionImportDecision]
     ) async -> WebSubmissionImportOutcome {
@@ -2154,69 +2338,131 @@ final class KmpBridge: ObservableObject {
         let iso8601 = ISO8601DateFormatter()
         iso8601.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
-        for decision in decisions {
-            let borrador = decision.draft
-            let nombre = borrador.studentName
-                ?? "código \(borrador.alias.prefix(6))"
+        struct TargetCellKey: Hashable {
+            let classId: Int64
+            let columnId: String
+            let studentId: Int64
+        }
 
-            let responses: [NotebookInstrumentResponse] = borrador.answers.map { respuesta in
-                NotebookInstrumentResponse(
-                    classId: borrador.classId,
-                    studentId: decision.studentId,
-                    columnId: borrador.columnId,
-                    itemId: respuesta.itemId,
-                    textValue: respuesta.textValue ?? "",
-                    boolValue: respuesta.boolValue.map { KotlinBoolean(value: $0) },
-                    numberValue: respuesta.numberValue.map { KotlinDouble(value: $0) },
-                    trace: AuditTrace(
-                        authorUserId: nil,
-                        createdAt: instant,
-                        updatedAt: instant,
-                        associatedGroupId: nil,
-                        deviceId: nil,
-                        syncVersion: 1
+        var decisionsByCell: [TargetCellKey: [WebSubmissionImportDecision]] = [:]
+        for decision in decisions {
+            let key = TargetCellKey(
+                classId: decision.draft.classId,
+                columnId: decision.draft.columnId,
+                studentId: decision.studentId
+            )
+            decisionsByCell[key, default: []].append(decision)
+        }
+
+        for (cellKey, cellDecisions) in decisionsByCell {
+            let primerBorrador = cellDecisions[0].draft
+            let nombre = primerBorrador.studentName ?? "código \(primerBorrador.alias.prefix(6))"
+
+            // Recolectar todas las respuestas agrupadas por itemId
+            var answersByItemId: [String: [(answer: WebResolvedAnswer, draft: WebSubmissionDraft)]] = [:]
+            for dec in cellDecisions {
+                for ans in dec.draft.answers {
+                    answersByItemId[ans.itemId, default: []].append((ans, dec.draft))
+                }
+            }
+
+            var responses: [NotebookInstrumentResponse] = []
+            for (itemId, answerPairs) in answersByItemId {
+                guard !answerPairs.isEmpty else { continue }
+                let itemType = answerPairs[0].answer.type
+
+                var finalNumber: KotlinDouble?
+                var finalText: String = ""
+                var finalBool: KotlinBoolean?
+
+                switch itemType {
+                case .scale1To4, .number:
+                    let numbers = answerPairs.compactMap { $0.answer.numberValue }
+                    if !numbers.isEmpty {
+                        let media = numbers.reduce(0.0, +) / Double(numbers.count)
+                        finalNumber = KotlinDouble(value: media)
+                        if media.truncatingRemainder(dividingBy: 1) == 0 {
+                            finalText = String(Int(media))
+                        } else {
+                            finalText = String(format: "%.2f", media)
+                        }
+                    }
+                case .check:
+                    let bools = answerPairs.compactMap { $0.answer.boolValue }
+                    if !bools.isEmpty {
+                        let trues = bools.filter { $0 }.count
+                        let majority = trues > (bools.count / 2)
+                        finalBool = KotlinBoolean(value: majority)
+                        finalText = majority ? "Sí" : "No"
+                    }
+                case .text, .choice:
+                    let texts = answerPairs.compactMap { $0.answer.textValue?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                    if texts.count == 1 {
+                        finalText = texts[0]
+                    } else if texts.count > 1 {
+                        finalText = texts.joined(separator: "\n")
+                    }
+                }
+
+                responses.append(
+                    NotebookInstrumentResponse(
+                        classId: cellKey.classId,
+                        studentId: cellKey.studentId,
+                        columnId: cellKey.columnId,
+                        itemId: itemId,
+                        textValue: finalText,
+                        boolValue: finalBool,
+                        numberValue: finalNumber,
+                        trace: AuditTrace(
+                            authorUserId: nil,
+                            createdAt: instant,
+                            updatedAt: instant,
+                            associatedGroupId: nil,
+                            deviceId: nil,
+                            syncVersion: 1
+                        )
                     )
                 )
             }
 
             do {
                 _ = try await container.notebookInstrumentsRepository.saveResponses(
-                    classId: borrador.classId,
-                    studentId: decision.studentId,
-                    columnId: borrador.columnId,
+                    classId: cellKey.classId,
+                    studentId: cellKey.studentId,
+                    columnId: cellKey.columnId,
                     responses: responses,
                     updatedAtEpochMs: ahora,
                     deviceId: nil,
                     syncVersion: 1
                 )
-                try? await container.webSubmissionsRepository.recordLedgerEntry(
-                    entry: WebLedgerEntry(
-                        submissionId: borrador.submissionId,
-                        formInstanceId: borrador.formInstanceId,
-                        alias: borrador.alias,
-                        studentId: KotlinLong(value: decision.studentId),
-                        status: "IMPORTED",
-                        rejectReason: nil,
-                        answerCount: Int64(responses.count),
-                        clientSubmittedAtEpochMs: iso8601.date(from: borrador.clientSubmittedAt)
-                            .map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0,
-                        importedAtEpochMs: ahora
+
+                // Registrar en el ledger cada una de las entregas que contribuyeron a esta celda
+                for dec in cellDecisions {
+                    let borrador = dec.draft
+                    let clientEpoch = iso8601.date(from: borrador.clientSubmittedAt)
+                        .map { Int64($0.timeIntervalSince1970 * 1000) } ?? ahora
+                    try? await container.webSubmissionsRepository.recordLedgerEntry(
+                        entry: WebLedgerEntry(
+                            submissionId: borrador.submissionId,
+                            formInstanceId: borrador.formInstanceId,
+                            alias: borrador.alias,
+                            studentId: KotlinLong(value: cellKey.studentId),
+                            status: "IMPORTED",
+                            rejectReason: nil,
+                            answerCount: Int64(borrador.answers.count),
+                            clientSubmittedAtEpochMs: clientEpoch,
+                            importedAtEpochMs: ahora
+                        )
                     )
-                )
-                resultado.imported += 1
+                }
+                resultado.imported += cellDecisions.count
             } catch {
-                // Se registra el fallo para que el docente sepa a quién le falta,
-                // pero NO como importada: así se puede reintentar.
                 resultado.failures.append(
                     (studentName: nombre, reason: error.localizedDescription)
                 )
             }
         }
 
-        // El Cuaderno tiene que reflejar lo escrito sin que el docente recargue.
-        // `saveResponses` ya invalida el caché de la hoja y emite el bus de
-        // refresco; esto solo fuerza que la vista que está delante vuelva a pedir
-        // su clase, que es lo que hace el resto de la app tras una escritura.
         if resultado.imported > 0 {
             refreshCurrentNotebook()
         }
@@ -2361,6 +2607,7 @@ final class KmpBridge: ObservableObject {
                 revoked: false,
                 archived: false,
                 manifestJson: manifestJson,
+                mode: "self",
                 createdAtEpochMs: ahora,
                 updatedAtEpochMs: ahora
             )

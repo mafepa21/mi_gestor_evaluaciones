@@ -3,6 +3,50 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-16 - Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web
+
+Resumen:
+- Qué cambio se hizo:
+  1. Modalidad dual pedagógica en la app y generación de enlaces:
+     - Dos opciones en `WebSubmissionPublishSheet`: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña y coevalúa a sus compañeros de equipo en las pestañas siguientes).
+     - Método `detectPeerGroupsForColumn(classId:columnId:)` en `KmpBridge.swift` con resolución inclusiva (grupos por SA directa -> fallback a grupos de la pestaña de la columna según `NotebookWorkGroupPolicy` -> fallback a grupos generales de la clase).
+     - Generación de correspondencias privadas: el evaluador incluye como primer target su propia autoevaluación (*«Mi autoevaluación»*) y a continuación a sus compañeros de grupo.
+     - Fallback elegante: alumnos sin grupo reciben su enlace de autoevaluación convencional de forma transparente.
+  2. Enlaces privados y PWA Vercel (`entregas-alumnado`):
+     - Esquemas v2 (`manifiesto.schema.json` y `entrega.schema.json`) con propiedad `targets` y modo `peer`.
+     - Inyección segura de la lista de targets en el fragmento hash (`#f=...&a=...&t=<base64url>`).
+     - La PWA renderiza la pestaña de autoevaluación destacada con borde dorado (*«Mi autoevaluación»*) seguida de las pestañas de sus compañeros de grupo, con seguimiento independiente del progreso y empaquetado del sobre v2 cifrado con ChaCha20-Poly1305.
+     - Despliegue en producción completado en Vercel.
+  3. Importación y cálculo de notas en el Cuaderno:
+     - `WebSubmissionImportService`: soporte v2 que examina, descifra y atribuye cada evaluación al alumno evaluado con deduplicación por par evaluador-evaluado.
+     - `KmpBridge.importWebSubmissions`: cálculo de la media aritmética simple para calificaciones numéricas o escalas recibidas en la celda del alumno (combinando su autoevaluación y las coevaluaciones de los compañeros), combinación de textos y booleano por mayoría, registrando individualmente en el ledger criptográfico cada entrega.
+  4. Base de datos SQLDelight:
+     - Migración `43.sqm`: columna `mode` en `web_form_instances` y tabla `web_peer_targets` con índices.
+     - Contratos KMP y repositorios actualizados.
+- Por qué importa:
+  - Resuelve de forma integral la coevaluación ágil en el aula: el docente no tiene que configurar manualmente a quién evalúa cada alumno. La app cruza los grupos de la SA, genera los enlaces privados y sintetiza automáticamente la media de las notas recibidas en la celda del cuaderno.
+- Dónde vive el cambio:
+  - `kmp/data/src/commonMain/sqldelight/com/migestor/data/db/43.sqm`
+  - `kmp/data/src/commonMain/sqldelight/com/migestor/data/db/AppDatabase.sq`
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/repository/WebSubmissionsRepositorySqlDelight.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/repository/WebSubmissionsContracts.kt`
+  - `kmp/iosApp/AppleShared/WebSubmissionStore.swift`
+  - `kmp/iosApp/AppleShared/WebSubmissionPublisher.swift`
+  - `kmp/iosApp/AppleShared/WebSubmissionImportService.swift`
+  - `kmp/iosApp/AppleShared/WebSubmissionPublishSheet.swift`
+  - `kmp/iosApp/AppleShared/WebSubmissionsWorkspaceView.swift`
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `scripts/interop_entregas_web/main.swift`
+  - Repositorio `entregas-alumnado`: `contrato/`, `src/app.js`, `src/estilo.css`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`: macOS Native y iOS Simulator COMPILADO CORRECTAMENTE.
+  - `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: 0 fallos.
+  - Suite de interoperabilidad `interop_entregas_web`: 75/75 pruebas en verde.
+  - `npm test` en `entregas-alumnado`: 50/50 pasadas.
+
+Notas para futuras conversaciones:
+- La PWA de Vercel está lista en local y probada contra la suite criptográfica de Swift; cuando el usuario decida desplegarla a producción en Vercel, solo hay que hacer push en el repositorio de la PWA.
+
 ## Avance 2026-09-16 - Sincronización resiliente de asignaciones y resolución de IDs temporales en tablero de grupos (PR #240)
 
 Resumen:

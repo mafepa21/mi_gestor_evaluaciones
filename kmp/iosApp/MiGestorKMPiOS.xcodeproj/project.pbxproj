@@ -211,6 +211,7 @@
 		5AB3FE7CC733C2337A6B0624 /* LearningSituationAssessmentInstrumentsImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */; };
 		5AEB04567FC583959C901083 /* MacBackupInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C68F4452792ADF072EDE900 /* MacBackupInspectorView.swift */; };
 		5B6B1EAFC967383C3D39C47F /* DashboardRecommendations.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDE22B7BADFF6EE757E8A93 /* DashboardRecommendations.swift */; };
+		5B9348B77A6D1C04F05951B4 /* KmpBridge+Students.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09DCB06FB06AE15B6622B367 /* KmpBridge+Students.swift */; };
 		5BD12903E50D9BD88C05DD1F /* NotebookSupportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 834354958EC7B5CE22A3BA07 /* NotebookSupportViews.swift */; };
 		5BE361076C0318424B56137F /* InstrumentEvaluationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 704B902594B5C72A796944D4 /* InstrumentEvaluationModels.swift */; };
 		5C66DE9508311795F6FE0DF8 /* PendingEvaluationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */; };
@@ -350,6 +351,7 @@
 		9431E05EA810B154003DED20 /* SelectiveWipeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F49432D42F3A8BBD54876B /* SelectiveWipeSheet.swift */; };
 		94AE8AEACCA6FABF346032E2 /* KmpBridge+Planner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEBB2CA87CBCB3E4059CF73F /* KmpBridge+Planner.swift */; };
 		9546F37A775EA87B30F4F374 /* MacSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 926C38D687AB3B3B857DA79A /* MacSyncView.swift */; };
+		95AB6E40E5E077A06F111AB2 /* KmpBridge+Students.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09DCB06FB06AE15B6622B367 /* KmpBridge+Students.swift */; };
 		96D1470DC455935FA3D0954A /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9892E60A7CF035F7B78B081 /* QRCodeView.swift */; };
 		96D392BD979115709F2490D6 /* WebSubmissionLinkEmailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB79EE8F7050ABE5BF09C0BD /* WebSubmissionLinkEmailSheet.swift */; };
 		96DE82FA5E9D76C477DCFDC4 /* RubricTemplateCatalogSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542F962EB91CBB9EBA611DAA /* RubricTemplateCatalogSheet.swift */; };
@@ -649,6 +651,7 @@
 		0998A4D4BC5E85BB92250336 /* SettingsDangerZoneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDangerZoneView.swift; sourceTree = "<group>"; };
 		09BF8CB77031070DE6567B1A /* ScheduleImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImportTests.swift; sourceTree = "<group>"; };
 		09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacModuleStubs.swift; sourceTree = "<group>"; };
+		09DCB06FB06AE15B6622B367 /* KmpBridge+Students.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+Students.swift"; sourceTree = "<group>"; };
 		09E6C34CD69F97E7DC864D47 /* SyncAdoptionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncAdoptionViews.swift; sourceTree = "<group>"; };
 		0A721D85250D04A5EF2F4512 /* LanSyncClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanSyncClient.swift; sourceTree = "<group>"; };
 		0A82B65C635417DCFDEB7318 /* PlannerDayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerDayView.swift; sourceTree = "<group>"; };
@@ -1158,6 +1161,7 @@
 				212337E509470CFD689BB7F8 /* KmpBridge+Meetings.swift */,
 				BEBB2CA87CBCB3E4059CF73F /* KmpBridge+Planner.swift */,
 				3E44ACF17D174B125022ED67 /* KmpBridge+Rubrics.swift */,
+				09DCB06FB06AE15B6622B367 /* KmpBridge+Students.swift */,
 				E1D1F4F31F6224448FEE5718 /* KmpBridge+SyncLAN.swift */,
 				EAB9EAD726530D8C61519E3E /* KmpBridge+WebForms.swift */,
 				88590DE40405667ADB84E5CF /* KmpFlowSupport.swift */,
@@ -1702,6 +1706,7 @@
 				099689EBA9E98BA1364417F4 /* KmpBridge+Meetings.swift in Sources */,
 				94AE8AEACCA6FABF346032E2 /* KmpBridge+Planner.swift in Sources */,
 				12F5AB37512EE54423FB8427 /* KmpBridge+Rubrics.swift in Sources */,
+				5B9348B77A6D1C04F05951B4 /* KmpBridge+Students.swift in Sources */,
 				A31B6319A0B9AB589B53F8F5 /* KmpBridge+SyncLAN.swift in Sources */,
 				0DB15A5D839EF35D8A33E231 /* KmpBridge+WebForms.swift in Sources */,
 				A891426FA79E3A7AB4670107 /* KmpBridge.swift in Sources */,
@@ -1999,6 +2004,7 @@
 				9997DB2E60398DAC601544E2 /* KmpBridge+Meetings.swift in Sources */,
 				79038D66BB6E3B268F91CE8F /* KmpBridge+Planner.swift in Sources */,
 				614D6043366F2972FE8BC9B1 /* KmpBridge+Rubrics.swift in Sources */,
+				95AB6E40E5E077A06F111AB2 /* KmpBridge+Students.swift in Sources */,
 				4082176C927DA2B8C18C834C /* KmpBridge+SyncLAN.swift in Sources */,
 				CC871883DB2586C8F0FD5293 /* KmpBridge+WebForms.swift in Sources */,
 				B7CB07BCB74E309D55528193 /* KmpBridge.swift in Sources */,

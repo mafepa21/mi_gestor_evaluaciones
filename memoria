@@ -3,6 +3,28 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-17 - Supresión de preguntas abiertas espurias en autoevaluación y filtrado de metadatos DOCX
+
+Resumen:
+- Qué cambio se hizo:
+  1. En `LearningSituationAssessmentInstrumentsImportService.swift`, para instrumentos del alumnado (`selfAssessment` y `peerAssessment`), se restringe la búsqueda de preguntas de reflexión metacognitiva exclusivamente a los párrafos posteriores a la tabla de rúbrica. Los párrafos previos a la rúbrica se mantienen estrictamente como notas y metadatos del docente.
+  2. Si un documento de autoevaluación no contiene preguntas de reflexión metacognitiva (como en SA 2 Bádminton), `quizQuestions` queda como lista vacía `[]`, eliminando la creación de ítems `open_N` en `KmpBridge` y evitando que el formulario web `entregas-alumnado` renderice cuadros de texto espurios con información del docente (p.ej. momentos de recogida).
+  3. En `quizQuestion(from:)`, se eliminó el falso positivo provocado por la comprobación genérica de barra inclinada (`paragraph.contains(" / ")`), exigiendo que `optionsFromSlashList` devuelva efectivamente $\ge 2$ opciones reales para considerarlo pregunta con opciones múltiples.
+  4. En `parseHeading`, se añadieron filtros con `isTeacherMetadataParagraph` e `isOpenQuestionSectionHeading` para evitar que párrafos informativos del docente con palabras clave como «pasaporte» (`* Evidencia principal: Pasaporte técnico`) o encabezados de sección de preguntas cierren prematuramente el instrumento antes de llegar a la tabla de la rúbrica, garantizando que siempre se interpreten como rúbricas de 4 niveles (`selfAssessment`) y no caigan a listas de cotejo (`checklist`).
+  5. Se añadieron pruebas unitarias en `LearningSituationDocumentImportTests.swift` validando ambos escenarios (con y sin preguntas de reflexión).
+- Por qué importa:
+  - Garantiza que los formularios web generados para el alumnado sean pedagógicamente impecables: si una rúbrica de autoevaluación no tiene preguntas abiertas, el alumno únicamente ve y responde los indicadores de la rúbrica; si las tiene, responde únicamente las preguntas de reflexión y nunca ve metadatos del docente como si fueran preguntas.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/LearningSituationAssessmentInstrumentsImportService.swift`
+  - `kmp/iosApp/PlannerTests/LearningSituationDocumentImportTests.swift`
+  - `docs/CHANGELOG.md`
+- Validación realizada:
+  - `xcodebuild test` en `MiGestorPlannerTests`: 35/35 tests pasados (0 fallos).
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Ritmo: tarea creada, avance registrado y tablero publicado en Vercel.
+
 ## Avance 2026-09-16 - Modularización y partición estructural de KmpBridge.swift
 
 Resumen:

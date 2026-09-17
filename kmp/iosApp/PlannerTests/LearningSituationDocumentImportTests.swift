@@ -24,6 +24,49 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.instruments.count, 1)
     }
 
+    func testStudentSelfAssessmentWithoutOpenQuestionsDoesNotGenerateOpenQuestions() throws {
+        let docxURL = try makeStudentAssessmentDocx(includeOpenQuestions: false)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let data = try Data(contentsOf: docxURL)
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: data
+        )
+        let instrument = try XCTUnwrap(draft.instruments.first)
+
+        XCTAssertEqual(instrument.kind, .selfAssessment)
+        XCTAssertEqual(instrument.weightPercent, 25)
+        XCTAssertEqual(instrument.rubric?.criteria.count, 2)
+        XCTAssertTrue(instrument.quizQuestions.isEmpty, "Metadata line with slash ('E08 / U12') must not produce spurious quizQuestions")
+        XCTAssertTrue(instrument.note?.contains("Momentos de recogida") == true)
+        XCTAssertTrue(instrument.note?.contains("Lo rellena el alumnado (25%)") == true)
+        XCTAssertFalse(instrument.note?.contains("Las 0 preguntas abiertas") == true)
+    }
+
+    func testStudentSelfAssessmentWithOpenQuestionsParsesOnlyReflectionQuestions() throws {
+        let docxURL = try makeStudentAssessmentDocx(includeOpenQuestions: true)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let data = try Data(contentsOf: docxURL)
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: data
+        )
+        let instrument = try XCTUnwrap(draft.instruments.first)
+
+        XCTAssertEqual(instrument.kind, .selfAssessment)
+        XCTAssertEqual(instrument.weightPercent, 25)
+        XCTAssertEqual(instrument.rubric?.criteria.count, 2)
+        XCTAssertEqual(instrument.quizQuestions.count, 2)
+        XCTAssertEqual(instrument.quizQuestions[0].questionText, "¿Qué aspecto de tu juego has mejorado más?")
+        XCTAssertTrue(instrument.quizQuestions[0].options.isEmpty)
+        XCTAssertEqual(instrument.quizQuestions[1].questionText, "¿Qué ayuda diste a tu compañero/a durante los partidos?")
+        XCTAssertTrue(instrument.quizQuestions[1].options.isEmpty)
+        XCTAssertTrue(instrument.note?.contains("Momentos de recogida") == true)
+        XCTAssertTrue(instrument.note?.contains("Las 2 preguntas abiertas no puntúan") == true)
+    }
+
     func testDevelopmentPayloadDecodesV1V2AndCorruptInputWithoutCrashing() throws {
         let section = LearningSituationSessionSectionDraft(title: "Bloque", lines: ["0'-10' · Entrada · Actividad"])
         let legacy = String(data: try JSONEncoder().encode([section]), encoding: .utf8)!
@@ -1165,6 +1208,66 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         try Data(document.utf8).write(to: wordDirectory.appendingPathComponent("document.xml"))
 
         let archiveURL = root.appendingPathComponent("assessment-instrument.docx")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.currentDirectoryURL = root
+        process.arguments = ["-q", "-r", archiveURL.path, "word"]
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+        return archiveURL
+    }
+
+    private func makeStudentAssessmentDocx(includeOpenQuestions: Bool) throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("student-assessment-docx-\(UUID().uuidString)", isDirectory: true)
+        let wordDirectory = root.appendingPathComponent("word", isDirectory: true)
+        try FileManager.default.createDirectory(at: wordDirectory, withIntermediateDirectories: true)
+
+        let openQuestionsXML = includeOpenQuestions ? """
+          <w:p><w:r><w:t>Preguntas de reflexión metacognitiva:</w:t></w:r></w:p>
+          <w:p><w:r><w:t>1. ¿Qué aspecto de tu juego has mejorado más?: ____________________</w:t></w:r></w:p>
+          <w:p><w:r><w:t>2. ¿Qué ayuda diste a tu compañero/a durante los partidos?: ____________________</w:t></w:r></w:p>
+        """ : ""
+
+        let document = """
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+          <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>SA 2 - Bádminton</w:t></w:r></w:p>
+          <w:p><w:r><w:t>4. Rúbrica de autoevaluación y coevaluación del progreso - 25%</w:t></w:r></w:p>
+          <w:p><w:r><w:t>* Tipo: Evaluación del alumnado</w:t></w:r></w:p>
+          <w:p><w:r><w:t>* Criterios evaluados: 2.3 y 3.3</w:t></w:r></w:p>
+          <w:p><w:r><w:t>* Peso: 25%</w:t></w:r></w:p>
+          <w:p><w:r><w:t>* Evidencia principal: Pasaporte técnico</w:t></w:r></w:p>
+          <w:p><w:r><w:t>* Momentos de recogida: M2 (Encuentro E05) y M3 (Encuentro E08 / U12: balance final de la SA).</w:t></w:r></w:p>
+          <w:tbl>
+            <w:tr>
+              <w:tc><w:p><w:r><w:t>Indicador</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>1 Inicial</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>2 Básico</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>3 Adecuado</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>4 Avanzado</w:t></w:r></w:p></w:tc>
+            </w:tr>
+            <w:tr>
+              <w:tc><w:p><w:r><w:t>Autoconciencia reflexiva</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>Desc 1</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>Desc 2</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>Desc 3</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>Desc 4</w:t></w:r></w:p></w:tc>
+            </w:tr>
+            <w:tr>
+              <w:tc><w:p><w:r><w:t>Feedback constructivo</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>Desc 1</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>Desc 2</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>Desc 3</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>Desc 4</w:t></w:r></w:p></w:tc>
+            </w:tr>
+          </w:tbl>
+          \(openQuestionsXML)
+        </w:body></w:document>
+        """
+        try Data(document.utf8).write(to: wordDirectory.appendingPathComponent("document.xml"))
+
+        let archiveURL = root.appendingPathComponent("student-assessment.docx")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
         process.currentDirectoryURL = root

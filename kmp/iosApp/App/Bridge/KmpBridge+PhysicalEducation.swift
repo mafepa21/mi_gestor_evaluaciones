@@ -338,6 +338,7 @@ extension KmpBridge {
         )
     }
 
+    @discardableResult
     func createPhysicalTest(
         classId: Int64,
         code: String,

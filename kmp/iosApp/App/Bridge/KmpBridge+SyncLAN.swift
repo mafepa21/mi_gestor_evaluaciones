@@ -1554,7 +1554,7 @@ extension KmpBridge {
                     )
                 )
                 let targetColId = templateId.hasPrefix("template_") ? String(templateId.dropFirst(9)) : templateId
-                if var detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: targetColId) {
+                if let detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: targetColId) {
                     var items = detail.items.filter { $0.id != id }
                     items.append(item)
                     items.sort { $0.order < $1.order }
@@ -2080,7 +2080,7 @@ extension KmpBridge {
         case "notebook_instrument_template":
             let templateId = (payloadObject["id"] as? String) ?? change.id
             let columnId = templateId.hasPrefix("template_") ? String(templateId.dropFirst(9)) : templateId
-            if var detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId) {
+            if let detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId) {
                 try await container.notebookInstrumentsRepository.saveTemplate(template: detail.template_, items: [])
             }
         case "notebook_instrument_response":

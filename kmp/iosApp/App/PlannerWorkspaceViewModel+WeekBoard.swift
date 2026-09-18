@@ -293,7 +293,7 @@ extension PlannerWorkspaceViewModel {
     func reloadHolidays() async {
         guard let bridge else { return }
         do {
-            let allEvents = (try? await bridge.plannerAllCalendarEvents()) ?? []
+            let allEvents = try await bridge.plannerAllCalendarEvents()
             let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(week), year: Int32(year))
             var holidays: Set<Int> = []
             var milestonesByDay: [Int: [PlannerDayMilestone]] = [:]

@@ -219,7 +219,7 @@ enum EducamosSMTemplateService {
             }
         }
 
-        guard let archive = Archive(url: url, accessMode: .read) else {
+        guard let archive = try? Archive(url: url, accessMode: .read) else {
             throw EducamosSMTemplateError.unreadableFile
         }
 

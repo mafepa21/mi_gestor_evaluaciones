@@ -15,6 +15,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Importación y asociación automática de correos de alumnos desde Excel (.xlsx/.csv)**:
+  - Extracción y parsing inteligente de nombres y apellidos a partir de correos corporativos escolares (soporta patrones `a.nombre.apellido@dominio` y `a.nombre.apellido.2apellido@dominio`).
+  - Mapeo automático de la clase o curso indicado en la Columna B contra las clases dadas de alta en la app con normalización fonética y de tildes.
+  - Nuevo servicio `StudentEmailImportService` que empareja correos contra el alumnado del curso o directorio global mediante token scoring y desempate por apellidos.
+  - Hoja interactiva de previsualización `StudentEmailImportSheet` que desglosa emparejamientos seguros, casos ambiguos y correos sin coincidencia, con selección granular antes de confirmar.
+  - Acciones y selectores de archivo integrados en macOS (`MacStudentsView`) y en iPadOS/iOS (`StudentProfilesWorkspaceView`).
+  - Actualización atómica en la base de datos de los alumnos con emisión de cambios para SyncLAN y refresco instantáneo del directorio e inspector.
+
 - **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
   - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
   - Detección automática en la app de la SA asociada a la columna del cuaderno y los grupos de trabajo vinculados para generar los pares de evaluación.

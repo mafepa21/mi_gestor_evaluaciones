@@ -61,6 +61,8 @@ struct MacStudentsView: View {
     @State private var pendingDeleteRow: KmpBridge.MacStudentRowSnapshot?
     @State private var pendingDeleteMultipleRows: [KmpBridge.MacStudentRowSnapshot]?
     @State private var studentImportPreview: AppleStudentImportPreview?
+    @State private var showingEmailFileImporter = false
+    @State private var studentEmailImportPreview: AppleStudentEmailImportPreview?
     @State private var importErrorMessage: String?
     @FocusState private var isSearchFocused: Bool
 
@@ -234,10 +236,23 @@ struct MacStudentsView: View {
             ) { result in
                 Task { await handleStudentImportFile(result) }
             }
+            .fileImporter(
+                isPresented: $showingEmailFileImporter,
+                allowedContentTypes: [.xlsx, .commaSeparatedText],
+                allowsMultipleSelection: false
+            ) { result in
+                Task { await handleStudentEmailImportFile(result) }
+            }
             .sheet(item: $studentImportPreview) { preview in
                 StudentImportSheet(preview: preview, initialClassId: selectedClassId)
                     .environmentObject(bridge)
                     .frame(minWidth: 720, minHeight: 620)
+                    .onDisappear(perform: reloadRowsAfterStudentImportPreview)
+            }
+            .sheet(item: $studentEmailImportPreview) { preview in
+                StudentEmailImportSheet(preview: preview)
+                    .environmentObject(bridge)
+                    .frame(minWidth: 740, minHeight: 620)
                     .onDisappear(perform: reloadRowsAfterStudentImportPreview)
             }
             .alert("No se pudo importar alumnado", isPresented: Binding(
@@ -730,6 +745,9 @@ struct MacStudentsView: View {
                 },
                 MacPremiumHeaderAction(title: "Importar Excel", systemImage: "square.and.arrow.down") {
                     showingStudentFileImporter = true
+                },
+                MacPremiumHeaderAction(title: "Importar correos", systemImage: "envelope.badge.shield.half.filled") {
+                    showingEmailFileImporter = true
                 },
                 MacPremiumHeaderAction(title: "Recargar", systemImage: "arrow.clockwise") {
                     Task { await reloadRows() }
@@ -1391,6 +1409,17 @@ struct MacStudentsView: View {
             guard let url = try result.get().first else { return }
             let rows = try AppleSpreadsheetReader.readRows(from: url)
             studentImportPreview = try await bridge.previewStudentImport(tsv: rows.tsvText)
+        } catch {
+            importErrorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func handleStudentEmailImportFile(_ result: Result<[URL], Error>) async {
+        do {
+            guard let url = try result.get().first else { return }
+            let rows = try AppleSpreadsheetReader.readRows(from: url)
+            studentEmailImportPreview = try await bridge.previewStudentEmailImport(rows: rows)
         } catch {
             importErrorMessage = error.localizedDescription
         }

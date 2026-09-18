@@ -578,6 +578,77 @@ extension KmpBridge {
         try await refreshDashboard()
     }
 
+    func previewStudentEmailImport(rows: [[String]]) async throws -> AppleStudentEmailImportPreview {
+        await ensureClassesLoaded()
+        let allClasses = self.classes
+        let allStudents = try await container.studentsRepository.listStudents()
+
+        var studentsByClass: [Int64: [Student]] = [:]
+        for c in allClasses {
+            let list = try await container.classesRepository.listStudentsInClass(classId: c.id)
+            studentsByClass[c.id] = list
+        }
+
+        return StudentEmailImportService.buildPreview(
+            rows: rows,
+            classes: allClasses,
+            studentsByClass: studentsByClass,
+            allStudents: allStudents
+        )
+    }
+
+    func confirmStudentEmailImport(matches: [StudentEmailRowMatch]) async throws {
+        let validMatches = matches.compactMap { match -> (student: Student, email: String)? in
+            guard let student = match.matchedStudent else { return nil }
+            return (student, match.rawEmail)
+        }
+        guard !validMatches.isEmpty else {
+            throw NSError(domain: "KmpBridge", code: -70, userInfo: [NSLocalizedDescriptionKey: "No hay correos válidos para vincular."])
+        }
+
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+
+        for item in validMatches {
+            let student = item.student
+            let newEmail = item.email.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            _ = try await container.studentsRepository.saveStudent(
+                id: KotlinLong(value: student.id),
+                firstName: student.firstName,
+                lastName: student.lastName,
+                email: newEmail,
+                photoPath: student.photoPath,
+                isInjured: student.isInjured,
+                sex: student.sex,
+                sexSource: student.sexSource,
+                birthDate: student.birthDate,
+                updatedAtEpochMs: nowMs,
+                deviceId: localDeviceId,
+                syncVersion: student.trace.syncVersion + 1
+            )
+
+            enqueueLocalChange(
+                entity: "student",
+                id: "\(student.id)",
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "id": student.id,
+                    "firstName": student.firstName,
+                    "lastName": student.lastName,
+                    "email": newEmail,
+                    "photoPath": student.photoPath ?? NSNull(),
+                    "isInjured": student.isInjured,
+                    "sex": student.sex.name,
+                    "sexSource": student.sexSource.name,
+                    "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
+                ]
+            )
+        }
+
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+    }
+
     private func normalizedStudentName(firstName: String, lastName: String) -> String {
         normalizedNamePart([firstName, lastName].joined(separator: " "))
     }

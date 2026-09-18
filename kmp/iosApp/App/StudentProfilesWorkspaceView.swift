@@ -51,6 +51,9 @@ struct StudentProfilesWorkspaceView: View {
     @State private var showGroupOverviewSheet = false
     @State private var showWeeklyEmailSheet = false
     @State private var showSexInferenceSheet = false
+    @State private var showingEmailFileImporter = false
+    @State private var studentEmailImportPreview: AppleStudentEmailImportPreview?
+    @State private var emailImportErrorMessage: String?
     @State private var selectedEmailStudent: Student?
     @State private var pendingDeleteStudent: Student?
     @State private var pendingDeleteSupportMeasure: SupportMeasureRow?
@@ -587,10 +590,42 @@ struct StudentProfilesWorkspaceView: View {
                     }
                     .help("Sugerir sexo por nombre")
                 }
+
+                Button {
+                    showingEmailFileImporter = true
+                } label: {
+                    Image(systemName: "envelope.badge.shield.half.filled")
+                }
+                .help("Importar correos corporativos desde Excel")
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .fileImporter(
+            isPresented: $showingEmailFileImporter,
+            allowedContentTypes: [.xlsx, .commaSeparatedText],
+            allowsMultipleSelection: false
+        ) { result in
+            Task { await handleStudentEmailImportFile(result) }
+        }
+        .sheet(item: $studentEmailImportPreview) { preview in
+            StudentEmailImportSheet(preview: preview)
+                .environmentObject(bridge)
+                .onDisappear {
+                    Task {
+                        try? await bridge.refreshStudentsDirectory()
+                        await reloadProfile()
+                    }
+                }
+        }
+        .alert("No se pudo importar correos", isPresented: Binding(
+            get: { emailImportErrorMessage != nil },
+            set: { if !$0 { emailImportErrorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(emailImportErrorMessage ?? "")
+        }
         .sheet(isPresented: $showBulkImportSheet) {
             if let selectedClassId {
                 SupportMeasureBulkImportSheet(
@@ -1424,6 +1459,17 @@ struct StudentProfilesWorkspaceView: View {
         } catch {
             bridge.status = "No se pudo aplicar la sugerencia: \(error.localizedDescription)"
             AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func handleStudentEmailImportFile(_ result: Result<[URL], Error>) async {
+        do {
+            guard let url = try result.get().first else { return }
+            let rows = try AppleSpreadsheetReader.readRows(from: url)
+            studentEmailImportPreview = try await bridge.previewStudentEmailImport(rows: rows)
+        } catch {
+            emailImportErrorMessage = error.localizedDescription
         }
     }
 

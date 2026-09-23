@@ -141,6 +141,8 @@ struct NotebookModuleView: View {
     @AppStorage("notebook.keypad.direction") var keypadDirectionRaw = NotebookKeypadDirection.down.rawValue
     @State var keypadAdvanceTask: Task<Void, Never>? = nil
     @FocusState var focusedCellId: String?
+    @FocusState var notebookGridKeyboardFocused: Bool
+    @State var keyboardCaptureCellId: String? = nil
 
     var formulaAIService: AppleFoundationFormulaService {
         formulaAIServiceStore.service
@@ -1482,8 +1484,8 @@ struct NotebookModuleView: View {
                     #endif
                 }
                 .navigationTitle("Cuaderno")
-                .notebookKeyboardNavigation {
-                    navigateFromFocused(direction: navigationDirection, data: data)
+                .notebookKeyboardNavigation(isActive: $notebookGridKeyboardFocused) { command in
+                    handleNotebookGridKey(command, data: data)
                 }
                 .onAppear {
                     scheduleActiveNotebookTabSync(data: data)

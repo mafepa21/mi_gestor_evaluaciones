@@ -766,6 +766,9 @@ private struct NotebookStatefulEditableTableCell: View {
                 saveFocusedDraftIfNeeded()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .notebookKeyboardEdit)) { note in
+            applyKeyboardEditNotice(note)
+        }
         .appOnChange(of: textDraft) { newText in
             guard focusedCellId.wrappedValue == cellId else { return }
             if originalTextDraft != newText {
@@ -775,6 +778,12 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         .appOnChange(of: numericDraft) { newNumeric in
             guard focusedCellId.wrappedValue == cellId else { return }
+            #if os(macOS)
+            // En el Mac la nota se guarda al confirmar (flecha, Return o salir).
+            // Así Esc puede devolver el valor de antes de escribir.
+            _ = newNumeric
+            return
+            #else
             let trimmed = newNumeric.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty || (!trimmed.hasSuffix(",") && !trimmed.hasSuffix(".") && Double(trimmed.replacingOccurrences(of: ",", with: ".")) != nil) {
                 if originalNumericDraft != trimmed {
@@ -782,6 +791,7 @@ private struct NotebookStatefulEditableTableCell: View {
                     actions.saveColumnGradeDebounced(item.student.id, column, trimmed)
                 }
             }
+            #endif
         }
     }
 
@@ -1120,20 +1130,45 @@ private struct NotebookStatefulEditableTableCell: View {
     #if os(macOS)
     private var numericMacField: some View {
         HStack(spacing: 6) {
-            TextField("", text: $numericDraft)
-                .textFieldStyle(.plain)
-                .multilineTextAlignment(.trailing)
-                .font(NotebookGridStyle.cellFont)
-                .foregroundStyle(gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
-                .focused(focusedCellId, equals: cellId)
-                .onSubmit { saveNumericAndNavigate(navigationDirection) }
-                .onKeyPress(.upArrow) { saveNumericAndNavigate(.up); return .handled }
-                .onKeyPress(.downArrow) { saveNumericAndNavigate(.down); return .handled }
-                .onKeyPress(keys: [.tab]) { press in
-                    saveNumericAndNavigate(press.modifiers.contains(.shift) ? .left : .right)
-                    return .handled
-                }
-                .simultaneousGesture(numericDragGesture)
+            if focusedCellId.wrappedValue == cellId {
+                TextField("", text: $numericDraft)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .font(NotebookGridStyle.cellFont)
+                    .foregroundStyle(gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
+                    .focused(focusedCellId, equals: cellId)
+                    .onAppear {
+                        focusedCellId.wrappedValue = cellId
+                    }
+                    .onKeyPress(.escape) {
+                        cancelNumericEdit()
+                        return .handled
+                    }
+                    .onKeyPress(.return) {
+                        commitNumericAndMove(navigationDirection)
+                        return .handled
+                    }
+                    .onKeyPress(.upArrow) { commitNumericAndMove(.up); return .handled }
+                    .onKeyPress(.downArrow) { commitNumericAndMove(.down); return .handled }
+                    .onKeyPress(.leftArrow) { commitNumericAndMove(.left); return .handled }
+                    .onKeyPress(.rightArrow) { commitNumericAndMove(.right); return .handled }
+                    .onKeyPress(keys: [.tab]) { press in
+                        commitNumericAndMove(press.modifiers.contains(.shift) ? .left : .right)
+                        return .handled
+                    }
+            } else {
+                Text(numericDraft.isEmpty ? "—" : numericDraft)
+                    .font(NotebookGridStyle.cellFont)
+                    .monospacedDigit()
+                    .foregroundStyle(
+                        numericDraft.isEmpty
+                            ? AnyShapeStyle(.tertiary)
+                            : (gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
+                    )
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .simultaneousGesture(numericDragGesture)
+            }
 
             Image(systemName: "arrow.up.and.down")
                 .font(.caption2.weight(.bold))
@@ -1142,7 +1177,28 @@ private struct NotebookStatefulEditableTableCell: View {
                 .accessibilityLabel("Arrastra para ajustar en décimas")
         }
     }
+
+    private func cancelNumericEdit() {
+        numericDraft = originalNumericDraft
+        pendingNumericDraft = nil
+        focusedCellId.wrappedValue = nil
+        onSelect()
+    }
     #endif
+
+    private func commitNumericAndMove(_ direction: NotebookNavigationDirection) {
+        trimIncompleteDecimalDraft()
+        saveNumeric(selectsCell: false, immediate: true)
+        NotebookKeyboardSession.requestMoveWithoutEditing()
+        onNavigate(direction)
+    }
+
+    private func trimIncompleteDecimalDraft() {
+        let trimmed = numericDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count > 1, trimmed.hasSuffix(",") || trimmed.hasSuffix(".") {
+            numericDraft = String(trimmed.dropLast())
+        }
+    }
 
     private var physicalMeasurementButton: some View {
         Button {
@@ -1624,8 +1680,33 @@ private struct NotebookStatefulEditableTableCell: View {
         guard focusedCellId.wrappedValue != cellId,
               activeChoiceCellId != cellId,
               !isNumericKeyboardPresented,
-              !showTextPopover else { return }
+              !showTextPopover,
+              !NotebookKeyboardEditBuffer.isCapturing(cellId) else { return }
         loadDrafts()
+    }
+
+    private func applyKeyboardEditNotice(_ note: Notification) {
+        guard let id = note.userInfo?["cellId"] as? String, id == cellId else { return }
+        guard let command = note.userInfo?["command"] as? String else { return }
+        let text = note.userInfo?["text"] as? String
+        switch command {
+        case "set":
+            numericDraft = text ?? ""
+        case "cancel":
+            numericDraft = originalNumericDraft
+            pendingNumericDraft = nil
+        case "commit":
+            if let text { numericDraft = text }
+            let raw = note.userInfo?["direction"] as? String
+            let direction = raw.flatMap(NotebookNavigationDirection.init(rawValue:)) ?? navigationDirection
+            commitNumericAndMove(direction)
+        case "commitInPlace":
+            if let text { numericDraft = text }
+            trimIncompleteDecimalDraft()
+            saveNumeric(selectsCell: false, immediate: true)
+        default:
+            break
+        }
     }
 
     private func saveNumeric(selectsCell: Bool = true, immediate: Bool = false) {
@@ -1758,6 +1839,9 @@ private struct NotebookStatefulEditableTableCell: View {
 
         switch column.type {
         case .numeric:
+            #if os(macOS)
+            trimIncompleteDecimalDraft()
+            #endif
             if originalNumericDraft != numericDraft {
                 saveNumeric(selectsCell: false, immediate: true)
             }

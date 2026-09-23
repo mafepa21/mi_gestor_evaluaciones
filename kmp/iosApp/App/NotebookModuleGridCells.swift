@@ -658,10 +658,22 @@ extension NotebookModuleView {
                         reloadToken: rowReloadRevisions[item.student.id, default: 0],
                         onSelect: {
                             selectedColumnId = nil
+                            let newCellId = cellFocusId(studentId: item.student.id, columnId: column.id)
+                            #if os(macOS)
+                            if let captureId = keyboardCaptureCellId, captureId != newCellId {
+                                commitKeyboardCaptureInPlace()
+                            }
+                            #endif
                             inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
                             if focusedCellId == nil && activeChoiceCellId == nil && !isInspectorPresented {
                                 focusMode = .normal
                             }
+                            #if os(macOS)
+                            if notebookColumnAcceptsGradeKeyboard(column),
+                               focusedCellId != newCellId {
+                                notebookGridKeyboardFocused = true
+                            }
+                            #endif
                         },
                         onPrepareUndo: { previousValue, previousDisplayLabel in
                             recordCellUndo(

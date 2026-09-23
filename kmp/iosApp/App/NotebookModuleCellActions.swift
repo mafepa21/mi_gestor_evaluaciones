@@ -1,6 +1,87 @@
 import SwiftUI
 import MiGestorKit
 
+@MainActor
+enum NotebookKeyboardSession {
+    private static var moveWithoutEditing = false
+
+    static func requestMoveWithoutEditing() {
+        moveWithoutEditing = true
+    }
+
+    static func consumeMoveWithoutEditing() -> Bool {
+        let value = moveWithoutEditing
+        moveWithoutEditing = false
+        return value
+    }
+}
+
+@MainActor
+enum NotebookKeyboardEditBuffer {
+    private static var capturedCellId: String?
+    private(set) static var text = ""
+
+    static func isCapturing(_ cellId: String) -> Bool {
+        capturedCellId == cellId
+    }
+
+    static func replace(cellId: String, text: String) {
+        capturedCellId = cellId
+        self.text = text
+        post(cellId: cellId, command: "set", text: text, direction: nil)
+    }
+
+    static func append(cellId: String, character: String) {
+        guard capturedCellId == cellId else { return }
+        text += character
+        post(cellId: cellId, command: "set", text: text, direction: nil)
+    }
+
+    static func cancel(cellId: String) {
+        guard capturedCellId == cellId else { return }
+        capturedCellId = nil
+        text = ""
+        post(cellId: cellId, command: "cancel", text: nil, direction: nil)
+    }
+
+    static func commit(cellId: String, direction: NotebookNavigationDirection) {
+        guard capturedCellId == cellId else { return }
+        let committed = text
+        capturedCellId = nil
+        text = ""
+        post(cellId: cellId, command: "commit", text: committed, direction: direction.rawValue)
+    }
+
+    static func commitInPlace(cellId: String) {
+        guard capturedCellId == cellId else { return }
+        let committed = text
+        capturedCellId = nil
+        text = ""
+        post(cellId: cellId, command: "commitInPlace", text: committed, direction: nil)
+    }
+
+    private static func post(cellId: String, command: String, text: String?, direction: String?) {
+        var info: [String: String] = ["cellId": cellId, "command": command]
+        if let text { info["text"] = text }
+        if let direction { info["direction"] = direction }
+        NotificationCenter.default.post(name: .notebookKeyboardEdit, object: nil, userInfo: info)
+    }
+}
+
+extension Notification.Name {
+    static let notebookKeyboardEdit = Notification.Name("notebook.keyboard.edit")
+}
+
+func notebookColumnAcceptsGradeKeyboard(_ column: NotebookColumnDefinition) -> Bool {
+    guard !column.isLocked, column.type == .numeric else { return false }
+    guard !column.inputKind.isStructuredInstrument else { return false }
+    if column.instrumentKind == .physicalTest,
+       column.inputKind == .time || column.inputKind == .distance || column.inputKind == .repetitions {
+        return false
+    }
+    return true
+}
+
 extension NotebookModuleView {
     func cellFocusId(studentId: Int64, columnId: String) -> String {
         "\(studentId)|\(columnId)"
@@ -175,6 +256,113 @@ extension NotebookModuleView {
         )
     }
 
+    func handleNotebookGridKey(_ command: NotebookGridKeyCommand, data: NotebookUiStateData) {
+        #if os(macOS)
+        switch command {
+        case .move(let direction):
+            moveKeyboardSelection(direction: direction, data: data)
+        case .edit:
+            beginKeyboardEdit(data: data)
+        case .cancel:
+            cancelKeyboardCapture()
+        case .type(let text):
+            typeIntoSelectedGrade(text, data: data)
+        }
+        #else
+        navigateFromFocused(direction: navigationDirection, data: data)
+        #endif
+    }
+
+    func moveKeyboardSelection(direction: NotebookNavigationDirection, data: NotebookUiStateData) {
+        if let captureId = keyboardCaptureCellId {
+            NotebookKeyboardEditBuffer.commit(cellId: captureId, direction: direction)
+            keyboardCaptureCellId = nil
+            return
+        }
+        let rows = filteredRows(data: data)
+        let segments = displaySegments(data: data).filter { !isFixedSegment($0) }
+        let columns = navigableColumns(in: segments)
+        guard !rows.isEmpty, !columns.isEmpty else { return }
+
+        guard let selection = inspectorSelection,
+              let column = data.sheet.columns.first(where: { $0.id == selection.columnId }),
+              rows.contains(where: { $0.student.id == selection.studentId }) else {
+            applyKeyboardSelection(studentId: rows[0].student.id, columnId: columns[0].id)
+            return
+        }
+
+        NotebookKeyboardSession.requestMoveWithoutEditing()
+        navigateCell(
+            from: selection.studentId,
+            column: column,
+            direction: direction,
+            rows: rows,
+            segments: segments
+        )
+        notebookGridKeyboardFocused = true
+    }
+
+    func beginKeyboardEdit(data: NotebookUiStateData) {
+        if keyboardCaptureCellId != nil {
+            moveKeyboardSelection(direction: navigationDirection, data: data)
+            return
+        }
+        guard let selection = inspectorSelection,
+              let column = data.sheet.columns.first(where: { $0.id == selection.columnId }),
+              notebookColumnAcceptsGradeKeyboard(column) else { return }
+        let id = cellFocusId(studentId: selection.studentId, columnId: column.id)
+        notebookGridKeyboardFocused = false
+        focusMode = .editing
+        focusedCellId = id
+    }
+
+    func cancelKeyboardCapture() {
+        guard let captureId = keyboardCaptureCellId else { return }
+        NotebookKeyboardEditBuffer.cancel(cellId: captureId)
+        keyboardCaptureCellId = nil
+        notebookGridKeyboardFocused = true
+    }
+
+    func commitKeyboardCaptureInPlace() {
+        guard let captureId = keyboardCaptureCellId else { return }
+        NotebookKeyboardEditBuffer.commitInPlace(cellId: captureId)
+        keyboardCaptureCellId = nil
+    }
+
+    func typeIntoSelectedGrade(_ raw: String, data: NotebookUiStateData) {
+        guard let selection = inspectorSelection,
+              let column = data.sheet.columns.first(where: { $0.id == selection.columnId }),
+              notebookColumnAcceptsGradeKeyboard(column) else { return }
+        let id = cellFocusId(studentId: selection.studentId, columnId: column.id)
+        if keyboardCaptureCellId == id {
+            NotebookKeyboardEditBuffer.append(cellId: id, character: raw)
+            return
+        }
+        let seed = (raw == "," || raw == ".") ? "0\(raw)" : raw
+        keyboardCaptureCellId = id
+        NotebookKeyboardEditBuffer.replace(cellId: id, text: seed)
+        notebookGridKeyboardFocused = true
+    }
+
+    func applyKeyboardSelection(studentId: Int64, columnId: String) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            inspectorSelection = NotebookInspectorSelection(studentId: studentId, columnId: columnId)
+            focusedCellId = nil
+            activeChoiceCellId = nil
+            focusMode = .normal
+        }
+        notebookGridKeyboardFocused = true
+    }
+
+    func navigableColumns(in segments: [NotebookDisplaySegment]) -> [NotebookColumnDefinition] {
+        segments.compactMap { segment in
+            guard case .column(let candidate) = segment else { return nil }
+            return candidate
+        }
+    }
+
     func navigateCell(
         from studentId: Int64,
         column: NotebookColumnDefinition,
@@ -182,10 +370,8 @@ extension NotebookModuleView {
         rows: [NotebookTableRow],
         segments: [NotebookDisplaySegment]
     ) {
-        let navigableColumns = segments.compactMap { segment -> NotebookColumnDefinition? in
-            guard case .column(let candidate) = segment else { return nil }
-            return candidate
-        }
+        let moveWithoutEditing = NotebookKeyboardSession.consumeMoveWithoutEditing()
+        let navigableColumns = navigableColumns(in: segments)
 
         guard !rows.isEmpty,
               !navigableColumns.isEmpty,
@@ -210,6 +396,11 @@ extension NotebookModuleView {
         let nextStudentId = rows[nextRowIndex].student.id
         let nextColumn = navigableColumns[nextColumnIndex]
         let nextCellId = cellFocusId(studentId: nextStudentId, columnId: nextColumn.id)
+
+        if moveWithoutEditing {
+            applyKeyboardSelection(studentId: nextStudentId, columnId: nextColumn.id)
+            return
+        }
 
         withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
             inspectorSelection = NotebookInspectorSelection(studentId: nextStudentId, columnId: nextColumn.id)

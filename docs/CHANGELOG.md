@@ -15,6 +15,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Teclado de hoja de cálculo en el Cuaderno (macOS)**: con una celda de nota seleccionada, las flechas mueven la selección, un número sustituye la nota y la flecha o Return la guarda y baja a la siguiente. Esc devuelve el valor de antes de escribir. Una rúbrica, una fórmula o un visto bueno no se abren al pulsar un número. El teclado táctil del iPad no cambia.
+
 - **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
   - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
   - Detección automática en la app de la SA asociada a la columna del cuaderno y los grupos de trabajo vinculados para generar los pares de evaluación.
@@ -57,6 +59,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Teclado del Cuaderno en macOS, 23 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió la app para recorrer una columna con el teclado.
 - `./scripts/verify_apple_builds.sh`: macOS Native / Catalyst y iOS Simulator compilados con éxito.
 - `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: suites de SQLDelight y contratos KMP completadas con 0 fallos.
 - `npm test` en `entregas-alumnado`: 50/50 pruebas de contrato, esquemas v2 y cifrado superadas.

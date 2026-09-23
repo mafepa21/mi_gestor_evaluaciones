@@ -527,6 +527,7 @@ struct NotebookModuleView: View {
 
         NotebookGridContent(
             rows: rows,
+            hasSourceRows: !data.sheet.rows.isEmpty,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedZoneWidth,
             trailingFixedColumnWidth: renderModel.trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + trailingPaddingCompensation,
@@ -542,10 +543,27 @@ struct NotebookModuleView: View {
             scrollableSegments: renderModel.scrollableSegments
         ) {
             IOSEmptyState(
-                title: "Sin alumnos visibles",
-                subtitle: "Ajusta la búsqueda o el filtro de grupo para ver filas del cuaderno.",
-                systemImage: "person.3.sequence"
+                title: "Sin alumnado",
+                subtitle: "Añade alumnado desde Alumnado para ver el cuaderno.",
+                systemImage: "person.3"
             )
+        } filterEmptyContent: {
+            VStack(spacing: 16) {
+                Text("Ningún alumno coincide con el filtro.")
+                    .font(IOSAppStyle.cardTitle)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+                Text("Ajusta la búsqueda o el filtro de grupo.")
+                    .font(IOSAppStyle.bodyText)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 280)
+                Button("Limpiar") {
+                    clearNotebookRowFilters()
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } seatingContent: { rows in
             NotebookSeatingPlanView(
                 rows: rows,

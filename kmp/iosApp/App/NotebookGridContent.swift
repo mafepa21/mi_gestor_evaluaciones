@@ -3,6 +3,7 @@ import MiGestorKit
 
 struct NotebookGridContent<
     EmptyContent: View,
+    FilterEmptyContent: View,
     SeatingContent: View,
     TopAccessory: View,
     DividerHandle: View,
@@ -10,6 +11,7 @@ struct NotebookGridContent<
     RowContent: View
 >: View {
     let rows: [NotebookTableRow]
+    let hasSourceRows: Bool
     let surfaceMode: NotebookSurfaceMode
     let fixedColumnWidth: CGFloat
     let trailingFixedColumnWidth: CGFloat
@@ -24,6 +26,7 @@ struct NotebookGridContent<
     let trailingFixedSegments: [NotebookDisplaySegment]
     let scrollableSegments: [NotebookDisplaySegment]
     let emptyContent: () -> EmptyContent
+    let filterEmptyContent: () -> FilterEmptyContent
     let seatingContent: ([NotebookTableRow]) -> SeatingContent
     let topAccessory: () -> TopAccessory
     let dividerHandle: () -> DividerHandle
@@ -51,6 +54,7 @@ struct NotebookGridContent<
 
         NotebookGridContainer(
             rows: rows,
+            hasSourceRows: hasSourceRows,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedColumnWidth,
             trailingFixedColumnWidth: trailingFixedColumnWidth,
@@ -63,6 +67,8 @@ struct NotebookGridContent<
             }
         ) {
             emptyContent()
+        } filterEmptyContent: {
+            filterEmptyContent()
         } seatingContent: { rows in
             seatingContent(rows)
         } topAccessory: {

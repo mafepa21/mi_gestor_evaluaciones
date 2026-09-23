@@ -201,15 +201,28 @@ struct NotebookResizableHeader<Content: View>: View {
 }
 
 private struct NotebookResizeCursorModifier: ViewModifier {
+    @State private var didPush = false
+
     func body(content: Content) -> some View {
         #if canImport(AppKit)
-        content.onHover { hovering in
-            if hovering {
-                NSCursor.resizeLeftRight.push()
-            } else {
-                NSCursor.pop()
+        content
+            .onHover { hovering in
+                if hovering {
+                    if !didPush {
+                        NSCursor.resizeLeftRight.push()
+                        didPush = true
+                    }
+                } else if didPush {
+                    NSCursor.pop()
+                    didPush = false
+                }
             }
-        }
+            .onDisappear {
+                if didPush {
+                    NSCursor.pop()
+                    didPush = false
+                }
+            }
         #else
         content
         #endif

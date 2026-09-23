@@ -1119,28 +1119,19 @@ private struct NotebookStatefulEditableTableCell: View {
 
     #if os(macOS)
     private var numericMacField: some View {
-        HStack(spacing: 6) {
-            TextField("", text: $numericDraft)
-                .textFieldStyle(.plain)
-                .multilineTextAlignment(.trailing)
-                .font(NotebookGridStyle.cellFont)
-                .foregroundStyle(gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
-                .focused(focusedCellId, equals: cellId)
-                .onSubmit { saveNumericAndNavigate(navigationDirection) }
-                .onKeyPress(.upArrow) { saveNumericAndNavigate(.up); return .handled }
-                .onKeyPress(.downArrow) { saveNumericAndNavigate(.down); return .handled }
-                .onKeyPress(keys: [.tab]) { press in
-                    saveNumericAndNavigate(press.modifiers.contains(.shift) ? .left : .right)
-                    return .handled
-                }
-                .simultaneousGesture(numericDragGesture)
-
-            Image(systemName: "arrow.up.and.down")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
-                .help("Arrastra para ajustar en décimas")
-                .accessibilityLabel("Arrastra para ajustar en décimas")
-        }
+        TextField("", text: $numericDraft)
+            .textFieldStyle(.plain)
+            .multilineTextAlignment(.trailing)
+            .font(NotebookGridStyle.cellFont)
+            .foregroundStyle(gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
+            .focused(focusedCellId, equals: cellId)
+            .onSubmit { saveNumericAndNavigate(navigationDirection) }
+            .onKeyPress(.upArrow) { saveNumericAndNavigate(.up); return .handled }
+            .onKeyPress(.downArrow) { saveNumericAndNavigate(.down); return .handled }
+            .onKeyPress(keys: [.tab]) { press in
+                saveNumericAndNavigate(press.modifiers.contains(.shift) ? .left : .right)
+                return .handled
+            }
     }
     #endif
 
@@ -1171,7 +1162,9 @@ private struct NotebookStatefulEditableTableCell: View {
             .frame(maxWidth: .infinity, minHeight: 30)
         }
         .buttonStyle(.plain)
+        #if !os(macOS)
         .simultaneousGesture(numericDragGesture)
+        #endif
         .popover(isPresented: $isNumericKeyboardPresented, arrowEdge: .bottom) {
             cellKeyboardPopover
         }

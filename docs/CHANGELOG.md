@@ -57,12 +57,19 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./scripts/verify_apple_builds.sh` (Fase 1 Cuaderno, worktree `fix-cuaderno-fase1-bugs`): macOS Native / Catalyst y iOS Simulator compilados con éxito. Sin QA visual en dispositivo.
 - `./scripts/verify_apple_builds.sh`: macOS Native / Catalyst y iOS Simulator compilados con éxito.
 - `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: suites de SQLDelight y contratos KMP completadas con 0 fallos.
 - `npm test` en `entregas-alumnado`: 50/50 pruebas de contrato, esquemas v2 y cifrado superadas.
 - Suite de interoperabilidad criptográfica `interop_entregas_web`: 75/75 pruebas superadas (0 fallidas).
 
 ### Fixed
+
+- **Fase 1 del Cuaderno: filtro vacío, hover de Mac, cursor de resize y drag numérico**:
+  - Una búsqueda o filtro de grupo sin resultados conserva cabeceras y muestra «Limpiar». Una clase sin alumnado sigue con empty a pantalla completa.
+  - El hover de fila en Mac vive en cada fila, no en el contenedor de los 3 paneles.
+  - El cursor de resize hace `pop` al salir o al desaparecer la vista.
+  - En Mac, arrastrar en una nota numérica ya no cambia el valor; el gesto de décimas queda solo en iOS.
 
 - **Corrección de persistencia y sincronización al modificar grupos de trabajo en tablero y lista (PR #240)**:
   - **Cola de asignaciones pendientes en `WorkGroupBoardDraft`**: Incorporada la cola `pendingAssignments` para registrar qué alumnos se mueven a grupos temporales (recién creados o auto-agrupados con `id < 0`), despachándolos de forma automática al bridge KMP en el momento en que `remapTemporaryIds` descubre su ID persistido en base de datos.

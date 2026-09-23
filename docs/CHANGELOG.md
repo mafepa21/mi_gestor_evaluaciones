@@ -13,6 +13,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Changed
+
+- **Cuaderno, pintar sin preguntar al puente en cada celda**: la nota, el texto, la casilla, la rúbrica y el sello se leen de `persistedCells` y `persistedGrades` de la fila. La fórmula usa esas notas ya cargadas. El puente sigue solo para guardar y para el borrador que aún no ha vuelto del cuaderno.
+
 ### Added
 
 - **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:

@@ -23,6 +23,7 @@ Estado: casi cerrada.
 Prioridad: alta.
 
 - Cuaderno: carga rapida, grid estable, columnas ocultas seguras, medias explicables y categorias claras.
+  Avance: pintar el grid lee la nota de la fila ya cargada (`persistedCells` / `persistedGrades`) y no llama a `cellText`, `numericGradeText` ni `cellAnnotation` por celda. El puente queda para guardar.
   Avance: el grid SwiftUI reduce coste de scroll y actualizacion con filas lazy, fingerprints precomputados por panel y celdas desacopladas del bridge global mediante snapshots/actions.
   Avance P0: la carga de Situaciones de aprendizaje del Cuaderno usa una lectura bulk de enlaces de grupo y evita una consulta por situación.
   Avance: Media explicable con desglose de columnas incluidas, pendientes, exclusiones y aportaciones ponderadas ya integrada en KMP y SwiftUI.

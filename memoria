@@ -1617,6 +1617,19 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-09-23 - El grid pinta la nota desde la fila, no desde el puente
+
+Resumen:
+- Qué cambio se hizo: al pintar una celda, la nota, el texto, la casilla, la rúbrica y el sello salen de `persistedCells` y `persistedGrades`. La fórmula usa esas notas de la misma fila. El borrador optimista del puente se consulta solo si hay uno en vuelo.
+- Por qué importa: una clase de 35 por 25 ya no llama a `cellText`, `numericGradeText` ni `cellAnnotation` en cada celda visible.
+- Dónde vive el cambio: `kmp/iosApp/App/NotebookModuleDisplayFormatting.swift`, `kmp/iosApp/App/NotebookModuleGridCells.swift`.
+- Validación realizada: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator (COMPILADO CORRECTAMENTE). No se abrió la app ni se midió con Instruments.
+
+Notas para futuras conversaciones:
+- No volver a pintar el grid con `numericGradeText` / `cellText` / `cellAnnotation`. Esos métodos reconstruyen un índice de toda la clase.
+- El borrador optimista (`optimisticGradeDrafts`, `optimisticTextDrafts`, `optimisticAnnotations`) sigue haciendo falta en la ventana de ~150 ms antes de que el cuaderno emita la fila nueva. La clave es `alumno|columna`.
+- La ventana de filas (Fase 2.3) no se ha hecho: faltaba medir con Instruments si el grid materializa todas las filas.
+
 ### 2026-09-16 - El tablero de grupos ya no se deshace y muestra todas las columnas
 
 Resumen:

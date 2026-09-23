@@ -44,20 +44,11 @@ enum NotebookKeyboardEditBuffer {
         post(cellId: cellId, command: "cancel", text: nil, direction: nil)
     }
 
-    static func commit(cellId: String, direction: NotebookNavigationDirection) {
+    static func finish(cellId: String, text committed: String) {
         guard capturedCellId == cellId else { return }
-        let committed = text
         capturedCellId = nil
         text = ""
-        post(cellId: cellId, command: "commit", text: committed, direction: direction.rawValue)
-    }
-
-    static func commitInPlace(cellId: String) {
-        guard capturedCellId == cellId else { return }
-        let committed = text
-        capturedCellId = nil
-        text = ""
-        post(cellId: cellId, command: "commitInPlace", text: committed, direction: nil)
+        post(cellId: cellId, command: "sync", text: committed, direction: nil)
     }
 
     private static func post(cellId: String, command: String, text: String?, direction: String?) {
@@ -274,9 +265,8 @@ extension NotebookModuleView {
     }
 
     func moveKeyboardSelection(direction: NotebookNavigationDirection, data: NotebookUiStateData) {
-        if let captureId = keyboardCaptureCellId {
-            NotebookKeyboardEditBuffer.commit(cellId: captureId, direction: direction)
-            keyboardCaptureCellId = nil
+        if keyboardCaptureCellId != nil {
+            commitCapturedGrade(direction: direction, data: data)
             return
         }
         let rows = filteredRows(data: data)
@@ -323,10 +313,56 @@ extension NotebookModuleView {
         notebookGridKeyboardFocused = true
     }
 
-    func commitKeyboardCaptureInPlace() {
+    func commitCapturedGrade(direction: NotebookNavigationDirection?, data: NotebookUiStateData) {
         guard let captureId = keyboardCaptureCellId else { return }
-        NotebookKeyboardEditBuffer.commitInPlace(cellId: captureId)
+        let parts = captureId.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2,
+              let studentId = Int64(parts[0]),
+              let column = data.sheet.columns.first(where: { $0.id == parts[1] }),
+              let item = filteredRows(data: data).first(where: { $0.student.id == studentId }) else {
+            NotebookKeyboardEditBuffer.cancel(cellId: captureId)
+            keyboardCaptureCellId = nil
+            return
+        }
+
+        var text = NotebookKeyboardEditBuffer.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.count > 1, text.hasSuffix(",") || text.hasSuffix(".") {
+            text.removeLast()
+        }
+        let previous = displayValue(for: item, column: column)
+        NotebookKeyboardEditBuffer.finish(cellId: captureId, text: text)
         keyboardCaptureCellId = nil
+
+        if previous != text {
+            recordCellUndo(
+                studentId: studentId,
+                column: column,
+                previousValue: previous,
+                previousDisplayLabel: previous
+            )
+            bridge.saveColumnGrade(studentId: studentId, column: column, value: text)
+            reloadNotebookRow(studentId)
+        }
+
+        if let direction {
+            NotebookKeyboardSession.requestMoveWithoutEditing()
+            navigateCell(
+                from: studentId,
+                column: column,
+                direction: direction,
+                rows: filteredRows(data: data),
+                segments: displaySegments(data: data).filter { !isFixedSegment($0) }
+            )
+        }
+        notebookGridKeyboardFocused = true
+    }
+
+    func commitKeyboardCaptureInPlace() {
+        guard let data = bridge.notebookState as? NotebookUiStateData else {
+            cancelKeyboardCapture()
+            return
+        }
+        commitCapturedGrade(direction: nil, data: data)
     }
 
     func typeIntoSelectedGrade(_ raw: String, data: NotebookUiStateData) {

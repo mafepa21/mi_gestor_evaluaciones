@@ -746,6 +746,9 @@ private struct NotebookStatefulEditableTableCell: View {
         .onTapGesture(perform: onSelect)
         .onAppear {
             loadDrafts()
+            if NotebookKeyboardEditBuffer.isCapturing(cellId) {
+                numericDraft = NotebookKeyboardEditBuffer.text
+            }
             refreshPhysicalScore()
         }
         .onDisappear {
@@ -1695,15 +1698,12 @@ private struct NotebookStatefulEditableTableCell: View {
         case "cancel":
             numericDraft = originalNumericDraft
             pendingNumericDraft = nil
-        case "commit":
-            if let text { numericDraft = text }
-            let raw = note.userInfo?["direction"] as? String
-            let direction = raw.flatMap(NotebookNavigationDirection.init(rawValue:)) ?? navigationDirection
-            commitNumericAndMove(direction)
-        case "commitInPlace":
-            if let text { numericDraft = text }
-            trimIncompleteDecimalDraft()
-            saveNumeric(selectsCell: false, immediate: true)
+        case "sync":
+            if let text {
+                numericDraft = text
+                originalNumericDraft = text
+                pendingNumericDraft = text
+            }
         default:
             break
         }
@@ -1831,7 +1831,8 @@ private struct NotebookStatefulEditableTableCell: View {
         guard hasLoadedDrafts,
               activeChoiceCellId != cellId,
               !isNumericKeyboardPresented,
-              !showTextPopover
+              !showTextPopover,
+              !NotebookKeyboardEditBuffer.isCapturing(cellId)
         else { return }
         if requireFocusReleased && focusedCellId.wrappedValue == cellId {
             return

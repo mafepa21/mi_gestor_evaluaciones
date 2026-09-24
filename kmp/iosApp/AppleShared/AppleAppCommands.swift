@@ -6,6 +6,18 @@ enum AppleAppCommandDestination: String {
     case planner
 }
 
+@MainActor
+final class NotebookEditMenuState: ObservableObject {
+    static let shared = NotebookEditMenuState()
+
+    @Published var undoTitle = "Deshacer"
+    @Published var redoTitle = "Rehacer"
+    @Published var canUndo = false
+    @Published var canRedo = false
+
+    private init() {}
+}
+
 enum AppleAppCommand {
     static func post(_ name: Notification.Name, object: Any? = nil) {
         NotificationCenter.default.post(name: name, object: object)
@@ -13,7 +25,23 @@ enum AppleAppCommand {
 }
 
 struct AppleAppCommands: Commands {
+    @ObservedObject private var notebookEditMenu = NotebookEditMenuState.shared
+
     var body: some Commands {
+        CommandGroup(replacing: .undoRedo) {
+            Button(notebookEditMenu.undoTitle) {
+                AppleAppCommand.post(.appleAppNotebookUndoRequested)
+            }
+            .keyboardShortcut("z", modifiers: .command)
+            .disabled(!notebookEditMenu.canUndo)
+
+            Button(notebookEditMenu.redoTitle) {
+                AppleAppCommand.post(.appleAppNotebookRedoRequested)
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .disabled(!notebookEditMenu.canRedo)
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("Añadir columna") {
                 AppleAppCommand.post(.appleAppAddNotebookColumnRequested)
@@ -105,6 +133,8 @@ struct AppleAppCommands: Commands {
 }
 
 extension Notification.Name {
+    static let appleAppNotebookUndoRequested = Notification.Name("appleAppNotebookUndoRequested")
+    static let appleAppNotebookRedoRequested = Notification.Name("appleAppNotebookRedoRequested")
     static let appleAppAddNotebookColumnRequested = Notification.Name("appleAppAddNotebookColumnRequested")
     static let appleAppSearchRequested = Notification.Name("appleAppSearchRequested")
     static let appleAppSaveOrSyncRequested = Notification.Name("appleAppSaveOrSyncRequested")

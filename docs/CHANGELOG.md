@@ -19,6 +19,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - **Rango, relleno y pegado en el Cuaderno**: Mayús+clic alarga la selección en la misma columna. Rellenar copia el valor solo en ese rango. Pegar varias líneas desde Numbers llena esas celdas y un solo Deshacer vuelve atrás todo el lote.
 
+- **Menús del Cuaderno con los mismos textos**: la vista se llama Rejilla en el iPad y en el Mac. El filtro vacío dice Grupo completo y Sin filtrar en todos los sitios. El menú Edición puede decir Deshacer nota de… y Rehacer nota de…
+
 - **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
   - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
   - Detección automática en la app de la SA asociada a la columna del cuaderno y los grupos de trabajo vinculados para generar los pares de evaluación.
@@ -61,6 +63,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Menús y Deshacer del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió el menú Edición en la app.
 - Rango y pegado del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se pegó una hoja de Numbers en la app.
 - Teclado del Cuaderno en macOS, 23 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió la app para recorrer una columna con el teclado.
 - `./scripts/verify_apple_builds.sh`: macOS Native / Catalyst y iOS Simulator compilados con éxito.

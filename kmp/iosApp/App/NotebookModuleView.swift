@@ -98,6 +98,7 @@ struct NotebookModuleView: View {
     @State var isFillColumnDialogPresented = false
     @State var pendingCopyTabStructureSource: NotebookTab? = nil
     @State var undoStack: [NotebookCellUndoEntry] = []
+    @State var redoStack: [NotebookCellUndoEntry] = []
     @State var selectedCellRange: NotebookCellRange? = nil
     @State var structuralGridRevision = 0
     @State var rowReloadRevisions: [Int64: Int] = [:]
@@ -254,7 +255,9 @@ struct NotebookModuleView: View {
         searchText = ""
 
         undoStack = []
+        redoStack = []
         selectedCellRange = nil
+        refreshNotebookEditMenu()
         todayAttendanceByStudentId = [:]
         incidentCountByStudentId = [:]
         localInjuryStatuses = [:]
@@ -759,7 +762,7 @@ struct NotebookModuleView: View {
             Button {
                 surfaceMode = .grid
             } label: {
-                Label("Grid", systemImage: surfaceMode == .grid ? "checkmark" : "tablecells")
+                Label(NotebookSurfaceMode.grid.title, systemImage: surfaceMode == .grid ? "checkmark" : "tablecells")
             }
 
             Button {
@@ -884,7 +887,7 @@ struct NotebookModuleView: View {
 
             if !groups.isEmpty {
                 Menu {
-                    Button("Todos los alumnos") {
+                    Button(NotebookMenuCopy.allStudents) {
                         selectedGroupId = nil
                     }
                     ForEach(groups, id: \.id) { group in
@@ -904,7 +907,7 @@ struct NotebookModuleView: View {
 
             if !classSituations.isEmpty {
                 Menu {
-                    Button("Sin filtrar") {
+                    Button(NotebookMenuCopy.clearSituationFilter) {
                         groupByWorkGroupMode = "none"
                     }
                     ForEach(classSituations, id: \.id) { situation in
@@ -1501,6 +1504,12 @@ struct NotebookModuleView: View {
                 .notebookKeyboardNavigation(isActive: $notebookGridKeyboardFocused) { command in
                     handleNotebookGridKey(command, data: data)
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .appleAppNotebookUndoRequested)) { _ in
+                    undoLastCellChange()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .appleAppNotebookRedoRequested)) { _ in
+                    redoLastCellChange()
+                }
                 .onAppear {
                     scheduleActiveNotebookTabSync(data: data)
                     scheduleToolbarStateSync(data: data)
@@ -1645,7 +1654,7 @@ struct NotebookModuleView: View {
                                     Menu {
                                         if !groups.isEmpty {
                                             Menu {
-                                                Button("Grupo completo") {
+                                                Button(NotebookMenuCopy.allStudents) {
                                                     selectedGroupId = nil
                                                 }
                                                 ForEach(groups, id: \.id) { gp in
@@ -1667,7 +1676,7 @@ struct NotebookModuleView: View {
 
                                         if !classSituations.isEmpty {
                                             Menu {
-                                                Button("Sin filtrar (Ver todas)") {
+                                                Button(NotebookMenuCopy.clearSituationFilter) {
                                                     groupByWorkGroupMode = "none"
                                                 }
                                                 ForEach(classSituations, id: \.id) { situation in
@@ -1793,7 +1802,7 @@ struct NotebookModuleView: View {
                                     selectedGroupId = nil
                                 } label: {
                                     HStack {
-                                        Text("Grupo completo")
+                                        Text(NotebookMenuCopy.allStudents)
                                         if selectedGroupId == nil {
                                             Image(systemName: "checkmark")
                                         }
@@ -1820,7 +1829,7 @@ struct NotebookModuleView: View {
                                     groupByWorkGroupMode = "none"
                                 } label: {
                                     HStack {
-                                        Text("Sin filtrar (Ver todas)")
+                                        Text(NotebookMenuCopy.clearSituationFilter)
                                         if groupByWorkGroupMode == "none" {
                                             Image(systemName: "checkmark")
                                         }

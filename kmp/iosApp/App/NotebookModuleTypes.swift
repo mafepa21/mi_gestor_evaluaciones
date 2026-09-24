@@ -205,6 +205,11 @@ enum NotebookSurfaceMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum NotebookMenuCopy {
+    static let allStudents = "Grupo completo"
+    static let clearSituationFilter = "Sin filtrar"
+}
+
 struct NotebookSeatPosition: Codable {
     var x: Double
     var y: Double

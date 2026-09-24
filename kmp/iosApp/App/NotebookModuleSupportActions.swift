@@ -219,21 +219,45 @@ extension NotebookModuleView {
     func recordCellUndoBatch(_ changes: [NotebookCellUndoChange]) {
         guard !changes.isEmpty else { return }
         undoStack.append(NotebookCellUndoEntry(changes: changes))
+        redoStack.removeAll()
         if undoStack.count > 10 {
             undoStack.removeFirst(undoStack.count - 10)
         }
+        refreshNotebookEditMenu()
     }
 
     func undoLastCellChange() {
-        guard let entry = undoStack.popLast() else {
-            showToast("No hay cambios que deshacer", style: .warning)
+        restoreNotebookHistory(from: &undoStack, into: &redoStack, emptyMessage: "No hay cambios que deshacer", doneWord: "Deshecho")
+    }
+
+    func redoLastCellChange() {
+        restoreNotebookHistory(from: &redoStack, into: &undoStack, emptyMessage: "No hay cambios que rehacer", doneWord: "Rehecho")
+    }
+
+    func restoreNotebookHistory(
+        from source: inout [NotebookCellUndoEntry],
+        into destination: inout [NotebookCellUndoEntry],
+        emptyMessage: String,
+        doneWord: String
+    ) {
+        guard let entry = source.popLast() else {
+            showToast(emptyMessage, style: .warning)
+            refreshNotebookEditMenu()
             return
         }
-        for change in entry.changes {
+        let inverse = entry.changes.map { change -> NotebookCellUndoChange in
+            let current = notebookHistoryDisplayValue(for: change)
             bridge.flushPendingColumnGradeSave(studentId: change.studentId, columnId: change.column.id)
             bridge.saveColumnGrade(studentId: change.studentId, column: change.column, value: change.previousValue)
             reloadNotebookRow(change.studentId)
+            return NotebookCellUndoChange(
+                studentId: change.studentId,
+                column: change.column,
+                previousValue: current,
+                previousDisplayLabel: nil
+            )
         }
+        destination.append(NotebookCellUndoEntry(changes: inverse))
         AppleInteractionFeedback.play(.success)
         if let first = entry.changes.first {
             withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
@@ -243,11 +267,56 @@ extension NotebookModuleView {
             }
         }
         if entry.changes.count > 1 {
-            showToast("Deshecho el lote (\(entry.changes.count) celdas)")
+            showToast("\(doneWord) el lote (\(entry.changes.count) celdas)")
         } else if let only = entry.changes.first {
             let label = only.previousDisplayLabel ?? only.previousValue
-            showToast(label.isEmpty ? "Cambio deshecho" : "Cambio deshecho: \(label)")
+            showToast(label.isEmpty ? "\(doneWord)" : "\(doneWord): \(label)")
         }
+        refreshNotebookEditMenu()
+    }
+
+    func notebookHistoryDisplayValue(for change: NotebookCellUndoChange) -> String {
+        guard let data = bridge.notebookState as? NotebookUiStateData,
+              let row = filteredRows(data: data).first(where: { $0.student.id == change.studentId }) else {
+            return ""
+        }
+        return displayValue(for: row, column: change.column)
+    }
+
+    func refreshNotebookEditMenu() {
+        let menu = NotebookEditMenuState.shared
+        if let entry = undoStack.last {
+            menu.undoTitle = notebookHistoryMenuTitle(prefix: "Deshacer", entry: entry)
+            menu.canUndo = true
+        } else {
+            menu.undoTitle = "Deshacer"
+            menu.canUndo = false
+        }
+        if let entry = redoStack.last {
+            menu.redoTitle = notebookHistoryMenuTitle(prefix: "Rehacer", entry: entry)
+            menu.canRedo = true
+        } else {
+            menu.redoTitle = "Rehacer"
+            menu.canRedo = false
+        }
+    }
+
+    func notebookHistoryMenuTitle(prefix: String, entry: NotebookCellUndoEntry) -> String {
+        if entry.changes.count > 1 {
+            return "\(prefix) \(entry.changes.count) notas"
+        }
+        guard let change = entry.changes.first else { return prefix }
+        let name = notebookStudentFirstName(change.studentId)
+        return name.isEmpty ? "\(prefix) nota" : "\(prefix) nota de \(name)"
+    }
+
+    func notebookStudentFirstName(_ studentId: Int64) -> String {
+        guard let data = bridge.notebookState as? NotebookUiStateData,
+              let student = data.sheet.rows.first(where: { $0.student.id == studentId })?.student else {
+            return ""
+        }
+        let name = student.firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? student.fullName : name
     }
 
     func createFollowUp(for student: Student) async {

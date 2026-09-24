@@ -3,6 +3,7 @@ import SwiftUI
 struct NotebookGridContainer<
     Row: Identifiable,
     EmptyContent: View,
+    FilterEmptyContent: View,
     SeatingContent: View,
     TopAccessory: View,
     DividerHandle: View,
@@ -14,6 +15,7 @@ struct NotebookGridContainer<
     ScrollRow: View
 >: View {
     let rows: [Row]
+    let hasSourceRows: Bool
     let surfaceMode: NotebookSurfaceMode
     let fixedColumnWidth: CGFloat
     let trailingFixedColumnWidth: CGFloat
@@ -22,6 +24,7 @@ struct NotebookGridContainer<
     let headerHeight: CGFloat
     let rowHeight: CGFloat
     let emptyContent: () -> EmptyContent
+    let filterEmptyContent: () -> FilterEmptyContent
     let seatingContent: ([Row]) -> SeatingContent
     let topAccessory: () -> TopAccessory
     let dividerHandle: () -> DividerHandle
@@ -37,6 +40,7 @@ struct NotebookGridContainer<
 
     init(
         rows: [Row],
+        hasSourceRows: Bool,
         surfaceMode: NotebookSurfaceMode,
         fixedColumnWidth: CGFloat,
         trailingFixedColumnWidth: CGFloat,
@@ -47,6 +51,7 @@ struct NotebookGridContainer<
         groupHeaderHeight: CGFloat = 34,
         groupHeaderInfo: ((Row) -> (isFirst: Bool, groupName: String, count: Int))? = nil,
         @ViewBuilder emptyContent: @escaping () -> EmptyContent,
+        @ViewBuilder filterEmptyContent: @escaping () -> FilterEmptyContent,
         @ViewBuilder seatingContent: @escaping ([Row]) -> SeatingContent,
         @ViewBuilder topAccessory: @escaping () -> TopAccessory,
         @ViewBuilder dividerHandle: @escaping () -> DividerHandle,
@@ -58,6 +63,7 @@ struct NotebookGridContainer<
         @ViewBuilder scrollRow: @escaping (Int, Row) -> ScrollRow
     ) {
         self.rows = rows
+        self.hasSourceRows = hasSourceRows
         self.surfaceMode = surfaceMode
         self.fixedColumnWidth = fixedColumnWidth
         self.trailingFixedColumnWidth = trailingFixedColumnWidth
@@ -68,6 +74,7 @@ struct NotebookGridContainer<
         self.groupHeaderHeight = groupHeaderHeight
         self.groupHeaderInfo = groupHeaderInfo
         self.emptyContent = emptyContent
+        self.filterEmptyContent = filterEmptyContent
         self.seatingContent = seatingContent
         self.topAccessory = topAccessory
         self.dividerHandle = dividerHandle
@@ -79,11 +86,11 @@ struct NotebookGridContainer<
         self.scrollRow = scrollRow
     }
 
-    @State private var hoveredRowId: Row.ID? = nil
-
     var body: some View {
-        if rows.isEmpty {
+        if !hasSourceRows {
             emptyContent()
+        } else if rows.isEmpty && surfaceMode == .seatingPlan {
+            filterEmptyContent()
         } else if surfaceMode == .seatingPlan {
             seatingContent(rows)
         } else {
@@ -114,6 +121,16 @@ struct NotebookGridContainer<
             } scrollRows: {
                 rowStack(rows: rows, pane: .scroll, rowContent: scrollRow)
             }
+            .overlay {
+                if rows.isEmpty {
+                    VStack(spacing: 0) {
+                        Color.clear
+                            .frame(height: topAccessoryHeight + headerHeight)
+                            .allowsHitTesting(false)
+                        filterEmptyContent()
+                    }
+                }
+            }
         }
     }
 
@@ -132,7 +149,6 @@ struct NotebookGridContainer<
 
         return LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(rows) { item in
-                let isHovered = hoveredRowId == item.id
                 let header = groupHeaderInfo?(item)
                 let showHeader = header?.isFirst ?? false
 
@@ -141,25 +157,9 @@ struct NotebookGridContainer<
                         groupHeaderView(for: header, pane: pane)
                     }
 
-                    rowContent(rowIndexesById[item.id] ?? 0, item)
-                        .frame(height: rowHeight)
-                        .background(isHovered ? hoverColor : Color.clear)
-                        .contentShape(Rectangle())
-                        #if os(macOS)
-                        .onHover { hovering in
-                            // Sin animación: coincide con el comportamiento nativo de
-                            // NSTableView, que no anima su hover.
-                            hoveredRowId = hovering ? item.id : nil
-                        }
-                        #endif
-                        .overlay(
-                            VStack {
-                                Spacer()
-                                Rectangle()
-                                    .fill(NotebookGridStyle.gridLine)
-                                    .frame(height: 0.5)
-                            }
-                        )
+                    NotebookGridHoverRow(rowHeight: rowHeight) {
+                        rowContent(rowIndexesById[item.id] ?? 0, item)
+                    }
                 }
             }
         }
@@ -241,6 +241,40 @@ struct NotebookGridContainer<
                 }
             )
         }
+    }
+}
+
+private struct NotebookGridHoverRow<Content: View>: View {
+    let rowHeight: CGFloat
+    let content: Content
+
+    @State private var isHovered = false
+
+    init(rowHeight: CGFloat, @ViewBuilder content: () -> Content) {
+        self.rowHeight = rowHeight
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(height: rowHeight)
+            .background(isHovered ? hoverColor : Color.clear)
+            .contentShape(Rectangle())
+            #if os(macOS)
+            .onHover { hovering in
+                // Sin animación: coincide con el comportamiento nativo de
+                // NSTableView, que no anima su hover.
+                isHovered = hovering
+            }
+            #endif
+            .overlay(
+                VStack {
+                    Spacer()
+                    Rectangle()
+                        .fill(NotebookGridStyle.gridLine)
+                        .frame(height: 0.5)
+                }
+            )
     }
 
     private var hoverColor: Color {

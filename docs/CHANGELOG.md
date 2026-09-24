@@ -15,6 +15,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Cuaderno, solo se dibujan las filas de la pantalla**: al bajar por la tabla, nombres, notas y media siguen alineados, pero solo existen las filas visibles y un margen. El resumen de cada fila se calcula cuando esa fila se dibuja, no para toda la clase de golpe.
+
 - **Cuaderno, pintar sin preguntar al puente en cada celda**: la nota, el texto, la casilla, la rúbrica y el sello se leen de `persistedCells` y `persistedGrades` de la fila. La fórmula usa esas notas ya cargadas. El puente sigue solo para guardar y para el borrador que aún no ha vuelto del cuaderno.
 
 ### Added
@@ -71,6 +73,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Cuaderno, filas visibles al desplazar, 24 sep 2026: `xcodebuild` del esquema `MiGestorKMPMac` (macOS) y del esquema `MiGestorKMPiOS` (simulador iOS) terminó en BUILD SUCCEEDED. `./scripts/verify_apple_builds.sh` falló antes por disco lleno, no por el código. No se abrió la app, así que no se comprobó a ojo si las tres zonas siguen alineadas al bajar.
 - Menos color en el Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se miró la tabla en la app.
 - Menús y Deshacer del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió el menú Edición en la app.
 - Rango y pegado del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se pegó una hoja de Numbers en la app.

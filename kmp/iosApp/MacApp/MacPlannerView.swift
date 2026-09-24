@@ -65,7 +65,8 @@ struct MacPlannerView: View {
             PlannerToolbar(
                 vm: vm,
                 onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
-                showsNavigationControls: false
+                showsNavigationControls: false,
+                onShowCalendarMilestones: { showingCalendarMilestones = true }
             )
 
             if let transientMessage, !transientMessage.isEmpty {
@@ -76,9 +77,12 @@ struct MacPlannerView: View {
             }
 
             plannerCenterContent
+                .id(vm.activeSection)
+                .transition(uiFeatureFlags.contentSwitchTransition)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .background(MacAppStyle.pageBackground)
+        .animation(uiFeatureFlags.interactionAnimation, value: vm.activeSection)
         .animation(uiFeatureFlags.interactionAnimation, value: transientMessage)
         .appOnChange(of: cascadeCoordinator.transientMessage) { newValue in
             guard let newValue else { return }

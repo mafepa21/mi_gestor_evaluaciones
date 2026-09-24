@@ -44,7 +44,6 @@ struct PlannerWeekMiniatureLayout: View {
         HStack(alignment: .top, spacing: 16) {
             ScrollView(.vertical) {
                 grid
-                    .frame(height: gridHeight)
                     .padding(16)
             }
             .plannerGlassPanel(.content, cornerRadius: 24)
@@ -87,7 +86,6 @@ struct PlannerWeekMiniatureLayout: View {
         ScrollView(.vertical) {
             VStack(spacing: 16) {
                 grid
-                    .frame(height: gridHeight)
                     .padding(16)
                     .plannerGlassPanel(.content, cornerRadius: 24)
                     .padding(.horizontal, EvaluationDesign.screenPadding)
@@ -134,6 +132,7 @@ struct PlannerWeekMiniatureLayout: View {
                     onOpenDiary: onOpenDiary,
                     onDropSession: onDropSession
                 )
+                .frame(height: gridHeight)
             }
         }
     }
@@ -180,13 +179,16 @@ struct PlannerWeekMiniatureLayout: View {
         )
     }
 
+    /// Misma altura que `headerHeight` de `PlannerWeekMiniatureGrid`.
+    private let gridHeaderHeight: CGFloat = 46
+
     private var gridHeight: CGFloat {
         guard !vm.effectiveScheduleSlots.isEmpty else { return 280 }
         let slotsCount = weekBoard.weekRenderModel.visibleSlots.count
-        guard slotsCount > 0 else { return 40 }
+        guard slotsCount > 0 else { return gridHeaderHeight }
         let rowHeight: CGFloat = vm.density == .compact ? 44 : 56
         let spacing: CGFloat = 4
-        return 40 + CGFloat(slotsCount) * (rowHeight + spacing) + spacing
+        return gridHeaderHeight + CGFloat(slotsCount) * (rowHeight + spacing) + spacing
     }
 }
 

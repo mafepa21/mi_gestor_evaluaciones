@@ -13,6 +13,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Changed
+
+- **Planificador, el cambio de pantalla se ve**: al pasar de Mes, Semana, Día, Secuencia, Evaluación o Resumen, el contenido entra con un fundido corto. En el iPhone las pestañas van en su fila y debajo el grupo, la búsqueda y la sesión nueva. El bloque de progreso arranca cerrado en Día, Secuencia y Evaluación, y abierto en Resumen. En el Día, la página sigue el dedo al cambiar de fecha.
+
+### Fixed
+
+- **Planificador, toques que no hacían nada**: en el mes, tocar un día abre ese día. En el resumen, tocar una próxima sesión abre su ficha. En el iPhone, el menú y la pastilla de hitos abren los hitos del curso. La última fila de la semana ya no se come el alto de la cabecera. La ficha muestra si la sesión está planificada, en curso, impartida o cancelada. En el Mac, Evaluación está en el menú Planificador.
+
 ### Data
 
 - **Una sola tabla de sesiones del planificador**: al actualizar, lo guardado en la tabla vieja pasa a la tabla que ya sincroniza el iPad, si la hora encaja en una franja. Si ese hueco ya tenía texto, no se pisa. Si la hora no encaja, esa fila se queda en la tabla vieja y no se muestra. El estado `PENDING` pasa a `PLANNED`. Guardar una sesión que ya existe no pisa la del hueco de al lado. Una sesión nueva, si el hueco está ocupado, actualiza esa fila.
@@ -23,8 +31,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
-- `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: pasaron en esta copia de trabajo.
-- No se ha compilado la app del iPad ni la del Mac.
+- `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: pasaron al unificar las sesiones. No se han vuelto a lanzar: este cambio no toca datos ni la lógica compartida.
+- `./scripts/verify_apple_builds.sh`: compiló el Mac y el simulador del iPhone.
+- No se ha abierto la app en pantalla. La revisión de toques y animaciones es del código y de la compilación.
 
 ### Changed
 

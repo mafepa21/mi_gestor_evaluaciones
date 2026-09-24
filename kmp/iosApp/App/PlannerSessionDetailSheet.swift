@@ -238,6 +238,19 @@ struct PlannerSessionDetailSheet: View {
         Color(hex: session.teachingUnitColor)
     }
 
+    private var sessionStatusBadge: (label: String, systemImage: String, tint: Color) {
+        switch session.status {
+        case .completed:
+            return ("Impartida", "checkmark.circle.fill", EvaluationDesign.success)
+        case .cancelled:
+            return ("Cancelada", "xmark.circle.fill", EvaluationDesign.danger)
+        case .inProgress:
+            return ("En curso", "play.circle.fill", EvaluationDesign.accent)
+        default:
+            return ("Planificada", "calendar", Color.secondary)
+        }
+    }
+
     var body: some View {
         Group {
             switch presentation {
@@ -463,7 +476,11 @@ struct PlannerSessionDetailSheet: View {
             WorkspaceFlowLayout(spacing: 12) {
                 Label(dateAndTimeLabel, systemImage: "calendar")
                 Label(session.groupName, systemImage: "person.3.fill")
-                PlannerStatusBadge(label: "Planificada", systemImage: "checkmark.circle.fill", tint: tint)
+                PlannerStatusBadge(
+                    label: sessionStatusBadge.label,
+                    systemImage: sessionStatusBadge.systemImage,
+                    tint: sessionStatusBadge.tint
+                )
                 if let detailedPlan {
                     headerMetadataItem("Sesión \(detailedPlan.sessionNumber)")
                     headerMetadataItem(sessionTypeLabel(for: detailedPlan))
@@ -490,7 +507,7 @@ struct PlannerSessionDetailSheet: View {
     }
 
     private var sessionAccessibilityMetadata: String {
-        var values = [session.groupName, "Planificada", dateAndTimeLabel]
+        var values = [session.groupName, sessionStatusBadge.label, dateAndTimeLabel]
         if let detailedPlan {
             values.append("Sesión \(detailedPlan.sessionNumber)")
             values.append("\(detailedPlan.sessionType), \(detailedPlan.effectiveMinutes) minutos")

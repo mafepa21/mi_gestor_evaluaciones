@@ -5,6 +5,7 @@ struct PlannerWorkspaceIOS: View {
     @EnvironmentObject private var bridge: KmpBridge
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @StateObject private var vm = PlannerWorkspaceViewModel()
     @State private var selectedDetailSession: PlanningSession? = nil
     @State private var selectedWeekCell: PlannerCellKey? = nil
@@ -185,49 +186,60 @@ struct PlannerWorkspaceIOS: View {
                 onOpenDiary: openSelectedSessionInDiary,
                 onClearSchedulelessWeek: {
                     isClearSchedulelessWeekConfirmationPresented = true
-                }
+                },
+                onShowCalendarMilestones: { showingCalendarMilestones = true }
             )
             .layoutPriority(1)
-            Group {
-                switch vm.activeSection {
-                case .month:
-                    PlannerMonthCalendarView(
-                        vm: vm,
-                        onOpenSession: openSessionInDiary,
-                        onOpenSettings: { showingScheduleSettings = true }
-                    )
-                case .week:
-                    PlannerWeekMiniatureLayout(
-                        weekBoard: vm.weekBoard,
-                        vm: vm,
-                        selectedCell: $selectedWeekCell,
-                        selectedDay: $selectedWeekDay,
-                        onOpenSession: openSessionInDiary,
-                        onDropSession: { sessionId, day, period in
-                            cascadeCoordinator.handleDrop(sessionId: sessionId, day: day, period: period, vm: vm)
-                        },
-                        onOpenSettings: { showingScheduleSettings = true }
-                    )
-                    .safeAreaInset(edge: .top) {
-                        if let message = cascadeCoordinator.transientMessage {
-                            PlannerInlineBanner(message: message)
-                                .padding(.horizontal, EvaluationDesign.screenPadding)
-                                .padding(.top, 8)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                    }
-                case .day:
-                    PlannerDayView(vm: vm, onOpenSession: openSessionInDiary)
-                case .sequence:
-                    PlannerSequenceGanttView(vm: vm, onOpenSession: openSessionInDiary)
-                case .term:
-                    PlannerTermBoardView(vm: vm, onOpenSession: openSessionInDiary)
-                case .summary:
-                    PlannerSummaryDashboard(vm: vm, onOpenSettings: { showingScheduleSettings = true }, onOpenSession: openSessionInDiary)
-                }
-            }
-            .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+            plannerSectionContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .animation(uiFeatureFlags.interactionAnimation, value: vm.activeSection)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+    }
+
+    private var plannerSectionContent: some View {
+        Group {
+            switch vm.activeSection {
+            case .month:
+                PlannerMonthCalendarView(
+                    vm: vm,
+                    onOpenSession: openSessionInDiary,
+                    onOpenSettings: { showingScheduleSettings = true }
+                )
+            case .week:
+                PlannerWeekMiniatureLayout(
+                    weekBoard: vm.weekBoard,
+                    vm: vm,
+                    selectedCell: $selectedWeekCell,
+                    selectedDay: $selectedWeekDay,
+                    onOpenSession: openSessionInDiary,
+                    onDropSession: { sessionId, day, period in
+                        cascadeCoordinator.handleDrop(sessionId: sessionId, day: day, period: period, vm: vm)
+                    },
+                    onOpenSettings: { showingScheduleSettings = true }
+                )
+                .safeAreaInset(edge: .top) {
+                    if let message = cascadeCoordinator.transientMessage {
+                        PlannerInlineBanner(message: message)
+                            .padding(.horizontal, EvaluationDesign.screenPadding)
+                            .padding(.top, 8)
+                            .transition(uiFeatureFlags.bannerTransition)
+                    }
+                }
+                .animation(uiFeatureFlags.interactionAnimation, value: cascadeCoordinator.transientMessage)
+            case .day:
+                PlannerDayView(vm: vm, onOpenSession: openSessionInDiary)
+            case .sequence:
+                PlannerSequenceGanttView(vm: vm, onOpenSession: openSessionInDiary)
+            case .term:
+                PlannerTermBoardView(vm: vm, onOpenSession: openSessionInDiary)
+            case .summary:
+                PlannerSummaryDashboard(vm: vm, onOpenSettings: { showingScheduleSettings = true }, onOpenSession: openSessionInDiary)
+            }
+        }
+        .id(vm.activeSection)
+        .transition(uiFeatureFlags.contentSwitchTransition)
     }
 
     private func configurePlannerToolbar() {
@@ -269,8 +281,15 @@ struct PlannerToolbar: View {
     var showsNavigationControls: Bool = true
     var onOpenDiary: (() -> Void)? = nil
     var onClearSchedulelessWeek: (() -> Void)? = nil
+    var onShowCalendarMilestones: (() -> Void)? = nil
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
-    @AppStorage("planner_toolbar_progress_expanded") private var isProgressExpanded = true
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+    /// Día, Secuencia y Evaluación arrancan plegadas. Semana tiene su propia
+    /// preferencia y Resumen la suya, abierta.
+    @AppStorage("planner_toolbar_progress_expanded") private var isProgressExpanded = false
+    @AppStorage("planner_summary_progress_expanded") private var isSummaryProgressExpanded = true
     @AppStorage("planner_week_toolbar_progress_expanded") private var isWeekProgressExpanded = false
     @AppStorage("planner_week_detail_pane_visible") private var isDetailPaneVisible = true
 
@@ -300,12 +319,35 @@ struct PlannerToolbar: View {
         .padding(.bottom, 2)
     }
 
+    private var usesStackedNavigation: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
     @ViewBuilder
     private var primaryNavigationRow: some View {
-        HStack(spacing: 8) {
-            PlannerFloatingTabBar(activeSection: $vm.activeSection)
-                .frame(maxWidth: 420)
+        if usesStackedNavigation {
+            VStack(spacing: 8) {
+                PlannerFloatingTabBar(activeSection: $vm.activeSection)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                navigationActionsRow
+            }
+        } else {
+            HStack(spacing: 8) {
+                PlannerFloatingTabBar(activeSection: $vm.activeSection)
+                    .frame(maxWidth: 420)
+                navigationActionsRow
+            }
+            .frame(height: 40)
+        }
+    }
 
+    private var navigationActionsRow: some View {
+        HStack(spacing: 8) {
             Picker("Grupo", selection: Binding(
                 get: { vm.selectedGroupId },
                 set: { vm.selectGroup($0) }
@@ -323,18 +365,21 @@ struct PlannerToolbar: View {
                 .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
 
             actionsMenu
-
-            Button {
-                vm.openComposer()
-            } label: {
-                Label("Nueva sesión", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
-            .accessibilityLabel("Crear nueva sesión")
+            newSessionButton
         }
-        .frame(height: 38)
+        .frame(height: 40)
+    }
+
+    private var newSessionButton: some View {
+        Button {
+            vm.openComposer()
+        } label: {
+            Label("Nueva sesión", systemImage: "plus")
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.capsule)
+        .controlSize(.small)
+        .accessibilityLabel("Crear nueva sesión")
     }
 
     private var actionsMenu: some View {
@@ -351,6 +396,13 @@ struct PlannerToolbar: View {
             ShareLink(item: vm.exportText()) {
                 Label("Compartir planificación", systemImage: "square.and.arrow.up")
             }
+
+            Button {
+                onShowCalendarMilestones?()
+            } label: {
+                Label("Hitos y salidas del curso…", systemImage: "calendar.badge.clock")
+            }
+            .disabled(onShowCalendarMilestones == nil)
 
             Divider()
 
@@ -429,16 +481,24 @@ struct PlannerToolbar: View {
                     .lineLimit(1)
 
                 if !vm.weekMilestones.isEmpty {
-                    HStack(spacing: 3) {
-                        Image(systemName: "calendar.badge.clock")
-                            .font(.system(size: 8, weight: .bold))
-                        Text("\(vm.weekMilestones.count) hitos")
-                            .font(.system(size: 9, weight: .bold))
+                    Button {
+                        onShowCalendarMilestones?()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.system(size: 8, weight: .bold))
+                            Text("\(vm.weekMilestones.count) hitos")
+                                .font(.caption2.weight(.bold))
+                        }
+                        .foregroundStyle(Color.orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.12), in: Capsule())
                     }
-                    .foregroundStyle(Color.orange)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.orange.opacity(0.12), in: Capsule())
+                    .buttonStyle(.plain)
+                    .disabled(onShowCalendarMilestones == nil)
+                    .accessibilityLabel("\(vm.weekMilestones.count) hitos del curso")
+                    .accessibilityHint("Abre el listado de hitos y salidas")
                 }
 
                 Spacer(minLength: 8)
@@ -505,9 +565,7 @@ struct PlannerToolbar: View {
     private var expandedProgressHeader: some View {
         VStack(alignment: .leading, spacing: 16) {
             Button {
-                withAnimation(uiFeatureFlags.interactionAnimation) {
-                    isProgressExpanded.toggle()
-                }
+                toggleSectionProgress()
             } label: {
                 HStack(alignment: .center, spacing: 8) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -525,12 +583,12 @@ struct PlannerToolbar: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isProgressExpanded ? 90 : 0))
+                        .rotationEffect(.degrees(sectionProgressExpanded ? 90 : 0))
                 }
             }
             .buttonStyle(.plain)
 
-            if isProgressExpanded {
+            if sectionProgressExpanded {
                 Group {
                     if let progress = vm.situationProgress(for: vm.selectedSession) {
                         PlannerSituationProgressStrip(progress: progress)
@@ -596,6 +654,20 @@ struct PlannerToolbar: View {
         .buttonBorderShape(.capsule)
         .controlSize(.small)
         .font(.subheadline.weight(.semibold))
+    }
+
+    private var sectionProgressExpanded: Bool {
+        vm.activeSection == .summary ? isSummaryProgressExpanded : isProgressExpanded
+    }
+
+    private func toggleSectionProgress() {
+        withAnimation(uiFeatureFlags.interactionAnimation) {
+            if vm.activeSection == .summary {
+                isSummaryProgressExpanded.toggle()
+            } else {
+                isProgressExpanded.toggle()
+            }
+        }
     }
 
     private var toolbarTitle: String {

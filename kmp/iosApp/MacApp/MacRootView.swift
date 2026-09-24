@@ -1081,7 +1081,14 @@ struct MacRootView: View {
             if selectedFeature == .planner, let plannerToolbarActions {
                 let plannerSection = plannerToolbarActions.activeSection.wrappedValue
 
-                Picker("Sección", selection: plannerToolbarActions.activeSection) {
+                Picker("Sección", selection: Binding(
+                    get: { plannerToolbarActions.activeSection.wrappedValue },
+                    set: { section in
+                        withAnimation(uiFeatureFlags.interactionAnimation) {
+                            plannerToolbarActions.activeSection.wrappedValue = section
+                        }
+                    }
+                )) {
                     ForEach(PlannerWorkspaceSection.allCases) { section in
                         Label(section.rawValue, systemImage: section.systemImage).tag(section)
                     }
@@ -1514,7 +1521,9 @@ struct MacRootView: View {
         if selectedFeature != .planner {
             selectFeature(.planner)
         }
-        plannerToolbarActions?.activeSection.wrappedValue = section
+        withAnimation(uiFeatureFlags.interactionAnimation) {
+            plannerToolbarActions?.activeSection.wrappedValue = section
+        }
     }
 
     private func performSave() {

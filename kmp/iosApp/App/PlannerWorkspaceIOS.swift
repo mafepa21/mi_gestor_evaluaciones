@@ -164,7 +164,7 @@ struct PlannerWorkspaceIOS: View {
                 cascadeCoordinator.confirmPendingMove(vm: vm)
             }
         } message: {
-            Text("La cascada incluye una o más sesiones ya impartidas. Se conservarán sus diarios y referencias.")
+            Text("La cascada incluye sesiones ya impartidas o canceladas. Si pulsas Mover, también se recolocan. Si cancelas, se quedan donde están.")
         }
         .appOnChange(of: cascadeCoordinator.transientMessage) { message in
             guard message != nil else { return }

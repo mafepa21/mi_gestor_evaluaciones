@@ -18,7 +18,7 @@ El mensaje de `planning_session` incluye siempre instrumentos, franja, horas y e
 
 El diario viaja como `session_journal`, identificado por la sesión y no por el id local del diario. Incluye texto, notas, tareas, enlaces y la ruta de las fotos. No se copian los archivos. Un mensaje sin el campo `status` se ignora.
 
-Las sesiones nuevas que salen de guardar una unidad, o de copiar y mover en el escritorio, se escriben en `planner_session`. La tabla `planned_session` no se borra y no recibe filas nuevas.
+Las sesiones nuevas que salen de guardar una unidad, o de copiar y mover en el escritorio, se escriben en `planner_session`. La tabla `planned_session` no se borra. La migración 44 copia lo que encaja en una franja y deja de usarlo como almacén vivo.
 
 La huella de «Igualar dispositivos» tiene en cuenta instrumentos, franja y diario.
 
@@ -29,5 +29,8 @@ No se abre el aviso interno del Mac fuera del propio Mac. No se cambia el empare
 - Un sync nuevo ya no deja la sesión sin instrumentos ni sin hora.
 - El diario escrito en un aparato puede aparecer en el otro en el siguiente sync.
 - Una sesión generada en el escritorio puede verse en el iPad.
-- Las filas viejas que solo estén en `planned_session` siguen viéndose en el escritorio hasta que se copien o se muevan.
+- Al actualizar, las filas viejas de `planned_session` cuya hora encaja en una franja pasan a `planner_session`. Si ese hueco ya tenía texto, se conserva. Si la hora no encaja, la fila se queda en la tabla vieja y no se muestra.
+- El estado vacío o `PENDING` pasa a `PLANNED`. Las sesiones nuevas nacen en `PLANNED`.
+- Guardar una sesión con id solo toca esa fila. Una sesión nueva, si el hueco existe, actualiza esa fila.
+- Arrastrar en cascada no mueve una sesión impartida ni cancelada, salvo que se confirme el aviso.
 - No se ha probado con un iPad físico.

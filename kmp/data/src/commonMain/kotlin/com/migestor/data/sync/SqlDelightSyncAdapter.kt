@@ -55,7 +55,9 @@ class SqlDelightSyncAdapter(
     private val syncIdSnapshotByScope = mutableMapOf<String, Set<String>>()
     private val syncSignatureSnapshotByScope = mutableMapOf<String, Map<String, String>>()
     private val syncSyntheticUpdatedAtByScope = mutableMapOf<String, MutableMap<String, Long>>()
-    private val syncDeleteTombstonesByScope = mutableMapOf<String, MutableMap<String, SyncChange>>()
+    private val outgoingDeletesByEntity = mutableMapOf<String, MutableMap<String, SyncChange>>()
+    private val liveIdsByEntityThisCollect = mutableMapOf<String, MutableSet<String>>()
+    private var outgoingDeletesSeeded = false
     private val rosterSnapshotByClass = mutableMapOf<Long, Set<Long>>()
 
     // ---------------------------------------------------------------------------
@@ -63,6 +65,8 @@ class SqlDelightSyncAdapter(
     // ---------------------------------------------------------------------------
 
     override suspend fun collectLocalChanges(sinceEpochMs: Long): List<SyncChange> {
+        liveIdsByEntityThisCollect.clear()
+        seedOutgoingDeletesIfNeeded()
         val changes = mutableListOf<SyncChange>()
         container.academicYearsRepository.listAcademicYears().forEach { year ->
             val updatedAt = year.trace.updatedAt.toEpochMilliseconds()
@@ -86,6 +90,17 @@ class SqlDelightSyncAdapter(
             }
         }
         val classes = container.classesRepository.listClasses()
+        if (classes.isEmpty()) {
+            listOf(
+                "weekly_slot",
+                "notebook_tab",
+                "notebook_group",
+                "notebook_group_member",
+                "notebook_column",
+            ).forEach { entity ->
+                liveIdsByEntityThisCollect.getOrPut(entity) { mutableSetOf() }
+            }
+        }
 
         // ── Entidades vinculadas a clase ──────────────────────────────────────
         classes.forEach { schoolClass ->
@@ -169,8 +184,6 @@ class SqlDelightSyncAdapter(
                 }
             }
             appendDeletesByScope(
-                changes = changes,
-                sinceEpochMs = sinceEpochMs,
                 scope = weeklySlotScope,
                 entity = "weekly_slot",
                 currentIds = currentWeeklySlotIds,
@@ -253,8 +266,6 @@ class SqlDelightSyncAdapter(
                 }
             }
             appendDeletesByScope(
-                changes = changes,
-                sinceEpochMs = sinceEpochMs,
                 scope = "class:${schoolClass.id}:notebook_tab",
                 entity = "notebook_tab",
                 currentIds = currentTabIds,
@@ -288,8 +299,6 @@ class SqlDelightSyncAdapter(
                 }
             }
             appendDeletesByScope(
-                changes = changes,
-                sinceEpochMs = sinceEpochMs,
                 scope = "class:${schoolClass.id}:notebook_group",
                 entity = "notebook_group",
                 currentIds = currentWorkGroupIds,
@@ -320,8 +329,6 @@ class SqlDelightSyncAdapter(
                 }
             }
             appendDeletesByScope(
-                changes = changes,
-                sinceEpochMs = sinceEpochMs,
                 scope = "class:${schoolClass.id}:notebook_group_member",
                 entity = "notebook_group_member",
                 currentIds = currentWorkGroupMemberIds,
@@ -395,8 +402,6 @@ class SqlDelightSyncAdapter(
                 }
             }
             appendDeletesByScope(
-                changes = changes,
-                sinceEpochMs = sinceEpochMs,
                 scope = "class:${schoolClass.id}:notebook_column",
                 entity = "notebook_column",
                 currentIds = currentColumnIds,
@@ -574,8 +579,6 @@ class SqlDelightSyncAdapter(
             }
         }
         appendDeletesByScope(
-            changes = changes,
-            sinceEpochMs = sinceEpochMs,
             scope = "global:student",
             entity = "student",
             currentIds = currentStudentIds,
@@ -636,8 +639,6 @@ class SqlDelightSyncAdapter(
             }
         }
         appendDeletesByScope(
-            changes = changes,
-            sinceEpochMs = sinceEpochMs,
             scope = "global:rubric_bundle",
             entity = "rubric_bundle",
             currentIds = currentRubricIds,
@@ -735,8 +736,6 @@ class SqlDelightSyncAdapter(
             }
         }
         appendDeletesByScope(
-            changes = changes,
-            sinceEpochMs = sinceEpochMs,
             scope = teachingUnitScope,
             entity = "teaching_unit",
             currentIds = teachingUnits.map { it.id.toString() }.toSet(),
@@ -791,8 +790,6 @@ class SqlDelightSyncAdapter(
             }
         }
         appendDeletesByScope(
-            changes = changes,
-            sinceEpochMs = sinceEpochMs,
             scope = plannerSessionScope,
             entity = "planning_session",
             currentIds = plannerSessions.map { it.id.toString() }.toSet(),
@@ -802,6 +799,10 @@ class SqlDelightSyncAdapter(
         syncSignatureSnapshotByScope[plannerSessionScope] = plannerSessionSignatures
 
         val teacherSchedules = container.database.appDatabaseQueries.selectAllTeacherSchedules().executeAsList()
+        if (teacherSchedules.isEmpty()) {
+            liveIdsByEntityThisCollect.getOrPut("teacher_schedule_slot") { mutableSetOf() }
+            liveIdsByEntityThisCollect.getOrPut("planner_evaluation_period") { mutableSetOf() }
+        }
         val currentTeacherScheduleIds = teacherSchedules.map { it.id.toString() }.toSet()
         teacherSchedules.forEach { schedule ->
             if (schedule.updated_at_epoch_ms > sinceEpochMs) {
@@ -863,8 +864,6 @@ class SqlDelightSyncAdapter(
                 }
             }
             appendDeletesByScope(
-                changes = changes,
-                sinceEpochMs = sinceEpochMs,
                 scope = slotScope,
                 entity = "teacher_schedule_slot",
                 currentIds = scheduleSlots.map { it.id.toString() }.toSet(),
@@ -907,8 +906,6 @@ class SqlDelightSyncAdapter(
                 }
             }
             appendDeletesByScope(
-                changes = changes,
-                sinceEpochMs = sinceEpochMs,
                 scope = periodScope,
                 entity = "planner_evaluation_period",
                 currentIds = periods.map { it.id.toString() }.toSet(),
@@ -921,8 +918,6 @@ class SqlDelightSyncAdapter(
             syncSignatureSnapshotByScope[periodScope] = periodSignatures
         }
         appendDeletesByScope(
-            changes = changes,
-            sinceEpochMs = sinceEpochMs,
             scope = "global:teacher_schedule",
             entity = "teacher_schedule",
             currentIds = currentTeacherScheduleIds,
@@ -1058,6 +1053,7 @@ class SqlDelightSyncAdapter(
             }
         }
 
+        emitOutgoingDeletes(changes, sinceEpochMs)
         return changes
     }
 
@@ -1071,19 +1067,17 @@ class SqlDelightSyncAdapter(
         }
     }
 
-    private fun appendDeletesByScope(
-        changes: MutableList<SyncChange>,
-        sinceEpochMs: Long,
+    private suspend fun appendDeletesByScope(
         scope: String,
         entity: String,
         currentIds: Set<String>,
         payloadBuilder: (String) -> JsonObject,
     ) {
+        liveIdsByEntityThisCollect.getOrPut(entity) { mutableSetOf() }.addAll(currentIds)
         val previousIds = syncIdSnapshotByScope[scope]
-        val tombstones = syncDeleteTombstonesByScope.getOrPut(scope) { mutableMapOf() }
-        val emittedIds = mutableSetOf<String>()
         if (previousIds != null) {
             val now = Clock.System.now().toEpochMilliseconds()
+            val tombstones = outgoingDeletesByEntity.getOrPut(entity) { mutableMapOf() }
             previousIds.subtract(currentIds).forEach { deletedId ->
                 val change = SyncChange(
                     entity = entity,
@@ -1094,16 +1088,70 @@ class SqlDelightSyncAdapter(
                     op = "delete",
                 )
                 tombstones[deletedId] = change
-                if (now > sinceEpochMs) {
+                container.syncTombstoneRepository.recordTombstone(
+                    entity = entity,
+                    entityId = deletedId,
+                    deletedAtEpochMs = now,
+                    deviceId = localDeviceId,
+                )
+            }
+        }
+        syncIdSnapshotByScope[scope] = currentIds
+    }
+
+    private suspend fun seedOutgoingDeletesIfNeeded() {
+        if (outgoingDeletesSeeded) return
+        val stored = container.syncTombstoneRepository.listTombstones()
+        outgoingDeletesSeeded = true
+        stored.forEach { row ->
+            if (row.deviceId != localDeviceId) return@forEach
+            val change = SyncChange(
+                entity = row.entity,
+                id = row.entityId,
+                updatedAtEpochMs = row.deletedAtEpochMs,
+                deviceId = localDeviceId,
+                payload = payloadForPersistedDelete(row.entity, row.entityId),
+                op = "delete",
+            )
+            outgoingDeletesByEntity.getOrPut(row.entity) { mutableMapOf() }[row.entityId] = change
+        }
+    }
+
+    private fun emitOutgoingDeletes(changes: MutableList<SyncChange>, sinceEpochMs: Long) {
+        outgoingDeletesByEntity.forEach { (entity, byId) ->
+            val live = liveIdsByEntityThisCollect[entity] ?: return@forEach
+            byId.values.forEach { change ->
+                if (change.id !in live && change.updatedAtEpochMs > sinceEpochMs) {
                     changes += change
-                    emittedIds += deletedId
                 }
             }
         }
-        tombstones.values
-            .filter { it.id !in currentIds && it.id !in emittedIds && it.updatedAtEpochMs > sinceEpochMs }
-            .forEach { changes += it }
-        syncIdSnapshotByScope[scope] = currentIds
+    }
+
+    private fun payloadForPersistedDelete(entity: String, id: String): String {
+        return when (entity) {
+            "rubric_bundle" -> buildJsonObject {
+                put("rubricId", JsonPrimitive(id.toLongOrNull() ?: 0L))
+            }.toString()
+            "notebook_group_member" -> {
+                val parts = id.split("|")
+                buildJsonObject {
+                    put("classId", JsonPrimitive(parts.getOrNull(0)?.toLongOrNull() ?: 0L))
+                    put("tabId", JsonPrimitive(parts.getOrNull(1).orEmpty()))
+                    put("groupId", JsonPrimitive(parts.getOrNull(2)?.toLongOrNull() ?: 0L))
+                    put("studentId", JsonPrimitive(parts.getOrNull(3)?.toLongOrNull() ?: 0L))
+                }.toString()
+            }
+            "notebook_tab", "notebook_column" -> buildJsonObject {
+                put("id", JsonPrimitive(id))
+            }.toString()
+            else -> {
+                val numericId = id.toLongOrNull()
+                buildJsonObject {
+                    if (numericId != null) put("id", JsonPrimitive(numericId)) else put("id", JsonPrimitive(id))
+                }.toString()
+            }
+        }
     }
 
     // ---------------------------------------------------------------------------

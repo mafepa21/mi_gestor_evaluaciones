@@ -494,7 +494,7 @@ struct NotebookModuleView: View {
             if shouldUseSideInspector && macPresentation == .full && isInspectorPresented {
                 Divider().opacity(0.16)
                 inspectorPanel(data: data, rows: rows)
-                    .frame(width: 360)
+                    .frame(width: 320)
                     .background(.ultraThinMaterial)
             }
         }

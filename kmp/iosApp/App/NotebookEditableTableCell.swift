@@ -666,6 +666,7 @@ private struct NotebookStatefulEditableTableCell: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                         .stroke(editableCellBorder, lineWidth: editableCellBorderWidth)
+                .animation(.easeOut(duration: 0.15), value: isSelected)
                 )
                 .shadow(
                     color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,

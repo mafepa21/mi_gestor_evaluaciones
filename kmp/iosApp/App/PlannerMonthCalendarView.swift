@@ -198,8 +198,6 @@ private struct PlannerMonthDayCell: View {
     var onOpenSession: ((PlanningSession) -> Void)?
     var onSelectOverflow: () -> Void
 
-    @State private var isHovered = false
-
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             cellHeader
@@ -217,7 +215,12 @@ private struct PlannerMonthDayCell: View {
         .overlay(cellBorder)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .onHover { isHovered = $0 }
+        .onTapGesture {
+            Task { await vm.jumpToDayView(for: day.date) }
+        }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Día \(day.dayNumber)")
+        .accessibilityHint("Abre la vista del día")
         .contextMenu {
             Button {
                 Task { await vm.jumpToDayView(for: day.date) }
@@ -256,28 +259,6 @@ private struct PlannerMonthDayCell: View {
             }
 
             Spacer(minLength: 0)
-
-            if isHovered || day.isToday {
-                Button {
-                    Task { await vm.jumpToDayView(for: day.date) }
-                } label: {
-                    Image(systemName: "arrow.up.right.square")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Abrir día \(day.dayNumber)")
-
-                Button {
-                    vm.openComposerForDate(day.date)
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(EvaluationDesign.accent)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Añadir sesión el día \(day.dayNumber)")
-            }
         }
     }
 

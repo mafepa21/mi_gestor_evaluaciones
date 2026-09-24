@@ -629,16 +629,13 @@ extension NotebookModuleView {
             return AnyView(fixedRowCell(for: fixed, item: item, data: data))
         case .column(let column):
             let isCellSelected = inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-            let isInGradeRange = cellIsInsideGradeRange(studentId: item.student.id, columnId: column.id, rows: allRows)
             let formulaCellDisplay = formulaDisplay(for: item, column: column, data: data)
             let displaySnapshot = cellDisplaySnapshot(for: item, column: column, formulaDisplay: formulaCellDisplay)
             let cellActions = notebookCellActions()
             return AnyView(
                 ZStack {
                     Rectangle()
-                        .fill(isInGradeRange && !isCellSelected
-                              ? Color.accentColor.opacity(0.12)
-                              : notebookColumnCellFill(for: column, rowIndex: rowIndex))
+                        .fill(notebookColumnCellFill(for: column, rowIndex: rowIndex))
 
                     NotebookEditableTableCell(
                         displaySnapshot: displaySnapshot,
@@ -667,24 +664,7 @@ extension NotebookModuleView {
                                 commitKeyboardCaptureInPlace()
                             }
                             #endif
-                            let sameColumn = (selectedCellRange?.columnId ?? inspectorSelection?.columnId) == column.id
-                            if notebookShiftClickIsDown(),
-                               sameColumn,
-                               let anchorId = selectedCellRange?.anchorStudentId ?? inspectorSelection?.studentId {
-                                selectedCellRange = NotebookCellRange(
-                                    columnId: column.id,
-                                    anchorStudentId: anchorId,
-                                    endStudentId: item.student.id
-                                )
-                                inspectorSelection = NotebookInspectorSelection(studentId: anchorId, columnId: column.id)
-                            } else {
-                                inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-                                selectedCellRange = NotebookCellRange(
-                                    columnId: column.id,
-                                    anchorStudentId: item.student.id,
-                                    endStudentId: item.student.id
-                                )
-                            }
+                            inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
                             if focusedCellId == nil && activeChoiceCellId == nil && !isInspectorPresented {
                                 focusMode = .normal
                             }

@@ -385,7 +385,6 @@ extension NotebookModuleView {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             inspectorSelection = NotebookInspectorSelection(studentId: studentId, columnId: columnId)
-            selectedCellRange = NotebookCellRange(columnId: columnId, anchorStudentId: studentId, endStudentId: studentId)
             focusedCellId = nil
             activeChoiceCellId = nil
             focusMode = .normal

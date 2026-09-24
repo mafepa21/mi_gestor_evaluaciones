@@ -98,7 +98,6 @@ struct NotebookModuleView: View {
     @State var isFillColumnDialogPresented = false
     @State var pendingCopyTabStructureSource: NotebookTab? = nil
     @State var undoStack: [NotebookCellUndoEntry] = []
-    @State var selectedCellRange: NotebookCellRange? = nil
     @State var structuralGridRevision = 0
     @State var rowReloadRevisions: [Int64: Int] = [:]
     @State var highlightedCategoryId: String? = nil
@@ -254,7 +253,6 @@ struct NotebookModuleView: View {
         searchText = ""
 
         undoStack = []
-        selectedCellRange = nil
         todayAttendanceByStudentId = [:]
         incidentCountByStudentId = [:]
         localInjuryStatuses = [:]
@@ -973,7 +971,7 @@ struct NotebookModuleView: View {
             }
 
             Button {
-                requestFillColumnFromSelectedCell(data: data)
+                showToast("Selecciona un rango para rellenar varias celdas", style: .warning)
             } label: {
                 Label("Rellenar", systemImage: "arrow.down.to.line")
             }
@@ -1054,18 +1052,6 @@ struct NotebookModuleView: View {
 
     func copySelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data) else { return }
-        let rows = filteredRows(data: data)
-        if let range = selectedCellRange,
-           range.columnId == selected.column.id,
-           let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
-           let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }),
-           abs(end - start) > 0 {
-            let slice = rows[min(start, end)...max(start, end)]
-            let text = slice.map { displayValue(for: $0, column: selected.column) }.joined(separator: "\n")
-            setClipboardText(text)
-            showToast("Rango copiado")
-            return
-        }
         setClipboardText(displayValue(for: selected.row, column: selected.column))
         showToast("Celda copiada")
     }
@@ -1093,31 +1079,31 @@ struct NotebookModuleView: View {
             return
         }
 
+        // Pegado de varias filas (p. ej. una columna copiada de una hoja de cálculo):
+        // se aplica desde la celda seleccionada hacia abajo, fila a fila.
         let rows = filteredRows(data: data)
         guard let startIndex = rows.firstIndex(where: { $0.student.id == selected.selection.studentId }) else { return }
         let targetRows = rows[startIndex...]
 
-        var changes: [NotebookCellUndoChange] = []
+        var pastedCount = 0
         for (row, value) in zip(targetRows, pastedValues) {
             let previousValue = displayValue(for: row, column: selected.column)
             guard previousValue != value else { continue }
-            changes.append(
-                NotebookCellUndoChange(
-                    studentId: row.student.id,
-                    column: selected.column,
-                    previousValue: previousValue,
-                    previousDisplayLabel: nil
-                )
+            recordCellUndo(
+                studentId: row.student.id,
+                column: selected.column,
+                previousValue: previousValue,
+                previousDisplayLabel: nil
             )
             bridge.saveColumnGrade(studentId: row.student.id, column: selected.column, value: value)
             reloadNotebookRow(row.student.id)
+            pastedCount += 1
         }
-        recordCellUndoBatch(changes)
         let skippedCount = max(0, pastedValues.count - targetRows.count)
         if skippedCount > 0 {
-            showToast("Pegadas \(changes.count) celdas (\(skippedCount) valores no cupieron en las filas visibles)", style: .warning)
+            showToast("Pegadas \(pastedCount) celdas (\(skippedCount) valores no cupieron en las filas visibles)", style: .warning)
         } else {
-            showToast(changes.isEmpty ? "Sin cambios: los valores ya coincidían" : "Pegadas \(changes.count) celdas")
+            showToast(pastedCount > 0 ? "Pegadas \(pastedCount) celdas" : "Sin cambios: los valores ya coincidían")
         }
     }
 

@@ -934,7 +934,8 @@ extension KmpBridge {
             targetWeekNumber: Int32(targetWeekNumber),
             targetYear: Int32(targetYear),
             targetDayOfWeek: Int32(targetDayOfWeek),
-            targetPeriod: Int32(targetPeriod)
+            targetPeriod: Int32(targetPeriod),
+            forceTerminalSessions: false
         )
         return try await container.plannerRepository.previewCascadeMove(request: request)
     }
@@ -944,14 +945,16 @@ extension KmpBridge {
         targetWeekNumber: Int,
         targetYear: Int,
         targetDayOfWeek: Int,
-        targetPeriod: Int
+        targetPeriod: Int,
+        forceTerminalSessions: Bool = false
     ) async throws -> SessionCascadeMoveResult {
         let request = SessionCascadeMoveRequest(
             sourceSessionId: sourceSessionId,
             targetWeekNumber: Int32(targetWeekNumber),
             targetYear: Int32(targetYear),
             targetDayOfWeek: Int32(targetDayOfWeek),
-            targetPeriod: Int32(targetPeriod)
+            targetPeriod: Int32(targetPeriod),
+            forceTerminalSessions: forceTerminalSessions
         )
         return try await container.plannerRepository.commitCascadeMove(request: request)
     }

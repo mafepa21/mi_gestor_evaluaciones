@@ -13,6 +13,19 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Data
+
+- **Una sola tabla de sesiones del planificador**: al actualizar, lo guardado en la tabla vieja pasa a la tabla que ya sincroniza el iPad, si la hora encaja en una franja. Si ese hueco ya tenía texto, no se pisa. Si la hora no encaja, esa fila se queda en la tabla vieja y no se muestra. El estado `PENDING` pasa a `PLANNED`. Guardar una sesión que ya existe no pisa la del hueco de al lado. Una sesión nueva, si el hueco está ocupado, actualiza esa fila.
+
+### Fixed
+
+- **Planificador, arrastrar no mueve una sesión cerrada**: si la cadena incluye una sesión impartida o cancelada, no se mueve nadie. El aviso sigue saliendo. Solo si pulsas Mover se recoloca también esa sesión.
+
+### Verification
+
+- `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: pasaron en esta copia de trabajo.
+- No se ha compilado la app del iPad ni la del Mac.
+
 ### Changed
 
 - **Cuaderno, solo se dibujan las filas de la pantalla**: al bajar por la tabla, nombres, notas y media siguen alineados, pero solo existen las filas visibles y un margen. El resumen de cada fila se calcula cuando esa fila se dibuja, no para toda la clase de golpe.

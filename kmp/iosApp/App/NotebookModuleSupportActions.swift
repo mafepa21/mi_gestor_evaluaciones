@@ -1,6 +1,9 @@
 import SwiftUI
 import PhotosUI
 import MiGestorKit
+#if canImport(AppKit)
+import AppKit
+#endif
 
 extension NotebookModuleView {
     func syncInspectorDraft() {
@@ -128,7 +131,9 @@ extension NotebookModuleView {
             showToast("Esta columna se edita desde su acción específica", style: .warning)
             return
         }
-        let otherRowsCount = filteredRows(data: data).filter { $0.student.id != selected.selection.studentId }.count
+        let rows = filteredRows(data: data)
+        let sourceStudentId = selectedCellRange?.anchorStudentId ?? selected.selection.studentId
+        let otherRowsCount = fillTargetRows(rows: rows, columnId: selected.column.id, sourceStudentId: sourceStudentId).count
         guard otherRowsCount > 0 else {
             showToast("No hay más alumnos visibles para rellenar", style: .warning)
             return
@@ -143,36 +148,77 @@ extension NotebookModuleView {
     func fillColumnFromSelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data) else { return }
         let column = selected.column
-        let value = displayValue(for: selected.row, column: column)
-        let targetRows = filteredRows(data: data).filter { $0.student.id != selected.selection.studentId }
+        let rows = filteredRows(data: data)
+        let sourceStudentId = selectedCellRange?.anchorStudentId ?? selected.selection.studentId
+        let sourceRow = rows.first(where: { $0.student.id == sourceStudentId }) ?? selected.row
+        let value = displayValue(for: sourceRow, column: column)
+        let targetRows = fillTargetRows(rows: rows, columnId: column.id, sourceStudentId: sourceStudentId)
         guard !targetRows.isEmpty else { return }
 
-        var filledCount = 0
+        var changes: [NotebookCellUndoChange] = []
         for row in targetRows {
             let previousValue = displayValue(for: row, column: column)
             guard previousValue != value else { continue }
-            recordCellUndo(
-                studentId: row.student.id,
-                column: column,
-                previousValue: previousValue,
-                previousDisplayLabel: nil
+            changes.append(
+                NotebookCellUndoChange(
+                    studentId: row.student.id,
+                    column: column,
+                    previousValue: previousValue,
+                    previousDisplayLabel: nil
+                )
             )
             bridge.saveColumnGrade(studentId: row.student.id, column: column, value: value)
             reloadNotebookRow(row.student.id)
-            filledCount += 1
         }
-        showToast(filledCount > 0 ? "Rellenadas \(filledCount) celdas" : "Todas las celdas ya tenían ese valor")
+        recordCellUndoBatch(changes)
+        showToast(changes.isEmpty ? "Todas las celdas ya tenían ese valor" : "Rellenadas \(changes.count) celdas")
+    }
+
+    func fillTargetRows(rows: [NotebookTableRow], columnId: String, sourceStudentId: Int64) -> [NotebookTableRow] {
+        if let range = selectedCellRange,
+           range.columnId == columnId,
+           let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
+           let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }) {
+            let slice = rows[min(start, end)...max(start, end)]
+            if slice.count > 1 {
+                return slice.filter { $0.student.id != sourceStudentId }
+            }
+        }
+        return rows.filter { $0.student.id != sourceStudentId }
+    }
+
+    func cellIsInsideGradeRange(studentId: Int64, columnId: String, rows: [NotebookTableRow]) -> Bool {
+        guard let range = selectedCellRange, range.columnId == columnId else { return false }
+        guard let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
+              let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }),
+              let index = rows.firstIndex(where: { $0.student.id == studentId }) else {
+            return false
+        }
+        return index >= min(start, end) && index <= max(start, end)
+    }
+
+    func notebookShiftClickIsDown() -> Bool {
+        #if os(macOS)
+        NSEvent.modifierFlags.contains(.shift)
+        #else
+        false
+        #endif
     }
 
     func recordCellUndo(studentId: Int64, column: NotebookColumnDefinition, previousValue: String, previousDisplayLabel: String?) {
-        undoStack.append(
-            NotebookCellUndoEntry(
+        recordCellUndoBatch([
+            NotebookCellUndoChange(
                 studentId: studentId,
                 column: column,
                 previousValue: previousValue,
                 previousDisplayLabel: previousDisplayLabel
             )
-        )
+        ])
+    }
+
+    func recordCellUndoBatch(_ changes: [NotebookCellUndoChange]) {
+        guard !changes.isEmpty else { return }
+        undoStack.append(NotebookCellUndoEntry(changes: changes))
         if undoStack.count > 10 {
             undoStack.removeFirst(undoStack.count - 10)
         }
@@ -183,17 +229,25 @@ extension NotebookModuleView {
             showToast("No hay cambios que deshacer", style: .warning)
             return
         }
-        bridge.flushPendingColumnGradeSave(studentId: entry.studentId, columnId: entry.column.id)
-        bridge.saveColumnGrade(studentId: entry.studentId, column: entry.column, value: entry.previousValue)
-        reloadNotebookRow(entry.studentId)
-        AppleInteractionFeedback.play(.success)
-        withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
-            inspectorSelection = NotebookInspectorSelection(studentId: entry.studentId, columnId: entry.column.id)
-            focusedCellId = nil
-            activeChoiceCellId = nil
+        for change in entry.changes {
+            bridge.flushPendingColumnGradeSave(studentId: change.studentId, columnId: change.column.id)
+            bridge.saveColumnGrade(studentId: change.studentId, column: change.column, value: change.previousValue)
+            reloadNotebookRow(change.studentId)
         }
-        let label = entry.previousDisplayLabel ?? entry.previousValue
-        showToast(label.isEmpty ? "Cambio deshecho" : "Cambio deshecho: \(label)")
+        AppleInteractionFeedback.play(.success)
+        if let first = entry.changes.first {
+            withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
+                inspectorSelection = NotebookInspectorSelection(studentId: first.studentId, columnId: first.column.id)
+                focusedCellId = nil
+                activeChoiceCellId = nil
+            }
+        }
+        if entry.changes.count > 1 {
+            showToast("Deshecho el lote (\(entry.changes.count) celdas)")
+        } else if let only = entry.changes.first {
+            let label = only.previousDisplayLabel ?? only.previousValue
+            showToast(label.isEmpty ? "Cambio deshecho" : "Cambio deshecho: \(label)")
+        }
     }
 
     func createFollowUp(for student: Student) async {

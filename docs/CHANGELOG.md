@@ -29,6 +29,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - **Buscador del Cuaderno**: si la búsqueda no encuentra a nadie, se mantienen las cabeceras y aparece el botón Limpiar.
 
+- **Menos barras en el iPhone**: las pestañas del Cuaderno dejan la fila de encima y pasan al menú de tres puntos. Al guardar, un punto pasa de ámbar a verde una sola vez. Si falla, el punto se queda rojo y no dice que ya está sincronizado.
+
 - **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
   - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
   - Detección automática en la app de la SA asociada a la columna del cuaderno y los grupos de trabajo vinculados para generar los pares de evaluación.

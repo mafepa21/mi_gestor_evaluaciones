@@ -449,7 +449,7 @@ struct NotebookModuleView: View {
                         }
                     )
                 }
-                if !tabs.isEmpty && focusMode == .normal {
+                if !tabs.isEmpty && focusMode == .normal && !isCompact {
                     NotebookTabStrip(
                         tabs: tabs,
                         activeTabId: activeNotebookTabId(data: data),
@@ -1728,6 +1728,12 @@ struct NotebookModuleView: View {
                             HStack(spacing: 8) {
                                 // Estado de guardado
                                 HStack(spacing: 4) {
+                                    NotebookSavePulse(
+                                        isDirty: notebookStore.notebookSplitSaveState.isDirty,
+                                        isSaving: notebookStore.notebookSplitSaveState.isSaving,
+                                        isFailed: notebookStore.notebookSplitSaveState.state == .failed,
+                                        isSaved: notebookStore.notebookSplitSaveState.isSaved
+                                    )
                                     if #available(iOS 18.0, macOS 14.0, *) {
                                         Image(systemName: saveBadge.icon)
                                             .symbolEffect(.rotate, isActive: notebookStore.notebookSplitSaveState.isSaving)

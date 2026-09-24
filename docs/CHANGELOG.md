@@ -66,6 +66,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- **Los borrados de SyncLAN se guardan en la tabla que ya existía**: el Mac anota cada baja propia en `sync_tombstones` y, al arrancar, la vuelve a leer. No hay tabla nueva ni columna nueva.
+
 - **Migración 43.sqm y persistencia de coevaluaciones en SQLDelight**:
   - Columna `mode TEXT NOT NULL DEFAULT 'self'` en la tabla `web_form_instances`.
   - Nueva tabla `web_peer_targets` con índices para persistir las correspondencias privadas `(form_instance_id, evaluator_alias, target_alias, target_student_id, target_display_name, created_at)`.
@@ -87,6 +89,8 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Fixed
 
 - **SyncLAN ya no abre el cuaderno a cualquier programa del Mac**: las rutas de datos piden la contraseña del enlace también cuando la petición sale del propio Mac. Sin contraseña responden 401. El aviso interno del Mac a sí mismo sigue siendo solo local y no entrega el cuaderno.
+
+- **Un reinicio del ayudante ya no olvida los borrados de SyncLAN**: el aviso se guarda y, al arrancar, se vuelve a enviar solo si esa ficha sigue sin existir. Así el iPad no conserva alumnos ni notas que el Mac ya borró.
 
 - **Fase 1 del Cuaderno: filtro vacío, hover de Mac, cursor de resize y drag numérico**:
   - Una búsqueda o filtro de grupo sin resultados conserva cabeceras y muestra «Limpiar». Una clase sin alumnado sigue con empty a pantalla completa.

@@ -75,6 +75,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- SyncLAN y baja de alumnado, 24 sep 2026: `./gradlew :data:desktopTest` ejecutó `LocalSyncServerAdoptionTest` (7), `SqlDelightSyncAdapterTombstoneTest` (2), `SqlDelightSyncAdapterOutgoingDeleteTest` (3), `SqlDelightSyncAdapterRosterTest` (2) y `DeleteStudentUseCaseIntegrationTest` (3), con 0 fallos. `./gradlew :shared:desktopTest --tests com.migestor.shared.usecase.DeleteStudentUseCaseTest` ejecutó 3 pruebas, con 0 fallos. No se compiló la app de Apple porque este cambio no toca Swift. No se probó con un iPad real.
+
 - Cuaderno, filas visibles al desplazar, 24 sep 2026: `xcodebuild` del esquema `MiGestorKMPMac` (macOS) y del esquema `MiGestorKMPiOS` (simulador iOS) terminó en BUILD SUCCEEDED. `./scripts/verify_apple_builds.sh` falló antes por disco lleno, no por el código. No se abrió la app, así que no se comprobó a ojo si las tres zonas siguen alineadas al bajar.
 - Menos color en el Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se miró la tabla en la app.
 - Menús y Deshacer del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió el menú Edición en la app.
@@ -91,6 +93,8 @@ El formato sigue una variante practica de Keep a Changelog:
 - **SyncLAN ya no abre el cuaderno a cualquier programa del Mac**: las rutas de datos piden la contraseña del enlace también cuando la petición sale del propio Mac. Sin contraseña responden 401. El aviso interno del Mac a sí mismo sigue siendo solo local y no entrega el cuaderno.
 
 - **Un reinicio del ayudante ya no olvida los borrados de SyncLAN**: el aviso se guarda y, al arrancar, se vuelve a enviar solo si esa ficha sigue sin existir. Así el iPad no conserva alumnos ni notas que el Mac ya borró.
+
+- **Quitar a un alumno de un curso ya no borra su ficha**: con un curso indicado solo se le da de baja ahí. La ficha entera, y con ella las notas de los otros cursos, se borra solo si la orden lo pide de forma explícita.
 
 - **Fase 1 del Cuaderno: filtro vacío, hover de Mac, cursor de resize y drag numérico**:
   - Una búsqueda o filtro de grupo sin resultados conserva cabeceras y muestra «Limpiar». Una clase sin alumnado sigue con empty a pantalla completa.

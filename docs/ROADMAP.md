@@ -31,6 +31,7 @@ Prioridad: alta.
   Avance: inspector incorpora Inteligencia Educativa local estructurada para resumir fortalezas, riesgos, recomendaciones y lectura docente de la media sin recalcular los datos KMP.
   Avance: en macOS, una columna de notas se rellena con el teclado: flechas para moverse, número para sustituir la nota, Esc para recuperar el valor anterior. El teclado táctil del iPad no cambia.
   Avance: Mayús+clic marca un rango en una columna. Pegar varias líneas o rellenar ese rango se deshace de una sola vez.
+  Avance: las notas sueltas ya no se pintan de rojo, ámbar o verde. El color de banda, si se enciende, queda solo en la Media.
 - Rubricas: evaluacion fiable, integracion con cuaderno e informes.
   Pendiente: los quizzes no se autocorrigen. `QuizQuestionDraft` importa pregunta y opciones pero no la respuesta correcta, y `saveResponses` solo deriva nota para la rejilla de observacion 1-4 y la checklist proporcional. Faltan clave de respuestas, contrato de autoria en el DOCX, puntuacion por pregunta, versionado de la clave y derivacion local verificable. Detalle en `docs/importacion_documentos_sa.md`.
 - Asistencia: flujo diario rapido y consistente.

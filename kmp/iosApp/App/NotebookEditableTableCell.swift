@@ -630,36 +630,8 @@ private struct NotebookStatefulEditableTableCell: View {
     let onCellSaved: () -> Void
     let onAttendanceSaved: () -> Void
 
-    /// Ajuste transversal (color semántico + heat de nota), con toggle propio en
-    /// el menú de acciones del cuaderno. Se lee aquí vía `@AppStorage` con la
-    /// misma clave que `NotebookModuleView` en vez de enhebrarla por el init:
-    /// patrón estándar de SwiftUI para un ajuste que cruza muchos tipos de celda.
-    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) private var semanticGradeColorEnabled = true
-
     private var persistedCell: PersistedNotebookCell? {
         item.row.persistedCells.first(where: { $0.columnId == column.id })
-    }
-
-    /// Banda de la nota (baja/media/alta) para colorear el número y, en modo
-    /// heat, el fondo de la celda. `nil` si el toggle está apagado, la columna
-    /// no es una nota 0–10 (p. ej. tiempo/distancia/repeticiones de pruebas
-    /// físicas: un "6,5" ahí es un dato bruto, no una nota) o el valor no se
-    /// puede interpretar como número.
-    private var gradeBand: NotebookGradeBand? {
-        guard semanticGradeColorEnabled, column.type == .numeric else { return nil }
-        switch column.scaleKind {
-        case .time, .distance, .repetitions:
-            return nil
-        case .fourLevel, .percentage:
-            // Escalas 1–4 (observación) y 0–100 (%): un "4" o un "45" no son notas
-            // sobre 10; colorearlos por banda 0–10 pinta el máximo de 1–4 en rojo y
-            // un 45% suspenso en verde.
-            return nil
-        default:
-            break
-        }
-        guard let score = NotebookFormulaDisplay.parseNumber(numericDraft) else { return nil }
-        return NotebookGradeBand(scoreOutOfTen: score)
     }
 
     @State private var numericDraft = ""
@@ -817,11 +789,6 @@ private struct NotebookStatefulEditableTableCell: View {
         if hasPendingDraft {
             return NotebookStyle.warningTint.opacity(0.10)
         }
-        if let gradeBand {
-            // Modo heat (parte del mismo toggle que el color del número): tinte de
-            // fondo suave por banda, para leer la clase entera como mapa de calor.
-            return gradeBand.softFill
-        }
         return .clear
     }
 
@@ -941,7 +908,7 @@ private struct NotebookStatefulEditableTableCell: View {
                             Text(numericDraft.isEmpty ? "—" : numericDraft)
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
                                 .monospacedDigit()
-                                .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : (gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary)))
+                                .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
                                 .lineLimit(1)
                             if let physicalScore {
                                 Text("· \(IosFormatting.decimal(physicalScore))")
@@ -1138,7 +1105,7 @@ private struct NotebookStatefulEditableTableCell: View {
                     .textFieldStyle(.plain)
                     .multilineTextAlignment(.trailing)
                     .font(NotebookGridStyle.cellFont)
-                    .foregroundStyle(gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
+                    .foregroundStyle(AnyShapeStyle(.primary))
                     .focused(focusedCellId, equals: cellId)
                     .onAppear {
                         focusedCellId.wrappedValue = cellId
@@ -1163,11 +1130,7 @@ private struct NotebookStatefulEditableTableCell: View {
                 Text(numericDraft.isEmpty ? "—" : numericDraft)
                     .font(NotebookGridStyle.cellFont)
                     .monospacedDigit()
-                    .foregroundStyle(
-                        numericDraft.isEmpty
-                            ? AnyShapeStyle(.tertiary)
-                            : (gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
-                    )
+                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .simultaneousGesture(numericDragGesture)

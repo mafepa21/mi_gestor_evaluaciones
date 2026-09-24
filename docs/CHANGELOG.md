@@ -19,6 +19,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Teclado de hoja de cálculo en el Cuaderno (macOS)**: con una celda de nota seleccionada, las flechas mueven la selección, un número sustituye la nota y la flecha o Return la guarda y baja a la siguiente. Esc devuelve el valor de antes de escribir. Una rúbrica, una fórmula o un visto bueno no se abren al pulsar un número. El teclado táctil del iPad no cambia.
+
+- **Rango, relleno y pegado en el Cuaderno**: Mayús+clic alarga la selección en la misma columna. Rellenar copia el valor solo en ese rango. Pegar varias líneas desde Numbers llena esas celdas y un solo Deshacer vuelve atrás todo el lote.
+
+- **Menús del Cuaderno con los mismos textos**: la vista se llama Rejilla en el iPad y en el Mac. El filtro vacío dice Grupo completo y Sin filtrar en todos los sitios. El menú Edición puede decir Deshacer nota de… y Rehacer nota de…
+
+- **Menos color en el Cuaderno**: las notas sueltas se leen en negro. El rojo, el ámbar y el verde ya no pintan cada celda. Si se enciende «Colorear la media», el color queda solo en la columna Media. El ajuste nace apagado.
+
+- **Nueva columna en dos pasos**: eliges el tipo, pones el nombre y pulsas Crear. El peso, la rúbrica y la fórmula quedan en Ajustes, abiertos solo cuando hacen falta.
+
 - **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
   - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
   - Detección automática en la app de la SA asociada a la columna del cuaderno y los grupos de trabajo vinculados para generar los pares de evaluación.
@@ -61,6 +71,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Menos color en el Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se miró la tabla en la app.
+- Menús y Deshacer del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió el menú Edición en la app.
+- Rango y pegado del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se pegó una hoja de Numbers en la app.
+- Teclado del Cuaderno en macOS, 23 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió la app para recorrer una columna con el teclado.
 - `./scripts/verify_apple_builds.sh` (Fase 1 Cuaderno, worktree `fix-cuaderno-fase1-bugs`): macOS Native / Catalyst y iOS Simulator compilados con éxito. Sin QA visual en dispositivo.
 - `./scripts/verify_apple_builds.sh`: macOS Native / Catalyst y iOS Simulator compilados con éxito.
 - `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: suites de SQLDelight y contratos KMP completadas con 0 fallos.

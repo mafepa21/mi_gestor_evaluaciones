@@ -1644,6 +1644,30 @@ Notas para futuras conversaciones:
 - El borrador optimista (`optimisticGradeDrafts`, `optimisticTextDrafts`, `optimisticAnnotations`) sigue haciendo falta en la ventana de ~150 ms antes de que el cuaderno emita la fila nueva. La clave es `alumno|columna`.
 - La ventana de filas (Fase 2.3) no se ha hecho: faltaba medir con Instruments si el grid materializa todas las filas.
 
+### 2026-09-24 - Rango y un solo Deshacer en el Cuaderno
+
+Resumen:
+- Mayús+clic alarga la selección hacia abajo o hacia arriba en la misma columna. Rellenar copia el valor solo ahí.
+- Pegar varias líneas llena esas celdas. Un Deshacer vuelve atrás todo el lote, no celda a celda.
+- Validación: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator el 24 sep 2026. No se pegó una hoja de Numbers en la app.
+
+Notas para futuras conversaciones:
+- El arrastre vertical para marcar el rango no está: en el Mac choca con el gesto de subir o bajar la nota.
+- El pull request del rango va encima del teclado (`codex/cuaderno-fase3-teclado`), no directo a `develop`, para no mezclar los dos cambios.
+
+### 2026-09-23 - Teclado de hoja de cálculo en el Cuaderno
+
+Resumen:
+- En macOS, con una nota seleccionada, las flechas mueven la celda, un número sustituye la nota y la flecha o Return la guarda y pasa a la siguiente. Esc deja el valor de antes de escribir.
+- Una rúbrica, una fórmula o un visto bueno no se abren al pulsar un número. El teclado táctil del iPad sigue igual.
+- Vive en `NotebookViewModifiers.swift`, `NotebookModuleCellActions.swift` y el campo numérico de `NotebookEditableTableCell.swift`. La nota no se guarda en cada tecla.
+- Validación: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se probó con el dedo en la app.
+
+Notas para futuras conversaciones:
+- La fase 3.2 (rango, rellenar y un solo Deshacer) y la 3.3 (menús únicos y ⌘Z del sistema) siguen pendientes.
+- Las ramas `codex/fix-cuaderno-fase1-bugs` y `codex/cuaderno-fase2-display` no están en `develop`. La fase 1 también toca `NotebookEditableTableCell.swift`.
+- Escribir la nota no abre el campo de texto: el grid sigue con el foco para que la segunda cifra no borre la primera.
+
 ### 2026-09-16 - El tablero de grupos ya no se deshace y muestra todas las columnas
 
 Resumen:

@@ -345,6 +345,9 @@ extension NotebookModuleView {
             .appOnChange(of: selectedClassId) { newValue in
                 Task { @MainActor in
                     undoStack.removeAll()
+                    redoStack.removeAll()
+                    selectedCellRange = nil
+                    refreshNotebookEditMenu()
                     guard let newValue else { return }
                     guard bridge.notebookViewModel.currentClassId?.int64Value != newValue else { return }
                     selectNotebookClass(newValue)
@@ -353,6 +356,9 @@ extension NotebookModuleView {
             .appOnChange(of: bridge.selectedNotebookTabId) { _ in
                 Task { @MainActor in
                     undoStack.removeAll()
+                    redoStack.removeAll()
+                    selectedCellRange = nil
+                    refreshNotebookEditMenu()
                     restoreSeatPositions()
                     await refreshNotebookSignals()
                 }

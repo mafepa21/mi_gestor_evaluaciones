@@ -143,7 +143,7 @@ class KmpContainer(val driver: SqlDriver) {
     val listStudentSupportMeasures = ListStudentSupportMeasuresUseCase(studentSupportMeasureRepository)
     val listActiveSupportMeasureStudentIds = ListActiveSupportMeasureStudentIdsUseCase(studentSupportMeasureRepository)
     val saveWeeklyTemplate = SaveWeeklyTemplateUseCase(weeklyTemplateRepository)
-    val generateSessionsFromUD = GenerateSessionsFromUDUseCase(weeklyTemplateRepository, plannedSessionRepository)
+    val generateSessionsFromUD = GenerateSessionsFromUDUseCase(weeklyTemplateRepository, plannerRepository)
     val deleteStudent = DeleteStudentUseCase(studentsRepository, classesRepository)
     val getNotebook = GetNotebookUseCase(
         classesRepository = classesRepository,

@@ -395,7 +395,37 @@ class PlannerViewModel(
             year = this.date.year,
             objectives = this.objectives,
             activities = this.notes,
+            startTime = this.startTime,
+            endTime = this.endTime,
             status = SessionStatus.PLANNED
+        )
+    }
+
+    private fun plannedToPlanningSession(
+        planned: PlannedSession,
+        groupId: Long,
+        dayOfWeek: Int,
+        period: Int,
+        date: LocalDate,
+        startTime: String,
+        endTime: String,
+    ): PlanningSession {
+        return PlanningSession(
+            id = 0,
+            teachingUnitId = planned.teachingUnitId ?: 0L,
+            teachingUnitName = planned.title.ifBlank { "Sesión" },
+            teachingUnitColor = "#4A90D9",
+            groupId = groupId,
+            groupName = groups.value.firstOrNull { it.id == groupId }?.name ?: "Grupo $groupId",
+            dayOfWeek = dayOfWeek,
+            period = period,
+            weekNumber = IsoWeekHelper.isoWeekOf(date),
+            year = date.year,
+            objectives = planned.objectives,
+            activities = listOf(planned.resources, planned.notes).filter { it.isNotBlank() }.joinToString("\n"),
+            startTime = startTime,
+            endTime = endTime,
+            status = SessionStatus.PLANNED,
         )
     }
 
@@ -576,13 +606,11 @@ class PlannerViewModel(
 
             val targetManualExisting = plannerRepo.listSessionsInRange(command.targetGroupId, command.fromDate, command.toDate)
             val targetManualKeys = targetManualExisting.map { Triple(it.groupId, toDate(it), it.period) }.toSet()
-            val targetPlannedExisting = plannedSessionRepo.listSessionsInRange(command.targetGroupId, command.fromDate, command.toDate)
-            val targetPlannedKeys = targetPlannedExisting.map { Triple(it.schoolClassId, it.date, it.startTime) }.toSet()
 
             val mappedPairs = sourceItems.zip(targetSlots).take(minOf(sourceItems.size, targetSlots.size))
             val plannerToSave = mutableListOf<PlanningSession>()
-            val plannedToSave = mutableListOf<PlannedSession>()
             var overwritten = 0
+            var omittedBecauseRealSession = 0
             mappedPairs.forEach { (item, target) ->
                 when (item) {
                     is CopySourceItem.Manual -> {
@@ -593,30 +621,36 @@ class PlannerViewModel(
                             dayOfWeek = target.dayOfWeek,
                             period = target.period,
                             weekNumber = IsoWeekHelper.isoWeekOf(target.date),
-                            year = target.date.year
+                            year = target.date.year,
+                            startTime = item.session.startTime ?: target.startTime,
+                            endTime = item.session.endTime ?: target.endTime,
                         )
                         if (targetManualKeys.contains(Triple(mapped.groupId, target.date, mapped.period))) overwritten++
                         plannerToSave += mapped
                     }
                     is CopySourceItem.Planned -> {
-                        val mapped = item.session.copy(
-                            id = 0,
-                            schoolClassId = command.targetGroupId,
+                        val mapped = plannedToPlanningSession(
+                            planned = item.session,
+                            groupId = command.targetGroupId,
+                            dayOfWeek = target.dayOfWeek,
+                            period = target.period,
                             date = target.date,
                             startTime = target.startTime,
-                            endTime = target.endTime
+                            endTime = target.endTime,
                         )
-                        if (targetPlannedKeys.contains(Triple(mapped.schoolClassId, mapped.date, mapped.startTime))) overwritten++
-                        plannedToSave += mapped
+                        if (targetManualKeys.contains(Triple(mapped.groupId, target.date, mapped.period))) {
+                            omittedBecauseRealSession++
+                        } else {
+                            plannerToSave += mapped
+                        }
                     }
                 }
             }
             plannerRepo.bulkUpsertSessions(plannerToSave)
-            plannedSessionRepo.bulkUpsertOrReplacePlannedSessions(plannedToSave)
             _lastBulkOperation.value = PlannerBulkOperationResult(
-                affected = plannerToSave.size + plannedToSave.size,
+                affected = plannerToSave.size,
                 overwritten = overwritten,
-                omitted = (sourceItems.size - mappedPairs.size).coerceAtLeast(0)
+                omitted = (sourceItems.size - mappedPairs.size).coerceAtLeast(0) + omittedBecauseRealSession
             )
         }
     }
@@ -639,7 +673,7 @@ class PlannerViewModel(
             }
             val slotIndexByKey = slots.withIndex().associate { it.value.key() to it.index }
             val movedPlanner = mutableListOf<PlanningSession>()
-            val movedPlanned = mutableListOf<PlannedSession>()
+            val plannedMoves = mutableListOf<PlanningSession>()
             val plannerIdsToDelete = mutableListOf<Long>()
             val plannedIdsToDelete = mutableListOf<Long>()
             var omitted = 0
@@ -671,21 +705,31 @@ class PlannerViewModel(
                     }
                     is CopySourceItem.Planned -> {
                         plannedIdsToDelete += item.session.id
-                        movedPlanned += item.session.copy(
-                            id = 0,
+                        plannedMoves += plannedToPlanningSession(
+                            planned = item.session,
+                            groupId = command.groupId,
+                            dayOfWeek = target.dayOfWeek,
+                            period = target.period,
                             date = target.date,
                             startTime = target.startTime,
-                            endTime = target.endTime
+                            endTime = target.endTime,
                         )
                     }
                 }
             }
+            val occupiedByRealSession = sourceManual
+                .filter { it.id !in plannerIdsToDelete }
+                .map { Triple(it.groupId, toDate(it), it.period) }
+                .toSet() + movedPlanner.map { Triple(command.groupId, toDate(it), it.period) }
+            plannedMoves.forEach { mapped ->
+                val key = Triple(mapped.groupId, toDate(mapped), mapped.period)
+                if (key in occupiedByRealSession) omitted++ else movedPlanner += mapped
+            }
             plannerRepo.deleteSessions(plannerIdsToDelete.distinct())
             plannedSessionRepo.deleteSessions(plannedIdsToDelete.distinct())
             plannerRepo.bulkUpsertSessions(movedPlanner)
-            plannedSessionRepo.bulkUpsertOrReplacePlannedSessions(movedPlanned)
             _lastBulkOperation.value = PlannerBulkOperationResult(
-                affected = movedPlanner.size + movedPlanned.size,
+                affected = movedPlanner.size,
                 overwritten = 0,
                 omitted = omitted
             )

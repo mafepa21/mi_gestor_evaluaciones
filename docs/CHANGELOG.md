@@ -75,6 +75,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Sync de sesiones, franja y diario, 24 sep 2026: `./gradlew :data:desktopTest` ejecutó `SqlDelightSyncAdapterPlanningSessionSyncTest` (7), `SyncDatasetFingerprintTest`, `SqlDelightSyncAdapterRosterTest`, `SqlDelightSyncAdapterTombstoneTest` y `SqlDelightSyncAdapterStudentFieldsTest`, con 0 fallos. No se lanzó la suite completa de `:data:desktopTest`. `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se probó con un iPad real.
+
 - SyncLAN y baja de alumnado, 24 sep 2026: `./gradlew :data:desktopTest` ejecutó `LocalSyncServerAdoptionTest` (7), `SqlDelightSyncAdapterTombstoneTest` (2), `SqlDelightSyncAdapterOutgoingDeleteTest` (3), `SqlDelightSyncAdapterRosterTest` (2) y `DeleteStudentUseCaseIntegrationTest` (3), con 0 fallos. `./gradlew :shared:desktopTest --tests com.migestor.shared.usecase.DeleteStudentUseCaseTest` ejecutó 3 pruebas, con 0 fallos. No se compiló la app de Apple porque este cambio no toca Swift. No se probó con un iPad real.
 
 - Cuaderno, filas visibles al desplazar, 24 sep 2026: `xcodebuild` del esquema `MiGestorKMPMac` (macOS) y del esquema `MiGestorKMPiOS` (simulador iOS) terminó en BUILD SUCCEEDED. `./scripts/verify_apple_builds.sh` falló antes por disco lleno, no por el código. No se abrió la app, así que no se comprobó a ojo si las tres zonas siguen alineadas al bajar.
@@ -89,6 +91,8 @@ El formato sigue una variante practica de Keep a Changelog:
 - Suite de interoperabilidad criptográfica `interop_entregas_web`: 75/75 pruebas superadas (0 fallidas).
 
 ### Fixed
+
+- **El sync ya no borra instrumentos ni franja, y el diario viaja entre aparatos**: el mensaje de la sesión incluye los instrumentos enlazados, la franja y las horas. Si llega un mensaje viejo sin esos datos, se conserva lo que ya había. El diario de la sesión (texto, notas, tareas y enlaces) entra en el sync. Las fotos siguen siendo solo la ruta. Las sesiones nuevas que el escritorio genera al guardar una unidad, o al copiar y mover, se escriben en la misma tabla que usa el iPad. La comparación de «Igualar dispositivos» distingue diarios, franjas e instrumentos.
 
 - **SyncLAN ya no abre el cuaderno a cualquier programa del Mac**: las rutas de datos piden la contraseña del enlace también cuando la petición sale del propio Mac. Sin contraseña responden 401. El aviso interno del Mac a sí mismo sigue siendo solo local y no entrega el cuaderno.
 

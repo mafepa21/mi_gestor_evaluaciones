@@ -34,6 +34,7 @@ import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -758,6 +759,10 @@ class SqlDelightSyncAdapter(
                 session.activities,
                 session.evaluation,
                 session.linkedAssessmentIdsCsv,
+                session.teacherScheduleSlotId?.toString().orEmpty(),
+                session.startTime.orEmpty(),
+                session.endTime.orEmpty(),
+                session.learningSituationSessionPlanId?.toString().orEmpty(),
                 session.status.name,
             ).joinToString("|")
         }
@@ -783,7 +788,11 @@ class SqlDelightSyncAdapter(
                         put("objectives", JsonPrimitive(session.objectives))
                         put("activities", JsonPrimitive(session.activities))
                         put("evaluation", JsonPrimitive(session.evaluation))
-                        session.learningSituationSessionPlanId?.let { put("learningSituationSessionPlanId", JsonPrimitive(it)) }
+                        put("linkedAssessmentIdsCsv", JsonPrimitive(session.linkedAssessmentIdsCsv))
+                        put("teacherScheduleSlotId", session.teacherScheduleSlotId?.let(::JsonPrimitive) ?: JsonNull)
+                        put("startTime", session.startTime?.let(::JsonPrimitive) ?: JsonNull)
+                        put("endTime", session.endTime?.let(::JsonPrimitive) ?: JsonNull)
+                        put("learningSituationSessionPlanId", session.learningSituationSessionPlanId?.let(::JsonPrimitive) ?: JsonNull)
                         put("status", JsonPrimitive(session.status.name))
                     }.toString(),
                 )
@@ -797,6 +806,35 @@ class SqlDelightSyncAdapter(
             buildJsonObject { put("id", JsonPrimitive(deletedId.toLongOrNull() ?: 0L)) }
         }
         syncSignatureSnapshotByScope[plannerSessionScope] = plannerSessionSignatures
+
+        val journals = plannerSessions.mapNotNull { session ->
+            container.sessionJournalRepository.getJournalForSession(session.id)
+        }
+        val journalScope = "global:session_journal"
+        val journalSignatures = journals.associate { aggregate ->
+            aggregate.journal.planningSessionId.toString() to SessionJournalSyncCodec.signature(aggregate)
+        }
+        journals.forEach { aggregate ->
+            val journalId = aggregate.journal.planningSessionId.toString()
+            val updatedAt = syntheticUpdatedAt(journalScope, journalId, journalSignatures.getValue(journalId))
+            if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
+                changes += SyncChange(
+                    entity = "session_journal",
+                    id = journalId,
+                    updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
+                    deviceId = localDeviceId,
+                    payload = SessionJournalSyncCodec.encode(aggregate),
+                )
+            }
+        }
+        appendDeletesByScope(
+            scope = journalScope,
+            entity = "session_journal",
+            currentIds = journals.map { it.journal.planningSessionId.toString() }.toSet(),
+        ) { deletedId ->
+            buildJsonObject { put("planningSessionId", JsonPrimitive(deletedId.toLongOrNull() ?: 0L)) }
+        }
+        syncSignatureSnapshotByScope[journalScope] = journalSignatures
 
         val teacherSchedules = container.database.appDatabaseQueries.selectAllTeacherSchedules().executeAsList()
         if (teacherSchedules.isEmpty()) {
@@ -1845,30 +1883,59 @@ class SqlDelightSyncAdapter(
                     }
 
                     "planning_session" -> {
+                        val sessionId = payload.long("id") ?: 0L
+                        val existing = sessionId.takeIf { it > 0L }?.let { id ->
+                            container.plannerRepository.listAllSessions().firstOrNull { it.id == id }
+                        }
                         val session = PlanningSession(
-                            id = payload.long("id") ?: 0L,
-                            teachingUnitId = payload.long("teachingUnitId") ?: 0L,
-                            teachingUnitName = payload.string("teachingUnitName") ?: "Unidad",
-                            teachingUnitColor = payload.string("teachingUnitColor") ?: "#4A90D9",
-                            groupId = payload.long("groupId") ?: 0L,
-                            groupName = payload.string("groupName") ?: "",
-                            dayOfWeek = payload.int("dayOfWeek") ?: 1,
-                            period = payload.int("period") ?: 1,
-                            weekNumber = payload.int("weekNumber") ?: 1,
-                            year = payload.int("year") ?: 2026,
-                            objectives = payload.string("objectives") ?: "",
-                            activities = payload.string("activities") ?: "",
-                            evaluation = payload.string("evaluation") ?: "",
-                            linkedAssessmentIdsCsv = payload.string("linkedAssessmentIdsCsv") ?: "",
-                            teacherScheduleSlotId = payload.long("teacherScheduleSlotId"),
-                            startTime = payload.string("startTime"),
-                            endTime = payload.string("endTime"),
-                            learningSituationSessionPlanId = payload.long("learningSituationSessionPlanId"),
+                            id = sessionId,
+                            teachingUnitId = payload.long("teachingUnitId") ?: existing?.teachingUnitId ?: 0L,
+                            teachingUnitName = payload.string("teachingUnitName") ?: existing?.teachingUnitName ?: "Unidad",
+                            teachingUnitColor = payload.string("teachingUnitColor") ?: existing?.teachingUnitColor ?: "#4A90D9",
+                            groupId = payload.long("groupId") ?: existing?.groupId ?: 0L,
+                            groupName = payload.string("groupName") ?: existing?.groupName ?: "",
+                            dayOfWeek = payload.int("dayOfWeek") ?: existing?.dayOfWeek ?: 1,
+                            period = payload.int("period") ?: existing?.period ?: 1,
+                            weekNumber = payload.int("weekNumber") ?: existing?.weekNumber ?: 1,
+                            year = payload.int("year") ?: existing?.year ?: 2026,
+                            objectives = if (payload.containsKey("objectives")) payload.rawString("objectives").orEmpty() else existing?.objectives.orEmpty(),
+                            activities = if (payload.containsKey("activities")) payload.rawString("activities").orEmpty() else existing?.activities.orEmpty(),
+                            evaluation = if (payload.containsKey("evaluation")) payload.rawString("evaluation").orEmpty() else existing?.evaluation.orEmpty(),
+                            linkedAssessmentIdsCsv = if (payload.containsKey("linkedAssessmentIdsCsv")) {
+                                payload.rawString("linkedAssessmentIdsCsv").orEmpty()
+                            } else {
+                                existing?.linkedAssessmentIdsCsv.orEmpty()
+                            },
+                            teacherScheduleSlotId = if (payload.containsKey("teacherScheduleSlotId")) {
+                                payload.long("teacherScheduleSlotId")?.takeIf { it > 0L }
+                            } else {
+                                existing?.teacherScheduleSlotId
+                            },
+                            startTime = if (payload.containsKey("startTime")) payload.rawString("startTime") else existing?.startTime,
+                            endTime = if (payload.containsKey("endTime")) payload.rawString("endTime") else existing?.endTime,
+                            learningSituationSessionPlanId = if (payload.containsKey("learningSituationSessionPlanId")) {
+                                payload.long("learningSituationSessionPlanId")?.takeIf { it > 0L }
+                            } else {
+                                existing?.learningSituationSessionPlanId
+                            },
                             status = SessionStatus.entries.firstOrNull {
                                 it.name == payload.string("status")
-                            } ?: SessionStatus.PLANNED,
+                            } ?: existing?.status ?: SessionStatus.PLANNED,
                         )
                         container.plannerRepository.upsertSession(session)
+                        applied++
+                    }
+
+                    "session_journal" -> {
+                        val decoded = SessionJournalSyncCodec.decode(change.payload)
+                        if (decoded == null) {
+                            ignored++
+                            return@forEach
+                        }
+                        val existing = container.sessionJournalRepository.getJournalForSession(decoded.journal.planningSessionId)
+                        container.sessionJournalRepository.saveJournalAggregate(
+                            decoded.copy(journal = decoded.journal.copy(id = existing?.journal?.id ?: 0L))
+                        )
                         applied++
                     }
 
@@ -2072,6 +2139,15 @@ class SqlDelightSyncAdapter(
             "planning_session" -> {
                 payload.long("id")?.let { container.plannerRepository.deleteSession(it); true } ?: false
             }
+            "session_journal" -> {
+                val sessionId = payload.long("planningSessionId") ?: change.id.toLongOrNull()
+                if (sessionId != null && sessionId > 0L) {
+                    container.sessionJournalRepository.deleteJournalForSession(sessionId)
+                    true
+                } else {
+                    false
+                }
+            }
             "teaching_unit" -> {
                 payload.long("id")?.let { container.plannerRepository.deleteTeachingUnit(it); true } ?: false
             }
@@ -2091,6 +2167,12 @@ class SqlDelightSyncAdapter(
 // ---------------------------------------------------------------------------
 
 private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+
+private fun JsonObject.rawString(key: String): String? {
+    val element = this[key] ?: return null
+    if (element == JsonNull) return null
+    return element.jsonPrimitive.contentOrNull
+}
 private fun JsonObject.long(key: String): Long? = this[key]?.jsonPrimitive?.longOrNull
 private fun JsonObject.int(key: String): Int? = this[key]?.jsonPrimitive?.intOrNull
 private fun JsonObject.double(key: String): Double? = this[key]?.jsonPrimitive?.doubleOrNull

@@ -86,6 +86,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **SyncLAN ya no abre el cuaderno a cualquier programa del Mac**: las rutas de datos piden la contraseña del enlace también cuando la petición sale del propio Mac. Sin contraseña responden 401. El aviso interno del Mac a sí mismo sigue siendo solo local y no entrega el cuaderno.
+
 - **Fase 1 del Cuaderno: filtro vacío, hover de Mac, cursor de resize y drag numérico**:
   - Una búsqueda o filtro de grupo sin resultados conserva cabeceras y muestra «Limpiar». Una clase sin alumnado sigue con empty a pantalla completa.
   - El hover de fila en Mac vive en cada fila, no en el contenedor de los 3 paneles.

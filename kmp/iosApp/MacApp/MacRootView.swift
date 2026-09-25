@@ -13,6 +13,7 @@ struct MacRootView: View {
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
+    @ObservedObject private var notebookEditMenu = NotebookEditMenuState.shared
     @StateObject private var notebookStore = NotebookBridgeStore()
     @StateObject private var dashboardStore = DashboardBridgeStore()
     @StateObject private var studentsBridgeStore = StudentsBridgeStore()
@@ -796,7 +797,7 @@ struct MacRootView: View {
             Button {
                 notebookToolbarActions.undo()
             } label: {
-                Label("Deshacer", systemImage: "arrow.uturn.backward")
+                Label(notebookEditMenu.undoTitle, systemImage: "arrow.uturn.backward")
             }
             .disabled(!notebookToolbarActions.canUndo)
             .keyboardShortcut("z", modifiers: .command)
@@ -813,7 +814,7 @@ struct MacRootView: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Label("Grid", systemImage: "tablecells").tag("grid")
+                Label(NotebookSurfaceMode.grid.title, systemImage: "tablecells").tag("grid")
                 Label("Plano", systemImage: "rectangle.3.group").tag("seatingPlan")
             }
 
@@ -1080,7 +1081,14 @@ struct MacRootView: View {
             if selectedFeature == .planner, let plannerToolbarActions {
                 let plannerSection = plannerToolbarActions.activeSection.wrappedValue
 
-                Picker("Sección", selection: plannerToolbarActions.activeSection) {
+                Picker("Sección", selection: Binding(
+                    get: { plannerToolbarActions.activeSection.wrappedValue },
+                    set: { section in
+                        withAnimation(uiFeatureFlags.interactionAnimation) {
+                            plannerToolbarActions.activeSection.wrappedValue = section
+                        }
+                    }
+                )) {
                     ForEach(PlannerWorkspaceSection.allCases) { section in
                         Label(section.rawValue, systemImage: section.systemImage).tag(section)
                     }
@@ -1513,7 +1521,9 @@ struct MacRootView: View {
         if selectedFeature != .planner {
             selectFeature(.planner)
         }
-        plannerToolbarActions?.activeSection.wrappedValue = section
+        withAnimation(uiFeatureFlags.interactionAnimation) {
+            plannerToolbarActions?.activeSection.wrappedValue = section
+        }
     }
 
     private func performSave() {

@@ -1638,7 +1638,7 @@ struct AppWorkspaceShell: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Text("Grid").tag("grid")
+                Text(NotebookSurfaceMode.grid.title).tag("grid")
                 Text("Plano").tag("seatingPlan")
             }
             .pickerStyle(.segmented)
@@ -1794,7 +1794,7 @@ struct AppWorkspaceShell: View {
             Button {
                 layoutState.notebookUndo()
             } label: {
-                Label("Deshacer", systemImage: "arrow.uturn.backward")
+                Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
             }
             .disabled(!layoutState.notebookCanUndo)
 
@@ -1810,7 +1810,7 @@ struct AppWorkspaceShell: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Label("Grid", systemImage: "tablecells").tag("grid")
+                Label(NotebookSurfaceMode.grid.title, systemImage: "tablecells").tag("grid")
                 Label("Plano", systemImage: "rectangle.3.group").tag("seatingPlan")
             }
 
@@ -1920,7 +1920,7 @@ struct AppWorkspaceShell: View {
                 Button {
                     layoutState.notebookUndo()
                 } label: {
-                    Label("Deshacer", systemImage: "arrow.uturn.backward")
+                    Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
                 }
                 .disabled(!layoutState.notebookCanUndo)
 

@@ -13,6 +13,34 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Changed
+
+- **Planificador, el cambio de pantalla se ve**: al pasar de Mes, Semana, Día, Secuencia, Evaluación o Resumen, el contenido entra con un fundido corto. En el iPhone las pestañas van en su fila y debajo el grupo, la búsqueda y la sesión nueva. El bloque de progreso arranca cerrado en Día, Secuencia y Evaluación, y abierto en Resumen. En el Día, la página sigue el dedo al cambiar de fecha.
+
+### Fixed
+
+- **Planificador, toques que no hacían nada**: en el mes, tocar un día abre ese día. En el resumen, tocar una próxima sesión abre su ficha. En el iPhone, el menú y la pastilla de hitos abren los hitos del curso. La última fila de la semana ya no se come el alto de la cabecera. La ficha muestra si la sesión está planificada, en curso, impartida o cancelada. En el Mac, Evaluación está en el menú Planificador.
+
+### Data
+
+- **Una sola tabla de sesiones del planificador**: al actualizar, lo guardado en la tabla vieja pasa a la tabla que ya sincroniza el iPad, si la hora encaja en una franja. Si ese hueco ya tenía texto, no se pisa. Si la hora no encaja, esa fila se queda en la tabla vieja y no se muestra. El estado `PENDING` pasa a `PLANNED`. Guardar una sesión que ya existe no pisa la del hueco de al lado. Una sesión nueva, si el hueco está ocupado, actualiza esa fila.
+
+### Fixed
+
+- **Planificador, arrastrar no mueve una sesión cerrada**: si la cadena incluye una sesión impartida o cancelada, no se mueve nadie. El aviso sigue saliendo. Solo si pulsas Mover se recoloca también esa sesión.
+
+### Verification
+
+- `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: pasaron al unificar las sesiones. No se han vuelto a lanzar: este cambio no toca datos ni la lógica compartida.
+- `./scripts/verify_apple_builds.sh`: compiló el Mac y el simulador del iPhone.
+- No se ha abierto la app en pantalla. La revisión de toques y animaciones es del código y de la compilación.
+
+### Changed
+
+- **Cuaderno, solo se dibujan las filas de la pantalla**: al bajar por la tabla, nombres, notas y media siguen alineados, pero solo existen las filas visibles y un margen. El resumen de cada fila se calcula cuando esa fila se dibuja, no para toda la clase de golpe.
+
+- **Cuaderno, pintar sin preguntar al puente en cada celda**: la nota, el texto, la casilla, la rúbrica y el sello se leen de `persistedCells` y `persistedGrades` de la fila. La fórmula usa esas notas ya cargadas. El puente sigue solo para guardar y para el borrador que aún no ha vuelto del cuaderno.
+
 ### Added
 
 - **Importación y asociación automática de correos de alumnos desde Excel (.xlsx/.csv)**:
@@ -22,6 +50,16 @@ El formato sigue una variante practica de Keep a Changelog:
   - Hoja interactiva de previsualización `StudentEmailImportSheet` que desglosa emparejamientos seguros, casos ambiguos y correos sin coincidencia, con selección granular antes de confirmar.
   - Acciones y selectores de archivo integrados en macOS (`MacStudentsView`) y en iPadOS/iOS (`StudentProfilesWorkspaceView`).
   - Actualización atómica en la base de datos de los alumnos con emisión de cambios para SyncLAN y refresco instantáneo del directorio e inspector.
+
+- **Teclado de hoja de cálculo en el Cuaderno (macOS)**: con una celda de nota seleccionada, las flechas mueven la selección, un número sustituye la nota y la flecha o Return la guarda y baja a la siguiente. Esc devuelve el valor de antes de escribir. Una rúbrica, una fórmula o un visto bueno no se abren al pulsar un número. El teclado táctil del iPad no cambia.
+
+- **Rango, relleno y pegado en el Cuaderno**: Mayús+clic alarga la selección en la misma columna. Rellenar copia el valor solo en ese rango. Pegar varias líneas desde Numbers llena esas celdas y un solo Deshacer vuelve atrás todo el lote.
+
+- **Menús del Cuaderno con los mismos textos**: la vista se llama Rejilla en el iPad y en el Mac. El filtro vacío dice Grupo completo y Sin filtrar en todos los sitios. El menú Edición puede decir Deshacer nota de… y Rehacer nota de…
+
+- **Menos color en el Cuaderno**: las notas sueltas se leen en negro. El rojo, el ámbar y el verde ya no pintan cada celda. Si se enciende «Colorear la media», el color queda solo en la columna Media. El ajuste nace apagado.
+
+- **Nueva columna en dos pasos**: eliges el tipo, pones el nombre y pulsas Crear. El peso, la rúbrica y la fórmula quedan en Ajustes, abiertos solo cuando hacen falta.
 
 - **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
   - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
@@ -58,6 +96,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- **Los borrados de SyncLAN se guardan en la tabla que ya existía**: el Mac anota cada baja propia en `sync_tombstones` y, al arrancar, la vuelve a leer. No hay tabla nueva ni columna nueva.
+
 - **Migración 43.sqm y persistencia de coevaluaciones en SQLDelight**:
   - Columna `mode TEXT NOT NULL DEFAULT 'self'` en la tabla `web_form_instances`.
   - Nueva tabla `web_peer_targets` con índices para persistir las correspondencias privadas `(form_instance_id, evaluator_alias, target_alias, target_student_id, target_display_name, created_at)`.
@@ -65,12 +105,36 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Sync de sesiones, franja y diario, 24 sep 2026: `./gradlew :data:desktopTest` ejecutó `SqlDelightSyncAdapterPlanningSessionSyncTest` (7), `SyncDatasetFingerprintTest`, `SqlDelightSyncAdapterRosterTest`, `SqlDelightSyncAdapterTombstoneTest` y `SqlDelightSyncAdapterStudentFieldsTest`, con 0 fallos. No se lanzó la suite completa de `:data:desktopTest`. `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se probó con un iPad real.
+
+- SyncLAN y baja de alumnado, 24 sep 2026: `./gradlew :data:desktopTest` ejecutó `LocalSyncServerAdoptionTest` (7), `SqlDelightSyncAdapterTombstoneTest` (2), `SqlDelightSyncAdapterOutgoingDeleteTest` (3), `SqlDelightSyncAdapterRosterTest` (2) y `DeleteStudentUseCaseIntegrationTest` (3), con 0 fallos. `./gradlew :shared:desktopTest --tests com.migestor.shared.usecase.DeleteStudentUseCaseTest` ejecutó 3 pruebas, con 0 fallos. No se compiló la app de Apple porque este cambio no toca Swift. No se probó con un iPad real.
+
+- Cuaderno, filas visibles al desplazar, 24 sep 2026: `xcodebuild` del esquema `MiGestorKMPMac` (macOS) y del esquema `MiGestorKMPiOS` (simulador iOS) terminó en BUILD SUCCEEDED. `./scripts/verify_apple_builds.sh` falló antes por disco lleno, no por el código. No se abrió la app, así que no se comprobó a ojo si las tres zonas siguen alineadas al bajar.
+- Menos color en el Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se miró la tabla en la app.
+- Menús y Deshacer del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió el menú Edición en la app.
+- Rango y pegado del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se pegó una hoja de Numbers en la app.
+- Teclado del Cuaderno en macOS, 23 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió la app para recorrer una columna con el teclado.
+- `./scripts/verify_apple_builds.sh` (Fase 1 Cuaderno, worktree `fix-cuaderno-fase1-bugs`): macOS Native / Catalyst y iOS Simulator compilados con éxito. Sin QA visual en dispositivo.
 - `./scripts/verify_apple_builds.sh`: macOS Native / Catalyst y iOS Simulator compilados con éxito.
 - `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: suites de SQLDelight y contratos KMP completadas con 0 fallos.
 - `npm test` en `entregas-alumnado`: 50/50 pruebas de contrato, esquemas v2 y cifrado superadas.
 - Suite de interoperabilidad criptográfica `interop_entregas_web`: 75/75 pruebas superadas (0 fallidas).
 
 ### Fixed
+
+- **El sync ya no borra instrumentos ni franja, y el diario viaja entre aparatos**: el mensaje de la sesión incluye los instrumentos enlazados, la franja y las horas. Si llega un mensaje viejo sin esos datos, se conserva lo que ya había. El diario de la sesión (texto, notas, tareas y enlaces) entra en el sync. Las fotos siguen siendo solo la ruta. Las sesiones nuevas que el escritorio genera al guardar una unidad, o al copiar y mover, se escriben en la misma tabla que usa el iPad. La comparación de «Igualar dispositivos» distingue diarios, franjas e instrumentos.
+
+- **SyncLAN ya no abre el cuaderno a cualquier programa del Mac**: las rutas de datos piden la contraseña del enlace también cuando la petición sale del propio Mac. Sin contraseña responden 401. El aviso interno del Mac a sí mismo sigue siendo solo local y no entrega el cuaderno.
+
+- **Un reinicio del ayudante ya no olvida los borrados de SyncLAN**: el aviso se guarda y, al arrancar, se vuelve a enviar solo si esa ficha sigue sin existir. Así el iPad no conserva alumnos ni notas que el Mac ya borró.
+
+- **Quitar a un alumno de un curso ya no borra su ficha**: con un curso indicado solo se le da de baja ahí. La ficha entera, y con ella las notas de los otros cursos, se borra solo si la orden lo pide de forma explícita.
+
+- **Fase 1 del Cuaderno: filtro vacío, hover de Mac, cursor de resize y drag numérico**:
+  - Una búsqueda o filtro de grupo sin resultados conserva cabeceras y muestra «Limpiar». Una clase sin alumnado sigue con empty a pantalla completa.
+  - El hover de fila en Mac vive en cada fila, no en el contenedor de los 3 paneles.
+  - El cursor de resize hace `pop` al salir o al desaparecer la vista.
+  - En Mac, arrastrar en una nota numérica ya no cambia el valor; el gesto de décimas queda solo en iOS.
 
 - **Corrección de persistencia y sincronización al modificar grupos de trabajo en tablero y lista (PR #240)**:
   - **Cola de asignaciones pendientes en `WorkGroupBoardDraft`**: Incorporada la cola `pendingAssignments` para registrar qué alumnos se mueven a grupos temporales (recién creados o auto-agrupados con `id < 0`), despachándolos de forma automática al bridge KMP en el momento en que `remapTemporaryIds` descubre su ID persistido en base de datos.

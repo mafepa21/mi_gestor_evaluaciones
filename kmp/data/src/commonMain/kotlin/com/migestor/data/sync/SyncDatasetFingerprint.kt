@@ -127,9 +127,17 @@ data class SyncDatasetFingerprint(
 
             val sessions = container.plannerRepository.listAllSessions()
             counts["planning_session"] = sessions.size
+            var journalCount = 0
             sessions.forEach { session ->
-                records.add("planning_session:${session.id}:${session.status.name}")
+                records.add(
+                    "planning_session:${session.id}:${session.status.name}:${session.linkedAssessmentIdsCsv}:${session.teacherScheduleSlotId ?: ""}:${session.startTime.orEmpty()}:${session.endTime.orEmpty()}"
+                )
+                container.sessionJournalRepository.getJournalForSession(session.id)?.let { aggregate ->
+                    journalCount += 1
+                    records.add("session_journal:${session.id}:${SessionJournalSyncCodec.signature(aggregate)}")
+                }
             }
+            counts["session_journal"] = journalCount
 
             // 7. learning_situation
             val situations = container.learningSituationsRepository.listSituations()

@@ -158,7 +158,7 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
     private var secondaryMenu: some View {
         Menu {
             Button(action: onUndo) {
-                Label("Deshacer último cambio", systemImage: "arrow.uturn.backward")
+                Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
             }
             .disabled(!canUndo)
 

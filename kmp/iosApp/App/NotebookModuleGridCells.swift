@@ -629,13 +629,16 @@ extension NotebookModuleView {
             return AnyView(fixedRowCell(for: fixed, item: item, data: data))
         case .column(let column):
             let isCellSelected = inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+            let isInGradeRange = cellIsInsideGradeRange(studentId: item.student.id, columnId: column.id, rows: allRows)
             let formulaCellDisplay = formulaDisplay(for: item, column: column, data: data)
             let displaySnapshot = cellDisplaySnapshot(for: item, column: column, formulaDisplay: formulaCellDisplay)
             let cellActions = notebookCellActions()
             return AnyView(
                 ZStack {
                     Rectangle()
-                        .fill(notebookColumnCellFill(for: column, rowIndex: rowIndex))
+                        .fill(isInGradeRange && !isCellSelected
+                              ? Color.accentColor.opacity(0.12)
+                              : notebookColumnCellFill(for: column, rowIndex: rowIndex))
 
                     NotebookEditableTableCell(
                         displaySnapshot: displaySnapshot,
@@ -658,10 +661,39 @@ extension NotebookModuleView {
                         reloadToken: rowReloadRevisions[item.student.id, default: 0],
                         onSelect: {
                             selectedColumnId = nil
-                            inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                            let newCellId = cellFocusId(studentId: item.student.id, columnId: column.id)
+                            #if os(macOS)
+                            if let captureId = keyboardCaptureCellId, captureId != newCellId {
+                                commitKeyboardCaptureInPlace()
+                            }
+                            #endif
+                            let sameColumn = (selectedCellRange?.columnId ?? inspectorSelection?.columnId) == column.id
+                            if notebookShiftClickIsDown(),
+                               sameColumn,
+                               let anchorId = selectedCellRange?.anchorStudentId ?? inspectorSelection?.studentId {
+                                selectedCellRange = NotebookCellRange(
+                                    columnId: column.id,
+                                    anchorStudentId: anchorId,
+                                    endStudentId: item.student.id
+                                )
+                                inspectorSelection = NotebookInspectorSelection(studentId: anchorId, columnId: column.id)
+                            } else {
+                                inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                                selectedCellRange = NotebookCellRange(
+                                    columnId: column.id,
+                                    anchorStudentId: item.student.id,
+                                    endStudentId: item.student.id
+                                )
+                            }
                             if focusedCellId == nil && activeChoiceCellId == nil && !isInspectorPresented {
                                 focusMode = .normal
                             }
+                            #if os(macOS)
+                            if notebookColumnAcceptsGradeKeyboard(column),
+                               focusedCellId != newCellId {
+                                notebookGridKeyboardFocused = true
+                            }
+                            #endif
                         },
                         onPrepareUndo: { previousValue, previousDisplayLabel in
                             recordCellUndo(
@@ -838,20 +870,10 @@ extension NotebookModuleView {
         column: NotebookColumnDefinition,
         formulaDisplay: NotebookFormulaCellDisplay?
     ) -> NotebookCellDisplaySnapshot {
-        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
-        let optAnnotation = bridge.cellAnnotation(studentId: item.student.id, columnId: column.id)
-        let stampIcon: String?
-        let hasNote: Bool
-        let attachmentCount: Int
-        if let opt = optAnnotation {
-            stampIcon = opt.icon
-            hasNote = !(opt.note?.isEmpty ?? true)
-            attachmentCount = opt.attachmentUris.count
-        } else {
-            stampIcon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
-            hasNote = !(persistedCell?.annotation?.note?.isEmpty ?? true)
-            attachmentCount = persistedCell?.annotation?.attachmentUris.count ?? 0
-        }
+        let annotation = persistedAnnotation(for: item, columnId: column.id)
+        let stampIcon = annotation.icon
+        let hasNote = !(annotation.note?.isEmpty ?? true)
+        let attachmentCount = annotation.attachmentCount
 
         switch column.type {
         case .numeric:
@@ -893,6 +915,7 @@ extension NotebookModuleView {
             )
         default:
             let val = displayValue(for: item, column: column)
+            let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
             return NotebookCellDisplaySnapshot(
                 text: !val.isEmpty ? val : (persistedCell?.textValue ?? persistedCell?.displayValue ?? ""),
                 stampIcon: stampIcon,
@@ -1159,7 +1182,7 @@ extension NotebookModuleView {
 
     func summaryActionTitle(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> String {
         let hasExistingText = filteredRows(data: data).contains { row in
-            !bridge.cellText(studentId: row.student.id, columnId: column.id)
+            !persistedCellText(for: row, column: column)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .isEmpty
         }

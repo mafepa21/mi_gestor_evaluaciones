@@ -76,7 +76,7 @@ struct NotebookModuleView: View {
     /// Color semántico de nota + heat de celda (rediseño radical del grid).
     /// Toggle propio en el menú de acciones; `NotebookStatefulEditableTableCell`
     /// lee la misma clave con su propio `@AppStorage` (ver `NotebookGridStyle`).
-    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) var semanticGradeColorEnabled = true
+    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) var semanticGradeColorEnabled = false
     @State var categoryDraft = ""
     @State var editingCategoryId: String? = nil
     @State var isNotebookTabAlertPresented = false
@@ -98,6 +98,8 @@ struct NotebookModuleView: View {
     @State var isFillColumnDialogPresented = false
     @State var pendingCopyTabStructureSource: NotebookTab? = nil
     @State var undoStack: [NotebookCellUndoEntry] = []
+    @State var redoStack: [NotebookCellUndoEntry] = []
+    @State var selectedCellRange: NotebookCellRange? = nil
     @State var structuralGridRevision = 0
     @State var rowReloadRevisions: [Int64: Int] = [:]
     @State var highlightedCategoryId: String? = nil
@@ -141,6 +143,8 @@ struct NotebookModuleView: View {
     @AppStorage("notebook.keypad.direction") var keypadDirectionRaw = NotebookKeypadDirection.down.rawValue
     @State var keypadAdvanceTask: Task<Void, Never>? = nil
     @FocusState var focusedCellId: String?
+    @FocusState var notebookGridKeyboardFocused: Bool
+    @State var keyboardCaptureCellId: String? = nil
 
     var formulaAIService: AppleFoundationFormulaService {
         formulaAIServiceStore.service
@@ -251,6 +255,9 @@ struct NotebookModuleView: View {
         searchText = ""
 
         undoStack = []
+        redoStack = []
+        selectedCellRange = nil
+        refreshNotebookEditMenu()
         todayAttendanceByStudentId = [:]
         incidentCountByStudentId = [:]
         localInjuryStatuses = [:]
@@ -527,6 +534,7 @@ struct NotebookModuleView: View {
 
         NotebookGridContent(
             rows: rows,
+            hasSourceRows: !data.sheet.rows.isEmpty,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedZoneWidth,
             trailingFixedColumnWidth: renderModel.trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + trailingPaddingCompensation,
@@ -542,10 +550,27 @@ struct NotebookModuleView: View {
             scrollableSegments: renderModel.scrollableSegments
         ) {
             IOSEmptyState(
-                title: "Sin alumnos visibles",
-                subtitle: "Ajusta la búsqueda o el filtro de grupo para ver filas del cuaderno.",
-                systemImage: "person.3.sequence"
+                title: "Sin alumnado",
+                subtitle: "Añade alumnado desde Alumnado para ver el cuaderno.",
+                systemImage: "person.3"
             )
+        } filterEmptyContent: {
+            VStack(spacing: 16) {
+                Text("Ningún alumno coincide con el filtro.")
+                    .font(IOSAppStyle.cardTitle)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+                Text("Ajusta la búsqueda o el filtro de grupo.")
+                    .font(IOSAppStyle.bodyText)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 280)
+                Button("Limpiar") {
+                    clearNotebookRowFilters()
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } seatingContent: { rows in
             NotebookSeatingPlanView(
                 rows: rows,
@@ -755,7 +780,7 @@ struct NotebookModuleView: View {
             Button {
                 surfaceMode = .grid
             } label: {
-                Label("Grid", systemImage: surfaceMode == .grid ? "checkmark" : "tablecells")
+                Label(NotebookSurfaceMode.grid.title, systemImage: surfaceMode == .grid ? "checkmark" : "tablecells")
             }
 
             Button {
@@ -767,7 +792,7 @@ struct NotebookModuleView: View {
         }
 
         Toggle(isOn: $semanticGradeColorEnabled) {
-            Label("Colorear notas por banda", systemImage: "paintpalette")
+            Label("Colorear la media", systemImage: "paintpalette")
         }
 
         Menu("Pestañas") {
@@ -880,7 +905,7 @@ struct NotebookModuleView: View {
 
             if !groups.isEmpty {
                 Menu {
-                    Button("Todos los alumnos") {
+                    Button(NotebookMenuCopy.allStudents) {
                         selectedGroupId = nil
                     }
                     ForEach(groups, id: \.id) { group in
@@ -900,7 +925,7 @@ struct NotebookModuleView: View {
 
             if !classSituations.isEmpty {
                 Menu {
-                    Button("Sin filtrar") {
+                    Button(NotebookMenuCopy.clearSituationFilter) {
                         groupByWorkGroupMode = "none"
                     }
                     ForEach(classSituations, id: \.id) { situation in
@@ -969,7 +994,7 @@ struct NotebookModuleView: View {
             }
 
             Button {
-                showToast("Selecciona un rango para rellenar varias celdas", style: .warning)
+                requestFillColumnFromSelectedCell(data: data)
             } label: {
                 Label("Rellenar", systemImage: "arrow.down.to.line")
             }
@@ -1050,6 +1075,18 @@ struct NotebookModuleView: View {
 
     func copySelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data) else { return }
+        let rows = filteredRows(data: data)
+        if let range = selectedCellRange,
+           range.columnId == selected.column.id,
+           let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
+           let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }),
+           abs(end - start) > 0 {
+            let slice = rows[min(start, end)...max(start, end)]
+            let text = slice.map { displayValue(for: $0, column: selected.column) }.joined(separator: "\n")
+            setClipboardText(text)
+            showToast("Rango copiado")
+            return
+        }
         setClipboardText(displayValue(for: selected.row, column: selected.column))
         showToast("Celda copiada")
     }
@@ -1077,31 +1114,31 @@ struct NotebookModuleView: View {
             return
         }
 
-        // Pegado de varias filas (p. ej. una columna copiada de una hoja de cálculo):
-        // se aplica desde la celda seleccionada hacia abajo, fila a fila.
         let rows = filteredRows(data: data)
         guard let startIndex = rows.firstIndex(where: { $0.student.id == selected.selection.studentId }) else { return }
         let targetRows = rows[startIndex...]
 
-        var pastedCount = 0
+        var changes: [NotebookCellUndoChange] = []
         for (row, value) in zip(targetRows, pastedValues) {
             let previousValue = displayValue(for: row, column: selected.column)
             guard previousValue != value else { continue }
-            recordCellUndo(
-                studentId: row.student.id,
-                column: selected.column,
-                previousValue: previousValue,
-                previousDisplayLabel: nil
+            changes.append(
+                NotebookCellUndoChange(
+                    studentId: row.student.id,
+                    column: selected.column,
+                    previousValue: previousValue,
+                    previousDisplayLabel: nil
+                )
             )
             bridge.saveColumnGrade(studentId: row.student.id, column: selected.column, value: value)
             reloadNotebookRow(row.student.id)
-            pastedCount += 1
         }
+        recordCellUndoBatch(changes)
         let skippedCount = max(0, pastedValues.count - targetRows.count)
         if skippedCount > 0 {
-            showToast("Pegadas \(pastedCount) celdas (\(skippedCount) valores no cupieron en las filas visibles)", style: .warning)
+            showToast("Pegadas \(changes.count) celdas (\(skippedCount) valores no cupieron en las filas visibles)", style: .warning)
         } else {
-            showToast(pastedCount > 0 ? "Pegadas \(pastedCount) celdas" : "Sin cambios: los valores ya coincidían")
+            showToast(changes.isEmpty ? "Sin cambios: los valores ya coincidían" : "Pegadas \(changes.count) celdas")
         }
     }
 
@@ -1482,8 +1519,14 @@ struct NotebookModuleView: View {
                     #endif
                 }
                 .navigationTitle("Cuaderno")
-                .notebookKeyboardNavigation {
-                    navigateFromFocused(direction: navigationDirection, data: data)
+                .notebookKeyboardNavigation(isActive: $notebookGridKeyboardFocused) { command in
+                    handleNotebookGridKey(command, data: data)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .appleAppNotebookUndoRequested)) { _ in
+                    undoLastCellChange()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .appleAppNotebookRedoRequested)) { _ in
+                    redoLastCellChange()
                 }
                 .onAppear {
                     scheduleActiveNotebookTabSync(data: data)
@@ -1629,7 +1672,7 @@ struct NotebookModuleView: View {
                                     Menu {
                                         if !groups.isEmpty {
                                             Menu {
-                                                Button("Grupo completo") {
+                                                Button(NotebookMenuCopy.allStudents) {
                                                     selectedGroupId = nil
                                                 }
                                                 ForEach(groups, id: \.id) { gp in
@@ -1651,7 +1694,7 @@ struct NotebookModuleView: View {
 
                                         if !classSituations.isEmpty {
                                             Menu {
-                                                Button("Sin filtrar (Ver todas)") {
+                                                Button(NotebookMenuCopy.clearSituationFilter) {
                                                     groupByWorkGroupMode = "none"
                                                 }
                                                 ForEach(classSituations, id: \.id) { situation in
@@ -1777,7 +1820,7 @@ struct NotebookModuleView: View {
                                     selectedGroupId = nil
                                 } label: {
                                     HStack {
-                                        Text("Grupo completo")
+                                        Text(NotebookMenuCopy.allStudents)
                                         if selectedGroupId == nil {
                                             Image(systemName: "checkmark")
                                         }
@@ -1804,7 +1847,7 @@ struct NotebookModuleView: View {
                                     groupByWorkGroupMode = "none"
                                 } label: {
                                     HStack {
-                                        Text("Sin filtrar (Ver todas)")
+                                        Text(NotebookMenuCopy.clearSituationFilter)
                                         if groupByWorkGroupMode == "none" {
                                             Image(systemName: "checkmark")
                                         }

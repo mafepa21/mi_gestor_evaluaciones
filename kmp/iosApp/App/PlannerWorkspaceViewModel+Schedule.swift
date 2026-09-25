@@ -89,10 +89,19 @@ extension PlannerWorkspaceViewModel {
                     Int(session.period) == slotPeriod
                 )
             }
+            let isSlotBlocked = dayMilestones[Int(slot.dayOfWeek)]?.contains { m in
+                m.isBlocking && (m.classId == nil || m.classId == slot.schoolClassId)
+            } ?? false
+            if isSlotBlocked {
+                omitted += 1
+                continue
+            }
+
             if alreadyExists {
                 omitted += 1
                 continue
             }
+
 
             do {
                 _ = try await bridge.plannerSaveSessionWithLinks(

@@ -148,6 +148,30 @@ struct CollapsibleBulkDeleteSection: View {
             if isExpanded && !items.isEmpty {
                 if isSelectionMode {
                     HStack(spacing: 8) {
+                        Menu {
+                            Button {
+                                selectedIds = Set(items.map(\.id))
+                            } label: {
+                                Label("Seleccionar todo (\(items.count))", systemImage: "checkmark.circle")
+                            }
+
+                            Button {
+                                selectedIds.removeAll()
+                            } label: {
+                                Label("Deseleccionar todo", systemImage: "circle")
+                            }
+
+                            Button {
+                                selectedIds = Set(items.map(\.id)).subtracting(selectedIds)
+                            } label: {
+                                Label("Invertir selección", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .font(.system(size: 15))
+                        }
+                        .buttonStyle(.bordered)
+
                         Button(role: .destructive) {
                             showingBatchDeleteAlert = true
                         } label: {
@@ -221,6 +245,534 @@ struct CollapsibleBulkDeleteSection: View {
                 }
             }
         }
+    }
+}
+
+/// Sección especializada para Columnas del Cuaderno:
+/// permite filtrar por curso y pestaña, buscar en tiempo real,
+/// atajos de selección rápida (visibles, ninguna, invertir, por curso)
+/// y borrado masivo seguro optimizado.
+struct NotebookColumnsBulkDeleteSection: View {
+    let columns: [NotebookColumnItem]
+    let classes: [SchoolClass]
+    let onDeleteSelected: (Set<String>) async -> Void
+    let onDeleteSingle: (String) async -> Void
+
+    @State private var isExpanded: Bool = false
+    @State private var isSelectionMode = false
+    @State private var selectedIds = Set<String>()
+    @State private var selectedClassId: Int64? = nil
+    @State private var selectedTabTitle: String? = nil
+    @State private var searchText = ""
+    @State private var showingBatchDeleteAlert = false
+    @State private var pendingSingleDelete: NotebookColumnItem?
+    @State private var isBusy = false
+
+    private var classesWithColumns: [SchoolClass] {
+        classes.filter { cls in columns.contains(where: { $0.classId == cls.id }) }
+    }
+
+    private var availableTabsForSelectedClass: [String] {
+        guard let selectedClassId else { return [] }
+        let tabs = columns.filter { $0.classId == selectedClassId }.compactMap(\.tabTitle)
+        return Array(Set(tabs)).sorted()
+    }
+
+    private var selectedClassTitle: String {
+        if let selectedClassId, let match = classes.first(where: { $0.id == selectedClassId }) {
+            return match.name
+        }
+        return "Todos los cursos"
+    }
+
+    private var filteredColumns: [NotebookColumnItem] {
+        columns.filter { col in
+            if let selectedClassId, col.classId != selectedClassId {
+                return false
+            }
+            if let selectedTabTitle, col.tabTitle != selectedTabTitle {
+                return false
+            }
+            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !query.isEmpty {
+                let matchTitle = col.title.localizedCaseInsensitiveContains(query)
+                let matchTab = col.tabTitle?.localizedCaseInsensitiveContains(query) ?? false
+                let matchClass = col.className.localizedCaseInsensitiveContains(query)
+                return matchTitle || matchTab || matchClass
+            }
+            return true
+        }
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(spacing: 12) {
+                if !columns.isEmpty {
+                    filterAndSearchToolbar
+                }
+
+                if filteredColumns.isEmpty {
+                    Text(columns.isEmpty ? "No hay columnas de evaluación creadas." : "Ninguna columna coincide con el filtro o búsqueda.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else if selectedClassId == nil && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    groupedByCourseList
+                } else {
+                    flatFilteredList
+                }
+            }
+            .padding(.top, 4)
+        } label: {
+            headerLabel
+        }
+        .alert("Eliminar \(selectedIds.count) columna(s)", isPresented: $showingBatchDeleteAlert) {
+            Button("Eliminar", role: .destructive) {
+                Task {
+                    isBusy = true
+                    await onDeleteSelected(selectedIds)
+                    selectedIds.removeAll()
+                    isSelectionMode = false
+                    isBusy = false
+                }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Se eliminarán las columnas de evaluación seleccionadas y todas las calificaciones registradas en ellas. Esta acción no se puede deshacer.")
+        }
+        .alert(
+            "Eliminar columna",
+            isPresented: Binding(
+                get: { pendingSingleDelete != nil },
+                set: { if !$0 { pendingSingleDelete = nil } }
+            ),
+            presenting: pendingSingleDelete
+        ) { item in
+            Button("Eliminar", role: .destructive) {
+                Task {
+                    isBusy = true
+                    await onDeleteSingle(item.id)
+                    isBusy = false
+                }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: { item in
+            Text("¿Eliminar «\(item.title)» de \(item.className)? Se eliminarán las calificaciones registradas en ella. Esta acción no se puede deshacer.")
+        }
+    }
+
+    private var headerLabel: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.teal.opacity(0.12))
+                    .frame(width: 30, height: 30)
+                Image(systemName: "tablecells.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.teal)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Columnas del cuaderno")
+                    .font(.body)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+
+                let countText = columns.isEmpty ? "No hay columnas de evaluación creadas." : "\(columns.count) elemento\(columns.count == 1 ? "" : "s")\(filteredColumns.count != columns.count ? " (\(filteredColumns.count) visibles)" : "")\(selectedIds.isEmpty ? "" : " · \(selectedIds.count) selec.")"
+                Text(countText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if isExpanded && !columns.isEmpty {
+                if isSelectionMode {
+                    HStack(spacing: 8) {
+                        Button(role: .destructive) {
+                            showingBatchDeleteAlert = true
+                        } label: {
+                            Text("Eliminar (\(selectedIds.count))")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                        }
+                        .disabled(selectedIds.isEmpty || isBusy)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+
+                        Button("Cancelar") {
+                            withAnimation {
+                                isSelectionMode = false
+                                selectedIds.removeAll()
+                            }
+                        }
+                        .font(.caption)
+                        .buttonStyle(.bordered)
+                    }
+                } else {
+                    Button("Seleccionar") {
+                        withAnimation {
+                            isSelectionMode = true
+                        }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var filterAndSearchToolbar: some View {
+        VStack(spacing: 8) {
+            // Selectores de Curso y Pestaña
+            HStack(spacing: 8) {
+                Menu {
+                    Button {
+                        selectedClassId = nil
+                        selectedTabTitle = nil
+                    } label: {
+                        HStack {
+                            Text("Todos los cursos (\(columns.count))")
+                            if selectedClassId == nil {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    ForEach(classesWithColumns, id: \.id) { cls in
+                        let count = columns.filter { $0.classId == cls.id }.count
+                        Button {
+                            selectedClassId = cls.id
+                            selectedTabTitle = nil
+                        } label: {
+                            HStack {
+                                Text("\(cls.name) (\(count))")
+                                if selectedClassId == cls.id {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(selectedClassTitle)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.primary.opacity(0.06))
+                    .clipShape(Capsule())
+                }
+
+                if selectedClassId != nil, !availableTabsForSelectedClass.isEmpty {
+                    Menu {
+                        Button {
+                            selectedTabTitle = nil
+                        } label: {
+                            HStack {
+                                Text("Todas las pestañas")
+                                if selectedTabTitle == nil {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+
+                        Divider()
+
+                        ForEach(availableTabsForSelectedClass, id: \.self) { tab in
+                            Button {
+                                selectedTabTitle = tab
+                            } label: {
+                                HStack {
+                                    Text(tab)
+                                    if selectedTabTitle == tab {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text(selectedTabTitle ?? "Todas las pestañas")
+                                .font(.subheadline)
+                                .lineLimit(1)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(Capsule())
+                    }
+                }
+
+                Spacer()
+            }
+
+            // Barra de búsqueda rápida
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+
+                TextField("Buscar columna por nombre o pestaña...", text: $searchText)
+                    .font(.subheadline)
+
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            // Atajos de selección rápida (cuando está en modo selección)
+            if isSelectionMode {
+                HStack(spacing: 8) {
+                    Button {
+                        selectAllVisible()
+                    } label: {
+                        Text("Todas (\(filteredColumns.count))")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.teal)
+
+                    Button {
+                        deselectAllVisible()
+                    } label: {
+                        Text("Ninguna")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        invertSelectionVisible()
+                    } label: {
+                        Text("Invertir")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+
+                    Menu {
+                        ForEach(classesWithColumns, id: \.id) { cls in
+                            let count = columns.filter { $0.classId == cls.id }.count
+                            Button("Marcar \(cls.name) (\(count))") {
+                                selectByClass(classId: cls.id)
+                            }
+                        }
+                        Divider()
+                        ForEach(classesWithColumns, id: \.id) { cls in
+                            Button("Desmarcar \(cls.name)") {
+                                deselectByClass(classId: cls.id)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checklist")
+                            Text("Por curso")
+                        }
+                        .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.top, 2)
+            }
+        }
+    }
+
+    private var groupedByCourseList: some View {
+        let grouped = Dictionary(grouping: filteredColumns, by: \.classId)
+        let orderedClassIds = classes.map(\.id).filter { grouped[$0] != nil }
+
+        return VStack(spacing: 12) {
+            ForEach(orderedClassIds, id: \.self) { classId in
+                let classCols = grouped[classId] ?? []
+                let className = classCols.first?.className ?? "Curso"
+                let allSelected = !classCols.isEmpty && classCols.allSatisfy { selectedIds.contains($0.id) }
+
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.teal)
+
+                        Text(className)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+
+                        Text("\(classCols.count)")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.primary.opacity(0.06))
+                            .clipShape(Capsule())
+
+                        Spacer()
+
+                        if isSelectionMode {
+                            Button(allSelected ? "Desmarcar grupo" : "Marcar grupo") {
+                                if allSelected {
+                                    deselectByClass(classId: classId)
+                                } else {
+                                    selectByClass(classId: classId)
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.teal)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 4)
+
+                    Divider()
+
+                    ForEach(classCols) { col in
+                        row(for: col, showClassName: false)
+                        if col.id != classCols.last?.id {
+                            Divider().padding(.leading, isSelectionMode ? 32 : 0)
+                        }
+                    }
+                }
+                .padding(8)
+                .background(Color.primary.opacity(0.025))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
+    }
+
+    private var flatFilteredList: some View {
+        VStack(spacing: 0) {
+            ForEach(filteredColumns) { col in
+                row(for: col, showClassName: selectedClassId == nil)
+                if col.id != filteredColumns.last?.id {
+                    Divider().padding(.leading, isSelectionMode ? 32 : 0)
+                }
+            }
+        }
+    }
+
+    private func row(for col: NotebookColumnItem, showClassName: Bool) -> some View {
+        HStack(spacing: 12) {
+            if isSelectionMode {
+                Image(systemName: selectedIds.contains(col.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18))
+                    .foregroundStyle(selectedIds.contains(col.id) ? Color.teal : Color.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(col.title)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+
+                HStack(spacing: 6) {
+                    if showClassName {
+                        Text(col.className)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let tab = col.tabTitle, !tab.isEmpty {
+                        if showClassName {
+                            Text("·")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack(spacing: 3) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 9))
+                            Text(tab)
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.teal)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1.5)
+                        .background(Color.teal.opacity(0.1))
+                        .clipShape(Capsule())
+                    }
+
+                    if col.evaluationId != nil {
+                        Text("Evaluación vinculada")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 7)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard isSelectionMode else { return }
+            if selectedIds.contains(col.id) {
+                selectedIds.remove(col.id)
+            } else {
+                selectedIds.insert(col.id)
+            }
+        }
+        .swipeActions(edge: .trailing) {
+            if !isSelectionMode {
+                Button(role: .destructive) {
+                    pendingSingleDelete = col
+                } label: {
+                    Label("Eliminar", systemImage: "trash")
+                }
+            }
+        }
+    }
+
+    private func selectAllVisible() {
+        selectedIds.formUnion(filteredColumns.map(\.id))
+    }
+
+    private func deselectAllVisible() {
+        selectedIds.subtract(filteredColumns.map(\.id))
+    }
+
+    private func invertSelectionVisible() {
+        let visibleIds = Set(filteredColumns.map(\.id))
+        let currentSelected = selectedIds.intersection(visibleIds)
+        let currentUnselected = visibleIds.subtracting(currentSelected)
+        selectedIds.subtract(visibleIds)
+        selectedIds.formUnion(currentUnselected)
+    }
+
+    private func selectByClass(classId: Int64) {
+        let ids = columns.filter { $0.classId == classId }.map(\.id)
+        selectedIds.formUnion(ids)
+    }
+
+    private func deselectByClass(classId: Int64) {
+        let ids = columns.filter { $0.classId == classId }.map(\.id)
+        selectedIds.subtract(ids)
     }
 }
 
@@ -343,20 +895,9 @@ struct DataManagementSettingsView: View {
                     onDeleteSingle: { id in await deleteTabs([id]) }
                 )
 
-                CollapsibleBulkDeleteSection(
-                    title: "Columnas del cuaderno",
-                    systemImage: "tablecells.fill",
-                    accentColor: .teal,
-                    items: notebookColumns.map { col in
-                        let details = [col.className, col.tabTitle].compactMap { $0 }.joined(separator: " · ")
-                        return DataManagementItem(
-                            id: col.id,
-                            title: col.title,
-                            subtitle: details.isEmpty ? nil : details
-                        )
-                    },
-                    emptyText: "No hay columnas de evaluación creadas.",
-                    deleteWarning: "Se eliminará la columna de evaluación y las calificaciones registradas en ella. Esta acción no se puede deshacer.",
+                NotebookColumnsBulkDeleteSection(
+                    columns: notebookColumns,
+                    classes: bridge.classes,
                     onDeleteSelected: { ids in await deleteColumns(ids) },
                     onDeleteSingle: { id in await deleteColumns([id]) }
                 )
@@ -567,10 +1108,11 @@ struct DataManagementSettingsView: View {
     }
 
     private func deleteColumns(_ ids: Set<String>) async {
-        for id in ids {
-            let evalId = notebookColumns.first(where: { $0.id == id })?.evaluationId
-            bridge.deleteColumn(id: id, evaluationId: evalId)
+        let itemsToDelete = ids.compactMap { id -> (id: String, evaluationId: Int64?)? in
+            guard let col = notebookColumns.first(where: { $0.id == id }) else { return nil }
+            return (id: col.id, evaluationId: col.evaluationId)
         }
+        bridge.deleteColumns(idsAndEvalIds: itemsToDelete)
         try? await Task.sleep(nanoseconds: 150_000_000)
         await reloadNotebookData()
     }

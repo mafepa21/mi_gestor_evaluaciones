@@ -22,6 +22,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var scheduleImportPreview: ScheduleImportPreview?
     @Published var scheduleImportPlan: ScheduleImportCatalogPlan?
     @Published var isImportingSchedule = false
+    @Published var isCalendarPresetPresented = false
 
     @Published var scheduleName = "Agenda docente"
     @Published var scheduleStartDate = "2026-09-01"
@@ -456,6 +457,13 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             scheduleError = error.localizedDescription
             scheduleSaveState = .failed(scheduleError)
         }
+    }
+
+    func onCalendarPresetApplied(_ result: SchoolCalendarPreset2026_2027.ApplyResult) async {
+        isCalendarPresetPresented = false
+        scheduleImportStatusMessage = result.summaryText
+        scheduleError = ""
+        await reload()
     }
 
     func beginEditingEvaluationPeriod(_ period: PlannerEvaluationPeriod) {

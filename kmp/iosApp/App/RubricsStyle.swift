@@ -200,7 +200,7 @@ struct RubricScoreRing: View {
 /// Tarjeta horizontal de nivel de rúbrica en la evaluación individual.
 /// El ancho es estable tanto en reposo como seleccionada para que la fila no
 /// salte de línea. La descripción permanece visible junto al nivel y toda la
-/// tarjeta funciona como una única zona de selección.
+/// tarjeta funciona como una única zona de selección táctil.
 struct RubricLevelPill: View {
     let title: String
     let points: Double
@@ -214,10 +214,10 @@ struct RubricLevelPill: View {
         description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
     private var pointsBadgeFill: Color {
-        isSelected ? contrastingTextColor(for: color).opacity(0.18) : RubricsStyle.selectionFill
+        isSelected ? contrastingTextColor(for: color).opacity(0.20) : color.opacity(0.14)
     }
     private var descriptionForeground: Color {
-        isSelected ? contrastingTextColor(for: color).opacity(0.9) : .secondary
+        isSelected ? contrastingTextColor(for: color).opacity(0.92) : .secondary
     }
 
     var body: some View {
@@ -225,11 +225,12 @@ struct RubricLevelPill: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(width: 18, height: 18)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(isSelected ? contrastingTextColor(for: color) : color)
+                        .frame(width: 20, height: 20)
 
                     Text(title)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.system(.subheadline, design: .rounded).weight(.bold))
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
 
@@ -242,34 +243,44 @@ struct RubricLevelPill: View {
             }
             .foregroundStyle(isSelected ? contrastingTextColor(for: color) : .primary)
             .padding(12)
-            .frame(width: 152, alignment: .topLeading)
-            .frame(minHeight: 112, alignment: .topLeading)
+            .frame(width: 156, alignment: .topLeading)
+            .frame(minHeight: 116, alignment: .topLeading)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isSelected ? color : Color.clear)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isSelected ? color : color.opacity(0.07))
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(
-                        isSelected ? color : RubricsStyle.hairlineStrong,
-                        lineWidth: isSelected ? 1.5 : 1
+                        isSelected ? color : color.opacity(0.22),
+                        lineWidth: isSelected ? 2 : 1
                     )
             }
+            .shadow(
+                color: isSelected ? color.opacity(0.28) : .clear,
+                radius: 6,
+                x: 0,
+                y: 3
+            )
+            .scaleEffect(isSelected ? 1.02 : 1.0)
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Nivel \(title), \(Int(points)) puntos")
+        .buttonStyle(NotebookScaleButtonStyle())
+        .accessibilityLabel("Nivel \(title), \(IosFormatting.scoreOutOfTen(from: points)) puntos")
         .accessibilityHint(trimmedDescription.isEmpty ? "Pulsa para seleccionar este nivel" : trimmedDescription)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
     private var pointsBadge: some View {
-        Text("\(Int(points))")
-            .font(.caption.weight(.bold))
+        let ptsText = points.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(points))" : String(format: "%.1f", points)
+        return Text("\(ptsText) pts")
+            .font(.system(size: 11, weight: .bold, design: .rounded))
             .monospacedDigit()
+            .foregroundStyle(isSelected ? contrastingTextColor(for: color) : color)
             .padding(.horizontal, 6)
-            .padding(.vertical, 4)
+            .padding(.vertical, 3)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                Capsule()
                     .fill(pointsBadgeFill)
             )
     }
@@ -281,6 +292,7 @@ struct RubricLevelPill: View {
                 .font(.caption)
                 .foregroundStyle(descriptionForeground)
                 .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(2)
         }
     }
 }

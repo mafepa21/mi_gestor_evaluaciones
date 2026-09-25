@@ -1,26 +1,72 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -z "${JAVA_HOME:-}" ]; then
-    if [ -x "/usr/libexec/java_home" ]; then
-        export JAVA_HOME=$(/usr/libexec/java_home -v 17 2>/dev/null || /usr/libexec/java_home)
-    fi
-fi
-
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT_DIR/.gradle}"
 mkdir -p "$GRADLE_USER_HOME"
-GRADLE_JAVA_HOME_ARG=""
-if [ "${CI:-}" = "true" ] && [ -n "${JAVA_HOME:-}" ]; then
-    GRADLE_JAVA_HOME_ARG="-Dorg.gradle.java.home=$JAVA_HOME"
-fi
 
 APPLE_PLATFORM="${PLATFORM_NAME:-iphonesimulator}"
 APPLE_CONFIG="${CONFIGURATION:-Debug}"
 APPLE_ARCHS="${ARCHS:-${NATIVE_ARCH_ACTUAL:-arm64}}"
 KMP_MACOS_ARCH_OVERRIDE="${KMP_MACOS_ARCH:-}"
+SCRIPT_NAME="$(basename "$0")"
+
+on_exit() {
+    local status=$?
+    if [ "$status" -ne 0 ]; then
+        echo "ERROR: ${SCRIPT_NAME} failed with exit code ${status}." >&2
+        echo "ERROR: platform=${APPLE_PLATFORM} configuration=${APPLE_CONFIG} archs=${APPLE_ARCHS}" >&2
+        echo "ERROR: JAVA_HOME=${JAVA_HOME:-<unset>} GRADLE_USER_HOME=${GRADLE_USER_HOME}" >&2
+        echo "ERROR: Gradle task=${GRADLE_TASK:-<not resolved>}" >&2
+    fi
+    exit "$status"
+}
+trap on_exit EXIT
+
+select_java_home() {
+    if [ -n "${MIGESTOR_JAVA_HOME:-}" ]; then
+        printf '%s\n' "$MIGESTOR_JAVA_HOME"
+        return
+    fi
+
+    if [ -x "/usr/libexec/java_home" ]; then
+        local java17
+        java17="$(/usr/libexec/java_home -v 17 2>/dev/null || true)"
+        if [ -n "$java17" ] && [ -x "$java17/bin/java" ]; then
+            printf '%s\n' "$java17"
+            return
+        fi
+    fi
+
+    if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+        printf '%s\n' "$JAVA_HOME"
+        return
+    fi
+
+    if [ -x "/usr/libexec/java_home" ]; then
+        /usr/libexec/java_home 2>/dev/null || true
+    fi
+}
+
+SELECTED_JAVA_HOME="$(select_java_home)"
+if [ -n "$SELECTED_JAVA_HOME" ]; then
+    export JAVA_HOME="$SELECTED_JAVA_HOME"
+fi
+if [ -n "${JAVA_HOME:-}" ] && [ ! -x "$JAVA_HOME/bin/java" ]; then
+    echo "error: JAVA_HOME does not point to an executable JDK: $JAVA_HOME" >&2
+    exit 1
+fi
+
+GRADLE_ARGS=(--no-daemon)
+if [ -n "${JAVA_HOME:-}" ]; then
+    GRADLE_ARGS+=("-Dorg.gradle.java.home=$JAVA_HOME")
+fi
+
+GRADLE_TASK=""
+SRC_ARCH=""
+GRADLE_TARGET=""
 
 if [[ -n "$KMP_MACOS_ARCH_OVERRIDE" && "$KMP_MACOS_ARCH_OVERRIDE" != "arm64" && "$KMP_MACOS_ARCH_OVERRIDE" != "x64" ]]; then
     echo "Unsupported KMP_MACOS_ARCH: $KMP_MACOS_ARCH_OVERRIDE. Use arm64 or x64."
@@ -33,8 +79,16 @@ case "$APPLE_PLATFORM" in
         SRC_ARCH="iosArm64"
         ;;
     iphonesimulator)
-        GRADLE_TARGET="IosSimulatorArm64"
-        SRC_ARCH="iosSimulatorArm64"
+        if [[ " $APPLE_ARCHS " == *" arm64 "* ]]; then
+            GRADLE_TARGET="IosSimulatorArm64"
+            SRC_ARCH="iosSimulatorArm64"
+        elif [[ " $APPLE_ARCHS " == *" x86_64 "* ]]; then
+            GRADLE_TARGET="IosX64"
+            SRC_ARCH="iosX64"
+        else
+            echo "Unsupported iOS Simulator architecture: $APPLE_ARCHS. Expected arm64 or x86_64."
+            exit 1
+        fi
         ;;
     macosx)
         if [[ "$KMP_MACOS_ARCH_OVERRIDE" == "x64" ]]; then
@@ -69,12 +123,22 @@ else
 fi
 FRAMEWORK_SRC="$ROOT_DIR/data/build/bin/$SRC_ARCH/${CONF_LOWER}Framework/MiGestorKit.framework"
 
+JAVA_VERSION="<unset>"
+if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    JAVA_VERSION="$("$JAVA_HOME/bin/java" -version 2>&1 | /usr/bin/sed -n '1p')"
+fi
 echo "Building KMP Framework for $APPLE_PLATFORM ($APPLE_ARCHS) in $APPLE_CONFIG mode..."
-LOCAL_GRADLE_BIN="$(find "$GRADLE_USER_HOME/wrapper/dists/gradle-8.6-all" -path '*/gradle-8.6/bin/gradle' -type f 2>/dev/null | head -n 1 || true)"
+echo "Using Gradle task :data:$GRADLE_TASK with JAVA_HOME=${JAVA_HOME:-<unset>} (${JAVA_VERSION})"
+LOCAL_GRADLE_BIN="$(find "$GRADLE_USER_HOME/wrapper/dists/gradle-8.6-all" -path '*/gradle-8.6/bin/gradle' -type f -print -quit 2>/dev/null || true)"
 if [ -x "$LOCAL_GRADLE_BIN" ]; then
-    "$LOCAL_GRADLE_BIN" ${GRADLE_JAVA_HOME_ARG:+"$GRADLE_JAVA_HOME_ARG"} --no-daemon ":data:$GRADLE_TASK"
+    "$LOCAL_GRADLE_BIN" "${GRADLE_ARGS[@]}" ":data:$GRADLE_TASK"
 else
-    ./gradlew ${GRADLE_JAVA_HOME_ARG:+"$GRADLE_JAVA_HOME_ARG"} --no-daemon ":data:$GRADLE_TASK"
+    ./gradlew "${GRADLE_ARGS[@]}" ":data:$GRADLE_TASK"
+fi
+
+if [ ! -d "$FRAMEWORK_SRC" ] || [ ! -f "$FRAMEWORK_SRC/MiGestorKit" ]; then
+    echo "error: Gradle completed but the expected framework was not generated: $FRAMEWORK_SRC" >&2
+    exit 1
 fi
 
 rm -rf "$OUT_DIR/MiGestorKit.framework"
@@ -90,6 +154,11 @@ if [ "$APPLE_PLATFORM" = "macosx" ]; then
         cp -R "$FW_DIR/Versions/A/Headers" "$FW_DIR/Headers"
         cp -R "$FW_DIR/Versions/A/Modules" "$FW_DIR/Modules"
     fi
+fi
+
+if [ ! -f "$OUT_DIR/MiGestorKit.framework/MiGestorKit" ]; then
+    echo "error: copied framework is missing its executable: $OUT_DIR/MiGestorKit.framework/MiGestorKit" >&2
+    exit 1
 fi
 
 echo "SUCCESS: Framework actualizado en $OUT_DIR"

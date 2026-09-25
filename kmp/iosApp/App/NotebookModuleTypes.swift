@@ -63,6 +63,8 @@ struct NotebookTableRow: Identifiable {
     let student: Student
     let row: NotebookRow
     let groupName: String
+    var isFirstInGroup: Bool = false
+    var groupMemberCount: Int = 0
 
     var id: Int64 { student.id }
 }
@@ -203,6 +205,11 @@ enum NotebookSurfaceMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum NotebookMenuCopy {
+    static let allStudents = "Grupo completo"
+    static let clearSituationFilter = "Sin filtrar"
+}
+
 struct NotebookSeatPosition: Codable {
     var x: Double
     var y: Double
@@ -220,11 +227,15 @@ struct NotebookAddColumnContext: Identifiable {
 enum NotebookToastStyle: Equatable {
     case success
     case warning
+    case info
+    case neutral
 
     var tint: Color {
         switch self {
         case .success: return NotebookStyle.successTint
         case .warning: return NotebookStyle.warningTint
+        case .info: return Color.accentColor
+        case .neutral: return Color.secondary
         }
     }
 }
@@ -285,6 +296,31 @@ struct NotebookSummarySheetRequest: Identifiable {
     var id: String { targetColumnId ?? "summary" }
 }
 
+struct NotebookColumnStatisticsRequest: Identifiable {
+    let column: NotebookColumnDefinition
+
+    var id: String { column.id }
+}
+
+struct NotebookCellStampRequest: Identifiable {
+    let studentId: Int64
+    let studentName: String
+    let column: NotebookColumnDefinition
+    let currentIcon: String?
+    let currentNote: String?
+    let currentValueText: String?
+
+    var id: String { "\(studentId)|\(column.id)" }
+}
+
+struct StudentProfile360Request: Identifiable {
+    let studentId: Int64
+    let studentName: String
+    let classId: Int64?
+
+    var id: String { "\(studentId)|\(classId ?? 0)" }
+}
+
 enum NotebookNavigationDirection: String, CaseIterable, Identifiable {
     case up
     case down
@@ -323,9 +359,19 @@ struct NotebookFormulaCellDisplay {
     let isError: Bool
 }
 
-struct NotebookCellUndoEntry {
+struct NotebookCellRange: Equatable {
+    let columnId: String
+    let anchorStudentId: Int64
+    let endStudentId: Int64
+}
+
+struct NotebookCellUndoChange {
     let studentId: Int64
     let column: NotebookColumnDefinition
     let previousValue: String
     let previousDisplayLabel: String?
+}
+
+struct NotebookCellUndoEntry {
+    let changes: [NotebookCellUndoChange]
 }

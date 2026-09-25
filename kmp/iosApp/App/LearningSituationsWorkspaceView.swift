@@ -4,6 +4,13 @@ import MiGestorKit
 
 extension LearningSituation: @retroactive Identifiable {}
 
+struct LearningSituationScheduledDestination: Hashable {
+    let period: Int
+    let teacherScheduleSlotId: Int64?
+    let startTime: String
+    let endTime: String
+}
+
 struct LearningSituationScheduledSlot: Identifiable {
     let id = UUID()
     let date: Date
@@ -11,10 +18,59 @@ struct LearningSituationScheduledSlot: Identifiable {
     let teacherScheduleSlotId: Int64?
     let startTime: String
     let endTime: String
+    let planSessionNumber: Int?
+    let blockKind: String?
+    let occupiedPeriods: [Int]
+    let occupiedScheduleSlots: [LearningSituationScheduledDestination]
     var isSelected = true
 
+    init(
+        date: Date,
+        period: Int,
+        teacherScheduleSlotId: Int64?,
+        startTime: String,
+        endTime: String,
+        planSessionNumber: Int? = nil,
+        blockKind: String? = nil,
+        occupiedPeriods: [Int] = [],
+        occupiedScheduleSlots: [LearningSituationScheduledDestination] = [],
+        isSelected: Bool = true
+    ) {
+        self.date = date
+        self.period = period
+        self.teacherScheduleSlotId = teacherScheduleSlotId
+        self.startTime = startTime
+        self.endTime = endTime
+        self.planSessionNumber = planSessionNumber
+        self.blockKind = blockKind
+        self.occupiedPeriods = occupiedPeriods
+        self.occupiedScheduleSlots = occupiedScheduleSlots
+        self.isSelected = isSelected
+    }
+
     var label: String {
-        "\(date.formatted(date: .abbreviated, time: .omitted)) · \(startTime)-\(endTime)"
+        let planLabel = planSessionNumber.map { "Sesión \($0) · " } ?? ""
+        let blockLabel = blockKind.map { "\($0) · " } ?? ""
+        return "\(planLabel)\(blockLabel)\(date.formatted(date: .abbreviated, time: .omitted)) · \(startTime)-\(endTime)"
+    }
+
+    var destinationPeriods: [Int] {
+        destinationSlots.map(\.period)
+    }
+
+    var destinationSlots: [LearningSituationScheduledDestination] {
+        if !occupiedScheduleSlots.isEmpty {
+            return occupiedScheduleSlots
+        }
+        let periods = occupiedPeriods.isEmpty ? [period] : occupiedPeriods
+        return periods.map {
+            LearningSituationScheduledDestination(
+                period: $0,
+                teacherScheduleSlotId: $0 == period ? teacherScheduleSlotId : nil,
+                startTime: $0 == period ? startTime : "",
+                endTime: $0 == period ? endTime : ""
+            )
+        }
     }
 }
 
@@ -24,7 +80,58 @@ struct LearningSituationScheduleTemplateDescriptor: Hashable {
     let endTime: String
 }
 
+struct LearningSituationScheduleProjectionResult {
+    let slots: [LearningSituationScheduledSlot]
+    let warnings: [String]
+    let route: LearningSituationWeeklySequenceRoute?
+}
+
+enum LearningSituationSessionSequenceKind: Equatable {
+    case canonicalWeekly
+    case legacyWeekly
+    case routeAware
+    case linear
+}
+
 enum LearningSituationScheduleProjection {
+    static func canonicalBlockCount(forAnnualSessionCount annualSessionCount: Int) -> Int {
+        guard annualSessionCount > 0 else { return 0 }
+        return ((annualSessionCount + 1) / 2) * 2
+    }
+
+    static func targetSessionCount(
+        plans: [LearningSituationSessionPlanDraft],
+        annualSessionCount: Int,
+        sequenceKind: LearningSituationSessionSequenceKind
+    ) -> Int {
+        guard !plans.isEmpty else { return max(annualSessionCount, 1) }
+        guard sequenceKind == .canonicalWeekly, annualSessionCount > 0 else { return plans.count }
+        return annualSessionCount
+    }
+
+    static func hasExpectedCanonicalBlockCount(
+        plans: [LearningSituationSessionPlanDraft],
+        annualSessionCount: Int
+    ) -> Bool {
+        guard annualSessionCount > 0 else { return true }
+        return plans.count == canonicalBlockCount(forAnnualSessionCount: annualSessionCount)
+    }
+
+    static func sequenceKind(
+        for plans: [LearningSituationSessionPlanDraft]
+    ) -> LearningSituationSessionSequenceKind {
+        guard !plans.isEmpty else { return .linear }
+        let routeAware = plans.allSatisfy {
+            $0.sequenceRoute != nil && $0.blockRole != nil && ($0.sequenceFormat?.hasPrefix("route-aware-") == true)
+        }
+        if routeAware { return .routeAware }
+        let canonical = plans.allSatisfy {
+            $0.blockRole != nil && $0.cycleIndex != nil && $0.weekKey != nil && $0.sequenceFormat != nil
+        }
+        if canonical { return .canonicalWeekly }
+        return plans.contains(where: isWeeklyBlockPlan) ? .legacyWeekly : .linear
+    }
+
     static func uniqueTemplateIndices(
         for descriptors: [LearningSituationScheduleTemplateDescriptor]
     ) -> [Int] {
@@ -36,21 +143,458 @@ enum LearningSituationScheduleProjection {
         let calendar = Calendar(identifier: .iso8601)
         var seen = Set<ScheduledDestination>()
         for slot in slots {
-            let destination = ScheduledDestination(
-                date: calendar.startOfDay(for: slot.date),
-                period: slot.period
-            )
-            if !seen.insert(destination).inserted {
-                return true
+            for period in slot.destinationPeriods {
+                let destination = ScheduledDestination(
+                    date: calendar.startOfDay(for: slot.date),
+                    period: period
+                )
+                if !seen.insert(destination).inserted {
+                    return true
+                }
             }
         }
         return false
+    }
+
+    static func planAwareSlots(
+        plans: [LearningSituationSessionPlanDraft],
+        startDate: Date,
+        template: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int,
+        targetSessionCount: Int? = nil,
+        excludedDates: Set<Date> = []
+    ) -> LearningSituationScheduleProjectionResult {
+        let orderedPlans = plans.sorted {
+            if $0.sessionNumber != $1.sessionNumber { return $0.sessionNumber < $1.sessionNumber }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        guard !orderedPlans.isEmpty, !template.isEmpty else {
+            return LearningSituationScheduleProjectionResult(slots: [], warnings: [], route: nil)
+        }
+        let calendar = Calendar(identifier: .iso8601)
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        let normalizedExcludedDates = Set(excludedDates.map { calendar.startOfDay(for: $0) })
+        let sortedTemplate = template.sorted {
+            Int($0.dayOfWeek) == Int($1.dayOfWeek) ? $0.startTime < $1.startTime : $0.dayOfWeek < $1.dayOfWeek
+        }
+        let requestedCount = max(targetSessionCount ?? orderedPlans.count, 0)
+        let targetCount = min(requestedCount, orderedPlans.count)
+
+        let weeklyPlans = sequenceKind(for: orderedPlans) != .linear
+        guard weeklyPlans else {
+            var sequential: [LearningSituationScheduledSlot] = []
+            var date = normalizedStart
+            while sequential.count < targetCount {
+                if normalizedExcludedDates.contains(calendar.startOfDay(for: date)) {
+                    guard let nextDate = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+                    date = nextDate
+                    continue
+                }
+                let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+                for slot in sortedTemplate where Int(slot.dayOfWeek) == weekday {
+                    let period = periodForSlot(slot)
+                    sequential.append(LearningSituationScheduledSlot(
+                        date: date,
+                        period: period,
+                        teacherScheduleSlotId: slot.id,
+                        startTime: slot.startTime,
+                        endTime: slot.endTime,
+                        planSessionNumber: orderedPlans[sequential.count].sessionNumber,
+                        blockKind: orderedPlans[sequential.count].sessionType,
+                        occupiedPeriods: [period],
+                        occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                            period: period,
+                            teacherScheduleSlotId: slot.id,
+                            startTime: slot.startTime,
+                            endTime: slot.endTime
+                        )]
+                    ))
+                    if sequential.count == targetCount { break }
+                }
+                guard let nextDate = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+                date = nextDate
+            }
+            return LearningSituationScheduleProjectionResult(
+                slots: sequential,
+                warnings: sequential.count == targetCount ? [] : ["No hay suficientes franjas para todas las sesiones importadas."],
+                route: nil
+            )
+        }
+
+        var assignments: [LearningSituationScheduledSlot] = []
+        var warnings: [String] = []
+        var usedDestinations = Set<ScheduledDestination>()
+        var previousAssignment: LearningSituationScheduledSlot?
+        var route: LearningSituationWeeklySequenceRoute?
+        if sequenceKind(for: orderedPlans) == .routeAware {
+            for plan in orderedPlans.prefix(targetCount) {
+                let role = blockRole(for: plan)
+                guard let candidate = nextCandidate(
+                    for: role,
+                    startDate: normalizedStart,
+                    after: previousAssignment,
+                    sortedTemplate: sortedTemplate,
+                    periodForSlot: periodForSlot,
+                    usedDestinations: usedDestinations,
+                    searchDays: max(orderedPlans.count * 14 + 14, 84),
+                    excludedDates: normalizedExcludedDates
+                ) else {
+                    let requirement = requirementLabel(for: role)
+                    warnings.append("La sesión \(plan.sessionNumber) requiere un \(requirement), pero no hay una franja compatible desde la fecha de inicio.")
+                    continue
+                }
+                let assigned = withPlan(candidate, plan: plan)
+                assignments.append(assigned)
+                addDestinations(assigned, to: &usedDestinations)
+                previousAssignment = assigned
+                route = plan.sequenceRoute
+            }
+            return LearningSituationScheduleProjectionResult(slots: assignments, warnings: warnings, route: route)
+        }
+        let searchDays = max(orderedPlans.count * 14 + 14, 84)
+        let cycleGroups = Dictionary(grouping: orderedPlans) { cycleIndex(for: $0) }
+
+        // The document order (usually LONG session 1, SHORT session 2) is not a
+        // calendar order. Each cycle is therefore resolved independently from the
+        // next real compatible opportunities, which also handles a partial first
+        // week and lets a valid SHORT opportunity precede the first LONG one.
+        for cycleIndex in cycleGroups.keys.sorted() {
+            var pending = cycleGroups[cycleIndex, default: []]
+                .sorted { $0.sessionNumber < $1.sessionNumber }
+                .map { WeeklyPendingPlan(plan: $0, role: blockRole(for: $0)) }
+
+            while !pending.isEmpty && assignments.count < targetCount {
+                let candidates = pending.compactMap { pendingPlan -> WeeklyCandidate? in
+                    guard let candidate = nextCandidate(
+                        for: pendingPlan.role,
+                        startDate: normalizedStart,
+                        after: previousAssignment,
+                        sortedTemplate: sortedTemplate,
+                        periodForSlot: periodForSlot,
+                        usedDestinations: usedDestinations,
+                        searchDays: searchDays,
+                        excludedDates: normalizedExcludedDates
+                    ) else { return nil }
+                    return WeeklyCandidate(pendingPlan: pendingPlan, slot: candidate)
+                }
+
+                guard let next = candidates.min(by: { isChronologicallyBefore($0.slot, $1.slot) }) else {
+                    for pendingPlan in pending {
+                        let requirement = requirementLabel(for: pendingPlan.role)
+                        warnings.append("La sesión \(pendingPlan.plan.sessionNumber) requiere un \(requirement), pero no hay una franja compatible desde la fecha de inicio.")
+                    }
+                    break
+                }
+
+                let assigned = withPlan(next.slot, plan: next.pendingPlan.plan)
+                assignments.append(assigned)
+                addDestinations(assigned, to: &usedDestinations)
+                previousAssignment = assigned
+                if route == nil {
+                    route = next.pendingPlan.role == .short ? .shortFirst : .longFirst
+                }
+                pending.removeAll { $0.plan.id == next.pendingPlan.plan.id }
+            }
+
+            if assignments.count == targetCount { break }
+        }
+
+        let orderedAssignments = assignments.sorted(by: isChronologicallyBefore)
+        return LearningSituationScheduleProjectionResult(slots: orderedAssignments, warnings: warnings, route: route)
+    }
+
+    private struct WeeklyPendingPlan {
+        let plan: LearningSituationSessionPlanDraft
+        let role: LearningSituationWeeklyBlockRole
+    }
+
+    private struct WeeklyCandidate {
+        let pendingPlan: WeeklyPendingPlan
+        let slot: LearningSituationScheduledSlot
+    }
+
+    static func inferRouteForFirstBlock(
+        startDate: Date,
+        template: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int,
+        excludedDates: Set<Date> = []
+    ) -> LearningSituationWeeklySequenceRoute? {
+        let calendar = Calendar(identifier: .iso8601)
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        let normalizedExcludedDates = Set(excludedDates.map { calendar.startOfDay(for: $0) })
+        let sortedTemplate = template.sorted {
+            Int($0.dayOfWeek) == Int($1.dayOfWeek) ? $0.startTime < $1.startTime : $0.dayOfWeek < $1.dayOfWeek
+        }
+        var firstShort: LearningSituationScheduledSlot?
+        var firstLong: LearningSituationScheduledSlot?
+        for dayOffset in 0...84 {
+            guard let date = calendar.date(byAdding: .day, value: dayOffset, to: normalizedStart),
+                  !normalizedExcludedDates.contains(calendar.startOfDay(for: date)) else { continue }
+            let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+            let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
+            if firstLong == nil {
+                firstLong = longCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot).first
+            }
+            if firstShort == nil {
+                firstShort = shortOnlyCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot).first
+            }
+            if firstShort != nil || firstLong != nil {
+                // A first slot that can start a long block wins ties: that is the only
+                // deterministic interpretation when two consecutive periods are available.
+                break
+            }
+        }
+        guard let firstShort, let firstLong else {
+            if firstLong != nil { return .longFirst }
+            if firstShort != nil { return .shortFirst }
+            return nil
+        }
+        let sameStart = firstLong.date == firstShort.date && firstLong.startTime == firstShort.startTime
+        return sameStart || isChronologicallyBefore(firstLong, firstShort) ? .longFirst : .shortFirst
     }
 
     private struct ScheduledDestination: Hashable {
         let date: Date
         let period: Int
     }
+
+    private static func nextCandidate(
+        for role: LearningSituationWeeklyBlockRole,
+        startDate: Date,
+        after previous: LearningSituationScheduledSlot?,
+        sortedTemplate: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int,
+        usedDestinations: Set<ScheduledDestination>,
+        searchDays: Int,
+        excludedDates: Set<Date>
+    ) -> LearningSituationScheduledSlot? {
+        let calendar = Calendar(identifier: .iso8601)
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        for dayOffset in 0...searchDays {
+            guard let date = calendar.date(byAdding: .day, value: dayOffset, to: normalizedStart) else { continue }
+            guard !excludedDates.contains(calendar.startOfDay(for: date)) else { continue }
+            let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+            let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
+            let candidates: [LearningSituationScheduledSlot]
+            switch role {
+            case .long:
+                candidates = longCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+            case .short:
+                candidates = shortCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+            case .longPart1:
+                candidates = longPartCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot)
+            }
+            for candidate in candidates {
+                guard !collides(candidate, with: usedDestinations), follows(candidate, after: previous) else { continue }
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private static func follows(_ slot: LearningSituationScheduledSlot, after previous: LearningSituationScheduledSlot?) -> Bool {
+        guard let previous else { return true }
+        let calendar = Calendar(identifier: .iso8601)
+        let currentDate = calendar.startOfDay(for: slot.date)
+        let previousDate = calendar.startOfDay(for: previous.date)
+        guard currentDate >= previousDate else { return false }
+        guard currentDate == previousDate else { return true }
+        guard let previousEnd = minutes(previous.endTime), let currentStart = minutes(slot.startTime) else { return false }
+        return currentStart >= previousEnd
+    }
+
+    private static func isChronologicallyBefore(_ lhs: LearningSituationScheduledSlot, _ rhs: LearningSituationScheduledSlot) -> Bool {
+        let calendar = Calendar(identifier: .iso8601)
+        let lhsDate = calendar.startOfDay(for: lhs.date)
+        let rhsDate = calendar.startOfDay(for: rhs.date)
+        if lhsDate != rhsDate { return lhsDate < rhsDate }
+        let lhsStart = minutes(lhs.startTime) ?? .max
+        let rhsStart = minutes(rhs.startTime) ?? .max
+        if lhsStart != rhsStart { return lhsStart < rhsStart }
+        return (lhs.planSessionNumber ?? .max) < (rhs.planSessionNumber ?? .max)
+    }
+
+    private static func cycleIndex(for plan: LearningSituationSessionPlanDraft) -> Int {
+        if let cycleIndex = plan.cycleIndex, cycleIndex > 0 { return cycleIndex }
+        if let weekKey = plan.weekKey, let parsed = Int(weekKey.filter { $0.isNumber }), parsed > 0 { return parsed }
+        return max((plan.sessionNumber + 1) / 2, 1)
+    }
+
+    private static func blockRole(for plan: LearningSituationSessionPlanDraft) -> LearningSituationWeeklyBlockRole {
+        if let blockRole = plan.blockRole { return blockRole }
+        let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        if value.contains("long_part_1") || value.contains("long part 1") { return .longPart1 }
+        if isLongPlan(plan) && !isShortPlan(plan) { return .long }
+        if isShortPlan(plan) && !isLongPlan(plan) { return .short }
+        return plan.sessionNumber.isMultiple(of: 2) ? .short : .long
+    }
+
+    private static func isLongPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        if plan.blockRole == .longPart1 { return false }
+        if plan.blockRole == .long { return true }
+        if plan.blockRole == .short { return false }
+        let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        return value.contains("long") || value.contains("largo") || value.contains("double") || value.contains("doble") || plan.effectiveMinutes >= 75
+    }
+
+    private static func isWeeklyBlockPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        if plan.blockRole != nil || plan.cycleIndex != nil || plan.weekKey != nil || plan.sequenceFormat != nil { return true }
+        let value = "\(plan.sessionType) \(plan.sourceLabel)".folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        if value.contains("long block") || value.contains("short block") || value.contains("bloque largo") || value.contains("bloque corto") {
+            return true
+        }
+        let hasWeekMarker = value.contains("week") || value.contains("semana")
+        return hasWeekMarker && (value.contains("simple") || value.contains("double") || value.contains("doble") || value.contains("long") || value.contains("short"))
+    }
+
+    private static func isShortPlan(_ plan: LearningSituationSessionPlanDraft) -> Bool {
+        if plan.blockRole == .longPart1 { return false }
+        if plan.blockRole == .short { return true }
+        if plan.blockRole == .long { return false }
+        let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        return value.contains("short") || value.contains("corto") || value.contains("simple") || plan.effectiveMinutes > 0 && plan.effectiveMinutes < 75
+    }
+
+    private static func minutes(_ value: String) -> Int? {
+        let parts = value.split(separator: ":")
+        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return nil }
+        return hour * 60 + minute
+    }
+
+    private static func longCandidates(
+        on date: Date,
+        slots: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> [LearningSituationScheduledSlot] {
+        let ordered = slots.sorted { $0.startTime < $1.startTime }
+        var candidates: [LearningSituationScheduledSlot] = []
+        for slot in ordered {
+            guard let start = minutes(slot.startTime), let end = minutes(slot.endTime), end - start >= 75 else { continue }
+            let period = periodForSlot(slot)
+            candidates.append(LearningSituationScheduledSlot(
+                date: date, period: period, teacherScheduleSlotId: slot.id,
+                startTime: slot.startTime, endTime: slot.endTime,
+                occupiedPeriods: [period],
+                occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                    period: period,
+                    teacherScheduleSlotId: slot.id,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime
+                )]
+            ))
+        }
+        // A legal transition/recess can separate two consecutive timetable periods.
+        // Treat up to 20 minutes as one continuous long-block opportunity.
+        let maximumTransitionMinutes = 20
+        for pair in zip(ordered, ordered.dropFirst()) {
+            guard let start = minutes(pair.0.startTime), let firstEnd = minutes(pair.0.endTime),
+                  let secondStart = minutes(pair.1.startTime), let end = minutes(pair.1.endTime),
+                  secondStart >= firstEnd,
+                  secondStart - firstEnd <= maximumTransitionMinutes,
+                  end - start >= 75 else { continue }
+            let firstPeriod = periodForSlot(pair.0)
+            let secondPeriod = periodForSlot(pair.1)
+            candidates.append(LearningSituationScheduledSlot(
+                date: date, period: firstPeriod, teacherScheduleSlotId: pair.0.id,
+                startTime: pair.0.startTime, endTime: pair.1.endTime,
+                occupiedPeriods: [firstPeriod, secondPeriod],
+                occupiedScheduleSlots: [
+                    LearningSituationScheduledDestination(
+                        period: firstPeriod,
+                        teacherScheduleSlotId: pair.0.id,
+                        startTime: pair.0.startTime,
+                        endTime: pair.0.endTime
+                    ),
+                    LearningSituationScheduledDestination(
+                        period: secondPeriod,
+                        teacherScheduleSlotId: pair.1.id,
+                        startTime: pair.1.startTime,
+                        endTime: pair.1.endTime
+                    )
+                ]
+            ))
+        }
+        return candidates.sorted(by: isChronologicallyBefore)
+    }
+
+    private static func shortCandidates(
+        on date: Date,
+        slots: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> [LearningSituationScheduledSlot] {
+        return slots.sorted { $0.startTime < $1.startTime }.compactMap { slot in
+            let period = periodForSlot(slot)
+            return LearningSituationScheduledSlot(
+                date: date, period: period, teacherScheduleSlotId: slot.id,
+                startTime: slot.startTime, endTime: slot.endTime,
+                occupiedPeriods: [period],
+                occupiedScheduleSlots: [LearningSituationScheduledDestination(
+                    period: period,
+                    teacherScheduleSlotId: slot.id,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime
+                )]
+            )
+        }
+    }
+
+    private static func shortOnlyCandidates(
+        on date: Date,
+        slots: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> [LearningSituationScheduledSlot] {
+        shortCandidates(on: date, slots: slots, periodForSlot: periodForSlot).filter {
+            guard let start = minutes($0.startTime), let end = minutes($0.endTime) else { return false }
+            return end - start < 75
+        }
+    }
+
+    /// Una frontera LONG_PART_1 es un único encuentro activo de unos 40 minutos. No debe
+    /// consumir dos franjas como un LONG completo ni competir con una franja SHORT de 30′.
+    private static func longPartCandidates(
+        on date: Date,
+        slots: [TeacherScheduleSlot],
+        periodForSlot: (TeacherScheduleSlot) -> Int
+    ) -> [LearningSituationScheduledSlot] {
+        shortCandidates(on: date, slots: slots, periodForSlot: periodForSlot).filter {
+            guard let start = minutes($0.startTime), let end = minutes($0.endTime) else { return false }
+            let duration = end - start
+            return duration >= 35 && duration < 75
+        }
+    }
+
+    private static func requirementLabel(for role: LearningSituationWeeklyBlockRole) -> String {
+        switch role {
+        case .long: return "bloque largo"
+        case .short: return "bloque corto"
+        case .longPart1: return "franja parcial de 40 minutos"
+        }
+    }
+
+    private static func collides(_ slot: LearningSituationScheduledSlot, with destinations: Set<ScheduledDestination>) -> Bool {
+        let date = Calendar(identifier: .iso8601).startOfDay(for: slot.date)
+        return slot.destinationPeriods.contains { destinations.contains(ScheduledDestination(date: date, period: $0)) }
+    }
+
+    private static func addDestinations(_ slot: LearningSituationScheduledSlot, to destinations: inout Set<ScheduledDestination>) {
+        let date = Calendar(identifier: .iso8601).startOfDay(for: slot.date)
+        slot.destinationPeriods.forEach { destinations.insert(ScheduledDestination(date: date, period: $0)) }
+    }
+
+    private static func withPlan(_ slot: LearningSituationScheduledSlot, plan: LearningSituationSessionPlanDraft) -> LearningSituationScheduledSlot {
+        LearningSituationScheduledSlot(
+            date: slot.date,
+            period: slot.period,
+            teacherScheduleSlotId: slot.teacherScheduleSlotId,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            planSessionNumber: plan.sessionNumber,
+            blockKind: plan.sessionType,
+            occupiedPeriods: slot.destinationPeriods,
+            occupiedScheduleSlots: slot.destinationSlots
+        )
+    }
+
 }
 
 private struct LearningSituationBatchImportPresentation: Identifiable {
@@ -1190,531 +1734,14 @@ private struct LearningSituationBatchImportPreviewSheet: View {
     }
 }
 
-private struct LearningSituationScheduleSheet: View {
-    let situation: LearningSituation
-    let bridge: KmpBridge
-    let initialClassId: Int64?
-    let onSaved: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var classId: Int64?
-    @State private var startDate = Date()
-    @State private var slots: [LearningSituationScheduledSlot] = []
-    @State private var isSequenceImporterPresented = false
-    @State private var sequenceDraft: LearningSituationSessionSequenceImportDraft?
-    @State private var expandedPlanNumbers: Set<Int> = []
-    @State private var scheduleNotice = ""
-    @State private var errorMessage = ""
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                scheduleHeader
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        scheduleControlsCard
-                        sequenceImportCard
-                        slotsPreviewCard
-                    }
-                    .padding(24)
-                }
-                scheduleFooter
-            }
-            .background(EvaluationDesign.surface)
-            .navigationTitle("Programar sesiones")
-            .alert("No se puede programar", isPresented: Binding(get: { !errorMessage.isEmpty }, set: { if !$0 { errorMessage = "" } })) {
-                Button("Cerrar", role: .cancel) {}
-            } message: { Text(errorMessage) }
-        }
-        #if os(macOS)
-        .frame(minWidth: 720, minHeight: 720)
-        #else
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        #endif
-        .onAppear { classId = initialClassId ?? bridge.classes.first?.id }
-        .fileImporter(
-            isPresented: $isSequenceImporterPresented,
-            allowedContentTypes: [.docx],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                do {
-                    var draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
-                    if situation.sessionCount > 0 && draft.plans.count != Int(situation.sessionCount) {
-                        draft.warnings.append("La situación indica \(situation.sessionCount) sesiones y el documento contiene \(draft.plans.count).")
-                    }
-                    sequenceDraft = draft
-                    expandedPlanNumbers = Set(draft.plans.prefix(3).map(\.sessionNumber))
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            case .failure(let error):
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private var selectedClassName: String {
-        guard let classId, let schoolClass = bridge.classes.first(where: { $0.id == classId }) else { return "Sin grupo" }
-        return schoolClass.name
-    }
-
-    private var targetSessionCount: Int {
-        if let sequenceDraft, !sequenceDraft.plans.isEmpty { return sequenceDraft.plans.count }
-        return max(Int(situation.sessionCount), 1)
-    }
-
-    private var validImportedSessionCount: Int {
-        sequenceDraft?.plans.filter(planHasRequiredFields).count ?? 0
-    }
-
-    private var selectedSlotCount: Int {
-        slots.filter(\.isSelected).count
-    }
-
-    private var statusText: String {
-        if let sequenceDraft {
-            return "\(sequenceDraft.plans.count) detectadas · \(validImportedSessionCount) listas · \(selectedSlotCount) franjas"
-        }
-        return "\(selectedSlotCount) franjas seleccionadas"
-    }
-
-    private var canProgram: Bool {
-        let selectedCount = slots.filter(\.isSelected).count
-        guard selectedCount > 0 else { return false }
-        guard let sequenceDraft else { return true }
-        return sequenceDraft.plans.count == selectedCount
-            && !sequenceDraft.plans.contains(where: { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
-    }
-
-    private var scheduleHeader: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
-                Image(systemName: "calendar.badge.plus")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(EvaluationDesign.accent)
-                    .frame(width: 40, height: 40)
-                    .background(EvaluationDesign.accentSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Programar sesiones")
-                        .font(.title2.weight(.semibold))
-                    Text(situation.title)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(selectedClassName)
-                        .font(.headline)
-                    Text(statusText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            if let draft = sequenceDraft {
-                HStack(spacing: 8) {
-                    metricChip(title: "Documento", value: draft.sourceFileName, systemImage: "doc.text")
-                    metricChip(title: "Sesiones", value: "\(draft.plans.count)", systemImage: "number")
-                    metricChip(title: "Listas", value: "\(validImportedSessionCount)", systemImage: "checkmark.seal")
-                    if !draft.warnings.isEmpty {
-                        metricChip(title: "Avisos", value: "\(draft.warnings.count)", systemImage: "exclamationmark.triangle")
-                    }
-                }
-            }
-        }
-        .padding(24)
-        .background(.thinMaterial)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(EvaluationDesign.border)
-                .frame(height: 1)
-        }
-    }
-
-    private var scheduleControlsCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Destino")
-                .font(.headline)
-            HStack(spacing: 16) {
-                Picker("Grupo", selection: $classId) {
-                    Text("Selecciona grupo").tag(nil as Int64?)
-                    ForEach(bridge.classes, id: \.id) { Text($0.name).tag(Optional($0.id)) }
-                }
-                DatePicker("Desde", selection: $startDate, displayedComponents: .date)
-            }
-            .controlSize(.large)
-        }
-        .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
-    }
-
-    private var sequenceImportCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Secuenciación detallada")
-                        .font(.headline)
-                    Text(sequenceDraft == nil ? "Adjunta un DOCX para completar títulos, objetivos, tiempos, criterios y desarrollo." : "Revisa lo detectado antes de programar.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                    isSequenceImporterPresented = true
-                } label: {
-                    Label(sequenceDraft == nil ? "Adjuntar DOCX" : "Sustituir", systemImage: "doc.badge.plus")
-                }
-                .buttonStyle(.bordered)
-                if sequenceDraft != nil {
-                    Button(role: .destructive) {
-                        sequenceDraft = nil
-                        expandedPlanNumbers.removeAll()
-                    } label: {
-                        Label("Quitar", systemImage: "trash")
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
-            if let draft = sequenceDraft {
-                if !draft.warnings.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(draft.warnings, id: \.self) { warning in
-                            Label(warning, systemImage: "exclamationmark.triangle")
-                                .font(.caption)
-                                .foregroundStyle(EvaluationDesign.danger)
-                        }
-                    }
-                    .padding(12)
-                    .background(EvaluationDesign.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(draft.plans.indices, id: \.self) { index in
-                        sessionPlanEditor(index: index)
-                    }
-                }
-            }
-        }
-        .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
-    }
-
-    private var slotsPreviewCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Horario")
-                        .font(.headline)
-                    Text("Distribuye la situación sobre las franjas existentes del grupo.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                    Task { await makePreview() }
-                } label: {
-                    Label("Previsualizar \(targetSessionCount)", systemImage: "calendar")
-                }
-                .buttonStyle(.bordered)
-                .disabled(classId == nil)
-            }
-            if slots.isEmpty {
-                Text("Selecciona grupo y fecha para distribuir sesiones sobre su horario existente.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-                    .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    if !scheduleNotice.isEmpty {
-                        Label(scheduleNotice, systemImage: "checkmark.shield")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(EvaluationDesign.accent)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                            .background(EvaluationDesign.accentSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    ForEach($slots) { $slot in
-                        Toggle(slot.label, isOn: $slot.isSelected)
-                            .padding(12)
-                            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    Text("Si ya existe una sesión en una franja seleccionada, se sustituirá por esta situación.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
-    }
-
-    private var scheduleFooter: some View {
-        HStack(spacing: 16) {
-            Text(footerMessage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-            Spacer()
-            Button("Cancelar") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            Button("Programar") { Task { await save() } }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canProgram)
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
-        .background(.thinMaterial)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(EvaluationDesign.border)
-                .frame(height: 1)
-        }
-    }
-
-    private var footerMessage: String {
-        if slots.isEmpty { return "Previsualiza el horario antes de programar." }
-        if let sequenceDraft, sequenceDraft.plans.count != selectedSlotCount {
-            return "El documento contiene \(sequenceDraft.plans.count) sesiones y hay \(selectedSlotCount) franjas seleccionadas."
-        }
-        if let sequenceDraft, sequenceDraft.plans.contains(where: { !planHasRequiredFields($0) }) {
-            return "Completa título y objetivo en todas las sesiones importadas."
-        }
-        return "Listo para programar \(selectedSlotCount) sesiones."
-    }
-
-    @ViewBuilder
-    private func sessionPlanEditor(index: Int) -> some View {
-        if let plan = sequenceDraft?.plans[index] {
-            DisclosureGroup(isExpanded: Binding(
-                get: { expandedPlanNumbers.contains(plan.sessionNumber) },
-                set: { isExpanded in
-                    if isExpanded { expandedPlanNumbers.insert(plan.sessionNumber) }
-                    else { expandedPlanNumbers.remove(plan.sessionNumber) }
-                }
-            )) {
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField("Título", text: sequenceTextBinding(index: index, keyPath: \.title))
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Objetivo", text: sequenceTextBinding(index: index, keyPath: \.objective), axis: .vertical)
-                        .lineLimit(2...4)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Material", text: sequenceTextBinding(index: index, keyPath: \.material), axis: .vertical)
-                        .lineLimit(1...3)
-                        .textFieldStyle(.roundedBorder)
-                    if !plan.development.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Desarrollo detectado", systemImage: "list.bullet.rectangle")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            ForEach(plan.development) { section in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(section.title)
-                                        .font(.caption.weight(.semibold))
-                                    ForEach(section.lines.prefix(3), id: \.self) { line in
-                                        Text(line)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
-                                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            }
-                        }
-                    }
-                    if !plan.adaptations.isEmpty {
-                        Text(plan.adaptations.joined(separator: "\n"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-                }
-                .padding(.top, 12)
-            } label: {
-                HStack(alignment: .top, spacing: 12) {
-                    Text("\(plan.sessionNumber)")
-                        .font(.system(.headline, design: .rounded).monospacedDigit())
-                        .foregroundStyle(planHasRequiredFields(plan) ? EvaluationDesign.accent : EvaluationDesign.danger)
-                        .frame(width: 32, height: 32)
-                        .background((planHasRequiredFields(plan) ? EvaluationDesign.accent : EvaluationDesign.danger).opacity(0.10), in: Circle())
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(plan.title.isEmpty ? "Sesión sin título" : plan.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                        HStack(spacing: 8) {
-                            compactChip(plan.sessionType.isEmpty ? "Tipo pendiente" : plan.sessionType)
-                            compactChip(plan.effectiveMinutes > 0 ? "\(plan.effectiveMinutes) min" : "Minutos pendientes")
-                            if !plan.criteria.isEmpty {
-                                compactChip(plan.criteria.joined(separator: ", "))
-                            }
-                        }
-                    }
-                    Spacer()
-                }
-            }
-            .padding(16)
-            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
-        }
-    }
-
-    private func planHasRequiredFields(_ plan: LearningSituationSessionPlanDraft) -> Bool {
-        !plan.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !plan.objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func metricChip(title: String, value: String, systemImage: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .accessibilityHidden(true)
-            Text(title)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-        .font(.caption)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(EvaluationDesign.surfaceSoft, in: Capsule())
-    }
-
-    private func compactChip(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2.weight(.semibold))
-            .lineLimit(1)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(EvaluationDesign.accentSoft, in: Capsule())
-            .foregroundStyle(EvaluationDesign.accent)
-    }
-
-    private func sequenceTextBinding(index: Int, keyPath: WritableKeyPath<LearningSituationSessionPlanDraft, String>) -> Binding<String> {
-        Binding(
-            get: { sequenceDraft?.plans[index][keyPath: keyPath] ?? "" },
-            set: { sequenceDraft?.plans[index][keyPath: keyPath] = $0 }
-        )
-    }
-
-    @MainActor
-    private func makePreview() async {
-        guard let classId else { return }
-        do {
-            let schedule = try await bridge.plannerTeacherSchedule()
-            let allScheduleSlots = try await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)
-            let rawTemplate = allScheduleSlots.filter { $0.schoolClassId == classId }
-            let descriptors = rawTemplate.map {
-                LearningSituationScheduleTemplateDescriptor(
-                    dayOfWeek: Int($0.dayOfWeek),
-                    startTime: $0.startTime,
-                    endTime: $0.endTime
-                )
-            }
-            let uniqueIndices = LearningSituationScheduleProjection.uniqueTemplateIndices(for: descriptors)
-            let template = uniqueIndices.map { rawTemplate[$0] }
-            guard !template.isEmpty else {
-                errorMessage = "El grupo no tiene franjas horarias configuradas."
-                return
-            }
-            let ignoredDuplicates = rawTemplate.count - template.count
-            scheduleNotice = ignoredDuplicates > 0
-                ? "Se \(ignoredDuplicates == 1 ? "ha ignorado 1 franja duplicada" : "han ignorado \(ignoredDuplicates) franjas duplicadas") del horario para evitar sustituir sesiones."
-                : ""
-            var candidates: [LearningSituationScheduledSlot] = []
-            var date = startDate
-            let calendar = Calendar.current
-            while candidates.count < targetSessionCount {
-                let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
-                for slot in template.filter({ Int($0.dayOfWeek) == weekday }).sorted(by: { $0.startTime < $1.startTime }) {
-                    candidates.append(LearningSituationScheduledSlot(
-                        date: date, period: plannerPeriod(for: slot, allScheduleSlots: allScheduleSlots),
-                        teacherScheduleSlotId: slot.id, startTime: slot.startTime, endTime: slot.endTime
-                    ))
-                    if candidates.count == targetSessionCount { break }
-                }
-                date = calendar.date(byAdding: .day, value: 1, to: date) ?? date
-            }
-            slots = candidates
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private struct SlotRange: Hashable {
-        let startTime: String
-        let endTime: String
-    }
-
-    private func plannerPeriod(for slot: TeacherScheduleSlot, allScheduleSlots: [TeacherScheduleSlot]) -> Int {
-        let defaultSlots = bridge.plannerTimeSlots()
-        if let exactDefault = defaultSlots.first(where: {
-            $0.startTime == slot.startTime && $0.endTime == slot.endTime
-        }) {
-            return Int(exactDefault.period)
-        }
-
-        let defaultRanges = Set(defaultSlots.map { SlotRange(startTime: $0.startTime, endTime: $0.endTime) })
-        let scheduleRanges = allScheduleSlots.map { SlotRange(startTime: $0.startTime, endTime: $0.endTime) }
-        let weeklyRanges = bridge.plannerWeeklySlots(classId: nil).map {
-            SlotRange(startTime: $0.startTime, endTime: $0.endTime)
-        }
-        let customRanges = Set(scheduleRanges + weeklyRanges)
-            .filter { !defaultRanges.contains($0) }
-            .sorted {
-                $0.startTime == $1.startTime
-                    ? $0.endTime < $1.endTime
-                    : $0.startTime < $1.startTime
-            }
-        let range = SlotRange(startTime: slot.startTime, endTime: slot.endTime)
-        let firstCustomPeriod = (defaultSlots.map { Int($0.period) }.max() ?? 0) + 1
-        return firstCustomPeriod + (customRanges.firstIndex(of: range) ?? 0)
-    }
-
-    @MainActor
-    private func save() async {
-        guard let classId, let schoolClass = bridge.classes.first(where: { $0.id == classId }) else { return }
-        guard canProgram else {
-            errorMessage = "Las fichas detalladas deben corresponder a todas las sesiones seleccionadas y contener título y objetivo."
-            return
-        }
-        let selectedSlots = slots.filter(\.isSelected)
-        guard !LearningSituationScheduleProjection.hasDuplicateDestinations(selectedSlots) else {
-            errorMessage = "Hay dos sesiones destinadas al mismo día y franja. Vuelve a previsualizar para distribuirlas sin sustituciones."
-            return
-        }
-        do {
-            try await bridge.programLearningSituationSessions(
-                situation: situation, classId: classId, groupName: schoolClass.name,
-                scheduledSlots: selectedSlots,
-                sequenceDraft: sequenceDraft
-            )
-            dismiss()
-            onSaved()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-}
-
 private struct LearningSituationEvaluationSheet: View {
     let situation: LearningSituation
     let bridge: KmpBridge
     let initialClassId: Int64?
     let onSaved: () -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var classId: Int64?
+    @State private var selectedClassIds: Set<Int64> = []
+    @State private var linkedClassIds: Set<Int64> = []
     @State private var proposals: [LearningSituationEvaluationDraft] = []
     @State private var activeProposalId: UUID?
     @State private var showingInstrumentImporter = false
@@ -1725,8 +1752,8 @@ private struct LearningSituationEvaluationSheet: View {
     @State private var showingPhysicalTestsImporter = false
     @State private var physicalTestsImportDraft: PhysicalTestsImportDraft?
     @State private var physicalTestsImportPreview: PhysicalTestsImportDraft?
-    @State private var instrumentTargetTabs: [NotebookTab] = []
-    @State private var selectedInstrumentTargetTabId: String?
+    @State private var targetTabTitle: String = "Evaluación"
+    @State private var availableTabTitles: [String] = []
     @State private var isNewTargetTabAlertPresented = false
     @State private var newTargetTabName = ""
     @State private var isImportingInstrumentDocument = false
@@ -1739,17 +1766,17 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     private var canSave: Bool {
+        guard !selectedClassIds.isEmpty else { return false }
+        let hasTargetTab = !targetTabTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if let physicalTestsImportDraft {
-            let hasTargetTab = instrumentTargetTabs.isEmpty || selectedInstrumentTargetTabId != nil
-            return classId != nil && !physicalTestsImportDraft.testDefinitions.isEmpty && hasTargetTab
+            return !physicalTestsImportDraft.testDefinitions.isEmpty && hasTargetTab
         }
         if instrumentImportDraft != nil {
-            let hasTargetTab = instrumentTargetTabs.isEmpty || selectedInstrumentTargetTabId != nil
-            return classId != nil && !selectedImportedInstruments.isEmpty && hasTargetTab
+            return !selectedImportedInstruments.isEmpty && hasTargetTab
         }
-        return classId != nil &&
-            !selectedProposals.isEmpty &&
-            selectedProposals.allSatisfy { $0.rubricId != nil }
+        return !selectedProposals.isEmpty &&
+            selectedProposals.allSatisfy { $0.rubricId != nil } &&
+            hasTargetTab
     }
 
     private var selectedImportedInstruments: [AssessmentInstrumentDraft] {
@@ -1763,8 +1790,33 @@ private struct LearningSituationEvaluationSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Picker("Grupo", selection: $classId) {
-                    ForEach(bridge.classes, id: \.id) { Text($0.name).tag(Optional($0.id)) }
+                Section("Grupos destino (\(selectedClassIds.count) seleccionados)") {
+                    ForEach(bridge.classes, id: \.id) { schoolClass in
+                        Toggle(isOn: Binding(
+                            get: { selectedClassIds.contains(schoolClass.id) },
+                            set: { isSelected in
+                                if isSelected {
+                                    selectedClassIds.insert(schoolClass.id)
+                                } else {
+                                    selectedClassIds.remove(schoolClass.id)
+                                }
+                                Task { await loadTabTitles() }
+                            }
+                        )) {
+                            HStack {
+                                Text(schoolClass.name)
+                                Spacer()
+                                if linkedClassIds.contains(schoolClass.id) {
+                                    Text("Asociado a SA")
+                                        .font(.caption2.weight(.semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(EvaluationDesign.accentSoft, in: Capsule())
+                                        .foregroundStyle(EvaluationDesign.accent)
+                                }
+                            }
+                        }
+                    }
                 }
                 Section("Documento de instrumentos") {
                     Button {
@@ -1828,48 +1880,27 @@ private struct LearningSituationEvaluationSheet: View {
                         .font(.caption)
                         importedInstrumentRows
                     }
-                    Section("Pestaña del cuaderno") {
-                        if instrumentTargetTabs.isEmpty {
-                            Label("Se creará la pestaña Evaluación si el grupo no tiene pestañas.", systemImage: "folder.badge.plus")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Picker("Añadir en", selection: $selectedInstrumentTargetTabId) {
-                                Text("Selecciona pestaña")
-                                    .tag(nil as String?)
-                                ForEach(instrumentTargetTabs, id: \.id) { tab in
-                                    Text(tab.title).tag(Optional(tab.id))
-                                }
+                }
+                Section("Pestaña del cuaderno") {
+                    if availableTabTitles.isEmpty {
+                        Label("Se creará la pestaña \"\(targetTabTitle)\" en los \(selectedClassIds.count) grupos.", systemImage: "folder.badge.plus")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Pestaña destino", selection: $targetTabTitle) {
+                            ForEach(availableTabTitles, id: \.self) { title in
+                                Text(title).tag(title)
                             }
                         }
-                        Button {
-                            newTargetTabName = ""
-                            isNewTargetTabAlertPresented = true
-                        } label: {
-                            Label("Crear pestaña nueva…", systemImage: "folder.badge.plus")
-                        }
+                        Text("Se añadirán las columnas en la pestaña \"\(targetTabTitle)\" en cada grupo (creándola si aún no existe).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                } else {
-                    Section("Pestaña del cuaderno") {
-                        if instrumentTargetTabs.isEmpty {
-                            Label("Se creará la pestaña Evaluación si el grupo no tiene pestañas.", systemImage: "folder.badge.plus")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Picker("Añadir en", selection: $selectedInstrumentTargetTabId) {
-                                Text("Selecciona pestaña")
-                                    .tag(nil as String?)
-                                ForEach(instrumentTargetTabs, id: \.id) { tab in
-                                    Text(tab.title).tag(Optional(tab.id))
-                                }
-                            }
-                        }
-                        Button {
-                            newTargetTabName = ""
-                            isNewTargetTabAlertPresented = true
-                        } label: {
-                            Label("Crear pestaña nueva…", systemImage: "folder.badge.plus")
-                        }
+                    Button {
+                        newTargetTabName = ""
+                        isNewTargetTabAlertPresented = true
+                    } label: {
+                        Label("Crear pestaña nueva…", systemImage: "folder.badge.plus")
                     }
                 }
                 Text(statusMessage)
@@ -1880,8 +1911,10 @@ private struct LearningSituationEvaluationSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Crear seleccionadas") { Task { await save() } }
-                        .disabled(!canSave)
+                    Button("Crear en \(selectedClassIds.count) grupo\(selectedClassIds.count == 1 ? "" : "s")") {
+                        Task { await save() }
+                    }
+                    .disabled(!canSave)
                 }
             }
             .fileImporter(
@@ -1961,20 +1994,22 @@ private struct LearningSituationEvaluationSheet: View {
         .presentationDragIndicator(.visible)
 #endif
         .onAppear {
-            classId = initialClassId ?? bridge.classes.first?.id
             proposals = (try? JSONDecoder().decode(LearningSituationImportDraft.self, from: Data(situation.payloadJson.utf8)))?.evaluationItems ?? []
             Task {
+                let links = (try? await bridge.learningSituationClassLinks(id: situation.id)) ?? []
+                let linked = Set(links.map(\.classId))
+                linkedClassIds = linked
+                if !linked.isEmpty {
+                    selectedClassIds = linked
+                } else if let initial = initialClassId {
+                    selectedClassIds = [initial]
+                } else if let first = bridge.classes.first?.id {
+                    selectedClassIds = [first]
+                }
                 try? await bridge.refreshRubrics()
                 try? await bridge.refreshRubricClassLinks()
-                await loadNotebookTabsAndRepairImport()
+                await loadTabTitles()
             }
-        }
-        .appOnChange(of: classId) { newValue in
-            if let newValue {
-                bridge.selectClass(id: newValue)
-                bridge.selectRubricClass(newValue)
-            }
-            Task { await loadNotebookTabsAndRepairImport() }
         }
     }
 
@@ -2087,9 +2122,14 @@ private struct LearningSituationEvaluationSheet: View {
     private var availableRubrics: [RubricDetail] {
         bridge.rubrics
             .filter { rubric in
-                guard let classId else { return true }
+                if selectedClassIds.isEmpty { return true }
                 let directClassId = rubric.rubric.classId?.int64Value
-                return directClassId == nil || directClassId == classId || bridge.rubricClassLinks[rubric.rubric.id]?.contains(classId) == true
+                if directClassId == nil { return true }
+                if let direct = directClassId, selectedClassIds.contains(direct) { return true }
+                if let links = bridge.rubricClassLinks[rubric.rubric.id], !links.isDisjoint(with: selectedClassIds) {
+                    return true
+                }
+                return false
             }
             .sorted { $0.rubric.name.localizedCaseInsensitiveCompare($1.rubric.name) == .orderedAscending }
     }
@@ -2097,10 +2137,10 @@ private struct LearningSituationEvaluationSheet: View {
     private func startRubricBuilder(for proposal: LearningSituationEvaluationDraft) {
         activeProposalId = proposal.id
         bridge.resetRubricBuilder()
-        if let classId {
-            bridge.selectRubricClass(classId)
+        if let firstClassId = selectedClassIds.first {
+            bridge.selectRubricClass(firstClassId)
             Task {
-                if let unitId = try? await bridge.ensureTeachingUnitForLearningSituation(situation: situation, classId: classId) {
+                if let unitId = try? await bridge.ensureTeachingUnitForLearningSituation(situation: situation, classId: firstClassId) {
                     bridge.selectRubricTeachingUnit(unitId)
                 }
             }
@@ -2192,8 +2232,8 @@ private struct LearningSituationEvaluationSheet: View {
     private func confirmRubricImport(_ preview: AppleRubricImportPreview) async {
         do {
             try await bridge.importRubricDraft(tsv: preview.tsv)
-            if let classId {
-                bridge.selectRubricClass(classId)
+            if let firstClassId = selectedClassIds.first {
+                bridge.selectRubricClass(firstClassId)
             }
             rubricImportPreview = nil
             showingRubricBuilder = true
@@ -2210,32 +2250,34 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     @MainActor
-    private func loadNotebookTabsAndRepairImport() async {
-        guard let classId else {
-            instrumentTargetTabs = []
-            selectedInstrumentTargetTabId = nil
-            return
-        }
-        do {
-            let tabs = try await bridge.learningSituationNotebookTabs(for: classId)
-            instrumentTargetTabs = tabs
-            if let selectedInstrumentTargetTabId,
-               tabs.contains(where: { $0.id == selectedInstrumentTargetTabId }) {
-                return
+    private func loadTabTitles() async {
+        var titlesSet = Set<String>()
+        for id in selectedClassIds {
+            if let tabs = try? await bridge.learningSituationNotebookTabs(for: id) {
+                for tab in tabs {
+                    titlesSet.insert(tab.title)
+                }
             }
-            selectedInstrumentTargetTabId = tabs.first?.id
-            try await bridge.repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: classId)
-        } catch {
-            errorMessage = error.localizedDescription
+        }
+        let titles = Array(titlesSet).sorted()
+        availableTabTitles = titles
+        if !titles.contains(targetTabTitle) {
+            if let first = titles.first {
+                targetTabTitle = first
+            } else if targetTabTitle.isEmpty {
+                targetTabTitle = "Evaluación"
+            }
         }
     }
 
     @MainActor
     private func createInstrumentTargetTab() async {
         let name = newTargetTabName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, let createdId = bridge.createTab(title: name) else { return }
-        await loadNotebookTabsAndRepairImport()
-        selectedInstrumentTargetTabId = createdId
+        guard !name.isEmpty else { return }
+        if !availableTabTitles.contains(name) {
+            availableTabTitles.append(name)
+        }
+        targetTabTitle = name
         newTargetTabName = ""
     }
 
@@ -2267,24 +2309,33 @@ private struct LearningSituationEvaluationSheet: View {
 
     @MainActor
     private func save() async {
-        guard let classId else { return }
+        guard !selectedClassIds.isEmpty else { return }
+        let target = targetTabTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedTabName = target.isEmpty ? "Evaluación" : target
         do {
-            if let physicalTestsImportDraft {
-                try await bridge.materializeLearningSituationPhysicalTests(
-                    situation: situation,
-                    classId: classId,
-                    draft: physicalTestsImportDraft,
-                    targetTabId: selectedInstrumentTargetTabId
-                )
-            } else if let instrumentImportDraft {
-                try await bridge.materializeLearningSituationAssessmentInstruments(
-                    situation: situation,
-                    classId: classId,
-                    draft: instrumentImportDraft,
-                    targetTabId: selectedInstrumentTargetTabId
-                )
-            } else {
-                try await bridge.materializeLearningSituationEvaluations(situation: situation, classId: classId, proposals: proposals)
+            for classId in selectedClassIds {
+                if let physicalTestsImportDraft {
+                    try await bridge.materializeLearningSituationPhysicalTests(
+                        situation: situation,
+                        classId: classId,
+                        draft: physicalTestsImportDraft,
+                        targetTabId: resolvedTabName
+                    )
+                } else if let instrumentImportDraft {
+                    try await bridge.materializeLearningSituationAssessmentInstruments(
+                        situation: situation,
+                        classId: classId,
+                        draft: instrumentImportDraft,
+                        targetTabId: resolvedTabName
+                    )
+                } else {
+                    try await bridge.materializeLearningSituationEvaluations(
+                        situation: situation,
+                        classId: classId,
+                        proposals: proposals,
+                        targetTabId: resolvedTabName
+                    )
+                }
             }
             dismiss()
             onSaved()

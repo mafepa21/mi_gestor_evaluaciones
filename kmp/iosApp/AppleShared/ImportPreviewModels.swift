@@ -25,6 +25,7 @@ struct AppleParsedStudent: Identifiable {
     let lastName: String
     let duplicateStatus: AppleStudentDuplicateStatus
     let duplicateDetail: String?
+    let existingStudentId: Int64?
 }
 
 enum AppleStudentDuplicateStatus: String {

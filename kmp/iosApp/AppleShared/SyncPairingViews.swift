@@ -213,6 +213,7 @@ struct SyncLanView: View {
     @State private var showManualEntry = false
     @State private var showDiagnostics = false
     @State private var showLogs = false
+    @State private var showingManualAdoptionSheet = false
 
     var body: some View {
         ScrollView {
@@ -221,6 +222,9 @@ struct SyncLanView: View {
         }
         .background(IOSAppStyle.pageBackground)
         .navigationTitle("Sync LAN")
+        .sheet(isPresented: $showingManualAdoptionSheet) {
+            SyncAdoptionSheet()
+        }
         .sheet(isPresented: $showingQrScanner) {
             LanQrScannerSheet { payload in
                 guard let parsed = parseSyncPayload(payload) else {
@@ -252,27 +256,33 @@ struct SyncLanView: View {
 
     @ViewBuilder
     private var syncLanContent: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 24) {
+        VStack(spacing: IOSAppStyle.sectionSpacing) {
+            if let divergence = bridge.syncDivergence {
+                SyncDivergenceBanner(divergence: divergence)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 24) {
+                    VStack(spacing: IOSAppStyle.sectionSpacing) {
+                        syncStatusHero
+                        pairingSection
+                    }
+                    .frame(minWidth: 520, maxWidth: .infinity, alignment: .top)
+
+                    VStack(spacing: IOSAppStyle.sectionSpacing) {
+                        activitySection
+                        diagnosticsSection
+                    }
+                    .frame(width: 344, alignment: .top)
+                }
+                .frame(minWidth: 888, alignment: .topLeading)
+
                 VStack(spacing: IOSAppStyle.sectionSpacing) {
                     syncStatusHero
                     pairingSection
-                }
-                .frame(minWidth: 520, maxWidth: .infinity, alignment: .top)
-
-                VStack(spacing: IOSAppStyle.sectionSpacing) {
                     activitySection
                     diagnosticsSection
                 }
-                .frame(width: 344, alignment: .top)
-            }
-            .frame(minWidth: 888, alignment: .topLeading)
-
-            VStack(spacing: IOSAppStyle.sectionSpacing) {
-                syncStatusHero
-                pairingSection
-                activitySection
-                diagnosticsSection
             }
         }
     }
@@ -351,6 +361,20 @@ struct SyncLanView: View {
                         }
                     }
                 }
+
+                Button {
+                    showingManualAdoptionSheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "equal.circle")
+                        Text("Igualar dispositivos…")
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 4)
+                }
+                .buttonStyle(.plain)
             }
         }
     }

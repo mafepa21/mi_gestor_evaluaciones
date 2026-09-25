@@ -22,12 +22,16 @@ struct WebSubmissionPublishSheet: View {
     /// Correo al que el alumnado enviará su entrega.
     @Binding var deliveryEmail: String
     let isPublishing: Bool
-    let onPublish: (_ columnId: String, _ baseURL: String, _ deliveryEmail: String, _ expiresAt: Date) -> Void
+    let onPublish: (_ columnId: String, _ baseURL: String, _ deliveryEmail: String, _ expiresAt: Date, _ mode: String) -> Void
+    var onDetectPeerGroups: ((_ columnId: String) async -> KmpBridge.WebPeerDetectionResult)? = nil
     let result: WebPublishResult?
 
     @State private var selectedColumnId: String?
     @State private var expiresAt: Date = Calendar.current.date(byAdding: .month, value: 10, to: Date()) ?? Date()
     @State private var copiedLinks = false
+    @State private var selectedMode: String = "self"
+    @State private var peerDetection: KmpBridge.WebPeerDetectionResult?
+    @State private var isDetectingPeers: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,6 +62,14 @@ struct WebSubmissionPublishSheet: View {
             if selectedColumnId == nil {
                 selectedColumnId = instruments.first(where: { $0.canPublish && !$0.alreadyPublished })?.columnId
                     ?? instruments.first(where: { $0.canPublish })?.columnId
+            }
+            if let colId = selectedColumnId, selectedMode == "peer" {
+                runPeerDetection(for: colId)
+            }
+        }
+        .onChange(of: selectedColumnId) { newColId in
+            if selectedMode == "peer", let colId = newColId {
+                runPeerDetection(for: colId)
             }
         }
     }
@@ -103,6 +115,7 @@ struct WebSubmissionPublishSheet: View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 16) {
+                    modeCard
                     settingsCard
                     privacyCard
                 }
@@ -114,9 +127,128 @@ struct WebSubmissionPublishSheet: View {
             .frame(minWidth: 664, alignment: .topLeading)
 
             VStack(alignment: .leading, spacing: 18) {
+                modeCard
                 settingsCard
                 privacyCard
                 instrumentList
+            }
+        }
+    }
+
+    private var modeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Modo de formulario")
+                .font(.headline)
+
+            Picker("Modo", selection: $selectedMode) {
+                Text("Autoevaluación").tag("self")
+                Text("Auto + Coevaluación").tag("peer")
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: selectedMode) { newMode in
+                if newMode == "peer", let colId = selectedColumnId {
+                    runPeerDetection(for: colId)
+                }
+            }
+
+            if selectedMode == "self" {
+                Text("Cada alumno/a evaluará únicamente su propio trabajo.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                coevaluationDetailsView
+            }
+        }
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var coevaluationDetailsView: some View {
+        if isDetectingPeers {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Detectando grupos de la SA...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+        } else if let result = peerDetection {
+            if !result.groups.isEmpty {
+                let headerTitle = result.learningSituationTitle ?? "Grupos de trabajo del Cuaderno"
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.3.fill")
+                            .font(.caption)
+                            .foregroundStyle(.indigo)
+                        Text(headerTitle)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+
+                    Text("\(result.groups.count) grupo(s) · \(result.assignedStudentCount) alumnos")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(result.groups.prefix(3)) { g in
+                            Text("• \(g.groupName) (\(g.studentIds.count) alumnos)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        if result.groups.count > 3 {
+                            Text("y \(result.groups.count - 3) grupo(s) más...")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if result.unassignedStudentCount > 0 {
+                        HStack(alignment: .top, spacing: 5) {
+                            Image(systemName: "info.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                            Text("\(result.unassignedStudentCount) alumno(s) sin grupo asignado recibirán autoevaluación.")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Text("Sin grupos asociados")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+                    Text("Esta columna no tiene grupos de trabajo en su pestaña o clase. Para coevaluar, crea los grupos en el Cuaderno o selecciona Autoevaluación.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10)
+                .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        } else {
+            Text("Selecciona una columna para detectar automáticamente los grupos de la Situación de Aprendizaje.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func runPeerDetection(for columnId: String) {
+        guard let onDetectPeerGroups else { return }
+        isDetectingPeers = true
+        Task {
+            let res = await onDetectPeerGroups(columnId)
+            await MainActor.run {
+                self.peerDetection = res
+                self.isDetectingPeers = false
             }
         }
     }
@@ -405,7 +537,7 @@ struct WebSubmissionPublishSheet: View {
 
                 Button {
                     if let columnId = selectedColumnId {
-                        onPublish(columnId, baseURL, deliveryEmail, expiresAt)
+                        onPublish(columnId, baseURL, deliveryEmail, expiresAt, selectedMode)
                     }
                 } label: {
                     if isPublishing {
@@ -416,7 +548,7 @@ struct WebSubmissionPublishSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(isPublishing || selectedColumnId == nil || baseURL.isEmpty)
+                .disabled(isPublishing || selectedColumnId == nil || baseURL.isEmpty || (selectedMode == "peer" && (peerDetection?.groups.isEmpty ?? true)))
             } else {
                 Button("Hecho") { dismiss() }
                     .buttonStyle(.borderedProminent)
@@ -475,7 +607,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://entregas-alumnado.vercel.app"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _ in },
+                onPublish: { _, _, _, _, _ in },
                 result: nil
             )
             .previewDisplayName("Antes de publicar")
@@ -487,7 +619,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://entregas-alumnado.vercel.app"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _ in },
+                onPublish: { _, _, _, _, _ in },
                 result: WebPublishResult(
                     formInstanceId: "11111111-1111-4111-8111-111111111111",
                     title: "Rúbrica de portafolio técnico",
@@ -510,7 +642,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://entregas-alumnado.vercel.app"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _ in },
+                onPublish: { _, _, _, _, _ in },
                 result: nil
             )
             .previewDisplayName("Sin instrumentos")

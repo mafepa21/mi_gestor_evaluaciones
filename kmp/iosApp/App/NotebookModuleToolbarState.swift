@@ -182,6 +182,13 @@ extension NotebookModuleView {
         scheduleToolbarStateSyncIfLoaded()
     }
 
+    func clearNotebookRowFilters() {
+        searchText = ""
+        selectedGroupId = nil
+        layoutState.setNotebookSearchText("")
+        layoutState.setNotebookGroupFilter(nil)
+    }
+
     func selectNotebookClass(_ classId: Int64) {
         guard bridge.notebookViewModel.currentClassId?.int64Value != classId else { return }
         selectedGroupId = nil
@@ -260,6 +267,9 @@ extension NotebookModuleView {
             },
             onGenerateSummary: {
                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
+            },
+            onExportSM: {
+                isEducamosSMExportPresented = true
             }
         )
 
@@ -269,6 +279,7 @@ extension NotebookModuleView {
             canToggleInspector: inspectorAvailable,
             isAttendanceQuickMode: isAttendanceQuickMode,
             isInspectorPresented: isInspectorPresented,
+            isQuickKeypadPresented: isQuickKeypadPresented,
             addColumnAvailable: true,
             organizationMenuAvailable: true,
             groupManagementAvailable: true,
@@ -281,6 +292,11 @@ extension NotebookModuleView {
                 if isAttendanceQuickMode {
                     activeChoiceCellId = nil
                     focusedCellId = nil
+                }
+            },
+            onToggleQuickKeypad: {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                    isQuickKeypadPresented.toggle()
                 }
             },
             onUndo: {
@@ -312,6 +328,9 @@ extension NotebookModuleView {
             },
             onRefresh: {
                 Task { await refreshNotebookSignals() }
+            },
+            onExportSM: {
+                isEducamosSMExportPresented = true
             }
         )
     }
@@ -349,7 +368,7 @@ extension NotebookModuleView {
         let groupKey = selectedGroupId ?? -1
         let inspectorKey = inspectorSelection?.id ?? "none"
         let tabKey = bridge.selectedNotebookTabId ?? "all"
-        return "\(classKey)|\(tabKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)|\(searchText)"
+        return "\(classKey)|\(tabKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(isQuickKeypadPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)|\(searchText)"
     }
 
     var notebookRiskRefreshKey: String {

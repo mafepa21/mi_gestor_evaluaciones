@@ -2733,6 +2733,10 @@ SELECT deleted_at_epoch_ms, device_id
 FROM sync_tombstones
 WHERE entity = ? AND entity_id = ?;
 
+selectAllSyncTombstones:
+SELECT entity, entity_id, deleted_at_epoch_ms, device_id
+FROM sync_tombstones;
+
 upsertSyncTombstone:
 INSERT INTO sync_tombstones(entity, entity_id, deleted_at_epoch_ms, device_id)
 VALUES (?, ?, ?, ?)

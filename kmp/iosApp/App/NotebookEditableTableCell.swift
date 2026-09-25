@@ -1134,14 +1134,7 @@ private struct NotebookStatefulEditableTableCell: View {
                     .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .trailing)
-                    .simultaneousGesture(numericDragGesture)
             }
-
-            Image(systemName: "arrow.up.and.down")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
-                .help("Arrastra para ajustar en décimas")
-                .accessibilityLabel("Arrastra para ajustar en décimas")
         }
     }
 
@@ -1194,7 +1187,9 @@ private struct NotebookStatefulEditableTableCell: View {
             .frame(maxWidth: .infinity, minHeight: 30)
         }
         .buttonStyle(.plain)
+        #if !os(macOS)
         .simultaneousGesture(numericDragGesture)
+        #endif
         .popover(isPresented: $isNumericKeyboardPresented, arrowEdge: .bottom) {
             cellKeyboardPopover
         }

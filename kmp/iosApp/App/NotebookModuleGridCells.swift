@@ -870,20 +870,10 @@ extension NotebookModuleView {
         column: NotebookColumnDefinition,
         formulaDisplay: NotebookFormulaCellDisplay?
     ) -> NotebookCellDisplaySnapshot {
-        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
-        let optAnnotation = bridge.cellAnnotation(studentId: item.student.id, columnId: column.id)
-        let stampIcon: String?
-        let hasNote: Bool
-        let attachmentCount: Int
-        if let opt = optAnnotation {
-            stampIcon = opt.icon
-            hasNote = !(opt.note?.isEmpty ?? true)
-            attachmentCount = opt.attachmentUris.count
-        } else {
-            stampIcon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
-            hasNote = !(persistedCell?.annotation?.note?.isEmpty ?? true)
-            attachmentCount = persistedCell?.annotation?.attachmentUris.count ?? 0
-        }
+        let annotation = persistedAnnotation(for: item, columnId: column.id)
+        let stampIcon = annotation.icon
+        let hasNote = !(annotation.note?.isEmpty ?? true)
+        let attachmentCount = annotation.attachmentCount
 
         switch column.type {
         case .numeric:
@@ -925,6 +915,7 @@ extension NotebookModuleView {
             )
         default:
             let val = displayValue(for: item, column: column)
+            let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
             return NotebookCellDisplaySnapshot(
                 text: !val.isEmpty ? val : (persistedCell?.textValue ?? persistedCell?.displayValue ?? ""),
                 stampIcon: stampIcon,
@@ -1191,7 +1182,7 @@ extension NotebookModuleView {
 
     func summaryActionTitle(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> String {
         let hasExistingText = filteredRows(data: data).contains { row in
-            !bridge.cellText(studentId: row.student.id, columnId: column.id)
+            !persistedCellText(for: row, column: column)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .isEmpty
         }

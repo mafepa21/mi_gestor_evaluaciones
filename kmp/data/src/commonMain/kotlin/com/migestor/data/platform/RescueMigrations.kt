@@ -55,6 +55,7 @@ internal fun runRescueMigrations(driver: SqlDriver) {
     ensurePrerequisiteTables(driver)
     ensurePlannerScheduleTables(driver)
     ensurePhysicalScaleScoringColumns(driver)
+    copyLegacyPlannedSessions(driver)
 }
 
 private fun ensurePhysicalScaleScoringColumns(driver: SqlDriver) {
@@ -256,6 +257,255 @@ private fun ensurePlannerScheduleTables(driver: SqlDriver) {
             FOREIGN KEY (teacher_schedule_id) REFERENCES teacher_schedules(id) ON DELETE CASCADE
         )
     """.trimIndent(), 0)
+}
+
+private fun copyLegacyPlannedSessions(driver: SqlDriver) {
+    val plannedColumns = tableColumns(driver, "planned_session")
+    val required = setOf(
+        "teaching_unit_id",
+        "school_class_id",
+        "date",
+        "start_time",
+        "end_time",
+        "title",
+        "objectives",
+        "resources",
+        "notes",
+    )
+    if (!required.all { it in plannedColumns }) return
+    if ("period" !in tableColumns(driver, "planner_session")) return
+
+    driver.execute(
+        null,
+        """
+        CREATE TABLE IF NOT EXISTS schedule_slot (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            day_of_week INTEGER NOT NULL,
+            period INTEGER NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            group_id INTEGER NOT NULL,
+            classroom TEXT DEFAULT '',
+            FOREIGN KEY (group_id) REFERENCES classes(id) ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        0,
+    )
+    driver.execute(
+        null,
+        """
+        CREATE TABLE IF NOT EXISTS weekly_slot_template (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            school_class_id INTEGER NOT NULL,
+            day_of_week INTEGER NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            UNIQUE(school_class_id, day_of_week, start_time),
+            FOREIGN KEY (school_class_id) REFERENCES classes(id) ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        0,
+    )
+
+    driver.execute(null, "DROP TABLE IF EXISTS planned_session_migration_v44", 0)
+    driver.execute(
+        null,
+        """
+        CREATE TABLE planned_session_migration_v44 (
+            planned_id INTEGER PRIMARY KEY,
+            date TEXT NOT NULL,
+            school_class_id INTEGER NOT NULL,
+            period INTEGER,
+            teaching_unit_id INTEGER,
+            objectives TEXT NOT NULL,
+            activities TEXT NOT NULL,
+            resources TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL
+        )
+        """.trimIndent(),
+        0,
+    )
+    driver.execute(
+        null,
+        """
+        INSERT INTO planned_session_migration_v44 (
+            planned_id, date, school_class_id, period, teaching_unit_id,
+            objectives, activities, resources, start_time, end_time
+        )
+        SELECT
+            ps.id,
+            ps.date,
+            ps.school_class_id,
+            COALESCE(
+                CASE TRIM(ps.start_time)
+                    WHEN '08:05' THEN 1
+                    WHEN '09:00' THEN 2
+                    WHEN '10:00' THEN 3
+                    WHEN '11:25' THEN 4
+                    WHEN '12:20' THEN 5
+                    WHEN '13:15' THEN 6
+                    WHEN '14:25' THEN 7
+                    WHEN '15:00' THEN 8
+                    WHEN '15:55' THEN 9
+                    ELSE NULL
+                END,
+                (
+                    SELECT ss.period
+                    FROM schedule_slot ss
+                    WHERE ss.group_id = ps.school_class_id
+                      AND ss.start_time = TRIM(ps.start_time)
+                      AND ss.day_of_week = CASE CAST(strftime('%w', ps.date) AS INTEGER)
+                          WHEN 0 THEN 7
+                          ELSE CAST(strftime('%w', ps.date) AS INTEGER)
+                      END
+                    ORDER BY ss.id
+                    LIMIT 1
+                ),
+                (
+                    SELECT CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM teacher_schedule_slots exact
+                            WHERE exact.school_class_id = ps.school_class_id
+                              AND exact.start_time = TRIM(ps.start_time)
+                              AND exact.day_of_week = CASE CAST(strftime('%w', ps.date) AS INTEGER)
+                                  WHEN 0 THEN 7
+                                  ELSE CAST(strftime('%w', ps.date) AS INTEGER)
+                              END
+                        )
+                        THEN (
+                            SELECT COUNT(DISTINCT slot.start_time)
+                            FROM teacher_schedule_slots slot
+                            WHERE slot.school_class_id = ps.school_class_id
+                              AND slot.day_of_week = CASE CAST(strftime('%w', ps.date) AS INTEGER)
+                                  WHEN 0 THEN 7
+                                  ELSE CAST(strftime('%w', ps.date) AS INTEGER)
+                              END
+                              AND slot.start_time <= TRIM(ps.start_time)
+                        )
+                        ELSE NULL
+                    END
+                ),
+                (
+                    SELECT CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM weekly_slot_template exact
+                            WHERE exact.school_class_id = ps.school_class_id
+                              AND exact.start_time = TRIM(ps.start_time)
+                              AND exact.day_of_week = CASE CAST(strftime('%w', ps.date) AS INTEGER)
+                                  WHEN 0 THEN 7
+                                  ELSE CAST(strftime('%w', ps.date) AS INTEGER)
+                              END
+                        )
+                        THEN (
+                            SELECT COUNT(DISTINCT slot.start_time)
+                            FROM weekly_slot_template slot
+                            WHERE slot.school_class_id = ps.school_class_id
+                              AND slot.day_of_week = CASE CAST(strftime('%w', ps.date) AS INTEGER)
+                                  WHEN 0 THEN 7
+                                  ELSE CAST(strftime('%w', ps.date) AS INTEGER)
+                              END
+                              AND slot.start_time <= TRIM(ps.start_time)
+                        )
+                        ELSE NULL
+                    END
+                )
+            ),
+            ps.teaching_unit_id,
+            COALESCE(ps.objectives, ''),
+            CASE
+                WHEN TRIM(COALESCE(ps.notes, '')) != '' THEN ps.notes
+                ELSE COALESCE(ps.title, '')
+            END,
+            COALESCE(ps.resources, ''),
+            TRIM(ps.start_time),
+            ps.end_time
+        FROM planned_session ps
+        """.trimIndent(),
+        0,
+    )
+    driver.execute(
+        null,
+        """
+        UPDATE planner_session
+        SET
+            unit_id = COALESCE(planner_session.unit_id, src.teaching_unit_id),
+            objectives = CASE
+                WHEN TRIM(COALESCE(planner_session.objectives, '')) = '' THEN src.objectives
+                ELSE planner_session.objectives
+            END,
+            activities = CASE
+                WHEN TRIM(COALESCE(planner_session.activities, '')) = '' THEN src.activities
+                ELSE planner_session.activities
+            END,
+            evaluation = CASE
+                WHEN TRIM(COALESCE(planner_session.evaluation, '')) = '' THEN src.resources
+                ELSE planner_session.evaluation
+            END,
+            start_time = CASE
+                WHEN planner_session.start_time IS NULL OR TRIM(planner_session.start_time) = '' THEN src.start_time
+                ELSE planner_session.start_time
+            END,
+            end_time = CASE
+                WHEN planner_session.end_time IS NULL OR TRIM(planner_session.end_time) = '' THEN src.end_time
+                ELSE planner_session.end_time
+            END
+        FROM planned_session_migration_v44 AS src
+        WHERE src.period IS NOT NULL
+          AND planner_session.date = src.date
+          AND planner_session.group_id = src.school_class_id
+          AND planner_session.period = src.period
+        """.trimIndent(),
+        0,
+    )
+    driver.execute(
+        null,
+        """
+        INSERT INTO planner_session (
+            date, group_id, period, unit_id, objectives, activities, evaluation,
+            linked_assessment_ids_csv, start_time, end_time, status,
+            updated_at_epoch_ms, sync_version
+        )
+        SELECT
+            src.date, src.school_class_id, src.period, src.teaching_unit_id,
+            src.objectives, src.activities, src.resources, '',
+            src.start_time, src.end_time, 'PLANNED',
+            CAST(strftime('%s', 'now') AS INTEGER) * 1000, 0
+        FROM planned_session_migration_v44 AS src
+        WHERE src.period IS NOT NULL
+          AND src.planned_id = (
+              SELECT MIN(other.planned_id)
+              FROM planned_session_migration_v44 AS other
+              WHERE other.date = src.date
+                AND other.school_class_id = src.school_class_id
+                AND other.period = src.period
+                AND other.period IS NOT NULL
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM planner_session existing
+              WHERE existing.date = src.date
+                AND existing.group_id = src.school_class_id
+                AND existing.period = src.period
+          )
+        """.trimIndent(),
+        0,
+    )
+    driver.execute(
+        null,
+        """
+        DELETE FROM planned_session
+        WHERE id IN (
+            SELECT planned_id
+            FROM planned_session_migration_v44
+            WHERE period IS NOT NULL
+        )
+        """.trimIndent(),
+        0,
+    )
+    driver.execute(null, "DROP TABLE planned_session_migration_v44", 0)
 }
 
 private fun ensureColumns(

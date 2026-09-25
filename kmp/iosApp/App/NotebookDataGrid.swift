@@ -84,7 +84,118 @@ struct NotebookDividerHandle: View {
     }
 }
 
+enum NotebookRowWindowMath {
+    static let overscan = 8
+    static let unmeasuredViewport: CGFloat = 900
+    static let bottomPadding: CGFloat = 16
+
+    struct Metrics: Equatable {
+        var prefixY: [CGFloat]
+        var totalHeight: CGFloat
+
+        static let empty = Metrics(prefixY: [0], totalHeight: bottomPadding)
+
+        var rowCount: Int { max(0, prefixY.count - 1) }
+    }
+
+    static func metrics(slotHeights: [CGFloat]) -> Metrics {
+        var prefixY = [CGFloat](repeating: 0, count: slotHeights.count + 1)
+        for index in slotHeights.indices {
+            prefixY[index + 1] = prefixY[index] + slotHeights[index]
+        }
+        let contentHeight = prefixY.last ?? 0
+        return Metrics(prefixY: prefixY, totalHeight: contentHeight + bottomPadding)
+    }
+
+    static func visibleRange(offsetY: CGFloat, viewportHeight: CGFloat, metrics: Metrics) -> Range<Int> {
+        let count = metrics.rowCount
+        guard count > 0 else { return 0..<0 }
+        let prefixY = metrics.prefixY
+        let height = viewportHeight > 1 ? viewportHeight : unmeasuredViewport
+        let start = max(0, offsetY)
+        let end = start + height
+        let first = rowIndex(containing: start, prefixY: prefixY)
+        let lastExclusive = firstRowStarting(atOrAfter: end, prefixY: prefixY)
+        let lower = max(0, first - overscan)
+        let upper = min(count, max(lastExclusive, first + 1) + overscan)
+        return lower..<max(lower, upper)
+    }
+
+    static func clamped(_ range: Range<Int>, count: Int) -> Range<Int> {
+        guard count > 0 else { return 0..<0 }
+        let lower = min(max(range.lowerBound, 0), count)
+        let upper = min(max(range.upperBound, lower), count)
+        if lower == upper {
+            let start = min(lower, count - 1)
+            return start..<min(count, start + 1)
+        }
+        return lower..<upper
+    }
+
+    private static func rowIndex(containing y: CGFloat, prefixY: [CGFloat]) -> Int {
+        let count = max(0, prefixY.count - 1)
+        guard count > 0 else { return 0 }
+        var low = 0
+        var high = count
+        while low < high {
+            let mid = (low + high) / 2
+            if prefixY[mid + 1] <= y {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return min(low, count - 1)
+    }
+
+    private static func firstRowStarting(atOrAfter y: CGFloat, prefixY: [CGFloat]) -> Int {
+        let count = max(0, prefixY.count - 1)
+        var low = 0
+        var high = count
+        while low < high {
+            let mid = (low + high) / 2
+            if prefixY[mid] < y {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return low
+    }
+}
+
+enum NotebookRowVirtualizationDebug {
+    static var enabled = false
+    private static var counts: [String: Int] = [:]
+    private static var lastLog = Date.distantPast
+
+    static func appear(pane: String, totalRows: Int) {
+        guard enabled else { return }
+        counts[pane, default: 0] += 1
+        log(totalRows: totalRows)
+    }
+
+    static func disappear(pane: String, totalRows: Int) {
+        guard enabled else { return }
+        counts[pane] = max(0, (counts[pane] ?? 1) - 1)
+        log(totalRows: totalRows)
+    }
+
+    private static func log(totalRows: Int) {
+        let now = Date()
+        guard now.timeIntervalSince(lastLog) > 0.5 else { return }
+        lastLog = now
+        let summary = counts.keys.sorted().map { "\($0)=\(counts[$0] ?? 0)" }.joined(separator: " ")
+        print("NotebookPerf materialized \(summary) totalRows=\(totalRows)")
+    }
+}
+
 final class NotebookScrollSyncCoordinator: ObservableObject {
+    @Published private(set) var visibleRange: Range<Int> = 0..<24
+    private var metrics = NotebookRowWindowMath.Metrics.empty
+    private var offsetY: CGFloat = 0
+    private var viewportHeight: CGFloat = 0
+
     #if canImport(UIKit)
     private var uiScrollViews = NSMapTable<NSString, UIScrollView>(keyOptions: .strongMemory, valueOptions: .weakMemory)
     #endif
@@ -93,6 +204,34 @@ final class NotebookScrollSyncCoordinator: ObservableObject {
     #endif
     
     private var isSyncing = false
+
+    func install(metrics: NotebookRowWindowMath.Metrics) {
+        guard metrics != self.metrics else { return }
+        self.metrics = metrics
+        publishRangeIfNeeded()
+    }
+
+    func noteViewport(offsetY proposedOffset: CGFloat, height: CGFloat) {
+        let nextOffset = max(0, proposedOffset)
+        let nextHeight = height > 1 ? height : viewportHeight
+        let offsetChanged = abs(nextOffset - offsetY) >= 0.5
+        let heightChanged = abs(nextHeight - viewportHeight) >= 0.5
+        guard offsetChanged || heightChanged else { return }
+        offsetY = nextOffset
+        viewportHeight = nextHeight
+        guard metrics.rowCount > 0 else { return }
+        publishRangeIfNeeded()
+    }
+
+    private func publishRangeIfNeeded() {
+        let next = NotebookRowWindowMath.visibleRange(
+            offsetY: offsetY,
+            viewportHeight: viewportHeight,
+            metrics: metrics
+        )
+        guard next != visibleRange else { return }
+        visibleRange = next
+    }
     
     #if canImport(UIKit)
     func register(id: String, scrollView: UIScrollView) {
@@ -245,10 +384,10 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     let fixedRows: FixedRows
     let trailingFixedRows: TrailingFixedRows
     let scrollRows: ScrollRows
-    
-    @StateObject private var scrollSyncCoordinator = NotebookScrollSyncCoordinator()
+    let scrollSyncCoordinator: NotebookScrollSyncCoordinator
 
     init(
+        scrollSyncCoordinator: NotebookScrollSyncCoordinator,
         fixedColumnWidth: CGFloat,
         trailingFixedColumnWidth: CGFloat,
         isFixedColumnResizing: Bool = false,
@@ -280,6 +419,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
         self.fixedRows = fixedRows()
         self.trailingFixedRows = trailingFixedRows()
         self.scrollRows = scrollRows()
+        self.scrollSyncCoordinator = scrollSyncCoordinator
     }
 
     var body: some View {
@@ -503,6 +643,11 @@ private struct NotebookSyncedVerticalUIScrollView<Content: View>: UIViewRepresen
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
         context.coordinator.hostingController?.rootView = content
         scrollView.showsVerticalScrollIndicator = showsIndicators
+        let coordinator = coordinator
+        DispatchQueue.main.async { [weak scrollView] in
+            guard let scrollView else { return }
+            coordinator.noteViewport(offsetY: scrollView.contentOffset.y, height: scrollView.bounds.height)
+        }
     }
 
     static func dismantleUIView(_ uiView: UIScrollView, coordinator: Coordinator) {
@@ -521,6 +666,7 @@ private struct NotebookSyncedVerticalUIScrollView<Content: View>: UIViewRepresen
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            coordinator.noteViewport(offsetY: scrollView.contentOffset.y, height: scrollView.bounds.height)
             coordinator.synchronizeScroll(from: id, offset: scrollView.contentOffset)
         }
     }
@@ -574,6 +720,12 @@ private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresen
         if let hostingView = scrollView.documentView as? NSHostingView<Content> {
             hostingView.rootView = content
         }
+        let coordinator = coordinator
+        DispatchQueue.main.async { [weak scrollView] in
+            guard let scrollView else { return }
+            let bounds = scrollView.contentView.bounds
+            coordinator.noteViewport(offsetY: bounds.origin.y, height: bounds.height)
+        }
     }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
@@ -599,7 +751,10 @@ private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresen
 
         func scrollViewDidScroll() {
             guard let scrollView else { return }
-            coordinator.synchronizeScroll(from: id, offset: scrollView.contentView.bounds.origin)
+            let origin = scrollView.contentView.bounds.origin
+            let height = scrollView.contentView.bounds.height
+            coordinator.noteViewport(offsetY: origin.y, height: height)
+            coordinator.synchronizeScroll(from: id, offset: origin)
         }
     }
 }

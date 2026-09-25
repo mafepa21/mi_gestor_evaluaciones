@@ -23,6 +23,8 @@ Estado: casi cerrada.
 Prioridad: alta.
 
 - Cuaderno: carga rapida, grid estable, columnas ocultas seguras, medias explicables y categorias claras.
+  Avance Fase 1 (2026-09-23): el filtro vacío conserva cabeceras; el hover de Mac ya no invalida los 3 paneles; el cursor de resize no se queda pegado; el drag numérico queda solo en iOS.
+  Avance: pintar el grid lee la nota de la fila ya cargada (`persistedCells` / `persistedGrades`) y no llama a `cellText`, `numericGradeText` ni `cellAnnotation` por celda. El puente queda para guardar.
   Avance: el grid SwiftUI reduce coste de scroll y actualizacion con filas lazy, fingerprints precomputados por panel y celdas desacopladas del bridge global mediante snapshots/actions.
   Avance P0: la carga de Situaciones de aprendizaje del Cuaderno usa una lectura bulk de enlaces de grupo y evita una consulta por situación.
   Avance: Media explicable con desglose de columnas incluidas, pendientes, exclusiones y aportaciones ponderadas ya integrada en KMP y SwiftUI.
@@ -106,6 +108,7 @@ Prioridad: media-alta.
 - Multi-asignatura: relación real grupo-asignatura con catálogo visible y presets aplicables por materia; siguiente paso, usarla en filtros y onboarding.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
+  Avance: el sync incremental de sesiones lleva instrumentos, franja y diario. Las sesiones nuevas del escritorio se guardan en la misma tabla que el iPad. Decisión en `kmp/docs/architecture/ADR-2026-09-24-sync-sesiones-diario-franja.md`.
   Avance: entregas del alumnado vía web multi-grupo. El Mac mantiene la autoridad de claves, alias, mapas y ledger; la bandeja lista todos los formularios, publica con revisión guiada, permite seleccionar varias tareas y revocarlas, archivarlas o restaurarlas en lote, y reparte los enlaces por correo a partir de la ficha del alumno, de uno en uno o a todo el grupo automatizando Mail (borradores o envío, con confirmación y por tandas). También enruta lotes mixtos por `formInstanceId`: la previsualización separa válidos, asignaciones manuales, conflictos, inválidos y ya importados; la escritura pasa por `saveResponses` y las respuestas resultantes llegan al Cuaderno iPad mediante SyncLAN. Las tablas privadas `web_*` siguen fuera de SyncLAN. Diseño y decisión en `kmp/docs/architecture/ADR-2026-08-01-entregas-web-centro-mac.md`.
   Pendiente: transporte en la nube de archivos originales, QA manual extremo a extremo Mac → lote mixto → SyncLAN → Cuaderno iPad, y prueba real del reparto masivo contra Mail (permiso de automatización y envío efectivo a un grupo).
   Deuda explícita: la revocación local no puede cambiar un manifiesto público ya firmado y desplegado; para bloqueo remoto inmediato hace falta retirar/republicar el manifiesto o añadir un registro de revocación consultable por la web.

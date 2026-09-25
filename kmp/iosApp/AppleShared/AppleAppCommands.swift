@@ -100,9 +100,10 @@ struct AppleAppCommands: Commands {
             .keyboardShortcut("3", modifiers: .command)
         }
 
-        // ⌘⌥1–5 en vez de ⌘1–4: el menú "Navegación" ya reserva ⌘1–3 para saltar
+        // ⌘⌥1–6 en vez de ⌘1–4: el menú "Navegación" ya reserva ⌘1–3 para saltar
         // entre Cuaderno/Asistencia/Planner a nivel de app, así que las secciones
         // internas del planificador usan una combinación distinta para no chocar.
+        // El orden sigue la barra: Mes, Semana, Día, Secuencia, Evaluación, Resumen.
         CommandMenu("Planificador") {
             Button("Mes") {
                 AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.month.rawValue)
@@ -124,10 +125,15 @@ struct AppleAppCommands: Commands {
             }
             .keyboardShortcut("4", modifiers: [.command, .option])
 
+            Button("Evaluación") {
+                AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.term.rawValue)
+            }
+            .keyboardShortcut("5", modifiers: [.command, .option])
+
             Button("Resumen") {
                 AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.summary.rawValue)
             }
-            .keyboardShortcut("5", modifiers: [.command, .option])
+            .keyboardShortcut("6", modifiers: [.command, .option])
         }
     }
 }

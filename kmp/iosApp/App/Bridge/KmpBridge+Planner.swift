@@ -813,7 +813,29 @@ extension KmpBridge {
     }
 
     func plannerSaveJournal(_ aggregate: SessionJournalAggregate) async throws -> Int64 {
-        try await container.sessionJournalRepository.saveJournalAggregate(aggregate: aggregate).int64Value
+        let savedId = try await container.sessionJournalRepository.saveJournalAggregate(aggregate: aggregate).int64Value
+        if let stored = try await container.sessionJournalRepository.getJournalForSession(
+            planningSessionId: aggregate.journal.planningSessionId
+        ) {
+            enqueueSavedJournal(stored)
+        } else {
+            enqueueSavedJournal(aggregate)
+        }
+        return savedId
+    }
+
+    func enqueueSavedJournal(_ aggregate: SessionJournalAggregate) {
+        let encoded = SessionJournalSyncCodec.shared.encode(aggregate: aggregate)
+        guard let data = encoded.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return
+        }
+        enqueueLocalChange(
+            entity: "session_journal",
+            id: "\(aggregate.journal.planningSessionId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: payload
+        )
     }
 
     func plannerRegisterJournalIncident(
@@ -912,7 +934,8 @@ extension KmpBridge {
             targetWeekNumber: Int32(targetWeekNumber),
             targetYear: Int32(targetYear),
             targetDayOfWeek: Int32(targetDayOfWeek),
-            targetPeriod: Int32(targetPeriod)
+            targetPeriod: Int32(targetPeriod),
+            forceTerminalSessions: false
         )
         return try await container.plannerRepository.previewCascadeMove(request: request)
     }
@@ -922,14 +945,16 @@ extension KmpBridge {
         targetWeekNumber: Int,
         targetYear: Int,
         targetDayOfWeek: Int,
-        targetPeriod: Int
+        targetPeriod: Int,
+        forceTerminalSessions: Bool = false
     ) async throws -> SessionCascadeMoveResult {
         let request = SessionCascadeMoveRequest(
             sourceSessionId: sourceSessionId,
             targetWeekNumber: Int32(targetWeekNumber),
             targetYear: Int32(targetYear),
             targetDayOfWeek: Int32(targetDayOfWeek),
-            targetPeriod: Int32(targetPeriod)
+            targetPeriod: Int32(targetPeriod),
+            forceTerminalSessions: forceTerminalSessions
         )
         return try await container.plannerRepository.commitCascadeMove(request: request)
     }

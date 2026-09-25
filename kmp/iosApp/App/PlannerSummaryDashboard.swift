@@ -25,7 +25,11 @@ struct PlannerSummaryDashboard: View {
 
                 if selectedRange == .week {
                     HStack(alignment: .top, spacing: 24) {
-                        PlannerUpcomingSessionsPanel(vm: vm, sessions: stats.upcomingSessions)
+                        PlannerUpcomingSessionsPanel(
+                            vm: vm,
+                            sessions: stats.upcomingSessions,
+                            onOpenSession: onOpenSession
+                        )
                             .frame(maxWidth: .infinity, alignment: .top)
                         PlannerCoveragePanel(vm: vm, rows: stats.coverageRows, onOpenSettings: onOpenSettings)
                             .frame(maxWidth: .infinity, alignment: .top)
@@ -463,6 +467,7 @@ private struct PlannerSummaryMetricCard: View {
 private struct PlannerUpcomingSessionsPanel: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let sessions: [PlanningSession]
+    let onOpenSession: (PlanningSession) -> Void
 
     var body: some View {
         PlannerSummaryPanel(title: "Próximas sesiones", systemImage: "clock.badge") {
@@ -474,7 +479,7 @@ private struct PlannerUpcomingSessionsPanel: View {
             } else {
                 VStack(spacing: 12) {
                     ForEach(sessions, id: \.id) { session in
-                        PlannerUpcomingSessionRow(vm: vm, session: session)
+                        PlannerUpcomingSessionRow(vm: vm, session: session, onOpenSession: onOpenSession)
                     }
                 }
             }
@@ -485,10 +490,22 @@ private struct PlannerUpcomingSessionsPanel: View {
 private struct PlannerUpcomingSessionRow: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let session: PlanningSession
+    let onOpenSession: (PlanningSession) -> Void
 
     private var tint: Color { Color(hex: vm.classColorHex(for: session.groupId)) }
 
     var body: some View {
+        Button {
+            onOpenSession(session)
+        } label: {
+            upcomingSessionLabel
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(session.teachingUnitName.trimmedOrFallback("Sesión sin título")), \(session.groupName)")
+        .accessibilityHint("Abre la ficha de la sesión")
+    }
+
+    private var upcomingSessionLabel: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(vm.dayLabel(for: Int(session.dayOfWeek)))

@@ -853,11 +853,13 @@ class LocalSyncServer(
     }
 
     private fun isAuthorized(ex: HttpExchange): Boolean {
-        if (ex.remoteAddress.address.isLoopbackAddress) {
-            return true
-        }
-        val auth = ex.requestHeaders.getFirst("Authorization")
-        val token = auth?.removePrefix("Bearer ")?.trim()
+        // El propio Mac no es de confianza: cualquier programa local podría leer
+        // o escribir el cuaderno. La contraseña del enlace se exige en todas las
+        // rutas de datos, también en loopback. /sync/local-changes no pasa por aquí.
+        val token = ex.requestHeaders.getFirst("Authorization")
+            ?.removePrefix("Bearer ")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
         val authorized = token != null && token == activeToken
         if (!authorized) {
             ex.respond(401, """{"error":"unauthorized"}""")

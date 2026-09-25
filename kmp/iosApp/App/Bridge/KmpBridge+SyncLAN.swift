@@ -1769,25 +1769,44 @@ extension KmpBridge {
                 default:
                     status = .planned
                 }
+                let existingSession = sessionId > 0
+                    ? try await container.plannerRepository.listAllSessions().first(where: { $0.id == sessionId })
+                    : nil
+                func keptString(_ key: String, current: String) -> String {
+                    guard payloadObject.keys.contains(key) else { return current }
+                    return payloadObject[key] as? String ?? ""
+                }
+                func keptOptionalString(_ key: String, current: String?) -> String? {
+                    guard payloadObject.keys.contains(key) else { return current }
+                    return payloadObject[key] as? String
+                }
+                func keptOptionalLong(_ key: String, current: KotlinLong?) -> KotlinLong? {
+                    guard payloadObject.keys.contains(key) else { return current }
+                    guard let value = int64Value(payloadObject[key]), value > 0 else { return nil }
+                    return KotlinLong(value: value)
+                }
                 let session = PlanningSession(
                     id: sessionId,
                     teachingUnitId: teachingUnitId,
-                    teachingUnitName: payloadObject["teachingUnitName"] as? String ?? "Unidad",
-                    teachingUnitColor: payloadObject["teachingUnitColor"] as? String ?? "#4A90D9",
-                    groupId: int64Value(payloadObject["groupId"]) ?? 0,
-                    groupName: payloadObject["groupName"] as? String ?? "",
+                    teachingUnitName: payloadObject["teachingUnitName"] as? String ?? existingSession?.teachingUnitName ?? "Unidad",
+                    teachingUnitColor: payloadObject["teachingUnitColor"] as? String ?? existingSession?.teachingUnitColor ?? "#4A90D9",
+                    groupId: int64Value(payloadObject["groupId"]) ?? existingSession?.groupId ?? 0,
+                    groupName: payloadObject["groupName"] as? String ?? existingSession?.groupName ?? "",
                     dayOfWeek: Int32(dayOfWeek),
                     period: Int32(period),
                     weekNumber: Int32(weekNumber),
                     year: Int32(year),
-                    objectives: payloadObject["objectives"] as? String ?? "",
-                    activities: payloadObject["activities"] as? String ?? "",
-                    evaluation: payloadObject["evaluation"] as? String ?? "",
-                    linkedAssessmentIdsCsv: payloadObject["linkedAssessmentIdsCsv"] as? String ?? "",
-                    teacherScheduleSlotId: int64Value(payloadObject["teacherScheduleSlotId"]).map { KotlinLong(value: $0) },
-                    startTime: payloadObject["startTime"] as? String,
-                    endTime: payloadObject["endTime"] as? String,
-                    learningSituationSessionPlanId: int64Value(payloadObject["learningSituationSessionPlanId"]).map { KotlinLong(value: $0) },
+                    objectives: keptString("objectives", current: existingSession?.objectives ?? ""),
+                    activities: keptString("activities", current: existingSession?.activities ?? ""),
+                    evaluation: keptString("evaluation", current: existingSession?.evaluation ?? ""),
+                    linkedAssessmentIdsCsv: keptString("linkedAssessmentIdsCsv", current: existingSession?.linkedAssessmentIdsCsv ?? ""),
+                    teacherScheduleSlotId: keptOptionalLong("teacherScheduleSlotId", current: existingSession?.teacherScheduleSlotId),
+                    startTime: keptOptionalString("startTime", current: existingSession?.startTime),
+                    endTime: keptOptionalString("endTime", current: existingSession?.endTime),
+                    learningSituationSessionPlanId: keptOptionalLong(
+                        "learningSituationSessionPlanId",
+                        current: existingSession?.learningSituationSessionPlanId
+                    ),
                     status: status
                 )
                 do {
@@ -2007,6 +2026,18 @@ extension KmpBridge {
                     )
                 }
 
+            case "session_journal":
+                guard let planningSessionId = SessionJournalSyncCodec.shared.planningSessionId(payload: change.payload)?.int64Value,
+                      planningSessionId > 0 else { continue }
+                let existingJournal = try await container.sessionJournalRepository.getJournalForSession(
+                    planningSessionId: planningSessionId
+                )
+                guard let toSave = SessionJournalSyncCodec.shared.forLocalUpsert(
+                    payload: change.payload,
+                    localJournalId: existingJournal?.journal.id ?? 0
+                ) else { continue }
+                _ = try await container.sessionJournalRepository.saveJournalAggregate(aggregate: toSave)
+
             default:
                 continue
             }
@@ -2117,6 +2148,11 @@ extension KmpBridge {
             if sessionId > 0 {
                 try await container.plannerRepository.deleteSession(sessionId: sessionId)
             }
+        case "session_journal":
+            let planningSessionId = int64Value(payloadObject["planningSessionId"]) ?? Int64(change.id) ?? 0
+            if planningSessionId > 0 {
+                try await container.sessionJournalRepository.deleteJournalForSession(planningSessionId: planningSessionId)
+            }
         case "teaching_unit":
             let unitId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
             if unitId > 0 {
@@ -2218,6 +2254,8 @@ extension KmpBridge {
             return 3
         case "grade", "notebook_cell", "rubric_assessment", "planning_session", "notebook_instrument_response":
             return 4
+        case "session_journal":
+            return 5
         case "student_deleted":
             return 5
         default:

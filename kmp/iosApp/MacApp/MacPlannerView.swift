@@ -65,7 +65,8 @@ struct MacPlannerView: View {
             PlannerToolbar(
                 vm: vm,
                 onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
-                showsNavigationControls: false
+                showsNavigationControls: false,
+                onShowCalendarMilestones: { showingCalendarMilestones = true }
             )
 
             if let transientMessage, !transientMessage.isEmpty {
@@ -76,9 +77,12 @@ struct MacPlannerView: View {
             }
 
             plannerCenterContent
+                .id(vm.activeSection)
+                .transition(uiFeatureFlags.contentSwitchTransition)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .background(MacAppStyle.pageBackground)
+        .animation(uiFeatureFlags.interactionAnimation, value: vm.activeSection)
         .animation(uiFeatureFlags.interactionAnimation, value: transientMessage)
         .appOnChange(of: cascadeCoordinator.transientMessage) { newValue in
             guard let newValue else { return }
@@ -159,7 +163,7 @@ struct MacPlannerView: View {
                 cascadeCoordinator.confirmPendingMove(vm: vm)
             }
         } message: {
-            Text("La cascada incluye una o más sesiones ya impartidas. Se conservarán sus diarios y referencias.")
+            Text("La cascada incluye sesiones ya impartidas o canceladas. Si pulsas Mover, también se recolocan. Si cancelas, se quedan donde están.")
         }
         .task {
             publishToolbarActions()

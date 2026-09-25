@@ -1993,19 +1993,13 @@ extension KmpBridge {
             links: aggregate.links
         )
         _ = try await container.sessionJournalRepository.saveJournalAggregate(aggregate: updatedAggregate)
-        enqueueLocalChange(
-            entity: "session_journal",
-            id: "\(journalId)",
-            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
-            payload: [
-                "id": journalId,
-                "planningSessionId": aggregate.journal.planningSessionId,
-                "classId": classId,
-                "studentId": studentId,
-                "note": trimmed,
-                "tag": "nota rápida"
-            ]
-        )
+        if let stored = try await container.sessionJournalRepository.getJournalForSession(
+            planningSessionId: aggregate.journal.planningSessionId
+        ) {
+            enqueueSavedJournal(stored)
+        } else {
+            enqueueSavedJournal(updatedAggregate)
+        }
         status = "Nota rápida guardada para \(student.fullName)"
     }
 

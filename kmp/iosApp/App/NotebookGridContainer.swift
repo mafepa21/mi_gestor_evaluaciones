@@ -86,6 +86,8 @@ struct NotebookGridContainer<
         self.scrollRow = scrollRow
     }
 
+    @StateObject private var scrollSyncCoordinator = NotebookScrollSyncCoordinator()
+
     var body: some View {
         if !hasSourceRows {
             emptyContent()
@@ -95,6 +97,7 @@ struct NotebookGridContainer<
             seatingContent(rows)
         } else {
             NotebookDataGrid(
+                scrollSyncCoordinator: scrollSyncCoordinator,
                 fixedColumnWidth: fixedColumnWidth,
                 trailingFixedColumnWidth: trailingFixedColumnWidth,
                 isFixedColumnResizing: isFixedColumnResizing,
@@ -138,6 +141,14 @@ struct NotebookGridContainer<
         case fixed
         case trailingFixed
         case scroll
+
+        var debugName: String {
+            switch self {
+            case .fixed: return "fixed"
+            case .trailingFixed: return "trailing"
+            case .scroll: return "scroll"
+            }
+        }
     }
 
     private func rowStack<Content: View>(
@@ -145,25 +156,19 @@ struct NotebookGridContainer<
         pane: PaneKind,
         @ViewBuilder rowContent: @escaping (Int, Row) -> Content
     ) -> some View {
-        let rowIndexesById = Dictionary(uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, $0.offset) })
+        NotebookWindowedRowStack(
+            viewport: scrollSyncCoordinator,
+            rows: rows,
+            paneName: pane.debugName,
+            rowHeight: rowHeight,
+            groupHeaderHeight: groupHeaderHeight,
+            groupHeaderInfo: groupHeaderInfo,
+            groupHeader: { header in
+                groupHeaderView(for: header, pane: pane)
+            },
+            rowContent: rowContent
+        )
 
-        return LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(rows) { item in
-                let header = groupHeaderInfo?(item)
-                let showHeader = header?.isFirst ?? false
-
-                VStack(alignment: .leading, spacing: 0) {
-                    if showHeader, let header = header {
-                        groupHeaderView(for: header, pane: pane)
-                    }
-
-                    NotebookGridHoverRow(rowHeight: rowHeight) {
-                        rowContent(rowIndexesById[item.id] ?? 0, item)
-                    }
-                }
-            }
-        }
-        .padding(.bottom, 16)
     }
 
     @ViewBuilder
@@ -240,6 +245,99 @@ struct NotebookGridContainer<
                         .frame(height: 0.5)
                 }
             )
+        }
+    }
+}
+
+private struct NotebookWindowedRow<Row: Identifiable>: Identifiable {
+    let index: Int
+    let row: Row
+    var id: Row.ID { row.id }
+}
+
+private struct NotebookWindowedRowStack<
+    Row: Identifiable,
+    Header: View,
+    Content: View
+>: View {
+    @ObservedObject var viewport: NotebookScrollSyncCoordinator
+    let rows: [Row]
+    let paneName: String
+    let rowHeight: CGFloat
+    let groupHeaderHeight: CGFloat
+    let groupHeaderInfo: ((Row) -> (isFirst: Bool, groupName: String, count: Int))?
+    let groupHeader: ((isFirst: Bool, groupName: String, count: Int)) -> Header
+    let rowContent: (Int, Row) -> Content
+
+    var body: some View {
+        let metrics = currentMetrics
+        let range = NotebookRowWindowMath.clamped(viewport.visibleRange, count: rows.count)
+        let topInset = metrics.prefixY.indices.contains(range.lowerBound) ? metrics.prefixY[range.lowerBound] : 0
+        let visibleRows = range.map { NotebookWindowedRow(index: $0, row: rows[$0]) }
+
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: metrics.totalHeight)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(visibleRows) { entry in
+                    rowSlot(entry)
+                }
+            }
+            .padding(.top, topInset)
+        }
+        .frame(height: metrics.totalHeight, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+        .onAppear {
+            viewport.install(metrics: metrics)
+        }
+        .appOnChange(of: metrics) { newMetrics in
+            viewport.install(metrics: newMetrics)
+        }
+    }
+
+    private var currentMetrics: NotebookRowWindowMath.Metrics {
+        NotebookRowWindowMath.metrics(slotHeights: rows.map { slotHeight(for: $0) })
+    }
+
+    private func slotHeight(for item: Row) -> CGFloat {
+        rowHeight + (showsGroupHeader(for: item) ? groupHeaderHeight : 0)
+    }
+
+    private func showsGroupHeader(for item: Row) -> Bool {
+        guard let groupHeaderInfo else { return false }
+        return groupHeaderInfo(item).isFirst
+    }
+
+    private func headerInfo(for item: Row) -> (isFirst: Bool, groupName: String, count: Int)? {
+        guard let groupHeaderInfo else { return nil }
+        return groupHeaderInfo(item)
+    }
+
+    @ViewBuilder
+    private func rowSlot(_ entry: NotebookWindowedRow<Row>) -> some View {
+        let header = headerInfo(for: entry.row)
+        let showsHeader = header?.isFirst == true
+
+        VStack(alignment: .leading, spacing: 0) {
+            if showsHeader, let header {
+                groupHeader(header)
+            }
+            NotebookGridHoverRow(rowHeight: rowHeight) {
+                rowContent(entry.index, entry.row)
+            }
+        }
+        .onAppear {
+            NotebookRowVirtualizationDebug.appear(pane: paneName, totalRows: rows.count)
+        }
+        .onDisappear {
+            NotebookRowVirtualizationDebug.disappear(pane: paneName, totalRows: rows.count)
         }
     }
 }

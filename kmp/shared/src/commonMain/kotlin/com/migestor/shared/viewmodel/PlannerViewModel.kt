@@ -198,11 +198,12 @@ class PlannerViewModel(
                     )
                 }
 
-                // 2. Planned sessions (ahora reactivas)
+                // 2. Restos de la tabla vieja cuya hora sí es una franja conocida.
+                // Lo que no encaja en ninguna franja no se dibuja: no tiene periodo.
                 plannedList.filter { ps ->
                     IsoWeekHelper.isoWeekOf(ps.date) == w && ps.date.year == y
                 }.forEach { ps ->
-                    val period = timeSlots.find { it.startTime == ps.startTime }?.period ?: 1
+                    val period = timeSlots.find { it.startTime == ps.startTime }?.period ?: return@forEach
                     merged[SessionGridKey(ps.date.dayOfWeek.isoDayNumber, period, ps.schoolClassId)] = ps.toPlanningSession(period)
                 }
                 
@@ -395,6 +396,8 @@ class PlannerViewModel(
             year = this.date.year,
             objectives = this.objectives,
             activities = this.notes,
+            startTime = this.startTime,
+            endTime = this.endTime,
             status = SessionStatus.PLANNED
         )
     }
@@ -560,13 +563,11 @@ class PlannerViewModel(
 
     fun copySessionsBetweenGroups(command: CopySessionsCommand) {
         scope.launch {
-            val sourceManual = plannerRepo.listSessionsInRange(command.sourceGroupId, command.fromDate, command.toDate)
-            val sourcePlanned = plannedSessionRepo.listSessionsInRange(command.sourceGroupId, command.fromDate, command.toDate)
-            val sourceItems = (sourceManual.map { CopySourceItem.Manual(it) } + sourcePlanned.map { CopySourceItem.Planned(it) })
-                .sortedBy { it.startDateTimeKey(timeSlots) }
+            val sourceItems = plannerRepo.listSessionsInRange(command.sourceGroupId, command.fromDate, command.toDate)
+                .sortedBy { "${it.year}-${it.weekNumber}-${it.dayOfWeek}-${it.period}" }
                 .filter { item ->
                     if (command.selectedSlots.isEmpty()) true
-                    else command.selectedSlots.contains(item.dayPeriod(timeSlots))
+                    else command.selectedSlots.contains(item.dayOfWeek to item.period)
                 }
             val targetSlots = expandedGroupSlots(command.targetGroupId, command.fromDate, command.toDate)
             if (targetSlots.isEmpty() || sourceItems.isEmpty()) {
@@ -576,45 +577,28 @@ class PlannerViewModel(
 
             val targetManualExisting = plannerRepo.listSessionsInRange(command.targetGroupId, command.fromDate, command.toDate)
             val targetManualKeys = targetManualExisting.map { Triple(it.groupId, toDate(it), it.period) }.toSet()
-            val targetPlannedExisting = plannedSessionRepo.listSessionsInRange(command.targetGroupId, command.fromDate, command.toDate)
-            val targetPlannedKeys = targetPlannedExisting.map { Triple(it.schoolClassId, it.date, it.startTime) }.toSet()
 
             val mappedPairs = sourceItems.zip(targetSlots).take(minOf(sourceItems.size, targetSlots.size))
             val plannerToSave = mutableListOf<PlanningSession>()
-            val plannedToSave = mutableListOf<PlannedSession>()
             var overwritten = 0
             mappedPairs.forEach { (item, target) ->
-                when (item) {
-                    is CopySourceItem.Manual -> {
-                        val mapped = item.session.copy(
-                            id = 0,
-                            groupId = command.targetGroupId,
-                            groupName = groups.value.firstOrNull { it.id == command.targetGroupId }?.name ?: item.session.groupName,
-                            dayOfWeek = target.dayOfWeek,
-                            period = target.period,
-                            weekNumber = IsoWeekHelper.isoWeekOf(target.date),
-                            year = target.date.year
-                        )
-                        if (targetManualKeys.contains(Triple(mapped.groupId, target.date, mapped.period))) overwritten++
-                        plannerToSave += mapped
-                    }
-                    is CopySourceItem.Planned -> {
-                        val mapped = item.session.copy(
-                            id = 0,
-                            schoolClassId = command.targetGroupId,
-                            date = target.date,
-                            startTime = target.startTime,
-                            endTime = target.endTime
-                        )
-                        if (targetPlannedKeys.contains(Triple(mapped.schoolClassId, mapped.date, mapped.startTime))) overwritten++
-                        plannedToSave += mapped
-                    }
-                }
+                val mapped = item.copy(
+                    id = 0,
+                    groupId = command.targetGroupId,
+                    groupName = groups.value.firstOrNull { it.id == command.targetGroupId }?.name ?: item.groupName,
+                    dayOfWeek = target.dayOfWeek,
+                    period = target.period,
+                    weekNumber = IsoWeekHelper.isoWeekOf(target.date),
+                    year = target.date.year,
+                    startTime = item.startTime ?: target.startTime,
+                    endTime = item.endTime ?: target.endTime,
+                )
+                if (targetManualKeys.contains(Triple(mapped.groupId, target.date, mapped.period))) overwritten++
+                plannerToSave += mapped
             }
             plannerRepo.bulkUpsertSessions(plannerToSave)
-            plannedSessionRepo.bulkUpsertOrReplacePlannedSessions(plannedToSave)
             _lastBulkOperation.value = PlannerBulkOperationResult(
-                affected = plannerToSave.size + plannedToSave.size,
+                affected = plannerToSave.size,
                 overwritten = overwritten,
                 omitted = (sourceItems.size - mappedPairs.size).coerceAtLeast(0)
             )
@@ -624,13 +608,11 @@ class PlannerViewModel(
     fun shiftSessionsWithinGroup(command: ShiftSessionsCommand) {
         scope.launch {
             if (command.offsetSlots == 0) return@launch
-            val sourceManual = plannerRepo.listSessionsInRange(command.groupId, command.fromDate, command.toDate)
-            val sourcePlanned = plannedSessionRepo.listSessionsInRange(command.groupId, command.fromDate, command.toDate)
-            val sourceItems = (sourceManual.map { CopySourceItem.Manual(it) } + sourcePlanned.map { CopySourceItem.Planned(it) })
-                .sortedBy { it.startDateTimeKey(timeSlots) }
+            val sourceItems = plannerRepo.listSessionsInRange(command.groupId, command.fromDate, command.toDate)
+                .sortedBy { "${it.year}-${it.weekNumber}-${it.dayOfWeek}-${it.period}" }
                 .filter { item ->
                     if (command.selectedSlots.isEmpty()) true
-                    else command.selectedSlots.contains(item.dayPeriod(timeSlots))
+                    else command.selectedSlots.contains(item.dayOfWeek to item.period)
                 }
             val slots = expandedGroupSlots(command.groupId, command.fromDate, command.toDate)
             if (slots.isEmpty() || sourceItems.isEmpty()) {
@@ -639,18 +621,16 @@ class PlannerViewModel(
             }
             val slotIndexByKey = slots.withIndex().associate { it.value.key() to it.index }
             val movedPlanner = mutableListOf<PlanningSession>()
-            val movedPlanned = mutableListOf<PlannedSession>()
             val plannerIdsToDelete = mutableListOf<Long>()
-            val plannedIdsToDelete = mutableListOf<Long>()
             var omitted = 0
             sourceItems.forEach { item ->
-                val currentKey = when (item) {
-                    is CopySourceItem.Manual -> SlotKey(toDate(item.session), periodToStartTime(item.session.period), periodToEndTime(item.session.period), item.session.dayOfWeek, item.session.period)
-                    is CopySourceItem.Planned -> {
-                        val period = periodForStartTime(item.session.startTime)
-                        SlotKey(item.session.date, item.session.startTime, item.session.endTime, item.session.date.dayOfWeek.isoDayNumber, period)
-                    }
-                }
+                val currentKey = SlotKey(
+                    toDate(item),
+                    periodToStartTime(item.period),
+                    periodToEndTime(item.period),
+                    item.dayOfWeek,
+                    item.period,
+                )
                 val index = slotIndexByKey[currentKey] ?: run { omitted++; return@forEach }
                 val targetIndex = index + command.offsetSlots
                 if (targetIndex !in slots.indices) {
@@ -658,34 +638,19 @@ class PlannerViewModel(
                     return@forEach
                 }
                 val target = slots[targetIndex]
-                when (item) {
-                    is CopySourceItem.Manual -> {
-                        plannerIdsToDelete += item.session.id
-                        movedPlanner += item.session.copy(
-                            id = 0,
-                            dayOfWeek = target.dayOfWeek,
-                            period = target.period,
-                            weekNumber = IsoWeekHelper.isoWeekOf(target.date),
-                            year = target.date.year
-                        )
-                    }
-                    is CopySourceItem.Planned -> {
-                        plannedIdsToDelete += item.session.id
-                        movedPlanned += item.session.copy(
-                            id = 0,
-                            date = target.date,
-                            startTime = target.startTime,
-                            endTime = target.endTime
-                        )
-                    }
-                }
+                plannerIdsToDelete += item.id
+                movedPlanner += item.copy(
+                    id = 0,
+                    dayOfWeek = target.dayOfWeek,
+                    period = target.period,
+                    weekNumber = IsoWeekHelper.isoWeekOf(target.date),
+                    year = target.date.year
+                )
             }
             plannerRepo.deleteSessions(plannerIdsToDelete.distinct())
-            plannedSessionRepo.deleteSessions(plannedIdsToDelete.distinct())
             plannerRepo.bulkUpsertSessions(movedPlanner)
-            plannedSessionRepo.bulkUpsertOrReplacePlannedSessions(movedPlanned)
             _lastBulkOperation.value = PlannerBulkOperationResult(
-                affected = movedPlanner.size + movedPlanned.size,
+                affected = movedPlanner.size,
                 overwritten = 0,
                 omitted = omitted
             )
@@ -699,23 +664,6 @@ class PlannerViewModel(
         val dayOfWeek: Int,
         val period: Int
     )
-
-    private sealed interface CopySourceItem {
-        data class Manual(val session: PlanningSession) : CopySourceItem
-        data class Planned(val session: PlannedSession) : CopySourceItem
-    }
-
-    private fun CopySourceItem.startDateTimeKey(timeSlots: List<TimeSlotConfig>): String {
-        return when (this) {
-            is CopySourceItem.Manual -> "${session.year}-${session.weekNumber}-${session.dayOfWeek}-${session.period}"
-            is CopySourceItem.Planned -> "${session.date}-${session.startTime}"
-        }
-    }
-
-    private fun CopySourceItem.dayPeriod(timeSlots: List<TimeSlotConfig>): Pair<Int, Int> = when (this) {
-        is CopySourceItem.Manual -> session.dayOfWeek to session.period
-        is CopySourceItem.Planned -> session.date.dayOfWeek.isoDayNumber to periodForStartTime(session.startTime)
-    }
 
     private suspend fun expandedGroupSlots(groupId: Long, fromDate: LocalDate, toDate: LocalDate): List<SlotKey> {
         val templates = weeklyTemplateRepo.getSlotsForClass(groupId)

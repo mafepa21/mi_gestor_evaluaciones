@@ -42,6 +42,7 @@ struct MacReportsView: View {
     @State private var isGeneratingDraft = false
     @State private var isExporting = false
     @State private var isWeeklyEmailSheetPresented = false
+    @SceneStorage("mac.reports.exportPanelVisible") private var isExportPanelVisible = true
 
     private let reportService = AppleFoundationReportService()
     private let draftStore = MacReportDraftStore()
@@ -121,19 +122,8 @@ struct MacReportsView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            reportsSidebar
-                .frame(minWidth: 280, idealWidth: 310, maxWidth: 360)
-
-            Divider()
-
-            reportsCenter
-                .frame(minWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
-
-            Divider()
-
-            reportsExportPanel
-                .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
+        GeometryReader { proxy in
+            reportsLayout(isCompact: proxy.size.width < 1_200)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MacAppStyle.pageBackground)
@@ -170,9 +160,41 @@ struct MacReportsView: View {
         }
     }
 
+    @ViewBuilder
+    private func reportsLayout(isCompact: Bool) -> some View {
+        if isCompact {
+            HStack(spacing: 0) {
+                reportsSidebar
+                    .frame(minWidth: 224, idealWidth: 240, maxWidth: 280)
+
+                Divider()
+
+                reportsCenter(showsCompactExport: true)
+                    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            HStack(spacing: 0) {
+                reportsSidebar
+                    .frame(minWidth: 280, idealWidth: 310, maxWidth: 360)
+
+                Divider()
+
+                reportsCenter(showsCompactExport: false)
+                    .frame(minWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
+
+                if isExportPanelVisible {
+                    Divider()
+
+                    reportsExportPanel
+                        .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
+                }
+            }
+        }
+    }
+
     private var reportsSidebar: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: MacAppStyle.cardSpacing) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Informes")
                         .font(.title2.weight(.semibold))
@@ -255,9 +277,9 @@ struct MacReportsView: View {
         .background(MacAppStyle.cardBackground)
     }
 
-    private var reportsCenter: some View {
+    private func reportsCenter(showsCompactExport: Bool) -> some View {
         VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-            reportsHeader
+            reportsHeader(showsCompactExport: showsCompactExport)
 
             if let feedbackMessage {
                 Text(feedbackMessage)
@@ -284,7 +306,7 @@ struct MacReportsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: MacAppStyle.cardSpacing) {
                         metricsGrid
                         aiSummaryBlock
                         previewBlock
@@ -296,7 +318,7 @@ struct MacReportsView: View {
         .padding(MacAppStyle.pagePadding)
     }
 
-    private var reportsHeader: some View {
+    private func reportsHeader(showsCompactExport: Bool) -> some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(selectedReportKind.title)
@@ -315,7 +337,62 @@ struct MacReportsView: View {
                 isActive: aiAvailability.isAvailable,
                 tint: aiAvailability.isAvailable ? MacAppStyle.successTint : MacAppStyle.warningTint
             )
+            if showsCompactExport {
+                compactExportMenu
+            } else {
+                Button {
+                    withAnimation(MacAppStyle.smallStateAnimation) {
+                        isExportPanelVisible.toggle()
+                    }
+                } label: {
+                    Label(
+                        isExportPanelVisible ? "Ocultar exportación" : "Mostrar exportación",
+                        systemImage: isExportPanelVisible ? "sidebar.trailing" : "sidebar.leading"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .help(isExportPanelVisible ? "Ocultar panel de exportación" : "Mostrar panel de exportación")
+            }
         }
+    }
+
+    private var compactExportMenu: some View {
+        Menu {
+            Button {
+                Task { await export(format: .pdf) }
+            } label: {
+                Label("Exportar PDF", systemImage: "doc.richtext")
+            }
+            .disabled(!canExport || isExporting)
+
+            Button {
+                Task { await export(format: .docx) }
+            } label: {
+                Label("Exportar DOCX", systemImage: "doc.badge.gearshape")
+            }
+            .disabled(!canExport || isExporting)
+
+            Divider()
+
+            Button {
+                copyReportText()
+            } label: {
+                Label("Copiar texto", systemImage: "doc.on.doc")
+            }
+            .disabled(!canExport)
+
+            Button {
+                saveDraft()
+            } label: {
+                Label("Guardar borrador", systemImage: "tray.and.arrow.down")
+            }
+            .disabled(activeDraftKey == nil || consolidatedReportText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } label: {
+            Label("Exportar", systemImage: "square.and.arrow.up")
+        }
+        .menuStyle(.button)
+        .buttonStyle(.borderedProminent)
+        .help("Exportar o guardar el informe")
     }
 
     @ViewBuilder

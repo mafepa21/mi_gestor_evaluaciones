@@ -13,8 +13,351 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Changed
+
+- **Planificador, el cambio de pantalla se ve**: al pasar de Mes, Semana, Día, Secuencia, Evaluación o Resumen, el contenido entra con un fundido corto. En el iPhone las pestañas van en su fila y debajo el grupo, la búsqueda y la sesión nueva. El bloque de progreso arranca cerrado en Día, Secuencia y Evaluación, y abierto en Resumen. En el Día, la página sigue el dedo al cambiar de fecha.
+
+### Fixed
+
+- **Planificador, toques que no hacían nada**: en el mes, tocar un día abre ese día. En el resumen, tocar una próxima sesión abre su ficha. En el iPhone, el menú y la pastilla de hitos abren los hitos del curso. La última fila de la semana ya no se come el alto de la cabecera. La ficha muestra si la sesión está planificada, en curso, impartida o cancelada. En el Mac, Evaluación está en el menú Planificador.
+
+### Data
+
+- **Una sola tabla de sesiones del planificador**: al actualizar, lo guardado en la tabla vieja pasa a la tabla que ya sincroniza el iPad, si la hora encaja en una franja. Si ese hueco ya tenía texto, no se pisa. Si la hora no encaja, esa fila se queda en la tabla vieja y no se muestra. El estado `PENDING` pasa a `PLANNED`. Guardar una sesión que ya existe no pisa la del hueco de al lado. Una sesión nueva, si el hueco está ocupado, actualiza esa fila.
+
+### Fixed
+
+- **Planificador, arrastrar no mueve una sesión cerrada**: si la cadena incluye una sesión impartida o cancelada, no se mueve nadie. El aviso sigue saliendo. Solo si pulsas Mover se recoloca también esa sesión.
+
+### Verification
+
+- `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: pasaron al unificar las sesiones. No se han vuelto a lanzar: este cambio no toca datos ni la lógica compartida.
+- `./scripts/verify_apple_builds.sh`: compiló el Mac y el simulador del iPhone.
+- No se ha abierto la app en pantalla. La revisión de toques y animaciones es del código y de la compilación.
+
+### Changed
+
+- **Cuaderno, solo se dibujan las filas de la pantalla**: al bajar por la tabla, nombres, notas y media siguen alineados, pero solo existen las filas visibles y un margen. El resumen de cada fila se calcula cuando esa fila se dibuja, no para toda la clase de golpe.
+
+- **Cuaderno, pintar sin preguntar al puente en cada celda**: la nota, el texto, la casilla, la rúbrica y el sello se leen de `persistedCells` y `persistedGrades` de la fila. La fórmula usa esas notas ya cargadas. El puente sigue solo para guardar y para el borrador que aún no ha vuelto del cuaderno.
+
 ### Added
 
+- **Teclado de hoja de cálculo en el Cuaderno (macOS)**: con una celda de nota seleccionada, las flechas mueven la selección, un número sustituye la nota y la flecha o Return la guarda y baja a la siguiente. Esc devuelve el valor de antes de escribir. Una rúbrica, una fórmula o un visto bueno no se abren al pulsar un número. El teclado táctil del iPad no cambia.
+
+- **Rango, relleno y pegado en el Cuaderno**: Mayús+clic alarga la selección en la misma columna. Rellenar copia el valor solo en ese rango. Pegar varias líneas desde Numbers llena esas celdas y un solo Deshacer vuelve atrás todo el lote.
+
+- **Menús del Cuaderno con los mismos textos**: la vista se llama Rejilla en el iPad y en el Mac. El filtro vacío dice Grupo completo y Sin filtrar en todos los sitios. El menú Edición puede decir Deshacer nota de… y Rehacer nota de…
+
+- **Menos color en el Cuaderno**: las notas sueltas se leen en negro. El rojo, el ámbar y el verde ya no pintan cada celda. Si se enciende «Colorear la media», el color queda solo en la columna Media. El ajuste nace apagado.
+
+- **Nueva columna en dos pasos**: eliges el tipo, pones el nombre y pulsas Crear. El peso, la rúbrica y la fórmula quedan en Ajustes, abiertos solo cuando hacen falta.
+
+- **Inspector más corto**: el panel del Cuaderno mide 320 puntos. Arriba se ven la media, lo pendiente y las observaciones. El resto va en «Más del alumno». Las flechas cambian de alumno. El anillo de la celda activa aparece en 0,15 segundos.
+
+- **Buscador del Cuaderno**: si la búsqueda no encuentra a nadie, se mantienen las cabeceras y aparece el botón Limpiar.
+
+- **Menos barras en el iPhone**: las pestañas del Cuaderno dejan la fila de encima y pasan al menú de tres puntos. Al guardar, un punto pasa de ámbar a verde una sola vez. Si falla, el punto se queda rojo y no dice que ya está sincronizado.
+
+- **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
+  - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
+  - Detección automática en la app de la SA asociada a la columna del cuaderno y los grupos de trabajo vinculados para generar los pares de evaluación.
+  - Resolución inclusiva de grupos de trabajo (`detectPeerGroupsForColumn`): busca grupos por SA directa y, si no los hay o la columna no tiene SA, aplica *fallback* a los grupos de la pestaña de la columna (o familia de pestañas según `NotebookWorkGroupPolicy`) y a los grupos de la clase, permitiendo coevaluar con grupos generales creados en el Cuaderno.
+  - Soporte en la PWA de Vercel y en la app para esquemas v2 con fragmentos hash privados (`&t=<base64url>`) que suministran a cada alumno evaluador exclusivamente los alias y nombres completos de sus compañeros de grupo, sin exponer nombres al servidor web ni alterar la URL visible.
+  - Asignación transparente de autoevaluación individual convencional para el alumnado sin grupo asignado en la SA.
+  - Importación directa al cuaderno con cálculo de la media aritmética simple de la autoevaluación y las coevaluaciones recibidas por cada alumno, y registro de autoría individual en el ledger criptográfico.
+  - Nueva interfaz con selector de dos modos en la hoja de publicación (`WebSubmissionPublishSheet`) y distintivos visuales en la bandeja (`WebSubmissionsWorkspaceView`).
+
+### Changed
+
+- **Modularización y partición estructural de `KmpBridge.swift`**:
+  - Reducción del monolito central de 15.160 líneas a 727 líneas (reducción >95%), conservando intacta la API pública, las firmas de métodos y el comportamiento funcional de la app.
+  - Creación del subdirectorio `kmp/iosApp/App/Bridge/` con 13 nuevos archivos modulares por dominio de responsabilidad:
+    - `InstrumentEvaluationModels.swift`: Modelos de evaluación de instrumentos estructurados, rúbricas y formato.
+    - `KmpFlowSupport.swift`: Adaptadores de Combine y AsyncSequence para StateFlows de Kotlin.
+    - `LanSyncModels.swift`: DTOs, hashes y eventos de sincronización de área local.
+    - `LanSyncClient.swift`: Cliente de red HTTP/TLS, pinned certificates y keychain.
+    - `LanSyncDiscovery.swift`: Descubrimiento Bonjour / NWBrowser de helpers locales.
+    - `KmpBridgeModels.swift`: Snapshots y structs de datos anidados en `KmpBridge`.
+    - `KmpBridge+WebForms.swift`: Publicación web, formularios y recepción de entregas.
+    - `KmpBridge+Meetings.swift`: Reuniones de claustro, actas pedagógicas y planes semanales.
+    - `KmpBridge+Rubrics.swift`: Editor, banco de rúbricas y evaluación masiva.
+    - `KmpBridge+SyncLAN.swift`: Orquestador de sincronización, polling y merge de snapshots.
+    - `KmpBridge+Planner.swift`: Planificador didáctico, sesiones, plantillas, drag & drop y SA asociadas.
+    - `KmpBridge+Students.swift`: Alumnado, grupos, fotos, importación TSV, asistencia, incidencias, medidas de apoyo y tutorías.
+    - `KmpBridge+LearningSituations.swift`: Situaciones de Aprendizaje, importación/exportación de documentos y materialización de instrumentos.
+    - `KmpBridge+PhysicalEducation.swift`: Pruebas físicas, baterías, baremos y sesiones de EF.
+    - `KmpBridge+Notebook.swift`: Cuaderno de evaluación, pestañas, columnas, fórmulas, medias y celdas.
+    - `KmpBridge+Dashboard.swift`: Métricas del dashboard operativo, filtros y acciones rápidas.
+    - `KmpBridge+TypeConverters.swift`: Conversores bidireccionales Swift <-> Kotlin y helpers de deserialización.
+  - `KmpBridge.swift` queda acotado exclusivamente como orquestador `@MainActor ObservableObject` central: inyección de dependencias `KmpContainer`, propiedades reactivas `@Published`, observadores de StateFlow y bootstrap del ciclo de vida.
+
+### Data
+
+- **Los borrados de SyncLAN se guardan en la tabla que ya existía**: el Mac anota cada baja propia en `sync_tombstones` y, al arrancar, la vuelve a leer. No hay tabla nueva ni columna nueva.
+
+- **Migración 43.sqm y persistencia de coevaluaciones en SQLDelight**:
+  - Columna `mode TEXT NOT NULL DEFAULT 'self'` en la tabla `web_form_instances`.
+  - Nueva tabla `web_peer_targets` con índices para persistir las correspondencias privadas `(form_instance_id, evaluator_alias, target_alias, target_student_id, target_display_name, created_at)`.
+  - Actualización de repositorios y contratos Kotlin (`WebSubmissionsContracts.kt` y `WebSubmissionsRepositorySqlDelight.kt`).
+
+### Verification
+
+- Sync de sesiones, franja y diario, 24 sep 2026: `./gradlew :data:desktopTest` ejecutó `SqlDelightSyncAdapterPlanningSessionSyncTest` (7), `SyncDatasetFingerprintTest`, `SqlDelightSyncAdapterRosterTest`, `SqlDelightSyncAdapterTombstoneTest` y `SqlDelightSyncAdapterStudentFieldsTest`, con 0 fallos. No se lanzó la suite completa de `:data:desktopTest`. `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se probó con un iPad real.
+
+- SyncLAN y baja de alumnado, 24 sep 2026: `./gradlew :data:desktopTest` ejecutó `LocalSyncServerAdoptionTest` (7), `SqlDelightSyncAdapterTombstoneTest` (2), `SqlDelightSyncAdapterOutgoingDeleteTest` (3), `SqlDelightSyncAdapterRosterTest` (2) y `DeleteStudentUseCaseIntegrationTest` (3), con 0 fallos. `./gradlew :shared:desktopTest --tests com.migestor.shared.usecase.DeleteStudentUseCaseTest` ejecutó 3 pruebas, con 0 fallos. No se compiló la app de Apple porque este cambio no toca Swift. No se probó con un iPad real.
+
+- Cuaderno, filas visibles al desplazar, 24 sep 2026: `xcodebuild` del esquema `MiGestorKMPMac` (macOS) y del esquema `MiGestorKMPiOS` (simulador iOS) terminó en BUILD SUCCEEDED. `./scripts/verify_apple_builds.sh` falló antes por disco lleno, no por el código. No se abrió la app, así que no se comprobó a ojo si las tres zonas siguen alineadas al bajar.
+- Menos color en el Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se miró la tabla en la app.
+- Menús y Deshacer del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió el menú Edición en la app.
+- Rango y pegado del Cuaderno, 24 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se pegó una hoja de Numbers en la app.
+- Teclado del Cuaderno en macOS, 23 sep 2026: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se abrió la app para recorrer una columna con el teclado.
+- `./scripts/verify_apple_builds.sh` (Fase 1 Cuaderno, worktree `fix-cuaderno-fase1-bugs`): macOS Native / Catalyst y iOS Simulator compilados con éxito. Sin QA visual en dispositivo.
+- `./scripts/verify_apple_builds.sh`: macOS Native / Catalyst y iOS Simulator compilados con éxito.
+- `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: suites de SQLDelight y contratos KMP completadas con 0 fallos.
+- `npm test` en `entregas-alumnado`: 50/50 pruebas de contrato, esquemas v2 y cifrado superadas.
+- Suite de interoperabilidad criptográfica `interop_entregas_web`: 75/75 pruebas superadas (0 fallidas).
+
+### Fixed
+
+- **El sync ya no borra instrumentos ni franja, y el diario viaja entre aparatos**: el mensaje de la sesión incluye los instrumentos enlazados, la franja y las horas. Si llega un mensaje viejo sin esos datos, se conserva lo que ya había. El diario de la sesión (texto, notas, tareas y enlaces) entra en el sync. Las fotos siguen siendo solo la ruta. Las sesiones nuevas que el escritorio genera al guardar una unidad, o al copiar y mover, se escriben en la misma tabla que usa el iPad. La comparación de «Igualar dispositivos» distingue diarios, franjas e instrumentos.
+
+- **SyncLAN ya no abre el cuaderno a cualquier programa del Mac**: las rutas de datos piden la contraseña del enlace también cuando la petición sale del propio Mac. Sin contraseña responden 401. El aviso interno del Mac a sí mismo sigue siendo solo local y no entrega el cuaderno.
+
+- **Un reinicio del ayudante ya no olvida los borrados de SyncLAN**: el aviso se guarda y, al arrancar, se vuelve a enviar solo si esa ficha sigue sin existir. Así el iPad no conserva alumnos ni notas que el Mac ya borró.
+
+- **Quitar a un alumno de un curso ya no borra su ficha**: con un curso indicado solo se le da de baja ahí. La ficha entera, y con ella las notas de los otros cursos, se borra solo si la orden lo pide de forma explícita.
+
+- **Fase 1 del Cuaderno: filtro vacío, hover de Mac, cursor de resize y drag numérico**:
+  - Una búsqueda o filtro de grupo sin resultados conserva cabeceras y muestra «Limpiar». Una clase sin alumnado sigue con empty a pantalla completa.
+  - El hover de fila en Mac vive en cada fila, no en el contenedor de los 3 paneles.
+  - El cursor de resize hace `pop` al salir o al desaparecer la vista.
+  - En Mac, arrastrar en una nota numérica ya no cambia el valor; el gesto de décimas queda solo en iOS.
+
+- **Corrección de persistencia y sincronización al modificar grupos de trabajo en tablero y lista (PR #240)**:
+  - **Cola de asignaciones pendientes en `WorkGroupBoardDraft`**: Incorporada la cola `pendingAssignments` para registrar qué alumnos se mueven a grupos temporales (recién creados o auto-agrupados con `id < 0`), despachándolos de forma automática al bridge KMP en el momento en que `remapTemporaryIds` descubre su ID persistido en base de datos.
+  - **Reconciliación no destructiva en `ingest()`**: Protección del estado optimista para evitar que la sobreescritura de `remoteMembership` devuelva alumnos a «Sin grupo» mientras SQLite confirma asíncronamente las asignaciones resueltas.
+  - **Sincronización bidireccional limpia en `WorkGroupBoardDraft`**: Eliminada la condición que abortaba la ingesta cuando la base de datos tenía menos miembros (desasignación de alumnos a «Sin grupo» o borrado de grupos), y eliminada la re-inyección local que resucitaba asignaciones previas.
+  - **Arrastre y soltado sobre grupos en creación (`handleDrop`)**: Resolución automática de IDs provisionales hacia IDs persistidos reales para permitir asignar o desasignar alumnos sin rechazo de gestos.
+  - **Detección inmediata de cambios en grupos (`groupSignature`)**: `NotebookGroupBoardView` ahora observa la firma completa (id, nombre, orden y SA) para que renombrar o cambiar la SA de un grupo existente se refleje de inmediato en el tablero.
+  - **Actualización reactiva en edición y borrado**: Actualización en caliente de `boardDraft` al renombrar o eliminar grupos desde la hoja de gestión.
+  - **Selección inclusiva en `NotebookWorkGroupPolicy.activeGroups`**: En el modo de ordenación general del cuaderno, la presencia de grupos generales ya no oculta los grupos asignados a Situaciones de Aprendizaje de la misma pestaña.
+
+- **Importar Excel volvió al tablero y los grupos automáticos quedan del mismo tamaño (PR #240)**:
+  - El botón «Importar Excel» está otra vez en el tablero, no solo en Lista.
+  - Un recargo vacío del cuaderno ya no borra un reparto que el tablero acaba de hacer.
+  - Al agrupar automáticamente, los grupos quedan lo más iguales posible (por ejemplo 9-9-9-8 con 35 alumnos).
+
+- **Los grupos se deshacían en el tablero antes de pulsar Listo (PR #240)**:
+  - El tablero guarda el reparto en local al crear, arrastrar o agrupar automáticamente, y no se deja pisar por un recargo viejo del cuaderno.
+  - El id de cada grupo nuevo se lee de la fila insertada (`MAX(id)`), no de `last_insert_rowid`, para que los alumnos queden en el grupo correcto.
+  - La ventana de grupos es más ancha y el tablero reparte las columnas para ver alumnado y grupos a la vez.
+
+- **Los grupos de trabajo se quedaban vacíos al pulsar Listo y ordenar el Cuaderno (PR #240)**:
+  - Una sola regla de pestaña (`NotebookWorkGroupPolicy`): los grupos se guardan en la pestaña raíz de la evaluación; los de una SA se ven en toda la clase; los generales se ven en esa evaluación y en sus pestañas hijas.
+  - La pertenencia de un alumno se busca por `groupId`, no por pestaña. Asignar o borrar un alumno limpia su sitio anterior en toda la clase.
+  - Importar, crear, arrastrar o pulsar Listo recarga el cuaderno de verdad.
+  - «Ordenar por grupos de trabajo» ya no se queda con grupos vacíos si hay grupos de SA con alumnos.
+
+- **Persistencia atómica de grupos de trabajo con SA y corrección de ordenación en Cuaderno (PR #240)**:
+  - **Operación transaccional por lotes (`replaceWorkGroups`)**: Contrato y método en `NotebookConfigRepositorySqlDelight` que ejecuta en una sola transacción SQLite la eliminación y creación de grupos con sus alumnos, evitando condiciones de carrera concurrentes durante la importación.
+  - **Coordinación de pestañas (`tabId`)**: Inclusión de parámetro `tabId` explícito en `NotebookViewModel` y `KmpBridge` para `saveNotebookWorkGroup`, `updateNotebookWorkGroup` y `assignStudentsToNotebookGroup`.
+  - **Detección e invalidación de caché en `KmpBridge`**: `notebookAggregateSignature` ahora incluye los nombres, IDs, situación y miembros de cada grupo, impidiendo que cambios de alumnos o reasignaciones mantengan firmas estáticas obsoletas.
+  - **Resolución de grupos activos en Cuaderno (`NotebookModuleColumnModel`)**: Fallback en modo `general` a los grupos disponibles en la pestaña cuando todos los grupos tienen SA asignada, impidiendo que el cuaderno quede vacío con alumnos en "Sin grupo".
+  - **Paridad y refresco de Situaciones de Aprendizaje**: `NotebookLearningSituationMatcher` compartido entre `NotebookGroupManagementSheet` y `NotebookModuleView`, con refresco automático de situaciones al cerrar la hoja de gestión de grupos.
+
+- **Detección y filtrado preciso de Situaciones de Aprendizaje (SA) por curso en grupos de trabajo (`NotebookGroupManagementSheet` y `KmpBridge`)**:
+  - Corrección en la función de emparejamiento de curso (`courseLabel(for:)` e `isSituation`) para reconocer nomenclaturas abreviadas de Bachillerato (`bac`, `bto`, `bat`), Primaria (`prim`, `pri`) y ESO, evitando que clases como «1º BAC B» se cataloguen incorrectamente como ESO.
+  - Filtrado estricto por curso en `loadClassLearningSituations()`: ahora solo se muestran las Situaciones de Aprendizaje correspondientes al curso y etapa de la clase activa (o con vínculo directo en base de datos), excluyendo de forma rigurosa SAs de cursos diferentes.
+  - Resolución robusta de la clase activa sin abortos silenciosos ni bloqueos de concurrencia al abrir la hoja de grupos.
+  - Indicador de carga asíncrono y mensajes contextuales precisos («Buscando situaciones del curso...» y «No hay situaciones para este curso») en el selector de SA de `NotebookGroupEditSheet` y `NotebookGroupImportPreviewSheet`.
+
+### Added
+
+- **Tablero visual y agrupado automático de grupos de trabajo (PR #240)**:
+  - Vista Tablero en `NotebookGroupManagementSheet` con columnas tipo lista (Sin grupo + cada grupo) y arrastre nativo de alumnado.
+  - Botón «Agrupar automáticamente» con tamaño de grupo, heterogéneos/homogéneos por nota, azar equilibrado, mezcla de chicos y chicas y reparto de alumnado lesionado (`ComposeWorkGroupsUseCase`).
+
+- **Asociación de grupos de trabajo a Situaciones de Aprendizaje (SA), persistencia atómica y distinción visual por grupos en el Cuaderno**:
+  - **Asociación a SA en importación y edición**:
+    - Selector de Situación de Aprendizaje integrado en `NotebookGroupImportPreviewSheet` para vincular los grupos importados a una SA existente o mantenerlos como generales.
+    - Persistencia del vínculo de la SA con la clase activa en el cuaderno mediante `addLearningSituationClassLink`.
+  - **Persistencia atómica de alumnos en grupos (`KmpBridge` + `NotebookViewModel`)**:
+    - `saveNotebookWorkGroup` y `updateNotebookWorkGroup` ampliados para admitir `studentIds: [Int64]`.
+    - Eliminación de condiciones de carrera en la importación: el grupo y la asignación de sus miembros se ejecutan en una sola operación atómica en Kotlin/SQLDelight, garantizando que los alumnos asignados permanezcan guardados de forma persistente.
+    - Sincronización explícita del `tabId` activo en `GroupMembersView` al marcar o desmarcar alumnos: los alumnos deseleccionados permanecen sin grupo permanentemente salvo que se vuelvan a seleccionar.
+  - **Ordenación por grupos y distintivo visual en el Cuaderno**:
+    - Detección de primer alumno por grupo (`isFirstInGroup`) y recuento de integrantes en `NotebookTableRow` al ordenar por grupos (`groupByWorkGroupMode != "none"`).
+    - Cabeceras de grupo integradas con píldoras de estilo Organic Precision (icono `person.2.fill` / `person.slash`, nombre del grupo y badge de integrantes).
+    - Separación visual vertical aumentada entre grupos distintos respecto a la separación habitual entre alumnos del mismo grupo, con alturas perfectamente sincronizadas entre columnas fijas y desplazables en `NotebookGridContainer`.
+    - Menús directos de «Organizar por grupos» en la cabecera de la columna de alumnos y en el menú de filtrado del cuaderno.
+
+- **Importación de grupos de trabajo desde Excel en la Gestión de Grupos del Cuaderno (`NotebookGroupManagementSheet`)**:
+  - **Servicio de lectura y emparejamiento (`NotebookWorkGroupImportService`)**:
+    - Parser adaptativo para hojas de cálculo matriciales como `Generador_de_grupos.xlsx` (cabeceras con nombres de grupo en columnas y alumnos en filas) y tablas en dos columnas (Grupo / Alumno).
+    - Emparejamiento fonético y diacrítico de alumnos con la lista de estudiantes de la clase activa en el cuaderno mediante `StudentNameLookup` (coincidencia de Nombre Apellidos, Apellidos Nombre y tokens principales insensible a tildes y mayúsculas).
+  - **Hoja de previsualización (`NotebookGroupImportPreviewSheet`)**:
+    - Tarjetas interactivas con resumen de grupos detectados, alumnos emparejados y advertencias destacadas para nombres que no coincidan con ningún estudiante del cuaderno.
+    - Opciones para seleccionar grupos a importar y alternar entre reemplazo de grupos existentes o adición acumulativa con sufijo numérico.
+  - **Integración fluida en la interfaz**:
+    - Acción «Importar grupos desde Excel» accesible directamente en `NotebookGroupManagementSheet` con selector de archivos del sistema (`.fileImporter` para `.xlsx`, `.csv` y `.tsv`).
+    - Creación y asignación de alumnos inmediata reflejada en el cuaderno y en el modo «Agrupar por grupos».
+  - **Suite de pruebas unitarias (`NotebookWorkGroupImportTests`)**:
+    - Verificación del parser matricial sobre `Generador_de_grupos.xlsx`, soporte para tablas de dos columnas y variaciones fonéticas/ortográficas de nombres.
+
+- **Rediseño, selector rápido y filtrado de columnas en Gestión de Datos (`DataManagementSettingsView`)**:
+  - **Sección especializada de Columnas de Cuaderno (`NotebookColumnsBulkDeleteSection`)**:
+    - **Filtro contextual por Curso y Pestaña**: menú desplegable para aislar rápidamente las columnas de un curso concreto (ej. «1º BAC A») o pestaña/evaluación, eliminando la sobrecarga de scroll y listas planas infinitas.
+    - **Buscador en tiempo real**: campo de búsqueda integrado con limpieza instantánea para localizar columnas por nombre de actividad, evidencia o pestaña.
+    - **Agrupación visual por Curso**: visualización ordenada con cabeceras de grupo, badges de recuento y botones de acción rápida «Marcar/Desmarcar grupo» cuando se visualizan todos los cursos.
+    - **Barra de atajos de selección en bloque**:
+      - Botones de 1 toque: «Todas las visibles», «Ninguna», «Invertir selección».
+      - Menú «Por curso» para seleccionar o deseleccionar en lote todas las columnas de una clase en un solo toque.
+  - **Atajos rápidos de selección en `CollapsibleBulkDeleteSection`**:
+    - Menú de acciones rápidas («Seleccionar todo», «Deseleccionar todo», «Invertir selección») accesible en todas las secciones colapsables (Cursos, Asignaturas, Pestañas, Sesiones, Situaciones y Rúbricas).
+  - **Borrado atómico en lote optimizado**:
+    - Uso de `bridge.deleteColumns(idsAndEvalIds:)` en lote para eliminar múltiples columnas de evaluación y recalcular sincronizaciones de forma agregada sin bloquear la interfaz.
+
+
+- **Soporte multi-grupo en importación y despliegue de Situaciones de Aprendizaje (SA)**:
+  - **Materialización de evaluación multi-grupo (`LearningSituationEvaluationSheet`)**:
+    - Selección simultánea de múltiples grupos vinculados a la SA mediante chips interactivos (`selectedClassIds`).
+    - Configuración unificada de pestaña de destino (`targetTabName`): permite asociar las columnas a una pestaña compartida por nombre o crearla automáticamente en todos los grupos si no existe.
+    - Creación coordinada y concurrente de instrumentos de evaluación en los cuadernos de cada clase (`bridge.materializeLearningSituationEvaluations`), evitando trabajo duplicado grupo a grupo.
+    - Detección y reutilización transparente de rúbricas existentes (`saveAssessmentInstrumentRubricIfNeeded`) para que todos los grupos compartan la misma rúbrica sin generar entradas redundantes en la base de datos.
+  - **Programación temporal comparada a dos columnas con selector de fecha de inicio por grupo (`LearningSituationScheduleSheet`)**:
+    - Selector interactivo maestro «Inicio común: [Fecha]» en cabecera que propaga la fecha a todos los grupos de la SA dentro del rango de la evaluación.
+    - Selector individual de fecha de inicio por grupo («Inicio: [Fecha]» en cada tarjeta de columna y vista compacta), permitiendo programar diferentes fechas de comienzo para cada grupo (por ejemplo, 1º ESO A el día 15 y 1º ESO B el 22) para compensar festivos y asimetrías de horario lectivo.
+    - El motor de proyección (`TermBoardProjectionEngine.project`) respeta `simulationStartDateIso`: mantiene como libres los slots lectivos anteriores a dicha fecha y encaja las sesiones de la SA a partir del día indicado individualmente para cada grupo.
+    - Visualización en paralelo de calendarios lectivos y festivos entre grupos del mismo curso mediante layout adaptativo iPad-first con `ViewThatFits(in: .horizontal)`.
+    - Modo 2 columnas (`twoColumnHorizontalView`) en macOS e iPad landscape con scroll independiente, tarjetas de sesión, métricas de capacidad (`TermBoardMetricsStrip`), selector de inicio por grupo y timeline de sesiones (`TermBoardTimelineView`).
+    - Modo compacto (`compactSegmentedView`) con selector segmentado y selector de inicio individual para iPhone o vistas divididas estrechas.
+    - Programación atómica simultánea de sesiones en las unidades didácticas correspondientes de cada grupo (`bridge.programLearningSituationSessions`), garantizando el aislamiento de unidades por `classId`.
+
+- Gestión integral de alumnado en iPadOS, iOS y macOS:
+  - **Selección múltiple para operaciones en lote (iOS/iPadOS y macOS)**:
+    - Modo de selección múltiple interactivo en `StudentProfilesWorkspaceView` (iOS/iPadOS) con casillas de verificación, opción «Todos / Deseleccionar» y barra de acciones por lote inferior («Asignar curso», «Eliminar»).
+    - Soporte nativo de selección múltiple en `Table` de `MacStudentsView` (macOS) vía `$store.selectedStudentIds`, barra contextual de acciones rápidas para lotes y opciones en menú contextual («Asignar N alumnos a un curso...», «Eliminar N alumnos...»).
+    - Asignación por lote a una clase elegida mediante `AssignStudentToClassSheet(students:availableClasses:)` y `bridge.assignStudentsToClass(...)`.
+    - Eliminación por lote con confirmación destructiva personalizada («Quitar N alumnos del grupo» vs «Eliminar N alumnos de toda la app») mediante `bridge.removeStudentsFromClass(...)` y `bridge.deleteStudentsEverywhere(...)`.
+  - **Eliminación y desmatriculación de alumnos**:
+    - Opciones contextuales y de inspector para «Quitar de clase» (si el alumno pertenece al grupo seleccionado o activo) y «Eliminar de toda la app» (borrado permanente de base de datos local y sincronización con advertencia destructiva).
+    - Diálogos nativos de confirmación (`confirmationDialog`) con explicación clara del impacto en iOS/iPadOS y macOS.
+  - **Asignación de alumnos sin curso a un curso escolar**:
+    - Nueva vista modal adaptativa `AssignStudentToClassSheet` (con detents nativos en iOS/iPadOS y ventana de diálogo compacta en macOS).
+    - Filtro de seguimiento «Sin curso» (`.sinCurso` en iOS, `sin_curso` en macOS) para listar inmediatamente los alumnos sin grupo asignado.
+    - Badges visuales de advertencia «Sin curso», banners informativos con botón directo «Asignar curso», swipe actions en listado y opciones en menú contextual / clic derecho en tabla.
+  - **Edición completa de datos del alumno**:
+    - Soporte completo para editar nombre, apellidos, correo electrónico, estado de lesión (`isInjured`), sexo biológico (`StudentSex`: no especificado, masculino, femenino, otro) y fecha de nacimiento (`birthDate: LocalDate?`) mediante `updateStudentFull` en `KmpBridge`.
+    - Integración de selectores nativos en `StudentEditorSheet` (iOS/iPadOS) y `MacStudentEditorSheet` (macOS).
+
+### Changed
+
+- Batería de optimizaciones de rendimiento y eficiencia energética P1-P6:
+  - **P1 (Batería y SyncLAN)**: Pausa total del bucle de sincronización periódica en segundo plano (`autoSyncLoopTask`) al entrar la app en background (`onAppDidEnterBackground`); reactivación al volver a primer plano (`onAppDidBecomeActive`). Detección reactiva de conexión SSE en `SyncEventListener` con backoff exponencial y dilatación del intervalo de consulta de 2-4 segundos a 5 minutos (300 s) como latido defensivo cuando el canal push está enlazado.
+  - **P2 (Velocidad de I/O en SQLite)**: Configuración de PRAGMAs de alto rendimiento en el driver nativo Apple (`AppleDriver.kt`) y de escritorio (`DesktopDriver.kt`): `synchronous = NORMAL` (seguro con WAL, reduce fsync continuos), `cache_size = -64000` (64 MB de caché en RAM), `mmap_size = 268435456` (256 MB de mapeo directo a memoria en Apple) y `temp_store = MEMORY`.
+  - **P3 (Paridad completa de SyncLAN)**: Traslado de `SqlDelightSyncAdapter` de `desktopMain` a `commonMain` en el módulo `:data`, permitiendo soporte nativo multiplataforma de importación/exportación diferencial. Exposición de `syncStoreAdapter` en `KmpContainer` y provisión de `typealias` retrocompatible para clientes de escritorio.
+  - **P4 (Fluidez UI y ahorro de CPU)**: Reemplazo de temporizadores reactivos periódicos `Timer.publish(every: 1.0)` en `PEActiveDurationStat` y `PEActiveDurationMetric` por la API nativa de SwiftUI `Text(timerStart, style: .timer)`, delegando el refresco por segundo al RenderServer del sistema sin despertar el hilo principal ni invalidar vistas (0% uso de CPU durante cronometraje de sesión).
+  - **P5 (Higiene de almacenamiento y rotación de copias de seguridad)**: Purga de ficheros de log huérfanos generados durante builds; actualización de `.gitignore` para omitir `*.log` y `build_*.txt`. Introducción de política de retención con rotación a un máximo de 5 copias pre-adopción en `AppleDriver.kt` (`pruneOldPreAdoptBackups`) y `AppleBackupService.swift` (`retentionLimit = 5`), con reemplazo atómico `replaceItemAt` resistente a `SQLITE_IOERR`.
+  - **P6 (Modularización y deuda técnica en KmpBridge)**: Extracción de 1.294 líneas de lógica contextual y analítica de IA desde `KmpBridge.swift` al nuevo archivo `Bridge/KmpBridge+ContextualAI.swift`, reduciendo la complejidad del monolito y facilitando compilaciones incrementales limpias.
+
+### Verification
+
+- Validación de compilación dual limpia (macOS Native / Catalyst e iOS Simulator) con `./scripts/verify_apple_builds.sh`.
+- Ejecución completa de tests unitarios de Apple (`MiGestorPlannerTests`): 124 tests ejecutados con éxito (0 fallos).
+- Ejecución completa de tests de persistencia y lógica KMP (`:data:desktopTest`, `:shared:desktopTest`): `BUILD SUCCESSFUL`.
+- Auditoría de código, seguridad y concurrencia (`reviewer`) y auditoría de limpieza Git (`janitor`) aprobadas formalmente.
+
+### Fixed
+
+- **Derivación de nota numérica y visualización en Rejilla de Observación Sistemática**:
+  - **Cálculo de nota en indicadores directos (`NotebookInstrumentsRepositorySqlDelight`)**: `deriveObservationGridScore` ahora procesa tanto las rejillas con desglose sesión × indicador (`obs_s..._i...`) como las rejillas de observación directa de escala 1–4 con claves secuenciales (`obs_i...`, `field_...`), derivando la media de los indicadores respondidos y persistiendo la calificación en `gradesRepository.saveGrade` (escala 1–4, FOUR_LEVEL).
+  - **Ponderación efectiva en la media del Cuaderno**: Al persistir la nota en `gradesRepository`, la columna materializada aplica su peso porcentual configurado (ej. 25%) y contribuye numéricamente a la Media Ponderada del alumno.
+  - **Visualización de calificación en la celda del Cuaderno (`NotebookModuleDisplayFormatting` y `NotebookEditableTableCell`)**: En columnas numéricas asociadas a instrumentos estructurados (`structuredObservation`), la cuadrícula muestra la nota obtenida (ej. «3,3») en lugar del texto fijo «Completo», manteniendo el botón interactivo para consultar o editar la rejilla.
+  - **Importación estructurada (`LearningSituationAssessmentInstrumentsImportService`)**: `makeObservationFields` asigna claves estructuradas `obs_i<index>` y escala `1-4` por defecto al importar tablas de observación sin cabecera de sesión.
+
+- Aislamiento e idempotencia en la importación de alumnos desde Excel/hojas de cálculo:
+  - **Aislamiento de matriculación entre cursos**: Corregido el problema por el cual al importar un segundo archivo Excel y asignarlo a un nuevo curso, se matriculaban los alumnos del nuevo archivo más los alumnos previamente importados en otros cursos.
+  - **Reutilización de alumnos existentes sin duplicación**: `KmpBridge.confirmStudentImport` ahora asocia el `existingStudentId` detectado durante la previsualización (`previewStudentImport`) matriculándolo en la clase de destino mediante `addStudentToClass` sin duplicar la entidad `Student` en la base de datos local ni crear registros redundantes.
+  - **Limpieza de selecciones residuales por lote**: Tanto en `MacStudentsView` como en `StudentProfilesWorkspaceView`, se limpia automáticamente la selección múltiple (`selectedStudentIds.removeAll()` y reseteo de modo múltiple) al cambiar de curso o al finalizar la importación, impidiendo que selecciones previas se mezclen con asignaciones masivas posteriores.
+  - **Detección inteligente y asignación inicial de curso en importador**: `StudentImportSheet` recibe ahora la clase activa (`initialClassId`) y analiza heurísticamente el nombre del curso detectado en la hoja (`preview.className`) para sugerir automáticamente el curso correspondiente.
+  - **Lectura robusta de hojas XLSX vacías**: `AppleSpreadsheetReader.readXLSX` selecciona la primera hoja que contenga filas con datos en lugar de asumir estrictamente la primera hoja del libro, evitando errores cuando un Excel contiene hojas preliminares vacías.
+
+- Reactividad instantánea en el Cuaderno (iPad / Mac):
+  - Solucionado el problema por el cual al calificar o actualizar un elemento (nota, sello, checklist, observación, instrumento estructurado), los cambios se guardaban en la base de datos pero no se reflejaban en pantalla sin navegar a otro módulo y volver.
+  - Se incorporaron las anotaciones (`cell.annotation?.icon`, `cell.annotation?.note`, `attachmentUris.count`) en la signatura de agregación `notebookAggregateSignature` de `KmpBridge.swift` y en el digest por columna `NotebookRowFingerprintProvider.cellDigestByColumnId` en `NotebookGridContent.swift`, evitando el descarte de emisiones de estado en el puente y forzando la invalidación reactiva de la fila.
+  - Se extendió `NotebookCellDisplaySnapshot` en `NotebookEditableTableCell.swift` para incluir `stampIcon`, `hasNote` y `attachmentCount`, de modo que las celdas comparadas con `.equatable()` detecten inmediatamente cambios en sellos y notas.
+  - Se propagó `reloadToken` y la comparación de display value a `NotebookReadOnlyCell`, `NotebookRubricCell` y `NotebookFormulaCell`, garantizando el re-renderizado inmediato al guardar instrumentos estructurados.
+  - Se añadió resolución optimista de texto, booleanos y resúmenes de instrumentos en `cellCheck`, `structuredCellDisplayText` y `saveStructuredInstrumentEvaluation`.
+
+- Desbloqueo y aislamiento de Keychain en SyncLAN (#229):
+  - Solucionado el error `already_paired` (409) al enlazar el iPad con el Mac: `LocalSyncServer` ahora permite re-emparejar cuando el cliente proporciona el PIN efímero actual mostrado en pantalla, reemplazando el vínculo anterior de forma transparente y rotando el PIN de un solo uso.
+  - Aislamiento en memoria para suites de tests: `DesktopSecureStore` utiliza `ConcurrentHashMap` cuando el nombre de servicio contiene `test` o `in-memory`, evitando que ejecuciones de Gradle (`:data:desktopTest`) contaminen el Keychain del sistema (`login.keychain-db`) con credenciales espurias de dispositivos de prueba (`test-device`).
+  - Capacidad de desvinculación nativa desde macOS: añadido botón «Desvincular» en las acciones rápidas y «Restablecer enlace» en diagnóstico avanzado de `MacSyncView`, soporte de flag `--reset-pairing` en `CommandCenterMain` y método `unpairDevice()` en `MacCommandCenterCoordinator` con purga proactiva de claves en el Keychain.
+
+### Added
+
+- Integración del Tablero de Capacidad y Encaje en la Programación de Situaciones de Aprendizaje (`LearningSituationScheduleSheet`):
+  - Sustitución de la antigua ventana modal de toggles ciegos por la experiencia interactiva rica del Tablero de Evaluación (`TermBoardMetricsStrip` y `TermBoardTimelineView`).
+  - Preselección automática de la Situación de Aprendizaje activa con visualización de capacidad del trimestre, detección de festivos oficiales e impacto en el horario lectivo real.
+  - Proyección fantasma interactiva de las sesiones de la SA en los huecos libres disponibles con diagnóstico reactivo de holgura y desbordamiento de plazos de evaluación.
+  - Soporte para secuenciación detallada DOCX e itinerarios de Bachillerato (`shortFirst` / `longFirst`) en tarjeta colapsable con recálculo en tiempo real.
+  - Barra inferior flotante Liquid Glass para consolidación atómica en SQLite mediante `bridge.programLearningSituationSessions(...)`.
+  - Extracción desacoplada de `LearningSituationScheduleSheet` fuera de `LearningSituationsWorkspaceView.swift` y componentes reutilizables en `PlannerTermBoardComponents.swift`.
+  - Cobertura de tests unitarios: validación de la conversión determinista de franjas proyectadas a destinos de programación (`testTermBoardProjection_ConvertsPreviewSlotsToScheduledSlotsForLearningSituation`).
+
+- Tablero de Capacidad y Encaje de Sesiones de la Evaluación (`PlannerTermBoardView`):
+  - Nueva vista interactiva de planificación curricular por evaluación/trimestre (`PlannerWorkspaceSection.term`), integrada en iPadOS y macOS.
+  - Proyección determinista de sesiones lectivas reales (`TermBoardProjectionEngine`) calculadas a partir del horario docente (`TeacherScheduleSlot`), saltando automáticamente festivos y días no lectivos del calendario escolar sin consumir orden lectivo.
+  - Simulador predictivo de encaje de Situaciones de Aprendizaje (ghost simulation): previsualización secuencial de las sesiones pedagógicas de una SA sobre los huecos libres disponibles, respetando sesiones ya impartidas o planificadas.
+  - Diagnóstico visual de capacidad y holgura lectiva (`TermCapacityMetrics`): tarjetas de métricas en diseño Liquid Glass (Total Lectivas, Festivos, Ya Ocupadas, Libres), detección de huecos sobrantes para insertar sesiones extra/comodín (`+ Crear sesión comodín/extra`) y alertas destacadas por desbordamiento de la fecha límite de la evaluación.
+  - Barra inferior flotante (`GlassEffectContainer`) para confirmar la simulación persistiendo las sesiones en el calendario real o descartarla sin efectos secundarios.
+  - Cobertura de tests unitarios exhaustiva (`PlannerTermBoardTests`): 6 tests cubriendo proyección lectiva, omisión de festivos, asignación de huecos libres, simulación de SA y detección de desbordamiento de plazos.
+
+- Detección de divergencia y huella de integridad en SyncLAN (`SyncDatasetFingerprint`): cómputo de recuentos de filas, timestamp máximo y hash determinista FNV-1a de 64 bits sobre 11 entidades clave de la base de datos para diagnosticar desalineación de datasets o incompatibilidad de esquemas; expuesto en `GET /sync/fingerprint` y en Swift como `LanSyncClient.fingerprint()` y `KmpBridge.syncDivergence`.
+- Flujo "Igualar dispositivos" mediante adopción explícita de snapshot completo SQLite (`SyncAdoptionSheet` / `SyncDivergenceBanner`): comparativa visual transparente de entidades y fechas, selección explícita del dispositivo autoritativo (sin preselección por defecto), pantalla de advertencia destructiva con confirmación por nombre de dispositivo y endpoints dedicados `GET/POST /sync/snapshot/db` y `GET /sync/snapshot/status` con límite de 512 MB y comprobación de cabecera mágica y versión de esquema.
+- Intercambio seguro de dataset en arranque con copia de seguridad preventiva y rollback defensivo (`AppleDriver.applyPendingAdoptionIfNeeded`): almacenamiento en staging (`pending_adopt.db` / `pending_adopt.json`) y sustitución atómica antes de inicializar `NativeSqliteDriver`, con backup previo incondicional en `<basePath>/backups/<timestamp>_pre_adopt_<dbName>`, rollback automático ante fallos y reinicio asistido en macOS (`MacCommandCenterCoordinator.relaunchApp`).
+- Acceso rápido a igualación manual desde los paneles de sincronización en iOS/iPadOS (`SyncPairingViews`) y macOS (`MacSyncView`).
+
+- Tarjetas visuales de sección y formateador estructurado (`PlannerActivityDetailSectionCard` / `PlannerFormattedTextView`): descomposición automática de textos pedagógicos densos en bloques jerárquicos (zonas con badges turquesa/índigo/naranja, fases, rondas de rotación de grupos G1/G2/G3, consignas CLIL, listas de viñetas espaciadas y pares clave-valor) con iconos semánticos dedicados y fondo redondeado continuo.
+- Rediseño *at-a-glance* de la ficha de detalle de sesión en Planificación: barra de tiempo horizontal interactiva proporcional (`PlannerSessionTimelineBar`) con visualización de momentos pedagógicos y descanso legal de 15 minutos en bloques dobles LONG (80 minutos útiles).
+- Extracción de títulos lúdicos específicos: `PlannerSessionPresentationHelper.displayTitle` proyecta el nombre específico del juego o reto de pista entre comillas `«...»` o del guion pedagógico en vez de títulos genéricos repetitivos.
+- Tarjetas operativas por zonas de pista (`PlannerSessionZoneCardsView`): desglose visual de circuitos en 3 zonas con asignación de roles docente/autogestionado y panel de rondas de rotación para grupos G1, G2 y G3.
+- Banner de consignas CLIL (`PlannerSessionCLILBanner`): resalte visual de alta visibilidad para indicaciones bilingües de inicio y transición.
+- Galería y almacenamiento de adjuntos/croquis (`PlannerSessionAttachmentGalleryView` / `PlannerSessionAttachmentStore`): soporte nativo de imágenes tácticas, fotos de pizarra y PDFs con importación desde Fotos o Archivos y visor interactivo QuickLook.
+- Chips de material rápido (`PlannerSessionMaterialChipsView`): visualización compacta de elementos requeridos en pista con `WorkspaceFlowLayout`.
+- Secuenciación de sesiones CLIL: contrato semanal importable con bloques `LONG BLOCK` y `SHORT BLOCK`, actividades estructuradas en inglés, evidencias, materiales, adaptaciones y comentarios CLIL; corpus normalizado en 55 Markdown y 55 DOCX.
+- Itinerarios seleccionables de Bachillerato (#225): los DOCX pueden declarar `ROUTE OPTION: shortFirst` y `ROUTE OPTION: longFirst` con fichas completas e independientes; el Planificador elige una sola ruta según la primera franja compatible o permite fijarla manualmente.
+- Importador narrativo de Bachillerato: reconoce los ledgers de SA0 y otras SA tal como están redactados, conserva las rutas `shortFirst`/`longFirst`, agrupa cualquier unidad `U##` en bloques operativos y mantiene referencias estables a las imágenes embebidas del DOCX.
+- Actividades narrativas compactas: cada segmento curricular `U##` presenta `Explicación inicial`, `Activación`, `Actividad principal` y `Reflexión` cuando existe; un `LONG` con dos unidades conserva sus ocho momentos en orden, las adaptaciones se integran en la actividad principal y las imágenes relacionadas se muestran también en su ficha.
+- Fichas de sesión operativas: cada bloque separa `QUICK VIEW` y `ACTIVITY DETAILS`, usa `Activity ID` estable (`Wnn-L/S-nn`) y permite abrir una actividad concreta desde timeline, desplegable o botones Anterior/Siguiente.
+### Changed
+
+- Optimización de espacio y simplificación de la vista iPad del Planificador:
+  - Exclusión de `.planner` de `IOSGlobalContextRow` en `IOSRootView.swift` para eliminar la cabecera genérica duplicada ("PREPARACIÓN LECTIVA / Planner / Clase global") y ganar ~65 pt de altura útil.
+  - Eliminación de la barra flotante inferior `plannerFloatingControls`, su inset vacío de 96 pt y su margen de 32 pt en la vista Semana, permitiendo que la rejilla horaria aproveche todo el alto de la pantalla sin cortar las franjas lectivas inferiores (como P6).
+  - Unificación de controles en una cabecera compacta de dos filas en `PlannerToolbar`: fila superior con selector de vista (`[Semana | Día | Secuencia | Resumen]`), selector de grupo, buscador, menú secundario de `... Acciones` (densidad, sincronización, selección múltiple, etc.) y botón `+ Nueva sesión`; fila de contexto temporal con cluster `< Hoy >` único, etiqueta de semana/fechas/hitos, botón de progreso y botón para mostrar/ocultar el panel de detalle lateral (`sidebar.right`).
+  - Eliminación de la fila intermedia redundante con el título "Semana" en `PlannerWeekMiniatureLayout.swift`, sincronizando la visibilidad del inspector lateral vía `@AppStorage("planner_week_detail_pane_visible")`.
+  - Fijación de la vista Semana como predeterminada al abrir el Planificador mediante la retirada del desvío automático de `autoNavigateToTodayIfSchoolHours()`.
+
+### Fixed
+
+- Reactividad inmediata y retención optimista en celdas numéricas y de observación (iPad / Mac): `KmpBridge` incorpora almacenamiento optimista local en Swift (`optimisticGradeDrafts` y `optimisticTextDrafts`) inyectado inmediatamente en los índices de celda y accesores para eliminar el desfase de 150 ms del flujo asíncrono; `NotebookModuleGridCells.cellDisplaySnapshot` proyecta las celdas de texto y observación a través de `displayValue` garantizando el acceso a los borradores; `NotebookEditableTableCell` añade retención optimista mediante `pendingNumericDraft` y `pendingTextDraft` para evitar que recargas concurrentes sobrescriban valores recién tecleados, sincroniza en tiempo real los cambios durante la edición y elimina el descarte indebido de guardados en pérdida de foco; y `NotebookViewModel.kt` corrige la actualización en memoria de `row.cells` para columnas vinculadas por `evaluationId`.
+- Visibilidad y estabilidad de controles superiores en el Planificador semanal (iPad): `PlannerWeekMiniatureLayout` enmarca la cuadrícula semanal regular en un `ScrollView(.vertical)` acotado a la altura de la ventana y asigna `.layoutPriority(1)` a `PlannerToolbar`, evitando que la altura acumulada de 824 pt desborde la pantalla en orientación horizontal y empuje la barra de herramientas y los selectores de semana fuera de la vista.
+- Reactividad inmediata de sellos formativos e iconos en el Cuaderno: `NotebookViewModel.saveCellAnnotation` actualiza optimistamente el estado de la fila en memoria (`updateDataState`) y emite una notificación reactiva mediante `NotebookRefreshBus.emitRefresh()`; `NotebookEditableTableCell` observa los cambios en `displaySnapshot` para actualizar al instante sellos e iconos en pantalla sin requerir recarga manual ni alternar de grupo.
+- Teclado virtual y persistencia de notas en macOS: `NotebookModuleQuickKeypad` limpia el identificador de foco de celda (`focusedCellId = nil`) al pulsar los controles del dock para neutralizar la pérdida prematura de foco de AppKit que sobreescribía notas con borradores antiguos; la celda ignora blur espurio durante 500 ms tras una actualización externa; la proyección numérica sanea caracteres no numéricos al aplicar incrementos y el dock renderiza sellos formativos como iconos gráficos SF Symbol con su color temático en vez de textos crudos como `"trophy.fill"`.
+- Saneamiento de texto y sellos en KmpBridge: `KmpBridge.notebookCellValueIndex` restringe la asignación de `iconValue` a `textByKey` únicamente para columnas declaradas explícitamente de tipo `.icon`, y añade la utilidad `sanitizePersistedCellText` para evitar que identificadores de iconos del sistema (como `trophy.fill` o `star.fill`) se mezclen o suplanten calificaciones de texto o numéricas.
+- Compatibilidad del importador de secuencias DOCX con la sintaxis de sesiones de ESO y Bachillerato de Mislata: `LearningSituationSessionSequenceDocumentImportService` reconoce encabezados con prefijo `S` y punto medio (`Sesión S01 · ...`), rutas en español con etiquetas de grupo (`RUTA 1: OPCIÓN shortFirst (Grupo A)`), encabezados de encuentros (`Encuentro E01 · SHORT ...`), subunidades en bloques dobles (`BLOQUE 1 ... · U02`), momentos pedagógicos de desarrollo y etiquetas docentes de objetivo, material y adaptaciones en cabecera de sesión.
+- La importación de actividades conserva las etiquetas compuestas de preparación, acción docente, acción del alumnado, evidencia y adaptación, y prioriza el detalle narrativo frente al resumen `QUICK VIEW`.
+- El importador de itinerarios seleccionables ya no aplica la validación legacy `-S-`/`-L-` a los identificadores `SF-Sn-Amm` y `LF-Sn-Amm`; conserva la validación de bloques antiguos y comprueba el prefijo de cada ruta.
+- El importador semanal ya no duplica las actividades al leer el detalle: fusiona los campos ampliados por `Activity ID`, valida IDs vacíos/duplicados/malformados y mantiene compatibilidad con payloads antiguos.
+- Las tablas horarias ya no pueden seleccionar `Activity ID` como título de `Activity`; la proyección histórica tampoco muestra claves `LEGACY-*` ni IDs como títulos.
+- La ficha de sesión resuelve el DOCX por su ruta almacenada o por su caché direccionada por SHA-256; en macOS abre el original con la aplicación del sistema y en iOS/iPadOS mantiene QuickLook.
+- La navegación macOS hacia la ejecución desde la ficha de sesión cierra primero el inspector y conserva la transición diferida al Diario.
+- La programación de un bloque largo persiste todas sus franjas consecutivas, incluyendo el segundo período del par horario, y enlaza cada ocupación con su sesión planificada.
+- La secuenciación narrativa distingue `LONG_PART_1` como una única franja parcial de 40 minutos y el visor enriquecido del Planificador limita el DOCX a la ruta elegida, incorporando también las imágenes de la ruta alternativa cuando el original solo las ancla en una de ellas.
+- La importación narrativa ya no convierte cada encabezado curricular o adaptación en una actividad independiente: fusiona los contenidos por momento dentro de cada segmento, elimina duplicaciones de Teacher/Student, admite unidades `U##` más allá de U04, conserva los descansos y normaliza payloads antiguos al abrirlos o reimportarlos.
+- Las imágenes narrativas se asocian por posición de párrafo además de por título/alt text, por lo que los DOCX que no incluyen `U##` en los metadatos de Word no mezclan apoyos visuales entre unidades.
 - Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
 - AppIcon nativo de Apple integrado mediante `AppIcon.icon` de Icon Composer para el target KMP de iPadOS y macOS, con rendiciones `Default` y `Dark` en una única fuente compartida.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
@@ -56,7 +399,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- La normalización de planes persistidos repara `developmentJson` de forma idempotente al leer o reimportar el mismo SHA, conservando los IDs de versión, plan y sesión agendada; recupera el DOCX por hash cuando la sincronización llega en modo metadata-first y no persiste un v2 incompleto mientras falta el binario.
+- Planificación: `PlannerSessionDetailSheet` adopta una cabecera sólida y compacta, un guion operativo por filas, una ficha plana con secciones docentes no vacías y tabs integrados; conserva la selección por `Activity ID`, la navegación de teclado, VoiceOver y el layout regular/compacto para macOS, iPad y iPhone.
+- Planificación: la ficha de sesión usa una política adaptativa explícita; en macOS e iPad horizontal muestra el resumen y la actividad seleccionada en dos columnas con scroll independiente, mientras iPhone y anchos compactos conservan Resumen, Actividad y Anexos. La cabecera reúne metadatos, ejecución, acciones, cierre y navegación accesible por actividades.
+- Planificación: el contenido operativo de una sesión se serializa como `session-plan-v2` dentro de `developmentJson`, con decoder dual para arrays v1; el importador reconoce el formato C de ficha + QUICK VIEW + ACTIVITY DETAILS y la ficha separa Resumen, Actividad y Anexos.
+- Planificación de sesiones: la importación conserva actividades ejecutables dentro de un sobre versionado, la preview muestra Teacher/Students/CLIL/Evidence y la ficha de ejecución presenta una línea temporal ampliada con materiales y adaptaciones.
+- Planificación de bloques: una secuencia semanal asigna el bloque largo a dos franjas consecutivas y el corto a una franja simple aunque los días del grupo estén invertidos; las ambigüedades quedan visibles como warning.
+- Layout macOS de Alumnado e Informes: el shell deja de materializar el inspector cuando la ventana no conserva espacio útil, Alumnado reduce sus mínimos y agrupa las acciones secundarias en un único menú, e Informes adapta sus tres zonas para llevar la exportación a un menú compacto o mantenerla como panel plegable en ventanas amplias.
 - Planificación: las vistas Semana y Día muestran el contexto de la Situación de Aprendizaje, el título de la sesión, objetivo, actividad y material; el grid semanal muestra además grupo, número y título de sesión, resumen operativo y colisiones resumidas; el detalle incorpora una reconstrucción enriquecida del DOCX con tablas e imágenes y conserva QuickLook como respaldo nativo.
+- Planificación: la ficha de detalle de sesión convierte el guion importado en una vista docente operativa, con objetivo, métricas de tiempo, criterios, evidencias, material, saberes básicos, adaptaciones, bloques, pausas, roles de profesorado/alumnado y contexto desplegable; mantiene el DOCX reconstruido y el documento original como respaldo.
 - Planificación: la vista Semana permite ocultar el inspector lateral para ampliar el grid y elimina el aviso azul de ayuda del drag & drop, manteniendo el movimiento de sesiones operativo.
 - Planificación: el encabezado de Semana se compacta a una sola franja con semana, fechas y recuento de sesiones; las métricas completas siguen disponibles mediante expansión y el grid gana espacio vertical.
 - Las pruebas físicas importadas en modo diagnóstico (`recordScore=false`) guardan únicamente la marca bruta: no generan columna de nota ni puntuación, media o ranking.
@@ -131,6 +482,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- La migración 42 de baremos físicos deja de ejecutar una consulta `SELECT 1` como
+  supuesto no-op y usa DDL idempotente compatible con los drivers Apple/Android;
+  las instalaciones en versión 42 pueden actualizarse sin caer en una base vacía.
 - Situaciones de aprendizaje: se añaden lecturas bulk para enlaces de grupo, versiones de secuencia
   y planes de sesión, eliminando el patrón N+1 usado por Situaciones, Cuaderno y Planificador sin
   cambiar el esquema ni requerir migración.
@@ -142,12 +496,41 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Tests automatizados en `:data:desktopTest`: `SyncDatasetFingerprintTest` (determinismo e invarianza de orden del hash FNV-1a), `LocalSyncServerAdoptionTest` (5 pruebas: fingerprint, exportación de snapshot, rechazo por schema mismatch 409, rechazo de no-SQLite 422, staging válido 200 y consulta de status), y `StartupAdoptionInterchangeTest` (intercambio exitoso en disco, rollback defensivo y no-op). Resultado: 100% pasando (`BUILD SUCCESSFUL`).
+- Compilación dual Apple con `./scripts/verify_apple_builds.sh`: XcodeGen y builds tanto para macOS Native / Catalyst como para iOS Simulator terminaron con éxito (`BUILD SUCCEEDED`).
+- `swiftc -parse` pasó para los cinco archivos Swift modificados; `xcodegen generate` pasó y `git diff --check` quedó limpio. `xcodebuild test` no pudo alcanzar la ejecución de tests porque el compilador Swift del entorno terminó con código 0 y sin salida al compilar el archivo preexistente `MacPhysicalTestsView.swift`; una verificación aislada del helper también quedó limitada por falta de espacio temporal.
+
+- Este ticket: el parser conserva un `LONG` como una franja planificable de 80 minutos con segmentos U## independientes; la cobertura sintética verifica los órdenes `[3, 6, 3]`/`[6, 3, 3]`, la frontera `BREAK` y la asociación de visuales por segmento. `swiftc -parse` pasó para los archivos Swift tocados. La ejecución completa de Xcode queda pendiente por la limitación de espacio temporal ya registrada arriba.
+
+- Este cambio: `MiGestorPlannerTests` completo pasa con 94 tests ejecutados, 1 omitido y 0 fallos; `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran el proyecto y compilan correctamente macOS Native e iOS Simulator. El DOCX real de SA0 se validó durante el desarrollo con dos rutas, tres bloques por ruta, `LONG_PART_1` y cinco imágenes embebidas.
+- Issue #225: `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran el proyecto y compilan correctamente macOS Native y iOS Simulator en `codex/sa-route-itineraries`.
+- Este ticket: `MiGestorPlannerTests` completo pasa con 80 tests aprobados, 2 omitidos y 0 fallos (82 totales); la batería dirigida de importación/proyección pasa con 25/25; `xcodegen generate` y `./scripts/verify_apple_builds.sh` regeneran XcodeGen y compilan macOS Native e iOS Simulator correctamente.
+- La comprobación inicial del DOCX real del workspace con SHA-256 `d0ee52ff904256208063f23efb84ea5fd881a754f09dc93ec6dcd9d280dab70a` había observado LONG=4 y dejó pendientes los conteos por unidad; la implementación posterior conserva esos cuatro momentos por cada U##, de modo que los LONG de dos unidades exponen ocho actividades agrupadas.
+- Ficha adaptativa de sesión (#221): `MiGestorPlannerTests` pasa en macOS; `scripts/verify_apple_builds.sh` regenera XcodeGen y compila correctamente macOS Native e iOS Simulator.
+- Planificación `session-plan-v2` (#215): `MiGestorPlannerTests` pasa completo con 55/55 antes del endurecimiento final y las 16 pruebas focalizadas del importador/proyección pasan después; el DOCX real importa 10 sesiones y 35 actividades; `verify_apple_builds.sh` finaliza con macOS Native e iOS Simulator en verde.
+- `xcodegen generate` y `./scripts/verify_apple_builds.sh`; el build macOS termina correctamente y el target `MiGestorKMPiOS` se repite de forma aislada con `BUILD SUCCEEDED` tras liberar artefactos temporales que agotaban el disco durante la ejecución conjunta. La verificación se ejecuta en la rama `codex/fix-ui-mac-alumnado-informes`.
+- `cd kmp && ./gradlew :data:desktopTest`: `BUILD SUCCESSFUL` en la rama
+   de correcciones macOS.
+- `cd kmp && ./gradlew :shared:desktopTest`: `BUILD SUCCESSFUL`.
+- `./scripts/verify_apple_builds.sh`: XcodeGen correcto; macOS Native e iOS
+   Simulator terminan en `BUILD SUCCEEDED`.
+- `./gradlew :shared:test` no pudo ejecutarse porque el entorno no tiene Android SDK
+   configurado (`ANDROID_HOME`/`kmp/local.properties`); la variante desktop sí pasó.
+- `cd kmp && ./gradlew :data:desktopTest` pasa con 100 tests en verde.
+- `./scripts/verify_apple_builds.sh` regenera XcodeGen y compila correctamente
+  macOS Native e iOS Simulator.
 - `:data:compileKotlinDesktop`, `:shared:compileKotlinDesktop` y `:shared:desktopTest`
   pasan; el build macOS de Xcode compila el nuevo binding Swift con las advertencias
   preexistentes de uso no consumido.
+- `./scripts/verify_apple_builds.sh` pasa para macOS Native/Catalyst e iOS Simulator; los
+  tests `MiGestorPlannerTests` pasan en macOS con la proyección de la ficha semanal y el
+  fallback de planes históricos.
 
 ### Docs
 
+- ADR 002 (`docs/architecture/adr_002_synclan_dataset_adoption.md`): decisión arquitectónica de adopción íntegra de snapshot SQLite frente a fusión de changelogs ante colisión de claves autoincrementales independientes.
+- Guía de diagnóstico SyncLAN (`.agents/skills/synclan-debug/SKILL.md`): documentación de la topología de adopción/huella y causa raíz 6 sobre la asimetría del diario manual del iPad frente al volcado de base de datos del Mac.
+- ADR `ADR-2026-08-21-session-plan-v2-quick-view.md`: contrato versionado para QUICK VIEW, compatibilidad legacy y persistencia sin migración SQLDelight.
 - ADR `ADR-2026-08-15-bulk-learning-situation-reads.md`: decisión de centralizar las lecturas
   relacionadas con Situaciones en consultas bulk y resolver sus relaciones en memoria en la capa Apple.
 - Auditoría y propuesta de rediseño de los instrumentos de evaluación del Cuaderno:
@@ -162,6 +545,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- La shell macOS nativa vuelve a escanear las bases apartadas y avisa cuando
+  existe una cuarentena recuperable, incluso si el marcador de rescate ya se había
+  descartado; así una base activa vacía no oculta el camino de recuperación.
+- macOS ya no presenta "Primeros pasos" mientras existe un rescate de base de datos
+  pendiente; el aviso de recuperación conserva la única acción primaria hasta que la
+  base original pueda reabrirse.
 - Importación de pruebas físicas diagnósticas: se evita el aborto de Kotlin al crear la evaluación técnica con peso cero; las columnas de marca siguen sin contar para la media.
 - Captura de pruebas físicas: una asignación sin puntuación ya no resuelve ni persiste un baremo accidentalmente.
 - Cuaderno: las marcas de tiempo de pruebas físicas se normalizan como segundos al guardar y se vuelven a mostrar con formato `MM:SS,CC`, evitando que el editor y la persistencia interpreten el valor como una nota decimal.

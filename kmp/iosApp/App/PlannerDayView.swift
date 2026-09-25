@@ -49,6 +49,7 @@ struct PlannerDayView: View {
     @State private var quickNoteText = ""
     @State private var dragTranslation: CGFloat = 0
     @State private var showingQuickJournal = false
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     private var sessions: [PlanningSession] { vm.daySessions() }
 
@@ -61,6 +62,7 @@ struct PlannerDayView: View {
                 timeline
             }
             .padding(EvaluationDesign.screenPadding)
+            .offset(x: uiFeatureFlags.reduceMotion ? 0 : dragTranslation)
         }
         .simultaneousGesture(daySwipeGesture)
         .onAppear { timeTick.start() }
@@ -119,20 +121,52 @@ struct PlannerDayView: View {
                 }
             }
 
+            let day = vm.selectedDayForDayView
+            let isHoliday = vm.weekBoard.holidayDays.contains(day)
+            HStack(spacing: 8) {
+                if isHoliday {
+                    Label("Día no lectivo / Festivo", systemImage: "beach.umbrella.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.red)
+                    Spacer()
+                    Button("Hacer lectivo") {
+                        Task { await vm.toggleHoliday(for: day) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                } else {
+                    Text("Día lectivo ordinario")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        Task { await vm.toggleHoliday(for: day) }
+                    } label: {
+                        Label("Marcar no lectivo", systemImage: "beach.umbrella")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isHoliday ? Color.red.opacity(0.08) : EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
             if showsInlineNavigation {
                 HStack(spacing: 8) {
                     Button {
-                        Task { await vm.goToPreviousDayInDayView() }
+                        shiftDay(forward: false)
                     } label: {
                         Image(systemName: "chevron.left")
                             .frame(minWidth: 32, minHeight: 32)
                     }
                     Button("Hoy") {
-                        Task { await vm.goToTodayInDayView() }
+                        shiftDay(toToday: true)
                     }
                     .frame(minHeight: 32)
                     Button {
-                        Task { await vm.goToNextDayInDayView() }
+                        shiftDay(forward: true)
                     } label: {
                         Image(systemName: "chevron.right")
                             .frame(minWidth: 32, minHeight: 32)
@@ -259,19 +293,59 @@ struct PlannerDayView: View {
     private var daySwipeGesture: some Gesture {
         DragGesture(minimumDistance: 24, coordinateSpace: .local)
             .onChanged { value in
-                dragTranslation = value.translation.width
+                let translation = value.translation
+                guard abs(translation.width) > abs(translation.height) else { return }
+                guard !uiFeatureFlags.reduceMotion else { return }
+                dragTranslation = min(140, max(-140, translation.width))
             }
             .onEnded { value in
-                defer { dragTranslation = 0 }
                 let translation = value.translation
-                guard abs(translation.width) > abs(translation.height) * 1.5,
-                      abs(translation.width) > 60 else { return }
-                if translation.width < 0 {
-                    Task { await vm.goToNextDayInDayView() }
-                } else {
-                    Task { await vm.goToPreviousDayInDayView() }
+                let advances = abs(translation.width) > abs(translation.height) * 1.5
+                    && abs(translation.width) > 60
+                guard advances else {
+                    withAnimation(uiFeatureFlags.interactionAnimation) {
+                        dragTranslation = 0
+                    }
+                    return
                 }
+                shiftDay(forward: translation.width < 0)
             }
+    }
+
+    private func shiftDay(forward: Bool? = nil, toToday: Bool = false) {
+        let travel: CGFloat = {
+            if toToday { return 32 }
+            return (forward == true) ? -48 : 48
+        }()
+        if uiFeatureFlags.reduceMotion {
+            dragTranslation = 0
+            Task { await applyDayShift(forward: forward, toToday: toToday) }
+            return
+        }
+        withAnimation(.easeOut(duration: 0.16)) {
+            dragTranslation = travel
+        }
+        Task {
+            await applyDayShift(forward: forward, toToday: toToday)
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                dragTranslation = -travel
+            }
+            withAnimation(uiFeatureFlags.interactionAnimation) {
+                dragTranslation = 0
+            }
+        }
+    }
+
+    private func applyDayShift(forward: Bool?, toToday: Bool) async {
+        if toToday {
+            await vm.goToTodayInDayView()
+        } else if forward == true {
+            await vm.goToNextDayInDayView()
+        } else {
+            await vm.goToPreviousDayInDayView()
+        }
     }
 
     private var daySubtitle: String {

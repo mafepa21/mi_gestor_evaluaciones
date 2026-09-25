@@ -35,7 +35,13 @@ enum PlannerDocxRenderError: LocalizedError {
 }
 
 struct PlannerSessionDocxRenderer {
-    func render(from url: URL, sourceLabel: String, sessionNumber: Int) throws -> PlannerDocxRenderResult {
+    func render(
+        from url: URL,
+        sourceLabel: String,
+        sessionNumber: Int,
+        route: LearningSituationWeeklySequenceRoute? = nil,
+        visualReferences: [LearningSituationSessionVisualDraft] = []
+    ) throws -> PlannerDocxRenderResult {
         let data = try Data(contentsOf: url)
         let archive = try Archive(data: data, accessMode: .read, pathEncoding: nil)
         guard let documentData = try archiveData(archive, path: "word/document.xml") else {
@@ -53,7 +59,8 @@ struct PlannerSessionDocxRenderer {
         let selectedBlocks = selectSessionBlocks(
             from: blocks,
             sourceLabel: sourceLabel,
-            sessionNumber: sessionNumber
+            sessionNumber: sessionNumber,
+            route: route
         )
         guard !selectedBlocks.isEmpty else {
             throw PlannerDocxRenderError.missingSession
@@ -61,7 +68,9 @@ struct PlannerSessionDocxRenderer {
 
         let relationships = try documentRelationships(from: archive)
         let context = PlannerDocxRenderContext(archive: archive, relationships: relationships)
-        let bodyHTML = selectedBlocks.map { context.renderBlock($0) }.joined(separator: "\n")
+        let selectedHTML = selectedBlocks.map { context.renderBlock($0) }.joined(separator: "\n")
+        let referencedHTML = context.renderReferencedImages(visualReferences)
+        let bodyHTML = [selectedHTML, referencedHTML].filter { !$0.isEmpty }.joined(separator: "\n")
         let html = Self.htmlDocument(bodyHTML)
         return PlannerDocxRenderResult(
             html: html,
@@ -70,43 +79,139 @@ struct PlannerSessionDocxRenderer {
         )
     }
 
+    /// Renderiza únicamente los visuales asignados a una actividad. El anexo sigue usando
+    /// `render` para mantener el orden y el contenido completo del bloque original.
+    func renderVisualReferences(
+        from url: URL,
+        references: [LearningSituationSessionVisualDraft]
+    ) throws -> PlannerDocxRenderResult {
+        guard !references.isEmpty else {
+            return PlannerDocxRenderResult(html: Self.htmlDocument(""), tableCount: 0, imageCount: 0)
+        }
+        let data = try Data(contentsOf: url)
+        let archive = try Archive(data: data, accessMode: .read, pathEncoding: nil)
+        let relationships = try documentRelationships(from: archive)
+        let context = PlannerDocxRenderContext(archive: archive, relationships: relationships)
+        let body = context.renderReferencedImages(references)
+        return PlannerDocxRenderResult(
+            html: Self.htmlDocument(body),
+            tableCount: context.tableCount,
+            imageCount: context.imageCount
+        )
+    }
+
     private func selectSessionBlocks(
         from blocks: [PlannerDocxXMLNode],
         sourceLabel: String,
-        sessionNumber: Int
+        sessionNumber: Int,
+        route: LearningSituationWeeklySequenceRoute?
     ) -> [PlannerDocxXMLNode] {
         let wanted = normalize(sourceLabel)
-        let startIndex = blocks.firstIndex { block in
+        var routeRange = 0..<blocks.count
+        if let route,
+           let routeStart = blocks.firstIndex(where: { block in
+               guard block.localName == "p" else { return false }
+               return routeFromHeader(normalize(block.textContent)) == route
+           }) {
+            let routeEnd = blocks[(routeStart + 1)...].firstIndex { block in
+                guard block.localName == "p" else { return false }
+                return routeFromHeader(normalize(block.textContent)) != nil
+            } ?? blocks.count
+            routeRange = routeStart..<routeEnd
+        }
+
+        let sectionStartIndex = blocks[routeRange].firstIndex { block in
             guard block.localName == "p" else { return false }
             let text = normalize(block.textContent)
             if !wanted.isEmpty, text == wanted || text.hasPrefix(wanted) || wanted.hasPrefix(text) {
                 return true
             }
-            return sessionNumber > 0 && isSessionHeader(text, number: sessionNumber)
+            return sessionNumber > 0 && isSectionHeader(text, number: sessionNumber)
         }
 
-        guard let startIndex else {
+        guard let sectionStartIndex else {
             // A hand-authored session can omit the canonical header. Rendering the
             // complete document keeps the original material available through the
             // in-app viewer; QuickLook remains available for the exact source file.
-            return blocks
+            return Array(blocks[routeRange])
         }
 
-        let endIndex = blocks[(startIndex + 1)...].firstIndex { block in
+        let sectionEndIndex = blocks[(sectionStartIndex + 1)..<routeRange.upperBound].firstIndex { block in
             guard block.localName == "p" else { return false }
-            return isAnySessionHeader(normalize(block.textContent))
-        } ?? blocks.count
+            return isAnySectionHeader(normalize(block.textContent))
+        } ?? routeRange.upperBound
+        let blockKind = requestedBlockKind(wanted)
+        let startIndex: Int
+        if let blockKind {
+            startIndex = blocks[sectionStartIndex..<sectionEndIndex].firstIndex { block in
+                guard block.localName == "p" else { return false }
+                return isBlockHeader(normalize(block.textContent), kind: blockKind)
+            } ?? sectionStartIndex
+        } else {
+            startIndex = sectionStartIndex
+        }
+
+        let endIndex = blocks[(startIndex + 1)..<sectionEndIndex].firstIndex { block in
+            guard block.localName == "p" else { return false }
+            guard let blockKind else { return false }
+            return isBlockHeader(normalize(block.textContent), kind: blockKind.opposite)
+        } ?? sectionEndIndex
         return Array(blocks[startIndex..<endIndex])
     }
 
-    private func isSessionHeader(_ text: String, number: Int) -> Bool {
-        let pattern = #"^(?:sesion|sesiones|session|sessions)\s+#?"# + String(number) + #"\b"#
-        return text.range(of: pattern, options: .regularExpression) != nil
+    private enum BlockKind {
+        case long
+        case short
+
+        var opposite: BlockKind {
+            switch self {
+            case .long: return .short
+            case .short: return .long
+            }
+        }
     }
 
-    private func isAnySessionHeader(_ text: String) -> Bool {
+    private func requestedBlockKind(_ text: String) -> BlockKind? {
+        if text.contains("long block") || text.contains("bloque largo") || text.contains("double version") || text.contains("version doble") {
+            return .long
+        }
+        if text.contains("short block") || text.contains("bloque corto") || text.contains("simple version") || text.contains("version simple") {
+            return .short
+        }
+        return nil
+    }
+
+    private func isBlockHeader(_ text: String, kind: BlockKind) -> Bool {
+        switch kind {
+        case .long:
+            return text.hasPrefix("long block") || text.hasPrefix("bloque largo") || text.hasPrefix("double version") || text.hasPrefix("version doble")
+        case .short:
+            return text.hasPrefix("short block") || text.hasPrefix("bloque corto") || text.hasPrefix("simple version") || text.hasPrefix("version simple")
+        }
+    }
+
+    private func isSectionHeader(_ text: String, number: Int) -> Bool {
+        let pattern = #"^(?:sesion|sesiones|session|sessions)\s+#?"# + String(number) + #"\b"#
+        let weekPattern = #"^(?:semana|setmana|week)\s+#?"# + String(number) + #"\b"#
+        return text.range(of: pattern, options: .regularExpression) != nil
+            || text.range(of: weekPattern, options: .regularExpression) != nil
+    }
+
+    private func isAnySectionHeader(_ text: String) -> Bool {
         text.range(of: #"^(?:sesion|sesiones|session|sessions)\s+[0-9]+"#, options: .regularExpression) != nil
             || text.range(of: #"^(?:semana|setmana|week)\s+[0-9]+"#, options: .regularExpression) != nil
+            || routeFromHeader(text) != nil
+    }
+
+    private func routeFromHeader(_ text: String) -> LearningSituationWeeklySequenceRoute? {
+        let normalizedText = normalize(text)
+        if normalizedText.range(of: #"^route option\s*:\s*shortfirst$"#, options: .regularExpression) != nil {
+            return .shortFirst
+        }
+        if normalizedText.range(of: #"^route option\s*:\s*longfirst$"#, options: .regularExpression) != nil {
+            return .longFirst
+        }
+        return nil
     }
 
     private func documentRelationships(from archive: Archive) throws -> [String: String] {
@@ -169,6 +274,7 @@ private final class PlannerDocxRenderContext {
     let relationships: [String: String]
     var tableCount = 0
     var imageCount = 0
+    private var renderedRelationshipIDs = Set<String>()
 
     init(archive: Archive, relationships: [String: String]) {
         self.archive = archive
@@ -181,6 +287,21 @@ private final class PlannerDocxRenderContext {
         case "tbl": return renderTable(node)
         default: return ""
         }
+    }
+
+    func renderReferencedImages(_ references: [LearningSituationSessionVisualDraft]) -> String {
+        references.compactMap { reference in
+            guard !renderedRelationshipIDs.contains(reference.sourceRelationshipID),
+                  let image = imageHTML(
+                      relationshipID: reference.sourceRelationshipID,
+                      altText: reference.altText,
+                      title: reference.title
+                  ) else { return nil }
+            let caption = reference.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? ""
+                : "<figcaption class=\"docx-image-caption\">\(escapeHTML(reference.title))</figcaption>"
+            return "<figure class=\"docx-imported-visual\">\(image)\(caption)</figure>"
+        }.joined(separator: "\n")
     }
 
     private func renderParagraph(_ node: PlannerDocxXMLNode) -> String {
@@ -247,11 +368,27 @@ private final class PlannerDocxRenderContext {
     private func renderImage(in node: PlannerDocxXMLNode) -> String {
         guard let blip = node.descendant(named: "blip"),
               let relationshipId = blip.attribute(localName: "embed") ?? blip.attribute(localName: "link"),
-              let target = relationships[relationshipId],
-              let data = imageData(for: target) else { return "" }
+              let image = imageHTML(
+                  relationshipID: relationshipId,
+                  altText: node.descendant(named: "docPr")?.attribute(localName: "descr") ?? node.descendant(named: "docPr")?.attribute(localName: "name"),
+                  title: node.descendant(named: "docPr")?.attribute(localName: "title") ?? node.descendant(named: "docPr")?.attribute(localName: "name")
+              ) else { return "" }
+        return image
+    }
+
+    private func imageHTML(relationshipID: String, altText: String?, title: String?) -> String? {
+        guard let target = relationships[relationshipID],
+              let data = imageData(for: target) else { return nil }
         imageCount += 1
+        renderedRelationshipIDs.insert(relationshipID)
         let mimeType = mimeType(for: target)
-        return "<img src=\"data:\(mimeType);base64,\(data.base64EncodedString())\" alt=\"Imagen del documento\">"
+        let resolvedAlt = altText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? altText!
+            : "Imagen del documento"
+        let titleAttribute = title.map { value in
+            value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : " title=\"\(escapeHTML(value))\""
+        } ?? ""
+        return "<img src=\"data:\(mimeType);base64,\(data.base64EncodedString())\" alt=\"\(escapeHTML(resolvedAlt))\"\(titleAttribute)>"
     }
 
     private func imageData(for target: String) -> Data? {
@@ -375,10 +512,25 @@ private final class PlannerDocxXMLParser: NSObject, XMLParserDelegate {
 
 struct PlannerDocxWebView: View {
     let html: String
+    let minHeight: CGFloat
+    let idealHeight: CGFloat
+    let maxHeight: CGFloat
+
+    init(
+        html: String,
+        minHeight: CGFloat = 420,
+        idealHeight: CGFloat = 560,
+        maxHeight: CGFloat = 720
+    ) {
+        self.html = html
+        self.minHeight = minHeight
+        self.idealHeight = idealHeight
+        self.maxHeight = maxHeight
+    }
 
     var body: some View {
         PlannerDocxWebViewRepresentable(html: html)
-            .frame(minHeight: 420, idealHeight: 560, maxHeight: 720)
+            .frame(minHeight: minHeight, idealHeight: idealHeight, maxHeight: maxHeight)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .accessibilityLabel("Contenido enriquecido del documento de sesión")
     }

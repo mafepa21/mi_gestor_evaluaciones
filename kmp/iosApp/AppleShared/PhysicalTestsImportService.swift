@@ -377,7 +377,7 @@ struct PhysicalTestsImportService {
         )
     }
 
-    private struct Manifest: Codable {
+    private struct Manifest: Decodable {
         let format: String
         let version: Int
         let purpose: String
@@ -388,5 +388,28 @@ struct PhysicalTestsImportService {
         let calibrationRequiredTestIds: [String]
         let warnings: [String]
         let sourceNotes: [String]
+
+        private enum CodingKeys: String, CodingKey {
+            case format, version, purpose, learningSituation, assignmentTemplate
+            case testDefinitions, referenceScales, calibrationRequiredTestIds
+            case warnings, sourceNotes
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            format = try container.decode(String.self, forKey: .format)
+            version = try container.decode(Int.self, forKey: .version)
+            purpose = try container.decode(String.self, forKey: .purpose)
+            learningSituation = try container.decode(PhysicalTestsImportLearningSituation.self, forKey: .learningSituation)
+            assignmentTemplate = try container.decode(PhysicalTestsImportAssignmentTemplate.self, forKey: .assignmentTemplate)
+            testDefinitions = try container.decode([PhysicalTestsImportDefinition].self, forKey: .testDefinitions)
+            referenceScales = try container.decodeIfPresent([PhysicalTestsImportScale].self, forKey: .referenceScales) ?? []
+            // These fields were optional in the authoring format used by the SA0 materials.
+            // Defaulting them keeps older v1/v2 manifests importable while preserving the
+            // canonical fields in newly generated manifests.
+            calibrationRequiredTestIds = try container.decodeIfPresent([String].self, forKey: .calibrationRequiredTestIds) ?? []
+            warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
+            sourceNotes = try container.decodeIfPresent([String].self, forKey: .sourceNotes) ?? []
+        }
     }
 }

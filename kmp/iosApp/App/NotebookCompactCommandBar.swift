@@ -12,6 +12,8 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
     let isAttendanceQuickMode: Bool
     let showsAdvancedActions: Bool
     let selectionContext: NotebookToolbarSelectionContext
+    var isQuickKeypadPresented: Bool = false
+    var onToggleQuickKeypad: (() -> Void)? = nil
     let onAddColumn: () -> Void
     let onSearch: () -> Void
     let onCopySelection: () -> Void
@@ -88,6 +90,14 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
             contextualActions
 
             if showsAdvancedActions {
+                if let onToggleQuickKeypad {
+                    iconButton(
+                        systemImage: isQuickKeypadPresented ? "keyboard.fill" : "keyboard",
+                        label: isQuickKeypadPresented ? "Ocultar teclado rápido" : "Teclado rápido",
+                        action: onToggleQuickKeypad,
+                        isActive: isQuickKeypadPresented
+                    )
+                }
                 iconButton(systemImage: "person.2", label: "Gestionar grupos", action: onOpenGroupManagement)
                 iconButton(systemImage: "rectangle.3.group", label: "Organizar columnas", action: onOpenOrganization)
                 iconButton(
@@ -122,6 +132,14 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
             textButton(systemImage: "arrow.down.to.line", label: "Rellenar", action: onFillSelection)
             textButton(systemImage: "eraser", label: "Borrar", action: onClearSelection)
             textButton(systemImage: "text.bubble", label: "Comentario", action: onCommentSelection)
+            if let onToggleQuickKeypad {
+                iconButton(
+                    systemImage: isQuickKeypadPresented ? "keyboard.fill" : "keyboard",
+                    label: isQuickKeypadPresented ? "Ocultar teclado rápido" : "Teclado rápido",
+                    action: onToggleQuickKeypad,
+                    isActive: isQuickKeypadPresented
+                )
+            }
             iconButton(
                 systemImage: isVoiceDictationActive ? "mic.fill" : "mic",
                 label: isVoiceDictationActive ? "Escuchando… toca para parar" : "Dictar nota por voz",
@@ -140,7 +158,7 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
     private var secondaryMenu: some View {
         Menu {
             Button(action: onUndo) {
-                Label("Deshacer último cambio", systemImage: "arrow.uturn.backward")
+                Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
             }
             .disabled(!canUndo)
 
@@ -157,6 +175,14 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
             }
 
             if isCompact {
+                if let onToggleQuickKeypad {
+                    Button(action: onToggleQuickKeypad) {
+                        Label(
+                            isQuickKeypadPresented ? "Ocultar teclado rápido" : "Teclado rápido",
+                            systemImage: isQuickKeypadPresented ? "keyboard.fill" : "keyboard"
+                        )
+                    }
+                }
                 Button(action: onOpenOrganization) {
                     Label("Organizar columnas", systemImage: "rectangle.3.group")
                 }
@@ -234,8 +260,43 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
     }
 }
 
+struct NotebookSavePulse: View {
+    let isDirty: Bool
+    let isSaving: Bool
+    let isFailed: Bool
+    let isSaved: Bool
+    @State private var flashGreen = false
+
+    private var showsAmber: Bool { isDirty || isSaving }
+
+    var body: some View {
+        Circle()
+            .fill(dotColor)
+            .frame(width: 8, height: 8)
+            .animation(.easeInOut(duration: 0.2), value: flashGreen)
+            .animation(.easeInOut(duration: 0.2), value: showsAmber)
+            .animation(.easeInOut(duration: 0.2), value: isFailed)
+            .appOnChange(of: isDirty) { dirty in
+                guard !dirty, !isFailed, isSaved else { return }
+                flashGreen = true
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    flashGreen = false
+                }
+            }
+            .accessibilityHidden(true)
+    }
+
+    private var dotColor: Color {
+        if isFailed { return .red }
+        if showsAmber { return .orange }
+        if flashGreen { return .green }
+        return Color.secondary.opacity(0.35)
+    }
+}
+
 // MARK: - NotebookScaleButtonStyle
-private struct NotebookScaleButtonStyle: ButtonStyle {
+struct NotebookScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)

@@ -3,6 +3,21 @@ import XCTest
 @testable import MiGestorKMPMac
 
 final class PhysicalTestsImportTests: XCTestCase {
+    func testPreviewDefaultsOptionalManifestMetadataArrays() throws {
+        let json = #"{"format":"mi_gestor.physical-tests-import","version":2,"purpose":"INITIAL_DIAGNOSTIC","learningSituation":{"number":0,"course":"4º ESO","subject":"Educación Física"},"assignmentTemplate":{"batteryId":"sa0_4_initial_baseline_2026","batteryName":"SA 0 · Línea base inicial (4º ESO)","termLabel":"1ª evaluación · diagnóstico","rawColumnMode":true,"scoreColumnMode":false,"recordScore":false,"countsTowardAverage":false,"showRankings":false},"testDefinitions":[{"id":"vertical_jump","name":"Salto vertical","capacity":"STRENGTH","measurementKind":"DISTANCE","unit":"cm","higherIsBetter":true,"attempts":2,"resultMode":"BEST","protocol":"Registrar el mejor salto válido.","plausibleMinimum":0,"plausibleMaximum":100,"decimals":0}],"referenceScales":[]}"#
+
+        let draft = try PhysicalTestsImportService().preview(
+            from: URL(fileURLWithPath: "/tmp/sa0-missing-optional-metadata.json"),
+            data: Data(json.utf8)
+        )
+
+        XCTAssertEqual(draft.testDefinitions.map(\.id), ["vertical_jump"])
+        XCTAssertTrue(draft.calibrationRequiredTestIds.isEmpty)
+        XCTAssertTrue(draft.warnings.isEmpty)
+        XCTAssertTrue(draft.sourceNotes.isEmpty)
+        XCTAssertTrue(draft.scoreIsDisabled)
+    }
+
     func testPreviewAcceptsCustomDiagnosticTestsAndKeepsRawOnlyMode() throws {
         let json = #"{"format":"mi_gestor.physical-tests-import","version":1,"purpose":"INITIAL_DIAGNOSTIC","learningSituation":{"number":0,"course":"3º ESO","subject":"Educación Física"},"assignmentTemplate":{"batteryId":"sa0_3_initial_baseline_2026","batteryName":"SA 0 · Línea base inicial (3º ESO)","termLabel":"1ª evaluación · diagnóstico","rawColumnMode":true,"scoreColumnMode":false,"recordScore":false,"countsTowardAverage":false,"showRankings":false},"testDefinitions":[{"id":"police_agility_circuit","name":"Circuito de agilidad","capacity":"AGILITY","measurementKind":"TIME","unit":"s","higherIsBetter":false,"attempts":2,"resultMode":"BEST","protocol":"Registrar el menor tiempo válido.","plausibleMinimum":6,"plausibleMaximum":20,"decimals":2}],"referenceScales":[{"id":"agility_reference","testId":"police_agility_circuit","name":"Referencia inicial","course":3,"ageFrom":13,"ageTo":14,"sex":null,"direction":"LOWER_IS_BETTER","diagnosticReferenceOnly":true,"ranges":[{"id":"r1","minValue":null,"maxValue":9,"score":10,"label":"≤ 9 s","sortOrder":0}]}],"calibrationRequiredTestIds":[],"warnings":["Solo diagnóstico."],"sourceNotes":["Fixture anónima"]}"#
 
@@ -18,6 +33,24 @@ final class PhysicalTestsImportTests: XCTestCase {
         XCTAssertFalse(draft.assignmentTemplate.recordScore)
         XCTAssertTrue(draft.scoreIsDisabled)
         XCTAssertEqual(draft.courseNumber, 3)
+    }
+
+    func testPreviewAcceptsStepReferenceScaleWithoutEnablingScoreColumn() throws {
+        let json = #"{"format":"mi_gestor.physical-tests-import","version":2,"purpose":"INITIAL_DIAGNOSTIC","learningSituation":{"number":0,"course":"4º ESO","subject":"Educación Física"},"assignmentTemplate":{"batteryId":"sa0_4_initial_baseline_2026","batteryName":"SA 0 · Línea base inicial (4º ESO)","termLabel":"1ª evaluación · diagnóstico","rawColumnMode":true,"scoreColumnMode":false,"recordScore":false,"countsTowardAverage":false,"showRankings":false},"testDefinitions":[{"id":"vertical_jump","name":"Salto vertical","capacity":"STRENGTH","measurementKind":"DISTANCE","unit":"cm","higherIsBetter":true,"attempts":2,"resultMode":"BEST","protocol":"Registrar el mejor salto válido.","plausibleMinimum":0,"plausibleMaximum":100,"decimals":0}],"referenceScales":[{"id":"sa0_4_vertical_jump_baremo_2026","testId":"vertical_jump","name":"Baremo orientativo SA0 · Salto vertical","course":4,"ageFrom":null,"ageTo":null,"sex":null,"direction":"HIGHER_IS_BETTER","diagnosticReferenceOnly":true,"scoring":{"mode":"STEP","points":[]},"ranges":[{"id":"r1","minValue":null,"maxValue":19,"score":0,"label":"0-19 cm","sortOrder":0},{"id":"r2","minValue":20,"maxValue":29,"score":2.5,"label":"20-29 cm","sortOrder":1},{"id":"r3","minValue":30,"maxValue":39,"score":5,"label":"30-39 cm","sortOrder":2},{"id":"r4","minValue":40,"maxValue":49,"score":7.5,"label":"40-49 cm","sortOrder":3},{"id":"r5","minValue":50,"maxValue":null,"score":10,"label":"≥50 cm","sortOrder":4}]}],"calibrationRequiredTestIds":[],"warnings":["Solo referencia."],"sourceNotes":["Fixture anónima"]}"#
+
+        let draft = try PhysicalTestsImportService().preview(
+            from: URL(fileURLWithPath: "/tmp/pruebas-step-diagnosticas.json"),
+            data: Data(json.utf8)
+        )
+
+        XCTAssertEqual(draft.referenceScales.count, 1)
+        XCTAssertEqual(draft.referenceScales.first?.scoring?.mode, "STEP")
+        XCTAssertEqual(draft.referenceScales.first?.ranges.count, 5)
+        XCTAssertEqual(draft.referenceScales.first?.ranges.map(\.score), [0, 2.5, 5, 7.5, 10])
+        XCTAssertTrue(draft.referenceScales.first?.diagnosticReferenceOnly == true)
+        XCTAssertFalse(draft.assignmentTemplate.scoreColumnMode)
+        XCTAssertFalse(draft.assignmentTemplate.recordScore)
+        XCTAssertTrue(draft.scoreIsDisabled)
     }
 
     func testPreviewRejectsScoreColumnWhenRecordScoreIsDisabled() {
@@ -55,6 +88,81 @@ final class PhysicalTestsImportTests: XCTestCase {
         )
 
         XCTAssertEqual(draft.referenceScales.map(\.canonicalSex), ["MALE", "FEMALE"])
+    }
+
+    func testPreviewAcceptsNeutralAndSexSpecificScopesForOneTest() throws {
+        func scale(id: String, sex: String?) -> [String: Any] {
+            var value: [String: Any] = [
+                "id": id,
+                "testId": "agility_4x10m",
+                "name": "Agilidad 4 × 10 m",
+                "course": 3,
+                "ageFrom": NSNull(),
+                "ageTo": NSNull(),
+                "direction": "LOWER_IS_BETTER",
+                "diagnosticReferenceOnly": true,
+                "scoring": ["mode": "STEP", "points": []],
+                "ranges": [[
+                    "id": "\(id)_r1",
+                    "minValue": NSNull(),
+                    "maxValue": 10.0,
+                    "score": 10.0,
+                    "label": "≤10 s",
+                    "sortOrder": 0,
+                ]],
+            ]
+            value["sex"] = sex ?? NSNull()
+            return value
+        }
+
+        let manifest: [String: Any] = [
+            "format": "mi_gestor.physical-tests-import",
+            "version": 2,
+            "purpose": "INITIAL_DIAGNOSTIC",
+            "learningSituation": ["number": 0, "course": "3º ESO", "subject": "Educación Física"],
+            "assignmentTemplate": [
+                "batteryId": "battery",
+                "batteryName": "Batería",
+                "termLabel": "Diagnóstico",
+                "rawColumnMode": true,
+                "scoreColumnMode": false,
+                "recordScore": false,
+                "countsTowardAverage": false,
+                "showRankings": false,
+            ],
+            "testDefinitions": [[
+                "id": "agility_4x10m",
+                "name": "Agilidad 4 × 10 m",
+                "capacity": "AGILITY",
+                "measurementKind": "TIME",
+                "unit": "s",
+                "higherIsBetter": false,
+                "attempts": 2,
+                "resultMode": "BEST",
+                "protocol": "",
+                "plausibleMinimum": 0,
+                "plausibleMaximum": 30,
+                "decimals": 2,
+            ]],
+            "referenceScales": [
+                scale(id: "agility_neutral", sex: nil),
+                scale(id: "agility_male", sex: "MALE"),
+                scale(id: "agility_female", sex: "FEMALE"),
+            ],
+            "calibrationRequiredTestIds": [],
+            "warnings": [],
+            "sourceNotes": [],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: manifest)
+        let draft = try PhysicalTestsImportService().preview(
+            from: URL(fileURLWithPath: "/tmp/pruebas-sexo-neutral.json"),
+            data: data
+        )
+
+        XCTAssertEqual(draft.referenceScales.count, 3)
+        XCTAssertNil(draft.referenceScales[0].canonicalSex)
+        XCTAssertEqual(draft.referenceScales[1].canonicalSex, "MALE")
+        XCTAssertEqual(draft.referenceScales[2].canonicalSex, "FEMALE")
     }
 
     func testNameInferenceOnlySuggestsConservativeHighConfidenceMatches() {

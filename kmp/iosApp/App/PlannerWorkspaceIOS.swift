@@ -5,6 +5,7 @@ struct PlannerWorkspaceIOS: View {
     @EnvironmentObject private var bridge: KmpBridge
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @StateObject private var vm = PlannerWorkspaceViewModel()
     @State private var selectedDetailSession: PlanningSession? = nil
     @State private var selectedWeekCell: PlannerCellKey? = nil
@@ -17,6 +18,8 @@ struct PlannerWorkspaceIOS: View {
     /// horario — un callejón sin salida. Ahora se abre aquí mismo, igual que
     /// ya hacía macOS.
     @State private var showingScheduleSettings = false
+    @State private var showingCalendarMilestones = false
+
     private let initialSection: PlannerWorkspaceSection
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
@@ -45,15 +48,19 @@ struct PlannerWorkspaceIOS: View {
                 groupId: context.groupId,
                 sessionId: context.sessionId
             )
-            // UX-3: Si no hay contexto externo específico y es horario lectivo,
-            // abrir automáticamente en la vista Día con el día actual.
-            if context.sessionId == nil, initialSection == .week {
-                autoNavigateToTodayIfSchoolHours()
-            }
             configurePlannerToolbar()
             syncNavigationContext()
         }
-        .onAppear(perform: configurePlannerToolbar)
+        .onAppear {
+            configurePlannerToolbar()
+            if vm.isLoaded {
+                Task {
+                    await vm.reloadScheduleOnly()
+                    await vm.reloadHolidays()
+                }
+            }
+        }
+
         .appOnChange(of: context) { newValue in
             Task {
                 await vm.applyExternalContext(
@@ -86,7 +93,14 @@ struct PlannerWorkspaceIOS: View {
                 onClose: { showingScheduleSettings = false }
             )
         }
-        .sheet(
+        .sheet(isPresented: $showingCalendarMilestones) {
+            SchoolCalendarEventsOverviewSheet(
+                bridge: bridge,
+                onClose: { showingCalendarMilestones = false }
+            )
+        }
+
+        .appFullScreenCover(
             isPresented: Binding(
                 get: { selectedDetailSession != nil },
                 set: { if !$0 { selectedDetailSession = nil } }
@@ -151,7 +165,7 @@ struct PlannerWorkspaceIOS: View {
                 cascadeCoordinator.confirmPendingMove(vm: vm)
             }
         } message: {
-            Text("La cascada incluye una o más sesiones ya impartidas. Se conservarán sus diarios y referencias.")
+            Text("La cascada incluye sesiones ya impartidas o canceladas. Si pulsas Mover, también se recolocan. Si cancelas, se quedan donde están.")
         }
         .appOnChange(of: cascadeCoordinator.transientMessage) { message in
             guard message != nil else { return }
@@ -166,86 +180,72 @@ struct PlannerWorkspaceIOS: View {
 
     private var plannerMainContent: some View {
         VStack(spacing: 0) {
-            PlannerToolbar(vm: vm, onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) })
-            Group {
-                switch vm.activeSection {
-                case .week:
-                    ZStack(alignment: .bottom) {
-                        PlannerWeekMiniatureLayout(
-                            weekBoard: vm.weekBoard,
-                            vm: vm,
-                            selectedCell: $selectedWeekCell,
-                            selectedDay: $selectedWeekDay,
-                            onOpenSession: openSessionInDiary,
-                            onDropSession: { sessionId, day, period in
-                                cascadeCoordinator.handleDrop(sessionId: sessionId, day: day, period: period, vm: vm)
-                            },
-                            onOpenSettings: { showingScheduleSettings = true }
-                        )
-                        .safeAreaInset(edge: .top) {
-                            if let message = cascadeCoordinator.transientMessage {
-                                PlannerInlineBanner(message: message)
-                                    .padding(.horizontal, EvaluationDesign.screenPadding)
-                                    .padding(.top, 8)
-                                    .transition(.move(edge: .top).combined(with: .opacity))
-                            }
-                        }
-                        .safeAreaInset(edge: .bottom) {
-                            Color.clear.frame(height: 96)
-                        }
-
-                        plannerFloatingControls
-                            .padding(.horizontal, EvaluationDesign.screenPadding)
-                            .padding(.bottom, 32)
-                    }
-                case .day:
-                    PlannerDayView(vm: vm, onOpenSession: openSessionInDiary)
-                case .sequence:
-                    PlannerSequenceGanttView(vm: vm, onOpenSession: openSessionInDiary)
-                case .summary:
-                    PlannerSummaryDashboard(vm: vm, onOpenSettings: { showingScheduleSettings = true }, onOpenSession: openSessionInDiary)
-                }
-            }
-            .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+            PlannerToolbar(
+                vm: vm,
+                onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
+                onOpenDiary: openSelectedSessionInDiary,
+                onClearSchedulelessWeek: {
+                    isClearSchedulelessWeekConfirmationPresented = true
+                },
+                onShowCalendarMilestones: { showingCalendarMilestones = true }
+            )
+            .layoutPriority(1)
+            plannerSectionContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .animation(uiFeatureFlags.interactionAnimation, value: vm.activeSection)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+    }
+
+    private var plannerSectionContent: some View {
+        Group {
+            switch vm.activeSection {
+            case .month:
+                PlannerMonthCalendarView(
+                    vm: vm,
+                    onOpenSession: openSessionInDiary,
+                    onOpenSettings: { showingScheduleSettings = true }
+                )
+            case .week:
+                PlannerWeekMiniatureLayout(
+                    weekBoard: vm.weekBoard,
+                    vm: vm,
+                    selectedCell: $selectedWeekCell,
+                    selectedDay: $selectedWeekDay,
+                    onOpenSession: openSessionInDiary,
+                    onDropSession: { sessionId, day, period in
+                        cascadeCoordinator.handleDrop(sessionId: sessionId, day: day, period: period, vm: vm)
+                    },
+                    onOpenSettings: { showingScheduleSettings = true }
+                )
+                .safeAreaInset(edge: .top) {
+                    if let message = cascadeCoordinator.transientMessage {
+                        PlannerInlineBanner(message: message)
+                            .padding(.horizontal, EvaluationDesign.screenPadding)
+                            .padding(.top, 8)
+                            .transition(uiFeatureFlags.bannerTransition)
+                    }
+                }
+                .animation(uiFeatureFlags.interactionAnimation, value: cascadeCoordinator.transientMessage)
+            case .day:
+                PlannerDayView(vm: vm, onOpenSession: openSessionInDiary)
+            case .sequence:
+                PlannerSequenceGanttView(vm: vm, onOpenSession: openSessionInDiary)
+            case .term:
+                PlannerTermBoardView(vm: vm, onOpenSession: openSessionInDiary)
+            case .summary:
+                PlannerSummaryDashboard(vm: vm, onOpenSettings: { showingScheduleSettings = true }, onOpenSession: openSessionInDiary)
+            }
+        }
+        .id(vm.activeSection)
+        .transition(uiFeatureFlags.contentSwitchTransition)
     }
 
     private func configurePlannerToolbar() {
         layoutState.configurePlannerToolbar(addSessionAvailable: true) {
             vm.openComposer()
         }
-    }
-
-    private var plannerFloatingControls: some View {
-        PlannerLiquidGlassControls(
-            density: $vm.density,
-            canOpenDiary: vm.selectedSession != nil,
-            canCopySelection: !vm.selectedSessionIds.isEmpty,
-            canClearSchedulelessWeek: vm.canClearSchedulelessWeekSessions,
-            isSelectionModeActive: vm.selectionMode,
-            shareText: vm.exportText(),
-            onPreviousWeek: { Task { await vm.previousWeek() } },
-            onNextWeek: { Task { await vm.nextWeek() } },
-            onToday: { Task { await vm.goToCurrentWeek() } },
-            onSync: {
-                Task {
-                    await bridge.pullMissingSyncChanges()
-                    await vm.refreshCurrentWeek()
-                }
-            },
-            onToggleSelection: {
-                vm.selectionMode.toggle()
-                if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
-            },
-            onCopyToNextWeek: { Task { await vm.bulkCopyToNextWeek() } },
-            onMoveOneDay: { Task { await vm.bulkMoveOneDay() } },
-            onClearSchedulelessWeek: {
-                isClearSchedulelessWeekConfirmationPresented = true
-            },
-            onOpenDiary: openSelectedSessionInDiary,
-            onNewSession: { vm.openComposer() }
-        )
-        .frame(maxWidth: .infinity)
     }
 
     private func openSelectedSessionInDiary() {
@@ -269,76 +269,42 @@ struct PlannerWorkspaceIOS: View {
         )
     }
 
-    /// UX-3: Si es un día lectivo (lunes-viernes) y la hora actual está entre las 8:00
-    /// y las 15:00, navega automáticamente a la vista Día con el día de hoy seleccionado.
-    /// Esto permite que al abrir el Planner durante la jornada escolar, el docente
-    /// vea directamente la cabina de vuelo de su día actual.
-    private func autoNavigateToTodayIfSchoolHours() {
-        let calendar = Calendar.current
-        let now = Date()
-        let hour = calendar.component(.hour, from: now)
-        let weekday = calendar.component(.weekday, from: now)
-
-        // Solo de lunes (2) a viernes (6) y entre las 8:00 y las 14:59
-        let isSchoolDay = (2...6).contains(weekday)
-        let isSchoolHours = (8...14).contains(hour)
-
-        guard isSchoolDay, isSchoolHours else { return }
-
-        // Convertir weekday de Calendar a ISO (lunes=1 ... domingo=7)
-        let isoDayOfWeek = ((weekday + 5) % 7) + 1
-
-        // Pre-seleccionar el día en el grid y cambiar a vista Día
-        vm.dayViewSelectedDay = isoDayOfWeek
-        vm.activeSection = .day
-    }
 }
 
 struct PlannerToolbar: View {
+    @EnvironmentObject private var bridge: KmpBridge
     @ObservedObject var vm: PlannerWorkspaceViewModel
     var onUndoCascadeMove: (() -> Void)? = nil
     /// En Mac, la navegación de semana/sección/grupo/búsqueda vive en la toolbar
     /// nativa (ver `PlannerMacToolbarActions`); aquí solo queda la tarjeta de
     /// progreso, que sí aporta información y no es mera navegación.
     var showsNavigationControls: Bool = true
+    var onOpenDiary: (() -> Void)? = nil
+    var onClearSchedulelessWeek: (() -> Void)? = nil
+    var onShowCalendarMilestones: (() -> Void)? = nil
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
-    @AppStorage("planner_toolbar_progress_expanded") private var isProgressExpanded = true
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+    /// Día, Secuencia y Evaluación arrancan plegadas. Semana tiene su propia
+    /// preferencia y Resumen la suya, abierta.
+    @AppStorage("planner_toolbar_progress_expanded") private var isProgressExpanded = false
+    @AppStorage("planner_summary_progress_expanded") private var isSummaryProgressExpanded = true
     @AppStorage("planner_week_toolbar_progress_expanded") private var isWeekProgressExpanded = false
+    @AppStorage("planner_week_detail_pane_visible") private var isDetailPaneVisible = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if vm.activeSection == .week {
-                compactWeekHeader
-            } else {
-                expandedProgressHeader
+        VStack(alignment: .leading, spacing: 6) {
+            if showsNavigationControls {
+                primaryNavigationRow
             }
 
-            if showsNavigationControls {
-                HStack(spacing: 8) {
-                    PlannerFloatingTabBar(activeSection: $vm.activeSection)
-                        .frame(maxWidth: 376)
-
-                    weekNavigationCluster
-
-                    HStack(spacing: 8) {
-                        Picker("Grupo", selection: Binding(
-                            get: { vm.selectedGroupId },
-                            set: { vm.selectGroup($0) }
-                        )) {
-                            Text("Todos").tag(Optional<Int64>.none)
-                            ForEach(vm.groups, id: \.id) { group in
-                                Text(group.name).tag(Optional(group.id))
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: 180)
-                    }
-                    .controlSize(.small)
-
-                    IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
-                        .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
-                }
-                .frame(height: 40)
+            if vm.activeSection == .week {
+                compactWeekHeader
+            } else if vm.activeSection == .month {
+                // En vista mensual, la cabecera propia de PlannerMonthCalendarView gestiona la navegación de mes
+            } else {
+                expandedProgressHeader
             }
 
             if !vm.bulkSummary.isEmpty {
@@ -349,46 +315,233 @@ struct PlannerToolbar: View {
             }
         }
         .padding(.horizontal, EvaluationDesign.screenPadding)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+    }
+
+    private var usesStackedNavigation: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder
+    private var primaryNavigationRow: some View {
+        if usesStackedNavigation {
+            VStack(spacing: 8) {
+                PlannerFloatingTabBar(activeSection: $vm.activeSection)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                navigationActionsRow
+            }
+        } else {
+            HStack(spacing: 8) {
+                PlannerFloatingTabBar(activeSection: $vm.activeSection)
+                    .frame(maxWidth: 420)
+                navigationActionsRow
+            }
+            .frame(height: 40)
+        }
+    }
+
+    private var navigationActionsRow: some View {
+        HStack(spacing: 8) {
+            Picker("Grupo", selection: Binding(
+                get: { vm.selectedGroupId },
+                set: { vm.selectGroup($0) }
+            )) {
+                Text("Todos los grupos").tag(Optional<Int64>.none)
+                ForEach(vm.groups, id: \.id) { group in
+                    Text(group.name).tag(Optional(group.id))
+                }
+            }
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .frame(maxWidth: 160)
+
+            IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
+                .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
+
+            actionsMenu
+            newSessionButton
+        }
+        .frame(height: 40)
+    }
+
+    private var newSessionButton: some View {
+        Button {
+            vm.openComposer()
+        } label: {
+            Label("Nueva sesión", systemImage: "plus")
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.capsule)
+        .controlSize(.small)
+        .accessibilityLabel("Crear nueva sesión")
+    }
+
+    private var actionsMenu: some View {
+        Menu {
+            Button {
+                Task {
+                    await bridge.pullMissingSyncChanges()
+                    await vm.refreshCurrentWeek()
+                }
+            } label: {
+                Label("Sincronizar", systemImage: "arrow.triangle.2.circlepath")
+            }
+
+            ShareLink(item: vm.exportText()) {
+                Label("Compartir planificación", systemImage: "square.and.arrow.up")
+            }
+
+            Button {
+                onShowCalendarMilestones?()
+            } label: {
+                Label("Hitos y salidas del curso…", systemImage: "calendar.badge.clock")
+            }
+            .disabled(onShowCalendarMilestones == nil)
+
+            Divider()
+
+            Picker("Densidad", selection: $vm.density) {
+                ForEach(PlannerDensity.allCases) { density in
+                    Text(density.rawValue).tag(density)
+                }
+            }
+
+            Divider()
+
+            Button {
+                vm.selectionMode.toggle()
+                if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
+            } label: {
+                Label(
+                    vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones",
+                    systemImage: "checklist"
+                )
+            }
+
+            Button {
+                Task { await vm.bulkCopyToNextWeek() }
+            } label: {
+                Label("Copiar a la semana siguiente", systemImage: "doc.on.doc")
+            }
+            .disabled(vm.selectedSessionIds.isEmpty)
+
+            Button {
+                Task { await vm.bulkMoveOneDay() }
+            } label: {
+                Label("Mover +1 día", systemImage: "arrow.right")
+            }
+            .disabled(vm.selectedSessionIds.isEmpty)
+
+            Divider()
+
+            Button {
+                onOpenDiary?()
+            } label: {
+                Label("Abrir sesión en diario", systemImage: "play.rectangle.fill")
+            }
+            .disabled(vm.selectedSession == nil)
+
+            Button(role: .destructive) {
+                onClearSchedulelessWeek?()
+            } label: {
+                Label("Limpiar semana sin franjas", systemImage: "trash")
+            }
+            .disabled(!vm.canClearSchedulelessWeekSessions)
+        } label: {
+            Label("Acciones", systemImage: "ellipsis")
+                .frame(minWidth: 28, minHeight: 28)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.small)
+        .accessibilityLabel("Acciones secundarias del planificador")
     }
 
     private var compactWeekHeader: some View {
         VStack(alignment: .leading, spacing: isWeekProgressExpanded ? 8 : 0) {
-            Button {
-                withAnimation(uiFeatureFlags.interactionAnimation) {
-                    isWeekProgressExpanded.toggle()
+            HStack(alignment: .center, spacing: 8) {
+                if showsNavigationControls {
+                    weekNavigationCluster
                 }
-            } label: {
-                HStack(alignment: .center, spacing: 8) {
-                    Text(vm.weekLabel)
-                        .font(.headline.weight(.bold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
 
-                    Text(vm.dateRangeLabel)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                Text(vm.weekLabel)
+                    .font(.headline.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
 
-                    Spacer(minLength: 8)
+                Text(vm.dateRangeLabel)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
 
-                    if !isWeekProgressExpanded {
+                if !vm.weekMilestones.isEmpty {
+                    Button {
+                        onShowCalendarMilestones?()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.system(size: 8, weight: .bold))
+                            Text("\(vm.weekMilestones.count) hitos")
+                                .font(.caption2.weight(.bold))
+                        }
+                        .foregroundStyle(Color.orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.12), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(onShowCalendarMilestones == nil)
+                    .accessibilityLabel("\(vm.weekMilestones.count) hitos del curso")
+                    .accessibilityHint("Abre el listado de hitos y salidas")
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    withAnimation(uiFeatureFlags.interactionAnimation) {
+                        isWeekProgressExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
                         Text("\(vm.filteredSessions.count) sesiones")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
-                    }
 
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isWeekProgressExpanded ? 90 : 0))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isWeekProgressExpanded ? 90 : 0))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(EvaluationDesign.surfaceSoft, in: Capsule())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(vm.weekLabel), \(vm.dateRangeLabel), \(vm.filteredSessions.count) sesiones")
+                .accessibilityHint("Mostrar u ocultar las métricas de progreso de la semana")
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isDetailPaneVisible.toggle()
+                    }
+                } label: {
+                    Label(
+                        isDetailPaneVisible ? "Ocultar detalle" : "Mostrar detalle",
+                        systemImage: "sidebar.right"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .tint(isDetailPaneVisible ? .accentColor : .secondary)
+                .controlSize(.small)
+                .accessibilityHint("Amplía o recupera el inspector lateral del grid semanal")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(vm.weekLabel), \(vm.dateRangeLabel)")
-            .accessibilityHint("Mostrar u ocultar las métricas de progreso de la semana")
 
             if isWeekProgressExpanded {
                 Group {
@@ -405,16 +558,14 @@ struct PlannerToolbar: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .plannerGlassPanel(.content, cornerRadius: 16)
+        .padding(.vertical, 6)
+        .plannerGlassPanel(.content, cornerRadius: 14)
     }
 
     private var expandedProgressHeader: some View {
         VStack(alignment: .leading, spacing: 16) {
             Button {
-                withAnimation(uiFeatureFlags.interactionAnimation) {
-                    isProgressExpanded.toggle()
-                }
+                toggleSectionProgress()
             } label: {
                 HStack(alignment: .center, spacing: 8) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -432,12 +583,12 @@ struct PlannerToolbar: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isProgressExpanded ? 90 : 0))
+                        .rotationEffect(.degrees(sectionProgressExpanded ? 90 : 0))
                 }
             }
             .buttonStyle(.plain)
 
-            if isProgressExpanded {
+            if sectionProgressExpanded {
                 Group {
                     if let progress = vm.situationProgress(for: vm.selectedSession) {
                         PlannerSituationProgressStrip(progress: progress)
@@ -503,6 +654,20 @@ struct PlannerToolbar: View {
         .buttonBorderShape(.capsule)
         .controlSize(.small)
         .font(.subheadline.weight(.semibold))
+    }
+
+    private var sectionProgressExpanded: Bool {
+        vm.activeSection == .summary ? isSummaryProgressExpanded : isProgressExpanded
+    }
+
+    private func toggleSectionProgress() {
+        withAnimation(uiFeatureFlags.interactionAnimation) {
+            if vm.activeSection == .summary {
+                isSummaryProgressExpanded.toggle()
+            } else {
+                isProgressExpanded.toggle()
+            }
+        }
     }
 
     private var toolbarTitle: String {
@@ -882,6 +1047,7 @@ private struct PlannerWeekCompactEntryRow: View {
 
     private var stateLabel: String {
         if entry.kind == .scheduledSlot { return "Sin concretar" }
+        if entry.kind == .blockedSlot { return "Bloqueado" }
         if entry.journalStatus == .completed { return "Diario cerrado" }
         if entry.journalStatus == .draft { return "Diario pendiente" }
         if entry.sessionStatus == .completed { return "Impartida" }
@@ -890,6 +1056,7 @@ private struct PlannerWeekCompactEntryRow: View {
 
     private var stateIcon: String {
         if entry.kind == .scheduledSlot { return "plus.circle.fill" }
+        if entry.kind == .blockedSlot { return "lock.fill" }
         if entry.journalStatus == .completed { return "checkmark.seal.fill" }
         if entry.journalStatus == .draft { return "doc.text.fill" }
         if entry.sessionStatus == .completed { return "checkmark.circle.fill" }
@@ -898,6 +1065,7 @@ private struct PlannerWeekCompactEntryRow: View {
 
     private var stateTint: Color {
         if entry.kind == .scheduledSlot { return tint }
+        if entry.kind == .blockedSlot { return Color.indigo }
         if entry.journalStatus == .completed { return EvaluationDesign.success }
         if entry.journalStatus == .draft || entry.sessionStatus == .completed { return IOSAppStyle.warning }
         return .secondary
@@ -916,11 +1084,15 @@ private struct PlannerWeekEntryCard: View {
     private var tint: Color { Color(hex: entry.classColorHex) }
 
     var body: some View {
-        Button(action: onTap) {
+        Button(action: {
+            if entry.kind != .blockedSlot {
+                onTap()
+            }
+        }) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     Capsule()
-                        .fill(tint)
+                        .fill(entry.kind == .blockedSlot ? Color.indigo : tint)
                         .frame(width: 8, height: 32)
 
                     VStack(alignment: .leading, spacing: 4) {
@@ -978,6 +1150,7 @@ private struct PlannerWeekEntryCard: View {
 
     private var stateLabel: String {
         if entry.kind == .scheduledSlot { return "Crear sesión" }
+        if entry.kind == .blockedSlot { return "Bloqueado" }
         if entry.journalStatus == .completed { return "Cerrada" }
         if entry.journalStatus == .draft { return "Borrador" }
         if entry.sessionStatus == .completed { return "Diario pendiente" }
@@ -986,6 +1159,7 @@ private struct PlannerWeekEntryCard: View {
 
     private var stateIcon: String {
         if entry.kind == .scheduledSlot { return "plus.circle.fill" }
+        if entry.kind == .blockedSlot { return "lock.fill" }
         if entry.journalStatus == .completed { return "checkmark.seal.fill" }
         if entry.journalStatus == .draft { return "doc.text.fill" }
         if entry.sessionStatus == .completed { return "checkmark.circle.fill" }
@@ -994,6 +1168,7 @@ private struct PlannerWeekEntryCard: View {
 
     private var stateTint: Color {
         if entry.kind == .scheduledSlot { return tint }
+        if entry.kind == .blockedSlot { return Color.indigo }
         if entry.journalStatus == .completed { return EvaluationDesign.success }
         if entry.journalStatus == .draft { return EvaluationDesign.accent }
         if entry.sessionStatus == .completed { return IOSAppStyle.warning }
@@ -1004,6 +1179,8 @@ private struct PlannerWeekEntryCard: View {
         switch entry.kind {
         case .scheduledSlot:
             return tint.opacity(0.10)
+        case .blockedSlot:
+            return Color.indigo.opacity(0.12)
         case .session:
             return entry.isCompleted ? tint.opacity(0.24) : tint.opacity(0.14)
         }
@@ -1013,10 +1190,13 @@ private struct PlannerWeekEntryCard: View {
         switch entry.kind {
         case .scheduledSlot:
             return tint.opacity(0.35)
+        case .blockedSlot:
+            return Color.indigo.opacity(0.5)
         case .session:
             return entry.isCompleted ? tint.opacity(0.8) : tint.opacity(0.45)
         }
     }
+
 }
 
 private struct PlannerStatusPill: View {

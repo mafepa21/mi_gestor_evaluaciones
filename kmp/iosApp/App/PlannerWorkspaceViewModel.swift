@@ -20,6 +20,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var classColorHexById: [Int64: String] = [:]
     @Published var sessions: [PlanningSession] = []
     @Published var filteredSessions: [PlanningSession] = []
+    @Published var monthViewDate: Date = Date()
+    @Published var monthSessions: [PlanningSession] = []
+    @Published var monthMilestones: [PlannerDayMilestone] = []
     @Published var sessionPlansById: [Int64: LearningSituationSessionPlan] = [:]
     @Published var sequenceGroupsEnriched: [PlannerSequenceGroup] = []
     @Published var isLoadingSequences = false
@@ -68,6 +71,15 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var isGeneratingScheduleSessions = false
     @Published var lastCascadeMove: SessionCascadeMoveResult?
 
+    // MARK: - Term Session Board
+    @Published var selectedTermPeriodId: Int64?
+    @Published var simulatedSituationId: Int64?
+    @Published var termBoardSlots: [TermClassSlot] = []
+    @Published var termCapacityMetrics: TermCapacityMetrics?
+    @Published var isTermBoardLoading = false
+    @Published var termBoardErrorMessage: String?
+    @Published var isApplyingSimulation = false
+
     weak var bridge: KmpBridge?
     var autosaveTask: Task<Void, Never>?
     var isHydratingDraft = false
@@ -93,10 +105,18 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         get { weekBoard.holidayDays }
         set { weekBoard.holidayDays = newValue }
     }
+    var dayMilestones: [Int: [PlannerDayMilestone]] {
+        get { weekBoard.dayMilestones }
+        set { weekBoard.dayMilestones = newValue }
+    }
+    var weekMilestones: [PlannerDayMilestone] {
+        weekBoard.weekMilestones
+    }
     var weekRenderModel: PlannerWeekRenderModel {
         get { weekBoard.weekRenderModel }
         set { weekBoard.weekRenderModel = newValue }
     }
+
 
     init() {
         weekBoard.objectWillChange
@@ -168,7 +188,11 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     func reloadSessionsOnly(keepSelection: Bool = true) async {
+        if teacherSchedule == nil {
+            await reloadScheduleOnly()
+        }
         await reloadWeekSessions(keepSelection: keepSelection)
+        await reloadMonthData()
     }
 
     func reloadScheduleOnly() async {
@@ -189,6 +213,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         scheduleFormGroupId = await calendarStore.reloadBootstrap(bridge: bridge, scheduleFormGroupId: scheduleFormGroupId)
         groups = calendarStore.groups
         classColorHexById = calendarStore.classColorHexById
+        _ = try? await SchoolCalendarPreset2026_2027.sync1BachExams(bridge: bridge, groups: groups)
         do {
             let plans = try await bridge.learningSituationSessionPlansAll()
             sessionPlansById = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
@@ -198,6 +223,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             sessionPlansById = [:]
         }
     }
+
 
     func reloadWeekSessions(keepSelection: Bool = true) async {
         guard let bridge else { return }

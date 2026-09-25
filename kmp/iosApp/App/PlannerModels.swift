@@ -46,21 +46,53 @@ struct PlannerNavigationContext: Equatable {
 }
 
 enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
+    case month = "Mes"
     case week = "Semana"
     case day = "Día"
     case sequence = "Secuencia"
+    case term = "Evaluación"
     case summary = "Resumen"
 
     var id: String { rawValue }
 
     var systemImage: String {
         switch self {
-        case .week: return "calendar"
+        case .month: return "calendar"
+        case .week: return "calendar.badge.clock"
         case .day: return "calendar.day.timeline.left"
         case .sequence: return "point.3.connected.trianglepath.dotted"
+        case .term: return "calendar.badge.checkmark"
         case .summary: return "chart.bar.doc.horizontal"
         }
     }
+}
+
+struct PlannerMonthDay: Identifiable, Hashable {
+    var id: String { dateIso }
+    let date: Date
+    let dateIso: String
+    let dayNumber: Int
+    let month: Int
+    let year: Int
+    let dayOfWeek: Int
+    let isCurrentMonth: Bool
+    let isToday: Bool
+    let isWeekend: Bool
+    let milestones: [PlannerDayMilestone]
+    let sessions: [PlanningSession]
+
+    var isHoliday: Bool {
+        milestones.contains(where: { $0.category == .holiday || $0.isBlocking })
+    }
+}
+
+struct PlannerMonthGrid: Identifiable {
+    var id: String { "\(year)-\(month)" }
+    let year: Int
+    let month: Int
+    let monthName: String
+    let weeks: [[PlannerMonthDay]]
+    let totalSessionsCount: Int
 }
 
 enum PlannerDensity: String, CaseIterable, Identifiable {
@@ -303,7 +335,9 @@ struct PlannerWeekCellEntry: Identifiable, Hashable {
     enum Kind: Hashable {
         case session
         case scheduledSlot
+        case blockedSlot
     }
+
 
     let id: String
     let kind: Kind
@@ -568,6 +602,7 @@ final class PlannerScheduleStore: ObservableObject {
             teacherScheduleSlots = (try? await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)) ?? []
             weeklySlots = bridge.plannerWeeklySlots(classId: nil)
             evaluationPeriods = (try? await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)) ?? []
+            scheduleError = ""
             forecastRows = (try? await bridge.plannerForecast(scheduleId: schedule.id, classId: nil)) ?? []
             return scheduleFormGroupId ?? groups.first?.id
         } catch {
@@ -619,6 +654,47 @@ final class PlannerComposerStore: ObservableObject {
     }
 }
 
+enum PlannerMilestoneCategory: String, Hashable, CaseIterable {
+    case holiday = "Festivo"
+    case trip = "Salida / Viaje"
+    case milestone = "Hito de centro"
+    case evaluation = "Evaluación"
+    case exam = "Exámenes"
+
+    var iconName: String {
+        switch self {
+        case .holiday: return "flag.fill"
+        case .trip: return "bus.fill"
+        case .milestone: return "calendar.badge.clock"
+        case .evaluation: return "chart.bar.doc.horizontal.fill"
+        case .exam: return "pencil.and.ruler.fill"
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .holiday: return Color.red
+        case .trip: return Color.blue
+        case .milestone: return Color.orange
+        case .evaluation: return Color.purple
+        case .exam: return Color.indigo
+        }
+    }
+}
+
+
+struct PlannerDayMilestone: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let subtitle: String?
+    let category: PlannerMilestoneCategory
+    let dayOfWeek: Int
+    let dateIso: String
+    let classId: Int64?
+    let className: String?
+    let isBlocking: Bool
+}
+
 /// Aísla el estado que pinta el grid semanal (PlannerWeekMiniatureGrid/Layout/DetailPane)
 /// en su propio ObservableObject para que escribir en el buscador u otros campos del
 /// facade no invalide esas vistas: solo observan este store, no PlannerWorkspaceViewModel.
@@ -629,8 +705,16 @@ final class PlannerWeekBoardStore: ObservableObject {
     @Published var visibleSlots: [PlannerVisibleSlot] = []
     @Published var timeSlots: [TimeSlotConfig] = []
     @Published var holidayDays: Set<Int> = []
+    @Published var dayMilestones: [Int: [PlannerDayMilestone]] = [:]
     @Published var weekRenderModel: PlannerWeekRenderModel = .empty
+
+    var weekMilestones: [PlannerDayMilestone] {
+        dayMilestones.values.flatMap { $0 }.sorted { lhs, rhs in
+            lhs.dayOfWeek < rhs.dayOfWeek
+        }
+    }
 }
+
 
 /// Rango temporal del Resumen/informe: semana en curso, mes natural o una
 /// evaluación completa (usa los periodos ya configurados por el docente).
@@ -658,3 +742,100 @@ struct PlannerRangeData {
         weeks: []
     )
 }
+
+// MARK: - Tablero de Encaje de la Evaluación (Term Session Board)
+
+enum TermSlotKind: Equatable {
+    case holiday(name: String)
+    case schoolEvent(title: String)
+    case occupied(session: PlanningSession)
+    case free
+    case preview(sessionNumber: Int, title: String, objective: String, hasEvaluation: Bool, planId: Int64?)
+}
+
+struct TermClassSlot: Identifiable, Equatable {
+    let id: String
+    let date: Date
+    let dateIso: String
+    let dayOfWeek: Int
+    let period: Int
+    let startTime: String
+    let endTime: String
+    let teacherScheduleSlotId: Int64?
+    let lessonIndex: Int? // Número de clase lectiva (1, 2, 3...)
+    var kind: TermSlotKind
+    let isAfterEvaluationDeadline: Bool
+
+    init(
+        id: String,
+        date: Date,
+        dateIso: String,
+        dayOfWeek: Int,
+        period: Int,
+        startTime: String,
+        endTime: String,
+        teacherScheduleSlotId: Int64?,
+        lessonIndex: Int?,
+        kind: TermSlotKind,
+        isAfterEvaluationDeadline: Bool
+    ) {
+        self.id = id
+        self.date = date
+        self.dateIso = dateIso
+        self.dayOfWeek = dayOfWeek
+        self.period = period
+        self.startTime = startTime
+        self.endTime = endTime
+        self.teacherScheduleSlotId = teacherScheduleSlotId
+        self.lessonIndex = lessonIndex
+        self.kind = kind
+        self.isAfterEvaluationDeadline = isAfterEvaluationDeadline
+    }
+}
+
+struct TermCapacityMetrics: Equatable {
+    let totalLectivas: Int
+    let totalFestivos: Int
+    let totalOcupadas: Int
+    let totalLibres: Int
+    let evaluationPeriodName: String
+    let startDate: Date
+    let endDate: Date
+    let deadlineDate: Date?
+    let simulationActive: Bool
+    let simulationSituationTitle: String?
+    let simulationSessionCount: Int
+    let simulationOverflowCount: Int
+    let simulationRemainingFreeCount: Int
+
+    public init(
+        totalLectivas: Int,
+        totalFestivos: Int,
+        totalOcupadas: Int,
+        totalLibres: Int,
+        evaluationPeriodName: String,
+        startDate: Date,
+        endDate: Date,
+        deadlineDate: Date? = nil,
+        simulationActive: Bool = false,
+        simulationSituationTitle: String? = nil,
+        simulationSessionCount: Int = 0,
+        simulationOverflowCount: Int = 0,
+        simulationRemainingFreeCount: Int = 0
+    ) {
+        self.totalLectivas = totalLectivas
+        self.totalFestivos = totalFestivos
+        self.totalOcupadas = totalOcupadas
+        self.totalLibres = totalLibres
+        self.evaluationPeriodName = evaluationPeriodName
+        self.startDate = startDate
+        self.endDate = endDate
+        self.deadlineDate = deadlineDate
+        self.simulationActive = simulationActive
+        self.simulationSituationTitle = simulationSituationTitle
+        self.simulationSessionCount = simulationSessionCount
+        self.simulationOverflowCount = simulationOverflowCount
+        self.simulationRemainingFreeCount = simulationRemainingFreeCount
+    }
+}
+

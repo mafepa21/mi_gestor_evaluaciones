@@ -990,46 +990,47 @@ struct PESessionsWorkspaceView: View {
     }
 }
 
-/// Aísla el timer de 1s del stat "Activa" en su propia vista para que solo
-/// esta pequeña subvista se reevalúe cada segundo, en vez de forzar el
-/// re-render completo de `PESessionsWorkspaceView` (lista + panel de detalle).
+/// Aísla el cálculo del tiempo transcurrido en el RenderServer mediante `Text(style: .timer)`
+/// nativo de SwiftUI, eliminando los temporizadores manuales a 1 Hz y logrando 0% de uso de CPU.
 private struct PEActiveDurationStat: View {
     let timerStart: Date
-    @State private var now = Date()
-
-    private var activeDurationText: String {
-        let interval = Int(now.timeIntervalSince(timerStart))
-        let minutes = interval / 60
-        let seconds = interval % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
 
     var body: some View {
-        WorkspaceCompactStat(title: "Activa", value: activeDurationText, tint: .orange)
-            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
-                now = tick
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Activa")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            Text(timerStart, style: .timer)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
+        )
     }
 }
 
-/// Misma idea que `PEActiveDurationStat`, para el "Temporizador" del panel de
-/// detalle de una sesión EF activa.
+/// Temporizador nativo por hardware para el panel de detalle de una sesión EF activa.
 private struct PEActiveDurationMetric: View {
     let timerStart: Date
-    @State private var now = Date()
-
-    private var activeDurationText: String {
-        let interval = Int(now.timeIntervalSince(timerStart))
-        let minutes = interval / 60
-        let seconds = interval % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
 
     var body: some View {
-        WorkspaceMetricCard(title: "Temporizador", value: activeDurationText, systemImage: "timer")
-            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
-                now = tick
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Temporizador", systemImage: "timer")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            Text(timerStart, style: .timer)
+                .font(.system(size: 28, weight: .black, design: .rounded))
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

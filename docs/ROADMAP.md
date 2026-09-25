@@ -23,18 +23,24 @@ Estado: casi cerrada.
 Prioridad: alta.
 
 - Cuaderno: carga rapida, grid estable, columnas ocultas seguras, medias explicables y categorias claras.
+  Avance Fase 1 (2026-09-23): el filtro vacío conserva cabeceras; el hover de Mac ya no invalida los 3 paneles; el cursor de resize no se queda pegado; el drag numérico queda solo en iOS.
+  Avance: pintar el grid lee la nota de la fila ya cargada (`persistedCells` / `persistedGrades`) y no llama a `cellText`, `numericGradeText` ni `cellAnnotation` por celda. El puente queda para guardar.
   Avance: el grid SwiftUI reduce coste de scroll y actualizacion con filas lazy, fingerprints precomputados por panel y celdas desacopladas del bridge global mediante snapshots/actions.
   Avance P0: la carga de Situaciones de aprendizaje del Cuaderno usa una lectura bulk de enlaces de grupo y evita una consulta por situación.
   Avance: Media explicable con desglose de columnas incluidas, pendientes, exclusiones y aportaciones ponderadas ya integrada en KMP y SwiftUI.
   Avance: pruebas físicas separan dato bruto (`Marca`/`Nivel`) y nota baremada (`Nota`) para evitar contaminar la Media.
   Avance: inspector convertido en ficha rápida del alumno con Media, pendientes, observaciones, rúbricas y acciones.
   Avance: inspector incorpora Inteligencia Educativa local estructurada para resumir fortalezas, riesgos, recomendaciones y lectura docente de la media sin recalcular los datos KMP.
+  Avance: en macOS, una columna de notas se rellena con el teclado: flechas para moverse, número para sustituir la nota, Esc para recuperar el valor anterior. El teclado táctil del iPad no cambia.
+  Avance: Mayús+clic marca un rango en una columna. Pegar varias líneas o rellenar ese rango se deshace de una sola vez.
+  Avance: las notas sueltas ya no se pintan de rojo, ámbar o verde. El color de banda, si se enciende, queda solo en la Media.
 - Rubricas: evaluacion fiable, integracion con cuaderno e informes.
   Pendiente: los quizzes no se autocorrigen. `QuizQuestionDraft` importa pregunta y opciones pero no la respuesta correcta, y `saveResponses` solo deriva nota para la rejilla de observacion 1-4 y la checklist proporcional. Faltan clave de respuestas, contrato de autoria en el DOCX, puntuacion por pregunta, versionado de la clave y derivacion local verificable. Detalle en `docs/importacion_documentos_sa.md`.
 - Asistencia: flujo diario rapido y consistente.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
   Avance: registro y seguimiento de medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, CV) en la ficha de alumno de iOS/iPadOS y macOS, con badge en el Cuaderno y aviso determinista de revision anual, sin IA generativa ni contenido clinico persistido. Verificado con builds reales macOS e iOS Simulator (BUILD SUCCEEDED en ambos).
 - Planificacion: sesiones, situaciones de aprendizaje y continuidad docente.
+  Avance: la secuenciación de sesiones usa un contrato semanal `LONG BLOCK`/`SHORT BLOCK` con actividades CLIL estructuradas, preview ejecutable y asignación automática a franjas consecutivas o simples según la duración real del grupo.
   Avance P0: Situaciones, Secuencia y Planificador cargan enlaces, versiones y planes mediante lecturas bulk; el enriquecimiento resuelve las relaciones en memoria y evita consultas N+1.
   Avance: Planificación inicia su rediseño iPad/macOS con cuatro secciones claras (Semana, Día, Secuencia, Resumen), tab bar flotante en iOS/iPadOS y macOS sin inspector lateral invasivo.
   Avance: Semana de Planificación en iOS/iPadOS usa miniatura semafórica de 200pt con detalle contextual por sesión, franja o día, reduciendo densidad visual sin tocar lógica KMP.
@@ -102,6 +108,7 @@ Prioridad: media-alta.
 - Multi-asignatura: relación real grupo-asignatura con catálogo visible y presets aplicables por materia; siguiente paso, usarla en filtros y onboarding.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
+  Avance: el sync incremental de sesiones lleva instrumentos, franja y diario. Las sesiones nuevas del escritorio se guardan en la misma tabla que el iPad. Decisión en `kmp/docs/architecture/ADR-2026-09-24-sync-sesiones-diario-franja.md`.
   Avance: entregas del alumnado vía web multi-grupo. El Mac mantiene la autoridad de claves, alias, mapas y ledger; la bandeja lista todos los formularios, publica con revisión guiada, permite seleccionar varias tareas y revocarlas, archivarlas o restaurarlas en lote, y reparte los enlaces por correo a partir de la ficha del alumno, de uno en uno o a todo el grupo automatizando Mail (borradores o envío, con confirmación y por tandas). También enruta lotes mixtos por `formInstanceId`: la previsualización separa válidos, asignaciones manuales, conflictos, inválidos y ya importados; la escritura pasa por `saveResponses` y las respuestas resultantes llegan al Cuaderno iPad mediante SyncLAN. Las tablas privadas `web_*` siguen fuera de SyncLAN. Diseño y decisión en `kmp/docs/architecture/ADR-2026-08-01-entregas-web-centro-mac.md`.
   Pendiente: transporte en la nube de archivos originales, QA manual extremo a extremo Mac → lote mixto → SyncLAN → Cuaderno iPad, y prueba real del reparto masivo contra Mail (permiso de automatización y envío efectivo a un grupo).
   Deuda explícita: la revocación local no puede cambiar un manifiesto público ya firmado y desplegado; para bloqueo remoto inmediato hace falta retirar/republicar el manifiesto o añadir un registro de revocación consultable por la web.

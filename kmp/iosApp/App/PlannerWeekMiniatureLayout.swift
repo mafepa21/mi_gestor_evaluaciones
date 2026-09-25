@@ -3,7 +3,7 @@ import MiGestorKit
 
 struct PlannerWeekMiniatureLayout: View {
     @ObservedObject var weekBoard: PlannerWeekBoardStore
-    let vm: PlannerWorkspaceViewModel
+    @ObservedObject var vm: PlannerWorkspaceViewModel
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
@@ -18,7 +18,7 @@ struct PlannerWeekMiniatureLayout: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
-    @State private var isDetailPaneVisible = true
+    @AppStorage("planner_week_detail_pane_visible") private var isDetailPaneVisible = true
 
     private var isRegularWidth: Bool {
         #if os(iOS)
@@ -41,35 +41,27 @@ struct PlannerWeekMiniatureLayout: View {
     /// iPad apaisado y Mac: grid a la izquierda, detalle como panel lateral
     /// persistente (estilo inspector) para poder ver ambos a la vez.
     private var regularLayout: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text("Semana")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                detailPaneToggle
-            }
-
-            HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 16) {
+            ScrollView(.vertical) {
                 grid
-                    .frame(height: gridHeight)
                     .padding(16)
-                    .plannerGlassPanel(.content, cornerRadius: 24)
-                    .frame(maxWidth: .infinity, alignment: .top)
+            }
+            .plannerGlassPanel(.content, cornerRadius: 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-                if isDetailPaneVisible {
-                    ScrollView(.vertical) {
-                        detailPane
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                    .frame(width: 400)
-                    .plannerGlassPanel(.content, cornerRadius: 24)
+            if isDetailPaneVisible {
+                ScrollView(.vertical) {
+                    detailPane
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+                .frame(width: 400)
+                .frame(maxHeight: .infinity)
+                .plannerGlassPanel(.content, cornerRadius: 24)
             }
         }
         .padding(.horizontal, EvaluationDesign.screenPadding)
-        .padding(.top, 8)
-        .padding(.bottom, 24)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
     }
 
     private var detailPaneToggle: some View {
@@ -94,7 +86,6 @@ struct PlannerWeekMiniatureLayout: View {
         ScrollView(.vertical) {
             VStack(spacing: 16) {
                 grid
-                    .frame(height: gridHeight)
                     .padding(16)
                     .plannerGlassPanel(.content, cornerRadius: 24)
                     .padding(.horizontal, EvaluationDesign.screenPadding)
@@ -109,20 +100,44 @@ struct PlannerWeekMiniatureLayout: View {
 
     @ViewBuilder
     private var grid: some View {
-        if vm.effectiveScheduleSlots.isEmpty {
+        if vm.teacherSchedule == nil && vm.effectiveScheduleSlots.isEmpty && vm.sessions.isEmpty && vm.evaluationPeriods.isEmpty {
             emptyScheduleState
         } else {
-            PlannerWeekMiniatureGrid(
-                weekBoard: weekBoard,
-                vm: vm,
-                selectedCell: $selectedCell,
-                selectedDay: $selectedDay,
-                onOpenSession: onOpenSession,
-                onOpenDiary: onOpenDiary,
-                onDropSession: onDropSession
-            )
+            VStack(spacing: 8) {
+                if vm.effectiveScheduleSlots.isEmpty && vm.teacherSchedule == nil {
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundStyle(EvaluationDesign.accent)
+                        Text("Calendario configurado. Añade tus franjas lectivas para organizar las sesiones en tus horas habituales.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if let onOpenSettings {
+                            Button("Añadir franjas") { onOpenSettings() }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+
+                PlannerWeekMiniatureGrid(
+                    weekBoard: weekBoard,
+                    vm: vm,
+                    selectedCell: $selectedCell,
+                    selectedDay: $selectedDay,
+                    onOpenSession: onOpenSession,
+                    onOpenDiary: onOpenDiary,
+                    onDropSession: onDropSession
+                )
+                .frame(height: gridHeight)
+            }
         }
     }
+
+
 
     /// Sin horario configurado, un grid vacío no dice nada útil. Una única
     /// tarea obvia ("Configurar mi horario") en vez de una rejilla en blanco.
@@ -164,13 +179,16 @@ struct PlannerWeekMiniatureLayout: View {
         )
     }
 
+    /// Misma altura que `headerHeight` de `PlannerWeekMiniatureGrid`.
+    private let gridHeaderHeight: CGFloat = 46
+
     private var gridHeight: CGFloat {
         guard !vm.effectiveScheduleSlots.isEmpty else { return 280 }
         let slotsCount = weekBoard.weekRenderModel.visibleSlots.count
-        guard slotsCount > 0 else { return 40 }
+        guard slotsCount > 0 else { return gridHeaderHeight }
         let rowHeight: CGFloat = vm.density == .compact ? 44 : 56
         let spacing: CGFloat = 4
-        return 40 + CGFloat(slotsCount) * (rowHeight + spacing) + spacing
+        return gridHeaderHeight + CGFloat(slotsCount) * (rowHeight + spacing) + spacing
     }
 }
 

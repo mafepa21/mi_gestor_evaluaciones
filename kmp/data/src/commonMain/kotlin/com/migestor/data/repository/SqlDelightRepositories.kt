@@ -2643,6 +2643,10 @@ class CalendarRepositorySqlDelight(
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
+
+    override suspend fun deleteEvent(id: Long): Unit = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteEvent(id)
+    }
 }
 
 class ConfigurationTemplateRepositorySqlDelight(
@@ -2977,7 +2981,26 @@ class SyncTombstoneRepositorySqlDelight(
     suspend fun clearTombstone(entity: String, entityId: String) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteSyncTombstone(entity, entityId)
     }
+
+    /** Avisos guardados, para volver a enviar los borrados de este Mac tras un reinicio. */
+    suspend fun listTombstones(): List<SyncTombstoneRecord> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllSyncTombstones().executeAsList().map { row ->
+            SyncTombstoneRecord(
+                entity = row.entity,
+                entityId = row.entity_id,
+                deletedAtEpochMs = row.deleted_at_epoch_ms,
+                deviceId = row.device_id,
+            )
+        }
+    }
 }
+
+data class SyncTombstoneRecord(
+    val entity: String,
+    val entityId: String,
+    val deletedAtEpochMs: Long,
+    val deviceId: String?,
+)
 
 private fun buildRubrics(
     rubrics: List<Rubric>,

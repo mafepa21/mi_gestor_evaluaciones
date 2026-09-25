@@ -413,6 +413,16 @@ extension NotebookModuleView {
                         .contentShape(Rectangle())
                         .contextMenu {
                             Button {
+                                openStudentProfile360(
+                                    studentId: item.student.id,
+                                    studentName: "\(item.student.firstName) \(item.student.lastName)",
+                                    data: data
+                                )
+                            } label: {
+                                Label("Ficha 360º del alumno…", systemImage: "person.text.rectangle.fill")
+                            }
+
+                            Button {
                                 Task { await toggleStudentInjuryStatus(item.student) }
                             } label: {
                                 Label(
@@ -424,7 +434,7 @@ extension NotebookModuleView {
                             Button {
                                 openInspectorForStudent(item.student.id, data: data)
                             } label: {
-                                Label("Abrir ficha", systemImage: "person.text.rectangle")
+                                Label("Inspector lateral", systemImage: "sidebar.trailing")
                             }
                         }
                     }

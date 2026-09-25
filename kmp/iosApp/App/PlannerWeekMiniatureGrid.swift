@@ -16,7 +16,7 @@ enum PlannerSessionDragPayload {
 
 struct PlannerWeekMiniatureGrid: View {
     @ObservedObject var weekBoard: PlannerWeekBoardStore
-    let vm: PlannerWorkspaceViewModel
+    @ObservedObject var vm: PlannerWorkspaceViewModel
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
@@ -25,7 +25,7 @@ struct PlannerWeekMiniatureGrid: View {
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     private let timeAxisWidth: CGFloat = 72
-    private let headerHeight: CGFloat = 40
+    private let headerHeight: CGFloat = 46
     private let gridSpacing: CGFloat = 4
 
     var body: some View {
@@ -48,6 +48,7 @@ struct PlannerWeekMiniatureGrid: View {
 
                     ForEach(days, id: \.self) { day in
                         let isToday = day == todayDayIndex
+                        let dayMilestones = weekBoard.dayMilestones[day] ?? []
                         Button {
                             withAnimation(uiFeatureFlags.interactionAnimation) {
                                 selectedDay = day
@@ -58,10 +59,10 @@ struct PlannerWeekMiniatureGrid: View {
                                 HStack(spacing: 4) {
                                     Text(vm.dayLabel(for: day))
                                         .font(.caption.weight(.bold))
-                                    if weekBoard.holidayDays.contains(day) {
-                                        Text("· Festivo")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundStyle(Color.red.opacity(0.8))
+                                    if let dateStr = dateLabel(for: day), !dateStr.isEmpty {
+                                        Text(dateStr)
+                                            .font(.system(size: 9, weight: .semibold))
+                                            .foregroundStyle(selectedDay == day ? Color.white.opacity(0.8) : .secondary)
                                     }
                                     if isToday {
                                         Circle()
@@ -70,10 +71,26 @@ struct PlannerWeekMiniatureGrid: View {
                                     }
                                 }
                                 .foregroundStyle(selectedDay == day ? Color.white : Color.primary)
-                                if let dateStr = dateLabel(for: day), !dateStr.isEmpty {
-                                    Text(dateStr)
-                                        .font(.system(size: 9, weight: .semibold))
-                                        .foregroundStyle(selectedDay == day ? Color.white.opacity(0.8) : .secondary)
+
+                                if let first = dayMilestones.first {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: first.category.iconName)
+                                            .font(.system(size: 7, weight: .bold))
+                                        Text(first.title)
+                                            .font(.system(size: 8, weight: .bold))
+                                            .lineLimit(1)
+                                    }
+                                    .foregroundStyle(selectedDay == day ? Color.white : first.category.accentColor)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(
+                                        Capsule()
+                                            .fill(selectedDay == day ? Color.white.opacity(0.2) : first.category.accentColor.opacity(0.12))
+                                    )
+                                } else if weekBoard.holidayDays.contains(day) {
+                                    Text("· Festivo")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(selectedDay == day ? Color.white : Color.red.opacity(0.8))
                                 }
                             }
                             .lineLimit(1)
@@ -90,8 +107,20 @@ struct PlannerWeekMiniatureGrid: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Ver día \(vm.dayHeaderLabel(for: day))\(isToday ? ", hoy" : "")")
+                        .contextMenu {
+                            let isHoliday = weekBoard.holidayDays.contains(day)
+                            Button(role: isHoliday ? .destructive : nil) {
+                                Task { await vm.toggleHoliday(for: day) }
+                            } label: {
+                                Label(
+                                    isHoliday ? "Desmarcar como festivo (hacer lectivo)" : "Marcar como festivo / no lectivo",
+                                    systemImage: isHoliday ? "sun.max" : "beach.umbrella"
+                                )
+                            }
+                        }
                     }
                 }
+
 
                 ForEach(slots, id: \.period) { slot in
                     let isCurrentPeriod = slot.period == currentPeriodNumber
@@ -475,6 +504,9 @@ private struct PlannerWeekMiniatureCell: View {
     }
 
     private func compactSessionBadge(for entry: PlannerWeekCellEntry) -> String? {
+        if entry.kind == .blockedSlot {
+            return "EXAMEN"
+        }
         guard let badge = entry.sessionGlance?.badges.first(where: { $0.hasPrefix("Sesión ") }) else {
             return nil
         }
@@ -524,17 +556,23 @@ private struct PlannerWeekMiniatureCell: View {
 
     private func statusIcon(for entry: PlannerWeekCellEntry) -> String {
         if entry.kind == .scheduledSlot { return "plus" }
+        if entry.kind == .blockedSlot { return "lock.fill" }
         return vm.sessionStateIcon(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
     }
 
     private func statusTint(for entry: PlannerWeekCellEntry) -> Color {
         if entry.kind == .scheduledSlot { return IOSAppStyle.warning }
+        if entry.kind == .blockedSlot { return Color.indigo }
         return vm.sessionStateTint(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
     }
 
     private var fillColor: Color {
         if isHoliday { return Color.red.opacity(0.08) }
         guard let entry = primaryEntry else { return Color.secondary.opacity(0.12) }
+        if entry.kind == .blockedSlot {
+            return Color.indigo.opacity(0.14)
+        }
         return groupTint(for: entry).opacity(entry.kind == .scheduledSlot ? 0.14 : 0.22)
     }
+
 }

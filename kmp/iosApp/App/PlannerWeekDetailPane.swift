@@ -61,17 +61,56 @@ struct PlannerWeekDetailPane: View {
     @ViewBuilder
     private func dayDetail(for day: Int) -> some View {
         let entries = entriesForDay(day)
+        let dayMilestones = weekBoard.dayMilestones[day] ?? []
+
         VStack(alignment: .leading, spacing: 16) {
             detailHeader(
                 title: vm.dayHeaderLabel(for: day),
-                subtitle: entries.isEmpty ? "Sin sesiones planificadas" : "\(entries.count) sesiones planificadas"
+                subtitle: entries.isEmpty ? (dayMilestones.isEmpty ? "Sin sesiones planificadas" : "Hitos activos") : "\(entries.count) sesiones planificadas"
             )
+
+            let isHoliday = weekBoard.holidayDays.contains(day)
+            HStack(spacing: 8) {
+                if isHoliday {
+                    Label("Día no lectivo / Festivo", systemImage: "beach.umbrella.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.red)
+                    Spacer()
+                    Button("Hacer lectivo") {
+                        Task { await vm.toggleHoliday(for: day) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                } else {
+                    Text("Día lectivo ordinario")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        Task { await vm.toggleHoliday(for: day) }
+                    } label: {
+                        Label("Marcar no lectivo", systemImage: "beach.umbrella")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isHoliday ? Color.red.opacity(0.08) : EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            if !dayMilestones.isEmpty {
+                PlannerDayMilestonesSection(milestones: dayMilestones)
+            }
 
             if entries.isEmpty {
                 PlannerEmptyState(
-                    title: "Día sin sesiones",
-                    systemImage: "calendar.badge.plus",
-                    message: "Selecciona una franja de la miniatura para crear una sesión."
+                    title: dayMilestones.isEmpty ? "Día sin sesiones" : "Sin clases planificadas",
+                    systemImage: dayMilestones.isEmpty ? "calendar.badge.plus" : "calendar.badge.checkmark",
+                    message: dayMilestones.isEmpty
+                        ? "Selecciona una franja de la miniatura para crear una sesión."
+                        : "Los hitos del día están reflejados arriba. Toca una franja de la miniatura si necesitas añadir una sesión lectiva."
                 )
             } else {
                 LazyVStack(alignment: .leading, spacing: 12) {
@@ -91,6 +130,7 @@ struct PlannerWeekDetailPane: View {
             }
         }
     }
+
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -210,13 +250,27 @@ private struct PlannerWeekDetailEntryCard: View {
                 PlannerStatusBadge(label: statusLabel, systemImage: statusIcon, tint: statusTint)
             }
 
-            Button {
-                onPrimaryAction()
-            } label: {
-                Label(primaryActionTitle, systemImage: primaryActionIcon)
-                    .frame(maxWidth: .infinity)
+            if entry.kind != .blockedSlot {
+                Button {
+                    onPrimaryAction()
+                } label: {
+                    Label(primaryActionTitle, systemImage: primaryActionIcon)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(Color.indigo)
+                    Text("Franja bloqueada por exámenes (no lectivo)")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
-            .buttonStyle(.borderedProminent)
         }
         .padding(16)
         .plannerGlassPanel(.content, cornerRadius: 12)
@@ -225,11 +279,13 @@ private struct PlannerWeekDetailEntryCard: View {
 
     private var statusLabel: String {
         if entry.kind == .scheduledSlot { return "Pendiente" }
+        if entry.kind == .blockedSlot { return "Bloqueado" }
         return vm.sessionStateLabel(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
     }
 
     private var statusIcon: String {
         if entry.kind == .scheduledSlot { return "plus.circle.fill" }
+        if entry.kind == .blockedSlot { return "lock.fill" }
         return vm.sessionStateIcon(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
     }
 
@@ -240,6 +296,7 @@ private struct PlannerWeekDetailEntryCard: View {
     private var primaryActionIcon: String {
         entry.kind == .scheduledSlot ? "plus" : "arrow.up.right"
     }
+
 
     private var entryTitle: String {
         let title = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -315,3 +372,58 @@ private struct PlannerWeekDayEntryRow: View {
         return vm.sessions.first(where: { $0.id == sessionId })
     }
 }
+
+struct PlannerDayMilestonesSection: View {
+    let milestones: [PlannerDayMilestone]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Hitos y salidas de este día")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+
+            ForEach(milestones) { milestone in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: milestone.category.iconName)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(milestone.category.accentColor)
+                        .frame(width: 24, height: 24)
+                        .background(milestone.category.accentColor.opacity(0.12), in: Circle())
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(milestone.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+
+                            if milestone.isBlocking {
+                                Text("No lectivo")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(Color.red)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(Color.red.opacity(0.12), in: Capsule())
+                            }
+                        }
+
+                        if let subtitle = milestone.subtitle, !subtitle.isEmpty {
+                            Text(subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let className = milestone.className {
+                            Text("Afecta a: \(className)")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(EvaluationDesign.accent)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(12)
+                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+    }
+}
+

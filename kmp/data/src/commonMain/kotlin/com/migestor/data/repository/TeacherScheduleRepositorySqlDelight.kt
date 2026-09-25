@@ -264,6 +264,22 @@ class TeacherScheduleRepositorySqlDelight(
 
             val classesById = classesRepository.listClasses().associateBy { it.id }
             val calendarEvents = calendarRepository.listEvents(classId = null)
+            val tz = TimeZone.currentSystemDefault()
+            val generalBlockedDates = mutableSetOf<LocalDate>()
+            val classBlockedDates = mutableMapOf<Long, MutableSet<LocalDate>>()
+
+            calendarEvents.forEach { event ->
+                if (isNonTeachingEvent(event.title, event.description)) {
+                    val eventDate = event.startAt.toLocalDateTime(tz).date
+                    val cId = event.classId
+                    if (cId == null) {
+                        generalBlockedDates.add(eventDate)
+                    } else {
+                        classBlockedDates.getOrPut(cId) { mutableSetOf() }.add(eventDate)
+                    }
+                }
+            }
+
             val sessionsByClass = plannerRepository.listSessionsInRange(
                 groupId = classId,
                 fromDate = scheduleStart,
@@ -283,7 +299,8 @@ class TeacherScheduleRepositorySqlDelight(
                                 start = periodStart,
                                 end = periodEnd,
                                 slot = slot,
-                                calendarEvents = calendarEvents
+                                generalBlockedDates = generalBlockedDates,
+                                classBlockedDates = classBlockedDates
                             )
                         }
                         val planned = sessionsByClass[schoolClassId].orEmpty().count { session ->
@@ -445,34 +462,27 @@ class TeacherScheduleRepositorySqlDelight(
         start: LocalDate,
         end: LocalDate,
         slot: TeacherScheduleSlot,
-        calendarEvents: List<com.migestor.shared.domain.CalendarEvent>
+        generalBlockedDates: Set<LocalDate>,
+        classBlockedDates: Map<Long, Set<LocalDate>>
     ): Int {
         var count = 0
         var cursor = start
+        val targetClassBlocked = classBlockedDates[slot.schoolClassId].orEmpty()
         while (cursor <= end) {
-            if (cursor.dayOfWeek.isoDayNumber == slot.dayOfWeek && !isBlockedDate(cursor, slot.schoolClassId, calendarEvents)) {
-                count += 1
+            if (cursor.dayOfWeek.isoDayNumber == slot.dayOfWeek) {
+                val isBlocked = generalBlockedDates.contains(cursor) || targetClassBlocked.contains(cursor)
+                if (!isBlocked) {
+                    count += 1
+                }
             }
             cursor = cursor.plus(1, DateTimeUnit.DAY)
         }
         return count
     }
 
-    private fun isBlockedDate(
-        date: LocalDate,
-        schoolClassId: Long,
-        calendarEvents: List<com.migestor.shared.domain.CalendarEvent>
-    ): Boolean {
-        return calendarEvents.any { event ->
-            val eventDate = event.startAt.toLocalDateTime(TimeZone.currentSystemDefault()).date
-            val matchesScope = event.classId == null || event.classId == schoolClassId
-            matchesScope && eventDate == date && isNonTeachingEvent(event.title, event.description)
-        }
-    }
-
     private fun isNonTeachingEvent(title: String, description: String?): Boolean {
         val haystack = listOf(title, description.orEmpty()).joinToString(" ").lowercase()
-        return listOf("festivo", "no lectivo", "vacaciones", "puente", "holiday").any { haystack.contains(it) }
+        return listOf("festivo", "no lectivo", "vacaciones", "puente", "holiday", "examen", "parcial", "global").any { haystack.contains(it) }
     }
 
     private fun isoWeekDate(year: Int, week: Int, dayOfWeek: Int): LocalDate? {

@@ -580,6 +580,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - La checklist de primeros pasos usa el dismiss nativo de SwiftUI antes de
   limpiar su ruta, para que "Cerrar primeros pasos", "Seguir luego" y
   "Abrir Hoy" cierren visualmente la sheet también en iPad.
+- El host del onboarding espera a que termine el dismiss de la sheet antes de
+  navegar a Hoy, Cursos o Situaciones, evitando carreras de transición al
+  salir de la activación en iPadOS.
 
 ### Verification
 
@@ -624,6 +627,11 @@ El formato sigue una variante practica de Keep a Changelog:
   "Seguir luego", `wait_for_ui` confirmó que la sheet desaparece y el dashboard
   queda visible. Al relanzar la app con la base vacía, la checklist reaparece
   directamente sin repetir la bienvenida, como exige el flujo de reentrada.
+- `xcodegen generate` y `./scripts/verify_apple_builds.sh` (2026-08-13,
+  repetido con acceso aprobado a caches y dependencias SwiftPM): macOS Native
+  e iOS Simulator compilados correctamente incluyendo el cierre diferido de
+  navegación de `OnboardingHost`; la primera ejecución quedó bloqueada por
+  DNS/permisos del sandbox al resolver paquetes.
 - Con horario de prueba, la tarjeta pasa a "Próxima clase" y muestra "Preparar
   cuaderno" como acción primaria y "Más acciones" como menú secundario.
 - QA funcional en macOS Native: horario de prueba con 3 ESO A validó "Próxima

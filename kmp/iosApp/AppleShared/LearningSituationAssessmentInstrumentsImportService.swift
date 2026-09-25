@@ -204,6 +204,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
         var currentHeading: ParsedInstrumentHeading?
         var pendingTables: [[[String]]] = []
         var pendingParagraphs: [String] = []
+        var firstTableParagraphIndex: Int? = nil
         var gradingFormula: String?
         // A4: una vez alcanzada la sección "Nota para quien importe" (metainstrucciones para
         // quien procese el documento, no para docentes/alumnado) se ignora el resto del
@@ -213,7 +214,12 @@ struct LearningSituationAssessmentInstrumentsImportService {
 
         func flushCurrent() {
             guard let heading = currentHeading else { return }
-            let (instrument, extraWarnings) = makeInstrument(from: heading, tables: pendingTables, paragraphs: pendingParagraphs)
+            let (instrument, extraWarnings) = makeInstrument(
+                from: heading,
+                tables: pendingTables,
+                paragraphs: pendingParagraphs,
+                firstTableParagraphIndex: firstTableParagraphIndex
+            )
             if let instrument {
                 instruments.append(instrument)
             } else {
@@ -222,6 +228,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
             warnings.append(contentsOf: extraWarnings)
             pendingTables = []
             pendingParagraphs = []
+            firstTableParagraphIndex = nil
         }
 
         for block in blocks {
@@ -250,6 +257,9 @@ struct LearningSituationAssessmentInstrumentsImportService {
                         currentHeading = heading
                     }
                 } else {
+                    if firstTableParagraphIndex == nil {
+                        firstTableParagraphIndex = pendingParagraphs.count
+                    }
                     pendingTables.append(rows)
                 }
             }
@@ -287,7 +297,12 @@ struct LearningSituationAssessmentInstrumentsImportService {
         try wordDocumentBlocks(from: data)
     }
 
-    private func makeInstrument(from heading: ParsedInstrumentHeading, tables: [[[String]]], paragraphs: [String]) -> (AssessmentInstrumentDraft?, [String]) {
+    private func makeInstrument(
+        from heading: ParsedInstrumentHeading,
+        tables: [[[String]]],
+        paragraphs: [String],
+        firstTableParagraphIndex: Int?
+    ) -> (AssessmentInstrumentDraft?, [String]) {
         let normalizedTitle = normalized(heading.title)
         let nonEmptyTables = tables
             .map { $0.map { row in row.map(clean) }.filter { row in row.contains { !$0.isEmpty } } }
@@ -297,11 +312,12 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let (checklistItems, consumedParagraphs1) = makeChecklistItemsCollectingConsumption(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
         let observationFields = makeObservationFields(kind: kind, tables: nonEmptyTables)
         // En un instrumento de autoevaluación/coevaluación la única tabla es la rúbrica: las
-        // preguntas de reflexión salen siempre de los párrafos, nunca de la tabla.
+        // preguntas de reflexión salen siempre de los párrafos tras la tabla, nunca de los previos.
         let (quizQuestions, consumedParagraphs2) = makeQuizQuestionsCollectingConsumption(
             kind: kind,
             tables: kind.isStudentAuthored ? [] : nonEmptyTables,
-            paragraphs: paragraphs
+            paragraphs: paragraphs,
+            firstTableParagraphIndex: firstTableParagraphIndex
         )
 
         // A7: si la rejilla tiene peso y ninguna de sus columnas trae ya una escala explícita
@@ -364,10 +380,14 @@ struct LearningSituationAssessmentInstrumentsImportService {
             }
             if kind.isStudentAuthored {
                 let weightText = heading.weightPercent.map(formatPercent) ?? "peso detectado"
-                parts.append(
-                    "Lo rellena el alumnado (\(weightText)): la nota es la media de los indicadores 1-4 de la rúbrica. "
-                    + "Las \(quizQuestions.count) preguntas abiertas no puntúan; requieren revisión del profesorado."
-                )
+                if quizQuestions.isEmpty {
+                    parts.append("Lo rellena el alumnado (\(weightText)): la nota es la media de los indicadores 1-4 de la rúbrica.")
+                } else {
+                    parts.append(
+                        "Lo rellena el alumnado (\(weightText)): la nota es la media de los indicadores 1-4 de la rúbrica. "
+                        + "Las \(quizQuestions.count) preguntas abiertas no puntúan; requieren revisión del profesorado."
+                    )
+                }
             }
             parts.append(contentsOf: narrativeNotes)
             noteText = parts.isEmpty ? nil : parts.joined(separator: "\n")
@@ -529,8 +549,40 @@ struct LearningSituationAssessmentInstrumentsImportService {
     }
 
     /// A5: variante de `makeQuizQuestions` que además informa qué párrafos se han consumido.
-    private func makeQuizQuestionsCollectingConsumption(kind: AssessmentInstrumentKind, tables: [[[String]]], paragraphs: [String]) -> ([QuizQuestionDraft], Set<Int>) {
+    private func makeQuizQuestionsCollectingConsumption(
+        kind: AssessmentInstrumentKind,
+        tables: [[[String]]],
+        paragraphs: [String],
+        firstTableParagraphIndex: Int?
+    ) -> ([QuizQuestionDraft], Set<Int>) {
         guard kind == .quizQuestions || kind.isStudentAuthored else { return ([], []) }
+
+        if kind.isStudentAuthored {
+            // En autoevaluación / coevaluación:
+            // 1. Las tablas son exclusivamente la rúbrica; no generan preguntas.
+            // 2. Solo los párrafos POSTERIORES a la tabla de rúbrica pueden ser preguntas de reflexión.
+            // 3. Los párrafos previos a la tabla son metadatos/notas docentes y nunca son preguntas.
+            guard let tableIndex = firstTableParagraphIndex else { return ([], []) }
+
+            var questions: [QuizQuestionDraft] = []
+            var consumed: Set<Int> = []
+            var insideOpenQuestionsSection = false
+
+            for index in tableIndex..<paragraphs.count {
+                let paragraph = paragraphs[index]
+                if isOpenQuestionSectionHeading(paragraph) {
+                    insideOpenQuestionsSection = true
+                    consumed.insert(index)
+                    continue
+                }
+                if let question = studentReflectionQuestion(from: paragraph, inOpenQuestionsSection: insideOpenQuestionsSection) {
+                    questions.append(question)
+                    consumed.insert(index)
+                }
+            }
+            return (questions, consumed)
+        }
+
         let tableQuestions = tables.flatMap { table -> [QuizQuestionDraft] in
             let rows = table.dropFirst().isEmpty ? table : Array(table.dropFirst())
             return rows.compactMap { row -> QuizQuestionDraft? in
@@ -549,22 +601,137 @@ struct LearningSituationAssessmentInstrumentsImportService {
         return (questions, consumed)
     }
 
+    private func studentReflectionQuestion(from paragraph: String, inOpenQuestionsSection: Bool) -> QuizQuestionDraft? {
+        guard !isTeacherMetadataParagraph(paragraph) else { return nil }
+        guard !isOpenQuestionSectionHeading(paragraph) else { return nil }
+
+        let hasQuestionMark = paragraph.contains("?") || paragraph.contains("¿")
+        let hasBlanks = paragraph.contains("___")
+        let isNumbered = paragraph.range(of: #"^\s*\d+[\.\)]\s+"#, options: .regularExpression) != nil
+
+        guard hasQuestionMark || hasBlanks || (inOpenQuestionsSection && isNumbered) else {
+            return nil
+        }
+
+        var text = paragraph
+            .replacingOccurrences(of: #"^\s*[\-\*\+•]?\s*\d+[\.\)]\s*"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        text = text.replacingOccurrences(of: #"_{3,}"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasSuffix("?:") {
+            text = String(text.dropLast())
+        }
+        guard !text.isEmpty else { return nil }
+        return QuizQuestionDraft(questionText: text, options: [])
+    }
+
+    private func isTeacherMetadataParagraph(_ paragraph: String) -> Bool {
+        let cleanText = paragraph
+            .replacingOccurrences(of: "*", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "#", with: "")
+            .replacingOccurrences(of: "`", with: "")
+        let stripped = cleanText
+            .replacingOccurrences(of: #"^[\s\-\+•\d\.\)]+"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let norm = normalized(stripped)
+
+        let metadataPrefixes = [
+            "momentos de recogida",
+            "momento de recogida",
+            "momentos de aplicacion",
+            "momento de aplicacion",
+            "momento de evaluacion",
+            "momentos de evaluacion",
+            "momento",
+            "momentos",
+            "criterios evaluados",
+            "criterio evaluado",
+            "criterio(s)",
+            "criterios",
+            "criterio",
+            "tipo de evaluacion",
+            "tipo de instrumento",
+            "tipo",
+            "tipologia",
+            "peso porcentual",
+            "peso",
+            "ponderacion",
+            "evidencia principal",
+            "evidencia",
+            "instrumento",
+            "agrupamiento",
+            "finalidad",
+            "procedimiento",
+            "instrucciones para el profesorado",
+            "instrucciones",
+            "temporalizacion",
+            "aplicacion",
+            "observaciones",
+            "registro",
+            "calificacion"
+        ]
+
+        for prefix in metadataPrefixes {
+            if norm.hasPrefix(prefix) {
+                let rest = norm.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
+                if rest.isEmpty || rest.hasPrefix(":") || rest.hasPrefix("-") || rest.hasPrefix("·") || rest.hasPrefix("(") {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private func isOpenQuestionSectionHeading(_ paragraph: String) -> Bool {
+        let cleanText = paragraph
+            .replacingOccurrences(of: "*", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "#", with: "")
+        let stripped = cleanText
+            .replacingOccurrences(of: #"^[\s\-\+•\d\.\)]+"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let norm = normalized(stripped)
+
+        let sectionKeywords = [
+            "preguntas de reflexion",
+            "pregunta de reflexion",
+            "preguntas abiertas",
+            "pregunta abierta",
+            "reflexion metacognitiva",
+            "reflexion del alumnado",
+            "reflexion personal",
+            "cuestionario de reflexion",
+            "autoevaluacion cualitativa"
+        ]
+        for kw in sectionKeywords {
+            if norm.hasPrefix(kw) {
+                return true
+            }
+        }
+        return false
+    }
+
     private func quizQuestion(from paragraph: String) -> QuizQuestionDraft? {
-        // Word numera estos párrafos vía su propio motor de listas (w:numPr): el texto
-        // extraído del XML no incluye el "1. " literal, así que el prefijo numerado por sí
-        // solo no basta para detectar todas las preguntas reales de una tabla/lista Word.
+        guard !isTeacherMetadataParagraph(paragraph) else { return nil }
+        guard !isOpenQuestionSectionHeading(paragraph) else { return nil }
+
         let isNumbered = paragraph.range(of: #"^\s*\d+[\.\)]\s+"#, options: .regularExpression) != nil
         let isTrueFalse = normalized(paragraph).hasPrefix("verdadero o falso") || normalized(paragraph).hasPrefix("true or false")
-        let looksLikeChoiceOrBlank = paragraph.contains(" / ") || paragraph.contains("___")
-        guard isNumbered || paragraph.contains("?") || isTrueFalse || looksLikeChoiceOrBlank else { return nil }
+        let hasQuestionMark = paragraph.contains("?") || paragraph.contains("¿")
+        let hasBlanks = paragraph.contains("___")
+        let slashOptions = optionsFromSlashList(paragraph)
+
+        guard isNumbered || hasQuestionMark || isTrueFalse || hasBlanks || slashOptions != nil else { return nil }
+
         var text = paragraph.replacingOccurrences(of: #"^\s*\d+[\.\)]\s*"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         var options: [String] = []
         if isTrueFalse {
             options = ["Verdadero", "Falso"]
-        } else if let slashOptions = optionsFromSlashList(text) {
-            options = slashOptions.options
-            text = slashOptions.questionText
+        } else if let validSlash = slashOptions ?? optionsFromSlashList(text) {
+            options = validSlash.options
+            text = validSlash.questionText
         }
         return QuizQuestionDraft(questionText: text, options: options)
     }
@@ -733,6 +900,8 @@ struct LearningSituationAssessmentInstrumentsImportService {
 
     private func parseHeading(_ text: String) -> ParsedInstrumentHeading? {
         let cleanText = clean(text)
+        guard !isTeacherMetadataParagraph(cleanText) else { return nil }
+        guard !isOpenQuestionSectionHeading(cleanText) else { return nil }
         let normalizedText = normalized(cleanText)
         let isExplicitUnnumberedHeading = looksLikeHeadingProse(cleanText) &&
             instrumentHeadingKeywords.contains { normalizedText.contains($0) }

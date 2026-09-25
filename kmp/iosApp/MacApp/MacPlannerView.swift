@@ -19,6 +19,9 @@ struct PlannerMacToolbarActions {
     let isSelectionModeActive: Bool
     let canCopySelection: Bool
     let shareText: String
+    let onPreviousMonth: () -> Void
+    let onNextMonth: () -> Void
+    let onTodayMonth: () -> Void
     let onPreviousWeek: () -> Void
     let onNextWeek: () -> Void
     let onToday: () -> Void
@@ -62,7 +65,8 @@ struct MacPlannerView: View {
             PlannerToolbar(
                 vm: vm,
                 onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
-                showsNavigationControls: false
+                showsNavigationControls: false,
+                onShowCalendarMilestones: { showingCalendarMilestones = true }
             )
 
             if let transientMessage, !transientMessage.isEmpty {
@@ -73,9 +77,12 @@ struct MacPlannerView: View {
             }
 
             plannerCenterContent
+                .id(vm.activeSection)
+                .transition(uiFeatureFlags.contentSwitchTransition)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .background(MacAppStyle.pageBackground)
+        .animation(uiFeatureFlags.interactionAnimation, value: vm.activeSection)
         .animation(uiFeatureFlags.interactionAnimation, value: transientMessage)
         .appOnChange(of: cascadeCoordinator.transientMessage) { newValue in
             guard let newValue else { return }
@@ -156,7 +163,7 @@ struct MacPlannerView: View {
                 cascadeCoordinator.confirmPendingMove(vm: vm)
             }
         } message: {
-            Text("La cascada incluye una o más sesiones ya impartidas. Se conservarán sus diarios y referencias.")
+            Text("La cascada incluye sesiones ya impartidas o canceladas. Si pulsas Mover, también se recolocan. Si cancelas, se quedan donde están.")
         }
         .task {
             publishToolbarActions()
@@ -188,6 +195,9 @@ struct MacPlannerView: View {
                 isSelectionModeActive: vm.selectionMode,
                 canCopySelection: !vm.selectedSessionIds.isEmpty,
                 shareText: vm.exportText(),
+                onPreviousMonth: { Task { await vm.previousMonth() } },
+                onNextMonth: { Task { await vm.nextMonth() } },
+                onTodayMonth: { Task { await vm.goToTodayMonth() } },
                 onPreviousWeek: { Task { await vm.previousWeek() } },
                 onNextWeek: { Task { await vm.nextWeek() } },
                 onToday: { Task { await vm.goToCurrentWeek() } },
@@ -263,6 +273,14 @@ struct MacPlannerView: View {
     @ViewBuilder
     private var plannerCenterContent: some View {
         switch vm.activeSection {
+        case .month:
+            PlannerMonthCalendarView(
+                vm: vm,
+                onOpenSession: openMacSession,
+                onOpenSettings: { showingScheduleSettings = true },
+                showsInlineNavigation: false,
+                showsInlineGroupFilter: false
+            )
         case .week:
             PlannerWeekMiniatureLayout(
                 weekBoard: vm.weekBoard,
@@ -289,6 +307,11 @@ struct MacPlannerView: View {
                 vm: vm,
                 onOpenSession: openMacSession,
                 showsInlineGroupFilter: false
+            )
+        case .term:
+            PlannerTermBoardView(
+                vm: vm,
+                onOpenSession: openMacSession
             )
         case .summary:
             PlannerSummaryDashboard(

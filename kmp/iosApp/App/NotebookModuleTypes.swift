@@ -63,6 +63,8 @@ struct NotebookTableRow: Identifiable {
     let student: Student
     let row: NotebookRow
     let groupName: String
+    var isFirstInGroup: Bool = false
+    var groupMemberCount: Int = 0
 
     var id: Int64 { student.id }
 }
@@ -201,6 +203,11 @@ enum NotebookSurfaceMode: String, CaseIterable, Identifiable {
         case .seatingPlan: return "square.grid.3x3.square"
         }
     }
+}
+
+enum NotebookMenuCopy {
+    static let allStudents = "Grupo completo"
+    static let clearSituationFilter = "Sin filtrar"
 }
 
 struct NotebookSeatPosition: Codable {
@@ -352,9 +359,19 @@ struct NotebookFormulaCellDisplay {
     let isError: Bool
 }
 
-struct NotebookCellUndoEntry {
+struct NotebookCellRange: Equatable {
+    let columnId: String
+    let anchorStudentId: Int64
+    let endStudentId: Int64
+}
+
+struct NotebookCellUndoChange {
     let studentId: Int64
     let column: NotebookColumnDefinition
     let previousValue: String
     let previousDisplayLabel: String?
+}
+
+struct NotebookCellUndoEntry {
+    let changes: [NotebookCellUndoChange]
 }

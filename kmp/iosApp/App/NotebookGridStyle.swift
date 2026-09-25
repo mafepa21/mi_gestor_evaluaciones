@@ -103,12 +103,8 @@ enum NotebookGridStyle {
     static let gradeMid = appAdaptiveBrandColor(light: (0.79, 0.53, 0.0), dark: (0.94, 0.67, 0.19))
     static let gradeHigh = appAdaptiveBrandColor(light: (0.12, 0.60, 0.32), dark: (0.28, 0.80, 0.50))
 
-    /// Clave de `@AppStorage` compartida por varias vistas (`NotebookModuleView`,
-    /// `NotebookStatefulEditableTableCell`): color semántico de nota + heat de
-    /// celda, con un único ajuste on/off desde el menú de acciones del cuaderno.
-    /// Cada vista declara su propio `@AppStorage` con esta misma clave en vez de
-    /// enhebrar un booleano por los inits — patrón estándar de SwiftUI para un
-    /// ajuste que cruza muchos tipos de celda sin acoplarlos entre sí.
+    /// Clave de `@AppStorage`. Apagado por defecto. Si se enciende, colorea
+    /// solo la Media, no cada nota del grid.
     static let semanticGradeColorDefaultsKey = "notebook.semanticGradeColorEnabled"
 
     // MARK: - Identidad de alumno (rediseño radical del grid)

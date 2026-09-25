@@ -605,8 +605,12 @@ struct LearningSituationAssessmentInstrumentsImportService {
             let header = table.first ?? []
             let scale = header.dropFirst().filter { !$0.isEmpty }.joined(separator: " / ")
             let fieldTitles = observationFieldTitles(from: table)
-            return fieldTitles.map { title in
-                ObservationFieldDraft(title: title, scaleLabel: scale.isEmpty ? nil : scale)
+            return fieldTitles.enumerated().map { index, title in
+                ObservationFieldDraft(
+                    title: title,
+                    scaleLabel: scale.isEmpty ? "1-4" : scale,
+                    key: "obs_i\(index)"
+                )
             }
         }
     }

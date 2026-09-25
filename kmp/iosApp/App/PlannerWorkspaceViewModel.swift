@@ -20,6 +20,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var classColorHexById: [Int64: String] = [:]
     @Published var sessions: [PlanningSession] = []
     @Published var filteredSessions: [PlanningSession] = []
+    @Published var monthViewDate: Date = Date()
+    @Published var monthSessions: [PlanningSession] = []
+    @Published var monthMilestones: [PlannerDayMilestone] = []
     @Published var sessionPlansById: [Int64: LearningSituationSessionPlan] = [:]
     @Published var sequenceGroupsEnriched: [PlannerSequenceGroup] = []
     @Published var isLoadingSequences = false
@@ -67,6 +70,15 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var scheduleGenerationSummary = ""
     @Published var isGeneratingScheduleSessions = false
     @Published var lastCascadeMove: SessionCascadeMoveResult?
+
+    // MARK: - Term Session Board
+    @Published var selectedTermPeriodId: Int64?
+    @Published var simulatedSituationId: Int64?
+    @Published var termBoardSlots: [TermClassSlot] = []
+    @Published var termCapacityMetrics: TermCapacityMetrics?
+    @Published var isTermBoardLoading = false
+    @Published var termBoardErrorMessage: String?
+    @Published var isApplyingSimulation = false
 
     weak var bridge: KmpBridge?
     var autosaveTask: Task<Void, Never>?
@@ -180,6 +192,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             await reloadScheduleOnly()
         }
         await reloadWeekSessions(keepSelection: keepSelection)
+        await reloadMonthData()
     }
 
     func reloadScheduleOnly() async {

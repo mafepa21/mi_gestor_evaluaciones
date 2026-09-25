@@ -3,6 +3,7 @@ import MiGestorKit
 
 struct RubricEvaluationView: View {
     @EnvironmentObject var bridge: KmpBridge
+    @State private var showingFamilyReportSheet: Bool = false
 
     private var state: RubricEvaluationUiState {
         bridge.rubricEvaluationState
@@ -45,6 +46,17 @@ struct RubricEvaluationView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                             closeRubric()
                         }
+                    }
+                    .sheet(isPresented: $showingFamilyReportSheet) {
+                        let selectedIds = Dictionary(uniqueKeysWithValues: state.selectedLevels.map { ($0.key.int64Value, $0.value.int64Value) })
+                        let resolvedClass = bridge.classes.first(where: { $0.id == (bridge.rubricEvaluationCoordinator.context?.classId ?? -1) })?.name ?? "Educación Física"
+                        RubricExportFamilyPDFSheet(
+                            rubricDetail: rubric,
+                            selectedLevelIds: selectedIds,
+                            studentName: state.studentName,
+                            className: resolvedClass,
+                            currentScore: selectedScore
+                        )
                     }
                 } else if let error = state.error {
                     VStack(spacing: 14) {
@@ -326,6 +338,22 @@ struct RubricEvaluationView: View {
                         }
 
                         RubricScoreRing(progress: progress, scoreOutOfTen: score)
+
+                        Button {
+                            showingFamilyReportSheet = true
+                        } label: {
+                            Image(systemName: "doc.text.badge.plus")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 40, height: 40)
+                                .background(
+                                    Circle().fill(Color.accentColor.opacity(0.12))
+                                )
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(NotebookScaleButtonStyle())
+                        .help("Exportar informe PDF para familias")
+                        .accessibilityLabel("Exportar informe PDF para familias")
                     }
                 }
             }

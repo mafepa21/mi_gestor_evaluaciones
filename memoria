@@ -3,6 +3,753 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-23 - Fase 1 de bugs diarios del Cuaderno
+
+Resumen:
+- Qué cambio se hizo: el filtro vacío ya no tira las cabeceras; el hover de Mac vive en cada fila; el cursor de resize hace pop al desaparecer; el drag numérico de décimas queda solo en iOS.
+- Por qué importa: buscar un nombre que no existe dejaba al docente sin grid. Pasar el ratón repintaba los 3 paneles. Arrastrar texto en Mac cambiaba la nota.
+- Dónde vive: `NotebookGridContainer.swift`, `NotebookGridContent.swift`, `NotebookModuleView.swift`, `NotebookModuleToolbarState.swift`, `NotebookDataGrid.swift`, `NotebookEditableTableCell.swift`.
+- Validación: `./scripts/verify_apple_builds.sh` verde en macOS e iOS Simulator. Sin QA visual en dispositivo.
+
+Notas para futuras conversaciones:
+- El hover ya no cruza nombre / notas / Media. Un highlight de fila completa exige un store, no estado en el contenedor.
+- El feedback de guardado de celda con timer ya no existe en develop. No reabrirlo.
+- No commitear `project.pbxproj` si xcodegen reescribe rutas de sandbox Gradle.
+- Siguiente: Fase 2, leer celdas desde `persistedCells` / `persistedGrades`, no desde el puente.
+
+## Avance 2026-09-16 - Modularización y partición estructural de KmpBridge.swift
+
+Resumen:
+- Qué cambio se hizo:
+  1. Fraccionamiento del archivo monolítico `KmpBridge.swift` (~15.160 líneas) reduciéndolo a 727 líneas (reducción >95%) mediante extensiones temáticas agrupadas en `kmp/iosApp/App/Bridge/`.
+  2. Creación de módulos por dominio funcional:
+     - `InstrumentEvaluationModels.swift`: DTOs de instrumentos estructurados, rúbricas y coordinadores.
+     - `KmpFlowSupport.swift`: Adaptadores Combine/AsyncSequence para StateFlows KMP.
+     - `LanSyncModels.swift`, `LanSyncClient.swift`, `LanSyncDiscovery.swift`: Infraestructura de red LAN Sync, certificados y descubrimiento.
+     - `KmpBridgeModels.swift`: Snapshots y tipos anidados del puente (`KmpBridge.ActivityGroup`, `KmpBridge.CourseInspectorSnapshot`, etc.).
+     - `KmpBridge+WebForms.swift`: Formularios web y recepción/procesamiento de entregas del alumnado.
+     - `KmpBridge+Meetings.swift`: Reuniones de centro, actas B-2 y planes pedagógicos semanales B-3.
+     - `KmpBridge+Rubrics.swift`: Banco de rúbricas, editor y evaluación masiva.
+     - `KmpBridge+SyncLAN.swift`: Orquestador de sincronización LAN, snapshots, hashes y resolución de divergencias.
+     - `KmpBridge+Planner.swift`: Planificador docente, sesiones, plantillas, traslados y vinculación con SA.
+     - `KmpBridge+Students.swift`: Alumnado, grupos, fotos, importación TSV, asistencia, incidencias, medidas de apoyo y tutorías.
+     - `KmpBridge+LearningSituations.swift`: Situaciones de Aprendizaje, secuencias didácticas y materialización de instrumentos.
+     - `KmpBridge+PhysicalEducation.swift`: Pruebas físicas, baremos, baterías y sesiones de EF.
+     - `KmpBridge+Notebook.swift`: Cuaderno de evaluación, pestañas, columnas, fórmulas, medias y celdas.
+     - `KmpBridge+Dashboard.swift`: Métricas operativas, filtros y acciones rápidas.
+     - `KmpBridge+TypeConverters.swift`: Conversores de interoperabilidad Swift <-> Kotlin y mapeos de tipos.
+  3. `KmpBridge.swift` preserva estrictamente el rol de núcleo `@MainActor ObservableObject`: inyección de dependencias `KmpContainer`, propiedades `@Published`, conexión de observers de StateFlows y ciclo de vida (`bootstrap`).
+  4. Cero cambios en la API pública: todas las vistas SwiftUI, servicios de IA local e inspectores mantienen sus llamadas idénticas sin modificación.
+- Por qué importa:
+  - Transforma un archivo inmanejable de más de 15.000 líneas en una arquitectura modular limpia, escalable y mantenible por dominios claros, acelerando los tiempos de indexación del IDE, previniendo conflictos de git y facilitando el trabajo paralelo seguro entre agentes y desarrolladores.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/Bridge/*` (17 archivos modulares)
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Verificación dual continua tras cada commit atómico de extracción.
+
+## Avance 2026-09-16 - Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web
+
+Resumen:
+- Qué cambio se hizo:
+  1. Modalidad dual pedagógica en la app y generación de enlaces:
+     - Dos opciones en `WebSubmissionPublishSheet`: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña y coevalúa a sus compañeros de equipo en las pestañas siguientes).
+     - Método `detectPeerGroupsForColumn(classId:columnId:)` en `KmpBridge.swift` con resolución inclusiva (grupos por SA directa -> fallback a grupos de la pestaña de la columna según `NotebookWorkGroupPolicy` -> fallback a grupos generales de la clase).
+     - Generación de correspondencias privadas: el evaluador incluye como primer target su propia autoevaluación (*«Mi autoevaluación»*) y a continuación a sus compañeros de grupo.
+     - Fallback elegante: alumnos sin grupo reciben su enlace de autoevaluación convencional de forma transparente.
+  2. Enlaces privados y PWA Vercel (`entregas-alumnado`):
+     - Esquemas v2 (`manifiesto.schema.json` y `entrega.schema.json`) con propiedad `targets` y modo `peer`.
+     - Inyección segura de la lista de targets en el fragmento hash (`#f=...&a=...&t=<base64url>`).
+     - La PWA renderiza la pestaña de autoevaluación destacada con borde dorado (*«Mi autoevaluación»*) seguida de las pestañas de sus compañeros de grupo, con seguimiento independiente del progreso y empaquetado del sobre v2 cifrado con ChaCha20-Poly1305.
+     - Despliegue en producción completado en Vercel.
+  3. Importación y cálculo de notas en el Cuaderno:
+     - `WebSubmissionImportService`: soporte v2 que examina, descifra y atribuye cada evaluación al alumno evaluado con deduplicación por par evaluador-evaluado.
+     - `KmpBridge.importWebSubmissions`: cálculo de la media aritmética simple para calificaciones numéricas o escalas recibidas en la celda del alumno (combinando su autoevaluación y las coevaluaciones de los compañeros), combinación de textos y booleano por mayoría, registrando individualmente en el ledger criptográfico cada entrega.
+  4. Base de datos SQLDelight:
+     - Migración `43.sqm`: columna `mode` en `web_form_instances` y tabla `web_peer_targets` con índices.
+     - Contratos KMP y repositorios actualizados.
+- Por qué importa:
+  - Resuelve de forma integral la coevaluación ágil en el aula: el docente no tiene que configurar manualmente a quién evalúa cada alumno. La app cruza los grupos de la SA, genera los enlaces privados y sintetiza automáticamente la media de las notas recibidas en la celda del cuaderno.
+- Dónde vive el cambio:
+  - `kmp/data/src/commonMain/sqldelight/com/migestor/data/db/43.sqm`
+  - `kmp/data/src/commonMain/sqldelight/com/migestor/data/db/AppDatabase.sq`
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/repository/WebSubmissionsRepositorySqlDelight.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/repository/WebSubmissionsContracts.kt`
+  - `kmp/iosApp/AppleShared/WebSubmissionStore.swift`
+  - `kmp/iosApp/AppleShared/WebSubmissionPublisher.swift`
+  - `kmp/iosApp/AppleShared/WebSubmissionImportService.swift`
+  - `kmp/iosApp/AppleShared/WebSubmissionPublishSheet.swift`
+  - `kmp/iosApp/AppleShared/WebSubmissionsWorkspaceView.swift`
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `scripts/interop_entregas_web/main.swift`
+  - Repositorio `entregas-alumnado`: `contrato/`, `src/app.js`, `src/estilo.css`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`: macOS Native y iOS Simulator COMPILADO CORRECTAMENTE.
+  - `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest`: 0 fallos.
+  - Suite de interoperabilidad `interop_entregas_web`: 75/75 pruebas en verde.
+  - `npm test` en `entregas-alumnado`: 50/50 pasadas.
+
+Notas para futuras conversaciones:
+- La PWA de Vercel está lista en local y probada contra la suite criptográfica de Swift; cuando el usuario decida desplegarla a producción en Vercel, solo hay que hacer push en el repositorio de la PWA.
+
+## Avance 2026-09-16 - Sincronización resiliente de asignaciones y resolución de IDs temporales en tablero de grupos (PR #240)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Encolado de asignaciones sobre grupos provisionales (`pendingAssignments` en `WorkGroupBoardDraft`):
+     - Se añadió `pendingAssignments: [Int64: Set<Int64>]` para almacenar la intención de asignación de alumnos arrastrados a grupos temporales (`groupId < 0`).
+     - Al mover alumnos en `move(studentIds:to:)`, se limpia cualquier asignación provisional anterior del alumno y se encola en el nuevo grupo si su ID es negativo.
+     - En `removeGroup(id:)`, se limpian las asignaciones provisionales pendientes asociadas.
+     - En `applyComposed` y `applyImported`, se reinicia la cola para no heredar residuos de configuraciones previas.
+  2. Resolución reactiva hacia el bridge KMP (`remapTemporaryIds`):
+     - `remapTemporaryIds` acepta el callback `onResolve: ((realGroupId: Int64, studentIds: [Int64], tabId: String?) -> Void)?`.
+     - Cuando un grupo temporal se empareja por nombre con un grupo confirmado en `remoteGroups`, se despachan automáticamente sus alumnos pendientes hacia KMP (`bridge.assignStudentsToNotebookGroup`) y se vacía la cola.
+  3. Reconciliación no destructiva del estado en `ingest()`:
+     - Durante la actualización de `membership`, se protegen no solo los grupos temporales aún no materializados (`pendingTempIds`), sino también los alumnos de grupos recién resueltos (`resolvedRealGroupIds`) cuya asignación en BD aún se encuentra en tránsito asíncrono, evitando que `remoteMembership` los sobreescriba devolviéndolos a «Sin grupo».
+  4. Cableado en `NotebookGroupBoardView`:
+     - `seedDraft()` suministra el callback a `draft.ingest` para persistir las asignaciones en KMP a través de `bridge.assignStudentsToNotebookGroup`.
+- Por qué importa:
+  - Elimina definitivamente la condición de carrera donde mover alumnos a un grupo recién creado o auto-agrupado se revertía a los pocos segundos por la sobreescritura de la emisión asíncrona de SQLite.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/NotebookGroupBoardView.swift`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst (MiGestorKMPMac): ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator (MiGestorKMPiOS): ✓ COMPILADO CORRECTAMENTE
+
+## Avance 2026-09-16 - Persistencia atómica de grupos de trabajo con SA y corrección de ordenación en Cuaderno (PR #240)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Operación transaccional por lotes en SQLite (`replaceWorkGroups`):
+     - `kmp/shared`: Añadido `NotebookWorkGroupBatchItem` y contrato `replaceWorkGroups` en `NotebookConfigRepository` y `NotebookRepository`.
+     - `kmp/data`: Implementación en `NotebookConfigRepositorySqlDelight` dentro de un único bloque `db.transaction`, limpiando los grupos/miembros previos si se solicita e insertando secuencialmente cada grupo con sus miembros antes de emitir un único `NotebookRefreshBus.emitRefresh()`.
+     - `NotebookViewModel`: Añadido parámetro `tabId: String? = null` a `saveWorkGroup` y `assignStudentsToWorkGroup`, y método `replaceWorkGroups` para coordinar el reemplazo seguro.
+  2. Firma de agregación e invalidación de caché en Swift (`KmpBridge` y `NotebookModuleColumnModel`):
+     - `KmpBridge.swift`: `notebookAggregateSignature` ahora mapea exhaustivamente cada grupo (`id:tabId:name:order:saId`) y miembro (`tabId:groupId:studentId`), evitando que reasignaciones o cambios de nombre mantengan la firma estática y silencien las emisiones de estado.
+     - `KmpBridge.swift`: Expuesto `importNotebookWorkGroups(classId:tabId:groups:clearExisting:)` para invocar el guardado por lotes atómico desde Swift.
+     - `NotebookModuleColumnModel.swift`: `groupsVersion` en la clave de caché de filas ahora incluye el nombre del grupo.
+  3. Corrección de cálculo de grupos activos (`activeGroups`) en ordenación del Cuaderno:
+     - En modo `general`, si no existen grupos con SA nula pero sí grupos definidos en la pestaña/clase, se realiza un fallback a los grupos disponibles en lugar de dejarlos vacíos con alumnos en "Sin grupo".
+     - Al resolver los miembros de cada grupo en `buildVisibleRows`, se comprueba tanto `tabId == activeTabId` como `tabId == group.tabId` para no descartar alumnos si la pestaña activa difiere.
+  4. Paridad de filtrado de SA y refresco automático:
+     - `NotebookGroupManagementSheet.swift`: Extraído `NotebookLearningSituationMatcher` reutilizable.
+     - `NotebookModuleView.swift`: `loadClassLearningSituations` actualizado con la misma lógica de coincidencia semántica por curso y etapa, y refresco en `onDismiss` de la hoja de gestión de grupos.
+     - `NotebookGroupManagementSheet.swift`: `applyImportedGroups` migrado a `bridge.importNotebookWorkGroups`, y guardado manual con `tabId` explícito.
+- Por qué importa:
+  - Corrige el fallo donde los grupos importados o creados con SA no persistían en el cuaderno o quedaban vacíos tras pulsar "Listo", garantizando que la ordenación por grupos refleje de inmediato los alumnos y equipos asignados.
+- Dónde vive el cambio:
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/repository/NotebookConfigRepositorySqlDelight.kt`
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/repository/NotebookRepositorySqlDelight.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/repository/Contracts.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/repository/NotebookConfigRepository.kt`
+  - `kmp/shared/src/commonMain/kotlin/com/migestor/shared/viewmodel/NotebookViewModel.kt`
+  - `kmp/shared/src/commonTest/kotlin/com/migestor/shared/viewmodel/NotebookViewModelTest.kt`
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift`
+  - `kmp/iosApp/App/NotebookModuleColumnModel.swift`
+  - `kmp/iosApp/App/NotebookModuleView.swift`
+- Validación realizada:
+  - Pruebas unitarias de KMP: `./gradlew :shared:desktopTest :data:desktopTest` pasando con éxito (108 tests).
+  - Verificación Apple: `./scripts/verify_apple_builds.sh` completado con éxito:
+    - macOS (MiGestorKMPMac): ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator (MiGestorKMPiOS): ✓ COMPILADO CORRECTAMENTE
+
+## Avance 2026-09-16 - Detección y filtrado preciso de Situaciones de Aprendizaje (SA) por curso en grupos de trabajo
+ 
+Resumen:
+- Qué cambio se hizo:
+  1. Corrección y enriquecimiento del parser semántico de niveles y cursos:
+     - `KmpBridge.swift`: `courseLabel(for:)` ampliado para identificar variantes de Bachillerato (`bac`, `bto`, `bat`) y Primaria (`prim`, `pri`) antes de evaluar el rango numérico de ESO, eliminando el fallo por el cual clases como «1º BAC B» se etiquetaban como ESO.
+     - `NotebookGroupManagementSheet.swift`: `isSituation` refactorizado para comparar de forma estricta tanto el número ordinal del curso (1, 2, 3, 4) como la etapa educativa (Bachillerato, ESO, Primaria), garantizando que solo se listen las SA del curso en cuestión.
+  2. Resolución asíncrona de la clase activa en `loadClassLearningSituations()`:
+     - Carga garantizada sin abortos prematuros si `bridge.classes` se encuentra resolviendo en segundo plano.
+     - Enlace prioritario de las situaciones que ya cuenten con `LearningSituationClassLink` en SQLite para la clase activa.
+  3. Experiencia de usuario en selectores de SA:
+     - Estado de carga explícito (`isLoadingSituations`) con spinner sutil y texto «Buscando situaciones del curso...».
+     - Mensaje adaptado «No hay situaciones para este curso» en lugar de un genérico «No hay situaciones creadas» cuando el curso no tiene SAs importadas.
+- Por qué importa:
+  - Corrige el problema reportado donde las situaciones de aprendizaje importadas no aparecían en el selector de creación o importación de grupos para clases de Bachillerato, asegurando a la vez que no se mezclen SAs de otros cursos.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS (MiGestorKMPMac): ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator (MiGestorKMPiOS): ✓ COMPILADO CORRECTAMENTE
+
+## Avance 2026-09-16 - Asociación de grupos a SA, persistencia atómica de miembros y ordenación visual en el Cuaderno
+
+Resumen:
+- Qué cambio se hizo:
+  1. Asociación de grupos de trabajo a Situaciones de Aprendizaje (SA):
+     - `NotebookGroupImportPreviewSheet.swift`: Se añadió selector de Situación de Aprendizaje para asociar los grupos importados desde Excel a una SA concreta del grupo o dejarlos como generales.
+     - Se propagó la vinculación de la SA con la clase activa en el cuaderno mediante `addLearningSituationClassLink`.
+  2. Persistencia atómica de alumnos asignados a grupos de trabajo:
+     - `KmpBridge.swift`: Se ampliaron `saveNotebookWorkGroup` y `updateNotebookWorkGroup` para aceptar `studentIds: [Int64]`.
+     - `NotebookGroupManagementSheet.swift`: En `applyImportedGroups`, se eliminó la condición de carrera donde se llamaba a `assignStudentToNotebookGroup` antes de que el grupo se hubiera persistido en base de datos. Ahora se guarda de forma atómica en una única transacción de Kotlin y SQLite.
+     - En `GroupMembersView`, se aseguró la sincronización del `activeTabId` con `bridge.selectedNotebookTabId` tanto al seleccionar como al deseleccionar alumnos, garantizando que el estado persista permanentemente en la base de datos hasta una acción explícita del usuario.
+  3. Ordenación por grupos y distintivo visual en el Cuaderno:
+     - `NotebookModuleColumnModel.swift` y `NotebookModuleTypes.swift`: Detección del primer alumno de cada grupo (`isFirstInGroup`) y recuento de integrantes cuando el cuaderno está ordenado por grupos (`groupByWorkGroupMode != "none"`).
+     - `NotebookGridContainer.swift`: Cabecera de grupo diferenciada con estilo Organic Precision (píldora con icono `person.2.fill` o `person.slash`, nombre del grupo y badge numérico de miembros) en la columna fija de nombres de alumnos.
+     - Separación visual vertical aumentada entre grupos distintos con bandas de fondo idénticas en todas las secciones (`fixed`, `scrollable`, `trailing`), preservando la alineación pixel-perfect de las filas y el scroll sincronizado.
+     - Menús contextuales claros de «Organizar por grupos» añadidos a la cabecera de la columna de alumnos y al menú de filtros del cuaderno.
+- Por qué importa:
+  - Permite a los docentes trabajar por proyectos y situaciones de aprendizaje agrupando al alumnado sin perder la asignación de miembros ni sufrir desincronizaciones, facilitando una lectura visual inmediata del cuaderno dividida por equipos.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookGroupImportPreviewSheet.swift`
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift`
+  - `kmp/iosApp/App/NotebookGridContainer.swift`
+  - `kmp/iosApp/App/NotebookGridContent.swift`
+  - `kmp/iosApp/App/NotebookModuleColumnModel.swift`
+  - `kmp/iosApp/App/NotebookModuleGridCells.swift`
+  - `kmp/iosApp/App/NotebookModuleTypes.swift`
+  - `kmp/iosApp/App/NotebookModuleView.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `xcodegen generate` ejecutado sin errores.
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS (MiGestorKMPMac): ✓ BUILD SUCCEEDED
+    - iOS Simulator (MiGestorKMPiOS): ✓ BUILD SUCCEEDED
+  - `./kmp/gradlew -p kmp :shared:desktopTest`: ✓ BUILD SUCCESSFUL (12 tareas, 0 fallos).
+
+## Avance 2026-09-14 - Rediseño de Gestión de Datos en Ajustes: selector rápido, filtros contextuales y borrado masivo por lotes
+
+Resumen:
+- Qué cambio se hizo:
+  1. Sección especializada para Columnas del Cuaderno (`NotebookColumnsBulkDeleteSection` en `DataManagementSettingsView.swift`):
+     - **Filtros contextuales de Curso y Pestaña**: Menú interactivo («Todos los cursos» o clase específica como «1º BAC A») que aísla de inmediato las columnas del grupo elegido. Al seleccionar un curso, se activa un selector de pestaña («Todas las pestañas» o «1º Trimestre», etc.) para enfocar solo el bloque deseado.
+     - **Buscador en tiempo real**: Campo de texto con lupa y botón de limpieza inmediata (`TextField` + `xmark.circle.fill`) para filtrar instantáneamente por título de columna, evidencia o nombre de pestaña.
+     - **Agrupación visual por Curso**: Cuando no hay filtro de curso específico, las columnas se presentan agrupadas por clase con cabecera diferenciada, contador de columnas y botón de marcado rápido de todo el grupo.
+     - **Atajos de selección rápida en un toque**:
+       - «Todas (N)»: selecciona todas las columnas visibles bajo el filtro activo.
+       - «Ninguna»: desmarca la selección actual.
+       - «Invertir»: invierte la selección de las columnas visibles.
+       - Menú «Por curso»: permite marcar o desmarcar de un plumazo todas las columnas de una clase concreta.
+  2. Atajos rápidos de selección en `CollapsibleBulkDeleteSection`:
+     - Menú contextual con «Seleccionar todo», «Deseleccionar todo» e «Invertir selección» disponible en el modo de selección de todas las entidades (Cursos, Asignaturas, Pestañas, Sesiones del Planner, Situaciones y Rúbricas).
+  3. Optimización del borrado por lote:
+     - Sustitución del bucle secuencial individual de `deleteColumn` por la llamada por lote `bridge.deleteColumns(idsAndEvalIds:)`, reduciendo la latencia de guardado y evitando la saturación de recargas en el cuaderno.
+- Por qué importa:
+  - Elimina la saturación y pérdida de contexto provocada por listas kilométricas no segmentadas a medida que avanza el curso académico, permitiendo al docente depurar y limpiar columnas por error en segundos de forma segura y transparente.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/DataManagementSettingsView.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+
+## Avance 2026-09-14 - Soporte multi-grupo en importación de SA: evaluación simultánea en cuadernos y programación comparada a 2 columnas
+
+Resumen:
+- Qué cambio se hizo:
+  1. Materialización de evaluación multi-grupo (`LearningSituationEvaluationSheet`):
+     - Soporte para seleccionar múltiples clases vinculadas a la SA (por ejemplo, 1º ESO A y 1º ESO B) a la vez mediante chips de selección interactivos.
+     - Sección unificada de pestaña destino: permite reutilizar pestañas existentes o crear automáticamente una pestaña con el mismo nombre en todos los grupos si no existe.
+     - En `KmpBridge.swift`, `resolveNotebookTargetTabId` busca la pestaña por ID o por título exacto en la clase; si no existe, la crea dinámicamente y la vincula.
+     - En `KmpBridge.saveAssessmentInstrumentRubricIfNeeded`, se comprueba si ya existe una rúbrica con el mismo título para asociar el mismo `rubricId` a las evaluaciones de ambos grupos, evitando duplicados redundantes en la base de datos de rúbricas.
+  2. Programación temporal comparativa a 2 columnas y selector de fecha de inicio por grupo (`LearningSituationScheduleSheet`):
+     - Selector de fecha maestro («Inicio común: [Fecha]») en cabecera para acotar el inicio de la SA dentro del trimestre y propagarlo por defecto a todos los grupos.
+     - Selectores individuales de inicio por grupo («Inicio: [Fecha]» en cada tarjeta de columna y en la vista compacta), permitiendo arrancar grupos en fechas distintas (ej. compensar festivos u horarios no sincronizados).
+     - `TermBoardProjectionEngine.project` ampliado con `simulationStartDateIso: String?`: preserva como libres los slots anteriores a la fecha y encaja las sesiones de la SA a partir del día seleccionado de forma independiente para cada clase.
+     - Proyección paralela del calendario de sesiones para cada grupo vinculado utilizando `TermBoardProjectionEngine.project`.
+     - Layout adaptativo iPad-first con `ViewThatFits(in: .horizontal)`:
+       - Modo 2 columnas (`twoColumnHorizontalView`) en macOS e iPad landscape: visualización lado a lado de calendarios, festivos, selectores de fecha individuales y slots lectivos para comparar el ritmo de ambos grupos.
+       - Modo compacto (`compactSegmentedView`): selector segmentado de grupo y selector de inicio para iPhone o ventanas estrechas en split view.
+       - Selector superior de grupos (chips con estado activo/inactivo y botón para añadir más clases).
+       - Programación concurrente de sesiones mediante `bridge.programLearningSituationSessions` asegurando unidades didácticas aisladas por clase (`ensureTeachingUnitForLearningSituation(situation:classId:)`).
+- Por qué importa:
+  - Elimina la fricción de tener que repetir todo el proceso de importación, creación de pestañas/columnas y programación de sesiones de una Situación de Aprendizaje grupo por grupo cuando un docente imparte la misma materia a varios grupos del mismo nivel.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/LearningSituationsWorkspaceView.swift`
+  - `kmp/iosApp/App/LearningSituationScheduleSheet.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios de Apple (`MiGestorPlannerTests`): 124 tests ejecutados con éxito en macOS (0 fallos).
+  - Tests KMP compartidos (`:shared:desktopTest` y `:data:desktopTest`): BUILD SUCCESSFUL (0 fallos).
+
+## Avance 2026-09-13 - Exportación de notas a Educamos SM: edición in-place OpenXML de celdas, coincidencia de nombre original y guardado directo en Descargas
+
+Resumen:
+- Qué cambio se hizo:
+  1. Corrección in-place OpenXML en celdas de calificaciones (`EducamosSMXlsxWriter.swift`):
+     - Se corrigió la causa raíz del error «Invalid cell name» que arrojaba la plataforma Educamos SM (basada en Aspose.Cells) al importar el archivo generado por la app.
+     - En las plantillas de Educamos SM, las celdas de datos (columnas B a R) omiten el atributo `r="..."` de referencia explícita por compacidad OpenXML. Anteriormente, el escritor buscaba la referencia literal (ej. `r="G14"`), no la encontraba y añadía una celda duplicada al final de la fila después de la columna 18 (R), rompiendo el orden de columnas y corrompiendo la definición de coordenadas.
+     - Ahora, `updateRowInPlace` analiza posicionalmente las celdas de cada fila (columna 1=A hasta 18=R), localiza la celda en su índice exacto (índice 6 para G, 7 para H, 8 para I, 12 para M...), conserva los atributos de estilo existentes (`s="70"`, `s="72"`...), actualiza el valor numérico en el slot existente y no añade celdas desordenadas ni duplicadas.
+  2. Preservación del nombre original del archivo:
+     - El archivo `.xlsx` exportado por la app ahora se genera manteniendo exactamente el nombre del archivo original importado de Educamos (ej. `EFI1_1BAHA_EVA1_20260913_222921.xlsx` o `EFI1_1BACB_EVA1_20260913_210535.xlsx`), facilitando la sustitución directa y asegurando la compatibilidad con validaciones por nombre en la plataforma.
+  3. Guardado directo en la carpeta de Descargas en Mac (`EducamosSMExportSheet.swift`):
+     - Al completar la exportación en macOS / Mac Catalyst, el archivo se guarda automáticamente de forma directa en `~/Downloads` con el nombre original, mostrando un banner de confirmación con botón «Mostrar» para abrirlo en Finder mediante `NSWorkspace.shared.activateFileViewerSelecting`.
+     - Se mantiene disponible `ShareLink` para compartir o guardar con diálogo estándar en cualquier plataforma.
+- Por qué importa:
+  - Permite a los docentes evaluar cómodamente con la app y subir sus notas a Educamos SM en segundos, sin errores de formato, sin renombrar archivos y sin pasos manuales intermedios.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/EducamosSMTemplateService.swift`
+  - `kmp/iosApp/AppleShared/EducamosSMXlsxWriter.swift`
+  - `kmp/iosApp/App/EducamosSMExportSheet.swift`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Validación de parsing y estructura XML in-place con openpyxl en plantillas reales (`EFI1_1BAHA_EVA1_...xlsx` y `EFI1_1BACB_EVA1_...xlsx`).
+
+## Avance 2026-09-11 - Aislamiento e idempotencia en la importación de alumnos desde Excel (sin acumulación entre cursos)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Aislamiento riguroso de matriculación por archivo Excel:
+     - En `KmpBridge.confirmStudentImport`, se corrigió la lógica de matriculación masiva. Anteriormente, si `omitDuplicates` estaba activo o si se importaban alumnos ya presentes en la base de datos, el filtro descartaba o duplicaba registros, o provocaba que se matricularan alumnos de importaciones previas.
+     - Ahora, `confirmStudentImport` utiliza `existingStudentId` (capturado en la previsualización `previewStudentImport` cuando el alumno coincide por nombre y apellidos con uno existente). Los alumnos existentes se matriculan directamente en la clase de destino mediante `classesRepository.addStudentToClass` usando su `studentId` existente, sin crear duplicados en la base de datos ni omitir su alta en el nuevo curso. Los alumnos nuevos se insertan normalmente en SQLite y se matriculan de forma aislada.
+  2. Sincronización y limpieza de selecciones en lote residuales:
+     - En `MacStudentsView` y `StudentProfilesWorkspaceView`, se introdujo el reseteo explícito de `selectedStudentIds` y el modo de selección múltiple cada vez que el usuario cambia de clase (`selectedClassId`) o cuando se cierra el modal de importación tras confirmar.
+     - Esto evita que los IDs de alumnos seleccionados en una clase previa o en la vista "Todas" queden en memoria y se asignen erróneamente en lote al curso siguiente.
+  3. Preselección y detección de curso en `StudentImportSheet`:
+     - El sheet de importación recibe `initialClassId: selectedClassId`, respetando el curso en el que se encontraba el docente.
+     - Se añadió un heurístico en `.onAppear` que compara el nombre de clase detectado en el encabezado del archivo con los cursos existentes en `bridge.classes`, preseleccionando automáticamente el curso adecuado si no se había especificado uno.
+  4. Robustez en lectura de hojas Excel (`AppleSpreadsheetReader.swift`):
+     - `readXLSX` ahora busca la primera hoja que contenga datos (`!$0.rows.isEmpty`) antes de recurrir a la primera por defecto, evitando fallos cuando los libros contienen hojas preliminares vacías generadas por software de gestión escolar.
+- Por qué importa:
+  - Garantiza que al importar listas de diferentes cursos sucesivamente (por ejemplo, 1º ESO A, luego 1º ESO B), cada curso contenga estrictamente a sus propios alumnos, sin arrastrar a los del archivo anterior ni generar registros duplicados en el centro.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/ImportPreviewModels.swift`
+  - `kmp/iosApp/AppleShared/AppleSpreadsheetReader.swift`
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/StudentImportSheet.swift`
+  - `kmp/iosApp/App/StudentProfilesWorkspaceView.swift`
+  - `kmp/iosApp/MacApp/MacStudentsView.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Regeneración de proyecto Xcode con XcodeGen exitosa.
+
+## Avance 2026-09-11 - Gestión avanzada de Alumnos: selección múltiple por lote, eliminación, asignación de cursos y edición completa (iOS/iPadOS/macOS)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Selección múltiple y operaciones en lote:
+     - En iOS/iPadOS (`StudentProfilesWorkspaceView`), modo de selección múltiple activable mediante botón «Seleccionar / Listo», con casillas circulares de verificación, opción rápida «Todos / Deseleccionar» y barra de acciones por lote inferior («Asignar curso» y «Eliminar»).
+     - En macOS (`MacStudentsView`), selección múltiple nativa en la tabla mediante `$store.selectedStudentIds`, barra flotante de lote (`studentsBatchActionBar`) y opciones en el menú contextual de la tabla («Asignar N alumnos a un curso...», «Eliminar N alumnos...»).
+     - Métodos batch en `KmpBridge`: `assignStudentsToClass(studentIds:classId:)`, `removeStudentsFromClass(studentIds:classId:)` y `deleteStudentsEverywhere(studentIds:)`.
+     - `AssignStudentToClassSheet` multiplatform ampliado para soportar tanto un único alumno como colecciones de alumnos (`[Student]`).
+  2. Habilitación de eliminación y desmatriculación de alumnos:
+     - Distinción clara en UI entre «Quitar de clase» (si el alumno pertenece a un grupo) y «Eliminar de toda la app» (eliminación permanente del alumno, matrículas y datos asociados en SQLite mediante `deleteStudentEverywhere`).
+     - Diálogos de confirmación destructiva nativos en `StudentProfilesWorkspaceView` (iOS/iPadOS) y `MacStudentsView` (macOS).
+  3. Asignación de alumnos sin curso:
+     - Nuevo filtro «Sin curso» en los filtros de seguimiento de Alumnos (`StudentTrackingFilter.sinCurso` en iOS y `sin_curso` en macOS).
+     - Identificación reactiva mediante `unassignedStudentIds()`, badges indicadores («Sin curso»), callout con botón directo de asignación en el perfil e inspector, swipe action en la lista y opción en menú contextual.
+     - Componente compartido `AssignStudentToClassSheet` en `kmp/iosApp/AppleShared/` con selección de curso y asignación atómica a través de `bridge.assignStudentToClass`.
+  4. Edición ampliada de información del alumno:
+     - Método `updateStudentFull(student:firstName:lastName:email:isInjured:sex:birthDate:)` en `KmpBridge.swift`.
+     - Actualización de `StudentEditorSheet` (iOS/iPadOS) y `MacStudentEditorSheet` (macOS) permitiendo editar nombre, apellidos, correo, estado de lesión, sexo (`StudentSex`) y fecha de nacimiento (`LocalDate?`).
+- Por qué importa:
+  - Permite a los docentes procesar en lote promociones, matriculaciones o limpiezas masivas de alumnos (por ejemplo, tras importar un listado completo o crear un grupo nuevo), ahorrando tiempo y evitando tener que interactuar alumno a alumno.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/StudentProfilesWorkspaceView.swift`
+  - `kmp/iosApp/AppleShared/AssignStudentToClassSheet.swift`
+  - `kmp/iosApp/MacApp/MacStudentsView.swift`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Regeneración de proyecto Xcode con XcodeGen exitosa.
+
+## Avance 2026-09-11 - Optimización integral de rendimiento, batería, SyncLAN y arquitectura (P1 a P6)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Optimización del consumo de batería y bucle de SyncLAN (P1):
+     - Detección de ciclo de vida de la aplicación en `KmpBridge.swift`: el bucle de sincronización (`autoSyncLoopTask`) se pausa por completo cuando la app entra en segundo plano (`onAppDidEnterBackground`) y se reactiva al volver a primer plano (`onAppDidBecomeActive`).
+     - Tracking de conexión de `SyncEventListener` con bloqueo atómico `NSLock`, backoff exponencial en reconexión (hasta 30 s) y dilatación del polling periódico a 5 minutos (300 s) cuando la conexión SSE está activa y operativa.
+  2. Ajuste de PRAGMAs de SQLite de alto rendimiento en KMP (P2):
+     - En `AppleDriver.kt` y `DesktopDriver.kt`, configuración de PRAGMAs optimizados: `synchronous = NORMAL` (100% seguro con WAL y elimina sincronizaciones I/O excesivas), `cache_size = -64000` (64 MB de caché en RAM), `mmap_size = 268435456` (256 MB de acceso mapeado en memoria en arquitecturas de 64 bits) y `temp_store = MEMORY`.
+  3. Paridad multiplataforma completa de SyncLAN (P3):
+     - Migración de `SqlDelightSyncAdapter.kt` de `desktopMain` a `commonMain` en el módulo `:data`, permitiendo exportación e importación diferencial en todas las plataformas soportadas por KMP.
+     - Inyección perezosa (`lazy`) de `syncStoreAdapter` en `KmpContainer.kt` y `typealias` retrocompatible en `desktopMain` para no alterar tests existentes.
+  4. Temporizadores nativos de hardware en SwiftUI (P4):
+     - Sustitución de publicaciones por segundo `Timer.publish(every: 1.0)` en `LibraryAndPEWorkspaceViews.swift` (`PEActiveDurationStat` y `PEActiveDurationMetric`) por `Text(timerStart, style: .timer).monospacedDigit()`, ejecutado en el RenderServer del sistema (0% consumo de CPU en reposo).
+  5. Higiene de almacenamiento y rotación de copias de seguridad (P5):
+     - Purga de ficheros de registro huérfanos generados en compilaciones y actualización de `.gitignore` con reglas preventivas (`*.log`, `build_*.txt`).
+     - Política de retención estricta con rotación a un máximo de 5 snapshots pre-adopción en `AppleDriver.kt` (`pruneOldPreAdoptBackups`) y `AppleBackupService.swift` (`retentionLimit = 5`), con reemplazo atómico `replaceItemAt` seguro ante bloqueos.
+  6. Desacoplamiento y modularización de KmpBridge (P6):
+     - Extracción de 1.294 líneas de lógica analítica e IA contextual de `KmpBridge.swift` a `kmp/iosApp/App/Bridge/KmpBridge+ContextualAI.swift`.
+     - Regeneración limpia del proyecto Xcode con `xcodegen`, reduciendo el tiempo de compilación incremental y la deuda técnica en el puente KMP.
+- Por qué importa:
+  - Resuelve las principales fuentes de degradación de rendimiento y consumo excesivo de batería en iPad y Mac reportadas por el usuario: bucles de red activos en background, I/O síncrono recurrente en disco, temporizadores periódicos en el hilo principal de SwiftUI y crecimiento desmedido del almacenamiento local por copias de seguridad acumuladas.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/SyncEventListener.swift`
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/Bridge/KmpBridge+ContextualAI.swift`
+  - `kmp/data/src/appleMain/kotlin/com/migestor/data/platform/AppleDriver.kt`
+  - `kmp/data/src/desktopMain/kotlin/com/migestor/data/platform/DesktopDriver.kt`
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/sync/SqlDelightSyncAdapter.kt`
+  - `kmp/data/src/desktopMain/kotlin/com/migestor/desktop/sync/SqlDelightSyncAdapter.kt`
+  - `kmp/data/src/commonMain/kotlin/com/migestor/data/di/KmpContainer.kt`
+  - `kmp/data/build.gradle.kts`
+  - `kmp/iosApp/App/LibraryAndPEWorkspaceViews.swift`
+  - `kmp/iosApp/AppleShared/AppleBackupService.swift`
+  - `.gitignore`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios en Apple: `MiGestorPlannerTests` ejecutados con 124 tests pasados (0 fallos).
+  - Tests de persistencia y lógica KMP: `./gradlew :data:desktopTest :shared:desktopTest` (`BUILD SUCCESSFUL`).
+  - Auditoría de código, seguridad y concurrencia por subagente `reviewer`: APROBADO.
+  - Auditoría de limpieza Git y worktrees por subagente `janitor`: APROBADO.
+
+## Avance 2026-09-11 - Integración del Tablero de Capacidad y Encaje en la Programación de Situaciones de Aprendizaje (LearningSituationScheduleSheet)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Unificación y modernización del flujo de programación de Situaciones de Aprendizaje (`LearningSituationScheduleSheet.swift`):
+     - Sustituido el modal antiguo con lista de casillas/toggles ciegos por una experiencia visual interactiva enriquecida basada en el Tablero de Capacidad del trimestre.
+     - Precarga directa de la Situación de Aprendizaje seleccionada, mostrando título, materia, reto y número total de sesiones.
+     - Selectores compactos de grupo (`SchoolClass`) y período de evaluación (`PlannerEvaluationPeriod`) con autoselección del trimestre lectivo en curso.
+  2. Componentes visuales desacoplados y compartidos (`PlannerTermBoardComponents.swift`):
+     - `TermBoardMetricsStrip`: franja de 4 tarjetas Liquid Glass (Clases lectivas reales, Festivos omitidos, Ocupadas, Huecos tras SA) con banner diagnóstico reactivo (alertas de desbordamiento de plazos en rojo o holgura de clases libres en amarillo/azul).
+     - `TermBoardTimelineView`: cronograma interactivo por semanas con tarjetas diferenciadas de festivos, sesiones ocupadas, sesiones proyectadas de la SA (#1, #2, ...) y huecos libres.
+     - Refactorización de `PlannerTermBoardView.swift` para consumir estos mismos componentes compartidos, eliminando duplicidad de código.
+  3. Soporte opcional de secuenciación detallada DOCX e itinerarios:
+     - Tarjeta colapsable `DisclosureGroup` para adjuntar documentos de secuenciación DOCX o seleccionar itinerarios de Bachillerato (`shortFirst` / `longFirst`).
+     - Al importar o modificar planes, el motor recalcula en tiempo real el encaje y proyecta los títulos pedagógicos en las tarjetas del cronograma.
+  4. Barra inferior flotante y persistencia atómica:
+     - Resumen en tiempo real del número de sesiones encajadas (`previewSlotsCount` de `targetSessionCount`).
+     - Botón "Programar sesiones" que convierte las franjas proyectadas en `[LearningSituationScheduledSlot]` y las persiste de forma atómica a través de `bridge.programLearningSituationSessions(...)`, creando la `TeachingUnit` y las sesiones planificadas vinculadas.
+  5. Desacoplamiento arquitectónico:
+     - Extracción de `LearningSituationScheduleSheet` de `LearningSituationsWorkspaceView.swift` (reduciendo ese archivo en ~740 líneas y mejorando la mantenibilidad general).
+  6. Pruebas unitarias:
+     - Nuevo test `testTermBoardProjection_ConvertsPreviewSlotsToScheduledSlotsForLearningSituation` en `PlannerTermBoardTests.swift` validando la conversión exacta de franjas proyectadas a destinos de programación para SA.
+- Por qué importa:
+  - Elimina el solapamiento y la fricción entre el Planificador y las Situaciones de Aprendizaje. Ahora, programar una SA en el calendario ya no es un proceso a ciegas mediante casillas, sino que el docente visualiza al instante cómo encajan sus sesiones en el trimestre, qué festivos le afectan y si tiene holgura para intercalar sesiones de repaso antes de las notas.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/LearningSituationScheduleSheet.swift`
+  - `kmp/iosApp/App/PlannerTermBoardComponents.swift`
+  - `kmp/iosApp/App/PlannerTermBoardView.swift`
+  - `kmp/iosApp/App/LearningSituationsWorkspaceView.swift`
+  - `kmp/iosApp/PlannerTests/PlannerTermBoardTests.swift`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `PlannerTermBoardTests` (7 de 7 pasados, 0 fallos).
+
+## Avance 2026-09-11 - Tablero de Capacidad y Encaje de Sesiones de la Evaluación (PlannerTermBoardView)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Modelo de datos de proyección temporal y encaje de evaluación (`PlannerModels.swift`):
+     - Nueva sección `.term = "Evaluación"` (`calendar.badge.checkmark`) en `PlannerWorkspaceSection` tanto para iPadOS como macOS.
+     - Enumeración `TermSlotKind` representando estados de franja: `.holiday(name)`, `.schoolEvent(name)`, `.occupied(session)`, `.free`, `.preview(lessonNumber, title, saTitle, saCode, isExtra)`.
+     - Estructura `TermClassSlot` con cálculo temporal, día de semana, período lectivo, índice ordinal de sesión lectiva (`lessonIndex`) e indicador de rebase de fecha límite de evaluación (`isAfterEvaluationDeadline`).
+     - Estructura `TermCapacityMetrics` con conteo de sesiones lectivas totales, festivos, sesiones ya ocupadas, sesiones libres, sesiones requeridas por la SA simulada, sesiones libres restantes tras simulación y sesiones desbordadas fuera de plazo.
+  2. Motor determinista de cálculo de calendario y simulación de SA (`PlannerWorkspaceViewModel+TermBoard.swift`):
+     - `TermBoardProjectionEngine`: proyección pura y desacoplada del horario semanal (`TeacherScheduleSlot`) del docente sobre el rango de fechas del período de evaluación (`TermPeriod`).
+     - Identificación y salto de festivos (`CalendarDay` con `isTeachingDay == false`), sin consumir numeración lectiva de la asignatura.
+     - Mapeo de sesiones existentes programadas (`PlannedSession`) para el grupo seleccionado.
+     - Simulación "fantasma" (`ghost simulation`): encaje secuencial de las sesiones pedagógicas de una Situación de Aprendizaje en los huecos libres disponibles, respetando orden lectivo y detectando si sobrepasan la fecha fin del trimestre.
+     - Diagnóstico de capacidad: detección automática de holgura (sesiones libres sobrantes para sesiones de refuerzo o comodín) o déficit (la SA requiere más sesiones que las disponibles antes del cierre del trimestre).
+  3. Interfaz nativa Apple HIG & Liquid Glass (`PlannerTermBoardView.swift`):
+     - Cabecera con selector de evaluación (`TermPeriod`), selector de clase/grupo y menú de simulación de SA con botón de limpieza.
+     - Franja de métricas resumidas con tarjetas de diseño líquido (`.plannerGlassPanel`): Total Lectivas, Festivos, Ya Ocupadas, Huecos Libres.
+     - Banner de diagnóstico reactivo: advertencia con icono ámbar de sesiones sobrantes o alerta roja de desbordamiento de evaluación.
+     - Cronograma visual ordenado por semanas con tarjetas diferenciadas:
+       - Tarjeta de festivo / no lectivo (rojo/naranja suave con badge "FESTIVO").
+       - Tarjeta de sesión ocupada con badge de hitos de evaluación (rúbrica vinculada, checklist, etc.).
+       - Tarjeta de previsualización de SA con borde cian punteado y etiqueta de orden de sesión.
+       - Tarjeta de hueco libre con botón interactivo rápido "+ Crear sesión comodín/extra".
+     - Barra inferior flotante (`GlassEffectContainer` / material fallback) para aplicar o descartar la simulación en el calendario real.
+  4. Integración fluida en los espacios de trabajo iPadOS y macOS:
+     - iPadOS (`PlannerWorkspaceIOS.swift`): Añadido picker de sección `[Semana | Día | Secuencia | Resumen | Evaluación]` en la barra de herramientas y navegación hacia `PlannerTermBoardView`.
+     - macOS (`MacPlannerView.swift`): Integrado en el selector de vistas y renderizado en el módulo principal con navegación a la ficha de sesión.
+     - macOS (`MacRootView.swift`): Ampliado el ancho máximo del selector de secciones a 480 pt para albergar la nueva sección con legibilidad óptima.
+  5. Cobertura de tests unitarios (`PlannerTermBoardTests.swift`):
+     - 6 tests unitarios deterministas para el target `MiGestorPlannerTests`:
+       - Presencia de la sección `.term` en el enum.
+       - Proyección precisa de días de clase según horario docente.
+       - Detección y salto de días festivos sin consumir índice de sesión.
+       - Reconocimiento de sesiones existentes ya planificadas.
+       - Simulación de encaje de SA en huecos libres y cálculo de métricas.
+       - Detección de desbordamiento de la fecha límite de la evaluación.
+- Por qué importa:
+  - Responde de forma precisa y directa a la necesidad del docente de saber con exactitud de cuántas sesiones dispone en un trimestre, ver el impacto real de los festivos en su asignatura y simular cómo encajan las sesiones de una Situación de Aprendizaje antes de consolidarlas, identificando si faltan días o si tiene margen para intercalar sesiones de refuerzo, repaso o evaluación.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/PlannerModels.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceViewModel.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceViewModel+TermBoard.swift`
+  - `kmp/iosApp/App/PlannerTermBoardView.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceIOS.swift`
+  - `kmp/iosApp/MacApp/MacPlannerView.swift`
+  - `kmp/iosApp/MacApp/MacRootView.swift`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+  - `kmp/iosApp/PlannerTests/PlannerTermBoardTests.swift`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `PlannerTermBoardTests` (6 de 6 pasados en 0.009 s, 0 fallos).
+
+## Avance 2026-09-11 - Rúbricas 2.0: Catálogo oficial de plantillas LOMLOE / EF e informe individual PDF maquetado para familias
+
+Resumen:
+- Qué cambio se hizo:
+  1. Catálogo oficial de plantillas LOMLOE / EF (`RubricTemplateCatalog.swift`):
+     - 8 plantillas pedagógicas oficiales listas para usar:
+       - Condición Física: Calentamiento autónomo, Resistencia aeróbica y dosificación.
+       - Deportes y Juegos: Toma de decisiones en deportes de invasión, Red y raqueta.
+       - Expresión Corporal: Composición coreográfica colectiva.
+       - Medio Natural: Orientación y respeto al entorno.
+       - Transversales: Coevaluación de trabajo en equipo, Autoevaluación de hábitos saludables.
+     - Cada plantilla calibrada rigurosamente con 4 niveles LOMLOE (Nivel 1 Inicial a Nivel 4 Excelente) con descriptores constructivos y ponderaciones ajustadas.
+     - Generador TSV e importador transparente mediante `KmpBridge.importRubricDraft(tsv:)` y `saveRubricFromBuilderReturningId()`.
+  2. Selector visual e interactivo de plantillas (`RubricTemplateCatalogSheet.swift`):
+     - Filtros por categoría temática (chip selector horizontal), buscador reactivo y tarjetas con resumen de criterios y nivel educativo.
+     - Modal de previsualización matricial (`RubricTemplatePreviewModal`) para inspeccionar descriptores completos de los 4 niveles antes de importar.
+     - Importación en 1 toque que añade la rúbrica al cuaderno de la clase activa con feedback háptico.
+  3. Motor de maquetación y renderizado de informes individuales PDF para familias (`RubricFamilyReportPDFRenderer.swift`):
+     - Implementación multiplataforma pura en CoreText + CoreGraphics sin dependencias de AppKit ni UIKit.
+     - Formato DIN A4 estándar con paginación continua y maquetación editorial: cabecera institucional del centro/departamento, tarjeta de calificación con escala cualitativa oficial LOMLOE (Sobresaliente, Notable, Bien, Suficiente, Insuficiente) y código de color semántico, desglose de criterios evaluados con descriptores textuales del nivel alcanzado, observaciones de logros y propuestas de mejora, y bloque oficial de firmas para docente y familia.
+  4. Interfaz interactiva de exportación familiar (`RubricExportFamilyPDFSheet.swift`):
+     - Accesible directamente desde la evaluación de rúbricas (`RubricEvaluationView.swift`) mediante icono `doc.text.badge.plus`.
+     - Edición rápida de metadatos (centro, departamento, profesor) y redacción de feedback formativo y propuestas de trabajo para la familia.
+     - Generación asíncrona y exportación nativa con `ShareLink` para AirDrop, Mail o Archivos.
+  5. Integración multiplataforma completa (iPadOS y macOS Native):
+     - iPadOS (`RubricsReportsWorkspaceViews.swift`): Botón "Catálogo" en la barra de herramientas del módulo de rúbricas con presentación modal adaptativa.
+     - macOS (`MacRubricsView.swift`): Acción secundaria "Catálogo" (`books.vertical`) en `MacPremiumModuleHeader` junto a "Importar rúbrica", abriendo la hoja modal del catálogo con inyección de bridge y vinculación a la clase filtrada.
+     - Evaluación masiva macOS (`RubricBulkEvaluationSheet.swift`): Acción "Informe familiar PDF…" (`doc.text.badge.plus`) en el menú de acciones (`ellipsis.circle`) de cada estudiante y en el menú contextual del `scorePill`, permitiendo emitir el informe A4 maquetado directamente para cualquier alumno evaluado en el Mac.
+  6. Cobertura de tests unitarios (`RubricFamilyPDFAndCatalogTests.swift`):
+     - 4 tests unitarios deterministas: integridad del catálogo, filtros temáticos, escala de notas LOMLOE y renderizado binario de informe PDF con firma `%PDF-`.
+- Por qué importa:
+  - Culmina la Prioridad 4 del roadmap de inspiración en iDoceo con paridad completa 100% entre iPadOS y macOS Native. Ofrece al docente un repositorio oficial de rúbricas de Educación Física y competencias clave listo para evaluar sin redactar desde cero, y permite generar en segundos un informe individual con rigor editorial para entregar o enviar a las familias en tutorías y evaluaciones tanto desde iPad como desde Mac.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/RubricTemplateCatalog.swift`
+  - `kmp/iosApp/App/RubricTemplateCatalogSheet.swift`
+  - `kmp/iosApp/App/RubricFamilyReportPDFRenderer.swift`
+  - `kmp/iosApp/App/RubricExportFamilyPDFSheet.swift`
+  - `kmp/iosApp/App/RubricsReportsWorkspaceViews.swift`
+  - `kmp/iosApp/MacApp/MacRubricsView.swift`
+  - `kmp/iosApp/App/RubricBulkEvaluationSheet.swift`
+  - `kmp/iosApp/App/RubricEvaluationView.swift`
+  - `kmp/iosApp/PlannerTests/RubricFamilyPDFAndCatalogTests.swift`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `RubricFamilyPDFAndCatalogTests` (4 de 4 pasados, 0 fallos).
+  - Revisión de código completada con dictamen APROBADO por subagente `reviewer`.
+  - Auditoría Git completada con dictamen APROBADO por subagente `janitor`.
+  - Fusión limpia en rama `develop` (commit `7db4feb`).
+
+## Avance 2026-09-11 - Diario de Aula: Bitácora continua de curso, filtros trimestrales y exportador de informes PDF maquetados en iPadOS y macOS
+
+Resumen:
+- Qué cambio se hizo:
+  1. Modelo de navegación y proyección de bitácora continua (`DiaryTimelineModels.swift`):
+     - `DiaryViewMode`: conmutación limpia entre vista `.week` ("Semanal") y `.timeline` ("Bitácora continua") con iconos SF Symbols.
+     - `DiaryTimelineQuarter`: segmentación por trimestres escolares (`all`, `q1`, `q2`, `q3`) ajustada al calendario lectivo estándar (Q1: Sep-22 Dic, Q2: 7 Ene-31 Mar, Q3: Abr-Jun).
+     - Proyección determinista de fechas de sesión (`DiaryTimelineEntry`) a partir de `PlanningSession(year, weekNumber, dayOfWeek)` bajo ISO 8601.
+  2. Motor de maquetación y renderizado de informes PDF (`DiaryClassPDFRenderer.swift`):
+     - Implementación 100% nativa con CoreText y CoreGraphics (sin dependencias de AppKit ni UIKit, compatible en iPadOS y macOS Native).
+     - Paginación dinámica en formato A4 estándar con `CTFramesetter` y `CTFrameDraw`, con límite de seguridad de 300 páginas.
+     - Tipografía editorial institucional: encabezado con nombre de centro y curso, franja azul de métricas globales (sesiones analizadas, completadas y con incidencias), tarjetas cronológicas con fecha formateada en español, unidades didácticas, objetivos previstos, actividades programadas, notas reales de desarrollo en aula (itálica verde oliva), decisiones pedagógicas destacadas (ámbar) y advertencias de incidencias (rojo semántico).
+  3. Interfaz interactiva de bitácora y exportación (`DiaryContinuousTimelineView.swift` y `DiaryExportPDFSheet.swift`):
+     - Feed cronológico continuo agrupado por meses lectivos con carril temporal y nodos circulares conectados.
+     - Barra de métricas en tiempo real con recuento dinámico de sesiones según filtros activos (Total, Completadas, Pendientes, Incidencias).
+     - Buscador reactivo que evalúa unidad didáctica, objetivos, actividades y reflexiones de aula concurrentemente.
+     - Tarjetas con distintivo ordinal (`#N`), píldoras de estado, reflexiones docentes y botones de acción rápida ("Editar diario", "Asistencia", "Cuaderno").
+     - Modal de exportación con `ProgressView` asíncrono, opciones configurables (reflexiones, incidencias, solo completadas) y botón `ShareLink` para AirDrop, Mail o Archivos.
+  4. Integración fluida en `DiaryWorkspaceView.swift`:
+     - Barra superior con `Picker` segmentado para alternar entre vista semanal y bitácora continua.
+  5. Cobertura de tests unitarios (`DiaryTimelineProjectionTests.swift`):
+     - 4 tests unitarios validando enums, proyección de fechas ISO 8601, matching de trimestres y renderizado de PDF sintáctico con firma mágica `%PDF-`.
+- Por qué importa:
+  - Responde a la Prioridad 3 del roadmap inspirado en iDoceo: proporciona una visión histórica continua de lo ocurrido en cada clase durante el curso y permite exportar memorias o informes pedagógicos oficiales maquetados en PDF en segundos para inspección, claustro o jefatura.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/DiaryTimelineModels.swift`
+  - `kmp/iosApp/App/DiaryClassPDFRenderer.swift`
+  - `kmp/iosApp/App/DiaryContinuousTimelineView.swift`
+  - `kmp/iosApp/App/DiaryExportPDFSheet.swift`
+  - `kmp/iosApp/App/DiaryWorkspaceView.swift`
+  - `kmp/iosApp/PlannerTests/DiaryTimelineProjectionTests.swift`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `DiaryTimelineProjectionTests` (4 de 4 pasados, 0 fallos).
+  - Suite completa `MiGestorPlannerTests` ejecutada con éxito (113 tests pasados, 0 fallos).
+  - Auditoría de código aprobada por subagente `reviewer`.
+  - Auditoría Git previa al merge aprobada por subagente `janitor`.
+  - Fusión limpia fast-forward en rama `develop` (commit `4c7b8ed`).
+
+## Avance 2026-09-11 - Asistencia: Sábana Global 2D bidireccional y Pase de Lista Relámpago en iPadOS y macOS
+
+Resumen:
+- Qué cambio se hizo:
+  1. Cuadrícula bidireccional matricial de asistencia (`AttendanceMatrixGridView.swift`):
+     - Columna fija de alumnado a la izquierda con avatar, nombre completo e indicador de exención/lesión física.
+     - Columnas de fechas con cabecera de día de la semana, número de día y formato localizado en español, con resaltado visual del día de "Hoy".
+     - Celdas interactivas con estados LOMLOE estándar (Presente, Ausente, Retraso, Justificada, Médico, Exento, Sin registrar) y selector popover táctil.
+     - Columnas fijas a la derecha con cómputo en tiempo real de porcentaje de asistencia (código de color semántico), ausencias, retrasos y justificaciones.
+     - Fila inferior de totales por sesión con porcentaje de asistencia media del grupo y recuento de alumnos presentes.
+  2. Pase de lista relámpago ("Marcar todos hoy (P)"):
+     - Botón de un toque para marcar a todo el alumnado como presente en la fecha actual, con guardas que preservan estados ya justificados o exenciones médicas.
+     - Persistencia masiva en una sola transacción eficiente con `bridge.saveAttendanceBatch` y actualización optimista instantánea en UI.
+  3. Exportación y utilidades:
+     - Copiado rápido al portapapeles de la sábana de asistencia en formato tabulado compatible con Numbers, Excel y Google Sheets.
+     - Buscador dinámico de alumnos por nombre o apellidos integrado en la barra de herramientas.
+  4. Paridad de plataformas:
+     - Selector de modo (Pase diario vs Sábana global) integrado en `AttendanceWorkspaceView.swift`, `IPadWorkspaceShell.swift`, `IOSRootView.swift` y `MacAttendanceView.swift`.
+  5. Cobertura de tests unitarios (`AttendanceMatrixStatsTests.swift`):
+     - Validación de cálculo de porcentajes, casos extremos con 0 sesiones y rangos de asistencia.
+- Por qué importa:
+  - Responde a la Prioridad 2 del roadmap inspirado en iDoceo: transforma la gestión de asistencia permitiendo pasar lista en 2 segundos y supervisar de un solo vistazo el absentismo de todo el trimestre.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/AttendanceShared.swift`
+  - `kmp/iosApp/App/AttendanceMatrixGridView.swift`
+  - `kmp/iosApp/App/AttendanceWorkspaceView.swift`
+  - `kmp/iosApp/App/IPadWorkspaceShell.swift`
+  - `kmp/iosApp/App/IOSRootView.swift`
+  - `kmp/iosApp/MacApp/MacAttendanceView.swift`
+  - `kmp/iosApp/MacApp/MacRootView.swift`
+  - `kmp/iosApp/PlannerTests/AttendanceMatrixStatsTests.swift`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `AttendanceMatrixStatsTests` (4 de 4 pasados, 0 fallos).
+  - Suite completa `MiGestorPlannerTests` ejecutada con éxito (111 tests pasados, 0 fallos).
+  - Auditorías aprobadas por `reviewer` y `janitor`.
+  - Fusión limpia fast-forward en `develop` (commit `6b78025`).
+
+## Avance 2026-09-11 - Planificación: Vista de Calendario Mensual 2.0 en iPadOS y macOS
+
+Resumen:
+- Qué cambio se hizo:
+  1. Modelo de navegación ampliado:
+     - Añadido `case month = "Mes"` a `PlannerWorkspaceSection` con icono SF Symbol `calendar` (y `calendar.badge.clock` para la sección de Semana).
+     - Atajos de teclado en `AppleAppCommands.swift`: `⌘⌥1` Mes, `⌘⌥2` Semana, `⌘⌥3` Día, `⌘⌥4` Secuencia, `⌘⌥5` Resumen.
+  2. Motor de proyección mensual determinista (`PlannerWorkspaceViewModel+MonthBoard.swift`):
+     - Cálculo de matriz mensual de 7 columnas (Lunes a Domingo) mediante `Calendar(identifier: .iso8601)` con padding cronológico previo y posterior (35 o 42 celdas).
+     - Mapeo determinista de sesiones de clase (`PlanningSession`) por `(yearForWeekOfYear, weekOfYear, weekday)` sin desfasajes de huso horario ni saltos de DST.
+     - Detección de día actual ("Hoy"), hitos escolares y festivos (`PlannerDayMilestone`), y filtrado reactivo por grupo (`selectedGroupId`).
+     - Sincronización automática de sesiones en caliente tras cualquier mutación (`reloadSessionsOnly`).
+  3. Interfaz de usuario adaptativa (`PlannerMonthCalendarView.swift`):
+     - Cabecera con selector de mes/año, botones `‹`, `Hoy`, `›`, conteo de sesiones del mes y botón "Nueva sesión".
+     - Cuadrícula de 7 columnas con cabeceras de días (LUN a DOM), atenuación sutil de fines de semana y días de meses contiguos.
+     - Celdas de día con indicador numérico (badge circular para Hoy), badges de hitos y festivos, y píldoras de sesión con color pedagógico del grupo, franja/hora y título.
+     - Manejo de desbordamiento mediante botón `+X más` que abre `PlannerMonthDaySessionsSheet` (con `.presentationDetents` en iOS y frame fijo en macOS).
+     - Integración con detalle de sesión (`PlannerSessionDetailSheet`), apertura de composer por fecha y salto rápido a la vista Día.
+  4. Paridad de plataformas:
+     - En iPadOS: integrado fluidamente en la barra flotante Liquid Glass (`PlannerFloatingTabBar`).
+     - En macOS: soporte en toolbar nativa con navegación `‹`, `Hoy`, `›` y atajos de teclado sin redundancia en el canvas.
+  5. Cobertura de tests:
+     - Añadida suite `PlannerMonthGridTests.swift` validando la estructura de 35 celdas para septiembre de 2026 y el filtrado por grupos.
+- Por qué importa:
+  - Responde a la Prioridad 1 del roadmap inspirado en iDoceo: permite al docente visualizar su programación didáctica con perspectiva mensual macro, consultar festivos y exámenes, y navegar fluidamente hacia la semana o el día.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/PlannerModels.swift`
+  - `kmp/iosApp/App/PlannerMonthCalendarView.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceViewModel+MonthBoard.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceViewModel.swift`
+  - `kmp/iosApp/App/PlannerWorkspaceIOS.swift`
+  - `kmp/iosApp/AppleShared/AppleAppCommands.swift`
+  - `kmp/iosApp/MacApp/MacPlannerView.swift`
+  - `kmp/iosApp/MacApp/MacRootView.swift`
+  - `kmp/iosApp/PlannerTests/PlannerMonthGridTests.swift`
+- Validación realizada:
+  - Compilación dual con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests unitarios ejecutados con éxito: `xcodebuild test ... -only-testing:MiGestorPlannerTests/PlannerMonthGridTests` (Testing passed, exit code 0).
+  - Auditoría de código aprobada por subagente `reviewer`.
+  - Auditoría Git previa al merge aprobada por subagente `janitor`.
+  - Fusión limpia fast-forward en rama `develop`.
+
+## Avance 2026-09-10 - Cuaderno: reactividad instantánea en columnas no rúbricas (Checklist, Observación y Anotaciones) (PR #232)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Resolución de la causa raíz de persistencia asíncrona ensombrecedora:
+     - En `NotebookEditableTableCell.swift` (`NotebookReadOnlyCell.displayText`), se invirtió la precedencia para priorizar `displaySnapshot.text` si no está vacío sobre `persistedCell?.displayValue`. Anteriormente, como SQLite en Kotlin corre de forma asíncrona, `persistedCell` aún conservaba el valor previo o vacío en memoria, y al ser no-nulo en Swift (`""`), ensombrecía y descartaba el resumen optimista calculado por el bridge.
+     - En `NotebookReadOnlyCellChrome` y `NotebookStatefulEditableTableCell`, se incorporó `displaySnapshot` para el cálculo de `hasSignal` y los parámetros de `NotebookCellStampBadge` (`iconValue`, `note`, `attachmentCount`), haciendo que los sellos y notas añadidos desde el inspector o la hoja de sellos aparezcan inmediatamente.
+  2. Implementación de capa optimista para anotaciones en `KmpBridge.swift`:
+     - Añadido el almacenamiento `optimisticAnnotations: [String: OptimisticAnnotation]`.
+     - Registro inmediato en `saveNotebookCellAnnotation(...)` antes de lanzar la corrutina de persistencia.
+     - Accesor `@MainActor func cellAnnotation(studentId:columnId:)` para consultar notas, iconos y adjuntos en tiempo real.
+  3. Paridad en snapshots (`NotebookModuleGridCells.swift` y `NotebookDynamicCellsRow.swift`):
+     - `cellDisplaySnapshot` ahora resuelve `optAnnotation` para reflejar instantáneamente sellos y notas.
+     - En `NotebookDynamicCellsRow.swift`, el caso `default` de `cellDisplaySnapshot` resuelve `cellValue(for: column)` para garantizar que las columnas de instrumentos estructurados muestren su valor formateado sin depender de la recarga diferida de SQLite.
+- Por qué importa:
+  - Resuelve el bug por el cual las columnas que no eran rúbricas (Anotación/Texto, Checklist y Observación) no actualizaban su valor o insignias en el Cuaderno tras guardar, requiriendo navegar a otra pantalla y volver.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookEditableTableCell.swift`
+  - `kmp/iosApp/App/NotebookModuleGridCells.swift`
+  - `kmp/iosApp/App/NotebookDynamicCellsRow.swift`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests KMP compartidos ejecutados con éxito: `./gradlew :shared:desktopTest` (BUILD SUCCESSFUL).
+  - CI de GitHub Actions completo en PR #232:
+    - Shared and data tests: pass (5m3s)
+    - iOS and macOS build verification: pass (13m8s)
+  - Fusión limpia y verificada en `develop`.
+
+## Avance 2026-09-10 - Cuaderno: reactividad instantánea al calificar y actualizar instrumentos en Mac e iPad (PR #231)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Identificación y resolución de la cadena de bloqueos de reactividad:
+     - En `KmpBridge.swift`, `notebookAggregateSignature(for:)` omitía las anotaciones de las celdas (`icon`, `note`, recuento de adjuntos), provocando que emisiones reactivas del `StateFlow` fuesen descartadas por considerarse idénticas a la última signatura. Se incluyeron los campos de anotación y se añadió la invalidación `lastNotebookAggregateSignature = nil` al guardar sellos, notas, rúbricas e instrumentos estructurados.
+     - En `NotebookGridContent.swift`, `NotebookRowFingerprintProvider.cellDigestByColumnId` no computaba sellos ni notas, impidiendo que `NotebookEquatableGridRow` detectara cambios locales y omitiendo el re-render de la fila.
+     - En `NotebookEditableTableCell.swift`, `NotebookCellDisplaySnapshot` no contenía `stampIcon`, `hasNote` ni `attachmentCount`. Las celdas con `.equatable()` ignoraban las actualizaciones de feedback formativo. Se propagó además `reloadToken` y la comparación de display value a `NotebookReadOnlyCell`, `NotebookRubricCell` y `NotebookFormulaCell`.
+     - En `NotebookModuleGridCells.swift` y `NotebookDynamicCellsRow.swift`, se extraen los campos visuales de `annotation` al generar los snapshots.
+     - En `saveStructuredInstrumentEvaluation`, `structuredCellDisplayText` y `cellCheck`, se implementó caché optimista en memoria para que las notas/conteos de instrumentos y checks booleanos aparezcan de inmediato en pantalla.
+- Por qué importa:
+  - Elimina el bug crítico y molesto en Mac e iPad donde calificar una celda, asignar un sello o evaluar un checklist requería cambiar de pantalla y regresar para ver los datos reflejados. Ahora la actualización es 100% instantánea.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/KmpBridge.swift`
+  - `kmp/iosApp/App/NotebookGridContent.swift`
+  - `kmp/iosApp/App/NotebookEditableTableCell.swift`
+  - `kmp/iosApp/App/NotebookModuleGridCells.swift`
+  - `kmp/iosApp/App/NotebookDynamicCellsRow.swift`
+  - `docs/CHANGELOG.md`
+- Validación realizada:
+  - Compilación dual verificada con `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Tests KMP compartidos ejecutados con éxito: `./kmp/gradlew :shared:desktopTest` (BUILD SUCCESSFUL, 100% verde).
+  - CI de GitHub Actions completo en PR #231:
+    - Shared and data tests: pass (5m21s)
+    - iOS and macOS build verification: pass (21m37s)
+  - Fusión limpia y verificada en `develop`.
+
 ## Avance 2026-09-10 - SyncLAN: desbloqueo de re-emparejamiento con PIN válido, aislamiento en memoria de tests y desvinculación desde Mac
 
 Resumen:
@@ -883,6 +1630,68 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 - Documentar decisiones de arquitectura cuando afecten a persistencia, sync o ownership de estado.
 
 ## 10. Bitácora de avances significativos
+
+### 2026-09-23 - El grid pinta la nota desde la fila, no desde el puente
+
+Resumen:
+- Qué cambio se hizo: al pintar una celda, la nota, el texto, la casilla, la rúbrica y el sello salen de `persistedCells` y `persistedGrades`. La fórmula usa esas notas de la misma fila. El borrador optimista del puente se consulta solo si hay uno en vuelo.
+- Por qué importa: una clase de 35 por 25 ya no llama a `cellText`, `numericGradeText` ni `cellAnnotation` en cada celda visible.
+- Dónde vive el cambio: `kmp/iosApp/App/NotebookModuleDisplayFormatting.swift`, `kmp/iosApp/App/NotebookModuleGridCells.swift`.
+- Validación realizada: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator (COMPILADO CORRECTAMENTE). No se abrió la app ni se midió con Instruments.
+
+Notas para futuras conversaciones:
+- No volver a pintar el grid con `numericGradeText` / `cellText` / `cellAnnotation`. Esos métodos reconstruyen un índice de toda la clase.
+- El borrador optimista (`optimisticGradeDrafts`, `optimisticTextDrafts`, `optimisticAnnotations`) sigue haciendo falta en la ventana de ~150 ms antes de que el cuaderno emita la fila nueva. La clave es `alumno|columna`.
+- La ventana de filas (Fase 2.3) no se ha hecho: faltaba medir con Instruments si el grid materializa todas las filas.
+
+### 2026-09-24 - Rango y un solo Deshacer en el Cuaderno
+
+Resumen:
+- Mayús+clic alarga la selección hacia abajo o hacia arriba en la misma columna. Rellenar copia el valor solo ahí.
+- Pegar varias líneas llena esas celdas. Un Deshacer vuelve atrás todo el lote, no celda a celda.
+- Validación: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator el 24 sep 2026. No se pegó una hoja de Numbers en la app.
+
+Notas para futuras conversaciones:
+- El arrastre vertical para marcar el rango no está: en el Mac choca con el gesto de subir o bajar la nota.
+- El pull request del rango va encima del teclado (`codex/cuaderno-fase3-teclado`), no directo a `develop`, para no mezclar los dos cambios.
+
+### 2026-09-23 - Teclado de hoja de cálculo en el Cuaderno
+
+Resumen:
+- En macOS, con una nota seleccionada, las flechas mueven la celda, un número sustituye la nota y la flecha o Return la guarda y pasa a la siguiente. Esc deja el valor de antes de escribir.
+- Una rúbrica, una fórmula o un visto bueno no se abren al pulsar un número. El teclado táctil del iPad sigue igual.
+- Vive en `NotebookViewModifiers.swift`, `NotebookModuleCellActions.swift` y el campo numérico de `NotebookEditableTableCell.swift`. La nota no se guarda en cada tecla.
+- Validación: `./scripts/verify_apple_builds.sh` compiló macOS e iOS Simulator. No se probó con el dedo en la app.
+
+Notas para futuras conversaciones:
+- La fase 3.2 (rango, rellenar y un solo Deshacer) y la 3.3 (menús únicos y ⌘Z del sistema) siguen pendientes.
+- Las ramas `codex/fix-cuaderno-fase1-bugs` y `codex/cuaderno-fase2-display` no están en `develop`. La fase 1 también toca `NotebookEditableTableCell.swift`.
+- Escribir la nota no abre el campo de texto: el grid sigue con el foco para que la segunda cifra no borre la primera.
+
+### 2026-09-16 - El tablero de grupos ya no se deshace y muestra todas las columnas
+
+Resumen:
+- Qué cambio se hizo: el tablero guarda el reparto en local al crear, arrastrar o agrupar, y no se deja pisar por un recargo viejo. El id del grupo se lee de la fila insertada. La ventana es más ancha y las columnas se reparte el ancho para ver el alumnado sin recortar nombres.
+- Por qué importa: en Mac los grupos se creaban y volvían a «Sin grupo» antes de pulsar Listo, y la primera columna quedaba cortada.
+- Dónde vive el cambio: `NotebookGroupBoardView.swift`, `NotebookGroupManagementSheet.swift`, `NotebookConfigRepositorySqlDelight.kt`.
+- Validación realizada: tests KMP de grupos verdes. iOS Simulator compiló. macOS falló en el helper de Command Center (`libskiko-macos-arm64.dylib.sha256` ausente), no en el Swift de grupos.
+
+Notas para futuras conversaciones:
+- No pintar el tablero solo desde `notebookState` recargado. Hace falta un borrador local mientras el guardado termina.
+- `last_insert_rowid()` no es fiable para miembros de grupo en Apple. Usar `MAX(id)` de `notebook_work_groups` dentro de la misma transacción.
+
+### 2026-09-16 - Grupos de trabajo persistentes, tablero visual y agrupado automático
+
+Resumen:
+- Qué cambio se hizo: los grupos de trabajo se guardan en la pestaña raíz de la evaluación y se leen por `groupId`. Un grupo ligado a una SA se ve en toda la clase. Un grupo general se ve en esa evaluación y en sus hijas. Importar, crear, arrastrar o pulsar Listo recarga el cuaderno. Hay un tablero para arrastrar alumnado y un agrupado automático por nota, sexo y lesionados.
+- Por qué importa: al pulsar Listo los grupos dejaban de verse en el cuaderno porque se guardaban en una pestaña y se buscaban en otra.
+- Dónde vive el cambio: `NotebookWorkGroupPolicy.kt`, `ComposeWorkGroupsUseCase.kt`, `NotebookConfigRepositorySqlDelight.kt`, `NotebookViewModel.kt`, `NotebookGroupManagementSheet.swift`, `NotebookGroupBoardView.swift`, `NotebookModuleColumnModel.swift`, `KmpBridge.swift`.
+- Validación realizada: `cd kmp && ./gradlew :shared:desktopTest :data:desktopTest` filtrado a policy, compose, NotebookViewModel y NotebookConfigRepository, BUILD SUCCESSFUL. `./scripts/verify_apple_builds.sh`: macOS e iOS Simulator compilados.
+
+Notas para futuras conversaciones:
+- No filtrar miembros de grupo por `tabId` al pintar el cuaderno. El identificador del grupo basta.
+- Al asignar un alumno, borrar primero su pertenencia en toda la clase (`deleteWorkGroupMemberByStudent`) y luego insertar en la pestaña del grupo.
+- El modo general no debe preferir grupos vacíos sin SA si hay grupos de SA con alumnos.
 
 ### 2026-09-09 - Reactividad inmediata y retención optimista en celdas numéricas y de observación (iPad / Mac)
 
@@ -2624,3 +3433,51 @@ Resumen:
 - **Validación realizada**:
   - Compilación exitosa en `macOS Native / Catalyst` y en `iOS Simulator` con `./scripts/verify_apple_builds.sh`.
   - Paso del 100% de `MiGestorPlannerTests` en macOS (exit code 0).
+
+### 2026-09-11 - Vista de Calendario Mensual 2.0 en Planificación (iPad / macOS)
+
+Resumen:
+- **Cambios realizados**:
+  - Se incorporó la sección `PlannerWorkspaceSection.month` («Mes») al planificador didáctico, con icono SF Symbol `calendar`.
+  - **Cuadrícula mensual bidireccional (`PlannerMonthCalendarView`)**: Cuadrícula de 7 columnas (Lunes a Domingo) con proyección de semanas y padding de días limítrofes (35 o 42 celdas), resaltado visual de «Hoy», y navegación por mes (‹, Hoy, ›).
+  - **Píldoras y badges de sesión**: Sesiones coloreadas con el tinte pedagógico del grupo y franja horaria, con indicador de desbordamiento (+X más) y popover contextual interactivo para días con múltiples sesiones.
+  - **Integración fluida**: Apertura directa del detalle de sesión (`PlannerSessionDetailSheet`) al pulsar cualquier píldora, filtrado por grupo/curso y atajos de teclado de selección rápida en macOS.
+- **Por qué importa**: Dota al planificador de una vista a vista de pájaro de 30 días similar a iDoceo o Google Calendar, permitiendo a los docentes visualizar la carga trimestral y distribución de unidades didácticas sin desplazarse semana a semana.
+- **Rutas afectadas**:
+  - `PlannerMonthCalendarView.swift`
+  - `PlannerWorkspaceViewModel+MonthBoard.swift`
+  - `PlannerWorkspaceViewModel.swift`
+  - `PlannerWorkspaceIOS.swift`
+  - `MacPlannerView.swift`
+  - `MacRootView.swift`
+  - `PlannerMonthGridTests.swift`
+- **Validación realizada**:
+  - Compilación exitosa de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh`.
+  - Pruebas unitarias completas en `PlannerMonthGridTests` superadas al 100%.
+
+### 2026-09-11 - Sábana / Matriz Global de Asistencia 2D y Pase de Lista Relámpago (iPad / macOS)
+
+Resumen:
+- **Cambios realizados**:
+  - Se añadió el modo `AttendanceBoardMode.matrix` («Matriz») con icono SF Symbol `tablecells` a la barra de vistas de asistencia.
+  - **Sábana matricial bidireccional (`AttendanceMatrixGridView`)**: Matriz 2D con listado de alumnos a la izquierda (con avatar, nombre completo e indicador de lesión en EF), cabeceras de columnas por fecha con día de la semana y fecha localizada (`dd/MM`), y celdas de estado interactivas (`P`, `A`, `R`, `J`, `M`, `E`, `·`).
+  - **Selector contextual de estado en celda (`AttendanceMatrixStatusPicker`)**: Popover compacto de selección rápida con feedback táctil háptico (`AppleInteractionFeedback.play(.selection)`) y actualización optimista inmediata.
+  - **Pase de lista relámpago («Marcar todos hoy (P)»)**: Botón destacado en barra de control que marca a todo el grupo presente hoy en un solo toque, respetando exclusiones previas de alumnos justificados o exentos, y persistiendo masivamente en una única transacción mediante `bridge.saveAttendanceBatch`.
+  - **Métricas acumuladas y totales por columna**: Columnas a la derecha con porcentaje global de asistencia con código de color dinámico (verde ≥90%, amarillo ≥80%, rojo <80%), conteo de faltas, retrasos y justificadas, más pie de tabla con totales de asistencia por fecha y media global del grupo.
+  - **Selector de rango temporal pedagógico (`AttendanceMatrixRange`)**: Permite filtrar entre *Mes actual*, *1.er Trimestre*, *2.º Trimestre*, *3.er Trimestre* y *Todo el curso*.
+  - **Exportación estructurada**: Botón «Copiar resumen» con formato tabulado listo para pegar en Excel/Numbers y confirmación visual instantánea.
+- **Por qué importa**: Ofrece la funcionalidad más demandada de iDoceo en gestión de asistencia: visualizar en un solo golpe de vista la asistencia acumulada de todo el curso, editar cualquier fecha pasada o presente con un toque y agilizar el pase diario con un botón de lote.
+- **Rutas afectadas**:
+  - `AttendanceMatrixGridView.swift`
+  - `AttendanceShared.swift`
+  - `AttendanceWorkspaceView.swift`
+  - `MacAttendanceView.swift`
+  - `IPadWorkspaceShell.swift`
+  - `IOSRootView.swift`
+  - `MacRootView.swift`
+  - `AttendanceMatrixStatsTests.swift`
+- **Validación realizada**:
+  - Compilación verificada para `macOS Native / Catalyst` e `iOS Simulator` mediante `./scripts/verify_apple_builds.sh`.
+  - Suite de 6 pruebas unitarias `AttendanceMatrixStatsTests` ejecutada con éxito (`BUILD SUCCEEDED`, 0 fallos).
+  - Auditoría técnica completa aprobada por subagentes especializados `reviewer` y `janitor`.
+

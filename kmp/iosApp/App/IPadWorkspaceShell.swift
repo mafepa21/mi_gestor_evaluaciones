@@ -50,6 +50,7 @@ final class WorkspaceLayoutState: ObservableObject {
     var notebookMarkAllPresentAction: (() -> Void)?
     var notebookRefreshAction: (() -> Void)?
     var notebookGenerateSummaryAction: (() -> Void)?
+    var notebookExportSMAction: (() -> Void)?
 
     var dashboardInspectorAction: (() -> Void)?
     var dashboardRefreshAction: (() -> Void)?
@@ -102,7 +103,8 @@ final class WorkspaceLayoutState: ObservableObject {
         onToggleAttendanceQuickMode: (() -> Void)? = nil,
         onMarkAllPresent: (() -> Void)? = nil,
         onRefresh: (() -> Void)? = nil,
-        onGenerateSummary: (() -> Void)? = nil
+        onGenerateSummary: (() -> Void)? = nil,
+        onExportSM: (() -> Void)? = nil
     ) {
         publishDeferred {
             self.notebookInspectorAvailable = inspectorAvailable
@@ -130,6 +132,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookMarkAllPresentAction = onMarkAllPresent
             self.notebookRefreshAction = onRefresh
             self.notebookGenerateSummaryAction = onGenerateSummary
+            self.notebookExportSMAction = onExportSM
         }
     }
 
@@ -189,6 +192,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookMarkAllPresentAction = nil
             self.notebookRefreshAction = nil
             self.notebookGenerateSummaryAction = nil
+            self.notebookExportSMAction = nil
         }
     }
 
@@ -218,6 +222,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func notebookGenerateSummary() {
         notebookGenerateSummaryAction?()
+    }
+
+    func notebookExportSM() {
+        notebookExportSMAction?()
     }
 
     func setNotebookSearchText(_ value: String) {
@@ -1319,7 +1327,7 @@ struct AppWorkspaceShell: View {
                 attendanceActionsMenu
                 Spacer(minLength: 8)
                 attendanceDatePicker
-                attendanceModePicker(width: 250)
+                attendanceModePicker(width: 320)
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -1331,7 +1339,7 @@ struct AppWorkspaceShell: View {
                     attendanceDatePicker
                 }
                 HStack(spacing: 12) {
-                    attendanceModePicker(width: 280)
+                    attendanceModePicker(width: 320)
                 }
             }
         }
@@ -1420,9 +1428,9 @@ struct AppWorkspaceShell: View {
                 set: { layoutState.setAttendanceBoardMode($0) }
             )
         ) {
-            Text("Cursos").tag("Cursos")
-            Text("Día").tag("Día")
-            Text("Historial").tag("Historial")
+            ForEach(AttendanceBoardMode.allCases) { mode in
+                Text(mode.rawValue).tag(mode.rawValue)
+            }
         }
         .pickerStyle(.segmented)
         // minWidth prevents AppKit from compressing below its intrinsic minimum,
@@ -1630,7 +1638,7 @@ struct AppWorkspaceShell: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Text("Grid").tag("grid")
+                Text(NotebookSurfaceMode.grid.title).tag("grid")
                 Text("Plano").tag("seatingPlan")
             }
             .pickerStyle(.segmented)
@@ -1775,10 +1783,18 @@ struct AppWorkspaceShell: View {
                 }
             }
 
+            if layoutState.notebookExportSMAction != nil {
+                Button {
+                    layoutState.notebookExportSM()
+                } label: {
+                    Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                }
+            }
+
             Button {
                 layoutState.notebookUndo()
             } label: {
-                Label("Deshacer", systemImage: "arrow.uturn.backward")
+                Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
             }
             .disabled(!layoutState.notebookCanUndo)
 
@@ -1794,7 +1810,7 @@ struct AppWorkspaceShell: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Label("Grid", systemImage: "tablecells").tag("grid")
+                Label(NotebookSurfaceMode.grid.title, systemImage: "tablecells").tag("grid")
                 Label("Plano", systemImage: "rectangle.3.group").tag("seatingPlan")
             }
 
@@ -1904,7 +1920,7 @@ struct AppWorkspaceShell: View {
                 Button {
                     layoutState.notebookUndo()
                 } label: {
-                    Label("Deshacer", systemImage: "arrow.uturn.backward")
+                    Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
                 }
                 .disabled(!layoutState.notebookCanUndo)
 
@@ -1921,6 +1937,14 @@ struct AppWorkspaceShell: View {
                     layoutState.notebookGenerateSummary()
                 } label: {
                     Label("Generar síntesis", systemImage: "apple.intelligence")
+                }
+
+                if layoutState.notebookExportSMAction != nil {
+                    Button {
+                        layoutState.notebookExportSM()
+                    } label: {
+                        Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                    }
                 }
 
                 Button {

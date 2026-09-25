@@ -2105,12 +2105,14 @@ data class SessionCascadeMoveRequest(
     val targetYear: Int,
     val targetDayOfWeek: Int,
     val targetPeriod: Int,
+    val forceTerminalSessions: Boolean = false,
 )
 
 data class SessionCascadeMovePreview(
     val previousPlacements: List<SessionPlacement> = emptyList(),
     val nextPlacements: List<SessionPlacement> = emptyList(),
     val completedSessionIds: List<Long> = emptyList(),
+    val cancelledSessionIds: List<Long> = emptyList(),
     val crossesWeekBoundary: Boolean = false,
     val isNoOp: Boolean = false,
 )

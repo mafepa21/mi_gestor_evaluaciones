@@ -106,8 +106,19 @@ struct OnboardingHostModifier: ViewModifier {
     /// configuración: Hoy es la primera superficie operativa y el destino
     /// común de iPad, iPhone y macOS.
     private func finishOnboarding() {
+        dismissAndOpenModule(.dashboard)
+    }
+
+    /// La checklist se presenta como una `sheet`. Navegar al mismo tiempo que
+    /// se desmonta deja a SwiftUI con dos transiciones compitiendo: en iPad
+    /// puede conservar la hoja visible o aplicar el cambio de módulo al árbol
+    /// que todavía está detrás de ella. Cerramos la ruta y dejamos terminar la
+    /// animación antes de entregar la navegación al shell.
+    private func dismissAndOpenModule(_ module: AppWorkspaceModule) {
         store.dismiss()
-        onOpenModule(.dashboard)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            onOpenModule(module)
+        }
     }
 
     private func handleAction(_ step: OnboardingStep, _ kind: OnboardingActionKind) {
@@ -124,15 +135,13 @@ struct OnboardingHostModifier: ViewModifier {
         case .groups:
             // Los grupos no se crean aquí: salen del horario. "Ver mis grupos"
             // lleva a la pantalla que los administra, ahora dentro de Ajustes.
-            store.route = nil
-            onOpenModule(.courses)
+            dismissAndOpenModule(.courses)
 
         case .students:
             replaceRoute(with: .students(startWithImport: kind == .importDocument))
 
         case .learningSituations:
-            store.route = nil
-            onOpenModule(.situations)
+            dismissAndOpenModule(.situations)
         }
     }
 }

@@ -60,16 +60,25 @@ struct NotebookStudentInspector: View {
             VStack(alignment: .leading, spacing: 16) {
                 inspectorHeader
                 averageSection
-                educationalInsightSection
                 pendingColumnsSection
                 observationsSection
-                rubricSection
-                quickActions
-                detailsSection
-                trendsSection
-                aiSection
-                evidenceEditor
-                auditHistorySection
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 16) {
+                        educationalInsightSection
+                        rubricSection
+                        quickActions
+                        detailsSection
+                        trendsSection
+                        aiSection
+                        evidenceEditor
+                        auditHistorySection
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Text("Más del alumno")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .animation(.easeInOut(duration: 0.2), value: studentId)
             }
             .padding(24)
         }

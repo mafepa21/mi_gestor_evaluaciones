@@ -13,6 +13,7 @@ struct MacRootView: View {
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
+    @ObservedObject private var notebookEditMenu = NotebookEditMenuState.shared
     @StateObject private var notebookStore = NotebookBridgeStore()
     @StateObject private var dashboardStore = DashboardBridgeStore()
     @StateObject private var studentsBridgeStore = StudentsBridgeStore()
@@ -785,10 +786,18 @@ struct MacRootView: View {
                 }
             }
 
+            if notebookToolbarActions.exportSMAction != nil {
+                Button {
+                    notebookToolbarActions.exportSM()
+                } label: {
+                    Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                }
+            }
+
             Button {
                 notebookToolbarActions.undo()
             } label: {
-                Label("Deshacer", systemImage: "arrow.uturn.backward")
+                Label(notebookEditMenu.undoTitle, systemImage: "arrow.uturn.backward")
             }
             .disabled(!notebookToolbarActions.canUndo)
             .keyboardShortcut("z", modifiers: .command)
@@ -805,7 +814,7 @@ struct MacRootView: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Label("Grid", systemImage: "tablecells").tag("grid")
+                Label(NotebookSurfaceMode.grid.title, systemImage: "tablecells").tag("grid")
                 Label("Plano", systemImage: "rectangle.3.group").tag("seatingPlan")
             }
 
@@ -940,7 +949,7 @@ struct MacRootView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
+                .frame(maxWidth: 320)
 
                 Menu {
                     Button("Todos los cursos") {
@@ -1072,14 +1081,21 @@ struct MacRootView: View {
             if selectedFeature == .planner, let plannerToolbarActions {
                 let plannerSection = plannerToolbarActions.activeSection.wrappedValue
 
-                Picker("Sección", selection: plannerToolbarActions.activeSection) {
+                Picker("Sección", selection: Binding(
+                    get: { plannerToolbarActions.activeSection.wrappedValue },
+                    set: { section in
+                        withAnimation(uiFeatureFlags.interactionAnimation) {
+                            plannerToolbarActions.activeSection.wrappedValue = section
+                        }
+                    }
+                )) {
                     ForEach(PlannerWorkspaceSection.allCases) { section in
                         Label(section.rawValue, systemImage: section.systemImage).tag(section)
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
-                .help("Cambiar de sección del planificador (⌘⌥1–4)")
+                .frame(maxWidth: 480)
+                .help("Cambiar de sección del planificador (⌘⌥1–6)")
 
                 if plannerSection == .day {
                     Button(action: plannerToolbarActions.onPreviousDay) {
@@ -1097,6 +1113,22 @@ struct MacRootView: View {
                     }
                     .keyboardShortcut(.rightArrow, modifiers: .command)
                     .help("Día siguiente (⌘→)")
+                } else if plannerSection == .month {
+                    Button(action: plannerToolbarActions.onPreviousMonth) {
+                        Label("Mes anterior", systemImage: "chevron.left")
+                    }
+                    .keyboardShortcut(.leftArrow, modifiers: .command)
+                    .help("Mes anterior (⌘←)")
+
+                    Button("Hoy", action: plannerToolbarActions.onTodayMonth)
+                        .keyboardShortcut("t", modifiers: .command)
+                        .help("Ir al mes actual (⌘T)")
+
+                    Button(action: plannerToolbarActions.onNextMonth) {
+                        Label("Mes siguiente", systemImage: "chevron.right")
+                    }
+                    .keyboardShortcut(.rightArrow, modifiers: .command)
+                    .help("Mes siguiente (⌘→)")
                 } else if plannerSection == .week || plannerSection == .summary {
                     Button(action: plannerToolbarActions.onPreviousWeek) {
                         Label("Semana anterior", systemImage: "chevron.left")
@@ -1489,7 +1521,9 @@ struct MacRootView: View {
         if selectedFeature != .planner {
             selectFeature(.planner)
         }
-        plannerToolbarActions?.activeSection.wrappedValue = section
+        withAnimation(uiFeatureFlags.interactionAnimation) {
+            plannerToolbarActions?.activeSection.wrappedValue = section
+        }
     }
 
     private func performSave() {

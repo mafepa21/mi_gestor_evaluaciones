@@ -93,7 +93,20 @@ internal fun createAppleDriver(
     // tablas del planner, para que Apple y desktop no puedan divergir.
     runRescueMigrations(driver)
 
+    configureAppleSqlite(driver)
+
     return driver
+}
+
+private fun configureAppleSqlite(driver: SqlDriver) {
+    try {
+        driver.execute(null, "PRAGMA synchronous = NORMAL", 0)
+        driver.execute(null, "PRAGMA cache_size = -64000", 0)
+        driver.execute(null, "PRAGMA mmap_size = 268435456", 0)
+        driver.execute(null, "PRAGMA temp_store = MEMORY", 0)
+    } catch (e: Throwable) {
+        println("[AppleDriver] Warning applying performance pragmas: ${e.message}")
+    }
 }
 
 /**
@@ -315,6 +328,7 @@ internal fun applyPendingAdoptionIfNeeded(
             platform.posix.fclose(f)
         }
         println("[AppleDriver] Adopción de dataset aplicada correctamente. Backup guardado en $backupPath")
+        pruneOldPreAdoptBackups(backupsDir = backupsDir, databaseName = databaseName, maxBackups = 5)
     } catch (e: Throwable) {
         println("[AppleDriver] Error al aplicar adopción: ${e.message}. Ejecutando restauración de emergencia...")
         if (dbExists && fileManager.fileExistsAtPath(backupPath)) {
@@ -337,5 +351,27 @@ internal fun applyPendingAdoptionIfNeeded(
             platform.posix.fclose(f)
         }
         fileManager.removeItemAtPath(pendingMarkerPath, null)
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun pruneOldPreAdoptBackups(backupsDir: String, databaseName: String, maxBackups: Int = 5) {
+    val fileManager = NSFileManager.defaultManager
+    @Suppress("UNCHECKED_CAST")
+    val items = fileManager.contentsOfDirectoryAtPath(backupsDir, null) as? List<String> ?: return
+    val preAdoptFiles = items
+        .filter { it.contains("_pre_adopt_$databaseName") && !it.endsWith("-wal") && !it.endsWith("-shm") }
+        .sortedDescending()
+
+    if (preAdoptFiles.size > maxBackups) {
+        val toDelete = preAdoptFiles.drop(maxBackups)
+        for (fileName in toDelete) {
+            val mainPath = "$backupsDir/$fileName"
+            fileManager.removeItemAtPath(mainPath, null)
+            for (suffix in listOf("-wal", "-shm")) {
+                fileManager.removeItemAtPath("$mainPath$suffix", null)
+            }
+            println("[AppleDriver] Rotación de backup pre-adopción: purgado $fileName")
+        }
     }
 }

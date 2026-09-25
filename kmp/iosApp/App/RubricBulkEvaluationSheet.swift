@@ -16,6 +16,7 @@ struct RubricBulkEvaluationSheet: View {
     @State private var localInjuryStatuses: [Int64: Bool] = [:]
     @State private var savingInjuryStudentIds: Set<Int64> = []
     @State private var activePopoverLevel: RubricLevel?
+    @State private var familyReportStudentId: Int64? = nil
 
     private var state: BulkRubricEvaluationUiState? {
         bridge.bulkRubricEvaluationState
@@ -138,6 +139,27 @@ struct RubricBulkEvaluationSheet: View {
                     .presentationDragIndicator(.visible)
                     #endif
             }
+            .sheet(
+                isPresented: Binding(
+                    get: { familyReportStudentId != nil },
+                    set: { if !$0 { familyReportStudentId = nil } }
+                )
+            ) {
+                if let studentId = familyReportStudentId,
+                   let state,
+                   let rubric = state.rubricDetail,
+                   let student = state.students.first(where: { $0.id == studentId }) {
+                    let studentLevels = bridge.bulkAssessmentSnapshot()[student.id] ?? [:]
+                    let studentScore = bridge.bulkScoreSnapshot()[student.id] ?? 0.0
+                    RubricExportFamilyPDFSheet(
+                        rubricDetail: rubric,
+                        selectedLevelIds: studentLevels,
+                        studentName: student.firstName + " " + student.lastName,
+                        className: className(for: state),
+                        currentScore: studentScore
+                    )
+                }
+            }
         }
     }
 
@@ -240,6 +262,13 @@ struct RubricBulkEvaluationSheet: View {
                                     Spacer(minLength: 4)
 
                                     scorePill(for: student.id, width: 44, cache: cache)
+                                        .contextMenu {
+                                            Button {
+                                                familyReportStudentId = student.id
+                                            } label: {
+                                                Label("Informe familiar PDF…", systemImage: "doc.text.badge.plus")
+                                            }
+                                        }
                                 }
                                 .frame(width: 160, alignment: .leading)
 
@@ -461,6 +490,14 @@ struct RubricBulkEvaluationSheet: View {
                 scorePill(for: student.id, width: scoreWidth, cache: cache)
 
                 Menu {
+                    Button {
+                        familyReportStudentId = student.id
+                    } label: {
+                        Label("Informe familiar PDF…", systemImage: "doc.text.badge.plus")
+                    }
+
+                    Divider()
+
                     Button {
                         Task { await toggleInjuryStatus(for: student, classId: state.classId, cache: cache) }
                     } label: {

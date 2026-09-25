@@ -77,6 +77,19 @@ struct NotebookDynamicCellsRow: View {
     private func cellDisplaySnapshot(for column: NotebookColumnDefinition) -> NotebookCellDisplaySnapshot {
         let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
         let persistedGrade = item.row.persistedGrades.first(where: { $0.columnId == column.id })
+        let optAnnotation = bridge.cellAnnotation(studentId: item.student.id, columnId: column.id)
+        let stampIcon: String?
+        let hasNote: Bool
+        let attachmentCount: Int
+        if let opt = optAnnotation {
+            stampIcon = opt.icon
+            hasNote = !(opt.note?.isEmpty ?? true)
+            attachmentCount = opt.attachmentUris.count
+        } else {
+            stampIcon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
+            hasNote = !(persistedCell?.annotation?.note?.isEmpty ?? true)
+            attachmentCount = persistedCell?.annotation?.attachmentUris.count ?? 0
+        }
         
         switch column.type {
         case .numeric:
@@ -86,10 +99,20 @@ struct NotebookDynamicCellsRow: View {
             } else {
                 numericVal = persistedCell?.textValue ?? persistedCell?.displayValue ?? ""
             }
-            return NotebookCellDisplaySnapshot(numericText: numericVal.trimmingCharacters(in: .whitespacesAndNewlines))
+            return NotebookCellDisplaySnapshot(
+                numericText: numericVal.trimmingCharacters(in: .whitespacesAndNewlines),
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
+            )
         case .check:
             let boolVal = persistedCell?.boolValue?.boolValue ?? false
-            return NotebookCellDisplaySnapshot(checkValue: boolVal)
+            return NotebookCellDisplaySnapshot(
+                checkValue: boolVal,
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
+            )
         case .calculated:
             let calculatedVal: String
             if let value = persistedGrade?.value {
@@ -97,7 +120,12 @@ struct NotebookDynamicCellsRow: View {
             } else {
                 calculatedVal = persistedCell?.displayValue ?? ""
             }
-            return NotebookCellDisplaySnapshot(calculatedText: calculatedVal)
+            return NotebookCellDisplaySnapshot(
+                calculatedText: calculatedVal,
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
+            )
         case .rubric:
             let rubricVal: String
             if let display = persistedCell?.displayValue {
@@ -107,12 +135,28 @@ struct NotebookDynamicCellsRow: View {
             } else {
                 rubricVal = ""
             }
-            return NotebookCellDisplaySnapshot(rubricText: rubricVal.trimmingCharacters(in: .whitespacesAndNewlines))
+            return NotebookCellDisplaySnapshot(
+                rubricText: rubricVal.trimmingCharacters(in: .whitespacesAndNewlines),
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
+            )
         case .attendance:
             let textVal = persistedCell?.textValue ?? persistedCell?.ordinalValue ?? ""
-            return NotebookCellDisplaySnapshot(text: textVal)
+            return NotebookCellDisplaySnapshot(
+                text: textVal,
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
+            )
         default:
-            return NotebookCellDisplaySnapshot(text: persistedCell?.textValue ?? persistedCell?.displayValue ?? "")
+            let val = cellValue(for: column)
+            return NotebookCellDisplaySnapshot(
+                text: !val.isEmpty ? val : (persistedCell?.textValue ?? persistedCell?.displayValue ?? ""),
+                stampIcon: stampIcon,
+                hasNote: hasNote,
+                attachmentCount: attachmentCount
+            )
         }
     }
 

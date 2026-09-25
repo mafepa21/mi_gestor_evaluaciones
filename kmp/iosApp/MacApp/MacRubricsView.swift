@@ -18,6 +18,7 @@ struct MacRubricsView: View {
     @State private var bulkOptions: [KmpBridge.RubricUsageSnapshot.EvaluationUsage] = []
     @State private var bulkLaunchInFlight = false
     @State private var showingBuilder = false
+    @State private var showingTemplateCatalog = false
     @State private var showingRubricFileImporter = false
     @State private var rubricImportPreview: AppleRubricImportPreview?
     @State private var rubricImportError: String?
@@ -100,6 +101,9 @@ struct MacRubricsView: View {
                     showingBuilder = true
                 },
                 secondaryActions: [
+                    MacPremiumHeaderAction(title: "Catálogo", systemImage: "books.vertical") {
+                        showingTemplateCatalog = true
+                    },
                     MacPremiumHeaderAction(title: "Importar rúbrica", systemImage: "square.and.arrow.down") {
                         showingRubricFileImporter = true
                     }
@@ -295,6 +299,10 @@ struct MacRubricsView: View {
             RubricBulkEvaluationSheet(bridge: bridge)
                 .environmentObject(bridge)
                 .frame(minWidth: 900, idealWidth: 1180, minHeight: 600, idealHeight: 760)
+        }
+        .sheet(isPresented: $showingTemplateCatalog) {
+            RubricTemplateCatalogSheet(targetClassId: selectedFilterClassId)
+                .environmentObject(bridge)
         }
     }
 

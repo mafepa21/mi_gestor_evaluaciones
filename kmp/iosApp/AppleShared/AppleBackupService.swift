@@ -24,7 +24,7 @@ public final class AppleBackupService: ObservableObject {
     public let databaseURL: URL
     public let attachmentsURL: URL
     public let learningSituationsURL: URL
-    private let retentionLimit = 10
+    private let retentionLimit = 5
 
     public static let shared = AppleBackupService()
 

@@ -182,6 +182,13 @@ extension NotebookModuleView {
         scheduleToolbarStateSyncIfLoaded()
     }
 
+    func clearNotebookRowFilters() {
+        searchText = ""
+        selectedGroupId = nil
+        layoutState.setNotebookSearchText("")
+        layoutState.setNotebookGroupFilter(nil)
+    }
+
     func selectNotebookClass(_ classId: Int64) {
         guard bridge.notebookViewModel.currentClassId?.int64Value != classId else { return }
         selectedGroupId = nil
@@ -260,6 +267,9 @@ extension NotebookModuleView {
             },
             onGenerateSummary: {
                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
+            },
+            onExportSM: {
+                isEducamosSMExportPresented = true
             }
         )
 
@@ -318,6 +328,9 @@ extension NotebookModuleView {
             },
             onRefresh: {
                 Task { await refreshNotebookSignals() }
+            },
+            onExportSM: {
+                isEducamosSMExportPresented = true
             }
         )
     }

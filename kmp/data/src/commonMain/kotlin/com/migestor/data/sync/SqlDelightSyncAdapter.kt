@@ -575,6 +575,9 @@ class SqlDelightSyncAdapter(
                         put("email", student.email?.let(::JsonPrimitive) ?: JsonPrimitive(""))
                         put("photoPath", student.photoPath?.let(::JsonPrimitive) ?: JsonPrimitive(""))
                         put("isInjured", JsonPrimitive(student.isInjured))
+                        put("sex", JsonPrimitive(student.sex.name))
+                        put("sexSource", JsonPrimitive(student.sexSource.name))
+                        put("birthDate", student.birthDate?.toString()?.let(::JsonPrimitive) ?: JsonNull)
                     }.toString(),
                 )
             }
@@ -1237,12 +1240,13 @@ class SqlDelightSyncAdapter(
                 when (change.entity) {
                     "academic_year" -> {
                         val id = payload.long("id") ?: return@forEach
-                        val centerId = payload.long("centerId") ?: 1L
                         val name = payload.string("name") ?: return@forEach
-                        val startEpochMs = payload.long("startEpochMs") ?: return@forEach
-                        val endEpochMs = payload.long("endEpochMs") ?: return@forEach
-                        val status = payload.string("status") ?: "ACTIVE"
-                        val isActive = payload.bool("isActive") ?: false
+                        val existing = container.academicYearsRepository.listAcademicYears().firstOrNull { it.id == id }
+                        val startEpochMs = if (payload.containsKey("startEpochMs")) payload.long("startEpochMs") ?: existing?.startAt?.toEpochMilliseconds() ?: return@forEach else existing?.startAt?.toEpochMilliseconds() ?: return@forEach
+                        val endEpochMs = if (payload.containsKey("endEpochMs")) payload.long("endEpochMs") ?: existing?.endAt?.toEpochMilliseconds() ?: return@forEach else existing?.endAt?.toEpochMilliseconds() ?: return@forEach
+                        val centerId = if (payload.containsKey("centerId")) payload.long("centerId") ?: existing?.centerId ?: 1L else existing?.centerId ?: 1L
+                        val status = if (payload.containsKey("status")) payload.string("status") ?: existing?.status?.name ?: "ACTIVE" else existing?.status?.name ?: "ACTIVE"
+                        val isActive = if (payload.containsKey("isActive")) payload.bool("isActive") ?: false else existing?.isActive ?: false
                         container.academicYearsRepository.upsertAcademicYear(
                             id = id,
                             centerId = centerId,
@@ -1251,7 +1255,7 @@ class SqlDelightSyncAdapter(
                             endEpochMs = endEpochMs,
                             status = status,
                             isActive = isActive,
-                            archivedAtEpochMs = payload.long("archivedAtEpochMs")?.takeIf { it > 0L },
+                            archivedAtEpochMs = if (payload.containsKey("archivedAtEpochMs")) payload.long("archivedAtEpochMs")?.takeIf { it > 0L } else existing?.archivedAt?.toEpochMilliseconds(),
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,
@@ -1262,16 +1266,20 @@ class SqlDelightSyncAdapter(
                     "class" -> {
                         val id = payload.long("id")
                         val name = payload.string("name") ?: return@forEach
-                        val course = payload.int("course") ?: return@forEach
+                        val incomingId = id?.takeIf { it > 0L }
+                        val existing = incomingId?.let { classId ->
+                            container.classesRepository.listClasses().firstOrNull { it.id == classId }
+                        }
+                        val course = if (payload.containsKey("course")) payload.int("course") ?: existing?.course ?: return@forEach else existing?.course ?: return@forEach
                         container.classesRepository.saveClass(
-                            id = id?.takeIf { it > 0L },
+                            id = incomingId,
                             name = name,
                             course = course,
-                            description = payload.string("description"),
-                            centerId = payload.long("centerId")?.takeIf { it > 0L },
-                            academicYearId = payload.long("academicYearId")?.takeIf { it > 0L },
-                            stageCycleId = payload.long("stageCycleId")?.takeIf { it > 0L },
-                            subjectId = payload.long("subjectId")?.takeIf { it > 0L },
+                            description = if (payload.containsKey("description")) payload.rawString("description") else existing?.description,
+                            centerId = if (payload.containsKey("centerId")) payload.long("centerId")?.takeIf { it > 0L } else existing?.centerId,
+                            academicYearId = if (payload.containsKey("academicYearId")) payload.long("academicYearId")?.takeIf { it > 0L } else existing?.academicYearId,
+                            stageCycleId = if (payload.containsKey("stageCycleId")) payload.long("stageCycleId")?.takeIf { it > 0L } else existing?.stageCycleId,
+                            subjectId = if (payload.containsKey("subjectId")) payload.long("subjectId")?.takeIf { it > 0L } else existing?.subjectId,
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,
@@ -1283,22 +1291,31 @@ class SqlDelightSyncAdapter(
                         val id = payload.long("id")
                         val firstName = payload.string("firstName") ?: return@forEach
                         val lastName = payload.string("lastName") ?: return@forEach
-                        // upsertStudent (no saveStudent, pensado para ediciones locales): aplica
-                        // guard LWW por updated_at y no reemplaza sexo/fecha de nacimiento con los
-                        // defaults UNSPECIFIED/UNKNOWN/null cuando el emisor si los envio.
+                        val existing = id?.takeIf { it > 0L }?.let { container.studentsRepository.getStudent(it) }
+                        // Si el mensaje no trae un campo, se conserva el que ya había.
+                        // Un apellido nuevo no puede borrar el correo, la lesión ni la fecha de nacimiento.
                         container.studentsRepository.upsertStudent(
                             id = id?.takeIf { it > 0L },
                             firstName = firstName,
                             lastName = lastName,
-                            email = payload.string("email"),
-                            photoPath = payload.string("photoPath"),
-                            isInjured = payload.bool("isInjured") ?: false,
-                            sex = payload.string("sex")?.let { runCatching { StudentSex.valueOf(it) }.getOrNull() }
-                                ?: StudentSex.UNSPECIFIED,
-                            sexSource = payload.string("sexSource")?.let { runCatching { StudentSexSource.valueOf(it) }.getOrNull() }
-                                ?: StudentSexSource.UNKNOWN,
-                            birthDate = payload.string("birthDate")
-                                ?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() },
+                            email = if (payload.containsKey("email")) payload.rawString("email")?.takeIf { it.isNotBlank() } else existing?.email,
+                            photoPath = if (payload.containsKey("photoPath")) payload.rawString("photoPath")?.takeIf { it.isNotBlank() } else existing?.photoPath,
+                            isInjured = if (payload.containsKey("isInjured")) payload.bool("isInjured") ?: false else existing?.isInjured ?: false,
+                            sex = if (payload.containsKey("sex")) {
+                                payload.string("sex")?.let { runCatching { StudentSex.valueOf(it) }.getOrNull() } ?: existing?.sex ?: StudentSex.UNSPECIFIED
+                            } else {
+                                existing?.sex ?: StudentSex.UNSPECIFIED
+                            },
+                            sexSource = if (payload.containsKey("sexSource")) {
+                                payload.string("sexSource")?.let { runCatching { StudentSexSource.valueOf(it) }.getOrNull() } ?: existing?.sexSource ?: StudentSexSource.UNKNOWN
+                            } else {
+                                existing?.sexSource ?: StudentSexSource.UNKNOWN
+                            },
+                            birthDate = if (payload.containsKey("birthDate")) {
+                                payload.string("birthDate")?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() }
+                            } else {
+                                existing?.birthDate
+                            },
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,
@@ -1348,17 +1365,20 @@ class SqlDelightSyncAdapter(
                         val code = payload.string("code") ?: return@forEach
                         val name = payload.string("name") ?: return@forEach
                         val type = payload.string("type") ?: return@forEach
-                        val weight = payload.double("weight") ?: 1.0
+                        val incomingId = id?.takeIf { it > 0L }
+                        val existing = incomingId?.let { evalId ->
+                            container.evaluationsRepository.listClassEvaluations(classId).firstOrNull { it.id == evalId }
+                        }
                         container.evaluationsRepository.saveEvaluation(
-                            id = id?.takeIf { it > 0L },
+                            id = incomingId,
                             classId = classId,
                             code = code,
                             name = name,
                             type = type,
-                            weight = weight,
-                            formula = payload.string("formula"),
-                            rubricId = payload.long("rubricId")?.takeIf { it > 0L },
-                            description = payload.string("description"),
+                            weight = if (payload.containsKey("weight")) payload.double("weight") ?: existing?.weight ?: 1.0 else existing?.weight ?: 1.0,
+                            formula = if (payload.containsKey("formula")) payload.rawString("formula")?.takeIf { it.isNotBlank() } else existing?.formula,
+                            rubricId = if (payload.containsKey("rubricId")) payload.long("rubricId")?.takeIf { it > 0L } else existing?.rubricId,
+                            description = if (payload.containsKey("description")) payload.rawString("description") else existing?.description,
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,
@@ -1373,12 +1393,16 @@ class SqlDelightSyncAdapter(
                             ?: payload.long("evaluationId")?.let { "eval_$it" }
                             ?: "eval_0"
                         val evaluationId = payload.long("evaluationId")?.takeIf { it > 0L }
+                        val existingGrade = container.database.appDatabaseQueries
+                            .selectGradeByStudentClassAndColumn(classId, studentId, columnId)
+                            .executeAsOneOrNull()
+                        val value = if (payload.containsKey("value")) payload.double("value") else existingGrade?.value_
                         container.gradesRepository.upsertGrade(
                             classId = classId,
                             studentId = studentId,
                             columnId = columnId,
                             evaluationId = evaluationId,
-                            value = payload.double("value"),
+                            value = value,
                             evidence = payload.string("evidence"),
                             evidencePath = payload.string("evidencePath"),
                             rubricSelections = payload.string("rubricSelections"),
@@ -1411,16 +1435,18 @@ class SqlDelightSyncAdapter(
                         val classId = payload.long("classId") ?: return@forEach
                         val tabId = payload.string("id") ?: return@forEach
                         val title = payload.string("title") ?: return@forEach
-                        val parentTabId = payload.string("parentTabId")
-                        val description = payload.string("description")
+                        val existing = container.notebookConfigRepository.listTabs(classId).firstOrNull { it.id == tabId }
+                        val parentTabId = if (payload.containsKey("parentTabId")) payload.string("parentTabId") else existing?.parentTabId
+                        val description = if (payload.containsKey("description")) payload.string("description") else existing?.description
                         container.notebookConfigRepository.saveTab(
                             classId = classId,
                             tab = NotebookTab(
                                 id = tabId,
                                 title = title,
                                 description = description,
-                                order = payload.int("order") ?: 0,
+                                order = if (payload.containsKey("order")) payload.int("order") ?: existing?.order ?: 0 else existing?.order ?: -1,
                                 parentTabId = parentTabId,
+                                fixedColumnWidth = if (payload.containsKey("fixedColumnWidth")) payload.double("fixedColumnWidth") else existing?.fixedColumnWidth,
                                 trace = AuditTrace(
                                     updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs),
                                     deviceId = change.deviceId,
@@ -1436,15 +1462,16 @@ class SqlDelightSyncAdapter(
                         val groupId = (payload.long("id") ?: payload.long("group_id"))?.takeIf { it > 0L } ?: return@forEach
                         val tabId = payload.string("tabId") ?: payload.string("tab_id") ?: return@forEach
                         val name = payload.string("name") ?: return@forEach
+                        val existing = container.notebookRepository.listWorkGroups(classId).firstOrNull { it.id == groupId }
                         container.notebookRepository.saveWorkGroup(
                             classId = classId,
                             workGroup = com.migestor.shared.domain.NotebookWorkGroup(
                                 id = groupId,
                                 classId = classId,
-                                tabId = tabId,
+                                tabId = if (payload.containsKey("tabId") || payload.containsKey("tab_id")) tabId else existing?.tabId ?: tabId,
                                 name = name,
-                                order = payload.int("order") ?: 0,
-                                learningSituationId = payload.long("learningSituationId"),
+                                order = if (payload.containsKey("order")) payload.int("order") ?: existing?.order ?: 0 else existing?.order ?: 0,
+                                learningSituationId = if (payload.containsKey("learningSituationId")) payload.long("learningSituationId") else existing?.learningSituationId,
                                 trace = com.migestor.shared.domain.AuditTrace(
                                     updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs),
                                     deviceId = change.deviceId,
@@ -1473,31 +1500,45 @@ class SqlDelightSyncAdapter(
                         val classId = payload.long("classId") ?: return@forEach
                         val columnId = payload.string("id") ?: return@forEach
                         val title = payload.string("title") ?: return@forEach
-                        val type = (payload.string("type") ?: payload.string("column_type"))
-                            ?.let { runCatching { NotebookColumnType.valueOf(it) }.getOrNull() }
-                            ?: NotebookColumnType.NUMERIC
+                        val existing = container.notebookConfigRepository.listColumns(classId).firstOrNull { it.id == columnId }
+                        val type = if (payload.containsKey("type") || payload.containsKey("column_type")) {
+                            (payload.string("type") ?: payload.string("column_type"))
+                                ?.let { runCatching { NotebookColumnType.valueOf(it) }.getOrNull() }
+                                ?: existing?.type
+                                ?: NotebookColumnType.NUMERIC
+                        } else {
+                            existing?.type ?: NotebookColumnType.NUMERIC
+                        }
                         val tabIdsCsv = payload.string("tabIdsCsv") ?: payload.string("tab_ids_csv")
                         
-                        val categoryKind = payload.string("categoryKind")
-                            ?.let { runCatching { NotebookColumnCategoryKind.valueOf(it) }.getOrNull() }
-                            ?: NotebookColumnCategoryKind.CUSTOM
-                        val instrumentKind = payload.string("instrumentKind")
-                            ?.let { runCatching { NotebookInstrumentKind.valueOf(it) }.getOrNull() }
-                            ?: NotebookInstrumentKind.CUSTOM
-                        val inputKind = payload.string("inputKind")
-                            ?.let { runCatching { NotebookCellInputKind.valueOf(it) }.getOrNull() }
-                            ?: NotebookCellInputKind.TEXT
-                        val scaleKind = payload.string("scaleKind")
-                            ?.let { runCatching { NotebookScaleKind.valueOf(it) }.getOrNull() }
-                            ?: NotebookScaleKind.CUSTOM
-                        val visibility = payload.string("visibility")
-                            ?.let { runCatching { NotebookColumnVisibility.valueOf(it) }.getOrNull() }
-                            ?: NotebookColumnVisibility.VISIBLE
+                        val categoryKind = if (payload.containsKey("categoryKind")) {
+                            payload.string("categoryKind")?.let { runCatching { NotebookColumnCategoryKind.valueOf(it) }.getOrNull() }
+                                ?: existing?.categoryKind ?: NotebookColumnCategoryKind.CUSTOM
+                        } else existing?.categoryKind ?: NotebookColumnCategoryKind.CUSTOM
+                        val instrumentKind = if (payload.containsKey("instrumentKind")) {
+                            payload.string("instrumentKind")?.let { runCatching { NotebookInstrumentKind.valueOf(it) }.getOrNull() }
+                                ?: existing?.instrumentKind ?: NotebookInstrumentKind.CUSTOM
+                        } else existing?.instrumentKind ?: NotebookInstrumentKind.CUSTOM
+                        val inputKind = if (payload.containsKey("inputKind")) {
+                            payload.string("inputKind")?.let { runCatching { NotebookCellInputKind.valueOf(it) }.getOrNull() }
+                                ?: existing?.inputKind ?: NotebookCellInputKind.TEXT
+                        } else existing?.inputKind ?: NotebookCellInputKind.TEXT
+                        val scaleKind = if (payload.containsKey("scaleKind")) {
+                            payload.string("scaleKind")?.let { runCatching { NotebookScaleKind.valueOf(it) }.getOrNull() }
+                                ?: existing?.scaleKind ?: NotebookScaleKind.CUSTOM
+                        } else existing?.scaleKind ?: NotebookScaleKind.CUSTOM
+                        val visibility = if (payload.containsKey("visibility")) {
+                            payload.string("visibility")?.let { runCatching { NotebookColumnVisibility.valueOf(it) }.getOrNull() }
+                                ?: existing?.visibility ?: NotebookColumnVisibility.VISIBLE
+                        } else existing?.visibility ?: NotebookColumnVisibility.VISIBLE
 
-                        val competencyCriteriaIds = payload.string("competencyCriteriaIds")
-                            ?.split(",")
-                            ?.mapNotNull { it.trim().toLongOrNull() }
-                            ?: emptyList()
+                        val competencyCriteriaIds = if (payload.containsKey("competencyCriteriaIds")) {
+                            payload.string("competencyCriteriaIds")
+                                ?.split(",")
+                                ?.mapNotNull { it.trim().toLongOrNull() }
+                                ?: existing?.competencyCriteriaIds
+                                ?: emptyList()
+                        } else existing?.competencyCriteriaIds ?: emptyList()
 
                         container.notebookConfigRepository.saveColumn(
                             classId = classId,
@@ -1508,31 +1549,31 @@ class SqlDelightSyncAdapter(
                                 categoryKind = categoryKind,
                                 instrumentKind = instrumentKind,
                                 inputKind = inputKind,
-                                evaluationId = payload.long("evaluationId")?.takeIf { it > 0L },
-                                rubricId = payload.long("rubricId")?.takeIf { it > 0L },
-                                formula = payload.string("formula"),
-                                weight = payload.double("weight") ?: 1.0,
-                                dateEpochMs = payload.long("dateEpochMs")?.takeIf { it > 0L },
-                                unitOrSituation = payload.string("unitOrSituation"),
+                                evaluationId = if (payload.containsKey("evaluationId")) payload.long("evaluationId")?.takeIf { it > 0L } else existing?.evaluationId,
+                                rubricId = if (payload.containsKey("rubricId")) payload.long("rubricId")?.takeIf { it > 0L } else existing?.rubricId,
+                                formula = if (payload.containsKey("formula")) payload.rawString("formula") else existing?.formula,
+                                weight = if (payload.containsKey("weight")) payload.double("weight") ?: existing?.weight ?: 1.0 else existing?.weight ?: 1.0,
+                                dateEpochMs = if (payload.containsKey("dateEpochMs")) payload.long("dateEpochMs")?.takeIf { it > 0L } else existing?.dateEpochMs,
+                                unitOrSituation = if (payload.containsKey("unitOrSituation")) payload.string("unitOrSituation") else existing?.unitOrSituation,
                                 competencyCriteriaIds = competencyCriteriaIds,
                                 scaleKind = scaleKind,
-                                tabIds = tabIdsCsv
-                                    ?.split(",")
-                                    ?.map { it.trim() }
-                                    ?.filter { it.isNotBlank() }
-                                    ?: emptyList(),
-                                sharedAcrossTabs = payload.bool("sharedAcrossTabs") ?: payload.bool("shared_across_tabs") ?: false,
-                                colorHex = payload.string("colorHex"),
-                                iconName = payload.string("iconName"),
-                                order = payload.int("order") ?: -1,
-                                widthDp = payload.double("widthDp") ?: 0.0,
-                                categoryId = payload.string("categoryId"),
-                                countsTowardAverage = payload.bool("countsTowardAverage") ?: true,
-                                isPinned = payload.bool("isPinned") ?: false,
-                                isHidden = payload.bool("isHidden") ?: false,
+                                tabIds = if (payload.containsKey("tabIdsCsv") || payload.containsKey("tab_ids_csv")) {
+                                    tabIdsCsv?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: existing?.tabIds ?: emptyList()
+                                } else existing?.tabIds ?: emptyList(),
+                                sharedAcrossTabs = if (payload.containsKey("sharedAcrossTabs") || payload.containsKey("shared_across_tabs")) {
+                                    payload.bool("sharedAcrossTabs") ?: payload.bool("shared_across_tabs") ?: existing?.sharedAcrossTabs ?: false
+                                } else existing?.sharedAcrossTabs ?: false,
+                                colorHex = if (payload.containsKey("colorHex")) payload.string("colorHex") else existing?.colorHex,
+                                iconName = if (payload.containsKey("iconName")) payload.string("iconName") else existing?.iconName,
+                                order = if (payload.containsKey("order")) payload.int("order") ?: existing?.order ?: -1 else existing?.order ?: -1,
+                                widthDp = if (payload.containsKey("widthDp")) payload.double("widthDp") ?: existing?.widthDp ?: 0.0 else existing?.widthDp ?: 0.0,
+                                categoryId = if (payload.containsKey("categoryId")) payload.string("categoryId") else existing?.categoryId,
+                                countsTowardAverage = if (payload.containsKey("countsTowardAverage")) payload.bool("countsTowardAverage") ?: existing?.countsTowardAverage ?: true else existing?.countsTowardAverage ?: true,
+                                isPinned = if (payload.containsKey("isPinned")) payload.bool("isPinned") ?: false else existing?.isPinned ?: false,
+                                isHidden = if (payload.containsKey("isHidden")) payload.bool("isHidden") ?: false else existing?.isHidden ?: false,
                                 visibility = visibility,
-                                isLocked = payload.bool("isLocked") ?: false,
-                                isTemplate = payload.bool("isTemplate") ?: false,
+                                isLocked = if (payload.containsKey("isLocked")) payload.bool("isLocked") ?: false else existing?.isLocked ?: false,
+                                isTemplate = if (payload.containsKey("isTemplate")) payload.bool("isTemplate") ?: false else existing?.isTemplate ?: false,
                                 trace = AuditTrace(
                                     updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs),
                                     deviceId = change.deviceId,
@@ -1572,11 +1613,15 @@ class SqlDelightSyncAdapter(
                         val classId = payload.long("classId") ?: return@forEach
                         val columnId = payload.string("columnId") ?: return@forEach
                         val title = payload.string("title") ?: return@forEach
-                        val kind = payload.string("kind") ?: "observation"
-                        val inputKind = payload.string("inputKind") ?: "structuredObservation"
-                        val source = payload.string("source")
-                        val evaluationId = payload.long("evaluationId")?.takeIf { it > 0L }
-                        val createdAt = payload.long("createdAtEpochMs") ?: change.updatedAtEpochMs
+                        val existing = container.database.appDatabaseQueries
+                            .selectInstrumentTemplateByColumn(columnId)
+                            .executeAsOneOrNull()
+                            ?.takeIf { it.id == id }
+                        val kind = if (payload.containsKey("kind")) payload.string("kind") ?: existing?.kind ?: "observation" else existing?.kind ?: "observation"
+                        val inputKind = if (payload.containsKey("inputKind")) payload.string("inputKind") ?: existing?.input_kind ?: "structuredObservation" else existing?.input_kind ?: "structuredObservation"
+                        val source = if (payload.containsKey("source")) payload.string("source") else existing?.source
+                        val evaluationId = if (payload.containsKey("evaluationId")) payload.long("evaluationId")?.takeIf { it > 0L } else existing?.evaluation_id
+                        val createdAt = if (payload.containsKey("createdAtEpochMs")) payload.long("createdAtEpochMs") ?: change.updatedAtEpochMs else existing?.created_at_epoch_ms ?: change.updatedAtEpochMs
 
                         container.database.appDatabaseQueries.upsertInstrumentTemplate(
                             id = id,
@@ -1600,11 +1645,15 @@ class SqlDelightSyncAdapter(
                         val templateId = payload.string("templateId") ?: return@forEach
                         val itemKey = payload.string("itemKey") ?: return@forEach
                         val title = payload.string("title") ?: return@forEach
-                        val itemType = payload.string("itemType") ?: "scale14"
-                        val optionsCsv = payload.string("optionsCsv") ?: ""
-                        val required = payload.bool("required") ?: true
-                        val sortOrder = payload.long("sortOrder") ?: 0L
-                        val helpText = payload.string("helpText")
+                        val existing = container.database.appDatabaseQueries
+                            .selectInstrumentItemsByTemplate(templateId)
+                            .executeAsList()
+                            .firstOrNull { it.id == id }
+                        val itemType = if (payload.containsKey("itemType")) payload.string("itemType") ?: existing?.item_type ?: "scale14" else existing?.item_type ?: "scale14"
+                        val optionsCsv = if (payload.containsKey("optionsCsv")) payload.string("optionsCsv").orEmpty() else existing?.options_csv.orEmpty()
+                        val required = if (payload.containsKey("required")) payload.bool("required") ?: (existing?.required == 1L) else existing?.required != 0L
+                        val sortOrder = if (payload.containsKey("sortOrder")) payload.long("sortOrder") ?: existing?.sort_order ?: 0L else existing?.sort_order ?: 0L
+                        val helpText = if (payload.containsKey("helpText")) payload.string("helpText") else existing?.help_text
 
                         container.database.appDatabaseQueries.upsertInstrumentItem(
                             id = id,
@@ -1628,9 +1677,13 @@ class SqlDelightSyncAdapter(
                         val studentId = payload.long("studentId") ?: return@forEach
                         val columnId = payload.string("columnId") ?: return@forEach
                         val itemId = payload.string("itemId") ?: return@forEach
-                        val valueText = payload.string("valueText")
-                        val valueBool = payload.bool("valueBool")
-                        val valueNumber = payload.string("valueNumber")
+                        val existing = container.database.appDatabaseQueries
+                            .selectInstrumentResponsesForCell(classId, studentId, columnId)
+                            .executeAsList()
+                            .firstOrNull { it.item_id == itemId }
+                        val valueText = if (payload.containsKey("valueText")) payload.rawString("valueText") else existing?.value_text
+                        val valueBool = if (payload.containsKey("valueBool")) payload.bool("valueBool")?.let { if (it) 1L else 0L } else existing?.value_bool
+                        val valueNumber = if (payload.containsKey("valueNumber")) payload.string("valueNumber")?.toDoubleOrNull() else existing?.value_number
 
                         container.database.appDatabaseQueries.upsertInstrumentResponse(
                             class_id = classId,
@@ -1638,8 +1691,8 @@ class SqlDelightSyncAdapter(
                             column_id = columnId,
                             item_id = itemId,
                             value_text = valueText,
-                            value_bool = valueBool?.let { if (it) 1L else 0L },
-                            value_number = valueNumber?.toDoubleOrNull(),
+                            value_bool = valueBool,
+                            value_number = valueNumber,
                             updated_at_epoch_ms = change.updatedAtEpochMs,
                             device_id = change.deviceId,
                             sync_version = 1,
@@ -1654,16 +1707,18 @@ class SqlDelightSyncAdapter(
                         val classId = payload.long("classId") ?: return@forEach
                         val dateEpochMs = payload.long("dateEpochMs") ?: return@forEach
                         val status = payload.string("status") ?: return@forEach
+                        val existing = container.attendanceRepository.listAttendanceByDate(classId, dateEpochMs)
+                            .firstOrNull { it.studentId == studentId }
                         container.attendanceRepository.saveAttendance(
-                            id = payload.long("id")?.takeIf { it > 0L },
+                            id = payload.long("id")?.takeIf { it > 0L } ?: existing?.id,
                             studentId = studentId,
                             classId = classId,
                             dateEpochMs = dateEpochMs,
                             status = status,
-                            note = payload.string("note") ?: "",
-                            hasIncident = payload.bool("hasIncident") ?: false,
-                            followUpRequired = payload.bool("followUpRequired") ?: false,
-                            sessionId = payload.long("sessionId")?.takeIf { it > 0L },
+                            note = if (payload.containsKey("note")) payload.rawString("note").orEmpty() else existing?.note.orEmpty(),
+                            hasIncident = if (payload.containsKey("hasIncident")) payload.bool("hasIncident") ?: false else existing?.hasIncident ?: false,
+                            followUpRequired = if (payload.containsKey("followUpRequired")) payload.bool("followUpRequired") ?: false else existing?.followUpRequired ?: false,
+                            sessionId = if (payload.containsKey("sessionId")) payload.long("sessionId")?.takeIf { it > 0L } else existing?.sessionId,
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,
@@ -1675,13 +1730,17 @@ class SqlDelightSyncAdapter(
                         val classId = payload.long("classId") ?: return@forEach
                         val title = payload.string("title") ?: return@forEach
                         val dateEpochMs = payload.long("dateEpochMs") ?: return@forEach
+                        val incomingId = payload.long("id")?.takeIf { it > 0L }
+                        val existing = incomingId?.let { id ->
+                            container.incidentsRepository.listIncidents(classId).firstOrNull { it.id == id }
+                        }
                         container.incidentsRepository.saveIncident(
-                            id = payload.long("id")?.takeIf { it > 0L },
+                            id = incomingId,
                             classId = classId,
-                            studentId = payload.long("studentId")?.takeIf { it > 0L },
+                            studentId = if (payload.containsKey("studentId")) payload.long("studentId")?.takeIf { it > 0L } else existing?.studentId,
                             title = title,
-                            detail = payload.string("detail"),
-                            severity = payload.string("severity") ?: "low",
+                            detail = if (payload.containsKey("detail")) payload.rawString("detail") else existing?.detail,
+                            severity = if (payload.containsKey("severity")) payload.string("severity") ?: existing?.severity ?: "low" else existing?.severity ?: "low",
                             dateEpochMs = dateEpochMs,
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
@@ -1694,15 +1753,19 @@ class SqlDelightSyncAdapter(
                         val title = payload.string("title") ?: return@forEach
                         val startEpochMs = payload.long("startEpochMs") ?: return@forEach
                         val endEpochMs = payload.long("endEpochMs") ?: return@forEach
+                        val incomingId = payload.long("id")?.takeIf { it > 0L }
+                        val existing = incomingId?.let { eventId ->
+                            container.calendarRepository.listEvents(null).firstOrNull { it.id == eventId }
+                        }
                         container.calendarRepository.saveEvent(
-                            id = payload.long("id")?.takeIf { it > 0L },
-                            classId = payload.long("classId")?.takeIf { it > 0L },
+                            id = incomingId,
+                            classId = if (payload.containsKey("classId")) payload.long("classId")?.takeIf { it > 0L } else existing?.classId,
                             title = title,
-                            description = payload.string("description"),
+                            description = if (payload.containsKey("description")) payload.rawString("description") else existing?.description,
                             startEpochMs = startEpochMs,
                             endEpochMs = endEpochMs,
-                            externalProvider = payload.string("externalProvider"),
-                            externalId = payload.string("externalId"),
+                            externalProvider = if (payload.containsKey("externalProvider")) payload.string("externalProvider") else existing?.externalProvider,
+                            externalId = if (payload.containsKey("externalId")) payload.string("externalId") else existing?.externalId,
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,
@@ -1729,20 +1792,24 @@ class SqlDelightSyncAdapter(
 
                     "teaching_unit" -> {
                         val name = payload.string("name") ?: return@forEach
+                        val incomingId = payload.long("id") ?: 0L
+                        val existing = incomingId.takeIf { it > 0L }?.let { unitId ->
+                            container.plannerRepository.listAllTeachingUnits().firstOrNull { it.id == unitId }
+                        }
                         container.plannerRepository.upsertTeachingUnit(
                             TeachingUnit(
-                                id = payload.long("id") ?: 0L,
+                                id = incomingId,
                                 name = name,
-                                description = payload.string("description") ?: "",
-                                colorHex = payload.string("colorHex") ?: "#4A90D9",
-                                groupId = payload.long("groupId")?.takeIf { it > 0L },
-                                schoolClassId = payload.long("schoolClassId")?.takeIf { it > 0L },
-                                startDate = payload.string("startDate")
-                                    ?.takeIf { it.isNotBlank() }
-                                    ?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() },
-                                endDate = payload.string("endDate")
-                                    ?.takeIf { it.isNotBlank() }
-                                    ?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() },
+                                description = if (payload.containsKey("description")) payload.rawString("description").orEmpty() else existing?.description.orEmpty(),
+                                colorHex = if (payload.containsKey("colorHex")) payload.string("colorHex") ?: existing?.colorHex ?: "#4A90D9" else existing?.colorHex ?: "#4A90D9",
+                                groupId = if (payload.containsKey("groupId")) payload.long("groupId")?.takeIf { it > 0L } else existing?.groupId,
+                                schoolClassId = if (payload.containsKey("schoolClassId")) payload.long("schoolClassId")?.takeIf { it > 0L } else existing?.schoolClassId,
+                                startDate = if (payload.containsKey("startDate")) {
+                                    payload.string("startDate")?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() }
+                                } else existing?.startDate,
+                                endDate = if (payload.containsKey("endDate")) {
+                                    payload.string("endDate")?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() }
+                                } else existing?.endDate,
                             ),
                         )
                         applied++
@@ -1751,22 +1818,25 @@ class SqlDelightSyncAdapter(
                     "learning_situation" -> {
                         val title = payload.string("title") ?: return@forEach
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        val incomingId = payload.long("id") ?: 0L
+                        val existing = incomingId.takeIf { it > 0L }?.let { container.learningSituationsRepository.getSituation(it) }
                         container.learningSituationsRepository.saveSituation(
                             LearningSituation(
-                                id = payload.long("id") ?: 0L,
+                                id = incomingId,
                                 title = title,
-                                stageLabel = payload.string("stageLabel") ?: "",
-                                courseLabel = payload.string("courseLabel") ?: "",
-                                subjectLabel = payload.string("subjectLabel") ?: "",
-                                termLabel = payload.string("termLabel") ?: "",
-                                centerLabel = payload.string("centerLabel") ?: "",
-                                sessionCount = payload.int("sessionCount") ?: 0,
-                                challenge = payload.string("challenge") ?: "",
-                                finalProduct = payload.string("finalProduct") ?: "",
-                                payloadJson = payload.string("payloadJson") ?: "{}",
-                                status = runCatching {
-                                    LearningSituationStatus.valueOf(payload.string("status") ?: "ACTIVE")
-                                }.getOrDefault(LearningSituationStatus.ACTIVE),
+                                stageLabel = if (payload.containsKey("stageLabel")) payload.string("stageLabel").orEmpty() else existing?.stageLabel.orEmpty(),
+                                courseLabel = if (payload.containsKey("courseLabel")) payload.string("courseLabel").orEmpty() else existing?.courseLabel.orEmpty(),
+                                subjectLabel = if (payload.containsKey("subjectLabel")) payload.string("subjectLabel").orEmpty() else existing?.subjectLabel.orEmpty(),
+                                termLabel = if (payload.containsKey("termLabel")) payload.string("termLabel").orEmpty() else existing?.termLabel.orEmpty(),
+                                centerLabel = if (payload.containsKey("centerLabel")) payload.string("centerLabel").orEmpty() else existing?.centerLabel.orEmpty(),
+                                sessionCount = if (payload.containsKey("sessionCount")) payload.int("sessionCount") ?: existing?.sessionCount ?: 0 else existing?.sessionCount ?: 0,
+                                challenge = if (payload.containsKey("challenge")) payload.string("challenge").orEmpty() else existing?.challenge.orEmpty(),
+                                finalProduct = if (payload.containsKey("finalProduct")) payload.string("finalProduct").orEmpty() else existing?.finalProduct.orEmpty(),
+                                payloadJson = if (payload.containsKey("payloadJson")) payload.rawString("payloadJson") ?: existing?.payloadJson ?: "{}" else existing?.payloadJson ?: "{}",
+                                status = if (payload.containsKey("status")) {
+                                    runCatching { LearningSituationStatus.valueOf(payload.string("status") ?: "") }
+                                        .getOrDefault(existing?.status ?: LearningSituationStatus.ACTIVE)
+                                } else existing?.status ?: LearningSituationStatus.ACTIVE,
                                 trace = AuditTrace(
                                     createdAt = updatedAt,
                                     updatedAt = updatedAt,
@@ -1782,16 +1852,20 @@ class SqlDelightSyncAdapter(
                         val situationId = payload.long("learningSituationId") ?: return@forEach
                         val sha256 = payload.string("sha256") ?: return@forEach
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        val incomingId = payload.long("id")?.takeIf { it > 0L }
+                        val existing = container.learningSituationsRepository.listVersions(situationId)
+                            .firstOrNull { it.id == incomingId || it.sha256 == sha256 }
                         container.learningSituationsRepository.saveVersion(
                             LearningSituationVersion(
+                                id = incomingId ?: existing?.id ?: 0L,
                                 learningSituationId = situationId,
-                                versionNumber = payload.int("versionNumber") ?: 1,
-                                originalFileName = payload.string("originalFileName") ?: "$sha256.docx",
+                                versionNumber = if (payload.containsKey("versionNumber")) payload.int("versionNumber") ?: existing?.versionNumber ?: 1 else existing?.versionNumber ?: 1,
+                                originalFileName = if (payload.containsKey("originalFileName")) payload.string("originalFileName") ?: existing?.originalFileName ?: "$sha256.docx" else existing?.originalFileName ?: "$sha256.docx",
                                 sha256 = sha256,
-                                localPath = null,
-                                sizeBytes = payload.long("sizeBytes") ?: 0L,
-                                payloadJson = payload.string("payloadJson") ?: "{}",
-                                warningsJson = payload.string("warningsJson") ?: "[]",
+                                localPath = existing?.localPath,
+                                sizeBytes = if (payload.containsKey("sizeBytes")) payload.long("sizeBytes") ?: existing?.sizeBytes ?: 0L else existing?.sizeBytes ?: 0L,
+                                payloadJson = if (payload.containsKey("payloadJson")) payload.rawString("payloadJson") ?: existing?.payloadJson ?: "{}" else existing?.payloadJson ?: "{}",
+                                warningsJson = if (payload.containsKey("warningsJson")) payload.rawString("warningsJson") ?: existing?.warningsJson ?: "[]" else existing?.warningsJson ?: "[]",
                                 trace = AuditTrace(
                                     createdAt = updatedAt,
                                     updatedAt = updatedAt,
@@ -1807,16 +1881,20 @@ class SqlDelightSyncAdapter(
                         val situationId = payload.long("learningSituationId") ?: return@forEach
                         val sha256 = payload.string("sha256") ?: return@forEach
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        val incomingId = payload.long("id")?.takeIf { it > 0L }
+                        val existing = container.learningSituationsRepository.listSessionSequenceVersions(situationId)
+                            .firstOrNull { it.id == incomingId || it.sha256 == sha256 }
                         container.learningSituationsRepository.saveSessionSequenceVersion(
                             LearningSituationSessionSequenceVersion(
-                                id = payload.long("id") ?: 0L,
+                                id = incomingId ?: existing?.id ?: 0L,
                                 learningSituationId = situationId,
-                                versionNumber = payload.int("versionNumber") ?: 1,
-                                originalFileName = payload.string("originalFileName") ?: "$sha256.docx",
+                                versionNumber = if (payload.containsKey("versionNumber")) payload.int("versionNumber") ?: existing?.versionNumber ?: 1 else existing?.versionNumber ?: 1,
+                                originalFileName = if (payload.containsKey("originalFileName")) payload.string("originalFileName") ?: existing?.originalFileName ?: "$sha256.docx" else existing?.originalFileName ?: "$sha256.docx",
                                 sha256 = sha256,
-                                sizeBytes = payload.long("sizeBytes") ?: 0L,
-                                payloadJson = payload.string("payloadJson") ?: "{}",
-                                warningsJson = payload.string("warningsJson") ?: "[]",
+                                localPath = existing?.localPath,
+                                sizeBytes = if (payload.containsKey("sizeBytes")) payload.long("sizeBytes") ?: existing?.sizeBytes ?: 0L else existing?.sizeBytes ?: 0L,
+                                payloadJson = if (payload.containsKey("payloadJson")) payload.rawString("payloadJson") ?: existing?.payloadJson ?: "{}" else existing?.payloadJson ?: "{}",
+                                warningsJson = if (payload.containsKey("warningsJson")) payload.rawString("warningsJson") ?: existing?.warningsJson ?: "[]" else existing?.warningsJson ?: "[]",
                                 trace = AuditTrace(createdAt = updatedAt, updatedAt = updatedAt, deviceId = change.deviceId, syncVersion = 1),
                             ),
                         )
@@ -1828,21 +1906,23 @@ class SqlDelightSyncAdapter(
                         val versionId = payload.long("sequenceVersionId") ?: return@forEach
                         val title = payload.string("title") ?: return@forEach
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        val incomingId = payload.long("id") ?: 0L
+                        val existing = incomingId.takeIf { it > 0L }?.let { container.learningSituationsRepository.getSessionPlan(it) }
                         container.learningSituationsRepository.saveSessionPlan(
                             LearningSituationSessionPlan(
-                                id = payload.long("id") ?: 0L,
+                                id = incomingId,
                                 learningSituationId = situationId,
                                 sequenceVersionId = versionId,
-                                sessionNumber = payload.int("sessionNumber") ?: 0,
-                                sourceLabel = payload.string("sourceLabel") ?: "",
+                                sessionNumber = if (payload.containsKey("sessionNumber")) payload.int("sessionNumber") ?: existing?.sessionNumber ?: 0 else existing?.sessionNumber ?: 0,
+                                sourceLabel = if (payload.containsKey("sourceLabel")) payload.string("sourceLabel").orEmpty() else existing?.sourceLabel.orEmpty(),
                                 title = title,
-                                sessionType = payload.string("sessionType") ?: "",
-                                effectiveMinutes = payload.int("effectiveMinutes") ?: 0,
-                                objective = payload.string("objective") ?: "",
-                                criteriaJson = payload.string("criteriaJson") ?: "[]",
-                                material = payload.string("material") ?: "",
-                                developmentJson = payload.string("developmentJson") ?: "[]",
-                                adaptationsJson = payload.string("adaptationsJson") ?: "[]",
+                                sessionType = if (payload.containsKey("sessionType")) payload.string("sessionType").orEmpty() else existing?.sessionType.orEmpty(),
+                                effectiveMinutes = if (payload.containsKey("effectiveMinutes")) payload.int("effectiveMinutes") ?: existing?.effectiveMinutes ?: 0 else existing?.effectiveMinutes ?: 0,
+                                objective = if (payload.containsKey("objective")) payload.string("objective").orEmpty() else existing?.objective.orEmpty(),
+                                criteriaJson = if (payload.containsKey("criteriaJson")) payload.rawString("criteriaJson") ?: existing?.criteriaJson ?: "[]" else existing?.criteriaJson ?: "[]",
+                                material = if (payload.containsKey("material")) payload.string("material").orEmpty() else existing?.material.orEmpty(),
+                                developmentJson = if (payload.containsKey("developmentJson")) payload.rawString("developmentJson") ?: existing?.developmentJson ?: "[]" else existing?.developmentJson ?: "[]",
+                                adaptationsJson = if (payload.containsKey("adaptationsJson")) payload.rawString("adaptationsJson") ?: existing?.adaptationsJson ?: "[]" else existing?.adaptationsJson ?: "[]",
                                 trace = AuditTrace(createdAt = updatedAt, updatedAt = updatedAt, deviceId = change.deviceId, syncVersion = 1),
                             ),
                         )
@@ -1862,15 +1942,21 @@ class SqlDelightSyncAdapter(
                         val situationId = payload.long("learningSituationId") ?: return@forEach
                         val resourceId = payload.string("resourceId") ?: return@forEach
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        val existing = container.learningSituationsRepository.listLinkedResources(situationId)
+                            .firstOrNull { it.resourceId == resourceId }
                         container.learningSituationsRepository.saveLinkedResource(
                             LearningSituationLinkedResource(
                                 learningSituationId = situationId,
-                                kind = runCatching {
-                                    LearningSituationResourceKind.valueOf(payload.string("kind") ?: "TEACHING_UNIT")
-                                }.getOrDefault(LearningSituationResourceKind.TEACHING_UNIT),
+                                kind = if (payload.containsKey("kind")) {
+                                    runCatching {
+                                        LearningSituationResourceKind.valueOf(payload.string("kind") ?: "")
+                                    }.getOrDefault(existing?.kind ?: LearningSituationResourceKind.TEACHING_UNIT)
+                                } else {
+                                    existing?.kind ?: LearningSituationResourceKind.TEACHING_UNIT
+                                },
                                 resourceId = resourceId,
-                                classId = payload.long("classId"),
-                                label = payload.string("label") ?: "",
+                                classId = if (payload.containsKey("classId")) payload.long("classId") else existing?.classId,
+                                label = if (payload.containsKey("label")) payload.string("label").orEmpty() else existing?.label.orEmpty(),
                                 trace = AuditTrace(
                                     createdAt = updatedAt,
                                     updatedAt = updatedAt,
@@ -1927,12 +2013,13 @@ class SqlDelightSyncAdapter(
                     }
 
                     "session_journal" -> {
-                        val decoded = SessionJournalSyncCodec.decode(change.payload)
+                        val sessionId = SessionJournalSyncCodec.planningSessionId(change.payload)
+                        val existing = sessionId?.let { container.sessionJournalRepository.getJournalForSession(it) }
+                        val decoded = SessionJournalSyncCodec.decodeKeepingAbsent(change.payload, existing)
                         if (decoded == null) {
                             ignored++
                             return@forEach
                         }
-                        val existing = container.sessionJournalRepository.getJournalForSession(decoded.journal.planningSessionId)
                         container.sessionJournalRepository.saveJournalAggregate(
                             decoded.copy(journal = decoded.journal.copy(id = existing?.journal?.id ?: 0L))
                         )
@@ -1941,20 +2028,26 @@ class SqlDelightSyncAdapter(
 
                     "teacher_schedule" -> {
                         val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        val incomingId = payload.long("id") ?: 0L
+                        val existing = incomingId.takeIf { it > 0L }?.let { id ->
+                            container.teacherScheduleRepository.getOrCreatePrimarySchedule().takeIf { it.id == id }
+                        }
                         container.teacherScheduleRepository.saveSchedule(
                             TeacherSchedule(
-                                id = payload.long("id") ?: 0L,
-                                ownerUserId = payload.long("ownerUserId") ?: 1L,
-                                academicYearId = payload.long("academicYearId") ?: 1L,
-                                name = payload.string("name") ?: "Agenda docente",
-                                startDateIso = payload.string("startDateIso") ?: "",
-                                endDateIso = payload.string("endDateIso") ?: "",
-                                activeWeekdaysCsv = payload.string("activeWeekdaysCsv") ?: "1,2,3,4,5",
+                                id = incomingId,
+                                ownerUserId = if (payload.containsKey("ownerUserId")) payload.long("ownerUserId") ?: existing?.ownerUserId ?: 1L else existing?.ownerUserId ?: 1L,
+                                academicYearId = if (payload.containsKey("academicYearId")) payload.long("academicYearId") ?: existing?.academicYearId ?: 1L else existing?.academicYearId ?: 1L,
+                                name = if (payload.containsKey("name")) payload.string("name") ?: existing?.name ?: "Agenda docente" else existing?.name ?: "Agenda docente",
+                                startDateIso = if (payload.containsKey("startDateIso")) payload.string("startDateIso").orEmpty() else existing?.startDateIso.orEmpty(),
+                                endDateIso = if (payload.containsKey("endDateIso")) payload.string("endDateIso").orEmpty() else existing?.endDateIso.orEmpty(),
+                                activeWeekdaysCsv = if (payload.containsKey("activeWeekdaysCsv")) payload.string("activeWeekdaysCsv") ?: existing?.activeWeekdaysCsv ?: "1,2,3,4,5" else existing?.activeWeekdaysCsv ?: "1,2,3,4,5",
                                 trace = AuditTrace(
-                                    authorUserId = payload.long("authorUserId")?.takeIf { it > 0L },
-                                    createdAt = Instant.fromEpochMilliseconds(payload.long("createdAtEpochMs") ?: change.updatedAtEpochMs),
+                                    authorUserId = if (payload.containsKey("authorUserId")) payload.long("authorUserId")?.takeIf { it > 0L } else existing?.trace?.authorUserId,
+                                    createdAt = Instant.fromEpochMilliseconds(
+                                        if (payload.containsKey("createdAtEpochMs")) payload.long("createdAtEpochMs") ?: change.updatedAtEpochMs else existing?.trace?.createdAt?.toEpochMilliseconds() ?: change.updatedAtEpochMs
+                                    ),
                                     updatedAt = updatedAt,
-                                    associatedGroupId = payload.long("associatedGroupId")?.takeIf { it > 0L },
+                                    associatedGroupId = if (payload.containsKey("associatedGroupId")) payload.long("associatedGroupId")?.takeIf { it > 0L } else existing?.trace?.associatedGroupId,
                                     deviceId = change.deviceId,
                                     syncVersion = 1,
                                 ),
@@ -1964,31 +2057,45 @@ class SqlDelightSyncAdapter(
                     }
 
                     "teacher_schedule_slot" -> {
+                        val scheduleId = payload.long("teacherScheduleId") ?: return@forEach
+                        val incomingId = payload.long("id") ?: 0L
+                        val existing = incomingId.takeIf { it > 0L }?.let { slotId ->
+                            container.teacherScheduleRepository.listScheduleSlots(scheduleId).firstOrNull { it.id == slotId }
+                        }
+                        val schoolClassId = if (payload.containsKey("schoolClassId")) payload.long("schoolClassId") else existing?.schoolClassId
+                        val startTime = if (payload.containsKey("startTime")) payload.string("startTime") else existing?.startTime
+                        val endTime = if (payload.containsKey("endTime")) payload.string("endTime") else existing?.endTime
+                        if (schoolClassId == null || startTime == null || endTime == null) return@forEach
                         container.teacherScheduleRepository.saveScheduleSlot(
                             TeacherScheduleSlot(
-                                id = payload.long("id") ?: 0L,
-                                teacherScheduleId = payload.long("teacherScheduleId") ?: return@forEach,
-                                schoolClassId = payload.long("schoolClassId") ?: return@forEach,
-                                subjectLabel = payload.string("subjectLabel") ?: "",
-                                unitLabel = payload.string("unitLabel"),
-                                dayOfWeek = payload.int("dayOfWeek") ?: 1,
-                                startTime = payload.string("startTime") ?: return@forEach,
-                                endTime = payload.string("endTime") ?: return@forEach,
-                                weeklyTemplateId = payload.long("weeklyTemplateId")?.takeIf { it > 0L },
+                                id = incomingId,
+                                teacherScheduleId = scheduleId,
+                                schoolClassId = schoolClassId,
+                                subjectLabel = if (payload.containsKey("subjectLabel")) payload.string("subjectLabel").orEmpty() else existing?.subjectLabel.orEmpty(),
+                                unitLabel = if (payload.containsKey("unitLabel")) payload.string("unitLabel") else existing?.unitLabel,
+                                dayOfWeek = if (payload.containsKey("dayOfWeek")) payload.int("dayOfWeek") ?: existing?.dayOfWeek ?: 1 else existing?.dayOfWeek ?: 1,
+                                startTime = startTime,
+                                endTime = endTime,
+                                weeklyTemplateId = if (payload.containsKey("weeklyTemplateId")) payload.long("weeklyTemplateId")?.takeIf { it > 0L } else existing?.weeklyTemplateId,
                             ),
                         )
                         applied++
                     }
 
                     "planner_evaluation_period" -> {
+                        val scheduleId = payload.long("teacherScheduleId") ?: return@forEach
+                        val incomingId = payload.long("id") ?: 0L
+                        val existing = incomingId.takeIf { it > 0L }?.let { periodId ->
+                            container.teacherScheduleRepository.listEvaluationPeriods(scheduleId).firstOrNull { it.id == periodId }
+                        }
                         container.teacherScheduleRepository.saveEvaluationPeriod(
                             PlannerEvaluationPeriod(
-                                id = payload.long("id") ?: 0L,
-                                teacherScheduleId = payload.long("teacherScheduleId") ?: return@forEach,
-                                name = payload.string("name") ?: "",
-                                startDateIso = payload.string("startDateIso") ?: "",
-                                endDateIso = payload.string("endDateIso") ?: "",
-                                sortOrder = payload.int("sortOrder") ?: 0,
+                                id = incomingId,
+                                teacherScheduleId = scheduleId,
+                                name = if (payload.containsKey("name")) payload.string("name").orEmpty() else existing?.name.orEmpty(),
+                                startDateIso = if (payload.containsKey("startDateIso")) payload.string("startDateIso").orEmpty() else existing?.startDateIso.orEmpty(),
+                                endDateIso = if (payload.containsKey("endDateIso")) payload.string("endDateIso").orEmpty() else existing?.endDateIso.orEmpty(),
+                                sortOrder = if (payload.containsKey("sortOrder")) payload.int("sortOrder") ?: existing?.sortOrder ?: 0 else existing?.sortOrder ?: 0,
                             ),
                         )
                         applied++
@@ -1997,12 +2104,14 @@ class SqlDelightSyncAdapter(
                     "rubric_bundle" -> {
                         val rubricId = payload.long("rubricId")
                         val name = payload.string("name") ?: return@forEach
+                        val existingDetail = rubricId?.takeIf { it > 0L }?.let { container.rubricsRepository.getRubricDetail(it) }
+                        val existing = existingDetail?.rubric
                         val savedRubricId = container.rubricsRepository.saveRubric(
                             id = rubricId?.takeIf { it > 0L },
                             name = name,
-                            description = payload.string("description"),
-                            classId = payload.long("classId"),
-                            teachingUnitId = payload.long("teachingUnitId"),
+                            description = if (payload.containsKey("description")) payload.rawString("description") else existing?.description,
+                            classId = if (payload.containsKey("classId")) payload.long("classId") else existing?.classId,
+                            teachingUnitId = if (payload.containsKey("teachingUnitId")) payload.long("teachingUnitId") else existing?.teachingUnitId,
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,
@@ -2010,25 +2119,32 @@ class SqlDelightSyncAdapter(
                         payload.array("criteria").forEach { criterionElement ->
                             val criterion = criterionElement.jsonObject
                             val criterionId = criterion.long("id")
+                            val existingCriterion = existingDetail?.criteria
+                                ?.firstOrNull { it.criterion.id == criterionId }
+                                ?.criterion
                             val savedCriterionId = container.rubricsRepository.saveCriterion(
                                 id = criterionId?.takeIf { it > 0L },
                                 rubricId = savedRubricId,
-                                description = criterion.string("description") ?: "",
-                                weight = criterion.double("weight") ?: 1.0,
-                                order = criterion.int("order") ?: 0,
+                                description = if (criterion.containsKey("description")) criterion.string("description").orEmpty() else existingCriterion?.description.orEmpty(),
+                                weight = if (criterion.containsKey("weight")) criterion.double("weight") ?: existingCriterion?.weight ?: 1.0 else existingCriterion?.weight ?: 1.0,
+                                order = if (criterion.containsKey("order")) criterion.int("order") ?: existingCriterion?.order ?: 0 else existingCriterion?.order ?: 0,
                                 updatedAtEpochMs = change.updatedAtEpochMs,
                                 deviceId = change.deviceId,
                                 syncVersion = 1,
                             )
-                            criterion.array("levels").forEach { levelElement ->
+                            if (criterion.containsKey("levels")) criterion.array("levels").forEach { levelElement ->
                                 val level = levelElement.jsonObject
+                                val existingLevel = existingDetail?.criteria
+                                    ?.firstOrNull { it.criterion.id == criterionId }
+                                    ?.levels
+                                    ?.firstOrNull { it.id == level.long("id") }
                                 container.rubricsRepository.saveLevel(
                                     id = level.long("id")?.takeIf { it > 0L },
                                     criterionId = savedCriterionId,
-                                    name = level.string("name") ?: "Nivel",
-                                    points = level.int("points") ?: 0,
-                                    description = level.string("description"),
-                                    order = level.int("order") ?: 0,
+                                    name = if (level.containsKey("name")) level.string("name") ?: existingLevel?.name ?: "Nivel" else existingLevel?.name ?: "Nivel",
+                                    points = if (level.containsKey("points")) level.int("points") ?: existingLevel?.points ?: 0 else existingLevel?.points ?: 0,
+                                    description = if (level.containsKey("description")) level.string("description") else existingLevel?.description,
+                                    order = if (level.containsKey("order")) level.int("order") ?: existingLevel?.order ?: 0 else existingLevel?.order ?: 0,
                                     updatedAtEpochMs = change.updatedAtEpochMs,
                                     deviceId = change.deviceId,
                                     syncVersion = 1,

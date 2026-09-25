@@ -10,8 +10,10 @@ import com.migestor.shared.domain.SessionStatus
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
+import com.migestor.shared.util.IsoWeekHelper
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PlannerSessionStoreTest {
@@ -166,6 +168,24 @@ class PlannerSessionStoreTest {
         assertEquals(2, moved.getValue(sourceId).period)
         assertTrue(moved.getValue(cancelledId).period != 2)
         assertEquals(SessionStatus.CANCELLED, moved.getValue(cancelledId).status)
+    }
+
+    @Test
+    fun `un rango de fechas no arrastra sesiones de otro tramo`() = runTest {
+        val planner = planner()
+        val classId = planner.classes.saveClass(name = "1 ESO A", course = 1, description = null)
+        val nearId = planner.repo.upsertSession(session(classId, period = 1, objectives = "Cerca"))
+        planner.repo.upsertSession(
+            session(classId, period = 1, objectives = "Lejos").copy(weekNumber = 40, year = 2026)
+        )
+
+        val days = IsoWeekHelper.daysOf(12, 2026)
+        val found = planner.repo.listSessionsInRange(classId, days.first(), days.last())
+        assertEquals(listOf(nearId), found.map { it.id })
+
+        val loaded = planner.repo.getSession(nearId)
+        assertEquals("Cerca", loaded?.objectives)
+        assertNull(planner.repo.getSession(9_999))
     }
 
     private fun planner(): OpenPlanner {

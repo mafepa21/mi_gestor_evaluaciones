@@ -194,13 +194,76 @@ object SessionJournalSyncCodec {
         )
     }
 
-    fun forLocalUpsert(payload: String, localJournalId: Long): SessionJournalAggregate? {
+    fun decodeKeepingAbsent(payload: String, existing: SessionJournalAggregate?): SessionJournalAggregate? {
+        val root = payloadObject(payload) ?: return null
         val decoded = decode(payload) ?: return null
+        val previous = existing ?: return decoded
+        val kept = previous.journal
+        val incoming = decoded.journal
+        return decoded.copy(
+            journal = incoming.copy(
+                teacherName = root.keepString("teacherName", kept.teacherName),
+                scheduledSpace = root.keepString("scheduledSpace", kept.scheduledSpace),
+                usedSpace = root.keepString("usedSpace", kept.usedSpace),
+                unitLabel = root.keepString("unitLabel", kept.unitLabel),
+                objectivePlanned = root.keepString("objectivePlanned", kept.objectivePlanned),
+                plannedText = root.keepString("plannedText", kept.plannedText),
+                actualText = root.keepString("actualText", kept.actualText),
+                attainmentText = root.keepString("attainmentText", kept.attainmentText),
+                adaptationsText = root.keepString("adaptationsText", kept.adaptationsText),
+                incidentsText = root.keepString("incidentsText", kept.incidentsText),
+                groupObservations = root.keepString("groupObservations", kept.groupObservations),
+                climateScore = root.keepInt("climateScore", kept.climateScore),
+                participationScore = root.keepInt("participationScore", kept.participationScore),
+                usefulTimeScore = root.keepInt("usefulTimeScore", kept.usefulTimeScore),
+                perceivedDifficultyScore = root.keepInt("perceivedDifficultyScore", kept.perceivedDifficultyScore),
+                pedagogicalDecision = if (root.containsKey("pedagogicalDecision")) incoming.pedagogicalDecision else kept.pedagogicalDecision,
+                pendingTasksText = root.keepString("pendingTasksText", kept.pendingTasksText),
+                materialToPrepareText = root.keepString("materialToPrepareText", kept.materialToPrepareText),
+                studentsToReviewText = root.keepString("studentsToReviewText", kept.studentsToReviewText),
+                familyCommunicationText = root.keepString("familyCommunicationText", kept.familyCommunicationText),
+                nextStepText = root.keepString("nextStepText", kept.nextStepText),
+                weatherText = root.keepString("weatherText", kept.weatherText),
+                materialUsedText = root.keepString("materialUsedText", kept.materialUsedText),
+                physicalIncidentsText = root.keepString("physicalIncidentsText", kept.physicalIncidentsText),
+                injuriesText = root.keepString("injuriesText", kept.injuriesText),
+                unequippedStudentsText = root.keepString("unequippedStudentsText", kept.unequippedStudentsText),
+                intensityScore = root.keepInt("intensityScore", kept.intensityScore),
+                warmupMinutes = root.keepInt("warmupMinutes", kept.warmupMinutes),
+                mainPartMinutes = root.keepInt("mainPartMinutes", kept.mainPartMinutes),
+                cooldownMinutes = root.keepInt("cooldownMinutes", kept.cooldownMinutes),
+                stationObservationsText = root.keepString("stationObservationsText", kept.stationObservationsText),
+                incidentTags = if (root.containsKey("incidentTags")) incoming.incidentTags else kept.incidentTags,
+                status = if (root.containsKey("status")) incoming.status else kept.status,
+            ),
+            individualNotes = if (root.containsKey("individualNotes")) decoded.individualNotes else previous.individualNotes,
+            actions = if (root.containsKey("actions")) decoded.actions else previous.actions,
+            media = if (root.containsKey("media")) decoded.media else previous.media,
+            links = if (root.containsKey("links")) decoded.links else previous.links,
+        )
+    }
+
+    /**
+     * Upsert local: si hay diario previo, las claves ausentes no lo vacían
+     * (mismo criterio que [decodeKeepingAbsent] en el adaptador desktop).
+     */
+    fun forLocalUpsert(
+        payload: String,
+        localJournalId: Long,
+        existing: SessionJournalAggregate? = null,
+    ): SessionJournalAggregate? {
+        val decoded = decodeKeepingAbsent(payload, existing) ?: return null
         return decoded.copy(journal = decoded.journal.copy(id = localJournalId))
     }
 
     private fun payloadObject(payload: String): JsonObject? =
         runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull()
+
+    private fun JsonObject.keepString(key: String, previous: String): String =
+        if (containsKey(key)) rawString(key).orEmpty() else previous
+
+    private fun JsonObject.keepInt(key: String, previous: Int): Int =
+        if (containsKey(key)) int(key) ?: previous else previous
 
     private fun JsonObject.rawString(key: String): String? {
         val element = this[key] ?: return null

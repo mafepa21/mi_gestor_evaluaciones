@@ -58,7 +58,6 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
-import java.util.prefs.Preferences
 import javax.jmdns.JmDNS
 import javax.jmdns.ServiceInfo
 import javax.net.ssl.KeyManagerFactory
@@ -282,12 +281,22 @@ class LocalSyncServer(
                 activeToken = null
             }
 
-            val token = activeToken ?: UUID.randomUUID().toString().also { newToken ->
-                activeToken = newToken
-                secureStore.put("paired-token", newToken)
+            val previousToken = activeToken
+            val previousDeviceId = pairedDeviceId
+            val token = activeToken ?: UUID.randomUUID().toString()
+            try {
+                if (activeToken == null) {
+                    secureStore.put("paired-token", token)
+                    activeToken = token
+                }
+                secureStore.put("paired-device-id", deviceId)
+                pairedDeviceId = deviceId
+            } catch (_: IllegalStateException) {
+                activeToken = previousToken
+                pairedDeviceId = previousDeviceId
+                ex.respond(500, """{"error":"keychain_unavailable"}""")
+                return@createContext
             }
-            pairedDeviceId = deviceId
-            secureStore.put("paired-device-id", deviceId)
 
             // Rotar PIN tras emparejamiento exitoso para que el código mostrado sea de un solo uso
             pairingPin = (100000..999999).random().toString()
@@ -402,6 +411,7 @@ class LocalSyncServer(
                 ex.respond(405, """{"error":"method_not_allowed"}""")
                 return@createContext
             }
+            if (!isAuthorized(ex)) return@createContext
             if (!isLoopbackSyncRequest(ex.remoteAddress?.address)) {
                 ex.respond(403, """{"error":"loopback_only"}""")
                 return@createContext
@@ -855,7 +865,7 @@ class LocalSyncServer(
     private fun isAuthorized(ex: HttpExchange): Boolean {
         // El propio Mac no es de confianza: cualquier programa local podría leer
         // o escribir el cuaderno. La contraseña del enlace se exige en todas las
-        // rutas de datos, también en loopback. /sync/local-changes no pasa por aquí.
+        // rutas de datos, también en loopback (incluido /sync/local-changes).
         val token = ex.requestHeaders.getFirst("Authorization")
             ?.removePrefix("Bearer ")
             ?.trim()
@@ -1109,16 +1119,25 @@ private class DesktopTlsIdentity(
     }
 }
 
+internal object DesktopKeychainCommand {
+    fun addArgs(account: String, serviceName: String): List<String> = listOf(
+        "security", "add-generic-password",
+        "-a", account,
+        "-s", serviceName,
+        "-U",
+        "-w",
+    )
+}
+
 private class DesktopSecureStore(
     private val serviceName: String,
 ) {
     private val isMemoryOnly = serviceName.contains("test", ignoreCase = true) || serviceName == "in-memory"
     private val memoryStore = java.util.concurrent.ConcurrentHashMap<String, String>()
-    private val prefs = if (isMemoryOnly) null else Preferences.userRoot().node("com.migestor.sync.desktop.fallback")
 
     fun get(key: String): String? {
         if (isMemoryOnly) return memoryStore[key]
-        return readFromMacKeychain(key) ?: prefs?.get(key, null)
+        return readFromMacKeychain(key)
     }
 
     fun put(key: String, value: String) {
@@ -1127,8 +1146,7 @@ private class DesktopSecureStore(
             return
         }
         if (!writeToMacKeychain(key, value)) {
-            prefs?.put(key, value)
-            prefs?.flushSafely()
+            error("No se pudo guardar el secreto en el llavero.")
         }
     }
 
@@ -1137,10 +1155,7 @@ private class DesktopSecureStore(
             memoryStore.remove(key)
             return
         }
-        if (!deleteFromMacKeychain(key)) {
-            prefs?.remove(key)
-            prefs?.flushSafely()
-        }
+        deleteFromMacKeychain(key)
     }
 
     private fun readFromMacKeychain(account: String): String? {
@@ -1161,13 +1176,11 @@ private class DesktopSecureStore(
     private fun writeToMacKeychain(account: String, value: String): Boolean {
         if (!isMac()) return false
         return runCatching {
-            val process = ProcessBuilder(
-                "security", "add-generic-password",
-                "-a", account,
-                "-s", serviceName,
-                "-w", value,
-                "-U"
-            ).start()
+            val process = ProcessBuilder(DesktopKeychainCommand.addArgs(account, serviceName)).start()
+            process.outputStream.use { stream ->
+                stream.write(value.toByteArray(Charsets.UTF_8))
+                stream.write('\n'.code)
+            }
             process.waitFor() == 0
         }.getOrDefault(false)
     }
@@ -1186,10 +1199,6 @@ private class DesktopSecureStore(
 
     private fun isMac(): Boolean =
         System.getProperty("os.name")?.lowercase()?.contains("mac") == true
-}
-
-private fun Preferences.flushSafely() {
-    runCatching { flush() }
 }
 
 data class SyncServerStatus(

@@ -53,6 +53,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - **Nueva columna en dos pasos**: eliges el tipo, pones el nombre y pulsas Crear. El peso, la rúbrica y la fórmula quedan en Ajustes, abiertos solo cuando hacen falta.
 
+- **Inspector más corto**: el panel del Cuaderno mide 320 puntos. Arriba se ven la media, lo pendiente y las observaciones. El resto va en «Más del alumno». Las flechas cambian de alumno. El anillo de la celda activa aparece en 0,15 segundos.
+
+- **Buscador del Cuaderno**: si la búsqueda no encuentra a nadie, se mantienen las cabeceras y aparece el botón Limpiar.
+
+- **Menos barras en el iPhone**: las pestañas del Cuaderno dejan la fila de encima y pasan al menú de tres puntos. Al guardar, un punto pasa de ámbar a verde una sola vez. Si falla, el punto se queda rojo y no dice que ya está sincronizado.
+
 - **Modalidad unificada «Auto + Coevaluación» por grupos de SA en Entregas Web**:
   - Modalidad dual pedagógica en la app: **«Autoevaluación»** (evaluación propia individual) y **«Auto + Coevaluación»** (el estudiante se autoevalúa en la primera pestaña destacada *«Mi autoevaluación»* y coevalúa a sus compañeros de equipo en las pestañas siguientes).
   - Detección automática en la app de la SA asociada a la columna del cuaderno y los grupos de trabajo vinculados para generar los pares de evaluación.

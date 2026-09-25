@@ -168,6 +168,7 @@ struct NotebookGridContainer<
             },
             rowContent: rowContent
         )
+
     }
 
     @ViewBuilder

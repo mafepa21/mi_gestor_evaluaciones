@@ -252,6 +252,7 @@
 		66CF6F61A89B48BE7660BA19 /* AppSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863347F9ECD4F8B4496AA0AD /* AppSettingsStore.swift */; };
 		66D1856D79472CD9836FE1C9 /* WorkspaceSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */; };
 		66F98BF4EEB8D773D5E4C999 /* MacStudentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EA0ED7ACCCC1D3A0A73D045 /* MacStudentsView.swift */; };
+		675F21ACF52DD1340D0F3973 /* AppleFoundationPedagogicalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3ADE259039BE56FBA5D115F /* AppleFoundationPedagogicalService.swift */; };
 		67CBBC9A73364CED4EEC1772 /* NotebookEditableTableCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0B0E3ED2C6BFAF2C222AA3 /* NotebookEditableTableCell.swift */; };
 		6860B9518A5CD2E84C4097F6 /* TeacherScheduleWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 662D4B11E29F193E61400C1F /* TeacherScheduleWizard.swift */; };
 		6877F85FFE101D346660E09C /* NotebookModuleSupportActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BA1F288BF073BB3431CF16E /* NotebookModuleSupportActions.swift */; };
@@ -439,6 +440,7 @@
 		BBC2E9E58A19DA750557519E /* NotebookColumnOrganizerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA1A353C3D0548CC0C2E8A /* NotebookColumnOrganizerSheet.swift */; };
 		BBC3ED3DFE1B028A9D42695B /* LearningSituationDocumentImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880A34E6ED9FC0F10FE40AC2 /* LearningSituationDocumentImportTests.swift */; };
 		BBC5F1C39B098542EEAC79CA /* PlannerCascadeDropCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11CB4D803900F53375043197 /* PlannerCascadeDropCoordinator.swift */; };
+		BC2589EDAF5AEA30C641250B /* AppleFoundationPedagogicalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3ADE259039BE56FBA5D115F /* AppleFoundationPedagogicalService.swift */; };
 		BC2B7AE09356DAEE25AAB21B /* StudentProfilesWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */; };
 		BC651399795A9BCF20664187 /* AppleRoundedCorner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */; };
 		BC91ADD74993C72E5A133C3D /* MacCommandCenterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */; };
@@ -910,6 +912,7 @@
 		C18473DBCC65D84DAB60649B /* WebSubmissionFixtureConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionFixtureConstants.swift; sourceTree = "<group>"; };
 		C20918D0AFE00F50C0378076 /* MiGestorKMPiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiGestorKMPiOSApp.swift; sourceTree = "<group>"; };
 		C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationAnalyticsService.swift; sourceTree = "<group>"; };
+		C3ADE259039BE56FBA5D115F /* AppleFoundationPedagogicalService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationPedagogicalService.swift; sourceTree = "<group>"; };
 		C40AB5AD5137D95F9DBD3912 /* EvaluationCriterionSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationCriterionSection.swift; sourceTree = "<group>"; };
 		C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBridgeBootstrap.swift; sourceTree = "<group>"; };
 		C520758F3BD01731CA8DD507 /* WebSubmissionPublishSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionPublishSheet.swift; sourceTree = "<group>"; };
@@ -1245,6 +1248,7 @@
 				9066EF34A52C09F07E8CFAE7 /* AppleAIReadinessFixtures.swift */,
 				C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */,
 				14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */,
+				C3ADE259039BE56FBA5D115F /* AppleFoundationPedagogicalService.swift */,
 				27176C9EB76172D41191833D /* AppleFoundationReportService.swift */,
 				8DCBCA7CED9B1F0B0659CDD7 /* AppleFoundationStudentEmailService.swift */,
 				1C7735C70A8D47952837D52A /* AppleFoundationStudentInsightService.swift */,
@@ -1577,7 +1581,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"/var/folders/3m/kqdl9djj0rv5kk62x4b4rx380000gn/T/cursor-sandbox-cache/7e9b865a4bd8b14d27f4b0fcd8948734/gradle\"\n./scripts/build_apple_framework.sh\n";
+			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_apple_framework.sh\n";
 		};
 		D0A09C945CF2CB5541E2243F /* Build KMP Framework */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1597,7 +1601,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"/var/folders/3m/kqdl9djj0rv5kk62x4b4rx380000gn/T/cursor-sandbox-cache/7e9b865a4bd8b14d27f4b0fcd8948734/gradle\"\n./scripts/build_apple_framework.sh\n";
+			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_apple_framework.sh\n";
 		};
 		FE75F6163DC74DD01E88F555 /* Embed Command Center Helper */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1636,7 +1640,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"/var/folders/3m/kqdl9djj0rv5kk62x4b4rx380000gn/T/cursor-sandbox-cache/7e9b865a4bd8b14d27f4b0fcd8948734/gradle\"\n./scripts/build_command_center_helper.sh\n";
+			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_command_center_helper.sh\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1684,6 +1688,7 @@
 				A3A92B21AB297E3BEBC8DC15 /* AppleDatabaseRescueService.swift in Sources */,
 				4A94FBA079B366485372AFC6 /* AppleFoundationAnalyticsService.swift in Sources */,
 				233E4313DEDDC02CD056C9CA /* AppleFoundationContextualAIService.swift in Sources */,
+				675F21ACF52DD1340D0F3973 /* AppleFoundationPedagogicalService.swift in Sources */,
 				78A071A272E2BC12FABF66B2 /* AppleFoundationReportService.swift in Sources */,
 				930CF18D1849FBDA35F10F3A /* AppleFoundationStudentEmailService.swift in Sources */,
 				E94011DC47D904A106662F80 /* AppleFoundationStudentInsightService.swift in Sources */,
@@ -1990,6 +1995,7 @@
 				307B0FE8D33C497D90F6243A /* AppleDatabaseRescueService.swift in Sources */,
 				F5D4B655C174800ABAD76329 /* AppleFoundationAnalyticsService.swift in Sources */,
 				738EEEE78B67FE32320DC5E1 /* AppleFoundationContextualAIService.swift in Sources */,
+				BC2589EDAF5AEA30C641250B /* AppleFoundationPedagogicalService.swift in Sources */,
 				EBDC0553FE5545D4E7C33846 /* AppleFoundationReportService.swift in Sources */,
 				7D8628089D2C3C7AB79B869D /* AppleFoundationStudentEmailService.swift in Sources */,
 				F8870EF71ED0F19930062E05 /* AppleFoundationStudentInsightService.swift in Sources */,

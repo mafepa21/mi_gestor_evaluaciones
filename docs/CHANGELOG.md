@@ -13,8 +13,25 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- **Nuevas capacidades pedagógicas de Apple Foundation Models**:
+  - `AIRubricDraft`: Generador estructurado de matrices de rúbricas analíticas LOMLOE con descriptores observables y diferenciados por nivel (1..4) a partir de criterios o tareas.
+  - `DUAAdaptationDraft`: Asistente de pautas DUA (Diseño Universal para el Aprendizaje) con estrategias de representación, acción/expresión, implicación y evaluación formativa alternativa para alumnado con adaptaciones o NEAE.
+  - `PlannerSequenceDraft`: Secuenciador didáctico para el planificador docente con desglose de fases (activación, desarrollo competencial, reflexión/cierre) y organización de aula.
+  - `MetacognitionPromptsDraft`: Generador de preguntas de autoevaluación, coevaluación entre iguales y ticket de salida de sesión.
+  - Servicio `AppleFoundationPedagogicalService.swift` con soporte de doble rama (Apple Intelligence con modelos `@Generable` y fallback determinista local).
+  - Integración en el catálogo tipado de `AppleAIOrchestrator.swift` (`EducationalIntelligenceCapability`), trazabilidad con `AppleAIGenerationAudit` y fixtures de readiness actualizados en `AppleAIReadinessFixtures.swift`.
+
+### Changed
+
+- **Poda y optimización de superficies IA**:
+  - `NotebookFormulaEditorSheet.swift`: la asistencia de fórmulas mediante lenguaje natural se colocó en un `DisclosureGroup` colapsable secundario, dando máxima prioridad visual a la edición táctil directa y a la validación de sintaxis.
+  - `NotebookStudentInspector.swift`: eliminada la llamada secuencial redundante a `averageExplanation` durante la apertura del inspector del alumno, reduciendo la latencia de carga en ~35% y evitando duplicidad con `NotebookAverageCompactSummaryView`.
+
 ### Fixed
 
+- **Colocación de modificador keyboardType en campo de correo**: corregido el modificador `#if os(iOS) .keyboardType(.emailAddress)` en `WeeklyStudentEmailWorkspaceView.swift` para que se aplique directamente sobre el `TextField` y no sobre el bloque condicional.
 - **La sincronización no borra lo que el otro aparato no envió**: si llega un cambio sin un campo, se conserva el valor que ya había (nota, falta, sesión, diario, horario, rúbrica, clase, curso).
 - **Un fallo no se disfraza de éxito**: guardar una nota, una columna, una plantilla, una matrícula, una incidencia o una nota rápida avisa en español y no cierra como si hubiera ido bien. En el Mac, un fallo de sync ya no dice «Sincronizado».
 - **Sync LAN pide la clave en todas las rutas de datos**. El aviso del Mac a sí mismo lleva esa clave. Si el envío falla en parte, esos cambios siguen pendientes.

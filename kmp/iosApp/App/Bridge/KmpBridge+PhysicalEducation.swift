@@ -338,6 +338,7 @@ extension KmpBridge {
         )
     }
 
+    @discardableResult
     func createPhysicalTest(
         classId: Int64,
         code: String,
@@ -593,6 +594,11 @@ extension KmpBridge {
             links: aggregate.links
         )
         _ = try await container.sessionJournalRepository.saveJournalAggregate(aggregate: updatedAggregate)
+        if let stored = try await container.sessionJournalRepository.getJournalForSession(planningSessionId: session.id) {
+            enqueueSavedJournal(stored)
+        } else {
+            enqueueSavedJournal(updatedAggregate)
+        }
     }
 
 

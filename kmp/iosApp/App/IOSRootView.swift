@@ -427,7 +427,7 @@ struct IOSRootView: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Text("Grid").tag("grid")
+                Text(NotebookSurfaceMode.grid.title).tag("grid")
                 Text("Plano").tag("seatingPlan")
             }
             .pickerStyle(.segmented)
@@ -526,7 +526,7 @@ struct IOSRootView: View {
                 Button {
                     layoutState.notebookUndo()
                 } label: {
-                    Label("Deshacer", systemImage: "arrow.uturn.backward")
+                    Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
                 }
                 .disabled(!layoutState.notebookCanUndo)
 

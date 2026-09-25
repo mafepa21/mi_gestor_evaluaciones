@@ -215,6 +215,51 @@ class LocalSyncServerAdoptionTest {
     }
 
     @Test
+    fun loopbackDataRoutesWithoutTokenReturn401() {
+        assertUnauthorized("/sync/pull", "GET")
+        assertUnauthorized("/sync/push", "POST", """{"clientDeviceId":"local","changes":[]}""")
+        assertUnauthorized("/sync/events", "GET")
+        assertUnauthorized("/sync/fingerprint", "GET")
+        assertUnauthorized("/sync/snapshot/status", "GET")
+        assertUnauthorized("/sync/snapshot/db", "GET")
+        assertUnauthorized(
+            "/sync/documents/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "GET",
+        )
+
+        val authed = openHttpsConnection("/sync/pull", "GET")
+        authed.connectTimeout = 5_000
+        authed.readTimeout = 5_000
+        authed.setRequestProperty("Authorization", "Bearer $token")
+        assertEquals(200, authed.responseCode)
+        authed.disconnect()
+
+        val local = openHttpsConnection("/sync/local-changes", "POST")
+        local.connectTimeout = 5_000
+        local.readTimeout = 5_000
+        local.doOutput = true
+        local.setRequestProperty("Content-Type", "application/json")
+        local.outputStream.use { it.write("[]".toByteArray()) }
+        assertEquals(200, local.responseCode)
+        local.disconnect()
+    }
+
+    private fun assertUnauthorized(path: String, method: String, body: String? = null) {
+        val conn = openHttpsConnection(path, method)
+        conn.connectTimeout = 5_000
+        conn.readTimeout = 5_000
+        if (body != null) {
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.outputStream.use { it.write(body.toByteArray()) }
+        }
+        assertEquals(401, conn.responseCode, path)
+        val error = conn.errorStream?.bufferedReader()?.readText().orEmpty()
+        assertTrue(error.contains("unauthorized"), "$path -> $error")
+        conn.disconnect()
+    }
+
+    @Test
     fun rePairingWithValidPinReplacesDeviceWithout409() {
         assertEquals("test-device", server.currentSnapshot().pairedDeviceId)
 

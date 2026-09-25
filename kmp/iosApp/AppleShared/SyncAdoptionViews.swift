@@ -262,7 +262,7 @@ public struct SyncAdoptionSheet: View {
     }
 
     private func entitiesComparisonTable(local: LanDatasetFingerprint, remote: LanDatasetFingerprint) -> some View {
-        let keys = ["class", "student", "evaluation", "grade", "notebook_tab", "notebook_column", "teaching_unit", "learning_situation", "planning_session"]
+        let keys = ["class", "student", "evaluation", "grade", "notebook_tab", "notebook_column", "teaching_unit", "learning_situation", "planning_session", "session_journal"]
         let titles: [String: String] = [
             "class": "Clases",
             "student": "Alumnado",
@@ -272,7 +272,8 @@ public struct SyncAdoptionSheet: View {
             "notebook_column": "Columnas cuaderno",
             "teaching_unit": "Unidades didácticas",
             "learning_situation": "Situaciones aprendizaje",
-            "planning_session": "Sesiones agendadas"
+            "planning_session": "Sesiones agendadas",
+            "session_journal": "Diarios de sesión"
         ]
 
         return VStack(alignment: .leading, spacing: 8) {

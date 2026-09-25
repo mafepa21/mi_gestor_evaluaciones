@@ -67,7 +67,7 @@ struct WebSubmissionPublishSheet: View {
                 runPeerDetection(for: colId)
             }
         }
-        .onChange(of: selectedColumnId) { newColId in
+        .onChange(of: selectedColumnId) { _, newColId in
             if selectedMode == "peer", let colId = newColId {
                 runPeerDetection(for: colId)
             }
@@ -145,7 +145,7 @@ struct WebSubmissionPublishSheet: View {
                 Text("Auto + Coevaluación").tag("peer")
             }
             .pickerStyle(.segmented)
-            .onChange(of: selectedMode) { newMode in
+            .onChange(of: selectedMode) { _, newMode in
                 if newMode == "peer", let colId = selectedColumnId {
                     runPeerDetection(for: colId)
                 }

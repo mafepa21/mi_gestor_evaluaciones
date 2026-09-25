@@ -126,7 +126,7 @@ enum EducamosSMXlsxWriter {
         sheetPath: String,
         cells: [CellWrite]
     ) throws {
-        guard let archive = Archive(url: fileURL, accessMode: .update) else {
+        guard let archive = try? Archive(url: fileURL, accessMode: .update) else {
             throw EducamosSMXlsxWriterError.cannotOpenArchive
         }
 

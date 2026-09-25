@@ -592,10 +592,16 @@ class RepositoriesIntegrationTest {
 
         val preview = planner.previewCascadeMove(request)
         assertEquals(listOf(displacedId), preview.completedSessionIds)
+        assertTrue(preview.nextPlacements.isEmpty())
         assertTrue(preview.crossesWeekBoundary)
-        assertEquals(2, preview.nextPlacements.size)
 
-        val committed = planner.commitCascadeMove(request)
+        val blocked = planner.commitCascadeMove(request)
+        assertEquals(0, blocked.movedCount)
+        val untouched = planner.listSessions(12, 2026).associateBy { it.id }
+        assertEquals(8, untouched.getValue(sourceId).period)
+        assertEquals(9, untouched.getValue(displacedId).period)
+
+        val committed = planner.commitCascadeMove(request.copy(forceTerminalSessions = true))
         assertEquals(2, committed.movedCount)
         val week12 = planner.listSessions(12, 2026).associateBy { it.id }
         val week13 = planner.listSessions(13, 2026).associateBy { it.id }

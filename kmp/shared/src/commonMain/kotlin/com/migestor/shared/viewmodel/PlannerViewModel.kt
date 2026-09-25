@@ -289,21 +289,15 @@ class PlannerViewModel(
     fun selectTab(tab: PlannerTab) { _activeTab.value = tab }
 
     fun nextWeek() {
-        if (_currentWeek.value >= 52) {
-            _currentWeek.value = 1
-            _currentYear.value = _currentYear.value + 1
-        } else {
-            _currentWeek.value = _currentWeek.value + 1
-        }
+        val (week, year) = IsoWeekHelper.shiftWeek(_currentWeek.value, _currentYear.value, 1)
+        _currentWeek.value = week
+        _currentYear.value = year
     }
 
     fun prevWeek() {
-        if (_currentWeek.value <= 1) {
-            _currentWeek.value = 52
-            _currentYear.value = _currentYear.value - 1
-        } else {
-            _currentWeek.value = _currentWeek.value - 1
-        }
+        val (week, year) = IsoWeekHelper.shiftWeek(_currentWeek.value, _currentYear.value, -1)
+        _currentWeek.value = week
+        _currentYear.value = year
     }
 
     fun openUDManager() { _udManagerOpen.value = true }

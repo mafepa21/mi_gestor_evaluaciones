@@ -32,7 +32,8 @@ data class AssignRubricDialogState(
     val availableTabs: List<String> = emptyList(),
     val selectedTab: String? = null,
     val createNewTab: Boolean = false,
-    val newTabName: String = ""
+    val newTabName: String = "",
+    val errorMessage: String? = null
 )
 
 data class RubricUiState(
@@ -681,6 +682,9 @@ class RubricsViewModel(
     fun confirmAssignRubric() {
         val state = _uiState.value.assignDialogState ?: return
         scope.launch {
+            _uiState.update {
+                it.copy(assignDialogState = it.assignDialogState?.copy(errorMessage = null))
+            }
             try {
                 val requestedNewTabName = state.newTabName.trim().ifBlank { "Rúbricas" }
                 val finalTabName = if (state.createNewTab) {
@@ -711,7 +715,15 @@ class RubricsViewModel(
                 
                 dismissAssignDialog()
             } catch (e: Exception) {
-                // Log error
+                val detail = e.message?.trim().orEmpty()
+                val message = if (detail.isEmpty()) {
+                    "No se pudo asignar la rúbrica al cuaderno. Los datos siguen en esta pantalla."
+                } else {
+                    "No se pudo asignar la rúbrica al cuaderno. Los datos siguen en esta pantalla. $detail"
+                }
+                _uiState.update {
+                    it.copy(assignDialogState = it.assignDialogState?.copy(errorMessage = message))
+                }
             }
         }
     }

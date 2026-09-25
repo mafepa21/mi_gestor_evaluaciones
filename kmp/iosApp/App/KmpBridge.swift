@@ -116,12 +116,16 @@ final class KmpBridge: ObservableObject {
     /// por plan al abrir el Planner o al reparar una planificación histórica.
     var sessionPlanJSONCacheBySource: [String: [Int: String]] = [:]
     var discoveredPeersByHost: [String: LanDiscoveredPeer] = [:]
+    var manualSyncTask: Task<Void, Never>? = nil
     var autoSyncLoopTask: Task<Void, Never>? = nil
     var autoSyncDebounceTask: Task<Void, Never>? = nil
     var localChangesNotifyTask: Task<Void, Never>? = nil
     var pendingChangesPersistenceTask: Task<Void, Never>? = nil
     var notebookSnapshotDebounceTask: Task<Void, Never>? = nil
     var pendingGradeSnapshotTask: Task<Void, Never>? = nil
+    /// Espera corta al teclear una nota: no escribe SQL en cada tecla.
+    var columnGradeSaveDebounceTask: Task<Void, Never>? = nil
+    var pendingDebouncedColumnGrade: (studentId: Int64, column: NotebookColumnDefinition, value: String)? = nil
     var postSyncRefreshTask: Task<Void, Never>? = nil
     var isPairingInFlight = false
     var isSyncInFlight = false
@@ -286,6 +290,7 @@ final class KmpBridge: ObservableObject {
         syncEventListener.stop()
         notebookSnapshotDebounceTask?.cancel()
         pendingGradeSnapshotTask?.cancel()
+        columnGradeSaveDebounceTask?.cancel()
         postSyncRefreshTask?.cancel()
     }
 
@@ -702,16 +707,26 @@ final class KmpBridge: ObservableObject {
                 let changes = self.pendingLocalSseChanges
                 self.pendingLocalSseChanges.removeAll()
                 guard !changes.isEmpty else { return }
+                // El helper guarda la contraseña del enlace en el llavero desktop.
+                // syncToken del Mac es un marcador local ("loopback-token") y no vale aquí.
+                let desktopStore = IosKeychainStore(service: "com.migestor.sync.desktop")
+                guard let token = desktopStore.loadString(key: "paired-token"),
+                      LanLocalNotifyPolicy.shouldAttachBearer(token: token) else {
+                    // Sin iPad emparejado no hay a quién avisar; no fingimos éxito.
+                    return
+                }
                 try await self.lanSyncClient.notifyLocalChanges(
                     host: self.pairedSyncHost ?? "127.0.0.1",
+                    token: token,
                     changes: changes,
                     pinnedFingerprint: self.pairedServerFingerprint
                 )
             } catch is CancellationError {
                 return
             } catch {
-                // Best-effort: the periodic LAN sync loop and helper DB monitor remain
-                // as fallbacks, so local editing should never fail because SSE notify did.
+                self.publishSyncState {
+                    $0.syncStatusMessage = LanLocalNotifyPolicy.failureStatusMessage
+                }
             }
         }
         #endif

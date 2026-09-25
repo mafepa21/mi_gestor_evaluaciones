@@ -2,6 +2,10 @@ import Foundation
 import MiGestorKit
 import CryptoKit
 
+enum WebPeerPublishGuard {
+    static let groupsFailure = "No se pudieron leer los grupos. No se ha publicado la coevaluación para no dejarla sin equipos."
+}
+
 extension KmpBridge {
     // MARK: - Publicación de formularios web
 
@@ -176,11 +180,25 @@ extension KmpBridge {
         let assignedStudentCount: Int
         let unassignedStudentCount: Int
         let totalStudents: Int
+        var loadFailed: Bool = false
     }
 
     /// Detecta la Situación de Aprendizaje vinculada a una columna y los grupos de trabajo asociados a ella.
     func detectPeerGroupsForColumn(classId: Int64, columnId: String) async -> WebPeerDetectionResult {
-        let alumnado = (try? await container.classesRepository.listStudentsInClass(classId: classId)) ?? []
+        let alumnado: [Student]
+        do {
+            alumnado = try await container.classesRepository.listStudentsInClass(classId: classId)
+        } catch {
+            return WebPeerDetectionResult(
+                learningSituationId: nil,
+                learningSituationTitle: nil,
+                groups: [],
+                assignedStudentCount: 0,
+                unassignedStudentCount: 0,
+                totalStudents: 0,
+                loadFailed: true
+            )
+        }
         let totalStudents = alumnado.count
         guard totalStudents > 0 else {
             return WebPeerDetectionResult(
@@ -220,8 +238,22 @@ extension KmpBridge {
         }
 
         // 2. Cargar grupos y miembros de la clase
-        let allGroups = (try? await container.notebookConfigRepository.listWorkGroups(classId: classId, tabId: nil)) ?? []
-        let allMembers = (try? await container.notebookConfigRepository.listWorkGroupMembers(classId: classId, tabId: nil)) ?? []
+        let allGroups: [NotebookWorkGroup]
+        let allMembers: [NotebookWorkGroupMember]
+        do {
+            allGroups = try await container.notebookConfigRepository.listWorkGroups(classId: classId, tabId: nil)
+            allMembers = try await container.notebookConfigRepository.listWorkGroupMembers(classId: classId, tabId: nil)
+        } catch {
+            return WebPeerDetectionResult(
+                learningSituationId: nil,
+                learningSituationTitle: nil,
+                groups: [],
+                assignedStudentCount: 0,
+                unassignedStudentCount: 0,
+                totalStudents: totalStudents,
+                loadFailed: true
+            )
+        }
 
         // 3. Resolución inclusiva de grupos:
         //    a) Grupos asignados a la SA vinculada
@@ -341,6 +373,13 @@ extension KmpBridge {
         var peerTargetsToPublish: [WebSubmissionPublisher.PeerTargetToPublish] = []
         if mode == "peer" {
             let detection = await detectPeerGroupsForColumn(classId: classId, columnId: columnId)
+            if detection.loadFailed {
+                throw NSError(
+                    domain: "WebSubmissions",
+                    code: 423,
+                    userInfo: [NSLocalizedDescriptionKey: WebPeerPublishGuard.groupsFailure]
+                )
+            }
             let studentNameMap = Dictionary(uniqueKeysWithValues: alumnado.map {
                 ($0.id, "\($0.firstName) \($0.lastName)".trimmingCharacters(in: .whitespaces))
             })

@@ -1,21 +1,37 @@
 import SwiftUI
 import MiGestorKit
 
+/// Regla de cierre tras matricular: solo cierra si el bridge confirma el alta en el grupo.
+enum StudentEnrollmentSaveGate {
+    static let saveFailureMessage =
+        "No se pudo matricular al alumno en el grupo. Sigue sin asignar."
+
+    static func shouldDismiss(succeeded: Bool) -> Bool { succeeded }
+
+    static func failureMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return saveFailureMessage }
+        return "\(saveFailureMessage) \(trimmed)"
+    }
+}
+
 struct AssignStudentToClassSheet: View {
     let students: [Student]
     let availableClasses: [SchoolClass]
-    let onAssign: (Int64) -> Void
+    let onAssign: (Int64) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selectedClassId: Int64?
+    @State private var errorMessage: String?
+    @State private var isAssigning = false
 
-    init(student: Student, availableClasses: [SchoolClass], onAssign: @escaping (Int64) -> Void) {
+    init(student: Student, availableClasses: [SchoolClass], onAssign: @escaping (Int64) async throws -> Void) {
         self.students = [student]
         self.availableClasses = availableClasses
         self.onAssign = onAssign
         _selectedClassId = State(initialValue: availableClasses.first?.id)
     }
 
-    init(students: [Student], availableClasses: [SchoolClass], onAssign: @escaping (Int64) -> Void) {
+    init(students: [Student], availableClasses: [SchoolClass], onAssign: @escaping (Int64) async throws -> Void) {
         self.students = students
         self.availableClasses = availableClasses
         self.onAssign = onAssign
@@ -88,18 +104,24 @@ struct AssignStudentToClassSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") { dismiss() }
+                        .disabled(isAssigning)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Asignar") {
-                        if let classId = selectedClassId {
-                            onAssign(classId)
-                            dismiss()
-                        }
+                    Button(isAssigning ? "Asignando…" : "Asignar") {
+                        Task { await confirmAssign() }
                     }
-                    .disabled(selectedClassId == nil)
+                    .disabled(selectedClassId == nil || isAssigning)
                 }
             }
             #endif
+        }
+        .alert("No se pudo matricular", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
         }
         #if os(macOS)
         .frame(width: 440, height: 320)
@@ -133,16 +155,29 @@ struct AssignStudentToClassSheet: View {
             Button("Cancelar") {
                 dismiss()
             }
-            Button("Asignar a curso") {
-                if let classId = selectedClassId {
-                    onAssign(classId)
-                    dismiss()
-                }
+            .disabled(isAssigning)
+            Button(isAssigning ? "Asignando…" : "Asignar a curso") {
+                Task { await confirmAssign() }
             }
             .buttonStyle(.borderedProminent)
-            .disabled(selectedClassId == nil)
+            .disabled(selectedClassId == nil || isAssigning)
         }
         .padding(16)
     }
     #endif
+
+    @MainActor
+    private func confirmAssign() async {
+        guard let classId = selectedClassId, !isAssigning else { return }
+        isAssigning = true
+        defer { isAssigning = false }
+        do {
+            try await onAssign(classId)
+            if StudentEnrollmentSaveGate.shouldDismiss(succeeded: true) {
+                dismiss()
+            }
+        } catch {
+            errorMessage = StudentEnrollmentSaveGate.failureMessage(detail: error.localizedDescription)
+        }
+    }
 }

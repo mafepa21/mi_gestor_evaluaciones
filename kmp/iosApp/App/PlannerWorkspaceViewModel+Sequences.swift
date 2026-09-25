@@ -65,7 +65,11 @@ extension PlannerWorkspaceViewModel {
         }
         
         do {
-            let allSessions = try await bridge.plannerListAllSessions()
+            let allSessions = try await bridge.plannerListSessions(
+                fromIso: scheduleStartDate,
+                toIso: scheduleEndDate,
+                classId: requestedGroupId
+            )
             try Task.checkCancellation()
             let filteredSessions = allSessions.filter { session in
                 requestedGroupId.map { session.groupId == $0 } ?? true

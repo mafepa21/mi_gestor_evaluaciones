@@ -666,6 +666,7 @@ struct LearningSituationsWorkspaceView: View {
     @State private var batchImport: LearningSituationBatchImportPresentation?
     @State private var versions: [LearningSituationVersion] = []
     @State private var classLinks: [LearningSituationClassLink] = []
+    @State private var loadedDetailSituationId: Int64?
     @State private var resources: [LearningSituationLinkedResource] = []
     @State private var scheduleSituation: LearningSituation?
     @State private var evaluationSituation: LearningSituation?
@@ -1277,9 +1278,19 @@ struct LearningSituationsWorkspaceView: View {
         guard let id = selectedSituationId else {
             versions = []; classLinks = []; resources = []; return
         }
-        versions = (try? await bridge.learningSituationVersions(id: id)) ?? []
-        classLinks = (try? await bridge.learningSituationClassLinks(id: id)) ?? []
-        resources = (try? await bridge.learningSituationResources(id: id)) ?? []
+        let sameSituation = loadedDetailSituationId == id
+        let loadedVersions = try? await bridge.learningSituationVersions(id: id)
+        let loadedLinks = try? await bridge.learningSituationClassLinks(id: id)
+        let loadedResources = try? await bridge.learningSituationResources(id: id)
+        if loadedVersions == nil || loadedLinks == nil || loadedResources == nil {
+            errorMessage = SituationDetailReload.failure
+        }
+        versions = ProfileReloadKeep.list(loaded: loadedVersions, previous: versions, samePerson: sameSituation)
+        classLinks = ProfileReloadKeep.list(loaded: loadedLinks, previous: classLinks, samePerson: sameSituation)
+        resources = ProfileReloadKeep.list(loaded: loadedResources, previous: resources, samePerson: sameSituation)
+        if loadedVersions != nil || loadedLinks != nil || loadedResources != nil {
+            loadedDetailSituationId = id
+        }
     }
 
     private func handleDocumentSelection(_ urls: [URL]) {
@@ -1996,15 +2007,19 @@ private struct LearningSituationEvaluationSheet: View {
         .onAppear {
             proposals = (try? JSONDecoder().decode(LearningSituationImportDraft.self, from: Data(situation.payloadJson.utf8)))?.evaluationItems ?? []
             Task {
-                let links = (try? await bridge.learningSituationClassLinks(id: situation.id)) ?? []
-                let linked = Set(links.map(\.classId))
-                linkedClassIds = linked
-                if !linked.isEmpty {
-                    selectedClassIds = linked
-                } else if let initial = initialClassId {
-                    selectedClassIds = [initial]
-                } else if let first = bridge.classes.first?.id {
-                    selectedClassIds = [first]
+                do {
+                    let links = try await bridge.learningSituationClassLinks(id: situation.id)
+                    let linked = Set(links.map(\.classId))
+                    linkedClassIds = linked
+                    if !linked.isEmpty {
+                        selectedClassIds = linked
+                    } else if let initial = initialClassId {
+                        selectedClassIds = [initial]
+                    } else if let first = bridge.classes.first?.id {
+                        selectedClassIds = [first]
+                    }
+                } catch {
+                    errorMessage = LearningSituationScheduleLoad.linksFailure
                 }
                 try? await bridge.refreshRubrics()
                 try? await bridge.refreshRubricClassLinks()

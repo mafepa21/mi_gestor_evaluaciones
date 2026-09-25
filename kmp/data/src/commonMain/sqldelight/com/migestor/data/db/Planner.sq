@@ -352,6 +352,12 @@ SELECT
 FROM session_journal j
 WHERE j.planning_session_id IN ?;
 
+selectSessionIdsWithMaterial:
+SELECT planning_session_id
+FROM session_journal
+WHERE TRIM(material_to_prepare_text) <> ''
+   OR TRIM(material_used_text) <> '';
+
 upsertJournal:
 INSERT INTO session_journal(
     id, planning_session_id, teacher_name, scheduled_space, used_space, unit_label,

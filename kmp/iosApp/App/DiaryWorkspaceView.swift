@@ -164,7 +164,7 @@ struct DiaryWorkspaceView: View {
             }
         }
         .appOnChange(of: vm.searchText) { _ in
-            vm.applySearch()
+            vm.scheduleSearch()
         }
         .appOnChange(of: diaryToolbarKey) { _ in
             configureDiaryToolbar()

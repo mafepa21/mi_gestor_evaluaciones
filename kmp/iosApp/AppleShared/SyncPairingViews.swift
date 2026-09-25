@@ -200,6 +200,190 @@ struct MacCommandCenterPairingCard: View {
 }
 #endif
 
+// MARK: - Cancelación Sync LAN (Apple)
+
+/// Cuándo mostrar «Cancelar» y qué texto dejar si el docente para el envío.
+enum SyncLanCancelAffordances {
+    static let buttonTitle = "Cancelar"
+    static let cancelledStatusMessage = "Sincronización cancelada"
+
+    static func shouldOfferCancel(statusMessage: String) -> Bool {
+        let normalized = statusMessage
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "es_ES"))
+        return normalized.contains("sincronizando")
+    }
+}
+
+/// Frase de progreso al aplicar cambios ya descargados (total = tamaño de la lista en memoria).
+enum SyncLanApplyProgressCopy {
+    static func statusMessage(hechos: Int, total: Int) -> String {
+        guard total > 0 else { return "Sincronizando…" }
+        return "Sincronizando \(hechos) de \(total)"
+    }
+
+    /// Publica el primero, el último y como mucho uno de cada 10 (índice 1-based).
+    static func shouldPublishProgress(hechos: Int, total: Int) -> Bool {
+        guard total > 0, hechos > 0, hechos <= total else { return false }
+        if hechos == 1 || hechos == total { return true }
+        return hechos.isMultiple(of: 10)
+    }
+}
+
+/// Cierre del apply tras el bucle: un fallo a mitad no se vende como Pull OK.
+enum SyncLanApplyCloseCopy {
+    /// Solo es éxito si no falló ningún cambio al aplicar.
+    static func isSuccessfulClose(failedCount: Int) -> Bool {
+        failedCount <= 0
+    }
+
+    static func failureStatusMessage(failedCount: Int, total: Int) -> String {
+        let safeFailed = max(failedCount, 0)
+        let safeTotal = max(total, safeFailed)
+        if safeFailed == 1 {
+            return "Fallo al aplicar 1 de \(safeTotal) cambios. El resto sí se guardó."
+        }
+        return "Fallo al aplicar \(safeFailed) de \(safeTotal) cambios. El resto sí se guardó."
+    }
+}
+
+/// Cierre del envío (push): un lote HTTP con fallos no se presenta como Push OK.
+enum SyncLanPushCloseCopy {
+    static func statusMessage(
+        applied: Int,
+        failed: Int,
+        sentTotal: Int,
+        desktopAuthoritative: Bool
+    ) -> String {
+        if desktopAuthoritative {
+            return "macOS prevalece; cambios locales descartados"
+        }
+        guard SyncLanApplyCloseCopy.isSuccessfulClose(failedCount: failed) else {
+            return SyncLanApplyCloseCopy.failureStatusMessage(
+                failedCount: failed,
+                total: sentTotal
+            )
+        }
+        return "Push OK (\(applied) aplicados)"
+    }
+}
+
+/// Cola local de pendientes tras un push: los fallidos no se dan por enviados.
+enum SyncLanPushPendingPolicy {
+    /// Solo se puede vaciar el lote enviado si no hubo fallos, o si el Mac manda
+    /// (los cambios locales se descartan a propósito).
+    static func shouldClearSentPending(failed: Int, desktopAuthoritative: Bool) -> Bool {
+        desktopAuthoritative || SyncLanApplyCloseCopy.isSuccessfulClose(failedCount: failed)
+    }
+}
+
+// MARK: - Copy de estado Sync LAN (Apple)
+
+/// Textos claros para la cabecera de Sync LAN: un fallo no se disfraza de
+/// «Sincronizado» ni de espera muda de emparejamiento.
+enum SyncLanHeroCopy {
+    enum Kind: Equatable {
+        case unpaired
+        case error
+        case syncing
+        case cancelled
+        case pending
+        case synced
+    }
+
+    struct Snapshot: Equatable {
+        let title: String
+        let detail: String
+        let kind: Kind
+
+        var isAttention: Bool {
+            switch kind {
+            case .error, .pending, .cancelled:
+                return true
+            case .unpaired, .syncing, .synced:
+                return false
+            }
+        }
+    }
+
+    static let unpairedIdleDetail =
+        "Escanea el QR del Mac o introduce el código. Sin enlace no se comparten cambios."
+
+    static func snapshot(
+        isPaired: Bool,
+        pendingChanges: Int,
+        statusMessage: String
+    ) -> Snapshot {
+        let trimmed = statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "es_ES"))
+
+        if looksLikeError(normalized) {
+            return Snapshot(
+                title: isPaired ? "Fallo al sincronizar" : "No se pudo enlazar",
+                detail: trimmed.isEmpty
+                    ? "Revisa la red local y vuelve a intentarlo."
+                    : trimmed,
+                kind: .error
+            )
+        }
+
+        if normalized.contains("sincronizando") {
+            return Snapshot(
+                title: "Sincronizando…",
+                detail: trimmed.isEmpty
+                    ? "La pantalla sigue usable. Puedes cancelar si hace falta."
+                    : trimmed,
+                kind: .syncing
+            )
+        }
+
+        if normalized.contains("cancelad") {
+            return Snapshot(
+                title: "Sincronización cancelada",
+                detail: trimmed.isEmpty
+                    ? "No se ha completado el envío. Puedes volver a sincronizar."
+                    : trimmed,
+                kind: .cancelled
+            )
+        }
+
+        if !isPaired {
+            return Snapshot(
+                title: "Sin enlace con Mac",
+                detail: trimmed.isEmpty ? unpairedIdleDetail : trimmed,
+                kind: .unpaired
+            )
+        }
+
+        if pendingChanges > 0 {
+            let countLabel = pendingChanges == 1
+                ? "1 cambio espera confirmación del Mac."
+                : "\(pendingChanges) cambios esperan confirmación del Mac."
+            return Snapshot(
+                title: "Cambios pendientes",
+                detail: trimmed.isEmpty ? countLabel : trimmed,
+                kind: .pending
+            )
+        }
+
+        return Snapshot(
+            title: "Sincronizado",
+            detail: trimmed.isEmpty ? "Al día con el Mac." : trimmed,
+            kind: .synced
+        )
+    }
+
+    private static func looksLikeError(_ normalized: String) -> Bool {
+        normalized.contains("error")
+            || normalized.contains("no se pudo")
+            || normalized.contains("fallo")
+            || normalized.contains("el enlace local no arranco")
+            || normalized.contains("incompatible")
+            || normalized.contains("no valido")
+            || normalized.contains("no es valido")
+    }
+}
+
 // MARK: - SyncLanView (nueva vista rediseñada por secciones)
 
 struct SyncLanView: View {
@@ -303,19 +487,13 @@ struct SyncLanView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(statusTitle)
+                    Text(heroSnapshot.title)
                         .font(IOSAppStyle.cardTitle)
                         .foregroundStyle(statusColor)
-                    if !bridge.syncStatusMessage.isEmpty {
-                        Text(bridge.syncStatusMessage)
-                            .font(IOSAppStyle.captionText)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    } else if let host = bridge.pairedSyncHost {
-                        Text("Mac: \(host)")
-                            .font(IOSAppStyle.captionText)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(heroDetailText(for: heroSnapshot))
+                        .font(IOSAppStyle.captionText)
+                        .foregroundStyle(heroSnapshot.kind == .error ? IOSAppStyle.danger : .secondary)
+                        .lineLimit(3)
                 }
 
                 Spacer()
@@ -336,7 +514,7 @@ struct SyncLanView: View {
             if bridge.pairedSyncHost != nil {
                 Divider().padding(.vertical, 4)
 
-                // Acciones Pull / Push
+                // Acciones Pull / Push / Cancelar
                 HStack(spacing: 10) {
                     syncActionButton(
                         label: "Recibir cambios",
@@ -344,10 +522,7 @@ struct SyncLanView: View {
                         tint: IOSAppStyle.info,
                         isPrimary: false
                     ) {
-                        Task {
-                            do { try await bridge.runLanPullSync() }
-                            catch { bridge.syncStatusMessage = "Error pull: \(error.localizedDescription)" }
-                        }
+                        Task { await bridge.pullMissingSyncChanges() }
                     }
                     syncActionButton(
                         label: "Enviar cambios",
@@ -355,11 +530,25 @@ struct SyncLanView: View {
                         tint: IOSAppStyle.success,
                         isPrimary: true
                     ) {
-                        Task {
-                            do { try await bridge.runLanPushSync() }
-                            catch { bridge.syncStatusMessage = "Error push: \(error.localizedDescription)" }
-                        }
+                        Task { await bridge.pushPendingSyncChanges() }
                     }
+                }
+
+                if SyncLanCancelAffordances.shouldOfferCancel(statusMessage: bridge.syncStatusMessage) {
+                    Button {
+                        bridge.cancelLanSync()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "xmark.circle")
+                            Text(SyncLanCancelAffordances.buttonTitle)
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(IOSAppStyle.danger)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 4)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cancelar sincronización")
                 }
 
                 Button {
@@ -638,22 +827,51 @@ struct SyncLanView: View {
 
     // MARK: - Helpers
 
-    private var statusTitle: String {
-        guard bridge.pairedSyncHost != nil else { return "Sin enlace con Mac" }
-        if bridge.syncPendingChanges > 0 { return "Cambios pendientes" }
-        return "Sincronizado"
+    private var heroSnapshot: SyncLanHeroCopy.Snapshot {
+        SyncLanHeroCopy.snapshot(
+            isPaired: bridge.pairedSyncHost != nil,
+            pendingChanges: bridge.syncPendingChanges,
+            statusMessage: bridge.syncStatusMessage
+        )
+    }
+
+    private func heroDetailText(for snapshot: SyncLanHeroCopy.Snapshot) -> String {
+        if snapshot.kind == .synced || snapshot.kind == .pending || snapshot.kind == .syncing,
+           let host = bridge.pairedSyncHost,
+           !snapshot.detail.contains(host) {
+            return "Mac: \(host) · \(snapshot.detail)"
+        }
+        return snapshot.detail
     }
 
     private var statusIcon: String {
-        guard bridge.pairedSyncHost != nil else { return "wifi.slash" }
-        if bridge.syncPendingChanges > 0 { return "arrow.triangle.2.circlepath" }
-        return "checkmark.icloud.fill"
+        switch heroSnapshot.kind {
+        case .unpaired:
+            return "wifi.slash"
+        case .error:
+            return "exclamationmark.triangle.fill"
+        case .syncing:
+            return "arrow.triangle.2.circlepath"
+        case .cancelled:
+            return "xmark.circle"
+        case .pending:
+            return "arrow.triangle.2.circlepath"
+        case .synced:
+            return "checkmark.icloud.fill"
+        }
     }
 
     private var statusColor: Color {
-        guard bridge.pairedSyncHost != nil else { return .secondary }
-        if bridge.syncPendingChanges > 0 { return IOSAppStyle.warning }
-        return IOSAppStyle.success
+        switch heroSnapshot.kind {
+        case .unpaired:
+            return .secondary
+        case .error, .cancelled:
+            return IOSAppStyle.danger
+        case .syncing, .pending:
+            return IOSAppStyle.warning
+        case .synced:
+            return IOSAppStyle.success
+        }
     }
 
     private var canAttemptPairing: Bool {
@@ -785,12 +1003,19 @@ struct SyncLanCard: View {
     var body: some View {
         PremiumCard.section(title: "Sincronización LAN", systemImage: "dot.radiowaves.left.and.right") {
             VStack(alignment: .leading, spacing: IOSAppStyle.cardSpacing) {
-                if !bridge.syncStatusMessage.isEmpty {
-                    Text(bridge.syncStatusMessage)
-                        .font(IOSAppStyle.captionText)
-                        .foregroundStyle(bridge.syncStatusMessage.contains("Error") ? IOSAppStyle.danger : .secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                let snapshot = SyncLanHeroCopy.snapshot(
+                    isPaired: bridge.pairedSyncHost != nil,
+                    pendingChanges: bridge.syncPendingChanges,
+                    statusMessage: bridge.syncStatusMessage
+                )
+                Text(snapshot.title)
+                    .font(IOSAppStyle.bodyText.weight(.semibold))
+                    .foregroundStyle(snapshot.kind == .error || snapshot.kind == .cancelled ? IOSAppStyle.danger : .primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(snapshot.detail)
+                    .font(IOSAppStyle.captionText)
+                    .foregroundStyle(snapshot.kind == .error ? IOSAppStyle.danger : .secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 if bridge.pairedSyncHost != nil {
                     HStack(spacing: 10) {

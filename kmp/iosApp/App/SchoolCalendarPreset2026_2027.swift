@@ -474,7 +474,7 @@ enum SchoolCalendarPreset2026_2027 {
 
         // 2. Salidas por curso vinculadas a sus classId correspondientes
         if !selectedTripIds.isEmpty {
-            let existingEvents = (try? await bridge.plannerNonTeachingCalendarEvents(classId: nil)) ?? []
+            let existingEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
             let resolvedTrips = resolveTripsForTeacher(groups: groups)
 
             for item in resolvedTrips where selectedTripIds.contains(item.trip.id) {
@@ -508,7 +508,7 @@ enum SchoolCalendarPreset2026_2027 {
 
         // 3. Eventos de centro y festivos (classId: nil)
         if applySchoolEvents {
-            let existingEvents = (try? await bridge.plannerNonTeachingCalendarEvents(classId: nil)) ?? []
+            let existingEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
 
             for event in schoolWideEvents {
                 guard let (startMs, endMs) = epochRange(for: event.dateIso) else { continue }
@@ -534,7 +534,7 @@ enum SchoolCalendarPreset2026_2027 {
 
         // 4. Hitos de claustro e informativos (classId: nil)
         if applyMilestones {
-            let existingEvents = (try? await bridge.plannerNonTeachingCalendarEvents(classId: nil)) ?? []
+            let existingEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
 
             for milestone in teacherMilestones {
                 guard let (startMs, endMs) = epochRange(for: milestone.dateIso) else { continue }
@@ -578,7 +578,7 @@ enum SchoolCalendarPreset2026_2027 {
         guard !matching1BachGroups.isEmpty else { return 0 }
 
         let validGroupIds = Set(matching1BachGroups.map { $0.id })
-        let allEvents = (try? await bridge.plannerAllCalendarEvents()) ?? []
+        let allEvents = try await bridge.plannerAllCalendarEvents()
 
         // Purgar eventos de exámenes asignados indebidamente a ESO o con mención a 2º Bach
         for event in allEvents {
@@ -593,16 +593,16 @@ enum SchoolCalendarPreset2026_2027 {
             if isExamEvent {
                 if let cId = event.classId?.int64Value {
                     if !validGroupIds.contains(cId) || titleLower.contains("2º bach") {
-                        try? await bridge.plannerDeleteCalendarEvent(id: event.id)
+                        try await bridge.plannerDeleteCalendarEvent(id: event.id)
                     }
                 } else if titleLower.contains("2º bach") {
-                    try? await bridge.plannerDeleteCalendarEvent(id: event.id)
+                    try await bridge.plannerDeleteCalendarEvent(id: event.id)
                 }
             }
         }
 
         // Re-consultar eventos limpios tras la purga
-        let cleanEvents = (try? await bridge.plannerAllCalendarEvents()) ?? []
+        let cleanEvents = try await bridge.plannerAllCalendarEvents()
         var created = 0
 
         for exam in all1BachExams {
@@ -631,7 +631,7 @@ enum SchoolCalendarPreset2026_2027 {
                     } else if existingForDay.count > 1 {
                         // Deduplicar: conservar solo el primer evento y borrar los repetidos
                         for duplicate in existingForDay.dropFirst() {
-                            try? await bridge.plannerDeleteCalendarEvent(id: duplicate.id)
+                            try await bridge.plannerDeleteCalendarEvent(id: duplicate.id)
                         }
                     }
                 }

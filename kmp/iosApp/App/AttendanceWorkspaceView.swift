@@ -869,13 +869,23 @@ struct AttendanceWorkspaceView: View {
     @MainActor
     func reloadAttendance() async {
         guard let selectedClassId else { return }
-        let records = (try? await bridge.attendanceRecords(for: selectedClassId, on: selectedDate)) ?? []
+        let records: [KmpBridge.AttendanceRecordSnapshot]
+        do {
+            records = try await bridge.attendanceRecords(for: selectedClassId, on: selectedDate)
+        } catch {
+            bridge.status = AttendanceLogic.reloadFailureMessage
+            return
+        }
         guard !Task.isCancelled else { return }
         recordsByStudentId = Dictionary(
             uniqueKeysWithValues: normalizedAttendanceRecords(records).map { ($0.studentId, $0) }
         )
         let range = monthRange(for: selectedDate)
-        history = (try? await bridge.attendanceHistory(for: selectedClassId, from: range.start, to: range.end)) ?? []
+        do {
+            history = try await bridge.attendanceHistory(for: selectedClassId, from: range.start, to: range.end)
+        } catch {
+            bridge.status = AttendanceLogic.reloadFailureMessage
+        }
         guard !Task.isCancelled else { return }
         if let selection = historySelection {
             historySelection = AttendanceHistorySelection(
@@ -884,8 +894,13 @@ struct AttendanceWorkspaceView: View {
                 record: historyRecord(for: selection.studentId, date: selection.date)
             )
         }
-        incidents = (try? await bridge.incidents(for: selectedClassId)) ?? []
-        sessions = (try? await bridge.attendanceSessions(for: selectedClassId, on: selectedDate)) ?? []
+        let loadedIncidents = try? await bridge.incidents(for: selectedClassId)
+        let loadedSessions = try? await bridge.attendanceSessions(for: selectedClassId, on: selectedDate)
+        if loadedIncidents == nil || loadedSessions == nil {
+            bridge.status = AttendanceLogic.sideReloadFailureMessage
+        }
+        incidents = AttendanceLogic.listAfterFailedReload(loadedIncidents, previous: incidents)
+        sessions = AttendanceLogic.listAfterFailedReload(loadedSessions, previous: sessions)
         guard !Task.isCancelled else { return }
         reconcileSelectedAttendanceSession()
         noteDraft = selectedInspectionAttendance?.note ?? ""
@@ -897,13 +912,16 @@ struct AttendanceWorkspaceView: View {
         await bridge.ensureClassesLoaded()
         guard !Task.isCancelled else { return }
         let range = monthRange(for: selectedDate)
-        let overviews = (try? await bridge.attendanceOverview(
+        let loadedOverviews = try? await bridge.attendanceOverview(
             for: attendanceStore.classes.map(\.id),
             from: range.start,
             to: range.end
-        )) ?? []
+        )
         guard !Task.isCancelled else { return }
-        classOverviews = overviews
+        if loadedOverviews == nil {
+            bridge.status = AttendanceLogic.sideReloadFailureMessage
+        }
+        classOverviews = AttendanceLogic.listAfterFailedReload(loadedOverviews, previous: classOverviews)
     }
 
     func normalizedAttendanceRecords(
@@ -1098,27 +1116,42 @@ struct AttendanceWorkspaceView: View {
         guard let selectedClassId else { return }
         let students = filteredRows.map(\.student)
         guard !students.isEmpty else { return }
+        var saved = 0
+        var failed = 0
         for student in students {
+            let previous = recordsByStudentId[student.id]
             applyLocalAttendanceStatus("PRESENTE", for: student, classId: selectedClassId)
-            try? await bridge.saveAttendance(
-                studentId: student.id,
-                classId: selectedClassId,
-                on: selectedDate,
-                status: "PRESENTE",
-                sessionId: recordsByStudentId[student.id]?.sessionId
-            )
+            do {
+                try await bridge.saveAttendance(
+                    studentId: student.id,
+                    classId: selectedClassId,
+                    on: selectedDate,
+                    status: "PRESENTE",
+                    sessionId: recordsByStudentId[student.id]?.sessionId
+                )
+                saved += 1
+            } catch {
+                recordsByStudentId[student.id] = previous
+                failed += 1
+            }
         }
         savingStudentIds.removeAll()
         await reloadAttendance()
         await reloadClassOverviews()
-        bridge.status = "Todos los alumnos filtrados marcados como presentes."
+        bridge.status = failed == 0
+            ? "Todos los alumnos filtrados marcados como presentes."
+            : "Guardadas \(saved) / fallidas \(failed). Vuelve a marcar las que faltan."
     }
 
     func repeatPattern() async {
         guard let selectedClassId else { return }
-        let applied = (try? await bridge.repeatLatestAttendancePattern(classId: selectedClassId, targetDate: selectedDate)) ?? 0
-        bridge.status = applied > 0 ? "Patrón anterior aplicado a \(applied) registros" : "No había patrón anterior reutilizable"
-        await reloadAttendance()
+        do {
+            let applied = try await bridge.repeatLatestAttendancePattern(classId: selectedClassId, targetDate: selectedDate)
+            bridge.status = applied > 0 ? "Patrón anterior aplicado a \(applied) registros" : "No había patrón anterior reutilizable"
+            await reloadAttendance()
+        } catch {
+            bridge.status = "No se pudo copiar el patrón de asistencia. Las marcas de hoy no han cambiado."
+        }
     }
 
     func weekStatus(for studentId: Int64, date: Date) -> AttendanceStatusOption {

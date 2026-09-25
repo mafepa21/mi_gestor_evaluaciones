@@ -1,6 +1,12 @@
 import SwiftUI
 import MiGestorKit
 
+enum CascadeUndoCopy {
+    static func failure(_ detail: String) -> String {
+        "No se pudo deshacer el movimiento. \(detail)"
+    }
+}
+
 struct PlannerInlineBanner: View {
     let message: String
 
@@ -79,7 +85,7 @@ final class PlannerCascadeDropCoordinator: ObservableObject {
                 transientMessage = "Movimiento deshecho."
                 AppleInteractionFeedback.play(.success)
             } catch {
-                transientMessage = "No se pudo deshacer: \(error.localizedDescription)"
+                transientMessage = CascadeUndoCopy.failure(error.localizedDescription)
                 AppleInteractionFeedback.play(.error)
             }
         }

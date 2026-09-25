@@ -3,6 +3,7 @@ package com.migestor.desktop.sync
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.migestor.data.db.AppDatabase
 import com.migestor.data.di.KmpContainer
+import com.migestor.data.sync.SqlDelightSyncAdapter
 import com.migestor.data.sync.SyncDatasetFingerprint
 import com.migestor.shared.domain.PlanningSession
 import com.migestor.shared.domain.SessionJournal
@@ -152,6 +153,45 @@ class SqlDelightSyncAdapterPlanningSessionSyncTest {
         assertNull(cleared.teacherScheduleSlotId)
         assertNull(cleared.startTime)
         assertNull(cleared.endTime)
+    }
+
+    @Test
+    fun `un texto nuevo del diario no borra notas ni puntuaciones`() = runTest {
+        val container = newContainer()
+        val classId = seedClass(container)
+        val sessionId = seedSession(container, classId, linkedAssessmentIdsCsv = "")
+        container.sessionJournalRepository.saveJournalAggregate(
+            SessionJournalAggregate(
+                journal = SessionJournal(
+                    planningSessionId = sessionId,
+                    actualText = "Antes",
+                    climateScore = 4,
+                    status = SessionJournalStatus.COMPLETED,
+                ),
+                individualNotes = listOf(
+                    SessionJournalIndividualNote(studentName = "Ana", note = "Buena lectura", tag = "positivo")
+                ),
+                actions = listOf(SessionJournalAction(title = "Llevar conos", isCompleted = true)),
+            )
+        )
+
+        SqlDelightSyncAdapter(container, localDeviceId = "mac").applyIncomingChangesLww(
+            listOf(
+                SyncChange(
+                    entity = "session_journal",
+                    id = sessionId.toString(),
+                    updatedAtEpochMs = 900L,
+                    deviceId = "ios",
+                    payload = """{"planningSessionId":$sessionId,"actualText":"El grupo cooperó","status":"COMPLETED"}""",
+                )
+            )
+        )
+
+        val saved = container.sessionJournalRepository.getJournalForSession(sessionId)
+        assertEquals("El grupo cooperó", saved?.journal?.actualText)
+        assertEquals(4, saved?.journal?.climateScore)
+        assertEquals("Buena lectura", saved?.individualNotes?.single()?.note)
+        assertEquals("Llevar conos", saved?.actions?.single()?.title)
     }
 
     @Test
@@ -309,5 +349,48 @@ class SqlDelightSyncAdapterPlanningSessionSyncTest {
         assertEquals(classId, sessions.single().groupId)
         val planned = container.plannedSessionRepository.listSessionsInRange(classId, day, day)
         assertTrue(planned.isEmpty())
+    }
+
+    @Test
+    fun `exportar y aplicar en una base vacia conserva instrumentos franja y horas`() = runTest {
+        val source = newContainer()
+        val classId = seedClass(source)
+        val schedule = source.teacherScheduleRepository.getOrCreatePrimarySchedule()
+        val slotId = source.teacherScheduleRepository.saveScheduleSlot(
+            TeacherScheduleSlot(
+                teacherScheduleId = schedule.id,
+                schoolClassId = classId,
+                subjectLabel = "Educación Física",
+                dayOfWeek = 1,
+                startTime = "09:00",
+                endTime = "10:00",
+            )
+        )
+        seedSession(
+            source,
+            classId,
+            linkedAssessmentIdsCsv = "evaluation:7,rubric:3",
+            teacherScheduleSlotId = slotId,
+            startTime = "09:00",
+            endTime = "10:00",
+        )
+        val original = source.plannerRepository.listAllSessions().single()
+
+        val changes = SqlDelightSyncAdapter(source, localDeviceId = "mac").collectLocalChanges(0L)
+        val target = newContainer()
+        SqlDelightSyncAdapter(target, localDeviceId = "ipad").applyIncomingChangesLww(changes)
+
+        val copied = target.plannerRepository.listAllSessions().single()
+        assertEquals(original.linkedAssessmentIdsCsv, copied.linkedAssessmentIdsCsv)
+        assertEquals(original.teacherScheduleSlotId, copied.teacherScheduleSlotId)
+        assertEquals(original.startTime, copied.startTime)
+        assertEquals(original.endTime, copied.endTime)
+        assertEquals(original.objectives, copied.objectives)
+        assertEquals(original.groupId, copied.groupId)
+        assertEquals(original.dayOfWeek, copied.dayOfWeek)
+        assertEquals(original.period, copied.period)
+        assertEquals(original.weekNumber, copied.weekNumber)
+        assertEquals(original.year, copied.year)
+        assertEquals(original.status, copied.status)
     }
 }

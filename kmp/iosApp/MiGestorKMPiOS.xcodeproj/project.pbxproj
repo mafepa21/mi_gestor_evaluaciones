@@ -1577,7 +1577,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_apple_framework.sh\n";
+			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"/var/folders/3m/kqdl9djj0rv5kk62x4b4rx380000gn/T/cursor-sandbox-cache/7e9b865a4bd8b14d27f4b0fcd8948734/gradle\"\n./scripts/build_apple_framework.sh\n";
 		};
 		D0A09C945CF2CB5541E2243F /* Build KMP Framework */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1597,7 +1597,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_apple_framework.sh\n";
+			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"/var/folders/3m/kqdl9djj0rv5kk62x4b4rx380000gn/T/cursor-sandbox-cache/7e9b865a4bd8b14d27f4b0fcd8948734/gradle\"\n./scripts/build_apple_framework.sh\n";
 		};
 		FE75F6163DC74DD01E88F555 /* Embed Command Center Helper */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1636,7 +1636,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_command_center_helper.sh\n";
+			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"/var/folders/3m/kqdl9djj0rv5kk62x4b4rx380000gn/T/cursor-sandbox-cache/7e9b865a4bd8b14d27f4b0fcd8948734/gradle\"\n./scripts/build_command_center_helper.sh\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

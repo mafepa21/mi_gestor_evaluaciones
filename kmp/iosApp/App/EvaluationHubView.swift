@@ -7,7 +7,10 @@ struct EvaluationHubView: View {
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     let onCreateEvaluation: () -> Void
+    static let reloadFailureMessage = "No se pudieron cargar las evaluaciones. Se mantiene lo que ya ves."
+
     @State var evaluations: [Evaluation] = []
+    @State var loadedEvaluationsClassId: Int64?
     @State var selectedEvaluationId: Int64?
     @State var searchText = ""
     @State var selectedTypeFilter = "Todas"
@@ -228,12 +231,21 @@ struct EvaluationHubView: View {
         guard let selectedClassId else {
             evaluations = []
             selectedEvaluationId = nil
+            loadedEvaluationsClassId = nil
             return
         }
-        evaluations = (try? await bridge.evaluations(for: selectedClassId)) ?? []
-        if selectedEvaluationId == nil {
-            selectedEvaluationId = evaluations.first?.id
-        } else if !evaluations.contains(where: { $0.id == selectedEvaluationId }) {
+        let requestedId = selectedClassId
+        let sameClass = loadedEvaluationsClassId == requestedId
+        let loaded = try? await bridge.evaluations(for: requestedId)
+        guard self.selectedClassId == requestedId else { return }
+        if loaded == nil {
+            bridge.status = Self.reloadFailureMessage
+        }
+        evaluations = ProfileReloadKeep.list(loaded: loaded, previous: evaluations, samePerson: sameClass)
+        if loaded != nil {
+            loadedEvaluationsClassId = requestedId
+        }
+        if selectedEvaluationId == nil || !evaluations.contains(where: { $0.id == selectedEvaluationId }) {
             selectedEvaluationId = evaluations.first?.id
         }
     }

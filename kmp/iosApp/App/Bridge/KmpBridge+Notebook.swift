@@ -13,6 +13,9 @@ import SwiftUI
 @MainActor
 extension KmpBridge {
     func selectClass(id: Int64) {
+        if NotebookColumnGradeSave.shouldPersistNow(.groupOrClassChange) {
+            flushAnyPendingColumnGradeSave()
+        }
         let restoredTabId = restoredSelectedNotebookTab(forClassId: id)
         selectedNotebookTabId = restoredTabId
         notebookViewModel.setSelectedTabId(tabId: restoredTabId)
@@ -31,23 +34,60 @@ extension KmpBridge {
     }
     
     func saveColumnGrade(studentId: Int64, column: NotebookColumnDefinition, value: String) {
-        let key = cellKey(studentId: studentId, columnId: column.id)
-        if column.type == .numeric || column.type == .rubric || column.type == .calculated {
-            optimisticGradeDrafts[key] = value
-            if let evalId = column.evaluationId?.int64Value {
-                optimisticGradeDrafts[cellKey(studentId: studentId, columnId: "eval_\(evalId)")] = value
-            }
-        } else {
-            optimisticTextDrafts[key] = value
-        }
-        notebookViewModel.saveColumnGrade(studentId: studentId, column: column, value: value)
-        invalidateNotebookCellValueIndexCache()
-        if let classId = notebookViewModel.currentClassId?.int64Value {
-            scheduleGradeSnapshotSync(forClassId: classId)
-        }
+        cancelDebouncedColumnGradeIfMatching(studentId: studentId, columnId: column.id)
+        applyOptimisticColumnGradeDraft(studentId: studentId, column: column, value: value)
+        persistColumnGradeNow(studentId: studentId, column: column, value: value)
     }
 
     func saveColumnGradeDebounced(
+        studentId: Int64,
+        column: NotebookColumnDefinition,
+        value: String
+    ) {
+        applyOptimisticColumnGradeDraft(studentId: studentId, column: column, value: value)
+        guard !NotebookColumnGradeSave.shouldPersistNow(.keystroke) else {
+            persistColumnGradeNow(studentId: studentId, column: column, value: value)
+            return
+        }
+        pendingDebouncedColumnGrade = (studentId, column, value)
+        columnGradeSaveDebounceTask?.cancel()
+        columnGradeSaveDebounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: NotebookColumnGradeSave.debounceNanoseconds)
+            guard !Task.isCancelled, let self else { return }
+            self.flushPendingColumnGradeSave(studentId: studentId, columnId: column.id)
+        }
+    }
+
+    func flushPendingColumnGradeSave(studentId: Int64, columnId: String? = nil) {
+        columnGradeSaveDebounceTask?.cancel()
+        columnGradeSaveDebounceTask = nil
+        guard let pending = pendingDebouncedColumnGrade else {
+            invalidateNotebookCellValueIndexCache()
+            return
+        }
+        guard pending.studentId == studentId else {
+            invalidateNotebookCellValueIndexCache()
+            return
+        }
+        if let columnId, pending.column.id != columnId {
+            invalidateNotebookCellValueIndexCache()
+            return
+        }
+        pendingDebouncedColumnGrade = nil
+        persistColumnGradeNow(studentId: pending.studentId, column: pending.column, value: pending.value)
+    }
+
+    /// Vacía el borrador pendiente sin filtrar por celda (segundo plano o cambio de clase).
+    func flushAnyPendingColumnGradeSave() {
+        guard let pending = pendingDebouncedColumnGrade else {
+            columnGradeSaveDebounceTask?.cancel()
+            columnGradeSaveDebounceTask = nil
+            return
+        }
+        flushPendingColumnGradeSave(studentId: pending.studentId, columnId: pending.column.id)
+    }
+
+    private func applyOptimisticColumnGradeDraft(
         studentId: Int64,
         column: NotebookColumnDefinition,
         value: String
@@ -61,18 +101,27 @@ extension KmpBridge {
         } else {
             optimisticTextDrafts[key] = value
         }
+    }
+
+    private func persistColumnGradeNow(
+        studentId: Int64,
+        column: NotebookColumnDefinition,
+        value: String
+    ) {
         notebookViewModel.saveColumnGrade(studentId: studentId, column: column, value: value)
         invalidateNotebookCellValueIndexCache()
         if let classId = notebookViewModel.currentClassId?.int64Value {
-            scheduleGradeSnapshotSync(forClassId: classId)
+            scheduleEditedNotebookValueSync(classId: classId, studentId: studentId, column: column, value: value)
         }
     }
 
-    func flushPendingColumnGradeSave(studentId: Int64, columnId: String? = nil) {
-        invalidateNotebookCellValueIndexCache()
-        if let classId = notebookViewModel.currentClassId?.int64Value {
-            scheduleGradeSnapshotSync(forClassId: classId)
-        }
+    private func cancelDebouncedColumnGradeIfMatching(studentId: Int64, columnId: String) {
+        guard let pending = pendingDebouncedColumnGrade,
+              pending.studentId == studentId,
+              pending.column.id == columnId else { return }
+        columnGradeSaveDebounceTask?.cancel()
+        columnGradeSaveDebounceTask = nil
+        pendingDebouncedColumnGrade = nil
     }
 
     func saveNotebook() {
@@ -584,9 +633,17 @@ extension KmpBridge {
     }
 
     func deleteColumn(id: String, evaluationId: Int64?) {
+        Task { @MainActor [weak self] in
+            try? await self?.deleteColumnAwaitingSuccess(id: id, evaluationId: evaluationId)
+        }
+    }
+
+    /// Borra la columna en SQL y solo entonces encola sync / refresca.
+    /// Si falla, lanza: la UI no debe decir «Columna eliminada».
+    func deleteColumnAwaitingSuccess(id: String, evaluationId: Int64?) async throws {
         let classId = notebookViewModel.currentClassId?.int64Value
-        
-        // Encolar borrado explícito
+        _ = evaluationId
+        try await container.notebookRepository.deleteColumn(columnId: id)
         enqueueLocalChange(
             entity: "notebook_column",
             id: id,
@@ -594,51 +651,62 @@ extension KmpBridge {
             payload: ["id": id],
             op: "delete"
         )
-        
-        if let evalId = evaluationId {
-            notebookViewModel.deleteColumnByEvaluationId(columnId: evalId)
-        } else {
-            notebookViewModel.deleteColumnById(columnId: id)
-        }
-
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 120_000_000)
-            self.refreshCurrentNotebook()
-        }
-        
         if let classId {
+            notebookViewModel.selectClass(classId: classId, force: true)
             scheduleNotebookSnapshotSync(forClassId: classId)
+        } else {
+            refreshCurrentNotebook()
         }
     }
 
+    struct NotebookColumnsDeleteResult: Equatable {
+        let succeeded: Int
+        let failed: Int
+    }
+
     func deleteColumns(idsAndEvalIds: [(id: String, evaluationId: Int64?)]) {
+        Task { @MainActor [weak self] in
+            _ = await self?.deleteColumnsAwaitingSuccess(idsAndEvalIds: idsAndEvalIds)
+        }
+    }
+
+    /// Borra cada columna en SQL y solo marca éxito las que terminaron de verdad.
+    /// Las que fallen no se quitan de la UI (el refresco final las deja visibles).
+    func deleteColumnsAwaitingSuccess(
+        idsAndEvalIds: [(id: String, evaluationId: Int64?)]
+    ) async -> NotebookColumnsDeleteResult {
         let classId = notebookViewModel.currentClassId?.int64Value
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        
+        var succeeded = 0
+        var failed = 0
+
         for item in idsAndEvalIds {
-            enqueueLocalChange(
-                entity: "notebook_column",
-                id: item.id,
-                updatedAtEpochMs: nowMs,
-                payload: ["id": item.id],
-                op: "delete"
-            )
-            
-            if let evalId = item.evaluationId {
-                notebookViewModel.deleteColumnByEvaluationId(columnId: evalId)
-            } else {
-                notebookViewModel.deleteColumnById(columnId: item.id)
+            do {
+                _ = item.evaluationId
+                try await container.notebookRepository.deleteColumn(columnId: item.id)
+                enqueueLocalChange(
+                    entity: "notebook_column",
+                    id: item.id,
+                    updatedAtEpochMs: nowMs,
+                    payload: ["id": item.id],
+                    op: "delete"
+                )
+                succeeded += 1
+            } catch {
+                failed += 1
             }
         }
 
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 120_000_000)
-            self.refreshCurrentNotebook()
-        }
-        
         if let classId {
-            scheduleNotebookSnapshotSync(forClassId: classId)
+            notebookViewModel.selectClass(classId: classId, force: true)
+            if succeeded > 0 {
+                scheduleNotebookSnapshotSync(forClassId: classId)
+            }
+        } else {
+            refreshCurrentNotebook()
         }
+
+        return NotebookColumnsDeleteResult(succeeded: succeeded, failed: failed)
     }
 
     func updateColumnWeight(columnId: Int64, newWeight: Double) {

@@ -1,6 +1,11 @@
 import SwiftUI
 import MiGestorKit
 
+enum DataManagementReload {
+    static let notebookFailure = "No se pudo cargar el cuaderno. Se mantiene la lista anterior."
+    static let situationsFailure = "No se pudieron cargar las situaciones. Se mantiene la lista anterior."
+}
+
 /// Fila plana para el borrado en lote y swipe, desacoplada de los tipos KMP
 /// concretos (`SchoolClass`, `Subject`, `RubricDetail`, `LearningSituation`,
 /// `NotebookTab`, `NotebookColumnDefinition`, `PlanningSession`) para que
@@ -983,7 +988,11 @@ struct DataManagementSettingsView: View {
     }
 
     private func reloadSituations() async {
-        learningSituations = (try? await bridge.learningSituations()) ?? []
+        do {
+            learningSituations = try await bridge.learningSituations()
+        } catch {
+            resultMessage = IdentifiableString(value: DataManagementReload.situationsFailure)
+        }
     }
 
     private func reloadNotebookData() async {
@@ -995,8 +1004,15 @@ struct DataManagementSettingsView: View {
             let classId = schoolClass.id
             let className = schoolClass.name
 
-            let tabs = (try? await bridge.fetchNotebookTabs(for: classId)) ?? []
-            let columns = (try? await bridge.fetchNotebookColumns(for: classId)) ?? []
+            let tabs: [NotebookTab]
+            let columns: [NotebookColumnDefinition]
+            do {
+                tabs = try await bridge.fetchNotebookTabs(for: classId)
+                columns = try await bridge.fetchNotebookColumns(for: classId)
+            } catch {
+                resultMessage = IdentifiableString(value: DataManagementReload.notebookFailure)
+                return
+            }
 
             summaries.append(NotebookSummaryItem(
                 classId: classId,
@@ -1034,7 +1050,18 @@ struct DataManagementSettingsView: View {
     }
 
     private func reloadPlannerSessions() async {
-        let sessions = (try? await bridge.plannerListAllSessions()) ?? []
+        let calendar = Calendar(identifier: .iso8601)
+        let bounds = DiaryContinuousTimelineView.schoolYearIsoBounds(
+            year: calendar.component(.year, from: Date()),
+            month: calendar.component(.month, from: Date())
+        )
+        let sessions: [PlanningSession]
+        do {
+            sessions = try await bridge.plannerListSessions(fromIso: bounds.start, toIso: bounds.end, classId: nil)
+        } catch {
+            resultMessage = IdentifiableString(value: "No se pudieron cargar las sesiones. Se mantiene la lista anterior.")
+            return
+        }
         self.plannerSessions = sessions.map { session in
             let groupLabel = session.groupName
             let unitLabel = session.teachingUnitName

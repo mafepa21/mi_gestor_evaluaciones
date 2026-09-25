@@ -592,6 +592,8 @@ interface PlannerRepository {
     @Throws(Throwable::class)
     suspend fun listAllSessions(): List<PlanningSession> = emptyList()
     @Throws(Throwable::class)
+    suspend fun getSession(id: Long): PlanningSession? = null
+    @Throws(Throwable::class)
     suspend fun listSessionsInRange(groupId: Long? = null, fromDate: LocalDate, toDate: LocalDate): List<PlanningSession> = emptyList()
     @Throws(Throwable::class)
     suspend fun upsertSession(session: PlanningSession): Long
@@ -651,6 +653,8 @@ interface SessionJournalRepository {
     suspend fun getJournalForSession(planningSessionId: Long): SessionJournalAggregate?
     @Throws(Throwable::class)
     suspend fun listSummariesForSessions(planningSessionIds: List<Long>): List<SessionJournalSummary>
+    @Throws(Throwable::class)
+    suspend fun sessionIdsWithMaterial(): Set<Long> = emptySet()
     @Throws(Throwable::class)
     suspend fun saveJournalAggregate(aggregate: SessionJournalAggregate): Long
     @Throws(Throwable::class)

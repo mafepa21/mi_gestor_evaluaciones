@@ -11,6 +11,13 @@ struct PlannerMonthCalendarView: View {
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @State private var selectedOverflowDay: PlannerMonthDay? = nil
 
+    private var monthReloadKey: String {
+        let calendar = Calendar(identifier: .iso8601)
+        let year = calendar.component(.year, from: vm.monthViewDate)
+        let month = calendar.component(.month, from: vm.monthViewDate)
+        return "\(year)-\(month)"
+    }
+
     private let weekdayShortNames = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
     private let weekdayFullNames = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 
@@ -30,7 +37,7 @@ struct PlannerMonthCalendarView: View {
                 .padding(.horizontal, EvaluationDesign.screenPadding)
                 .padding(.bottom, EvaluationDesign.screenPadding)
         }
-        .task {
+        .task(id: monthReloadKey) {
             await vm.reloadMonthData()
         }
         .sheet(item: $selectedOverflowDay) { day in
@@ -91,6 +98,13 @@ struct PlannerMonthCalendarView: View {
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
+
+            if let monthLoadError = vm.monthLoadError {
+                Text(monthLoadError)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
 
             HStack(spacing: 5) {
                 Image(systemName: "calendar.badge.clock")
@@ -167,7 +181,8 @@ struct PlannerMonthCalendarView: View {
             let rowHeight = max(105, availableHeight / CGFloat(weekCount))
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 6) {
+                // Lazy: no monta semanas fuera de vista; minHeight conserva el reparto.
+                LazyVStack(spacing: 6) {
                     ForEach(0..<grid.weeks.count, id: \.self) { weekIndex in
                         let week = grid.weeks[weekIndex]
                         HStack(spacing: 6) {
@@ -405,7 +420,7 @@ struct PlannerMonthDaySessionsSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                LazyVStack(alignment: .leading, spacing: 16) {
                     // Cabecera del día
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {

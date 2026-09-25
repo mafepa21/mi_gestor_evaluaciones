@@ -537,11 +537,58 @@ extension KmpBridge {
     }
 
     func confirmAssignRubric() {
-        rubricsViewModel.confirmAssignRubric()
-        Task {
-            try? await refreshRubricClassLinks()
-            refreshCurrentNotebook()
+        Task { @MainActor in
+            try? await confirmAssignRubricAwaitingSuccess()
         }
+    }
+
+    /// Asigna la rúbrica al cuaderno y solo cierra el diálogo si el guardado termina bien.
+    /// Si falla, lanza el error para que la hoja se quede abierta con el mensaje.
+    @MainActor
+    func confirmAssignRubricAwaitingSuccess() async throws {
+        guard let state = rubricsUiState?.assignDialogState else {
+            throw NSError(
+                domain: "AssignRubric",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No hay una asignación pendiente."]
+            )
+        }
+        guard let classId = state.selectedClassId?.int64Value else {
+            throw NSError(
+                domain: "AssignRubric",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Selecciona una clase."]
+            )
+        }
+
+        let requestedNewTabName = state.newTabName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackTabName = requestedNewTabName.isEmpty ? "Rúbricas" : requestedNewTabName
+
+        let finalTabName: String
+        if state.createNewTab {
+            _ = try await container.notebookRepository.createTab(classId: classId, tabName: fallbackTabName)
+            finalTabName = fallbackTabName
+        } else if let selectedTab = state.selectedTab, !selectedTab.isEmpty {
+            finalTabName = selectedTab
+        } else if let firstTab = state.availableTabs.first {
+            finalTabName = firstTab
+        } else {
+            _ = try await container.notebookRepository.createTab(classId: classId, tabName: fallbackTabName)
+            finalTabName = fallbackTabName
+        }
+
+        _ = try await container.notebookRepository.addColumnToTab(
+            classId: classId,
+            tabName: finalTabName,
+            columnName: state.rubricName,
+            columnType: .rubric,
+            rubricId: KotlinLong(value: state.rubricId)
+        )
+
+        NotebookRefreshBus.shared.emitRefresh()
+        rubricsViewModel.dismissAssignDialog()
+        try? await refreshRubricClassLinks()
+        refreshCurrentNotebook()
     }
 
     func dismissAssignRubricDialog() {

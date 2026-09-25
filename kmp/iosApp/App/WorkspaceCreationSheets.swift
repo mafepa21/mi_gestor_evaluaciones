@@ -691,18 +691,39 @@ struct CreatePEIncidentSheet: View {
     }
 }
 
+/// Regla de cierre tras guardar una incidencia: solo cierra si el bridge confirma éxito.
+enum PEIncidentSaveGate {
+    static let saveFailureMessage =
+        "No se pudo guardar la incidencia. Los datos siguen en esta pantalla."
+
+    static func shouldDismiss(succeeded: Bool) -> Bool { succeeded }
+
+    static func failureMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return saveFailureMessage }
+        return "\(saveFailureMessage) \(trimmed)"
+    }
+}
+
 struct EditPEIncidentSheet: View {
     let incident: Incident
     let categories: [String]
-    let onSave: (String, String, String, String) -> Void
+    let onSave: (String, String, String, String) async throws -> Void
     @Environment(\.dismiss) private var dismiss
 
     @State private var title: String
     @State private var detail: String
     @State private var severity: String
     @State private var category: String
+    @State private var errorMessage: String?
+    @State private var isSaving = false
 
-    init(incident: Incident, category: String, categories: [String], onSave: @escaping (String, String, String, String) -> Void) {
+    init(
+        incident: Incident,
+        category: String,
+        categories: [String],
+        onSave: @escaping (String, String, String, String) async throws -> Void
+    ) {
         self.incident = incident
         self.categories = categories
         self.onSave = onSave
@@ -742,22 +763,47 @@ struct EditPEIncidentSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") { dismiss() }
+                        .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Guardar") {
-                        onSave(
-                            title.trimmingCharacters(in: .whitespacesAndNewlines),
-                            detail.trimmingCharacters(in: .whitespacesAndNewlines),
-                            severity,
-                            category
-                        )
-                        dismiss()
+                    Button(isSaving ? "Guardando…" : "Guardar") {
+                        Task { await persistEdits() }
                     }
-                    .disabled(!canSave)
+                    .disabled(!canSave || isSaving)
                 }
+            }
+            .alert("No se pudo guardar", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("Aceptar", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "")
             }
         }
         .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(isSaving)
+    }
+
+    @MainActor
+    private func persistEdits() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await onSave(
+                title.trimmingCharacters(in: .whitespacesAndNewlines),
+                detail.trimmingCharacters(in: .whitespacesAndNewlines),
+                severity,
+                category
+            )
+            if PEIncidentSaveGate.shouldDismiss(succeeded: true) {
+                dismiss()
+            }
+        } catch {
+            AppleInteractionFeedback.play(.error)
+            errorMessage = PEIncidentSaveGate.failureMessage(detail: error.localizedDescription)
+        }
     }
 }
 

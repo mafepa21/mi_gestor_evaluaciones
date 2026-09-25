@@ -1,6 +1,15 @@
 import SwiftUI
 import MiGestorKit
 
+enum StudentListSearch {
+    static let debounceNanoseconds: UInt64 = 200_000_000
+
+    /// El campo puede ir por delante. La lista solo filtra con el texto ya asentado.
+    static func queryForList(liveText: String, settledText: String) -> String {
+        settledText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 // MARK: - Filtro de seguimiento
 private enum StudentTrackingFilter: String, CaseIterable {
     case todos = "Todos"
@@ -33,6 +42,8 @@ struct StudentProfilesWorkspaceView: View {
     }
 
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
     @State private var trackingFilter: StudentTrackingFilter = .todos
     @State private var profile: KmpBridge.StudentProfileSnapshot?
     @State private var isLoadingProfile = false
@@ -41,6 +52,7 @@ struct StudentProfilesWorkspaceView: View {
     @State private var updatingStudentIds: Set<Int64> = []
     @State private var unassignedStudentIds: Set<Int64> = []
     @State private var assigningStudent: Student?
+    @State private var loadedProfileStudentId: Int64?
     @State private var supportMeasures: [SupportMeasureRow] = []
     @State private var tutoringSessions: [TutoringSessionRow] = []
     @State private var showSupportMeasureSheet = false
@@ -67,7 +79,7 @@ struct StudentProfilesWorkspaceView: View {
     // MARK: - Computed
 
     private var filteredStudents: [Student] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = StudentListSearch.queryForList(liveText: searchText, settledText: debouncedSearchText)
         let base: [Student] = {
             if let _ = selectedClassId {
                 return studentsBridgeStore.studentsInClass
@@ -91,6 +103,15 @@ struct StudentProfilesWorkspaceView: View {
         guard !query.isEmpty else { return tracked }
         return tracked.filter {
             "\($0.firstName) \($0.lastName)".localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private func scheduleSearchDebounce() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: StudentListSearch.debounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            debouncedSearchText = searchText
         }
     }
 
@@ -167,7 +188,7 @@ struct StudentProfilesWorkspaceView: View {
                     student: student,
                     availableClasses: studentsBridgeStore.classes
                 ) { targetClassId in
-                    Task { await assignStudent(student, toClassId: targetClassId) }
+                    try await assignStudent(student, toClassId: targetClassId)
                 }
             }
             .sheet(
@@ -181,7 +202,7 @@ struct StudentProfilesWorkspaceView: View {
                         students: students,
                         availableClasses: studentsBridgeStore.classes
                     ) { targetClassId in
-                        Task { await assignMultipleStudents(students, toClassId: targetClassId) }
+                        try await assignMultipleStudents(students, toClassId: targetClassId)
                     }
                 }
             }
@@ -193,17 +214,15 @@ struct StudentProfilesWorkspaceView: View {
             ) {
                 if let student = editingStudent {
                     StudentEditorSheet(student: student) { firstName, lastName, email, isInjured, sex, birthDate in
-                        Task {
-                            await updateStudent(
-                                student,
-                                firstName: firstName,
-                                lastName: lastName,
-                                email: email,
-                                isInjured: isInjured,
-                                sex: sex,
-                                birthDate: birthDate
-                            )
-                        }
+                        try await updateStudent(
+                            student,
+                            firstName: firstName,
+                            lastName: lastName,
+                            email: email,
+                            isInjured: isInjured,
+                            sex: sex,
+                            birthDate: birthDate
+                        )
                     }
                 }
             }
@@ -342,6 +361,9 @@ struct StudentProfilesWorkspaceView: View {
             VStack(spacing: 10) {
                 HStack(spacing: 8) {
                     IOSSearchField(text: $searchText, placeholder: "Buscar alumno…")
+                        .appOnChange(of: searchText) { _ in
+                            scheduleSearchDebounce()
+                        }
 
                     Button(isMultiSelectActive ? "Listo" : "Seleccionar") {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -1203,9 +1225,24 @@ struct StudentProfilesWorkspaceView: View {
             return
         }
         isLoadingProfile = true
-        profile = try? await bridge.loadStudentProfile(studentId: studentId, classId: selectedClassId)
-        supportMeasures = ((try? await bridge.supportMeasures(for: studentId)) ?? []).map(\.asRow)
-        tutoringSessions = ((try? await bridge.tutoringSessions(for: studentId)) ?? []).map(\.asRow)
+        let requestedId = studentId
+        let samePerson = loadedProfileStudentId == requestedId
+        let loadedProfile = try? await bridge.loadStudentProfile(studentId: requestedId, classId: selectedClassId)
+        let loadedMeasures = try? await bridge.supportMeasures(for: requestedId)
+        let loadedTutoring = try? await bridge.tutoringSessions(for: requestedId)
+        guard selectedStudentId == requestedId else {
+            isLoadingProfile = false
+            return
+        }
+        if loadedProfile == nil || loadedMeasures == nil || loadedTutoring == nil {
+            bridge.status = ProfileReloadKeep.failureMessage
+        }
+        profile = ProfileReloadKeep.snapshot(loaded: loadedProfile, previous: profile, samePerson: samePerson)
+        supportMeasures = ProfileReloadKeep.list(loaded: loadedMeasures?.map(\.asRow), previous: supportMeasures, samePerson: samePerson)
+        tutoringSessions = ProfileReloadKeep.list(loaded: loadedTutoring?.map(\.asRow), previous: tutoringSessions, samePerson: samePerson)
+        if loadedProfile != nil || loadedMeasures != nil || loadedTutoring != nil {
+            loadedProfileStudentId = requestedId
+        }
         isLoadingProfile = false
     }
 
@@ -1318,49 +1355,41 @@ struct StudentProfilesWorkspaceView: View {
     }
 
     @MainActor
-    private func assignStudent(_ student: Student, toClassId classId: Int64) async {
-        assigningStudent = nil
-        guard !updatingStudentIds.contains(student.id) else { return }
+    private func assignStudent(_ student: Student, toClassId classId: Int64) async throws {
+        guard !updatingStudentIds.contains(student.id) else {
+            throw NSError(
+                domain: "StudentEnrollment",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Ya se está matriculando este alumno."]
+            )
+        }
         updatingStudentIds.insert(student.id)
         defer { updatingStudentIds.remove(student.id) }
 
-        do {
-            try await bridge.assignStudentToClass(studentId: student.id, classId: classId)
-            unassignedStudentIds.remove(student.id)
-            await bridge.selectStudentsClass(classId: selectedClassId)
-            await reloadProfile()
-            let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
-            bridge.status = "\(student.firstName) \(student.lastName) se ha asignado a \(className)."
-            AppleInteractionFeedback.play(.success)
-        } catch {
-            bridge.status = "No se pudo asignar al curso: \(error.localizedDescription)"
-            AppleInteractionFeedback.play(.error)
-        }
+        try await bridge.assignStudentToClass(studentId: student.id, classId: classId)
+        unassignedStudentIds.remove(student.id)
+        await bridge.selectStudentsClass(classId: selectedClassId)
+        await reloadProfile()
+        let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
+        bridge.status = "\(student.firstName) \(student.lastName) se ha asignado a \(className)."
+        AppleInteractionFeedback.play(.success)
     }
 
     @MainActor
-    private func assignMultipleStudents(_ students: [Student], toClassId classId: Int64) async {
-        assigningMultipleStudents = nil
+    private func assignMultipleStudents(_ students: [Student], toClassId classId: Int64) async throws {
         let ids = students.map(\.id)
         updatingStudentIds.formUnion(ids)
-        defer {
-            ids.forEach { updatingStudentIds.remove($0) }
-            selectedStudentIds.removeAll()
-            isMultiSelectActive = false
-        }
+        defer { ids.forEach { updatingStudentIds.remove($0) } }
 
-        do {
-            try await bridge.assignStudentsToClass(studentIds: ids, classId: classId)
-            for id in ids { unassignedStudentIds.remove(id) }
-            await bridge.selectStudentsClass(classId: selectedClassId)
-            await reloadProfile()
-            let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
-            bridge.status = "\(students.count) alumnos asignados a \(className)."
-            AppleInteractionFeedback.play(.success)
-        } catch {
-            bridge.status = "No se pudieron asignar los alumnos: \(error.localizedDescription)"
-            AppleInteractionFeedback.play(.error)
-        }
+        try await bridge.assignStudentsToClass(studentIds: ids, classId: classId)
+        for id in ids { unassignedStudentIds.remove(id) }
+        selectedStudentIds.removeAll()
+        isMultiSelectActive = false
+        await bridge.selectStudentsClass(classId: selectedClassId)
+        await reloadProfile()
+        let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
+        bridge.status = "\(students.count) alumnos asignados a \(className)."
+        AppleInteractionFeedback.play(.success)
     }
 
     @MainActor
@@ -1423,25 +1452,19 @@ struct StudentProfilesWorkspaceView: View {
         isInjured: Bool,
         sex: StudentSex,
         birthDate: LocalDate?
-    ) async {
-        editingStudent = nil
-        do {
-            try await bridge.updateStudentFull(
-                student: student,
-                firstName: firstName,
-                lastName: lastName,
-                email: email,
-                isInjured: isInjured,
-                sex: sex,
-                birthDate: birthDate
-            )
-            await reloadProfile()
-            bridge.status = "Alumno actualizado."
-            AppleInteractionFeedback.play(.success)
-        } catch {
-            bridge.status = "No se pudo actualizar el alumno: \(error.localizedDescription)"
-            AppleInteractionFeedback.play(.error)
-        }
+    ) async throws {
+        try await bridge.updateStudentFull(
+            student: student,
+            firstName: firstName,
+            lastName: lastName,
+            email: email,
+            isInjured: isInjured,
+            sex: sex,
+            birthDate: birthDate
+        )
+        await reloadProfile()
+        bridge.status = "Alumno actualizado."
+        AppleInteractionFeedback.play(.success)
     }
 
     @MainActor
@@ -1583,11 +1606,27 @@ private struct StudentListRow: View {
     }
 }
 
+// MARK: - StudentEditorSaveGate
+
+/// Regla de cierre tras guardar la ficha: solo cierra si el bridge confirma éxito.
+enum StudentEditorSaveGate {
+    static let saveFailureMessage =
+        "No se pudo guardar los datos del alumno. Los cambios siguen en esta pantalla."
+
+    static func shouldDismiss(succeeded: Bool) -> Bool { succeeded }
+
+    static func failureMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return saveFailureMessage }
+        return "\(saveFailureMessage) \(trimmed)"
+    }
+}
+
 // MARK: - StudentEditorSheet
 
 private struct StudentEditorSheet: View {
     let student: Student
-    let onSave: (String, String, String, Bool, StudentSex, LocalDate?) -> Void
+    let onSave: (String, String, String, Bool, StudentSex, LocalDate?) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var firstName: String
     @State private var lastName: String
@@ -1596,8 +1635,13 @@ private struct StudentEditorSheet: View {
     @State private var sex: StudentSex
     @State private var hasBirthDate: Bool
     @State private var birthDate: Date
+    @State private var errorMessage: String?
+    @State private var isSaving = false
 
-    init(student: Student, onSave: @escaping (String, String, String, Bool, StudentSex, LocalDate?) -> Void) {
+    init(
+        student: Student,
+        onSave: @escaping (String, String, String, Bool, StudentSex, LocalDate?) async throws -> Void
+    ) {
         self.student = student
         self.onSave = onSave
         _firstName = State(initialValue: student.firstName)
@@ -1668,24 +1712,49 @@ private struct StudentEditorSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") { dismiss() }
+                        .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Guardar") {
-                        onSave(
-                            firstName.trimmingCharacters(in: .whitespacesAndNewlines),
-                            lastName.trimmingCharacters(in: .whitespacesAndNewlines),
-                            email.trimmingCharacters(in: .whitespacesAndNewlines),
-                            isInjured,
-                            sex,
-                            localBirthDate
-                        )
-                        dismiss()
+                        Task { await persistEdits() }
                     }
-                    .disabled(!canSave)
+                    .disabled(!canSave || isSaving)
                 }
+            }
+            .alert("No se pudo guardar", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("Aceptar", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "")
             }
         }
         .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(isSaving)
+    }
+
+    @MainActor
+    private func persistEdits() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await onSave(
+                firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+                email.trimmingCharacters(in: .whitespacesAndNewlines),
+                isInjured,
+                sex,
+                localBirthDate
+            )
+            if StudentEditorSaveGate.shouldDismiss(succeeded: true) {
+                dismiss()
+            }
+        } catch {
+            AppleInteractionFeedback.play(.error)
+            errorMessage = StudentEditorSaveGate.failureMessage(detail: error.localizedDescription)
+        }
     }
 }
 

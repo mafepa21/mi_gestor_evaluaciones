@@ -14,6 +14,8 @@ import com.migestor.shared.domain.SessionJournalMediaType
 import com.migestor.shared.domain.SessionJournalStatus
 import com.migestor.shared.domain.SessionJournalSummary
 import com.migestor.shared.repository.SessionJournalRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class SessionJournalRepositorySqlDelight(
     private val db: AppDatabase,
@@ -100,6 +102,10 @@ class SessionJournalRepositorySqlDelight(
                     mediaCount = row.media_count.toInt(),
                 )
             }
+    }
+
+    override suspend fun sessionIdsWithMaterial(): Set<Long> = withContext(Dispatchers.Default) {
+        db.plannerQueries.selectSessionIdsWithMaterial().executeAsList().toSet()
     }
 
     override suspend fun saveJournalAggregate(aggregate: SessionJournalAggregate): Long {

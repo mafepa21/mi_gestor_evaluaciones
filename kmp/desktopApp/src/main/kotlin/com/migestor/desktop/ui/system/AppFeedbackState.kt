@@ -36,5 +36,11 @@ fun NotebookViewModelSaveState.toAppFeedbackState(errorColor: Color, neutralColo
             color = neutralColor,
             actionable = false,
         )
+        NotebookViewModelSaveState.Failed -> AppFeedbackState(
+            label = "No se pudo guardar",
+            icon = Icons.Default.CloudQueue,
+            color = errorColor,
+            actionable = true,
+        )
     }
 

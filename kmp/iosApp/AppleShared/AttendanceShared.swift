@@ -174,7 +174,33 @@ struct AttendanceHistorySelection: Identifiable {
     }
 }
 
+/// Búsqueda y tamaño de la sábana de asistencia (matriz).
+/// La UI usa filas lazy para no montar todas las celdas de golpe.
+enum AttendanceMatrixSearch {
+    static func nameMatches(_ fullName: String, query: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        return fullName.localizedCaseInsensitiveContains(trimmed)
+    }
+
+    static func filteredFullNames(_ names: [String], query: String) -> [String] {
+        names.filter { nameMatches($0, query: query) }
+    }
+
+    /// Celdas alumno×fecha si las filas se construyen todas a la vez.
+    static func eagerCellCount(studentCount: Int, dateCount: Int) -> Int {
+        max(0, studentCount) * max(0, dateCount)
+    }
+}
+
 enum AttendanceLogic {
+    static let reloadFailureMessage = "No se pudo cargar la asistencia. Se mantienen las marcas que ya ves."
+    static let sideReloadFailureMessage = "No se pudo cargar el resto del pase. Se mantiene lo que ya ves."
+
+    static func listAfterFailedReload<T>(_ loaded: [T]?, previous: [T]) -> [T] {
+        loaded ?? previous
+    }
+
     static func isPresentStatus(_ status: String?) -> Bool {
         status?.uppercased().contains("PRESENT") == true
     }

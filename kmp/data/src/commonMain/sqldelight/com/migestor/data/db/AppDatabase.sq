@@ -1072,7 +1072,7 @@ FROM grades
 WHERE student_id = ? AND class_id = ?;
 
 selectGradeByStudentClassAndColumn:
-SELECT value, updated_at_epoch_ms, device_id
+SELECT value, evaluation_id, evidence, evidence_path, rubric_selections, updated_at_epoch_ms, device_id
 FROM grades
 WHERE class_id = ? AND student_id = ? AND column_id = ?
 LIMIT 1;

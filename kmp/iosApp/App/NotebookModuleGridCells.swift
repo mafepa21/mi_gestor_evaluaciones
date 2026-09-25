@@ -946,12 +946,18 @@ extension NotebookModuleView {
                 )
             },
             saveAttendance: { studentId, classId, date, status in
-                try? await bridge.saveAttendance(
-                    studentId: studentId,
-                    classId: classId,
-                    on: date,
-                    status: status
-                )
+                do {
+                    try await bridge.saveAttendance(
+                        studentId: studentId,
+                        classId: classId,
+                        on: date,
+                        status: status
+                    )
+                    return true
+                } catch {
+                    bridge.status = "No se pudo guardar la asistencia. Pulsa otra vez para reintentar."
+                    return false
+                }
             }
         )
     }

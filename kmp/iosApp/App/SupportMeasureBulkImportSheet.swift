@@ -382,9 +382,9 @@ struct SupportMeasureBulkImportSheet: View {
         // actualizada) más de una vez: se consultan las medidas Nivel III ya activas por
         // alumno antes de guardar, y se omite cualquier tipo que ya esté registrado.
         var activeMeasuresByStudent: [Int64: Set<SupportMeasureTypeUI>] = [:]
-        func activeMeasureTypes(for studentId: Int64) async -> Set<SupportMeasureTypeUI> {
+        func activeMeasureTypes(for studentId: Int64) async throws -> Set<SupportMeasureTypeUI> {
             if let cached = activeMeasuresByStudent[studentId] { return cached }
-            let existing = ((try? await bridge.supportMeasures(for: studentId)) ?? [])
+            let existing = try await bridge.supportMeasures(for: studentId)
                 .filter { $0.isActive && $0.level == .iii }
             let types = Set(existing.map(\.measureType))
             activeMeasuresByStudent[studentId] = types
@@ -393,10 +393,20 @@ struct SupportMeasureBulkImportSheet: View {
 
         for row in visibleRows {
             guard row.isManuallyConfirmed, let student = row.confirmedStudent else { continue }
-            let alreadyActive = await activeMeasureTypes(for: student.id)
+            let alreadyActive: Set<SupportMeasureTypeUI>?
+            do {
+                alreadyActive = try await activeMeasureTypes(for: student.id)
+            } catch {
+                alreadyActive = nil
+                lastError = SupportMeasureImportGuard.existingLoadFailure
+            }
             for measure in row.measures {
-                if alreadyActive.contains(measure) {
-                    skippedCount += 1
+                guard SupportMeasureImportGuard.shouldSave(alreadyKnown: alreadyActive, measure: measure) else {
+                    if alreadyActive == nil {
+                        failedCount += 1
+                    } else {
+                        skippedCount += 1
+                    }
                     continue
                 }
                 var draft = SupportMeasureDraft(

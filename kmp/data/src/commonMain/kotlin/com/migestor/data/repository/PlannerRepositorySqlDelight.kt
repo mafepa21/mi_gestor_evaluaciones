@@ -135,6 +135,10 @@ class PlannerRepositorySqlDelight(
         }
     }
 
+    override suspend fun getSession(id: Long): PlanningSession? = withContext(Dispatchers.Default) {
+        db.plannerQueries.selectSessionById(id).executeAsOneOrNull()?.let(::mapToDomain)
+    }
+
     override suspend fun listAllSessions(): List<PlanningSession> = withContext(Dispatchers.Default) {
         db.plannerQueries.selectAllSessions()
             .executeAsList()
@@ -465,12 +469,7 @@ class PlannerRepositorySqlDelight(
             .executeAsList()
             .getOrNull(period - 1)
         val fallback = DEFAULT_TIME_SLOTS.firstOrNull { it.period == period }
-        val week = IsoWeekHelper.isoWeekOf(date)
-        val isoYear = when {
-            date.monthNumber == 12 && week == 1 -> date.year + 1
-            date.monthNumber == 1 && week >= 52 -> date.year - 1
-            else -> date.year
-        }
+        val (week, isoYear) = IsoWeekHelper.of(date)
         return SessionPlacement(
             sessionId = session.id,
             weekNumber = week,
@@ -555,8 +554,8 @@ class PlannerRepositorySqlDelight(
                 groupId = destinationGroupId,
                 dayOfWeek = destinationDate.dayOfWeek.isoDayNumber,
                 period = destinationPeriod,
-                weekNumber = IsoWeekHelper.isoWeekOf(destinationDate),
-                year = destinationDate.year
+                weekNumber = IsoWeekHelper.of(destinationDate).first,
+                year = IsoWeekHelper.of(destinationDate).second
             )
             relocations += SessionRelocationItem(source = sourceSession, destination = destination)
         }
@@ -646,6 +645,32 @@ class PlannerRepositorySqlDelight(
         ).executeAsOne()
     }
 
+    private fun mapToDomain(row: com.migestor.data.db.SelectSessionById): PlanningSession {
+        val date = LocalDate.parse(row.date)
+        val iso = IsoWeekHelper.of(date)
+        return PlanningSession(
+            id = row.id,
+            teachingUnitId = row.unit_id ?: 0,
+            teachingUnitName = row.unit_name ?: "",
+            teachingUnitColor = row.unit_color ?: "#4A90D9",
+            groupId = row.group_id,
+            groupName = row.group_name,
+            dayOfWeek = date.dayOfWeek.isoDayNumber,
+            period = row.period.toInt(),
+            weekNumber = iso.first,
+            year = iso.second,
+            objectives = row.objectives ?: "",
+            activities = row.activities ?: "",
+            evaluation = row.evaluation ?: "",
+            linkedAssessmentIdsCsv = row.linked_assessment_ids_csv,
+            teacherScheduleSlotId = row.teacher_schedule_slot_id,
+            startTime = row.start_time,
+            endTime = row.end_time,
+            learningSituationSessionPlanId = row.learning_situation_session_plan_id,
+            status = try { SessionStatus.valueOf(row.status ?: "PLANNED") } catch (e: Exception) { SessionStatus.PLANNED }
+        )
+    }
+
     private fun mapToDomain(row: com.migestor.data.db.SelectSessionsForWeek): PlanningSession {
         val date = LocalDate.parse(row.date)
         return PlanningSession(
@@ -657,8 +682,8 @@ class PlannerRepositorySqlDelight(
             groupName = row.group_name,
             dayOfWeek = date.dayOfWeek.isoDayNumber,
             period = row.period.toInt(),
-            weekNumber = IsoWeekHelper.isoWeekOf(date),
-            year = date.year,
+            weekNumber = IsoWeekHelper.of(date).first,
+            year = IsoWeekHelper.of(date).second,
             objectives = row.objectives ?: "",
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",
@@ -682,8 +707,8 @@ class PlannerRepositorySqlDelight(
             groupName = row.group_name,
             dayOfWeek = date.dayOfWeek.isoDayNumber,
             period = row.period.toInt(),
-            weekNumber = IsoWeekHelper.isoWeekOf(date),
-            year = date.year,
+            weekNumber = IsoWeekHelper.of(date).first,
+            year = IsoWeekHelper.of(date).second,
             objectives = row.objectives ?: "",
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",
@@ -707,8 +732,8 @@ class PlannerRepositorySqlDelight(
             groupName = row.group_name,
             dayOfWeek = date.dayOfWeek.isoDayNumber,
             period = row.period.toInt(),
-            weekNumber = IsoWeekHelper.isoWeekOf(date),
-            year = date.year,
+            weekNumber = IsoWeekHelper.of(date).first,
+            year = IsoWeekHelper.of(date).second,
             objectives = row.objectives ?: "",
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",
@@ -732,8 +757,8 @@ class PlannerRepositorySqlDelight(
             groupName = row.group_name,
             dayOfWeek = date.dayOfWeek.isoDayNumber,
             period = row.period.toInt(),
-            weekNumber = IsoWeekHelper.isoWeekOf(date),
-            year = date.year,
+            weekNumber = IsoWeekHelper.of(date).first,
+            year = IsoWeekHelper.of(date).second,
             objectives = row.objectives ?: "",
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",

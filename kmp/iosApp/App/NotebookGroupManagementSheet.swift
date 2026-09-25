@@ -257,7 +257,14 @@ struct NotebookGroupManagementSheet: View {
 
         Task {
             if let situationId = learningSituationId {
-                try? await bridge.addLearningSituationClassLink(situationId: situationId, classId: classId)
+                do {
+                    try await bridge.addLearningSituationClassLink(situationId: situationId, classId: classId)
+                } catch {
+                    await MainActor.run {
+                        importErrorMessage = "No se pudo enlazar la situación de aprendizaje. Los grupos no se han aplicado."
+                    }
+                    return
+                }
             }
 
             let batchGroups: [(name: String, studentIds: [Int64], learningSituationId: Int64?)] = groups.map { group in

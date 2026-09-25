@@ -226,6 +226,7 @@ class LocalSyncServerAdoptionTest {
             "/sync/documents/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "GET",
         )
+        assertUnauthorized("/sync/local-changes", "POST", "[]")
 
         val authed = openHttpsConnection("/sync/pull", "GET")
         authed.connectTimeout = 5_000
@@ -234,10 +235,34 @@ class LocalSyncServerAdoptionTest {
         assertEquals(200, authed.responseCode)
         authed.disconnect()
 
+        assertLocalChangesAcceptedWithBearer()
+    }
+
+    @Test
+    fun localChangesLoopbackRequiresMatchingBearer() {
+        assertUnauthorized("/sync/local-changes", "POST", "[]")
+
+        val wrong = openHttpsConnection("/sync/local-changes", "POST")
+        wrong.connectTimeout = 5_000
+        wrong.readTimeout = 5_000
+        wrong.doOutput = true
+        wrong.setRequestProperty("Authorization", "Bearer token-incorrecto")
+        wrong.setRequestProperty("Content-Type", "application/json")
+        wrong.outputStream.use { it.write("[]".toByteArray()) }
+        assertEquals(401, wrong.responseCode)
+        val wrongBody = wrong.errorStream?.bufferedReader()?.readText().orEmpty()
+        assertTrue(wrongBody.contains("unauthorized"), wrongBody)
+        wrong.disconnect()
+
+        assertLocalChangesAcceptedWithBearer()
+    }
+
+    private fun assertLocalChangesAcceptedWithBearer() {
         val local = openHttpsConnection("/sync/local-changes", "POST")
         local.connectTimeout = 5_000
         local.readTimeout = 5_000
         local.doOutput = true
+        local.setRequestProperty("Authorization", "Bearer $token")
         local.setRequestProperty("Content-Type", "application/json")
         local.outputStream.use { it.write("[]".toByteArray()) }
         assertEquals(200, local.responseCode)

@@ -47,23 +47,23 @@ enum AttendanceMatrixRange: String, CaseIterable, Identifiable {
             return (calendar.startOfDay(for: start), calendar.date(bySettingHour: 23, minute: 59, second: 59, of: end) ?? end)
 
         case .quarter1:
-            var startComp = DateComponents(year: schoolStartYear, month: 9, day: 1)
-            var endComp = DateComponents(year: schoolStartYear, month: 12, day: 22, hour: 23, minute: 59, second: 59)
+            let startComp = DateComponents(year: schoolStartYear, month: 9, day: 1)
+            let endComp = DateComponents(year: schoolStartYear, month: 12, day: 22, hour: 23, minute: 59, second: 59)
             return (calendar.date(from: startComp) ?? date, calendar.date(from: endComp) ?? date)
 
         case .quarter2:
-            var startComp = DateComponents(year: schoolStartYear + 1, month: 1, day: 7)
-            var endComp = DateComponents(year: schoolStartYear + 1, month: 3, day: 31, hour: 23, minute: 59, second: 59)
+            let startComp = DateComponents(year: schoolStartYear + 1, month: 1, day: 7)
+            let endComp = DateComponents(year: schoolStartYear + 1, month: 3, day: 31, hour: 23, minute: 59, second: 59)
             return (calendar.date(from: startComp) ?? date, calendar.date(from: endComp) ?? date)
 
         case .quarter3:
-            var startComp = DateComponents(year: schoolStartYear + 1, month: 4, day: 1)
-            var endComp = DateComponents(year: schoolStartYear + 1, month: 6, day: 30, hour: 23, minute: 59, second: 59)
+            let startComp = DateComponents(year: schoolStartYear + 1, month: 4, day: 1)
+            let endComp = DateComponents(year: schoolStartYear + 1, month: 6, day: 30, hour: 23, minute: 59, second: 59)
             return (calendar.date(from: startComp) ?? date, calendar.date(from: endComp) ?? date)
 
         case .fullYear:
-            var startComp = DateComponents(year: schoolStartYear, month: 9, day: 1)
-            var endComp = DateComponents(year: schoolStartYear + 1, month: 6, day: 30, hour: 23, minute: 59, second: 59)
+            let startComp = DateComponents(year: schoolStartYear, month: 9, day: 1)
+            let endComp = DateComponents(year: schoolStartYear + 1, month: 6, day: 30, hour: 23, minute: 59, second: 59)
             return (calendar.date(from: startComp) ?? date, calendar.date(from: endComp) ?? date)
         }
     }

@@ -43,6 +43,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Importación y asociación automática de correos de alumnos desde Excel (.xlsx/.csv)**:
+  - Extracción y parsing inteligente de nombres y apellidos a partir de correos corporativos escolares (soporta patrones `a.nombre.apellido@dominio` y `a.nombre.apellido.2apellido@dominio`).
+  - Mapeo automático de la clase o curso indicado en la Columna B contra las clases dadas de alta en la app con normalización fonética y de tildes.
+  - Nuevo servicio `StudentEmailImportService` que empareja correos contra el alumnado del curso o directorio global mediante token scoring y desempate por apellidos.
+  - Hoja interactiva de previsualización `StudentEmailImportSheet` que desglosa emparejamientos seguros, casos ambiguos y correos sin coincidencia, con selección granular antes de confirmar.
+  - Acciones y selectores de archivo integrados en macOS (`MacStudentsView`) y en iPadOS/iOS (`StudentProfilesWorkspaceView`).
+  - Actualización atómica en la base de datos de los alumnos con emisión de cambios para SyncLAN y refresco instantáneo del directorio e inspector.
+
 - **Teclado de hoja de cálculo en el Cuaderno (macOS)**: con una celda de nota seleccionada, las flechas mueven la selección, un número sustituye la nota y la flecha o Return la guarda y baja a la siguiente. Esc devuelve el valor de antes de escribir. Una rúbrica, una fórmula o un visto bueno no se abren al pulsar un número. El teclado táctil del iPad no cambia.
 
 - **Rango, relleno y pegado en el Cuaderno**: Mayús+clic alarga la selección en la misma columna. Rellenar copia el valor solo en ese rango. Pegar varias líneas desde Numbers llena esas celdas y un solo Deshacer vuelve atrás todo el lote.

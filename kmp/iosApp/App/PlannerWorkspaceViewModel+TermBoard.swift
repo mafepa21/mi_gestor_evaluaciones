@@ -404,7 +404,7 @@ extension PlannerWorkspaceViewModel {
 
         do {
             for slot in termBoardSlots {
-                if case .preview(let sessionNumber, let title, let objective, _, let planId) = slot.kind {
+                if case .preview(_, let title, let objective, _, let planId) = slot.kind {
                     let year = calendar.component(.yearForWeekOfYear, from: slot.date)
                     let week = calendar.component(.weekOfYear, from: slot.date)
 

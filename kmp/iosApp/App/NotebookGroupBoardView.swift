@@ -405,7 +405,7 @@ struct NotebookGroupBoardView: View {
                     .stroke(NotebookStyle.softBorder, lineWidth: 1)
             )
             .dropDestination(for: String.self) { items, _ in
-                handleDrop(items: items, groupId: groupId)
+                return handleDrop(items: items, groupId: groupId)
             }
         }
     }

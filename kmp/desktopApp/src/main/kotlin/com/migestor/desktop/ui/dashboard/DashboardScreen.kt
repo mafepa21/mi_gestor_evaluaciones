@@ -83,6 +83,7 @@ fun DashboardScreen(
     syncPin: String? = null,
     syncServerId: String? = null,
     syncIsPaired: Boolean = false,
+    syncStartError: String? = null,
     onRevokeSyncPairing: (() -> Unit)? = null,
 ) {
     var studentCount by remember { mutableStateOf("0") }
@@ -253,7 +254,7 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Server ID: ${syncServerId ?: "-"} · Estado: ${if (syncIsPaired) "Vinculado" else "Esperando emparejamiento"}",
+                            text = "Server ID: ${syncServerId ?: "-"} · Estado: ${com.migestor.shared.sync.SyncAvailabilityCopy.status(syncStartError, syncIsPaired)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

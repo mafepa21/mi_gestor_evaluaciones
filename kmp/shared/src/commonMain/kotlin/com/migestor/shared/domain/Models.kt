@@ -1303,6 +1303,7 @@ data class NotebookColumnDefinition(
             NotebookColumnType.CALCULATED,
             NotebookColumnType.CHECK -> true
             NotebookColumnType.ORDINAL -> hasAverageOrdinalScore()
+            NotebookColumnType.TEXT -> inputKind.isStructuredInstrument()
             else -> false
         }
     }
@@ -1328,6 +1329,13 @@ data class NotebookColumnDefinition(
                     NotebookAverageExclusionReason.NON_NUMERIC
                 }
             }
+            NotebookColumnType.TEXT -> {
+                if (inputKind.isStructuredInstrument()) {
+                    NotebookAverageExclusionReason.COLUMN_DOES_NOT_COUNT
+                } else {
+                    NotebookAverageExclusionReason.NON_NUMERIC
+                }
+            }
             else -> NotebookAverageExclusionReason.NON_NUMERIC
         }
     }
@@ -1336,6 +1344,14 @@ data class NotebookColumnDefinition(
         type == NotebookColumnType.ORDINAL &&
             instrumentKind == NotebookInstrumentKind.PARTICIPATION &&
             scaleKind == NotebookScaleKind.ACHIEVEMENT
+}
+
+fun NotebookCellInputKind.isStructuredInstrument(): Boolean = when (this) {
+    NotebookCellInputKind.STRUCTURED_CHECKLIST,
+    NotebookCellInputKind.STRUCTURED_OBSERVATION,
+    NotebookCellInputKind.STRUCTURED_FORM,
+    NotebookCellInputKind.STRUCTURED_QUIZ -> true
+    else -> false
 }
 
 data class NotebookCellAnnotation(
@@ -1698,19 +1714,35 @@ fun NotebookRow.gradeValueFor(
 
     // 5. Check persisted cells check/bool/ordinal value
     val persistedCell = persistedCells.firstOrNull { it.columnId == column.id }
-    return when (column.type) {
+    val cellValue = when (column.type) {
         NotebookColumnType.CHECK -> persistedCell?.boolValue?.let { if (it) 10.0 else 0.0 }
         NotebookColumnType.ORDINAL -> persistedCell?.ordinalValue?.let { column.ordinalScoreForAverage(it) }
         else -> persistedCell?.boolValue?.let { if (it) 10.0 else 0.0 }
     }
+    if (cellValue != null) return cellValue
+
+    // 6. Check structured instrument display numeric value
+    if (column.inputKind.isStructuredInstrument()) {
+        persistedCell?.displayValue?.replace(",", ".")?.toDoubleOrNull()?.let {
+            return column.rescaleNumericGrade(it)
+        }
+    }
+
+    return null
 }
 
 // FOUR_LEVEL is stored as a 1-4 level, not a 0-10 grade; other scale kinds pass through raw.
 fun NotebookColumnDefinition.rescaleNumericGrade(rawValue: Double): Double {
-    if (type != NotebookColumnType.NUMERIC) return rawValue
+    if (type != NotebookColumnType.NUMERIC && !inputKind.isStructuredInstrument()) return rawValue
     return when (scaleKind) {
         NotebookScaleKind.FOUR_LEVEL -> (rawValue.coerceIn(1.0, 4.0) - 1.0) / 3.0 * 10.0
-        else -> rawValue
+        else -> {
+            if (scaleKind == NotebookScaleKind.CUSTOM && inputKind.isStructuredInstrument() && rawValue in 1.0..4.0) {
+                (rawValue.coerceIn(1.0, 4.0) - 1.0) / 3.0 * 10.0
+            } else {
+                rawValue
+            }
+        }
     }
 }
 

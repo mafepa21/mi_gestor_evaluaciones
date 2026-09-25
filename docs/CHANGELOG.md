@@ -19,6 +19,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Menú de media no reflejaba los cambios del toggle "Cuenta para la media" en columnas (`NotebookAverageEditorSheet`):
+  - `averageEligibility` ampliado para reconocer instrumentos estructurados (checklists, observaciones, formularios, quiz) con tipo `.text` que sí son evaluables, y para rúbricas/numéricas estructuradas; antes todas caían en `notEvaluable` y no aparecían en el editor de media.
+  - `buildUpdates()` corregido: columnas no visibles en el editor ya preservan su estado actual (`countsTowardAverage` / `weight`) en lugar de sobreescribirse a `false`.
+  - Reactividad añadida: `.appOnChange(of: firma_columnas)` dentro de la sheet re-sincroniza los borradores en tiempo real si el docente conmuta el toggle mientras la sheet está abierta.
+  - `averageSheetSeed` (UUID) en `NotebookModuleView` fuerza reinicialización completa del `@State draftsByColumnId` cada vez que se reabre la sheet, eliminando el stale-state de sesiones anteriores.
+  - Botones duplicados en macOS/Catalyst corregidos: el footer oculta "Cancelar" y "Guardar" en Mac (los `ToolbarItem` los cubren); en iOS se conservan ambos para comodidad.
+  - Cálculo de media ponderada en KMP y Swift habilitado para instrumentos estructurados: `countsTowardAverage()` en `Models.kt` ahora reconoce columnas estructuradas evaluables con peso $> 0$; `gradeValueFor` y `rescaleNumericGrade` resuelven y rescalan notas numéricas; y `NotebookInstrumentsRepositorySqlDelight.kt` añade `deriveGenericScale14Score` para derivar la nota automáticamente desde indicadores de escala 1–4.
 - **Planificador, toques que no hacían nada**: en el mes, tocar un día abre ese día. En el resumen, tocar una próxima sesión abre su ficha. En el iPhone, el menú y la pastilla de hitos abren los hitos del curso. La última fila de la semana ya no se come el alto de la cabecera. La ficha muestra si la sesión está planificada, en curso, impartida o cancelada. En el Mac, Evaluación está en el menú Planificador.
 
 ### Data

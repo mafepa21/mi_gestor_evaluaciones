@@ -22,6 +22,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var filteredSessions: [PlanningSession] = []
     @Published var monthViewDate: Date = Date()
     @Published var monthSessions: [PlanningSession] = []
+    @Published var monthLoadError: String?
     @Published var monthMilestones: [PlannerDayMilestone] = []
     @Published var sessionPlansById: [Int64: LearningSituationSessionPlan] = [:]
     @Published var sequenceGroupsEnriched: [PlannerSequenceGroup] = []
@@ -39,6 +40,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var evaluationPeriods: [PlannerEvaluationPeriod] = []
     @Published var forecastRows: [PlannerSessionForecast] = []
     @Published var searchText = ""
+    private var searchDebounceTask: Task<Void, Never>?
     @Published var selectionMode = false
     @Published var selectedSessionIds: Set<Int64> = []
     @Published var showingComposer = false
@@ -213,7 +215,11 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         scheduleFormGroupId = await calendarStore.reloadBootstrap(bridge: bridge, scheduleFormGroupId: scheduleFormGroupId)
         groups = calendarStore.groups
         classColorHexById = calendarStore.classColorHexById
-        _ = try? await SchoolCalendarPreset2026_2027.sync1BachExams(bridge: bridge, groups: groups)
+        do {
+            _ = try await SchoolCalendarPreset2026_2027.sync1BachExams(bridge: bridge, groups: groups)
+        } catch {
+            bulkSummary = "No se pudieron sincronizar los exámenes de 1º Bachillerato."
+        }
         do {
             let plans = try await bridge.learningSituationSessionPlansAll()
             sessionPlansById = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
@@ -227,7 +233,12 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func reloadWeekSessions(keepSelection: Bool = true) async {
         guard let bridge else { return }
-        await sessionStore.reload(bridge: bridge, week: week, year: year)
+        do {
+            try await sessionStore.reload(bridge: bridge, week: week, year: year)
+        } catch {
+            bulkSummary = "No se pudo cargar la semana. Se mantienen las sesiones que ya ves."
+            return
+        }
         sessions = sessionStore.sessions
         rebuildVisiblePlannerStructure()
         await reloadJournalSummaries()
@@ -250,13 +261,25 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func reloadJournalSummaries() async {
         guard let bridge else { return }
-        await journalStore.reloadSummaries(bridge: bridge, sessionIds: sessions.map(\.id))
+        let loadedJournals = await journalStore.reloadSummaries(bridge: bridge, sessionIds: sessions.map(\.id))
         journalSummaryBySessionId = journalStore.journalSummaryBySessionId
+        if !loadedJournals {
+            bulkSummary = "No se pudieron cargar los diarios de la semana. Se mantienen los que ya ves."
+        }
         rebuildWeekRenderModel()
     }
 
     private func reloadSelectedJournal() async {
         await loadJournalForSelectedSession()
+    }
+
+    func scheduleSearch() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            applySearch()
+        }
     }
 
     func applySearch() {

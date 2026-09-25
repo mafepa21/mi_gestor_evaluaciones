@@ -13,15 +13,17 @@ extension PlannerWorkspaceViewModel {
 
     func bulkCopyToNextWeek() async {
         guard let bridge, !selectedSessionIds.isEmpty else { return }
-        let result = try? await bridge.plannerCopySessions(
-            sourceSessionIds: Array(selectedSessionIds),
-            targetGroupId: nil,
-            dayOffset: 7,
-            periodOffset: 0,
-            resolution: .skip
-        )
-        if let result {
+        do {
+            let result = try await bridge.plannerCopySessions(
+                sourceSessionIds: Array(selectedSessionIds),
+                targetGroupId: nil,
+                dayOffset: 7,
+                periodOffset: 0,
+                resolution: .skip
+            )
             bulkSummary = "Copiadas \(result.movedOrCopied) · omitidas \(result.skipped + result.failed)"
+        } catch {
+            bulkSummary = "No se pudieron copiar las sesiones: \(error.localizedDescription)"
         }
         selectionMode = false
         selectedSessionIds.removeAll()
@@ -30,14 +32,16 @@ extension PlannerWorkspaceViewModel {
 
     func bulkMoveOneDay() async {
         guard let bridge, !selectedSessionIds.isEmpty else { return }
-        let result = try? await bridge.plannerShiftSessions(
-            sourceSessionIds: Array(selectedSessionIds),
-            dayOffset: 1,
-            periodOffset: 0,
-            resolution: .skip
-        )
-        if let result {
+        do {
+            let result = try await bridge.plannerShiftSessions(
+                sourceSessionIds: Array(selectedSessionIds),
+                dayOffset: 1,
+                periodOffset: 0,
+                resolution: .skip
+            )
             bulkSummary = "Movidas \(result.movedOrCopied) · omitidas \(result.skipped + result.failed)"
+        } catch {
+            bulkSummary = "No se pudieron mover las sesiones: \(error.localizedDescription)"
         }
         selectionMode = false
         selectedSessionIds.removeAll()
@@ -56,12 +60,21 @@ extension PlannerWorkspaceViewModel {
             return
         }
 
+        var deleted = 0
+        var failed = 0
         for id in ids {
-            try? await bridge.plannerDeleteSession(sessionId: id)
+            do {
+                try await bridge.plannerDeleteSession(sessionId: id)
+                deleted += 1
+            } catch {
+                failed += 1
+            }
         }
         selectedSessionIds.removeAll()
         selectedSession = nil
-        bulkSummary = "Eliminadas \(ids.count) sesiones de la semana sin franjas de agenda."
+        bulkSummary = failed == 0
+            ? "Eliminadas \(deleted) sesiones de la semana sin franjas de agenda."
+            : "Eliminadas \(deleted) / fallidas \(failed)"
         await reloadSessionsOnly(keepSelection: false)
     }
 
@@ -85,17 +98,19 @@ extension PlannerWorkspaceViewModel {
     /// múltiple ni tocar `selectedSessionIds` (a diferencia de `bulkCopyToNextWeek`).
     func copySessionToNextWeek(_ session: PlanningSession) async {
         guard let bridge else { return }
-        let result = try? await bridge.plannerCopySessions(
-            sourceSessionIds: [session.id],
-            targetGroupId: nil,
-            dayOffset: 7,
-            periodOffset: 0,
-            resolution: .skip
-        )
-        if let result {
+        do {
+            let result = try await bridge.plannerCopySessions(
+                sourceSessionIds: [session.id],
+                targetGroupId: nil,
+                dayOffset: 7,
+                periodOffset: 0,
+                resolution: .skip
+            )
             bulkSummary = result.movedOrCopied > 0
                 ? "Sesión copiada a la semana siguiente."
                 : "No se pudo copiar la sesión a la semana siguiente."
+        } catch {
+            bulkSummary = "No se pudo copiar la sesión: \(error.localizedDescription)"
         }
         await reloadSessionsOnly()
     }

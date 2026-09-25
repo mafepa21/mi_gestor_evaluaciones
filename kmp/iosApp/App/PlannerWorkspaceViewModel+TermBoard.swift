@@ -325,8 +325,11 @@ extension PlannerWorkspaceViewModel {
             let classEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: resolvedGroupId)
             let allNonTeaching = globalEvents + classEvents
 
-            // 4. Load all sessions
-            let allSessions = try await bridge.plannerListAllSessions()
+            let periodSessions = try await bridge.plannerListSessions(
+                fromIso: period.startDateIso,
+                toIso: period.endDateIso,
+                classId: resolvedGroupId
+            )
 
             // 5. If simulatedSituationId is set, load its plans
             var simPlans: [TermSimulationPlanItem]? = nil
@@ -367,7 +370,7 @@ extension PlannerWorkspaceViewModel {
                 classId: resolvedGroupId,
                 scheduleSlots: teacherScheduleSlots,
                 nonTeachingEvents: allNonTeaching,
-                existingSessions: allSessions,
+                existingSessions: periodSessions,
                 simulationPlans: simPlans,
                 simulationSituationTitle: simTitle,
                 defaultTimeSlots: visibleSlots

@@ -5,6 +5,60 @@ import UniformTypeIdentifiers
 import QuickLook
 import MiGestorKit
 
+enum SituationDetailReload {
+    static let failure = "No se pudo cargar la situación. Se mantiene lo que ya ves."
+}
+
+enum LearningSituationScheduleLoad {
+    static let linksFailure = "No se pudieron cargar las clases de la situación. No se ha colocado en ningún grupo."
+    static let sequenceFailure = "No se pudo cargar la secuencia. No se han inventado sesiones."
+}
+
+enum TeachingUnitReload {
+    static let failureMessage = "No se pudieron cargar las unidades. Se mantiene la lista anterior."
+    static let forecastFailure = "No se pudo cargar la previsión. Se mantiene la lista anterior."
+}
+
+enum PlannerCalendarLoad {
+    static let monthFailure = "No se pudo cargar el calendario. Se mantienen los días que ya ves."
+    static let holidayReadFailure = "No se pudo leer el calendario. El festivo no ha cambiado."
+    static let holidaySaveFailure = "No se pudo cambiar el festivo. El día sigue como estaba."
+}
+
+enum PlannerCalendarRange {
+    /// Solape inclusivo entre un evento y una ventana visible (ms epoch).
+    static func overlaps(
+        eventStartMs: Int64,
+        eventEndMs: Int64,
+        rangeStartMs: Int64,
+        rangeEndMs: Int64
+    ) -> Bool {
+        max(eventStartMs, rangeStartMs) <= min(eventEndMs, rangeEndMs)
+    }
+
+    static func overlapping(
+        events: [CalendarEvent],
+        rangeStartMs: Int64,
+        rangeEndMs: Int64
+    ) -> [CalendarEvent] {
+        events.filter {
+            overlaps(
+                eventStartMs: $0.startAt.toEpochMilliseconds(),
+                eventEndMs: $0.endAt.toEpochMilliseconds(),
+                rangeStartMs: rangeStartMs,
+                rangeEndMs: rangeEndMs
+            )
+        }
+    }
+}
+
+enum PlannerReloadPolicy {
+    static func value<T>(previous: T, next: T?, failed: Bool) -> T {
+        if failed || next == nil { return previous }
+        return next!
+    }
+}
+
 enum PlannerCalendar {
     /// Año y semana ISO calculados a partir del mismo instante para evitar que,
     /// justo en el cambio de año, uno quede desfasado respecto al otro.
@@ -572,8 +626,8 @@ final class PlannerSessionStore: ObservableObject {
     @Published var selectedSessionIds: Set<Int64> = []
     @Published var bulkSummary = ""
 
-    func reload(bridge: KmpBridge, week: Int, year: Int) async {
-        sessions = (try? await bridge.plannerListSessions(weekNumber: week, year: year, classId: nil)) ?? []
+    func reload(bridge: KmpBridge, week: Int, year: Int) async throws {
+        sessions = try await bridge.plannerListSessions(weekNumber: week, year: year, classId: nil)
     }
 
     func upsertLocal(_ session: PlanningSession) {
@@ -599,11 +653,36 @@ final class PlannerScheduleStore: ObservableObject {
         do {
             let schedule = try await bridge.plannerTeacherSchedule()
             teacherSchedule = schedule
-            teacherScheduleSlots = (try? await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)) ?? []
+            var slotsFailed = false
+            do {
+                let loadedSlots = try await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)
+                teacherScheduleSlots = PlannerReloadPolicy.value(previous: teacherScheduleSlots, next: loadedSlots, failed: false)
+            } catch {
+                slotsFailed = true
+                teacherScheduleSlots = PlannerReloadPolicy.value(previous: teacherScheduleSlots, next: nil, failed: true)
+                scheduleError = "No se pudieron cargar las franjas. Se mantienen las que ya ves."
+            }
             weeklySlots = bridge.plannerWeeklySlots(classId: nil)
-            evaluationPeriods = (try? await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)) ?? []
-            scheduleError = ""
-            forecastRows = (try? await bridge.plannerForecast(scheduleId: schedule.id, classId: nil)) ?? []
+            var periodsFailed = false
+            do {
+                let loadedPeriods = try await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)
+                evaluationPeriods = PlannerReloadPolicy.value(previous: evaluationPeriods, next: loadedPeriods, failed: false)
+            } catch {
+                periodsFailed = true
+                evaluationPeriods = PlannerReloadPolicy.value(previous: evaluationPeriods, next: nil, failed: true)
+                if scheduleError.isEmpty {
+                    scheduleError = "No se pudieron cargar las evaluaciones. Se mantienen las que ya ves."
+                }
+            }
+            if !slotsFailed && !periodsFailed {
+                scheduleError = ""
+            }
+            do {
+                let loadedForecast = try await bridge.plannerForecast(scheduleId: schedule.id, classId: nil)
+                forecastRows = PlannerReloadPolicy.value(previous: forecastRows, next: loadedForecast, failed: false)
+            } catch {
+                forecastRows = PlannerReloadPolicy.value(previous: forecastRows, next: nil, failed: true)
+            }
             return scheduleFormGroupId ?? groups.first?.id
         } catch {
             scheduleError = error.localizedDescription
@@ -619,9 +698,24 @@ final class PlannerJournalStore: ObservableObject {
     @Published var journalSummaryBySessionId: [Int64: SessionJournalSummary] = [:]
     var loadedAggregate: SessionJournalAggregate?
 
-    func reloadSummaries(bridge: KmpBridge, sessionIds: [Int64]) async {
-        let summaries = (try? await bridge.plannerJournalSummaries(sessionIds: sessionIds)) ?? []
-        journalSummaryBySessionId = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
+    func reloadSummaries(bridge: KmpBridge, sessionIds: [Int64]) async -> Bool {
+        do {
+            let summaries = try await bridge.plannerJournalSummaries(sessionIds: sessionIds)
+            let next = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
+            journalSummaryBySessionId = PlannerReloadPolicy.value(
+                previous: journalSummaryBySessionId,
+                next: next,
+                failed: false
+            )
+            return true
+        } catch {
+            journalSummaryBySessionId = PlannerReloadPolicy.value(
+                previous: journalSummaryBySessionId,
+                next: nil,
+                failed: true
+            )
+            return false
+        }
     }
 }
 

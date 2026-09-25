@@ -186,7 +186,7 @@ struct MacPlannerView: View {
                 selectedGroupId: Binding(get: { vm.selectedGroupId }, set: { vm.selectGroup($0) }),
                 searchText: Binding(
                     get: { vm.searchText },
-                    set: { vm.searchText = $0; vm.applySearch() }
+                    set: { vm.searchText = $0; vm.scheduleSearch() }
                 ),
                 density: Binding(get: { vm.density }, set: { vm.density = $0 }),
                 groups: vm.groups,

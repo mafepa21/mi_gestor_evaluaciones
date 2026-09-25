@@ -47,6 +47,7 @@ struct PlannerDayView: View {
     @State private var undoDismissTask: Task<Void, Never>?
     @State private var quickNoteSession: PlanningSession?
     @State private var quickNoteText = ""
+    @State private var quickNoteError: String?
     @State private var dragTranslation: CGFloat = 0
     @State private var showingQuickJournal = false
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
@@ -70,19 +71,41 @@ struct PlannerDayView: View {
         .sheet(
             isPresented: Binding(
                 get: { quickNoteSession != nil },
-                set: { if !$0 { quickNoteSession = nil } }
+                set: {
+                    if !$0 {
+                        quickNoteSession = nil
+                        quickNoteError = nil
+                    }
+                }
             )
         ) {
             if let session = quickNoteSession {
                 PlannerQuickNoteSheet(
                     session: session,
                     text: $quickNoteText,
-                    onCancel: { quickNoteSession = nil },
-                    onSave: {
-                        let text = quickNoteText
+                    errorMessage: quickNoteError,
+                    onCancel: {
                         quickNoteSession = nil
-                        quickNoteText = ""
-                        Task { await vm.quickAddObservation(to: session, text: text) }
+                        quickNoteError = nil
+                    },
+                    onSave: {
+                        Task {
+                            let text = quickNoteText
+                            let succeeded = await vm.quickAddObservation(to: session, text: text)
+                            if SessionJournalQuickNoteSaveGate.shouldClearDraft(succeeded: succeeded) {
+                                quickNoteSession = nil
+                                quickNoteText = ""
+                                quickNoteError = nil
+                            } else {
+                                let detail: String
+                                if case .failed(let message) = vm.journalSaveState {
+                                    detail = message
+                                } else {
+                                    detail = ""
+                                }
+                                quickNoteError = SessionJournalQuickNoteSaveGate.failureMessage(detail: detail)
+                            }
+                        }
                     }
                 )
             }
@@ -276,6 +299,7 @@ struct PlannerDayView: View {
                 onComplete: { completeSession(session) },
                 onQuickNote: {
                     quickNoteText = ""
+                    quickNoteError = nil
                     quickNoteSession = session
                 }
             )
@@ -664,6 +688,7 @@ private struct PlannerDayNowMarker: View {
 private struct PlannerQuickNoteSheet: View {
     let session: PlanningSession
     @Binding var text: String
+    let errorMessage: String?
     let onCancel: () -> Void
     let onSave: () -> Void
     @FocusState private var isFocused: Bool
@@ -684,6 +709,12 @@ private struct PlannerQuickNoteSheet: View {
                     .focused($isFocused)
                     .padding(8)
                     .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                if let errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                }
 
                 Spacer()
             }

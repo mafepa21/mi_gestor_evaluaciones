@@ -49,11 +49,13 @@ struct NotebookModuleView: View {
     let macPresentation: NotebookMacPresentation
     @State var addColumnContext: NotebookAddColumnContext? = nil
     @State var searchText = ""
+    @State var debouncedGridSearchText = ""
     @State var isSearchPresented = false
     @State var selectedGroupId: Int64? = nil
     @State var selectedColumnId: String? = nil
     @State var viewPreset: NotebookViewPreset = .all
     @State var surfaceMode: NotebookSurfaceMode = .grid
+    @State var notebookSignalsClassId: Int64?
     @State var todayAttendanceByStudentId: [Int64: String] = [:]
     @State var incidentCountByStudentId: [Int64: Int] = [:]
     @State var activeSupportMeasureStudentIds: Set<Int64> = []
@@ -259,6 +261,7 @@ struct NotebookModuleView: View {
         redoStack = []
         selectedCellRange = nil
         refreshNotebookEditMenu()
+        notebookSignalsClassId = nil
         todayAttendanceByStudentId = [:]
         incidentCountByStudentId = [:]
         localInjuryStatuses = [:]
@@ -518,6 +521,11 @@ struct NotebookModuleView: View {
         .appOnChange(of: toolbarStateKey(data: data)) { _ in
             if !isMacInspectorOnly {
                 scheduleToolbarStateSync(data: data)
+            }
+        }
+        .appOnChange(of: selectedGroupId) { _ in
+            if NotebookColumnGradeSave.shouldPersistNow(.groupOrClassChange) {
+                bridge.flushAnyPendingColumnGradeSave()
             }
         }
     }
@@ -1749,6 +1757,13 @@ struct NotebookModuleView: View {
                                 }
                                 .foregroundStyle(saveBadge.color)
 
+                                if bridge.status.hasPrefix("No se pudo guardar la asistencia") {
+                                    Text(bridge.status)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.red)
+                                        .lineLimit(2)
+                                }
+
                                 if notebookStore.notebookSplitSaveState.state == .failed {
                                     Button {
                                         bridge.saveNotebook()
@@ -1907,6 +1922,11 @@ struct NotebookModuleView: View {
                 .toolbarRole(.editor)
                 .notebookPresentedSearchable(if: toolbarMode == .inlineCompact, text: $searchText, isPresented: $isSearchPresented, prompt: "Buscar alumno")
                 .avoidHidingContentDuringSearch()
+                .task(id: searchText) {
+                    try? await Task.sleep(nanoseconds: NotebookGridSearch.debounceNanoseconds)
+                    guard !Task.isCancelled else { return }
+                    debouncedGridSearchText = searchText
+                }
         }
     }
 

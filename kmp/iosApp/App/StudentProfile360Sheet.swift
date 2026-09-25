@@ -39,6 +39,7 @@ enum StudentProfile360Tab: String, CaseIterable, Identifiable {
 // MARK: - Componente Principal: Ficha 360º del Alumno
 
 struct StudentProfile360Sheet: View {
+    static let injurySaveFailureMessage = "No se pudo guardar la lesión. El estado no ha cambiado."
     let studentId: Int64
     let classId: Int64?
     let allStudents: [Student]
@@ -51,12 +52,14 @@ struct StudentProfile360Sheet: View {
 
     @State private var selectedTab: StudentProfile360Tab = .academic
     @State private var profile: KmpBridge.StudentProfileSnapshot? = nil
+    @State private var loadedProfileStudentId: Int64?
     @State private var supportMeasures: [SupportMeasureRow] = []
     @State private var tutoringSessions: [TutoringSessionRow] = []
     @State private var educationalInsight: StudentInsightDraft? = nil
     @State private var isLoading = true
     @State private var isGeneratingInsight = false
     @State private var isTogglingInjury = false
+    @State private var injuryError: String?
     @State private var showCopiedAlert = false
     @State private var showTutoringSheet = false
     @State private var orchestrator = AppleAIOrchestrator()
@@ -780,6 +783,12 @@ struct StudentProfile360Sheet: View {
                     .disabled(isTogglingInjury)
                 }
 
+                if let injuryError {
+                    Text(injuryError)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                }
+
                 if isInjured {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -1044,21 +1053,36 @@ struct StudentProfile360Sheet: View {
         guard let student = currentStudent, !isTogglingInjury else { return }
         isTogglingInjury = true
         Task { @MainActor in
-            try? await bridge.updateStudentInjuryStatus(
-                studentId: student.id,
-                isInjured: !student.isInjured,
-                classId: classId
-            )
-            await loadProfileData()
+            do {
+                try await bridge.updateStudentInjuryStatus(
+                    studentId: student.id,
+                    isInjured: !student.isInjured,
+                    classId: classId
+                )
+                injuryError = nil
+                await loadProfileData()
+            } catch {
+                injuryError = Self.injurySaveFailureMessage
+            }
             isTogglingInjury = false
         }
     }
 
     private func loadProfileData() async {
         isLoading = true
-        profile = try? await bridge.loadStudentProfile(studentId: studentId, classId: classId)
-        supportMeasures = ((try? await bridge.supportMeasures(for: studentId)) ?? []).map(\.asRow)
-        tutoringSessions = ((try? await bridge.tutoringSessions(for: studentId)) ?? []).map(\.asRow)
+        let samePerson = loadedProfileStudentId == studentId
+        let loadedProfile = try? await bridge.loadStudentProfile(studentId: studentId, classId: classId)
+        let loadedMeasures = try? await bridge.supportMeasures(for: studentId)
+        let loadedTutoring = try? await bridge.tutoringSessions(for: studentId)
+        if loadedProfile == nil || loadedMeasures == nil || loadedTutoring == nil {
+            bridge.status = ProfileReloadKeep.failureMessage
+        }
+        profile = ProfileReloadKeep.snapshot(loaded: loadedProfile, previous: profile, samePerson: samePerson)
+        supportMeasures = ProfileReloadKeep.list(loaded: loadedMeasures?.map(\.asRow), previous: supportMeasures, samePerson: samePerson)
+        tutoringSessions = ProfileReloadKeep.list(loaded: loadedTutoring?.map(\.asRow), previous: tutoringSessions, samePerson: samePerson)
+        if loadedProfile != nil || loadedMeasures != nil || loadedTutoring != nil {
+            loadedProfileStudentId = studentId
+        }
         isLoading = false
     }
 

@@ -1,6 +1,54 @@
 import SwiftUI
 import MiGestorKit
 
+/// Si falla borrar una columna del cuaderno, el aviso debe quedar en español
+/// (sin fingir que la columna ya se eliminó).
+enum NotebookColumnDeleteGate {
+    static let successMessage = "Columna eliminada"
+    static let saveFailureMessage =
+        "No se pudo eliminar la columna. Pulsa otra vez para reintentar."
+    static let bulkFailureMessage =
+        "No se pudieron eliminar las columnas. Pulsa otra vez para reintentar."
+
+    enum BulkOutcome: Equatable {
+        case success(deleted: Int)
+        case partial(deleted: Int, failed: Int)
+        case failure(failed: Int)
+    }
+
+    static func toastMessage(succeeded: Bool) -> String {
+        succeeded ? successMessage : saveFailureMessage
+    }
+
+    static func failureMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return saveFailureMessage }
+        return "\(saveFailureMessage) \(trimmed)"
+    }
+
+    /// Decide el aviso del borrado masivo solo con contadores (sin tocar UI).
+    static func bulkOutcome(succeeded: Int, failed: Int) -> BulkOutcome {
+        if failed == 0 {
+            return .success(deleted: max(0, succeeded))
+        }
+        if succeeded <= 0 {
+            return .failure(failed: max(0, failed))
+        }
+        return .partial(deleted: succeeded, failed: failed)
+    }
+
+    static func bulkToastMessage(_ outcome: BulkOutcome) -> String {
+        switch outcome {
+        case .success(let deleted):
+            return deleted == 1 ? successMessage : "\(deleted) columnas eliminadas"
+        case .partial(let deleted, let failed):
+            return "Se eliminaron \(deleted) columnas; \(failed) no se pudieron borrar. Las que fallaron siguen en pantalla."
+        case .failure:
+            return bulkFailureMessage
+        }
+    }
+}
+
 extension NotebookModuleView {
     func presentCreateCategory() {
         editingCategoryId = nil
@@ -137,9 +185,21 @@ extension NotebookModuleView {
             pendingDeleteColumn = nil
             return
         }
-        bridge.deleteColumn(id: column.id, evaluationId: column.evaluationId?.int64Value)
-        showToast("Columna eliminada", style: .warning)
         pendingDeleteColumn = nil
+        Task { @MainActor in
+            do {
+                try await bridge.deleteColumnAwaitingSuccess(
+                    id: column.id,
+                    evaluationId: column.evaluationId?.int64Value
+                )
+                showToast(NotebookColumnDeleteGate.toastMessage(succeeded: true), style: .warning)
+            } catch {
+                showToast(
+                    NotebookColumnDeleteGate.failureMessage(detail: error.localizedDescription),
+                    style: .warning
+                )
+            }
+        }
     }
 
     func presentDeleteColumnImpact(_ column: NotebookColumnDefinition) {
@@ -243,8 +303,17 @@ extension NotebookModuleView {
             pendingDeleteCategory = nil
         case .columns:
             let idsAndEvalIds = impact.affectedColumns.map { ($0.id, $0.evaluationId?.int64Value) }
-            bridge.deleteColumns(idsAndEvalIds: idsAndEvalIds)
-            showToast("\(impact.affectedColumns.count) columnas eliminadas", style: .warning)
+            pendingDeletionImpact = nil
+            deletionConfirmationText = ""
+            Task { @MainActor in
+                let result = await bridge.deleteColumnsAwaitingSuccess(idsAndEvalIds: idsAndEvalIds)
+                let outcome = NotebookColumnDeleteGate.bulkOutcome(
+                    succeeded: result.succeeded,
+                    failed: result.failed
+                )
+                showToast(NotebookColumnDeleteGate.bulkToastMessage(outcome), style: .warning)
+            }
+            return
         }
 
         pendingDeletionImpact = nil

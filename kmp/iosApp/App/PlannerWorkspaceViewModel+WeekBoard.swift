@@ -301,6 +301,35 @@ extension PlannerWorkspaceViewModel {
             let calendar = Calendar.current
             let groupsById = Dictionary(groups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
 
+            let weekEvents: [CalendarEvent]
+            if let firstDay = days.first, let lastDay = days.last {
+                var startComponents = DateComponents()
+                startComponents.year = Int(firstDay.year)
+                startComponents.month = Int(firstDay.monthNumber)
+                startComponents.day = Int(firstDay.dayOfMonth)
+                startComponents.hour = 0
+                startComponents.minute = 0
+                startComponents.second = 0
+                var endComponents = DateComponents()
+                endComponents.year = Int(lastDay.year)
+                endComponents.month = Int(lastDay.monthNumber)
+                endComponents.day = Int(lastDay.dayOfMonth)
+                endComponents.hour = 23
+                endComponents.minute = 59
+                endComponents.second = 59
+                if let weekStart = calendar.date(from: startComponents),
+                   let weekEnd = calendar.date(from: endComponents) {
+                    weekEvents = PlannerCalendarRange.overlapping(
+                        events: allEvents,
+                        rangeStartMs: Int64(weekStart.timeIntervalSince1970 * 1000),
+                        rangeEndMs: Int64(weekEnd.timeIntervalSince1970 * 1000)
+                    )
+                } else {
+                    weekEvents = allEvents
+                }
+            } else {
+                weekEvents = allEvents
+            }
 
             for (index, dayDate) in days.enumerated() {
                 let dayOfWeek = index + 1
@@ -325,10 +354,15 @@ extension PlannerWorkspaceViewModel {
 
                 var dayList: [PlannerDayMilestone] = []
 
-                for event in allEvents {
+                for event in weekEvents {
                     let eventStartMs = event.startAt.toEpochMilliseconds()
                     let eventEndMs = event.endAt.toEpochMilliseconds()
-                    let overlaps = max(eventStartMs, startMs) <= min(eventEndMs, endMs)
+                    let overlaps = PlannerCalendarRange.overlaps(
+                        eventStartMs: eventStartMs,
+                        eventEndMs: eventEndMs,
+                        rangeStartMs: startMs,
+                        rangeEndMs: endMs
+                    )
                     guard overlaps else { continue }
 
                     let titleLower = event.title.lowercased()
@@ -423,7 +457,7 @@ extension PlannerWorkspaceViewModel {
             self.holidayDays = holidays
             rebuildWeekRenderModel()
         } catch {
-            print("Error al cargar festivos e hitos: \(error)")
+            bulkSummary = "No se pudieron cargar los festivos. Se mantienen los que ya ves."
         }
     }
 
@@ -441,7 +475,13 @@ extension PlannerWorkspaceViewModel {
         guard day >= 1 && day <= days.count else { return }
         let targetDate = days[day - 1]
         
-        let allEvents = (try? await bridge.plannerAllCalendarEvents()) ?? []
+        let allEvents: [CalendarEvent]
+        do {
+            allEvents = try await bridge.plannerAllCalendarEvents()
+        } catch {
+            bulkSummary = PlannerCalendarLoad.holidayReadFailure
+            return
+        }
         let calendar = Calendar.current
         
         var components = DateComponents()
@@ -493,7 +533,7 @@ extension PlannerWorkspaceViewModel {
             rebuildVisiblePlannerStructure()
             rebuildWeekRenderModel()
         } catch {
-            print("Error al alternar festivo: \(error)")
+            bulkSummary = PlannerCalendarLoad.holidaySaveFailure
         }
     }
 

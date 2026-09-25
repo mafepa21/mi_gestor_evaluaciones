@@ -1,6 +1,15 @@
 import SwiftUI
 import MiGestorKit
 
+enum DiaryTimelineSearch {
+    static let debounceNanoseconds: UInt64 = 200_000_000
+
+    /// El campo puede ir por delante. La lista solo filtra con el texto ya asentado.
+    static func queryForFeed(liveText: String, settledText: String) -> String {
+        settledText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 struct DiaryContinuousTimelineView: View {
     let bridge: KmpBridge
     let selectedClassId: Int64?
@@ -14,7 +23,10 @@ struct DiaryContinuousTimelineView: View {
     @State private var selectedQuarter: DiaryTimelineQuarter = .all
     @State private var selectedStatus: DiaryStatusFilter = .all
     @State private var searchText: String = ""
+    @State private var debouncedSearchText: String = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
     @State private var isLoading: Bool = false
+    @State private var loadError: String?
     @State private var isExportSheetPresented: Bool = false
     @Environment(\.colorScheme) private var colorScheme
 
@@ -57,7 +69,10 @@ struct DiaryContinuousTimelineView: View {
                 }
             }()
 
-            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let query = DiaryTimelineSearch.queryForFeed(
+                liveText: searchText,
+                settledText: debouncedSearchText
+            )
             let matchesSearch: Bool = {
                 guard !query.isEmpty else { return true }
                 let s = entry.session
@@ -106,7 +121,24 @@ struct DiaryContinuousTimelineView: View {
 
             Divider()
 
-            if isLoading && allClassSessions.isEmpty {
+            if let loadError, !allClassSessions.isEmpty {
+                Text(loadError)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+            }
+
+            if let loadError, allClassSessions.isEmpty {
+                Spacer()
+                ContentUnavailableView {
+                    Label("No se pudo cargar la bitácora", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(loadError)
+                }
+                Spacer()
+            } else if isLoading && allClassSessions.isEmpty {
                 Spacer()
                 ProgressView("Cargando bitácora continua de aula…")
                 Spacer()
@@ -168,6 +200,9 @@ struct DiaryContinuousTimelineView: View {
 
             IOSSearchField(text: $searchText, placeholder: "Buscar en bitácora…")
                 .frame(maxWidth: 200)
+                .appOnChange(of: searchText) { _ in
+                    scheduleSearchDebounce()
+                }
 
             Button {
                 isExportSheetPresented = true
@@ -177,6 +212,15 @@ struct DiaryContinuousTimelineView: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.capsule)
             .controlSize(.small)
+        }
+    }
+
+    private func scheduleSearchDebounce() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: DiaryTimelineSearch.debounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            debouncedSearchText = searchText
         }
     }
 
@@ -293,30 +337,31 @@ struct DiaryContinuousTimelineView: View {
     }
 
     // MARK: - Data Loading
+    static func schoolYearIsoBounds(year: Int, month: Int) -> (start: String, end: String) {
+        let startYear = month >= 9 ? year : year - 1
+        return ("\(startYear)-09-01", "\(startYear + 1)-06-30")
+    }
+
     private func reloadClassSessions() async {
         isLoading = true
+        let calendar = Calendar(identifier: .iso8601)
+        let bounds = Self.schoolYearIsoBounds(
+            year: calendar.component(.year, from: Date()),
+            month: calendar.component(.month, from: Date())
+        )
         do {
-            let all = try await bridge.plannerListAllSessions()
-            if let selectedClassId {
-                self.allClassSessions = all.filter { $0.groupId == selectedClassId }
-            } else {
-                self.allClassSessions = all
-            }
-
+            allClassSessions = try await bridge.plannerListSessions(
+                fromIso: bounds.start,
+                toIso: bounds.end,
+                classId: selectedClassId
+            )
             let sessionIds = allClassSessions.map(\.id)
             let summaries = try await bridge.plannerJournalSummaries(sessionIds: sessionIds)
-            self.journalSummaries = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
-
-            // Cargar agregados para notas completas
-            var aggregates: [Int64: SessionJournalAggregate] = [:]
-            for session in allClassSessions {
-                if let agg = try? await bridge.plannerJournal(for: session) {
-                    aggregates[session.id] = agg
-                }
-            }
-            self.journalAggregates = aggregates
+            journalSummaries = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
+            journalAggregates = [:]
+            loadError = nil
         } catch {
-            print("Error cargando sesiones de la clase: \(error)")
+            loadError = "No se pudo cargar la bitácora. Se mantienen las sesiones que ya ves."
         }
         isLoading = false
     }

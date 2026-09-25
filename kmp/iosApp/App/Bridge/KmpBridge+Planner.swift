@@ -49,6 +49,17 @@ extension KmpBridge {
         try await container.plannerRepository.listAllSessions()
     }
 
+    func plannerListSessions(fromIso: String, toIso: String, classId: Int64? = nil) async throws -> [PlanningSession] {
+        guard let fromDate = localDate(from: fromIso), let toDate = localDate(from: toIso) else {
+            throw NSError(domain: "KmpBridge", code: 400, userInfo: [NSLocalizedDescriptionKey: "Fechas de sesión no válidas"])
+        }
+        return try await container.plannerRepository.listSessionsInRange(
+            groupId: classId.map { KotlinLong(value: $0) },
+            fromDate: fromDate,
+            toDate: toDate
+        )
+    }
+
     func plannerListSessions(weekNumber: Int, year: Int, classId: Int64? = nil) async throws -> [PlanningSession] {
         let sessions = try await container.plannerRepository.listSessions(weekNumber: Int32(weekNumber), year: Int32(year))
         guard let classId else { return sessions }
@@ -56,8 +67,7 @@ extension KmpBridge {
     }
 
     func plannerGetSession(id: Int64) async throws -> PlanningSession {
-        let sessions = try await container.plannerRepository.listAllSessions()
-        guard let session = sessions.first(where: { $0.id == id }) else {
+        guard let session = try await container.plannerRepository.getSession(id: id) else {
             throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "Session not found"])
         }
         return session
@@ -486,7 +496,7 @@ extension KmpBridge {
         }
 
         if let existingWeeklyTemplateId {
-            try? await container.weeklyTemplateRepository.delete(slotId: existingWeeklyTemplateId)
+            try await container.weeklyTemplateRepository.delete(slotId: existingWeeklyTemplateId)
             enqueueLocalChange(
                 entity: "weekly_slot",
                 id: "\(existingWeeklyTemplateId)",
@@ -535,7 +545,7 @@ extension KmpBridge {
         let existingSlot = try await container.teacherScheduleRepository.getScheduleSlot(slotId: slotId)
         if let slot = try await container.teacherScheduleRepository.getScheduleSlot(slotId: slotId),
            let weeklyTemplateId = slot.weeklyTemplateId {
-            try? await container.weeklyTemplateRepository.delete(slotId: weeklyTemplateId.int64Value)
+            try await container.weeklyTemplateRepository.delete(slotId: weeklyTemplateId.int64Value)
         }
         try await container.teacherScheduleRepository.deleteScheduleSlot(slotId: slotId)
         enqueueLocalChange(

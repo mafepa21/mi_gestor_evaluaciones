@@ -1,6 +1,12 @@
 import SwiftUI
 import MiGestorKit
 
+enum NotebookSaveBadge {
+    static func showsFailure(splitFailed: Bool, inlineFailed: Bool) -> Bool {
+        splitFailed || inlineFailed
+    }
+}
+
 extension NotebookModuleView {
     var currentClass: SchoolClass? {
         bridge.classes.first(where: { $0.id == bridge.notebookViewModel.currentClassId?.int64Value ?? 0 })
@@ -15,7 +21,10 @@ extension NotebookModuleView {
     }
 
     var saveBadge: (text: String, icon: String, color: Color) {
-        if bridge.notebookSplitSaveState.state == .failed {
+        if NotebookSaveBadge.showsFailure(
+            splitFailed: bridge.notebookSplitSaveState.state == .failed,
+            inlineFailed: notebookStore.notebookSaveState == .failed
+        ) {
             return ("Error al guardar", "exclamationmark.triangle.fill", .red)
         } else if bridge.notebookSplitSaveState.isSaved {
             return ("Guardado", "checkmark.circle.fill", .secondary)
@@ -184,6 +193,9 @@ extension NotebookModuleView {
 
     func clearNotebookRowFilters() {
         searchText = ""
+        if NotebookColumnGradeSave.shouldPersistNow(.groupOrClassChange) {
+            bridge.flushAnyPendingColumnGradeSave()
+        }
         selectedGroupId = nil
         layoutState.setNotebookSearchText("")
         layoutState.setNotebookGroupFilter(nil)
@@ -368,7 +380,7 @@ extension NotebookModuleView {
         let groupKey = selectedGroupId ?? -1
         let inspectorKey = inspectorSelection?.id ?? "none"
         let tabKey = bridge.selectedNotebookTabId ?? "all"
-        return "\(classKey)|\(tabKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(isQuickKeypadPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)|\(searchText)"
+        return "\(classKey)|\(tabKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(isQuickKeypadPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)"
     }
 
     var notebookRiskRefreshKey: String {

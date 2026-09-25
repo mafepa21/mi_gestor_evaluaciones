@@ -3,6 +3,385 @@ import MiGestorKit
 import Security
 import CryptoKit
 
+enum PlanningSessionSyncMerge {
+    static func placement(previous: Int32, incoming: Int64?, keyPresent: Bool) -> Int32 {
+        guard keyPresent, let incoming else { return previous }
+        return Int32(incoming)
+    }
+}
+
+enum SituationVersionSyncMerge {
+    static func keptId(incoming: Int64, matched: Int64?) -> Int64 {
+        if let matched, matched > 0 { return matched }
+        return incoming
+    }
+
+    static func number(previous: Int32, incoming: Int32?, keyPresent: Bool) -> Int32 {
+        if keyPresent, let incoming, incoming > 0 { return incoming }
+        return previous
+    }
+}
+
+enum LearningSituationSyncMerge {
+    static func staysDraft(previousIsDraft: Bool, incoming: String?, keyPresent: Bool) -> Bool {
+        guard keyPresent else { return previousIsDraft }
+        return incoming == "DRAFT"
+    }
+}
+
+enum TeachingUnitSyncMerge {
+    static func text(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        keyPresent ? (incoming ?? "") : previous
+    }
+}
+
+enum TeacherScheduleSyncMerge {
+    static func text(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        guard keyPresent else { return previous }
+        return incoming ?? previous
+    }
+
+    static func dates(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        keyPresent ? (incoming ?? "") : previous
+    }
+
+    static func longId(previous: Int64, incoming: Int64?, keyPresent: Bool) -> Int64 {
+        guard keyPresent else { return previous }
+        return incoming ?? previous
+    }
+}
+
+enum PlannerEvaluationPeriodSyncMerge {
+    static func text(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        keyPresent ? (incoming ?? "") : previous
+    }
+
+    static func dates(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        keyPresent ? (incoming ?? "") : previous
+    }
+
+    static func sortOrder(previous: Int32, incoming: Int64?, keyPresent: Bool) -> Int32 {
+        guard keyPresent else { return previous }
+        return Int32(incoming ?? Int64(previous))
+    }
+}
+
+enum LearningSituationLinkSyncMerge {
+    static func label(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        keyPresent ? (incoming ?? "") : previous
+    }
+
+    static func keptId(incoming: Int64, matched: Int64?) -> Int64 {
+        if let matched, matched > 0 { return matched }
+        return incoming
+    }
+}
+
+enum WeeklySlotSyncMerge {
+    struct ExistingSlot: Equatable {
+        let id: Int64
+        let dayOfWeek: Int
+        let startTime: String
+        let endTime: String
+    }
+
+    static func matchedId(
+        incomingId: Int64,
+        dayOfWeek: Int,
+        startTime: String,
+        endTime: String,
+        existing: [ExistingSlot]
+    ) -> Int64? {
+        if incomingId > 0, let byId = existing.first(where: { $0.id == incomingId }) {
+            return byId.id
+        }
+        return existing.first(where: {
+            $0.dayOfWeek == dayOfWeek
+                && $0.startTime == startTime
+                && $0.endTime == endTime
+        })?.id
+    }
+
+    static func keptId(incoming: Int64, matched: Int64?) -> Int64 {
+        if let matched, matched > 0 { return matched }
+        return incoming
+    }
+}
+
+enum TeacherScheduleSlotSyncMerge {
+    static func text(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        keyPresent ? (incoming ?? "") : previous
+    }
+
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming?.nilIfEmpty : previous
+    }
+
+    static func dayOfWeek(previous: Int32, incoming: Int64?, keyPresent: Bool) -> Int32 {
+        guard keyPresent else { return previous }
+        return Int32(incoming ?? Int64(previous))
+    }
+
+    static func longId(previous: Int64, incoming: Int64?, keyPresent: Bool) -> Int64 {
+        guard keyPresent else { return previous }
+        return incoming ?? previous
+    }
+
+    static func optionalLongId(previous: Int64?, incoming: Int64?, keyPresent: Bool) -> Int64? {
+        guard keyPresent else { return previous }
+        return incoming.flatMap { $0 > 0 ? $0 : nil }
+    }
+}
+
+enum InstrumentItemMerge {
+    static func options(previous: [String], incoming: [String]?) -> [String] {
+        incoming ?? previous
+    }
+
+    static func flag(previous: Bool, incoming: Bool?) -> Bool {
+        incoming ?? previous
+    }
+
+    static func order(previous: Int, incoming: Int?) -> Int {
+        incoming ?? previous
+    }
+}
+
+enum InstrumentResponseMerge {
+    static func replacing<T>(existing: [T]?, removeWhere: (T) -> Bool, incoming: T) -> [T]? {
+        guard var kept = existing else { return nil }
+        kept.removeAll(where: removeWhere)
+        kept.append(incoming)
+        return kept
+    }
+
+    static func removing<T>(existing: [T]?, removeWhere: (T) -> Bool) -> [T]? {
+        guard var kept = existing else { return nil }
+        kept.removeAll(where: removeWhere)
+        return kept
+    }
+}
+
+enum GradeSyncMerge {
+    static func optionalDouble(previous: Double?, incoming: Double?, keyPresent: Bool) -> Double? {
+        keyPresent ? incoming : previous
+    }
+
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming : previous
+    }
+}
+
+enum AttendanceSyncMerge {
+    static func text(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        keyPresent ? (incoming ?? "") : previous
+    }
+
+    static func flag(previous: Bool, incoming: Bool?, keyPresent: Bool) -> Bool {
+        keyPresent ? (incoming ?? false) : previous
+    }
+}
+
+enum IncidentSyncMerge {
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming : previous
+    }
+
+    static func severity(previous: String?, incoming: String?, keyPresent: Bool) -> String {
+        if keyPresent {
+            return incoming ?? previous ?? "low"
+        }
+        return previous ?? "low"
+    }
+}
+
+enum StudentSyncMerge {
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming : previous
+    }
+
+    static func flag(previous: Bool, incoming: Bool?, keyPresent: Bool) -> Bool {
+        keyPresent ? (incoming ?? false) : previous
+    }
+
+    static func value<T>(previous: T, incoming: T, keyPresent: Bool) -> T {
+        keyPresent ? incoming : previous
+    }
+
+    static func optionalValue<T>(previous: T?, incoming: T?, keyPresent: Bool) -> T? {
+        keyPresent ? incoming : previous
+    }
+}
+
+enum NotebookCellSyncMerge {
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming : previous
+    }
+
+    static func optionalBool(previous: Bool?, incoming: Bool?, keyPresent: Bool) -> Bool? {
+        keyPresent ? incoming : previous
+    }
+
+    static func attachmentUris(previous: [String], incoming: [String]?, keyPresent: Bool) -> [String] {
+        keyPresent ? (incoming ?? []) : previous
+    }
+}
+
+enum CalendarEventSyncMerge {
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming : previous
+    }
+
+    static func optionalClassId(previous: Int64?, incoming: Int64?, keyPresent: Bool) -> Int64? {
+        guard keyPresent else { return previous }
+        return incoming.flatMap { $0 > 0 ? $0 : nil }
+    }
+}
+
+enum NotebookColumnSyncMerge {
+    static func flag(previous: Bool, incoming: Bool?, keyPresent: Bool) -> Bool {
+        guard keyPresent else { return previous }
+        return incoming ?? previous
+    }
+
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming : previous
+    }
+
+    static func optionalLong(previous: Int64?, incoming: Int64?, keyPresent: Bool) -> Int64? {
+        keyPresent ? incoming : previous
+    }
+
+    static func weight(previous: Double, incoming: Double?, keyPresent: Bool) -> Double {
+        guard keyPresent else { return previous }
+        return incoming ?? previous
+    }
+
+    static func order(previous: Int32, incoming: Int?, keyPresent: Bool) -> Int32 {
+        guard keyPresent else { return previous }
+        return incoming.map { Int32($0) } ?? previous
+    }
+
+    static func typeValue<T>(previous: T, incoming: T?, keyPresent: Bool) -> T {
+        guard keyPresent else { return previous }
+        return incoming ?? previous
+    }
+}
+
+enum NotebookTabSyncMerge {
+    static func order(previous: Int32, incoming: Int?, keyPresent: Bool) -> Int32 {
+        guard keyPresent else { return previous }
+        return incoming.map { Int32($0) } ?? previous
+    }
+
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming : previous
+    }
+}
+
+enum NotebookGroupSyncMerge {
+    static func order(previous: Int32, incoming: Int?, keyPresent: Bool) -> Int32 {
+        guard keyPresent else { return previous }
+        return incoming.map { Int32($0) } ?? previous
+    }
+
+    static func optionalLong(previous: Int64?, incoming: Int64?, keyPresent: Bool) -> Int64? {
+        keyPresent ? incoming : previous
+    }
+}
+
+enum EvaluationSyncMerge {
+    static func weight(previous: Double, incoming: Double?, keyPresent: Bool) -> Double {
+        guard keyPresent else { return previous }
+        return incoming ?? previous
+    }
+
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming : previous
+    }
+
+    static func optionalLong(previous: Int64?, incoming: Int64?, keyPresent: Bool) -> Int64? {
+        keyPresent ? incoming : previous
+    }
+}
+
+enum RubricBundleSyncMerge {
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming : previous
+    }
+
+    static func optionalLong(previous: Int64?, incoming: Int64?, keyPresent: Bool) -> Int64? {
+        keyPresent ? incoming : previous
+    }
+
+    static func text(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        keyPresent ? (incoming ?? "") : previous
+    }
+
+    static func weight(previous: Double, incoming: Double?, keyPresent: Bool) -> Double {
+        guard keyPresent else { return previous }
+        return incoming ?? previous
+    }
+
+    static func order(previous: Int32, incoming: Int?, keyPresent: Bool) -> Int32 {
+        guard keyPresent else { return previous }
+        return incoming.map { Int32($0) } ?? previous
+    }
+
+    /// Puntos del nivel: clave ausente conserva; presente con nil no inventa 0.
+    static func points(previous: Int32, incoming: Int?, keyPresent: Bool) -> Int32 {
+        guard keyPresent else { return previous }
+        return incoming.map { Int32($0) } ?? previous
+    }
+}
+
+/// Contrato del diario de sesión: clave ausente conserva texto/puntuación local.
+/// El apply usa `SessionJournalSyncCodec.forLocalUpsert(..., existing:)` (decodeKeepingAbsent).
+enum SessionJournalSyncMerge {
+    static func text(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        keyPresent ? (incoming ?? "") : previous
+    }
+
+    static func score(previous: Int32, incoming: Int?, keyPresent: Bool) -> Int32 {
+        guard keyPresent else { return previous }
+        return incoming.map { Int32($0) } ?? previous
+    }
+}
+
+enum AcademicYearSyncMerge {
+    static func flag(previous: Bool, incoming: Bool?, keyPresent: Bool) -> Bool {
+        keyPresent ? (incoming ?? false) : previous
+    }
+
+    static func status(previous: String, incoming: String?, keyPresent: Bool) -> String {
+        keyPresent ? (incoming ?? previous) : previous
+    }
+
+    static func centerId(previous: Int64, incoming: Int64?, keyPresent: Bool) -> Int64 {
+        guard keyPresent else { return previous }
+        return incoming ?? previous
+    }
+
+    static func epochMs(previous: Int64, incoming: Int64?, keyPresent: Bool) -> Int64 {
+        guard keyPresent else { return previous }
+        return incoming ?? previous
+    }
+
+    static func optionalEpochMs(previous: Int64?, incoming: Int64?, keyPresent: Bool) -> Int64? {
+        keyPresent ? incoming : previous
+    }
+}
+
+enum ClassSyncMerge {
+    static func optionalText(previous: String?, incoming: String?, keyPresent: Bool) -> String? {
+        keyPresent ? incoming : previous
+    }
+
+    static func optionalLong(previous: Int64?, incoming: Int64?, keyPresent: Bool) -> Int64? {
+        keyPresent ? incoming : previous
+    }
+}
+
 extension KmpBridge {
     func pairLanSync(
         host: String,
@@ -123,12 +502,53 @@ extension KmpBridge {
     }
 
     func pullMissingSyncChanges() async {
-        do {
-            try await performPullSync(silent: false)
-        } catch {
+        manualSyncTask?.cancel()
+        let task = Task { @MainActor in
             publishSyncState {
-                $0.syncStatusMessage = "Pull manual fallido: \(error.localizedDescription)"
+                $0.syncStatusMessage = "Sincronizando…"
             }
+            do {
+                try await performPullSync(silent: false)
+            } catch is CancellationError {
+                publishSyncState {
+                    $0.syncStatusMessage = SyncLanCancelAffordances.cancelledStatusMessage
+                }
+            } catch {
+                publishSyncState {
+                    $0.syncStatusMessage = "Pull manual fallido: \(error.localizedDescription)"
+                }
+            }
+        }
+        manualSyncTask = task
+        await task.value
+    }
+
+    func pushPendingSyncChanges() async {
+        manualSyncTask?.cancel()
+        let task = Task { @MainActor in
+            publishSyncState {
+                $0.syncStatusMessage = "Sincronizando…"
+            }
+            do {
+                try await performPushSync(silent: false)
+            } catch is CancellationError {
+                publishSyncState {
+                    $0.syncStatusMessage = SyncLanCancelAffordances.cancelledStatusMessage
+                }
+            } catch {
+                publishSyncState {
+                    $0.syncStatusMessage = "Push manual fallido: \(error.localizedDescription)"
+                }
+            }
+        }
+        manualSyncTask = task
+        await task.value
+    }
+
+    func cancelLanSync() {
+        manualSyncTask?.cancel()
+        publishSyncState {
+            $0.syncStatusMessage = SyncLanCancelAffordances.cancelledStatusMessage
         }
     }
 
@@ -315,6 +735,12 @@ extension KmpBridge {
         }
 
         let cursor = sinceEpochMsOverride ?? lastSyncCursorEpochMs
+        if !silent {
+            publishSyncState {
+                $0.syncStatusMessage = "Sincronizando…"
+            }
+        }
+        try Task.checkCancellation()
         let pull: LanPullResult
         do {
             pull = try await lanSyncClient.pull(
@@ -336,7 +762,8 @@ extension KmpBridge {
                 pinnedFingerprint: pairedServerFingerprint
             )
         }
-        
+
+        try Task.checkCancellation()
         try await applyIncomingLanChanges(
             pull.changes,
             serverEpochMs: pull.serverEpochMs,
@@ -404,25 +831,28 @@ extension KmpBridge {
             do {
                 try await self.refreshDashboard()
                 guard !Task.isCancelled else { return }
-                try await self.refreshClasses()
-                guard !Task.isCancelled else { return }
-                try await self.refreshStudentsDirectory()
-                guard !Task.isCancelled else { return }
-                try await self.refreshRubrics()
-                guard !Task.isCancelled else { return }
-                try await self.refreshRubricClassLinks()
-                guard !Task.isCancelled else { return }
-                try await self.refreshPlanning()
-                guard !Task.isCancelled else { return }
-
-                // Solo refrescar el cuaderno si alguno de los cambios sincronizados
-                // afecta a entidades del cuaderno (grades, columnas, celdas, rúbricas).
-                // Esto evita recargas innecesarias cuando solo cambian clases o alumnos.
-                let notebookEntityTypes: Set<String> = [
-                    "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell", "rubric_assessment", "student", "class", "class_roster", "evaluation", "notebook_group", "notebook_group_member", "notebook_instrument_template", "notebook_instrument_item", "notebook_instrument_response"
-                ]
+                let entities = Set(capturedChanges.map(\.entity))
+                let plan = LanSyncRefreshPlan.steps(entities: entities)
+                if plan.classes {
+                    try await self.refreshClasses()
+                    guard !Task.isCancelled else { return }
+                }
+                if plan.students {
+                    try await self.refreshStudentsDirectory()
+                    guard !Task.isCancelled else { return }
+                }
+                if plan.rubrics {
+                    try await self.refreshRubrics()
+                    guard !Task.isCancelled else { return }
+                    try await self.refreshRubricClassLinks()
+                    guard !Task.isCancelled else { return }
+                }
+                if plan.planning {
+                    try await self.refreshPlanning()
+                    guard !Task.isCancelled else { return }
+                }
                 let hasNotebookChangesFromRemote = capturedChanges.contains {
-                    notebookEntityTypes.contains($0.entity) && $0.deviceId != capturedLocalDeviceId
+                    plan.notebookEntities.contains($0.entity) && $0.deviceId != capturedLocalDeviceId
                 }
                 if hasNotebookChangesFromRemote {
                     self.refreshCurrentNotebook()
@@ -449,6 +879,13 @@ extension KmpBridge {
             return
         }
 
+        if !silent {
+            publishSyncState {
+                $0.syncStatusMessage = "Sincronizando…"
+            }
+        }
+        try Task.checkCancellation()
+
         // Snapshot lo que vamos a enviar. Los cambios que se encolen mientras la
         // petición de red está en curso (el `await`) no deben perderse cuando
         // limpiemos la cola al recibir la respuesta.
@@ -465,6 +902,7 @@ extension KmpBridge {
                 pinnedFingerprint: pairedServerFingerprint
             )
         } catch {
+            try Task.checkCancellation()
             guard recoverHostAfterNetworkChange(previousHost: host), let reboundHost = pairedSyncHost else {
                 throw error
             }
@@ -477,17 +915,20 @@ extension KmpBridge {
                 pinnedFingerprint: pairedServerFingerprint
             )
         }
-        // Un round-trip exitoso significa que el servidor ya resolvió cada cambio
-        // del lote (aplicado, ignorado por LWW o rechazado por payload inválido).
-        // Reintentar un ignored/failed sin una edición local más reciente nunca
-        // tendría éxito, así que soltamos siempre el snapshot enviado en vez de
-        // condicionar a `applied > 0` — de lo contrario un lote totalmente
-        // ignorado reintentaría para siempre y "pendientes" nunca bajaría a 0.
-        // Solo quitamos las entradas que coinciden exactamente con lo enviado:
-        // si el mismo entity/id se volvió a editar durante el `await`, la entrada
-        // más nueva en la cola no será igual (Equatable) al snapshot y se conserva.
-        pendingOutboundChanges.removeAll { sentChanges.contains($0) }
-        persistPendingChanges()
+        try Task.checkCancellation()
+        // Si hubo fallos, el lote enviado sigue pendiente para el siguiente sync.
+        // Sin IDs por cambio en el ack, no podemos soltar solo los aplicados.
+        // Si failed == 0 (aplicados o ignorados por LWW) o el Mac manda, sí
+        // soltamos el snapshot enviado. Solo quitamos entradas iguales a lo
+        // enviado: una edición más nueva durante el await no es Equatable y se
+        // conserva.
+        if SyncLanPushPendingPolicy.shouldClearSentPending(
+            failed: ack.failed,
+            desktopAuthoritative: ack.desktopAuthoritative
+        ) {
+            pendingOutboundChanges.removeAll { sentChanges.contains($0) }
+            persistPendingChanges()
+        }
         if ack.desktopAuthoritative {
             try await performPullSync(
                 silent: true,
@@ -500,9 +941,12 @@ extension KmpBridge {
             $0.syncLastRunAt = Date()
         }
         if !silent {
-            let statusMessage = ack.desktopAuthoritative
-                ? "macOS prevalece; cambios locales descartados"
-                : "Push OK (\(ack.applied) aplicados)"
+            let statusMessage = SyncLanPushCloseCopy.statusMessage(
+                applied: ack.applied,
+                failed: ack.failed,
+                sentTotal: sentChanges.count,
+                desktopAuthoritative: ack.desktopAuthoritative
+            )
             publishSyncState {
                 $0.syncStatusMessage = statusMessage
             }
@@ -535,6 +979,69 @@ extension KmpBridge {
     func invalidateNotebookCellValueIndexCache() {
         cachedNotebookStateIdentity = nil
         cachedNotebookCellValueIndex = nil
+    }
+
+    func scheduleEditedNotebookValueSync(classId: Int64, studentId: Int64, column: NotebookColumnDefinition, value: String) {
+        if !NotebookSyncScope.sendsOnlyEditedCell(column.type) {
+            scheduleGradeSnapshotSync(forClassId: classId)
+            return
+        }
+        pendingGradeSnapshotTask?.cancel()
+        pendingGradeSnapshotTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            self.enqueueEditedNotebookValue(classId: classId, studentId: studentId, column: column, value: value)
+            self.persistPendingChanges()
+            self.triggerAutoSyncSoon(delayNanoseconds: 900_000_000)
+        }
+    }
+
+    private func enqueueEditedNotebookValue(classId: Int64, studentId: Int64, column: NotebookColumnDefinition, value: String) {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let id = "\(classId)-\(studentId)-\(column.id)"
+        if column.type == .numeric {
+            enqueueLocalChange(
+                entity: "grade",
+                id: id,
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "classId": classId,
+                    "studentId": studentId,
+                    "columnId": column.id,
+                    "evaluationId": column.evaluationId?.int64Value ?? 0,
+                    "value": Double(value.replacingOccurrences(of: ",", with: ".")) ?? NSNull()
+                ],
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
+            )
+            return
+        }
+        var payload: [String: Any] = [
+            "classId": classId,
+            "studentId": studentId,
+            "columnId": column.id
+        ]
+        switch column.type {
+        case .text, .attendance:
+            payload["textValue"] = value
+        case .check:
+            payload["boolValue"] = value == "true"
+        case .icon:
+            payload["iconValue"] = value
+        case .ordinal:
+            payload["ordinalValue"] = value
+        default:
+            break
+        }
+        enqueueLocalChange(
+            entity: "notebook_cell",
+            id: id,
+            updatedAtEpochMs: nowMs,
+            payload: payload,
+            shouldPersist: false,
+            shouldScheduleAutoSync: false
+        )
     }
 
     func scheduleGradeSnapshotSync(forClassId classId: Int64) {
@@ -1010,7 +1517,23 @@ extension KmpBridge {
 
     private func applyPulledChanges(_ changes: [LanSyncChange]) async throws {
         let orderedChanges = orderedPulledChanges(changes)
+        let applyTotal = orderedChanges.count
+        var failedCount = 0
+        // Parseo JSON fuera de MainActor; las suspend de KMP siguen en MainActor.
+        let payloadStrings = orderedChanges.map(\.payload)
+        let parsedPayloads = await Task.detached(priority: .utility) {
+            payloadStrings.map { LanSyncPayloadParser.dictionary(from: $0) }
+        }.value
         for (index, change) in orderedChanges.enumerated() {
+            let hechos = index + 1
+            if SyncLanApplyProgressCopy.shouldPublishProgress(hechos: hechos, total: applyTotal) {
+                publishSyncState {
+                    $0.syncStatusMessage = SyncLanApplyProgressCopy.statusMessage(
+                        hechos: hechos,
+                        total: applyTotal
+                    )
+                }
+            }
             if index.isMultiple(of: 25) {
                 await Task.yield()
             }
@@ -1024,8 +1547,7 @@ extension KmpBridge {
                 continue
             }
             do {
-            let payloadData = change.payload.data(using: .utf8) ?? Data()
-            let payloadObject = (try? JSONSerialization.jsonObject(with: payloadData)) as? [String: Any] ?? [:]
+            let payloadObject = parsedPayloads[index]
 
             if change.op == "delete" {
                 try await applyDeletedChange(change: change, payloadObject: payloadObject)
@@ -1056,19 +1578,68 @@ extension KmpBridge {
             case "academic_year":
                 guard
                     let yearId = int64Value(payloadObject["id"]),
-                    let name = payloadObject["name"] as? String,
-                    let startEpochMs = int64Value(payloadObject["startEpochMs"]),
-                    let endEpochMs = int64Value(payloadObject["endEpochMs"])
+                    let name = payloadObject["name"] as? String
                 else { continue }
+                let existing: AcademicYear?
+                do {
+                    existing = try await container.academicYearsRepository.listAcademicYears()
+                        .first { $0.id == yearId }
+                } catch {
+                    continue
+                }
+                let startKeyPresent = payloadObject.keys.contains("startEpochMs")
+                let endKeyPresent = payloadObject.keys.contains("endEpochMs")
+                let centerKeyPresent = payloadObject.keys.contains("centerId")
+                let statusKeyPresent = payloadObject.keys.contains("status")
+                let isActiveKeyPresent = payloadObject.keys.contains("isActive")
+                let archivedKeyPresent = payloadObject.keys.contains("archivedAtEpochMs")
+                let needsPrevious =
+                    !startKeyPresent || !endKeyPresent || !centerKeyPresent
+                    || !statusKeyPresent || !isActiveKeyPresent || !archivedKeyPresent
+                // Sin lectura local no se inventan isActive/status/centro/fechas.
+                if needsPrevious, existing == nil {
+                    continue
+                }
+                let startEpochMs = AcademicYearSyncMerge.epochMs(
+                    previous: existing?.startAt.toEpochMilliseconds() ?? 0,
+                    incoming: int64Value(payloadObject["startEpochMs"]),
+                    keyPresent: startKeyPresent
+                )
+                let endEpochMs = AcademicYearSyncMerge.epochMs(
+                    previous: existing?.endAt.toEpochMilliseconds() ?? 0,
+                    incoming: int64Value(payloadObject["endEpochMs"]),
+                    keyPresent: endKeyPresent
+                )
+                guard startEpochMs > 0, endEpochMs > 0 else { continue }
+                let centerId = AcademicYearSyncMerge.centerId(
+                    previous: existing?.centerId ?? 1,
+                    incoming: int64Value(payloadObject["centerId"]),
+                    keyPresent: centerKeyPresent
+                )
+                let status = AcademicYearSyncMerge.status(
+                    previous: existing?.status.name ?? "ACTIVE",
+                    incoming: payloadObject["status"] as? String,
+                    keyPresent: statusKeyPresent
+                )
+                let isActive = AcademicYearSyncMerge.flag(
+                    previous: existing?.isActive ?? false,
+                    incoming: payloadObject["isActive"] as? Bool,
+                    keyPresent: isActiveKeyPresent
+                )
+                let archivedAtEpochMs = AcademicYearSyncMerge.optionalEpochMs(
+                    previous: existing?.archivedAt?.toEpochMilliseconds(),
+                    incoming: positiveInt64Value(payloadObject["archivedAtEpochMs"]),
+                    keyPresent: archivedKeyPresent
+                )
                 _ = try await container.academicYearsRepository.upsertAcademicYear(
                     id: yearId,
-                    centerId: int64Value(payloadObject["centerId"]) ?? 1,
+                    centerId: centerId,
                     name: name,
                     startEpochMs: startEpochMs,
                     endEpochMs: endEpochMs,
-                    status: payloadObject["status"] as? String ?? "ACTIVE",
-                    isActive: payloadObject["isActive"] as? Bool ?? false,
-                    archivedAtEpochMs: kotlinLong(positiveInt64Value(payloadObject["archivedAtEpochMs"])),
+                    status: status,
+                    isActive: isActive,
+                    archivedAtEpochMs: kotlinLong(archivedAtEpochMs),
                     updatedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId,
                     syncVersion: 1
@@ -1080,15 +1651,63 @@ extension KmpBridge {
                     let course = payloadObject["course"] as? Int
                 else { continue }
                 let classId = int64Value(payloadObject["id"]) ?? 0
+                let existing: SchoolClass?
+                if classId > 0 {
+                    do {
+                        existing = try await container.classesRepository.listClasses()
+                            .first { $0.id == classId }
+                    } catch {
+                        continue
+                    }
+                } else {
+                    existing = nil
+                }
+                let descriptionKeyPresent = payloadObject.keys.contains("description")
+                let centerKeyPresent = payloadObject.keys.contains("centerId")
+                let academicYearKeyPresent = payloadObject.keys.contains("academicYearId")
+                let stageCycleKeyPresent = payloadObject.keys.contains("stageCycleId")
+                let subjectKeyPresent = payloadObject.keys.contains("subjectId")
+                let needsPrevious =
+                    !descriptionKeyPresent || !centerKeyPresent || !academicYearKeyPresent
+                    || !stageCycleKeyPresent || !subjectKeyPresent
+                // Sin lectura local no se inventan description/centro/año/ciclo/materia.
+                if needsPrevious, existing == nil {
+                    continue
+                }
+                let description = ClassSyncMerge.optionalText(
+                    previous: existing?.description_,
+                    incoming: payloadObject["description"] as? String,
+                    keyPresent: descriptionKeyPresent
+                )
+                let centerId = ClassSyncMerge.optionalLong(
+                    previous: existing?.centerId?.int64Value,
+                    incoming: positiveInt64Value(payloadObject["centerId"]),
+                    keyPresent: centerKeyPresent
+                )
+                let academicYearId = ClassSyncMerge.optionalLong(
+                    previous: existing?.academicYearId?.int64Value,
+                    incoming: positiveInt64Value(payloadObject["academicYearId"]),
+                    keyPresent: academicYearKeyPresent
+                )
+                let stageCycleId = ClassSyncMerge.optionalLong(
+                    previous: existing?.stageCycleId?.int64Value,
+                    incoming: positiveInt64Value(payloadObject["stageCycleId"]),
+                    keyPresent: stageCycleKeyPresent
+                )
+                let subjectId = ClassSyncMerge.optionalLong(
+                    previous: existing?.subjectId?.int64Value,
+                    incoming: positiveInt64Value(payloadObject["subjectId"]),
+                    keyPresent: subjectKeyPresent
+                )
                 _ = try await container.classesRepository.saveClass(
                     id: kotlinLong(classId > 0 ? classId : nil),
                     name: name,
                     course: Int32(course),
-                    description: payloadObject["description"] as? String,
-                    centerId: kotlinLong(positiveInt64Value(payloadObject["centerId"])),
-                    academicYearId: kotlinLong(positiveInt64Value(payloadObject["academicYearId"])),
-                    stageCycleId: kotlinLong(positiveInt64Value(payloadObject["stageCycleId"])),
-                    subjectId: kotlinLong(positiveInt64Value(payloadObject["subjectId"])),
+                    description: description,
+                    centerId: kotlinLong(centerId),
+                    academicYearId: kotlinLong(academicYearId),
+                    stageCycleId: kotlinLong(stageCycleId),
+                    subjectId: kotlinLong(subjectId),
                     updatedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId,
                     syncVersion: 1
@@ -1100,16 +1719,56 @@ extension KmpBridge {
                     let lastName = payloadObject["lastName"] as? String
                 else { continue }
                 let studentId = int64Value(payloadObject["id"]) ?? 0
+                let existing: Student?
+                do {
+                    if studentId > 0 {
+                        existing = try await container.studentsRepository.getStudent(studentId: studentId)
+                    } else {
+                        existing = nil
+                    }
+                } catch {
+                    continue
+                }
+                let email = StudentSyncMerge.optionalText(
+                    previous: existing?.email,
+                    incoming: payloadObject["email"] as? String,
+                    keyPresent: payloadObject.keys.contains("email")
+                )
+                let photoPath = StudentSyncMerge.optionalText(
+                    previous: existing?.photoPath,
+                    incoming: payloadObject["photoPath"] as? String,
+                    keyPresent: payloadObject.keys.contains("photoPath")
+                )
+                let isInjured = StudentSyncMerge.flag(
+                    previous: existing?.isInjured ?? false,
+                    incoming: payloadObject["isInjured"] as? Bool,
+                    keyPresent: payloadObject.keys.contains("isInjured")
+                )
+                let sex = StudentSyncMerge.value(
+                    previous: existing?.sex ?? .unspecified,
+                    incoming: studentSex(from: payloadObject["sex"]),
+                    keyPresent: payloadObject.keys.contains("sex")
+                )
+                let sexSource = StudentSyncMerge.value(
+                    previous: existing?.sexSource ?? .unknown,
+                    incoming: studentSexSource(from: payloadObject["sexSource"]),
+                    keyPresent: payloadObject.keys.contains("sexSource")
+                )
+                let birthDate = StudentSyncMerge.optionalValue(
+                    previous: existing?.birthDate,
+                    incoming: localDate(from: payloadObject["birthDate"]),
+                    keyPresent: payloadObject.keys.contains("birthDate")
+                )
                 _ = try await container.studentsRepository.saveStudent(
                     id: kotlinLong(studentId > 0 ? studentId : nil),
                     firstName: firstName,
                     lastName: lastName,
-                    email: payloadObject["email"] as? String,
-                    photoPath: payloadObject["photoPath"] as? String,
-                    isInjured: payloadObject["isInjured"] as? Bool ?? false,
-                    sex: studentSex(from: payloadObject["sex"]),
-                    sexSource: studentSexSource(from: payloadObject["sexSource"]),
-                    birthDate: localDate(from: payloadObject["birthDate"]),
+                    email: email,
+                    photoPath: photoPath,
+                    isInjured: isInjured,
+                    sex: sex,
+                    sexSource: sexSource,
+                    birthDate: birthDate,
                     updatedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId,
                     syncVersion: 1
@@ -1147,11 +1806,49 @@ extension KmpBridge {
                     let classId = int64Value(payloadObject["classId"]),
                     let code = payloadObject["code"] as? String,
                     let name = payloadObject["name"] as? String,
-                    let type = payloadObject["type"] as? String,
-                    let weight = doubleValue(payloadObject["weight"])
+                    let type = payloadObject["type"] as? String
                 else { continue }
                 let evaluationId = int64Value(payloadObject["id"]) ?? 0
-                let rubricId = int64Value(payloadObject["rubricId"])
+                let existing: Evaluation?
+                if evaluationId > 0 {
+                    do {
+                        existing = try await container.evaluationsRepository.getEvaluation(evaluationId: evaluationId)
+                    } catch {
+                        continue
+                    }
+                } else {
+                    existing = nil
+                }
+                let weightKeyPresent = payloadObject.keys.contains("weight")
+                let formulaKeyPresent = payloadObject.keys.contains("formula")
+                let rubricKeyPresent = payloadObject.keys.contains("rubricId")
+                let descriptionKeyPresent = payloadObject.keys.contains("description")
+                let needsPrevious =
+                    !weightKeyPresent || !formulaKeyPresent || !rubricKeyPresent || !descriptionKeyPresent
+                // Sin lectura local no se puede conservar weight/formula/rubricId/description.
+                if needsPrevious, existing == nil {
+                    continue
+                }
+                let weight = EvaluationSyncMerge.weight(
+                    previous: existing?.weight ?? 1.0,
+                    incoming: doubleValue(payloadObject["weight"]),
+                    keyPresent: weightKeyPresent
+                )
+                let formula = EvaluationSyncMerge.optionalText(
+                    previous: existing?.formula,
+                    incoming: payloadObject["formula"] as? String,
+                    keyPresent: formulaKeyPresent
+                )
+                let rubricId = EvaluationSyncMerge.optionalLong(
+                    previous: existing?.rubricId?.int64Value,
+                    incoming: int64Value(payloadObject["rubricId"]).flatMap { $0 > 0 ? $0 : nil },
+                    keyPresent: rubricKeyPresent
+                )
+                let description = EvaluationSyncMerge.optionalText(
+                    previous: existing?.description_,
+                    incoming: payloadObject["description"] as? String,
+                    keyPresent: descriptionKeyPresent
+                )
                 _ = try await container.evaluationsRepository.saveEvaluation(
                     id: kotlinLong(evaluationId > 0 ? evaluationId : nil),
                     classId: classId,
@@ -1159,9 +1856,9 @@ extension KmpBridge {
                     name: name,
                     type: type,
                     weight: weight,
-                    formula: payloadObject["formula"] as? String,
+                    formula: formula,
                     rubricId: kotlinLong(rubricId),
-                    description: payloadObject["description"] as? String,
+                    description: description,
                     authorUserId: nil,
                     createdAtEpochMs: change.updatedAtEpochMs,
                     updatedAtEpochMs: change.updatedAtEpochMs,
@@ -1187,15 +1884,43 @@ extension KmpBridge {
                 }
 
                 if classId > 0, studentId > 0 {
+                    let existing: Grade?
+                    do {
+                        existing = try await container.gradesRepository
+                            .listGradesForStudentInClass(studentId: studentId, classId: classId)
+                            .first(where: { $0.columnId == columnId })
+                    } catch {
+                        continue
+                    }
+                    let value = GradeSyncMerge.optionalDouble(
+                        previous: existing?.value?.doubleValue,
+                        incoming: doubleValue(payloadObject["value"]),
+                        keyPresent: payloadObject.keys.contains("value")
+                    )
+                    let evidence = GradeSyncMerge.optionalText(
+                        previous: existing?.evidence,
+                        incoming: payloadObject["evidence"] as? String,
+                        keyPresent: payloadObject.keys.contains("evidence")
+                    )
+                    let evidencePath = GradeSyncMerge.optionalText(
+                        previous: existing?.evidencePath,
+                        incoming: payloadObject["evidencePath"] as? String,
+                        keyPresent: payloadObject.keys.contains("evidencePath")
+                    )
+                    let rubricSelections = GradeSyncMerge.optionalText(
+                        previous: existing?.rubricSelections,
+                        incoming: payloadObject["rubricSelections"] as? String,
+                        keyPresent: payloadObject.keys.contains("rubricSelections")
+                    )
                     try await container.gradesRepository.upsertGrade(
                         classId: classId,
                         studentId: studentId,
                         columnId: columnId,
                         evaluationId: kotlinLong(evaluationIdValue),
-                        value: doubleValue(payloadObject["value"]).map { KotlinDouble(value: $0) },
-                        evidence: payloadObject["evidence"] as? String,
-                        evidencePath: payloadObject["evidencePath"] as? String,
-                        rubricSelections: payloadObject["rubricSelections"] as? String,
+                        value: value.map { KotlinDouble(value: $0) },
+                        evidence: evidence,
+                        evidencePath: evidencePath,
+                        rubricSelections: rubricSelections,
                         updatedAtEpochMs: change.updatedAtEpochMs,
                         deviceId: change.deviceId,
                         syncVersion: 1
@@ -1209,9 +1934,30 @@ extension KmpBridge {
                     let startTime = payloadObject["startTime"] as? String,
                     let endTime = payloadObject["endTime"] as? String
                 else { continue }
+                let incomingId = int64Value(payloadObject["id"]) ?? 0
+                let existingSlots = container.weeklyTemplateRepository
+                    .getSlotsForClass(schoolClassId: classId)
+                    .map {
+                        WeeklySlotSyncMerge.ExistingSlot(
+                            id: $0.id,
+                            dayOfWeek: Int($0.dayOfWeek),
+                            startTime: $0.startTime,
+                            endTime: $0.endTime
+                        )
+                    }
+                let matchedId = WeeklySlotSyncMerge.matchedId(
+                    incomingId: incomingId,
+                    dayOfWeek: dayOfWeek,
+                    startTime: startTime,
+                    endTime: endTime,
+                    existing: existingSlots
+                )
+                let resolvedId = WeeklySlotSyncMerge.keptId(incoming: incomingId, matched: matchedId)
+                // Sin id remoto ni franja local (grupo/día/horas), no inventar una copia.
+                guard resolvedId > 0 else { continue }
                 _ = try await container.weeklyTemplateRepository.insert(
                     slot: WeeklySlotTemplate(
-                        id: int64Value(payloadObject["id"]) ?? 0,
+                        id: resolvedId,
                         schoolClassId: classId,
                         dayOfWeek: Int32(dayOfWeek),
                         startTime: startTime,
@@ -1225,13 +1971,44 @@ extension KmpBridge {
                     let tabId = payloadObject["id"] as? String,
                     let title = payloadObject["title"] as? String
                 else { continue }
-                let order = payloadObject["order"] as? Int ?? 0
-                let parentTabId = (payloadObject["parentTabId"] as? String)?
+                let existing: NotebookTab?
+                do {
+                    existing = try await container.notebookConfigRepository.listTabs(classId: classId)
+                        .first { $0.id == tabId }
+                } catch {
+                    continue
+                }
+                let orderKeyPresent = payloadObject.keys.contains("order")
+                let parentKeyPresent = payloadObject.keys.contains("parentTabId")
+                let descriptionKeyPresent = payloadObject.keys.contains("description")
+                let needsPrevious = !orderKeyPresent || !parentKeyPresent || !descriptionKeyPresent
+                // Sin lectura local no se inventan order/parentTabId/description.
+                if needsPrevious, existing == nil {
+                    continue
+                }
+                let incomingOrder = (payloadObject["order"] as? Int)
+                    ?? (int64Value(payloadObject["order"]).map { Int($0) })
+                let incomingParent = (payloadObject["parentTabId"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .nilIfEmpty
-                let description = (payloadObject["description"] as? String)?
+                let incomingDescription = (payloadObject["description"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .nilIfEmpty
+                let order = NotebookTabSyncMerge.order(
+                    previous: existing?.order ?? 0,
+                    incoming: incomingOrder,
+                    keyPresent: orderKeyPresent
+                )
+                let parentTabId = NotebookTabSyncMerge.optionalText(
+                    previous: existing?.parentTabId,
+                    incoming: incomingParent,
+                    keyPresent: parentKeyPresent
+                )
+                let description = NotebookTabSyncMerge.optionalText(
+                    previous: existing?.description,
+                    incoming: incomingDescription,
+                    keyPresent: descriptionKeyPresent
+                )
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 let trace = AuditTrace(
                     authorUserId: nil,
@@ -1247,9 +2024,9 @@ extension KmpBridge {
                         id: tabId,
                         title: title,
                         description: description,
-                        order: Int32(order),
+                        order: order,
                         parentTabId: parentTabId,
-                        fixedColumnWidth: nil,
+                        fixedColumnWidth: existing?.fixedColumnWidth,
                         trace: trace
                     )
                 )
@@ -1261,7 +2038,35 @@ extension KmpBridge {
                     let name = payloadObject["name"] as? String
                 else { continue }
                 let groupId = int64Value(payloadObject["id"]) ?? int64Value(payloadObject["group_id"]) ?? 0
-                let order = (payloadObject["order"] as? Int) ?? (int64Value(payloadObject["order"]).map { Int($0) }) ?? 0
+                let existing: NotebookWorkGroup?
+                do {
+                    existing = try await container.notebookConfigRepository.listWorkGroups(classId: classId, tabId: nil)
+                        .first { $0.id == groupId }
+                } catch {
+                    continue
+                }
+                let orderKeyPresent = payloadObject.keys.contains("order")
+                let situationKeyPresent = payloadObject.keys.contains("learningSituationId")
+                    || payloadObject.keys.contains("learning_situation_id")
+                let needsPrevious = !orderKeyPresent || !situationKeyPresent
+                // Sin lectura local no se inventan order/learningSituationId.
+                if needsPrevious, existing == nil {
+                    continue
+                }
+                let incomingOrder = (payloadObject["order"] as? Int)
+                    ?? (int64Value(payloadObject["order"]).map { Int($0) })
+                let incomingSituation = int64Value(payloadObject["learningSituationId"])
+                    ?? int64Value(payloadObject["learning_situation_id"])
+                let order = NotebookGroupSyncMerge.order(
+                    previous: existing?.order ?? 0,
+                    incoming: incomingOrder,
+                    keyPresent: orderKeyPresent
+                )
+                let learningSituationId = NotebookGroupSyncMerge.optionalLong(
+                    previous: existing?.learningSituationId?.int64Value,
+                    incoming: incomingSituation,
+                    keyPresent: situationKeyPresent
+                )
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 let trace = AuditTrace(
                     authorUserId: nil,
@@ -1269,7 +2074,7 @@ extension KmpBridge {
                     updatedAt: updatedAt,
                     associatedGroupId: nil,
                     deviceId: change.deviceId,
-                    syncVersion: 1
+                    syncVersion: 1,
                 )
                 _ = try await container.notebookRepository.saveWorkGroup(
                     classId: classId,
@@ -1278,8 +2083,8 @@ extension KmpBridge {
                         classId: classId,
                         tabId: tabId,
                         name: name,
-                        order: Int32(order),
-                        learningSituationId: nil,
+                        order: order,
+                        learningSituationId: learningSituationId.map { KotlinLong(value: $0) },
                         trace: trace
                     )
                 )
@@ -1334,16 +2139,36 @@ extension KmpBridge {
                     let title = payloadObject["title"] as? String
                 else { continue }
 
-                let type = notebookColumnType(
-                    from: (payloadObject["type"] as? String) ?? (payloadObject["column_type"] as? String)
-                )
                 let evaluationIdValue = int64Value(payloadObject["evaluationId"]).flatMap { $0 > 0 ? $0 : nil }
                 let rubricId = int64Value(payloadObject["rubricId"]).flatMap { $0 > 0 ? $0 : nil }
-                
+
                 let resolvedColumnId: String = {
                     if let evalId = evaluationIdValue, evalId > 0 { return "eval_\(evalId)" }
                     return payloadObject["id"] as? String ?? UUID().uuidString
                 }()
+
+                let existing: NotebookColumnDefinition?
+                do {
+                    existing = try await container.notebookConfigRepository.listColumns(classId: classId)
+                        .first { $0.id == resolvedColumnId }
+                } catch {
+                    continue
+                }
+
+                let typeKeyPresent = payloadObject.keys.contains("type") || payloadObject.keys.contains("column_type")
+                let incomingTypeRaw = (payloadObject["type"] as? String) ?? (payloadObject["column_type"] as? String)
+                let type = NotebookColumnSyncMerge.typeValue(
+                    previous: existing?.type ?? .numeric,
+                    incoming: incomingTypeRaw.map { notebookColumnType(from: $0) },
+                    keyPresent: typeKeyPresent
+                )
+
+                let tabKeysPresent = payloadObject.keys.contains("tabIdsCsv")
+                    || payloadObject.keys.contains("tab_ids_csv")
+                    || payloadObject.keys.contains("tabIds")
+                    || payloadObject.keys.contains("tab_ids")
+                let sharedKeyPresent = payloadObject.keys.contains("sharedAcrossTabs")
+                    || payloadObject.keys.contains("shared_across_tabs")
 
                 let rawTabIds: [String] = {
                     if let csv = payloadObject["tabIdsCsv"] as? String {
@@ -1367,12 +2192,33 @@ extension KmpBridge {
                     existingTabs: existingTabs
                 )
 
-                let sharedAcrossTabs = boolValue(payloadObject["sharedAcrossTabs"] ?? payloadObject["shared_across_tabs"]) ?? false
-                let finalTabIds = sharedAcrossTabs ? existingTabs.map { $0.id } : resolvedTabIds
-                let colorHex = normalizeHexColor(payloadObject["colorHex"] as? String)
-                let formula = payloadObject["formula"] as? String
+                let sharedAcrossTabs = NotebookColumnSyncMerge.flag(
+                    previous: existing?.sharedAcrossTabs ?? false,
+                    incoming: boolValue(payloadObject["sharedAcrossTabs"] ?? payloadObject["shared_across_tabs"]),
+                    keyPresent: sharedKeyPresent
+                )
+                let finalTabIds: [String] = {
+                    if sharedAcrossTabs { return existingTabs.map { $0.id } }
+                    if tabKeysPresent { return resolvedTabIds }
+                    return existing?.tabIds ?? resolvedTabIds
+                }()
+                let colorHex = NotebookColumnSyncMerge.optionalText(
+                    previous: existing?.colorHex,
+                    incoming: normalizeHexColor(payloadObject["colorHex"] as? String),
+                    keyPresent: payloadObject.keys.contains("colorHex")
+                )
+                let formula = NotebookColumnSyncMerge.optionalText(
+                    previous: existing?.formula,
+                    incoming: payloadObject["formula"] as? String,
+                    keyPresent: payloadObject.keys.contains("formula")
+                )
                 let categoryIdRaw = (payloadObject["categoryId"] as? String) ?? (payloadObject["category_id"] as? String)
-                let categoryId = categoryIdRaw?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? categoryIdRaw : nil
+                let categoryIdIncoming = categoryIdRaw?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? categoryIdRaw : nil
+                let categoryId = NotebookColumnSyncMerge.optionalText(
+                    previous: existing?.categoryId,
+                    incoming: categoryIdIncoming,
+                    keyPresent: payloadObject.keys.contains("categoryId") || payloadObject.keys.contains("category_id")
+                )
 
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 let trace = AuditTrace(
@@ -1396,8 +2242,12 @@ extension KmpBridge {
                             code: "SYNC_\(evalId)",
                             name: title,
                             type: payloadType,
-                            weight: doubleValue(payloadObject["weight"]) ?? 1.0,
-                            formula: payloadObject["formula"] as? String,
+                            weight: NotebookColumnSyncMerge.weight(
+                                previous: existing?.weight ?? 1.0,
+                                incoming: doubleValue(payloadObject["weight"]),
+                                keyPresent: payloadObject.keys.contains("weight")
+                            ),
+                            formula: formula,
                             rubricId: kotlinLong(rubricId),
                             description: nil,
                             authorUserId: nil,
@@ -1410,40 +2260,129 @@ extension KmpBridge {
                     }
                 }
 
+                let mergedEvaluationId = NotebookColumnSyncMerge.optionalLong(
+                    previous: existing?.evaluationId?.int64Value,
+                    incoming: evaluationIdValue,
+                    keyPresent: payloadObject.keys.contains("evaluationId")
+                )
+                let mergedRubricId = NotebookColumnSyncMerge.optionalLong(
+                    previous: existing?.rubricId?.int64Value,
+                    incoming: rubricId,
+                    keyPresent: payloadObject.keys.contains("rubricId")
+                )
+
                 try await container.notebookRepository.saveColumn(
                     classId: classId,
                     column: NotebookColumnDefinition(
                         id: resolvedColumnId,
                         title: title,
                         type: type,
-                        categoryKind: notebookCategoryKind(payloadObject["categoryKind"] as? String),
-                        instrumentKind: notebookInstrumentKind(payloadObject["instrumentKind"] as? String),
-                        inputKind: notebookInputKind(payloadObject["inputKind"] as? String),
-                        evaluationId: kotlinLong(evaluationIdValue),
-                        rubricId: kotlinLong(rubricId),
+                        categoryKind: NotebookColumnSyncMerge.typeValue(
+                            previous: existing?.categoryKind ?? .custom,
+                            incoming: payloadObject.keys.contains("categoryKind")
+                                ? notebookCategoryKind(payloadObject["categoryKind"] as? String)
+                                : nil,
+                            keyPresent: payloadObject.keys.contains("categoryKind")
+                        ),
+                        instrumentKind: NotebookColumnSyncMerge.typeValue(
+                            previous: existing?.instrumentKind ?? .custom,
+                            incoming: payloadObject.keys.contains("instrumentKind")
+                                ? notebookInstrumentKind(payloadObject["instrumentKind"] as? String)
+                                : nil,
+                            keyPresent: payloadObject.keys.contains("instrumentKind")
+                        ),
+                        inputKind: NotebookColumnSyncMerge.typeValue(
+                            previous: existing?.inputKind ?? .text,
+                            incoming: payloadObject.keys.contains("inputKind")
+                                ? notebookInputKind(payloadObject["inputKind"] as? String)
+                                : nil,
+                            keyPresent: payloadObject.keys.contains("inputKind")
+                        ),
+                        evaluationId: kotlinLong(mergedEvaluationId),
+                        rubricId: kotlinLong(mergedRubricId),
                         formula: formula,
-                        weight: doubleValue(payloadObject["weight"]) ?? 1.0,
-                        dateEpochMs: kotlinLong(int64Value(payloadObject["dateEpochMs"] ?? payloadObject["date_epoch_ms"])),
-                        unitOrSituation: payloadObject["unitOrSituation"] as? String ?? payloadObject["unit_name"] as? String,
-                        competencyCriteriaIds: longList(payloadObject["competencyCriteriaIds"] ?? payloadObject["competency_criteria_ids_csv"]),
-                        scaleKind: notebookScaleKind(payloadObject["scaleKind"] as? String),
+                        weight: NotebookColumnSyncMerge.weight(
+                            previous: existing?.weight ?? 1.0,
+                            incoming: doubleValue(payloadObject["weight"]),
+                            keyPresent: payloadObject.keys.contains("weight")
+                        ),
+                        dateEpochMs: kotlinLong(
+                            NotebookColumnSyncMerge.optionalLong(
+                                previous: existing?.dateEpochMs?.int64Value,
+                                incoming: int64Value(payloadObject["dateEpochMs"] ?? payloadObject["date_epoch_ms"]),
+                                keyPresent: payloadObject.keys.contains("dateEpochMs") || payloadObject.keys.contains("date_epoch_ms")
+                            )
+                        ),
+                        unitOrSituation: NotebookColumnSyncMerge.optionalText(
+                            previous: existing?.unitOrSituation,
+                            incoming: (payloadObject["unitOrSituation"] as? String) ?? (payloadObject["unit_name"] as? String),
+                            keyPresent: payloadObject.keys.contains("unitOrSituation") || payloadObject.keys.contains("unit_name")
+                        ),
+                        competencyCriteriaIds: payloadObject.keys.contains("competencyCriteriaIds") || payloadObject.keys.contains("competency_criteria_ids_csv")
+                            ? longList(payloadObject["competencyCriteriaIds"] ?? payloadObject["competency_criteria_ids_csv"])
+                            : (existing?.competencyCriteriaIds ?? []),
+                        scaleKind: NotebookColumnSyncMerge.typeValue(
+                            previous: existing?.scaleKind ?? .custom,
+                            incoming: payloadObject.keys.contains("scaleKind")
+                                ? notebookScaleKind(payloadObject["scaleKind"] as? String)
+                                : nil,
+                            keyPresent: payloadObject.keys.contains("scaleKind")
+                        ),
                         tabIds: finalTabIds,
-                        sessions: [],
+                        sessions: existing?.sessions ?? [],
                         sharedAcrossTabs: sharedAcrossTabs,
                         colorHex: colorHex,
-                        iconName: payloadObject["iconName"] as? String ?? payloadObject["icon_name"] as? String,
-                        order: Int32(payloadObject["order"] as? Int ?? -1),
-                        widthDp: doubleValue(payloadObject["widthDp"] ?? payloadObject["width_dp"]) ?? 0.0,
+                        iconName: NotebookColumnSyncMerge.optionalText(
+                            previous: existing?.iconName,
+                            incoming: (payloadObject["iconName"] as? String) ?? (payloadObject["icon_name"] as? String),
+                            keyPresent: payloadObject.keys.contains("iconName") || payloadObject.keys.contains("icon_name")
+                        ),
+                        order: NotebookColumnSyncMerge.order(
+                            previous: existing?.order ?? -1,
+                            incoming: payloadObject["order"] as? Int,
+                            keyPresent: payloadObject.keys.contains("order")
+                        ),
+                        widthDp: NotebookColumnSyncMerge.weight(
+                            previous: existing?.widthDp ?? 0.0,
+                            incoming: doubleValue(payloadObject["widthDp"] ?? payloadObject["width_dp"]),
+                            keyPresent: payloadObject.keys.contains("widthDp") || payloadObject.keys.contains("width_dp")
+                        ),
                         categoryId: categoryId,
-                        ordinalLevels: [],
-                        availableIcons: [],
-                        countsTowardAverage: boolValue(payloadObject["countsTowardAverage"] ?? payloadObject["counts_toward_average"]) ?? true,
-                        isPinned: boolValue(payloadObject["isPinned"] ?? payloadObject["is_pinned"]) ?? false,
-                        isHidden: boolValue(payloadObject["isHidden"] ?? payloadObject["is_hidden"]) ?? false,
-                        visibility: notebookColumnVisibility(payloadObject["visibility"] as? String),
-                        isLocked: boolValue(payloadObject["isLocked"] ?? payloadObject["is_locked"]) ?? false,
-                        isTemplate: boolValue(payloadObject["isTemplate"] ?? payloadObject["is_template"]) ?? false,
-                        emptyCellPolicy: .excludeFromAverage,
+                        ordinalLevels: existing?.ordinalLevels ?? [],
+                        availableIcons: existing?.availableIcons ?? [],
+                        countsTowardAverage: NotebookColumnSyncMerge.flag(
+                            previous: existing?.countsTowardAverage ?? true,
+                            incoming: boolValue(payloadObject["countsTowardAverage"] ?? payloadObject["counts_toward_average"]),
+                            keyPresent: payloadObject.keys.contains("countsTowardAverage") || payloadObject.keys.contains("counts_toward_average")
+                        ),
+                        isPinned: NotebookColumnSyncMerge.flag(
+                            previous: existing?.isPinned ?? false,
+                            incoming: boolValue(payloadObject["isPinned"] ?? payloadObject["is_pinned"]),
+                            keyPresent: payloadObject.keys.contains("isPinned") || payloadObject.keys.contains("is_pinned")
+                        ),
+                        isHidden: NotebookColumnSyncMerge.flag(
+                            previous: existing?.isHidden ?? false,
+                            incoming: boolValue(payloadObject["isHidden"] ?? payloadObject["is_hidden"]),
+                            keyPresent: payloadObject.keys.contains("isHidden") || payloadObject.keys.contains("is_hidden")
+                        ),
+                        visibility: NotebookColumnSyncMerge.typeValue(
+                            previous: existing?.visibility ?? .visible,
+                            incoming: payloadObject.keys.contains("visibility")
+                                ? notebookColumnVisibility(payloadObject["visibility"] as? String)
+                                : nil,
+                            keyPresent: payloadObject.keys.contains("visibility")
+                        ),
+                        isLocked: NotebookColumnSyncMerge.flag(
+                            previous: existing?.isLocked ?? false,
+                            incoming: boolValue(payloadObject["isLocked"] ?? payloadObject["is_locked"]),
+                            keyPresent: payloadObject.keys.contains("isLocked") || payloadObject.keys.contains("is_locked")
+                        ),
+                        isTemplate: NotebookColumnSyncMerge.flag(
+                            previous: existing?.isTemplate ?? false,
+                            incoming: boolValue(payloadObject["isTemplate"] ?? payloadObject["is_template"]),
+                            keyPresent: payloadObject.keys.contains("isTemplate") || payloadObject.keys.contains("is_template")
+                        ),
+                        emptyCellPolicy: existing?.emptyCellPolicy ?? .excludeFromAverage,
                         trace: trace
                     )
                 )
@@ -1455,24 +2394,60 @@ extension KmpBridge {
                     let columnId = payloadObject["columnId"] as? String
                 else { continue }
 
-                let textValue = payloadObject["textValue"] as? String
-                let boolValue = payloadObject["boolValue"] as? Bool
-                let iconValue = payloadObject["iconValue"] as? String
-                let ordinalValue = payloadObject["ordinalValue"] as? String
-                let note = payloadObject["note"] as? String
-                let colorHex = normalizeHexColor(payloadObject["colorHex"] as? String)
-                let attachmentUris = (payloadObject["attachmentUris"] as? [String]) ?? []
+                let existing: PersistedNotebookCell?
+                do {
+                    existing = try await container.notebookCellsRepository.listClassCells(classId: classId)
+                        .first { $0.studentId == studentId && $0.columnId == columnId }
+                } catch {
+                    continue
+                }
+
+                let textValue = NotebookCellSyncMerge.optionalText(
+                    previous: existing?.textValue,
+                    incoming: payloadObject["textValue"] as? String,
+                    keyPresent: payloadObject.keys.contains("textValue")
+                )
+                let boolValue = NotebookCellSyncMerge.optionalBool(
+                    previous: existing?.boolValue?.boolValue,
+                    incoming: payloadObject["boolValue"] as? Bool,
+                    keyPresent: payloadObject.keys.contains("boolValue")
+                )
+                let iconValue = NotebookCellSyncMerge.optionalText(
+                    previous: existing?.iconValue,
+                    incoming: payloadObject["iconValue"] as? String,
+                    keyPresent: payloadObject.keys.contains("iconValue")
+                )
+                let ordinalValue = NotebookCellSyncMerge.optionalText(
+                    previous: existing?.ordinalValue,
+                    incoming: payloadObject["ordinalValue"] as? String,
+                    keyPresent: payloadObject.keys.contains("ordinalValue")
+                )
+                let note = NotebookCellSyncMerge.optionalText(
+                    previous: existing?.annotation?.note,
+                    incoming: payloadObject["note"] as? String,
+                    keyPresent: payloadObject.keys.contains("note")
+                )
+                let colorHex = NotebookCellSyncMerge.optionalText(
+                    previous: existing?.annotation?.colorHex,
+                    incoming: normalizeHexColor(payloadObject["colorHex"] as? String),
+                    keyPresent: payloadObject.keys.contains("colorHex")
+                )
+                let attachmentUris = NotebookCellSyncMerge.attachmentUris(
+                    previous: existing?.annotation?.attachmentUris ?? [],
+                    incoming: payloadObject["attachmentUris"] as? [String],
+                    keyPresent: payloadObject.keys.contains("attachmentUris")
+                )
 
                 try await container.notebookRepository.saveCell(
                     classId: classId,
                     studentId: studentId,
                     columnId: columnId,
-                    textValue: textValue?.isEmpty == true ? nil : textValue,
+                    textValue: textValue,
                     boolValue: boolValue.map { KotlinBoolean(value: $0) },
-                    iconValue: iconValue?.isEmpty == true ? nil : iconValue,
-                    ordinalValue: ordinalValue?.isEmpty == true ? nil : ordinalValue,
-                    note: note?.isEmpty == true ? nil : note,
-                    colorHex: colorHex?.isEmpty == true ? nil : colorHex,
+                    iconValue: iconValue,
+                    ordinalValue: ordinalValue,
+                    note: note,
+                    colorHex: colorHex,
                     attachmentUris: attachmentUris,
                     authorUserId: nil,
                     associatedGroupId: nil
@@ -1514,7 +2489,12 @@ extension KmpBridge {
                         syncVersion: 1
                     )
                 )
-                let existingItems = (try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId))?.items ?? []
+                let existingItems: [NotebookInstrumentItem]
+                do {
+                    existingItems = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId)?.items ?? []
+                } catch {
+                    continue
+                }
                 try await container.notebookInstrumentsRepository.saveTemplate(template: template, items: existingItems)
 
             case "notebook_instrument_item":
@@ -1525,14 +2505,38 @@ extension KmpBridge {
                     let title = payloadObject["title"] as? String
                 else { continue }
 
-                let itemTypeStr = (payloadObject["itemType"] as? String) ?? "scale14"
-                let itemType = notebookInstrumentItemType(itemTypeStr)
-                let optionsCsv = (payloadObject["optionsCsv"] as? String) ?? ""
-                let options = optionsCsv.split(separator: "|").map(String.init).filter { !$0.isEmpty }
-                let required = boolValue(payloadObject["required"]) ?? true
-                let sortOrder = int64Value(payloadObject["sortOrder"]) ?? 0
-                let helpText = payloadObject["helpText"] as? String
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                let targetColId = templateId.hasPrefix("template_") ? String(templateId.dropFirst(9)) : templateId
+                let detail: NotebookInstrumentDetail
+                do {
+                    guard let loaded = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: targetColId) else {
+                        continue
+                    }
+                    detail = loaded
+                } catch {
+                    continue
+                }
+                let previous = detail.items.first { $0.id == id }
+                let itemType = payloadObject.keys.contains("itemType")
+                    ? notebookInstrumentItemType((payloadObject["itemType"] as? String) ?? "scale14")
+                    : (previous?.type ?? notebookInstrumentItemType("scale14"))
+                let options = InstrumentItemMerge.options(
+                    previous: previous?.options ?? [],
+                    incoming: payloadObject.keys.contains("optionsCsv")
+                        ? ((payloadObject["optionsCsv"] as? String) ?? "").split(separator: "|").map(String.init).filter { !$0.isEmpty }
+                        : nil
+                )
+                let required = InstrumentItemMerge.flag(
+                    previous: previous?.required ?? true,
+                    incoming: payloadObject.keys.contains("required") ? boolValue(payloadObject["required"]) : nil
+                )
+                let sortOrder = InstrumentItemMerge.order(
+                    previous: Int(previous?.order ?? 0),
+                    incoming: payloadObject.keys.contains("sortOrder") ? int64Value(payloadObject["sortOrder"]).map(Int.init) : nil
+                )
+                let helpText = payloadObject.keys.contains("helpText")
+                    ? payloadObject["helpText"] as? String
+                    : previous?.helpText
 
                 let item = NotebookInstrumentItem(
                     id: id,
@@ -1553,13 +2557,10 @@ extension KmpBridge {
                         syncVersion: 1
                     )
                 )
-                let targetColId = templateId.hasPrefix("template_") ? String(templateId.dropFirst(9)) : templateId
-                if let detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: targetColId) {
-                    var items = detail.items.filter { $0.id != id }
-                    items.append(item)
-                    items.sort { $0.order < $1.order }
-                    try await container.notebookInstrumentsRepository.saveTemplate(template: detail.template_, items: items)
-                }
+                var items = detail.items.filter { $0.id != id }
+                items.append(item)
+                items.sort { $0.order < $1.order }
+                try await container.notebookInstrumentsRepository.saveTemplate(template: detail.template_, items: items)
 
             case "notebook_instrument_response":
                 guard
@@ -1569,18 +2570,36 @@ extension KmpBridge {
                     let itemId = payloadObject["itemId"] as? String
                 else { continue }
 
-                let textValue = payloadObject["valueText"] as? String
-                let boolVal = boolValue(payloadObject["valueBool"])
-                let numValue = (payloadObject["valueNumber"] as? String) ?? ""
+                let loadedResponses: [NotebookInstrumentResponse]
+                do {
+                    loadedResponses = try await container.notebookInstrumentsRepository.listResponsesForCell(
+                        classId: classId,
+                        studentId: studentId,
+                        columnId: columnId
+                    )
+                } catch {
+                    continue
+                }
+                let previous = loadedResponses.first { $0.itemId == itemId }
+                let textValue = payloadObject.keys.contains("valueText")
+                    ? (payloadObject["valueText"] as? String ?? "")
+                    : (previous?.textValue ?? "")
+                let boolVal = payloadObject.keys.contains("valueBool")
+                    ? boolValue(payloadObject["valueBool"])
+                    : previous?.boolValue?.boolValue
+                let numValue = payloadObject.keys.contains("valueNumber")
+                    ? ((payloadObject["valueNumber"] as? String) ?? "")
+                    : (previous?.numberValue?.doubleValue).map { String($0) } ?? ""
 
-                var responses = (try? await container.notebookInstrumentsRepository.listResponsesForCell(classId: classId, studentId: studentId, columnId: columnId)) ?? []
-                responses.removeAll { $0.itemId == itemId }
-                responses.append(NotebookInstrumentResponse(
+                guard let responses = InstrumentResponseMerge.replacing(
+                    existing: loadedResponses,
+                    removeWhere: { $0.itemId == itemId },
+                    incoming: NotebookInstrumentResponse(
                     classId: classId,
                     studentId: studentId,
                     columnId: columnId,
                     itemId: itemId,
-                    textValue: textValue ?? "",
+                    textValue: textValue,
                     boolValue: boolVal.map { KotlinBoolean(value: $0) },
                     numberValue: numValue.isEmpty ? nil : KotlinDouble(value: Double(numValue) ?? 0.0),
                     trace: AuditTrace(
@@ -1591,7 +2610,8 @@ extension KmpBridge {
                         deviceId: change.deviceId,
                         syncVersion: 1
                     )
-                ))
+                )
+                ) else { continue }
                 _ = try await container.notebookInstrumentsRepository.saveResponses(
                     classId: classId,
                     studentId: studentId,
@@ -1604,34 +2624,82 @@ extension KmpBridge {
 
             case "teaching_unit":
                 guard let name = payloadObject["name"] as? String else { continue }
+                let incomingId = int64Value(payloadObject["id"]) ?? 0
+                let existingUnits: [TeachingUnit]
+                do {
+                    existingUnits = try await container.plannerRepository.listAllTeachingUnits()
+                } catch {
+                    continue
+                }
+                let existing = existingUnits.first { $0.id == incomingId }
                 let unit = TeachingUnit(
-                    id: int64Value(payloadObject["id"]) ?? 0,
+                    id: incomingId,
                     name: name,
-                    description: payloadObject["description"] as? String ?? "",
-                    colorHex: normalizeHexColor(payloadObject["colorHex"] as? String) ?? "#4A90D9",
-                    groupId: kotlinLong(int64Value(payloadObject["groupId"])),
-                    schoolClassId: kotlinLong(int64Value(payloadObject["schoolClassId"])),
-                    startDate: nil,
-                    endDate: nil
+                    description: TeachingUnitSyncMerge.text(
+                        previous: existing?.description_ ?? "",
+                        incoming: payloadObject["description"] as? String,
+                        keyPresent: payloadObject.keys.contains("description")
+                    ),
+                    colorHex: payloadObject.keys.contains("colorHex")
+                        ? (normalizeHexColor(payloadObject["colorHex"] as? String) ?? existing?.colorHex ?? "#4A90D9")
+                        : (existing?.colorHex ?? "#4A90D9"),
+                    groupId: payloadObject.keys.contains("groupId")
+                        ? kotlinLong(int64Value(payloadObject["groupId"]))
+                        : existing?.groupId,
+                    schoolClassId: payloadObject.keys.contains("schoolClassId")
+                        ? kotlinLong(int64Value(payloadObject["schoolClassId"]))
+                        : existing?.schoolClassId,
+                    startDate: payloadObject.keys.contains("startDate")
+                        ? localDate(from: payloadObject["startDate"])
+                        : existing?.startDate,
+                    endDate: payloadObject.keys.contains("endDate")
+                        ? localDate(from: payloadObject["endDate"])
+                        : existing?.endDate
                 )
                 _ = try await container.plannerRepository.upsertTeachingUnit(unit: unit)
 
             case "learning_situation":
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                let incomingId = int64Value(payloadObject["id"]) ?? 0
+                let existing: LearningSituation?
+                if incomingId > 0 {
+                    do {
+                        existing = try await container.learningSituationsRepository.getSituation(id: incomingId)
+                    } catch {
+                        continue
+                    }
+                } else {
+                    existing = nil
+                }
+                func kept(_ key: String, previous: String) -> String {
+                    TeachingUnitSyncMerge.text(
+                        previous: previous,
+                        incoming: payloadObject[key] as? String,
+                        keyPresent: payloadObject.keys.contains(key)
+                    )
+                }
+                let sessionCount = payloadObject.keys.contains("sessionCount")
+                    ? Int32(int64Value(payloadObject["sessionCount"]) ?? Int64(existing?.sessionCount ?? 0))
+                    : (existing?.sessionCount ?? 0)
+                let isDraft = LearningSituationSyncMerge.staysDraft(
+                    previousIsDraft: existing?.status == .draft,
+                    incoming: payloadObject["status"] as? String,
+                    keyPresent: payloadObject.keys.contains("status")
+                )
                 _ = try await container.learningSituationsRepository.saveSituation(
                     situation: LearningSituation(
-                        id: int64Value(payloadObject["id"]) ?? 0,
-                        title: payloadObject["title"] as? String ?? "Situación",
-                        stageLabel: payloadObject["stageLabel"] as? String ?? "",
-                        courseLabel: payloadObject["courseLabel"] as? String ?? "",
-                        subjectLabel: payloadObject["subjectLabel"] as? String ?? "",
-                        termLabel: payloadObject["termLabel"] as? String ?? "",
-                        centerLabel: payloadObject["centerLabel"] as? String ?? "",
-                        sessionCount: Int32(int64Value(payloadObject["sessionCount"]) ?? 0),
-                        challenge: payloadObject["challenge"] as? String ?? "",
-                        finalProduct: payloadObject["finalProduct"] as? String ?? "",
-                        payloadJson: payloadObject["payloadJson"] as? String ?? "{}",
-                        status: (payloadObject["status"] as? String == "DRAFT") ? .draft : .active,
+                        id: incomingId,
+                        title: kept("title", previous: existing?.title ?? "Situación"),
+                        stageLabel: kept("stageLabel", previous: existing?.stageLabel ?? ""),
+                        courseLabel: kept("courseLabel", previous: existing?.courseLabel ?? ""),
+                        subjectLabel: kept("subjectLabel", previous: existing?.subjectLabel ?? ""),
+                        termLabel: kept("termLabel", previous: existing?.termLabel ?? ""),
+                        centerLabel: kept("centerLabel", previous: existing?.centerLabel ?? ""),
+                        sessionCount: sessionCount,
+                        challenge: kept("challenge", previous: existing?.challenge ?? ""),
+                        finalProduct: kept("finalProduct", previous: existing?.finalProduct ?? ""),
+                        payloadJson: kept("payloadJson", previous: existing?.payloadJson ?? "{}"),
+                        status: isDraft ? .draft : .active,
                         trace: AuditTrace(
                             authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
                             associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
@@ -1642,19 +2710,46 @@ extension KmpBridge {
             case "learning_situation_version":
                 guard let situationId = int64Value(payloadObject["learningSituationId"]),
                       let hash = payloadObject["sha256"] as? String else { continue }
-                let localPath = await downloadLearningSituationDocumentIfNeeded(sha256: hash)
+                let existingVersions: [LearningSituationVersion]
+                do {
+                    existingVersions = try await container.learningSituationsRepository.listVersions(learningSituationId: situationId)
+                } catch {
+                    continue
+                }
+                let incomingVersionId = int64Value(payloadObject["id"]) ?? 0
+                let existing = existingVersions.first { $0.id == incomingVersionId && incomingVersionId > 0 }
+                    ?? existingVersions.first { $0.sha256 == hash }
+                let downloadedPath = await downloadLearningSituationDocumentIfNeeded(sha256: hash)
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 _ = try await container.learningSituationsRepository.saveVersion(
                     version: LearningSituationVersion(
-                        id: 0,
+                        id: SituationVersionSyncMerge.keptId(incoming: incomingVersionId, matched: existing?.id),
                         learningSituationId: situationId,
-                        versionNumber: Int32(int64Value(payloadObject["versionNumber"]) ?? 0),
-                        originalFileName: payloadObject["originalFileName"] as? String ?? "\(hash).docx",
+                        versionNumber: SituationVersionSyncMerge.number(
+                            previous: existing?.versionNumber ?? 0,
+                            incoming: int64Value(payloadObject["versionNumber"]).map(Int32.init),
+                            keyPresent: payloadObject.keys.contains("versionNumber")
+                        ),
+                        originalFileName: TeachingUnitSyncMerge.text(
+                            previous: existing?.originalFileName ?? "\(hash).docx",
+                            incoming: payloadObject["originalFileName"] as? String,
+                            keyPresent: payloadObject.keys.contains("originalFileName")
+                        ),
                         sha256: hash,
-                        localPath: localPath,
-                        sizeBytes: int64Value(payloadObject["sizeBytes"]) ?? 0,
-                        payloadJson: payloadObject["payloadJson"] as? String ?? "{}",
-                        warningsJson: payloadObject["warningsJson"] as? String ?? "[]",
+                        localPath: (downloadedPath?.isEmpty == false) ? downloadedPath : existing?.localPath,
+                        sizeBytes: payloadObject.keys.contains("sizeBytes")
+                            ? (int64Value(payloadObject["sizeBytes"]) ?? existing?.sizeBytes ?? 0)
+                            : (existing?.sizeBytes ?? 0),
+                        payloadJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.payloadJson ?? "{}",
+                            incoming: payloadObject["payloadJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("payloadJson")
+                        ),
+                        warningsJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.warningsJson ?? "[]",
+                            incoming: payloadObject["warningsJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("warningsJson")
+                        ),
                         trace: AuditTrace(
                             authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
                             associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
@@ -1665,19 +2760,46 @@ extension KmpBridge {
             case "learning_situation_sequence_version":
                 guard let situationId = int64Value(payloadObject["learningSituationId"]),
                       let hash = payloadObject["sha256"] as? String else { continue }
-                let localPath = await downloadLearningSituationDocumentIfNeeded(sha256: hash)
+                let existingVersions: [LearningSituationSessionSequenceVersion]
+                do {
+                    existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situationId)
+                } catch {
+                    continue
+                }
+                let incomingVersionId = int64Value(payloadObject["id"]) ?? 0
+                let existing = existingVersions.first { $0.id == incomingVersionId && incomingVersionId > 0 }
+                    ?? existingVersions.first { $0.sha256 == hash }
+                let downloadedPath = await downloadLearningSituationDocumentIfNeeded(sha256: hash)
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 _ = try await container.learningSituationsRepository.saveSessionSequenceVersion(
                     version: LearningSituationSessionSequenceVersion(
-                        id: int64Value(payloadObject["id"]) ?? 0,
+                        id: SituationVersionSyncMerge.keptId(incoming: incomingVersionId, matched: existing?.id),
                         learningSituationId: situationId,
-                        versionNumber: Int32(int64Value(payloadObject["versionNumber"]) ?? 0),
-                        originalFileName: payloadObject["originalFileName"] as? String ?? "\(hash).docx",
+                        versionNumber: SituationVersionSyncMerge.number(
+                            previous: existing?.versionNumber ?? 0,
+                            incoming: int64Value(payloadObject["versionNumber"]).map(Int32.init),
+                            keyPresent: payloadObject.keys.contains("versionNumber")
+                        ),
+                        originalFileName: TeachingUnitSyncMerge.text(
+                            previous: existing?.originalFileName ?? "\(hash).docx",
+                            incoming: payloadObject["originalFileName"] as? String,
+                            keyPresent: payloadObject.keys.contains("originalFileName")
+                        ),
                         sha256: hash,
-                        localPath: localPath,
-                        sizeBytes: int64Value(payloadObject["sizeBytes"]) ?? 0,
-                        payloadJson: payloadObject["payloadJson"] as? String ?? "{}",
-                        warningsJson: payloadObject["warningsJson"] as? String ?? "[]",
+                        localPath: (downloadedPath?.isEmpty == false) ? downloadedPath : existing?.localPath,
+                        sizeBytes: payloadObject.keys.contains("sizeBytes")
+                            ? (int64Value(payloadObject["sizeBytes"]) ?? existing?.sizeBytes ?? 0)
+                            : (existing?.sizeBytes ?? 0),
+                        payloadJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.payloadJson ?? "{}",
+                            incoming: payloadObject["payloadJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("payloadJson")
+                        ),
+                        warningsJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.warningsJson ?? "[]",
+                            incoming: payloadObject["warningsJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("warningsJson")
+                        ),
                         trace: AuditTrace(
                             authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
                             associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
@@ -1689,22 +2811,69 @@ extension KmpBridge {
                 guard let situationId = int64Value(payloadObject["learningSituationId"]),
                       let sequenceVersionId = int64Value(payloadObject["sequenceVersionId"]),
                       let title = payloadObject["title"] as? String else { continue }
+                let incomingId = int64Value(payloadObject["id"]) ?? 0
+                let existing: LearningSituationSessionPlan?
+                if incomingId > 0 {
+                    do {
+                        existing = try await container.learningSituationsRepository.getSessionPlan(id: incomingId)
+                    } catch {
+                        continue
+                    }
+                } else {
+                    existing = nil
+                }
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 _ = try await container.learningSituationsRepository.saveSessionPlan(
                     plan: LearningSituationSessionPlan(
-                        id: int64Value(payloadObject["id"]) ?? 0,
+                        id: incomingId,
                         learningSituationId: situationId,
                         sequenceVersionId: sequenceVersionId,
-                        sessionNumber: Int32(int64Value(payloadObject["sessionNumber"]) ?? 0),
-                        sourceLabel: payloadObject["sourceLabel"] as? String ?? "",
+                        sessionNumber: SituationVersionSyncMerge.number(
+                            previous: existing?.sessionNumber ?? 0,
+                            incoming: int64Value(payloadObject["sessionNumber"]).map(Int32.init),
+                            keyPresent: payloadObject.keys.contains("sessionNumber")
+                        ),
+                        sourceLabel: TeachingUnitSyncMerge.text(
+                            previous: existing?.sourceLabel ?? "",
+                            incoming: payloadObject["sourceLabel"] as? String,
+                            keyPresent: payloadObject.keys.contains("sourceLabel")
+                        ),
                         title: title,
-                        sessionType: payloadObject["sessionType"] as? String ?? "",
-                        effectiveMinutes: Int32(int64Value(payloadObject["effectiveMinutes"]) ?? 0),
-                        objective: payloadObject["objective"] as? String ?? "",
-                        criteriaJson: payloadObject["criteriaJson"] as? String ?? "[]",
-                        material: payloadObject["material"] as? String ?? "",
-                        developmentJson: payloadObject["developmentJson"] as? String ?? "[]",
-                        adaptationsJson: payloadObject["adaptationsJson"] as? String ?? "[]",
+                        sessionType: TeachingUnitSyncMerge.text(
+                            previous: existing?.sessionType ?? "",
+                            incoming: payloadObject["sessionType"] as? String,
+                            keyPresent: payloadObject.keys.contains("sessionType")
+                        ),
+                        effectiveMinutes: SituationVersionSyncMerge.number(
+                            previous: existing?.effectiveMinutes ?? 0,
+                            incoming: int64Value(payloadObject["effectiveMinutes"]).map(Int32.init),
+                            keyPresent: payloadObject.keys.contains("effectiveMinutes")
+                        ),
+                        objective: TeachingUnitSyncMerge.text(
+                            previous: existing?.objective ?? "",
+                            incoming: payloadObject["objective"] as? String,
+                            keyPresent: payloadObject.keys.contains("objective")
+                        ),
+                        criteriaJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.criteriaJson ?? "[]",
+                            incoming: payloadObject["criteriaJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("criteriaJson")
+                        ),
+                        material: TeachingUnitSyncMerge.text(
+                            previous: existing?.material ?? "",
+                            incoming: payloadObject["material"] as? String,
+                            keyPresent: payloadObject.keys.contains("material")
+                        ),
+                        developmentJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.developmentJson ?? "[]",
+                            incoming: payloadObject["developmentJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("developmentJson")
+                        ),
+                        adaptationsJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.adaptationsJson ?? "[]",
+                            incoming: payloadObject["adaptationsJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("adaptationsJson")
+                        ),
                         trace: AuditTrace(
                             authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
                             associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
@@ -1724,25 +2893,51 @@ extension KmpBridge {
 
             case "learning_situation_link":
                 guard let situationId = int64Value(payloadObject["learningSituationId"]),
-                      let kindName = payloadObject["kind"] as? String,
                       let resourceId = payloadObject["resourceId"] as? String else { continue }
+                let existing: LearningSituationLinkedResource?
+                do {
+                    existing = try await container.learningSituationsRepository
+                        .listLinkedResources(learningSituationId: situationId)
+                        .first(where: { $0.resourceId == resourceId })
+                } catch {
+                    continue
+                }
                 let kind: LearningSituationResourceKind
-                switch kindName {
-                case "TEACHING_UNIT": kind = .teachingUnit
-                case "PLANNING_SESSION": kind = .planningSession
-                case "EVALUATION": kind = .evaluation
-                case "RUBRIC": kind = .rubric
-                default: kind = .notebookColumn
+                if payloadObject.keys.contains("kind"), let kindName = payloadObject["kind"] as? String {
+                    switch kindName {
+                    case "TEACHING_UNIT": kind = .teachingUnit
+                    case "PLANNING_SESSION": kind = .planningSession
+                    case "EVALUATION": kind = .evaluation
+                    case "RUBRIC": kind = .rubric
+                    default: kind = .notebookColumn
+                    }
+                } else if let previous = existing?.kind {
+                    kind = previous
+                } else {
+                    continue
+                }
+                let classId: KotlinLong?
+                if payloadObject.keys.contains("classId") {
+                    classId = int64Value(payloadObject["classId"]).map { KotlinLong(value: $0) }
+                } else {
+                    classId = existing?.classId
                 }
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 _ = try await container.learningSituationsRepository.saveLinkedResource(
                     resource: LearningSituationLinkedResource(
-                        id: 0,
+                        id: LearningSituationLinkSyncMerge.keptId(
+                            incoming: int64Value(payloadObject["id"]) ?? 0,
+                            matched: existing?.id
+                        ),
                         learningSituationId: situationId,
                         kind: kind,
                         resourceId: resourceId,
-                        classId: int64Value(payloadObject["classId"]).map { KotlinLong(value: $0) },
-                        label: payloadObject["label"] as? String ?? "",
+                        classId: classId,
+                        label: LearningSituationLinkSyncMerge.label(
+                            previous: existing?.label ?? "",
+                            incoming: payloadObject["label"] as? String,
+                            keyPresent: payloadObject.keys.contains("label")
+                        ),
                         trace: AuditTrace(
                             authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
                             associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
@@ -1752,26 +2947,54 @@ extension KmpBridge {
 
             case "planning_session":
                 let sessionId = int64Value(payloadObject["id"]) ?? 0
-                let teachingUnitId = int64Value(payloadObject["teachingUnitId"]) ?? 0
-                let dayOfWeek = payloadObject["dayOfWeek"] as? Int ?? 1
-                let period = payloadObject["period"] as? Int ?? 1
-                let weekNumber = payloadObject["weekNumber"] as? Int ?? 1
-                let year = payloadObject["year"] as? Int ?? 2026
-                let statusRaw = (payloadObject["status"] as? String ?? "PLANNED").uppercased()
-                let status: SessionStatus
-                switch statusRaw {
-                case "IN_PROGRESS":
-                    status = .inProgress
-                case "COMPLETED":
-                    status = .completed
-                case "CANCELLED":
-                    status = .cancelled
-                default:
-                    status = .planned
+                let existingSession: PlanningSession?
+                if sessionId > 0 {
+                    do {
+                        existingSession = try await container.plannerRepository.getSession(id: sessionId)
+                    } catch {
+                        continue
+                    }
+                } else {
+                    existingSession = nil
                 }
-                let existingSession = sessionId > 0
-                    ? try await container.plannerRepository.listAllSessions().first(where: { $0.id == sessionId })
-                    : nil
+                let teachingUnitId = payloadObject.keys.contains("teachingUnitId")
+                    ? (int64Value(payloadObject["teachingUnitId"]) ?? existingSession?.teachingUnitId ?? 0)
+                    : (existingSession?.teachingUnitId ?? 0)
+                let dayOfWeek = PlanningSessionSyncMerge.placement(
+                    previous: existingSession?.dayOfWeek ?? 1,
+                    incoming: int64Value(payloadObject["dayOfWeek"]),
+                    keyPresent: payloadObject.keys.contains("dayOfWeek")
+                )
+                let period = PlanningSessionSyncMerge.placement(
+                    previous: existingSession?.period ?? 1,
+                    incoming: int64Value(payloadObject["period"]),
+                    keyPresent: payloadObject.keys.contains("period")
+                )
+                let weekNumber = PlanningSessionSyncMerge.placement(
+                    previous: existingSession?.weekNumber ?? 1,
+                    incoming: int64Value(payloadObject["weekNumber"]),
+                    keyPresent: payloadObject.keys.contains("weekNumber")
+                )
+                let year = PlanningSessionSyncMerge.placement(
+                    previous: existingSession?.year ?? 2026,
+                    incoming: int64Value(payloadObject["year"]),
+                    keyPresent: payloadObject.keys.contains("year")
+                )
+                let status: SessionStatus
+                if payloadObject.keys.contains("status"), let statusRaw = payloadObject["status"] as? String {
+                    switch statusRaw.uppercased() {
+                    case "IN_PROGRESS":
+                        status = .inProgress
+                    case "COMPLETED":
+                        status = .completed
+                    case "CANCELLED":
+                        status = .cancelled
+                    default:
+                        status = .planned
+                    }
+                } else {
+                    status = existingSession?.status ?? .planned
+                }
                 func keptString(_ key: String, current: String) -> String {
                     guard payloadObject.keys.contains(key) else { return current }
                     return payloadObject[key] as? String ?? ""
@@ -1818,45 +3041,149 @@ extension KmpBridge {
 
             case "teacher_schedule":
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                let incomingId = int64Value(payloadObject["id"]) ?? 0
+                let existing: TeacherSchedule?
+                if incomingId > 0 {
+                    do {
+                        let primary = try await container.teacherScheduleRepository.getOrCreatePrimarySchedule()
+                        existing = primary.id == incomingId ? primary : nil
+                    } catch {
+                        continue
+                    }
+                } else {
+                    existing = nil
+                }
                 let schedule = TeacherSchedule(
-                    id: int64Value(payloadObject["id"]) ?? 0,
-                    ownerUserId: int64Value(payloadObject["ownerUserId"]) ?? 1,
-                    academicYearId: int64Value(payloadObject["academicYearId"]) ?? 1,
-                    name: payloadObject["name"] as? String ?? "Agenda docente",
-                    startDateIso: payloadObject["startDateIso"] as? String ?? "",
-                    endDateIso: payloadObject["endDateIso"] as? String ?? "",
-                    activeWeekdaysCsv: payloadObject["activeWeekdaysCsv"] as? String ?? "1,2,3,4,5",
+                    id: incomingId,
+                    ownerUserId: TeacherScheduleSyncMerge.longId(
+                        previous: existing?.ownerUserId ?? 1,
+                        incoming: int64Value(payloadObject["ownerUserId"]),
+                        keyPresent: payloadObject.keys.contains("ownerUserId")
+                    ),
+                    academicYearId: TeacherScheduleSyncMerge.longId(
+                        previous: existing?.academicYearId ?? 1,
+                        incoming: int64Value(payloadObject["academicYearId"]),
+                        keyPresent: payloadObject.keys.contains("academicYearId")
+                    ),
+                    name: TeacherScheduleSyncMerge.text(
+                        previous: existing?.name ?? "Agenda docente",
+                        incoming: payloadObject["name"] as? String,
+                        keyPresent: payloadObject.keys.contains("name")
+                    ),
+                    startDateIso: TeacherScheduleSyncMerge.dates(
+                        previous: existing?.startDateIso ?? "",
+                        incoming: payloadObject["startDateIso"] as? String,
+                        keyPresent: payloadObject.keys.contains("startDateIso")
+                    ),
+                    endDateIso: TeacherScheduleSyncMerge.dates(
+                        previous: existing?.endDateIso ?? "",
+                        incoming: payloadObject["endDateIso"] as? String,
+                        keyPresent: payloadObject.keys.contains("endDateIso")
+                    ),
+                    activeWeekdaysCsv: TeacherScheduleSyncMerge.text(
+                        previous: existing?.activeWeekdaysCsv ?? "1,2,3,4,5",
+                        incoming: payloadObject["activeWeekdaysCsv"] as? String,
+                        keyPresent: payloadObject.keys.contains("activeWeekdaysCsv")
+                    ),
                     trace: AuditTrace(
-                        authorUserId: kotlinLong(int64Value(payloadObject["authorUserId"])),
+                        authorUserId: payloadObject.keys.contains("authorUserId")
+                            ? kotlinLong(int64Value(payloadObject["authorUserId"]))
+                            : existing?.trace.authorUserId,
                         createdAt: Instant.companion.fromEpochMilliseconds(
-                            epochMilliseconds: int64Value(payloadObject["createdAtEpochMs"]) ?? change.updatedAtEpochMs
+                            epochMilliseconds: payloadObject.keys.contains("createdAtEpochMs")
+                                ? (int64Value(payloadObject["createdAtEpochMs"]) ?? change.updatedAtEpochMs)
+                                : (existing?.trace.createdAt.toEpochMilliseconds() ?? change.updatedAtEpochMs)
                         ),
                         updatedAt: updatedAt,
-                        associatedGroupId: kotlinLong(int64Value(payloadObject["associatedGroupId"])),
+                        associatedGroupId: payloadObject.keys.contains("associatedGroupId")
+                            ? kotlinLong(int64Value(payloadObject["associatedGroupId"]))
+                            : existing?.trace.associatedGroupId,
                         deviceId: change.deviceId,
                         syncVersion: 1
                     )
                 )
-                _ = try await container.teacherScheduleRepository.saveSchedule(schedule: schedule)
+                do {
+                    _ = try await container.teacherScheduleRepository.saveSchedule(schedule: schedule)
+                } catch {
+                    print("LAN Sync: saveSchedule failed for teacher_schedule \(change.id): \(error)")
+                    continue
+                }
 
             case "teacher_schedule_slot":
-                guard
-                    let teacherScheduleId = int64Value(payloadObject["teacherScheduleId"]),
-                    let schoolClassId = int64Value(payloadObject["schoolClassId"]),
-                    let startTime = payloadObject["startTime"] as? String,
-                    let endTime = payloadObject["endTime"] as? String
-                else { continue }
+                guard let teacherScheduleId = int64Value(payloadObject["teacherScheduleId"]) else { continue }
+                let incomingId = int64Value(payloadObject["id"]) ?? 0
+                let existing: TeacherScheduleSlot?
+                if incomingId > 0 {
+                    do {
+                        existing = try await container.teacherScheduleRepository.getScheduleSlot(slotId: incomingId)
+                    } catch {
+                        continue
+                    }
+                    if existing == nil {
+                        let canCreateFromPayload =
+                            payloadObject.keys.contains("schoolClassId")
+                            && payloadObject.keys.contains("dayOfWeek")
+                            && payloadObject.keys.contains("subjectLabel")
+                            && payloadObject.keys.contains("startTime")
+                            && payloadObject.keys.contains("endTime")
+                        if !canCreateFromPayload { continue }
+                    }
+                } else {
+                    existing = nil
+                }
+                let startTime: String
+                if payloadObject.keys.contains("startTime") {
+                    guard let incomingStart = payloadObject["startTime"] as? String else { continue }
+                    startTime = incomingStart
+                } else if let previousStart = existing?.startTime {
+                    startTime = previousStart
+                } else {
+                    continue
+                }
+                let endTime: String
+                if payloadObject.keys.contains("endTime") {
+                    guard let incomingEnd = payloadObject["endTime"] as? String else { continue }
+                    endTime = incomingEnd
+                } else if let previousEnd = existing?.endTime {
+                    endTime = previousEnd
+                } else {
+                    continue
+                }
+                let schoolClassId = TeacherScheduleSlotSyncMerge.longId(
+                    previous: existing?.schoolClassId ?? 0,
+                    incoming: int64Value(payloadObject["schoolClassId"]),
+                    keyPresent: payloadObject.keys.contains("schoolClassId")
+                )
+                guard schoolClassId > 0 else { continue }
                 _ = try await container.teacherScheduleRepository.saveScheduleSlot(
                     slot: TeacherScheduleSlot(
-                        id: int64Value(payloadObject["id"]) ?? 0,
+                        id: incomingId,
                         teacherScheduleId: teacherScheduleId,
                         schoolClassId: schoolClassId,
-                        subjectLabel: payloadObject["subjectLabel"] as? String ?? "",
-                        unitLabel: (payloadObject["unitLabel"] as? String)?.nilIfEmpty,
-                        dayOfWeek: Int32(int64Value(payloadObject["dayOfWeek"]) ?? 1),
+                        subjectLabel: TeacherScheduleSlotSyncMerge.text(
+                            previous: existing?.subjectLabel ?? "",
+                            incoming: payloadObject["subjectLabel"] as? String,
+                            keyPresent: payloadObject.keys.contains("subjectLabel")
+                        ),
+                        unitLabel: TeacherScheduleSlotSyncMerge.optionalText(
+                            previous: existing?.unitLabel,
+                            incoming: payloadObject["unitLabel"] as? String,
+                            keyPresent: payloadObject.keys.contains("unitLabel")
+                        ),
+                        dayOfWeek: TeacherScheduleSlotSyncMerge.dayOfWeek(
+                            previous: existing?.dayOfWeek ?? 1,
+                            incoming: int64Value(payloadObject["dayOfWeek"]),
+                            keyPresent: payloadObject.keys.contains("dayOfWeek")
+                        ),
                         startTime: startTime,
                         endTime: endTime,
-                        weeklyTemplateId: kotlinLong(int64Value(payloadObject["weeklyTemplateId"]))
+                        weeklyTemplateId: kotlinLong(
+                            TeacherScheduleSlotSyncMerge.optionalLongId(
+                                previous: existing?.weeklyTemplateId?.int64Value,
+                                incoming: int64Value(payloadObject["weeklyTemplateId"]),
+                                keyPresent: payloadObject.keys.contains("weeklyTemplateId")
+                            )
+                        )
                     )
                 )
 
@@ -1864,55 +3191,196 @@ extension KmpBridge {
                 guard
                     let teacherScheduleId = int64Value(payloadObject["teacherScheduleId"])
                 else { continue }
+                let incomingId = int64Value(payloadObject["id"]) ?? 0
+                let existing: PlannerEvaluationPeriod?
+                if incomingId > 0 {
+                    do {
+                        existing = try await container.teacherScheduleRepository
+                            .listEvaluationPeriods(scheduleId: teacherScheduleId)
+                            .first(where: { $0.id == incomingId })
+                    } catch {
+                        continue
+                    }
+                } else {
+                    existing = nil
+                }
                 _ = try await container.teacherScheduleRepository.saveEvaluationPeriod(
                     period: PlannerEvaluationPeriod(
-                        id: int64Value(payloadObject["id"]) ?? 0,
+                        id: incomingId,
                         teacherScheduleId: teacherScheduleId,
-                        name: payloadObject["name"] as? String ?? "",
-                        startDateIso: payloadObject["startDateIso"] as? String ?? "",
-                        endDateIso: payloadObject["endDateIso"] as? String ?? "",
-                        sortOrder: Int32(int64Value(payloadObject["sortOrder"]) ?? 0)
+                        name: PlannerEvaluationPeriodSyncMerge.text(
+                            previous: existing?.name ?? "",
+                            incoming: payloadObject["name"] as? String,
+                            keyPresent: payloadObject.keys.contains("name")
+                        ),
+                        startDateIso: PlannerEvaluationPeriodSyncMerge.dates(
+                            previous: existing?.startDateIso ?? "",
+                            incoming: payloadObject["startDateIso"] as? String,
+                            keyPresent: payloadObject.keys.contains("startDateIso")
+                        ),
+                        endDateIso: PlannerEvaluationPeriodSyncMerge.dates(
+                            previous: existing?.endDateIso ?? "",
+                            incoming: payloadObject["endDateIso"] as? String,
+                            keyPresent: payloadObject.keys.contains("endDateIso")
+                        ),
+                        sortOrder: PlannerEvaluationPeriodSyncMerge.sortOrder(
+                            previous: existing?.sortOrder ?? 0,
+                            incoming: int64Value(payloadObject["sortOrder"]),
+                            keyPresent: payloadObject.keys.contains("sortOrder")
+                        )
                     )
                 )
 
             case "rubric_bundle":
                 guard let rubricName = payloadObject["name"] as? String else { continue }
-                let rubricId = int64Value(payloadObject["rubricId"])
+                let rubricId = int64Value(payloadObject["rubricId"]).flatMap { $0 > 0 ? $0 : nil }
+                let descriptionKeyPresent = payloadObject.keys.contains("description")
+                let classIdKeyPresent = payloadObject.keys.contains("classId")
+                let teachingUnitIdKeyPresent = payloadObject.keys.contains("teachingUnitId")
+                let criteria = payloadObject["criteria"] as? [[String: Any]] ?? []
+                let criteriaNeedPrevious = criteria.contains { criterion in
+                    !criterion.keys.contains("weight")
+                        || !criterion.keys.contains("description")
+                        || !criterion.keys.contains("order")
+                        || {
+                            let levels = criterion["levels"] as? [[String: Any]] ?? []
+                            return levels.contains { level in
+                                !level.keys.contains("points")
+                                    || !level.keys.contains("description")
+                                    || !level.keys.contains("order")
+                            }
+                        }()
+                }
+                let needsPrevious =
+                    !descriptionKeyPresent
+                    || !classIdKeyPresent
+                    || !teachingUnitIdKeyPresent
+                    || criteriaNeedPrevious
+                let existingDetail: RubricDetail?
+                if let rubricId {
+                    do {
+                        existingDetail = try await container.rubricsRepository.getRubricDetail(rubricId: rubricId)
+                    } catch {
+                        continue
+                    }
+                } else {
+                    existingDetail = nil
+                }
+                // Sin lectura local no se puede conservar description/classId/teachingUnitId,
+                // peso/orden de criterios ni points/order/description de niveles.
+                if needsPrevious, existingDetail == nil {
+                    continue
+                }
+                let existing = existingDetail?.rubric
+                let description = RubricBundleSyncMerge.optionalText(
+                    previous: existing?.description_,
+                    incoming: payloadObject["description"] as? String,
+                    keyPresent: descriptionKeyPresent
+                )
+                let classId = RubricBundleSyncMerge.optionalLong(
+                    previous: existing?.classId?.int64Value,
+                    incoming: int64Value(payloadObject["classId"]).flatMap { $0 > 0 ? $0 : nil },
+                    keyPresent: classIdKeyPresent
+                )
+                let teachingUnitId = RubricBundleSyncMerge.optionalLong(
+                    previous: existing?.teachingUnitId?.int64Value,
+                    incoming: int64Value(payloadObject["teachingUnitId"]).flatMap { $0 > 0 ? $0 : nil },
+                    keyPresent: teachingUnitIdKeyPresent
+                )
                 let savedRubricId = try await container.rubricsRepository.saveRubric(
                     id: kotlinLong(rubricId),
                     name: rubricName,
-                    description: payloadObject["description"] as? String,
-                    classId: int64Value(payloadObject["classId"]).map { KotlinLong(value: $0) },
-                    teachingUnitId: int64Value(payloadObject["teachingUnitId"]).map { KotlinLong(value: $0) },
+                    description: description,
+                    classId: classId.map { KotlinLong(value: $0) },
+                    teachingUnitId: teachingUnitId.map { KotlinLong(value: $0) },
                     createdAtEpochMs: change.updatedAtEpochMs,
                     updatedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId,
                     syncVersion: 1
                 )
-                let criteria = payloadObject["criteria"] as? [[String: Any]] ?? []
                 for criterion in criteria {
-                    guard let criterionDescription = criterion["description"] as? String else { continue }
-                    let criterionId = int64Value(criterion["id"])
+                    let criterionId = int64Value(criterion["id"]).flatMap { $0 > 0 ? $0 : nil }
+                    let existingCriterion = existingDetail?.criteria
+                        .first { $0.criterion.id == criterionId }?
+                        .criterion
+                    let criterionDescriptionKeyPresent = criterion.keys.contains("description")
+                    let weightKeyPresent = criterion.keys.contains("weight")
+                    let orderKeyPresent = criterion.keys.contains("order")
+                    if !criterionDescriptionKeyPresent, existingCriterion == nil {
+                        continue
+                    }
+                    let criterionDescription = RubricBundleSyncMerge.text(
+                        previous: existingCriterion?.description_ ?? "",
+                        incoming: criterion["description"] as? String,
+                        keyPresent: criterionDescriptionKeyPresent
+                    )
+                    let incomingOrder: Int? = {
+                        if let value = criterion["order"] as? Int { return value }
+                        if let value = criterion["order"] as? Int32 { return Int(value) }
+                        return nil
+                    }()
                     let savedCriterionId = try await container.rubricsRepository.saveCriterion(
                         id: kotlinLong(criterionId),
                         rubricId: savedRubricId.int64Value,
                         description: criterionDescription,
-                        weight: doubleValue(criterion["weight"]) ?? 1.0,
-                        order: criterion["order"] as? Int32 ?? Int32(criterion["order"] as? Int ?? 0),
+                        weight: RubricBundleSyncMerge.weight(
+                            previous: existingCriterion?.weight ?? 1.0,
+                            incoming: doubleValue(criterion["weight"]),
+                            keyPresent: weightKeyPresent
+                        ),
+                        order: RubricBundleSyncMerge.order(
+                            previous: existingCriterion.map { Int32($0.order) } ?? 0,
+                            incoming: incomingOrder,
+                            keyPresent: orderKeyPresent
+                        ),
                         updatedAtEpochMs: change.updatedAtEpochMs,
                         deviceId: change.deviceId,
                         syncVersion: 1
                     )
                     let levels = criterion["levels"] as? [[String: Any]] ?? []
+                    let existingLevels = existingDetail?.criteria
+                        .first { $0.criterion.id == criterionId }?
+                        .levels ?? []
                     for level in levels {
                         guard let levelName = level["name"] as? String else { continue }
+                        let levelId = int64Value(level["id"]).flatMap { $0 > 0 ? $0 : nil }
+                        let existingLevel = existingLevels.first { $0.id == levelId }
+                        let pointsKeyPresent = level.keys.contains("points")
+                        let levelDescriptionKeyPresent = level.keys.contains("description")
+                        let levelOrderKeyPresent = level.keys.contains("order")
+                        if (!pointsKeyPresent || !levelDescriptionKeyPresent || !levelOrderKeyPresent),
+                           existingLevel == nil {
+                            continue
+                        }
+                        let incomingPoints: Int? = {
+                            if let value = level["points"] as? Int { return value }
+                            if let value = level["points"] as? Int32 { return Int(value) }
+                            return nil
+                        }()
+                        let incomingLevelOrder: Int? = {
+                            if let value = level["order"] as? Int { return value }
+                            if let value = level["order"] as? Int32 { return Int(value) }
+                            return nil
+                        }()
                         _ = try await container.rubricsRepository.saveLevel(
-                            id: kotlinLong(int64Value(level["id"])),
+                            id: kotlinLong(levelId),
                             criterionId: savedCriterionId.int64Value,
                             name: levelName,
-                            points: level["points"] as? Int32 ?? Int32(level["points"] as? Int ?? 0),
-                            description: level["description"] as? String,
-                            order: level["order"] as? Int32 ?? Int32(level["order"] as? Int ?? 0),
+                            points: RubricBundleSyncMerge.points(
+                                previous: existingLevel.map { Int32($0.points) } ?? 0,
+                                incoming: incomingPoints,
+                                keyPresent: pointsKeyPresent
+                            ),
+                            description: RubricBundleSyncMerge.optionalText(
+                                previous: existingLevel?.description_,
+                                incoming: level["description"] as? String,
+                                keyPresent: levelDescriptionKeyPresent
+                            ),
+                            order: RubricBundleSyncMerge.order(
+                                previous: existingLevel.map { Int32($0.order) } ?? 0,
+                                incoming: incomingLevelOrder,
+                                keyPresent: levelOrderKeyPresent
+                            ),
                             updatedAtEpochMs: change.updatedAtEpochMs,
                             deviceId: change.deviceId,
                             syncVersion: 1
@@ -1927,16 +3395,46 @@ extension KmpBridge {
                     let dateEpochMs = int64Value(payloadObject["dateEpochMs"]),
                     let status = payloadObject["status"] as? String
                 else { continue }
+                let sessionIdValue = int64Value(payloadObject["sessionId"]).flatMap { $0 > 0 ? $0 : nil }
+                let existing: Attendance_?
+                do {
+                    let records = try await container.attendanceRepository.listAttendanceByDate(
+                        classId: classId,
+                        dateEpochMs: dateEpochMs
+                    )
+                    existing = records.first { record in
+                        record.studentId == studentId && record.sessionId?.int64Value == sessionIdValue
+                    } ?? records.first { record in
+                        record.studentId == studentId
+                    }
+                } catch {
+                    continue
+                }
+                let note = AttendanceSyncMerge.text(
+                    previous: existing?.note ?? "",
+                    incoming: payloadObject["note"] as? String,
+                    keyPresent: payloadObject.keys.contains("note")
+                )
+                let hasIncident = AttendanceSyncMerge.flag(
+                    previous: existing?.hasIncident ?? false,
+                    incoming: payloadObject["hasIncident"] as? Bool,
+                    keyPresent: payloadObject.keys.contains("hasIncident")
+                )
+                let followUpRequired = AttendanceSyncMerge.flag(
+                    previous: existing?.followUpRequired ?? false,
+                    incoming: payloadObject["followUpRequired"] as? Bool,
+                    keyPresent: payloadObject.keys.contains("followUpRequired")
+                )
                 _ = try await container.attendanceRepository.saveAttendance(
                     id: kotlinLong(int64Value(payloadObject["id"]).flatMap { $0 > 0 ? $0 : nil }),
                     studentId: studentId,
                     classId: classId,
                     dateEpochMs: dateEpochMs,
                     status: status,
-                    note: payloadObject["note"] as? String ?? "",
-                    hasIncident: payloadObject["hasIncident"] as? Bool ?? false,
-                    followUpRequired: payloadObject["followUpRequired"] as? Bool ?? false,
-                    sessionId: kotlinLong(int64Value(payloadObject["sessionId"]).flatMap { $0 > 0 ? $0 : nil }),
+                    note: note,
+                    hasIncident: hasIncident,
+                    followUpRequired: followUpRequired,
+                    sessionId: kotlinLong(sessionIdValue),
                     updatedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId,
                     syncVersion: 1
@@ -1948,13 +3446,35 @@ extension KmpBridge {
                     let title = payloadObject["title"] as? String,
                     let dateEpochMs = int64Value(payloadObject["dateEpochMs"])
                 else { continue }
+                let incomingId = int64Value(payloadObject["id"]).flatMap { $0 > 0 ? $0 : nil }
+                let existing: Incident?
+                do {
+                    if let incomingId {
+                        existing = try await container.incidentsRepository.listIncidents(classId: classId)
+                            .first { $0.id == incomingId }
+                    } else {
+                        existing = nil
+                    }
+                } catch {
+                    continue
+                }
+                let detail = IncidentSyncMerge.optionalText(
+                    previous: existing?.detail,
+                    incoming: payloadObject["detail"] as? String,
+                    keyPresent: payloadObject.keys.contains("detail")
+                )
+                let severity = IncidentSyncMerge.severity(
+                    previous: existing?.severity,
+                    incoming: payloadObject["severity"] as? String,
+                    keyPresent: payloadObject.keys.contains("severity")
+                )
                 _ = try await container.incidentsRepository.saveIncident(
-                    id: kotlinLong(int64Value(payloadObject["id"]).flatMap { $0 > 0 ? $0 : nil }),
+                    id: kotlinLong(incomingId),
                     classId: classId,
                     studentId: kotlinLong(int64Value(payloadObject["studentId"]).flatMap { $0 > 0 ? $0 : nil }),
                     title: title,
-                    detail: payloadObject["detail"] as? String,
-                    severity: payloadObject["severity"] as? String ?? "low",
+                    detail: detail,
+                    severity: severity,
                     dateEpochMs: dateEpochMs,
                     authorUserId: nil,
                     updatedAtEpochMs: change.updatedAtEpochMs,
@@ -1968,11 +3488,33 @@ extension KmpBridge {
                     let startEpochMs = int64Value(payloadObject["startEpochMs"]),
                     let endEpochMs = int64Value(payloadObject["endEpochMs"])
                 else { continue }
+                let incomingId = int64Value(payloadObject["id"]).flatMap { $0 > 0 ? $0 : nil }
+                let existing: CalendarEvent?
+                do {
+                    if let incomingId {
+                        existing = try await container.calendarRepository.listEvents(classId: nil)
+                            .first { $0.id == incomingId }
+                    } else {
+                        existing = nil
+                    }
+                } catch {
+                    continue
+                }
+                let description = CalendarEventSyncMerge.optionalText(
+                    previous: existing?.description_,
+                    incoming: payloadObject["description"] as? String,
+                    keyPresent: payloadObject.keys.contains("description")
+                )
+                let classId = CalendarEventSyncMerge.optionalClassId(
+                    previous: existing?.classId?.int64Value,
+                    incoming: int64Value(payloadObject["classId"]),
+                    keyPresent: payloadObject.keys.contains("classId")
+                )
                 _ = try await container.calendarRepository.saveEvent(
-                    id: kotlinLong(int64Value(payloadObject["id"]).flatMap { $0 > 0 ? $0 : nil }),
-                    classId: kotlinLong(int64Value(payloadObject["classId"]).flatMap { $0 > 0 ? $0 : nil }),
+                    id: kotlinLong(incomingId),
+                    classId: kotlinLong(classId),
                     title: title,
-                    description: payloadObject["description"] as? String,
+                    description: description,
                     startEpochMs: startEpochMs,
                     endEpochMs: endEpochMs,
                     externalProvider: payloadObject["externalProvider"] as? String,
@@ -2032,9 +3574,11 @@ extension KmpBridge {
                 let existingJournal = try await container.sessionJournalRepository.getJournalForSession(
                     planningSessionId: planningSessionId
                 )
+                // Sin existing, un payload parcial vaciaría textos/puntuaciones del diario.
                 guard let toSave = SessionJournalSyncCodec.shared.forLocalUpsert(
                     payload: change.payload,
-                    localJournalId: existingJournal?.journal.id ?? 0
+                    localJournalId: existingJournal?.journal.id ?? 0,
+                    existing: existingJournal
                 ) else { continue }
                 _ = try await container.sessionJournalRepository.saveJournalAggregate(aggregate: toSave)
 
@@ -2048,8 +3592,23 @@ extension KmpBridge {
             } catch {
                 // No abortar el pull completo por un único cambio defectuoso
                 // (p.ej. entidad fuera de orden o payload parcial).
+                failedCount += 1
                 continue
             }
+        }
+        guard SyncLanApplyCloseCopy.isSuccessfulClose(failedCount: failedCount) else {
+            let message = SyncLanApplyCloseCopy.failureStatusMessage(
+                failedCount: failedCount,
+                total: applyTotal
+            )
+            publishSyncState {
+                $0.syncStatusMessage = message
+            }
+            throw NSError(
+                domain: "Sync",
+                code: -42,
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )
         }
     }
 
@@ -2119,8 +3678,20 @@ extension KmpBridge {
                let studentId = int64Value(payloadObject["studentId"]),
                let columnId = payloadObject["columnId"] as? String,
                let itemId = payloadObject["itemId"] as? String {
-                var responses = (try? await container.notebookInstrumentsRepository.listResponsesForCell(classId: classId, studentId: studentId, columnId: columnId)) ?? []
-                responses.removeAll { $0.itemId == itemId }
+                let loadedResponses: [NotebookInstrumentResponse]
+                do {
+                    loadedResponses = try await container.notebookInstrumentsRepository.listResponsesForCell(
+                        classId: classId,
+                        studentId: studentId,
+                        columnId: columnId
+                    )
+                } catch {
+                    break
+                }
+                guard let responses = InstrumentResponseMerge.removing(
+                    existing: loadedResponses,
+                    removeWhere: { $0.itemId == itemId }
+                ) else { break }
                 _ = try await container.notebookInstrumentsRepository.saveResponses(
                     classId: classId,
                     studentId: studentId,
@@ -2541,6 +4112,9 @@ extension KmpBridge {
         notebookSnapshotDebounceTask = nil
         pendingGradeSnapshotTask?.cancel()
         pendingGradeSnapshotTask = nil
+        columnGradeSaveDebounceTask?.cancel()
+        columnGradeSaveDebounceTask = nil
+        pendingDebouncedColumnGrade = nil
         postSyncRefreshTask?.cancel()
         postSyncRefreshTask = nil
         syncEventListener.stop()
@@ -2636,6 +4210,9 @@ extension KmpBridge {
         autoSyncLoopTask?.cancel()
         autoSyncLoopTask = nil
         syncEventListener.stop()
+        if NotebookColumnGradeSave.shouldPersistNow(.enterBackground) {
+            flushAnyPendingColumnGradeSave()
+        }
         // Cerrar la ventana justo después de "Borrar todos los datos" dispara
         // esta transición de scenePhase (macOS pasa a `.background` al perder
         // el último foco), y sin este guard se lanzaba un `Task` nuevo que
@@ -2779,6 +4356,46 @@ extension KmpBridge {
             group.cancelAll()
             return result
         }
+    }
+}
+
+enum NotebookSyncScope {
+    static func sendsOnlyEditedCell(_ type: NotebookColumnType) -> Bool {
+        switch type {
+        case .numeric, .text, .check, .icon, .ordinal, .attendance:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+enum LanSyncRefreshPlan {
+    struct Steps: Equatable {
+        var classes = false
+        var students = false
+        var rubrics = false
+        var planning = false
+        var notebookEntities: Set<String> = []
+    }
+
+    static func steps(entities: Set<String>) -> Steps {
+        let notebookEntities: Set<String> = [
+            "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell",
+            "rubric_assessment", "student", "class", "class_roster", "evaluation", "notebook_group",
+            "notebook_group_member", "notebook_instrument_template", "notebook_instrument_item",
+            "notebook_instrument_response"
+        ]
+        return Steps(
+            classes: !entities.isDisjoint(with: ["class", "academic_year"]),
+            students: !entities.isDisjoint(with: ["student", "class_roster", "class"]),
+            rubrics: !entities.isDisjoint(with: ["rubric_bundle", "rubric_assessment"]),
+            planning: !entities.isDisjoint(with: [
+                "planning_session", "teaching_unit", "teacher_schedule", "teacher_schedule_slot",
+                "planner_evaluation_period", "session_journal", "calendar_event", "weekly_slot"
+            ]),
+            notebookEntities: notebookEntities
+        )
     }
 }
 

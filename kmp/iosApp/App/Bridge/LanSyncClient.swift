@@ -2,6 +2,31 @@ import Foundation
 import Security
 import CryptoKit
 
+/// Política pura del aviso local Mac → helper (Bearer + copy de fallo).
+/// Sin I/O: solo decisiones y frases comprobables en tests.
+enum LanLocalNotifyPolicy {
+    static let failureStatusMessage =
+        "Aviso local LAN fallido. El iPad puede no enterarse al momento."
+
+    /// Solo se manda Authorization si hay token real del enlace (no vacío).
+    static func shouldAttachBearer(token: String?) -> Bool {
+        guard let token else { return false }
+        return !token.isEmpty
+    }
+
+    static func authorizationHeaderValue(token: String) -> String {
+        "Bearer \(token)"
+    }
+}
+
+/// Parseo puro de payloads LAN entrantes. No llama a KMP ni toca SQL.
+enum LanSyncPayloadParser {
+    nonisolated static func dictionary(from payload: String) -> [String: Any] {
+        let payloadData = payload.data(using: .utf8) ?? Data()
+        return (try? JSONSerialization.jsonObject(with: payloadData)) as? [String: Any] ?? [:]
+    }
+}
+
 final class LanSyncClient {
     static func normalizeHost(_ rawHost: String) -> String {
         var normalized = rawHost.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -158,6 +183,7 @@ final class LanSyncClient {
 
     func notifyLocalChanges(
         host: String,
+        token: String,
         changes: [LanSyncChange],
         pinnedFingerprint: String?
     ) async throws {
@@ -166,6 +192,10 @@ final class LanSyncClient {
         let url = try buildURL(host: normalizedHost.isEmpty ? "127.0.0.1" : normalizedHost, path: "/sync/local-changes")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue(
+            LanLocalNotifyPolicy.authorizationHeaderValue(token: token),
+            forHTTPHeaderField: "Authorization"
+        )
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 8
         request.httpBody = try JSONEncoder().encode(changes)

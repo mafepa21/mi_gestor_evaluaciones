@@ -410,7 +410,13 @@ struct EFIncidentsWorkspaceView: View {
                     category: metadata.first(where: { $0.id == editingIncident.id })?.category ?? incidentCategory(for: editingIncident),
                     categories: ["Lesión", "Seguridad", "Conducta", "Material", "Equipación"]
                 ) { title, detail, severity, category in
-                    Task { await updateIncident(editingIncident, title: title, detail: detail, severity: severity, category: category) }
+                    try await updateIncident(
+                        editingIncident,
+                        title: title,
+                        detail: detail,
+                        severity: severity,
+                        category: category
+                    )
                 }
             }
         }
@@ -641,7 +647,8 @@ struct EFIncidentsWorkspaceView: View {
             selectedIncidentId = nil
             return
         }
-        incidents = (try? await bridge.incidents(for: selectedClassId)) ?? []
+        let loadedIncidents = try? await bridge.incidents(for: selectedClassId)
+        incidents = AttendanceLogic.listAfterFailedReload(loadedIncidents, previous: incidents)
         if selectedIncidentId == nil || !incidents.contains(where: { $0.id == selectedIncidentId }) {
             selectedIncidentId = filteredIncidents.first?.id ?? incidents.first?.id
         }
@@ -661,30 +668,25 @@ struct EFIncidentsWorkspaceView: View {
     }
 
     @MainActor
-    func updateIncident(_ incident: Incident, title: String, detail: String, severity: String, category: String) async {
-        editingIncident = nil
-        do {
-            try await bridge.updateIncident(
-                id: incident.id,
-                classId: incident.classId,
-                studentId: incident.studentId?.int64Value,
-                title: title,
-                detail: detail,
-                severity: severity,
-                dateEpochMs: Int64(incident.date.epochSeconds) * 1000
-            )
-            if var entry = metadata.first(where: { $0.id == incident.id }) {
-                entry.category = category
-                metadata.removeAll { $0.id == incident.id }
-                metadata.append(entry)
-            } else {
-                metadata.append(PEIncidentMetadata(id: incident.id, category: category, workflowState: .open, sessionId: nil, followUpNote: ""))
-            }
-            persistItems(metadata, forKey: peIncidentMetadataStorageKey)
-            await reload()
-        } catch {
-            bridge.status = "No se pudo actualizar la incidencia: \(error.localizedDescription)"
+    func updateIncident(_ incident: Incident, title: String, detail: String, severity: String, category: String) async throws {
+        try await bridge.updateIncident(
+            id: incident.id,
+            classId: incident.classId,
+            studentId: incident.studentId?.int64Value,
+            title: title,
+            detail: detail,
+            severity: severity,
+            dateEpochMs: Int64(incident.date.epochSeconds) * 1000
+        )
+        if var entry = metadata.first(where: { $0.id == incident.id }) {
+            entry.category = category
+            metadata.removeAll { $0.id == incident.id }
+            metadata.append(entry)
+        } else {
+            metadata.append(PEIncidentMetadata(id: incident.id, category: category, workflowState: .open, sessionId: nil, followUpNote: ""))
         }
+        persistItems(metadata, forKey: peIncidentMetadataStorageKey)
+        await reload()
     }
 
     func incidentCategory(for incident: Incident) -> String {

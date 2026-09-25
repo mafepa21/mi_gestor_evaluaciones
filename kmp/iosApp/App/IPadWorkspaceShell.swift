@@ -2783,6 +2783,7 @@ struct EditPESessionOperationalSheet: View {
     @State var stationObservations = ""
     @State var physicalIncidents = ""
     @State var journalStatus: SessionJournalStatus = .draft
+    @State var saveError: String?
 
     var body: some View {
         WorkspaceCreateSheetScaffold(
@@ -2793,6 +2794,12 @@ struct EditPESessionOperationalSheet: View {
             onCancel: { dismiss() },
             onSave: save
         ) {
+            if let saveError {
+                Text(saveError)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             PremiumCard.section(title: "Espacio y material", systemImage: "sportscourt") {
                 VStack(alignment: .leading, spacing: 16) {
                     WorkspaceCreateTextField(title: "Espacio previsto", placeholder: "Pabellón", text: $scheduledSpace)
@@ -2833,23 +2840,30 @@ struct EditPESessionOperationalSheet: View {
         }
     }
 
+    static let saveFailureMessage = "No se pudo guardar la operativa de la sesión. Los datos siguen en esta pantalla."
+
     private func save() {
         Task {
-            try? await bridge.savePESessionOperationalData(
-                sessionId: snapshot.id,
-                scheduledSpace: scheduledSpace,
-                usedSpace: usedSpace,
-                materialToPrepare: materialToPrepare,
-                materialUsed: materialUsed,
-                injuries: injuries,
-                unequippedStudents: unequipped,
-                intensityScore: intensity,
-                stationObservations: stationObservations,
-                physicalIncidents: physicalIncidents,
-                journalStatus: journalStatus
-            )
-            onDismiss()
-            dismiss()
+            do {
+                try await bridge.savePESessionOperationalData(
+                    sessionId: snapshot.id,
+                    scheduledSpace: scheduledSpace,
+                    usedSpace: usedSpace,
+                    materialToPrepare: materialToPrepare,
+                    materialUsed: materialUsed,
+                    injuries: injuries,
+                    unequippedStudents: unequipped,
+                    intensityScore: intensity,
+                    stationObservations: stationObservations,
+                    physicalIncidents: physicalIncidents,
+                    journalStatus: journalStatus
+                )
+                saveError = nil
+                onDismiss()
+                dismiss()
+            } catch {
+                saveError = Self.saveFailureMessage
+            }
         }
     }
 }

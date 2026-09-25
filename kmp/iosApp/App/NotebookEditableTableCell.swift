@@ -52,14 +52,14 @@ struct NotebookCellActions {
     let saveColumnGrade: @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void
     let saveColumnGradeDebounced: @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void
     let resolvePhysicalScore: (@MainActor (_ student: Student, _ classId: Int64, _ columnId: String, _ rawValue: Double) async -> Double?)?
-    let saveAttendance: @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Void
+    let saveAttendance: @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Bool
 
     init(
         flushPendingColumnGradeSave: @escaping @MainActor (_ studentId: Int64, _ columnId: String) -> Void,
         saveColumnGrade: @escaping @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void,
         saveColumnGradeDebounced: @escaping @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void,
         resolvePhysicalScore: (@MainActor (_ student: Student, _ classId: Int64, _ columnId: String, _ rawValue: Double) async -> Double?)? = nil,
-        saveAttendance: @escaping @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Void
+        saveAttendance: @escaping @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Bool
     ) {
         self.flushPendingColumnGradeSave = flushPendingColumnGradeSave
         self.saveColumnGrade = saveColumnGrade
@@ -725,6 +725,9 @@ private struct NotebookStatefulEditableTableCell: View {
             refreshPhysicalScore()
         }
         .onDisappear {
+            saveFocusedDraftIfNeeded(requireFocusReleased: false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppDidEnterBackground)) { _ in
             saveFocusedDraftIfNeeded(requireFocusReleased: false)
         }
         .appOnChange(of: reloadToken) { _ in
@@ -1774,9 +1777,14 @@ private struct NotebookStatefulEditableTableCell: View {
             .map { Date(timeIntervalSince1970: TimeInterval($0.int64Value) / 1000.0) } ?? Date()
 
         Task {
-            await actions.saveAttendance(item.student.id, classId, attendanceDate, canonicalStatus)
+            let saved = await actions.saveAttendance(item.student.id, classId, attendanceDate, canonicalStatus)
             await MainActor.run {
-                onAttendanceSaved()
+                if saved {
+                    onAttendanceSaved()
+                } else {
+                    textDraft = previousValue
+                    originalTextDraft = previousValue
+                }
             }
         }
     }
@@ -1787,14 +1795,14 @@ private struct NotebookStatefulEditableTableCell: View {
     }
 
     private func saveFocusedDraftIfNeeded(requireFocusReleased: Bool = true) {
-        guard hasLoadedDrafts,
-              activeChoiceCellId != cellId,
-              !isNumericKeyboardPresented,
-              !showTextPopover,
-              !NotebookKeyboardEditBuffer.isCapturing(cellId)
-        else { return }
-        if requireFocusReleased && focusedCellId.wrappedValue == cellId {
-            return
+        guard hasLoadedDrafts, activeChoiceCellId != cellId else { return }
+        // Al salir de la celda o ir a segundo plano, guardar ya aunque el teclado siga abierto.
+        if requireFocusReleased {
+            guard !isNumericKeyboardPresented,
+                  !showTextPopover,
+                  !NotebookKeyboardEditBuffer.isCapturing(cellId)
+            else { return }
+            guard focusedCellId.wrappedValue != cellId else { return }
         }
 
         switch column.type {

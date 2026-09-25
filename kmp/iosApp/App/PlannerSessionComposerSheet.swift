@@ -255,8 +255,9 @@ struct PlannerSessionComposerSheet: View {
             TextField("Nombre de la plantilla", text: $newTemplateTitle)
             Button("Guardar") {
                 Task {
-                    _ = await vm.saveCurrentDraftAsTemplate(title: newTemplateTitle)
-                    newTemplateTitle = ""
+                    if await vm.saveCurrentDraftAsTemplate(title: newTemplateTitle) {
+                        newTemplateTitle = ""
+                    }
                 }
             }
             Button("Cancelar", role: .cancel) { newTemplateTitle = "" }

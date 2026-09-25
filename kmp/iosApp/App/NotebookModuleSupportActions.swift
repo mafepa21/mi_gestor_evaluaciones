@@ -5,6 +5,33 @@ import MiGestorKit
 import AppKit
 #endif
 
+enum NotebookSignalsReload {
+    static let failureMessage = "No se pudo actualizar el pase del cuaderno. Se mantiene lo que ya ves."
+
+    static func map<Key: Hashable, Value>(loaded: [Key: Value]?, previous: [Key: Value], sameClass: Bool) -> [Key: Value] {
+        if let loaded { return loaded }
+        return sameClass ? previous : [:]
+    }
+
+    static func ids<T: Hashable>(loaded: Set<T>?, previous: Set<T>, sameClass: Bool) -> Set<T> {
+        if let loaded { return loaded }
+        return sameClass ? previous : []
+    }
+}
+
+/// Si falla crear el seguimiento desde el plano, el aviso debe quedar visible en español
+/// (sin fingir que se guardó la incidencia).
+enum NotebookFollowUpSaveGate {
+    static let saveFailureMessage =
+        "No se pudo crear el seguimiento. Pulsa otra vez para reintentar."
+
+    static func failureMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return saveFailureMessage }
+        return "\(saveFailureMessage) \(trimmed)"
+    }
+}
+
 extension NotebookModuleView {
     func syncInspectorDraft() {
         guard let selection = inspectorSelection,
@@ -25,18 +52,41 @@ extension NotebookModuleView {
         async let incidentsResult = try? bridge.incidents(for: classId)
         async let supportMeasureResult = try? bridge.activeSupportMeasureStudentIds()
 
-        let attendance = await attendanceResult ?? []
-        let incidents = await incidentsResult ?? []
-        let supportMeasureStudentIds = await supportMeasureResult ?? []
+        let attendance = await attendanceResult
+        let incidents = await incidentsResult
+        let supportMeasureStudentIds = await supportMeasureResult
+        let requestedId = classId
+        let sameClass = notebookSignalsClassId == requestedId
 
         await MainActor.run {
-            todayAttendanceByStudentId = Dictionary(
-                attendance.map { ($0.studentId, $0.status) },
-                uniquingKeysWith: { _, latest in latest }
+            guard (selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value) == requestedId else { return }
+            if attendance == nil || incidents == nil || supportMeasureStudentIds == nil {
+                bridge.status = NotebookSignalsReload.failureMessage
+            }
+            let loadedAttendance = attendance.map { records in
+                Dictionary(records.map { ($0.studentId, $0.status) }, uniquingKeysWith: { _, latest in latest })
+            }
+            let loadedIncidents = incidents.map { records in
+                Dictionary(grouping: records.compactMap { $0.studentId?.int64Value }, by: { $0 }).mapValues(\.count)
+            }
+            todayAttendanceByStudentId = NotebookSignalsReload.map(
+                loaded: loadedAttendance,
+                previous: todayAttendanceByStudentId,
+                sameClass: sameClass
             )
-            let counts = Dictionary(grouping: incidents.compactMap { $0.studentId?.int64Value }, by: { $0 }).mapValues(\.count)
-            incidentCountByStudentId = counts
-            activeSupportMeasureStudentIds = supportMeasureStudentIds
+            incidentCountByStudentId = NotebookSignalsReload.map(
+                loaded: loadedIncidents,
+                previous: incidentCountByStudentId,
+                sameClass: sameClass
+            )
+            activeSupportMeasureStudentIds = NotebookSignalsReload.ids(
+                loaded: supportMeasureStudentIds,
+                previous: activeSupportMeasureStudentIds,
+                sameClass: sameClass
+            )
+            if attendance != nil || incidents != nil || supportMeasureStudentIds != nil {
+                notebookSignalsClassId = requestedId
+            }
         }
     }
 
@@ -338,6 +388,7 @@ extension NotebookModuleView {
             )
             await refreshNotebookSignals()
         } catch {
+            bridge.status = NotebookFollowUpSaveGate.failureMessage(detail: error.localizedDescription)
         }
     }
 

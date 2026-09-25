@@ -100,8 +100,8 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         if !isBound {
             await reload()
             isBound = true
-        } else {
-            await refreshForecastForSelection()
+        } else if await refreshForecastForSelection() == false {
+            scheduleError = TeachingUnitReload.forecastFailure
         }
     }
 
@@ -110,7 +110,9 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         if scheduleFormGroupId == nil {
             scheduleFormGroupId = classId ?? groups.first?.id
         }
-        await refreshForecastForSelection()
+        if await refreshForecastForSelection() == false {
+            scheduleError = TeachingUnitReload.forecastFailure
+        }
     }
 
     func reload() async {
@@ -138,10 +140,19 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             )
             teacherScheduleSlots = try await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)
             evaluationPeriods = try await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)
-            teachingUnits = (try? await bridge.plannerTeachingUnits(for: nil)) ?? []
+            let loadedUnits = try? await bridge.plannerTeachingUnits(for: nil)
             nonTeachingEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: selectedClassId)
-            await refreshForecastForSelection()
-            scheduleError = ""
+            let forecastLoaded = await refreshForecastForSelection()
+            if let loadedUnits {
+                teachingUnits = loadedUnits
+            }
+            if loadedUnits == nil {
+                scheduleError = TeachingUnitReload.failureMessage
+            } else if !forecastLoaded {
+                scheduleError = TeachingUnitReload.forecastFailure
+            } else {
+                scheduleError = ""
+            }
             scheduleImportStatusMessage = ""
             scheduleSaveState = .idle
         } catch {
@@ -384,11 +395,18 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             }
             scheduleImportStatusMessage = message
         } catch {
+            var rollbackFailures = 0
             for slotId in importedSlotIds.reversed() {
-                try? await bridge.plannerDeleteTeacherScheduleSlot(slotId: slotId)
+                do {
+                    try await bridge.plannerDeleteTeacherScheduleSlot(slotId: slotId)
+                } catch {
+                    rollbackFailures += 1
+                }
             }
             await reload()
-            scheduleError = error.localizedDescription
+            scheduleError = rollbackFailures == 0
+                ? error.localizedDescription
+                : "\(error.localizedDescription) Quedaron \(rollbackFailures) franjas a medio importar."
             scheduleImportStatusMessage = ""
             scheduleSaveState = .failed(scheduleError)
         }
@@ -544,9 +562,14 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         }
     }
 
-    private func refreshForecastForSelection() async {
-        guard let bridge, let schedule = teacherSchedule else { return }
-        forecastRows = (try? await bridge.plannerForecast(scheduleId: schedule.id, classId: selectedClassId)) ?? []
+    private func refreshForecastForSelection() async -> Bool {
+        guard let bridge, let schedule = teacherSchedule else { return true }
+        do {
+            forecastRows = try await bridge.plannerForecast(scheduleId: schedule.id, classId: selectedClassId)
+            return true
+        } catch {
+            return false
+        }
     }
 
     func syncScheduleDatesFromPicker() {

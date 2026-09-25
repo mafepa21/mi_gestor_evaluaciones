@@ -1,6 +1,38 @@
 import SwiftUI
 import MiGestorKit
 
+enum NotebookGridSearch {
+    static let debounceNanoseconds: UInt64 = 200_000_000
+
+    /// El texto del campo puede ir por delante. La rejilla solo usa el texto ya asentado.
+    static func queryForGrid(liveText: String, settledText: String) -> String {
+        settledText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Política de guardado al teclear una nota en el cuaderno.
+/// El borrador se ve al momento; SQL y sync esperan a que la tecla asiente.
+enum NotebookColumnGradeSave {
+    static let debounceNanoseconds: UInt64 = 250_000_000
+
+    enum Trigger {
+        case keystroke
+        case confirmOrBlur
+        case enterBackground
+        case groupOrClassChange
+    }
+
+    /// Mientras teclea: esperar. Al confirmar, salir, cambiar de grupo/clase o ir a segundo plano: guardar ya.
+    static func shouldPersistNow(_ trigger: Trigger) -> Bool {
+        switch trigger {
+        case .keystroke:
+            return false
+        case .confirmOrBlur, .enterBackground, .groupOrClassChange:
+            return true
+        }
+    }
+}
+
 extension NotebookModuleView {
     func openInspectorForSelection(_ data: NotebookUiStateData) {
         if inspectorSelection != nil { return }
@@ -43,7 +75,7 @@ extension NotebookModuleView {
             data: data,
             activeTabId: activeNotebookTabId(data: data),
             groupByWorkGroupMode: groupByWorkGroupMode,
-            searchText: searchText,
+            searchText: NotebookGridSearch.queryForGrid(liveText: searchText, settledText: debouncedGridSearchText),
             selectedGroupId: selectedGroupId,
             renderCacheKey: notebookRenderCacheKey(data: data)
         )
@@ -53,7 +85,7 @@ extension NotebookModuleView {
         NotebookRenderCacheKey(
             classId: data.sheet.classId,
             activeTabId: activeNotebookTabId(data: data),
-            searchText: searchText.trimmingCharacters(in: .whitespacesAndNewlines),
+            searchText: NotebookGridSearch.queryForGrid(liveText: searchText, settledText: debouncedGridSearchText),
             hiddenColumnsRevision: notebookHiddenColumnsRevision(data: data),
             structuralRevision: structuralGridRevision
         )

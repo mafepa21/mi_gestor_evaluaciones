@@ -940,12 +940,23 @@ struct MacAttendanceView: View {
     private func reloadAttendance() async {
         guard let selectedClassId else { return }
         isLoading = true
-        let records = (try? await bridge.attendanceRecords(for: selectedClassId, on: selectedDate)) ?? []
+        let records: [KmpBridge.AttendanceRecordSnapshot]
+        do {
+            records = try await bridge.attendanceRecords(for: selectedClassId, on: selectedDate)
+        } catch {
+            bridge.status = AttendanceLogic.reloadFailureMessage
+            isLoading = false
+            return
+        }
         recordsByStudentId = Dictionary(
             uniqueKeysWithValues: normalizedAttendanceRecords(records).map { ($0.studentId, $0) }
         )
         let range = monthRange(for: selectedDate)
-        history = (try? await bridge.attendanceHistory(for: selectedClassId, from: range.start, to: range.end)) ?? []
+        do {
+            history = try await bridge.attendanceHistory(for: selectedClassId, from: range.start, to: range.end)
+        } catch {
+            bridge.status = AttendanceLogic.reloadFailureMessage
+        }
         if let selection = historySelection {
             historySelection = AttendanceHistorySelection(
                 studentId: selection.studentId,
@@ -953,8 +964,13 @@ struct MacAttendanceView: View {
                 record: historyRecord(for: selection.studentId, date: selection.date)
             )
         }
-        incidents = (try? await bridge.incidents(for: selectedClassId)) ?? []
-        sessions = (try? await bridge.attendanceSessions(for: selectedClassId, on: selectedDate)) ?? []
+        let loadedIncidents = try? await bridge.incidents(for: selectedClassId)
+        let loadedSessions = try? await bridge.attendanceSessions(for: selectedClassId, on: selectedDate)
+        if loadedIncidents == nil || loadedSessions == nil {
+            bridge.status = AttendanceLogic.sideReloadFailureMessage
+        }
+        incidents = AttendanceLogic.listAfterFailedReload(loadedIncidents, previous: incidents)
+        sessions = AttendanceLogic.listAfterFailedReload(loadedSessions, previous: sessions)
         reconcileSelectedAttendanceSession()
         noteDraft = selectedInspectionAttendance?.note ?? ""
         isLoading = false
@@ -965,11 +981,15 @@ struct MacAttendanceView: View {
     private func reloadClassOverviews() async {
         await bridge.ensureClassesLoaded()
         let range = monthRange(for: selectedDate)
-        classOverviews = (try? await bridge.attendanceOverview(
+        let loadedOverviews = try? await bridge.attendanceOverview(
             for: attendanceStore.classes.map(\.id),
             from: range.start,
             to: range.end
-        )) ?? []
+        )
+        if loadedOverviews == nil {
+            bridge.status = AttendanceLogic.sideReloadFailureMessage
+        }
+        classOverviews = AttendanceLogic.listAfterFailedReload(loadedOverviews, previous: classOverviews)
     }
 
     @MainActor
@@ -1118,10 +1138,14 @@ struct MacAttendanceView: View {
     @MainActor
     private func repeatPattern() async {
         guard let selectedClassId else { return }
-        let applied = (try? await bridge.repeatLatestAttendancePattern(classId: selectedClassId, targetDate: selectedDate)) ?? 0
-        bridge.status = applied > 0 ? "Patrón anterior aplicado a \(applied) registros." : "No había patrón anterior reutilizable."
-        await reloadAttendance()
-        await reloadClassOverviews()
+        do {
+            let applied = try await bridge.repeatLatestAttendancePattern(classId: selectedClassId, targetDate: selectedDate)
+            bridge.status = applied > 0 ? "Patrón anterior aplicado a \(applied) registros." : "No había patrón anterior reutilizable."
+            await reloadAttendance()
+            await reloadClassOverviews()
+        } catch {
+            bridge.status = "No se pudo copiar el patrón de asistencia. Las marcas de hoy no han cambiado."
+        }
     }
 
     @MainActor

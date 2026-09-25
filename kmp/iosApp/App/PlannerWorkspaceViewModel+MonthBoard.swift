@@ -5,15 +5,46 @@ import MiGestorKit
 extension PlannerWorkspaceViewModel {
     func reloadMonthData() async {
         guard let bridge else { return }
+        let calendar = Calendar(identifier: .iso8601)
+        var firstComponents = calendar.dateComponents([.year, .month], from: monthViewDate)
+        firstComponents.day = 1
+        let firstOfMonth = calendar.date(from: firstComponents) ?? monthViewDate
+        let start = calendar.date(byAdding: .day, value: -7, to: firstOfMonth) ?? firstOfMonth
+        let end = calendar.date(byAdding: .day, value: 45, to: firstOfMonth) ?? firstOfMonth
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.dateFormat = "yyyy-MM-dd"
         do {
-            monthSessions = try await bridge.plannerListAllSessions()
+            monthSessions = try await bridge.plannerListSessions(
+                fromIso: formatter.string(from: start),
+                toIso: formatter.string(from: end),
+                classId: nil
+            )
+            monthLoadError = nil
         } catch {
-            monthSessions = []
+            monthLoadError = "No se pudo cargar el mes. Se mantienen las sesiones que ya ves."
         }
 
         do {
-            let allEvents = (try? await bridge.plannerAllCalendarEvents()) ?? []
-            monthMilestones = buildMonthMilestones(from: allEvents)
+            let allEvents = try await bridge.plannerAllCalendarEvents()
+            let rangeStartMs = Int64(calendar.startOfDay(for: start).timeIntervalSince1970 * 1000)
+            let endOfVisibleDay = calendar.date(
+                bySettingHour: 23,
+                minute: 59,
+                second: 59,
+                of: end
+            ) ?? end
+            let rangeEndMs = Int64(endOfVisibleDay.timeIntervalSince1970 * 1000)
+            let visibleEvents = PlannerCalendarRange.overlapping(
+                events: allEvents,
+                rangeStartMs: rangeStartMs,
+                rangeEndMs: rangeEndMs
+            )
+            monthMilestones = buildMonthMilestones(from: visibleEvents)
+        } catch {
+            if monthLoadError == nil {
+                monthLoadError = PlannerCalendarLoad.monthFailure
+            }
         }
     }
 

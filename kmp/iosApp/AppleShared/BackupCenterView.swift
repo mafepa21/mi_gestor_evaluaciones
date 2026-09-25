@@ -186,10 +186,8 @@ struct BackupActionsBar: View {
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateBackupSheet(isPresented: $showCreateSheet, note: $backupNote) {
-                Task {
-                    let finalNote = backupNote.trimmingCharacters(in: .whitespacesAndNewlines)
-                    _ = try? await service.createBackup(note: finalNote.isEmpty ? nil : finalNote)
-                }
+                let finalNote = backupNote.trimmingCharacters(in: .whitespacesAndNewlines)
+                _ = try await service.createBackup(note: finalNote.isEmpty ? nil : finalNote)
             }
         }
     }

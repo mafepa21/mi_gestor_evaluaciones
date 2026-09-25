@@ -7,6 +7,19 @@ import UIKit
 import AppKit
 #endif
 
+/// Si falla marcar presente/ausente en la sábana, el cambio se revierte y el aviso
+/// debe quedar visible en español (sin fingir que se guardó).
+enum AttendanceMatrixSaveGate {
+    static let saveFailureMessage =
+        "No se pudo guardar la asistencia. Pulsa otra vez para reintentar."
+
+    static func failureMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return saveFailureMessage }
+        return "\(saveFailureMessage) \(trimmed)"
+    }
+}
+
 struct AttendanceMatrixGridView: View {
     let bridge: KmpBridge
     @ObservedObject var attendanceStore: AttendanceBridgeStore
@@ -47,10 +60,8 @@ struct AttendanceMatrixGridView: View {
     }()
 
     private var students: [Student] {
-        attendanceStore.studentsInClass.filter { student in
-            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !query.isEmpty else { return true }
-            return student.fullName.localizedCaseInsensitiveContains(query)
+        attendanceStore.studentsInClass.filter {
+            AttendanceMatrixSearch.nameMatches($0.fullName, query: searchText)
         }
     }
 
@@ -174,7 +185,8 @@ struct AttendanceMatrixGridView: View {
     // MARK: - Matrix Grid Content
     private var matrixContent: some View {
         ScrollView([.horizontal, .vertical]) {
-            VStack(alignment: .leading, spacing: 0) {
+            // Lazy: no montar todas las filas alumno×fecha de golpe (trimestre/curso).
+            LazyVStack(alignment: .leading, spacing: 0) {
                 // Cabecera de columnas
                 HStack(spacing: 0) {
                     studentColumnHeader
@@ -575,6 +587,9 @@ struct AttendanceMatrixGridView: View {
             )
         } catch {
             matrixRecords[student.id]?[key] = previous
+            bridge.status = AttendanceMatrixSaveGate.failureMessage(
+                detail: error.localizedDescription
+            )
             AppleInteractionFeedback.play(.error)
         }
     }

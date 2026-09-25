@@ -46,15 +46,21 @@ extension PlannerWorkspaceViewModel {
     /// sin necesidad de abrir la ficha completa del diario. Carga el diario de la
     /// sesión si aún no era la seleccionada, añade el texto a `groupObservations`
     /// (respetando lo que ya hubiera) y guarda.
-    func quickAddObservation(to session: PlanningSession, text: String) async {
+    /// Devuelve `true` solo si el diario confirma el guardado. Si falla, el texto sigue en el borrador.
+    @discardableResult
+    func quickAddObservation(to session: PlanningSession, text: String) async -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return false }
         if selectedSession?.id != session.id {
             await select(session: session)
         }
         let existing = journalDraft.groupObservations.trimmingCharacters(in: .whitespacesAndNewlines)
         journalDraft.groupObservations = existing.isEmpty ? trimmed : "\(existing)\n\(trimmed)"
         await saveJournal()
+        if case .saved = journalSaveState {
+            return true
+        }
+        return false
     }
 
     /// Pulso rápido de la sesión (clima/tiempo útil/dificultad), mismo criterio que

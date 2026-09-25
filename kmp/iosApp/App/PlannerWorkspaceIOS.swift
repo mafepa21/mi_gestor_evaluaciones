@@ -362,7 +362,7 @@ struct PlannerToolbar: View {
             .frame(maxWidth: 160)
 
             IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
-                .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
+                .appOnChange(of: vm.searchText) { _ in vm.scheduleSearch() }
 
             actionsMenu
             newSessionButton
@@ -391,6 +391,11 @@ struct PlannerToolbar: View {
                 }
             } label: {
                 Label("Sincronizar", systemImage: "arrow.triangle.2.circlepath")
+            }
+            Button {
+                bridge.cancelLanSync()
+            } label: {
+                Label(SyncLanCancelAffordances.buttonTitle, systemImage: "xmark.circle")
             }
 
             ShareLink(item: vm.exportText()) {
@@ -640,7 +645,13 @@ struct PlannerToolbar: View {
                     if let onUndoCascadeMove {
                         onUndoCascadeMove()
                     } else {
-                        Task { try? await vm.restoreLastCascadeMove() }
+                        Task {
+                            do {
+                                try await vm.restoreLastCascadeMove()
+                            } catch {
+                                vm.bulkSummary = CascadeUndoCopy.failure(error.localizedDescription)
+                            }
+                        }
                     }
                 } label: {
                     Label("Deshacer movimiento", systemImage: "arrow.uturn.backward")

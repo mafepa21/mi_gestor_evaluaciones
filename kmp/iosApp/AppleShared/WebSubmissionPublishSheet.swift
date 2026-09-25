@@ -174,7 +174,11 @@ struct WebSubmissionPublishSheet: View {
             }
             .padding(.vertical, 4)
         } else if let result = peerDetection {
-            if !result.groups.isEmpty {
+            if result.loadFailed {
+                Text(WebPeerPublishGuard.groupsFailure)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            } else if !result.groups.isEmpty {
                 let headerTitle = result.learningSituationTitle ?? "Grupos de trabajo del Cuaderno"
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {

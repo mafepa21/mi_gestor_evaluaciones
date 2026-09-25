@@ -13,6 +13,22 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Fixed
+
+- **La sincronización no borra lo que el otro aparato no envió**: si llega un cambio sin un campo, se conserva el valor que ya había (nota, falta, sesión, diario, horario, rúbrica, clase, curso).
+- **Un fallo no se disfraza de éxito**: guardar una nota, una columna, una plantilla, una matrícula, una incidencia o una nota rápida avisa en español y no cierra como si hubiera ido bien. En el Mac, un fallo de sync ya no dice «Sincronizado».
+- **Sync LAN pide la clave en todas las rutas de datos**. El aviso del Mac a sí mismo lleva esa clave. Si el envío falla en parte, esos cambios siguen pendientes.
+- **La pantalla no trabaja de más**: la nota del cuaderno espera un instante y se guarda al salir; la búsqueda de alumnado espera; la sync muestra «Sincronizando N de T» sin repintar cada cambio y se puede cancelar.
+
+### Data
+
+- La lectura de una nota incluye evidencia y rúbrica para no vaciarlas cuando el mensaje no las trae.
+
+### Verification
+
+- Pasaron, entre otras: ida y vuelta de sesión en base vacía, borrado tras reiniciar el adaptador, `GradePartialSyncTest`, `LocalSyncServerAdoptionTest`, `IsoWeekHelperTest`, `GetWeeklyPlannerUseCaseTest`, `DesktopKeychainCommandTest`, y pruebas sueltas de `MiGestorPlannerTests` en macOS (`** TEST SUCCEEDED **`).
+- No se midieron 60 fps con Instruments. No se hizo una prueba manual de matar la app.
+
 ### Changed
 
 - **Planificador, el cambio de pantalla se ve**: al pasar de Mes, Semana, Día, Secuencia, Evaluación o Resumen, el contenido entra con un fundido corto. En el iPhone las pestañas van en su fila y debajo el grupo, la búsqueda y la sesión nueva. El bloque de progreso arranca cerrado en Día, Secuencia y Evaluación, y abierto en Resumen. En el Día, la página sigue el dedo al cambiar de fecha.

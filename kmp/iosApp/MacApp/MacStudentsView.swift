@@ -32,6 +32,7 @@ final class MacStudentsStore: ObservableObject {
     deinit {
         profileLoadTask?.cancel()
     }
+    @Published var loadedProfileStudentId: Int64?
     @Published var supportMeasures: [SupportMeasureRow] = []
     @Published var tutoringSessions: [TutoringSessionRow] = []
 }
@@ -65,9 +66,11 @@ struct MacStudentsView: View {
     @State private var studentEmailImportPreview: AppleStudentEmailImportPreview?
     @State private var importErrorMessage: String?
     @FocusState private var isSearchFocused: Bool
+    @State private var debouncedSearchText = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
 
     private var filteredRows: [KmpBridge.MacStudentRowSnapshot] {
-        let query = store.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = StudentListSearch.queryForList(liveText: store.searchText, settledText: debouncedSearchText)
         return store.rows.filter { row in
             let matchesQuery = query.isEmpty ||
                 row.student.fullName.localizedCaseInsensitiveContains(query) ||
@@ -112,6 +115,15 @@ struct MacStudentsView: View {
 
     private var ownsStudentSideEffects: Bool {
         presentation != .inspector
+    }
+
+    private func scheduleSearchDebounce() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: StudentListSearch.debounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            debouncedSearchText = store.searchText
+        }
     }
 
     var body: some View {
@@ -167,8 +179,10 @@ struct MacStudentsView: View {
             }
             .onExitCommand {
                 guard ownsStudentSideEffects else { return }
-                if !store.searchText.isEmpty {
+                if !store.searchText.isEmpty || !debouncedSearchText.isEmpty {
                     store.searchText = ""
+                    debouncedSearchText = ""
+                    searchDebounceTask?.cancel()
                 }
             }
             .background {
@@ -205,7 +219,7 @@ struct MacStudentsView: View {
                     student: student,
                     availableClasses: studentsBridgeStore.classes
                 ) { targetClassId in
-                    Task { await assignStudentToClass(student, classId: targetClassId) }
+                    try await assignStudentToClass(student, classId: targetClassId)
                 }
             }
             .sheet(isPresented: isAssigningMultiplePresented) {
@@ -300,8 +314,12 @@ struct MacStudentsView: View {
                 Button("Borrar", role: .destructive) {
                     if let session = pendingDeleteTutoringSession {
                         Task {
-                            try? await bridge.deleteTutoringSession(id: session.id)
-                            loadProfileForSelection(session.studentId)
+                            do {
+                                try await bridge.deleteTutoringSession(id: session.id)
+                                loadProfileForSelection(session.studentId)
+                            } catch {
+                                bridge.status = "No se pudo borrar la tutoría. Sigue en la ficha."
+                            }
                         }
                     }
                     pendingDeleteTutoringSession = nil
@@ -390,7 +408,7 @@ struct MacStudentsView: View {
                 students: students,
                 availableClasses: studentsBridgeStore.classes
             ) { targetClassId in
-                Task { await assignMultipleStudentsToClass(students, classId: targetClassId) }
+                try await assignMultipleStudentsToClass(students, classId: targetClassId)
             }
         }
     }
@@ -669,6 +687,9 @@ struct MacStudentsView: View {
                 TextField("Nombre o clase", text: $store.searchText)
                     .textFieldStyle(.roundedBorder)
                     .focused($isSearchFocused)
+                    .appOnChange(of: store.searchText) { _ in
+                        scheduleSearchDebounce()
+                    }
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -1441,10 +1462,13 @@ struct MacStudentsView: View {
         }
 
         let requestedClassId = selectedClassId ?? store.rows.first(where: { $0.id == studentId })?.classId
-        store.profile = nil
-        store.riskPack = nil
         store.isLoadingProfile = true
         store.profileLoadingStudentId = studentId
+        let samePerson = store.loadedProfileStudentId == studentId
+        let previousProfile = store.profile
+        let previousRisk = store.riskPack
+        let previousMeasures = store.supportMeasures
+        let previousTutoring = store.tutoringSessions
 
         store.profileLoadTask = Task {
             do {
@@ -1454,8 +1478,8 @@ struct MacStudentsView: View {
                 async let loadedTutoringSessions = bridge.tutoringSessions(for: studentId)
                 let resultProfile = try await loadedProfile
                 let resultRiskPack = try? await loadedRiskPack
-                let resultSupportMeasures = (try? await loadedSupportMeasures)?.map(\.asRow) ?? []
-                let resultTutoringSessions = (try? await loadedTutoringSessions)?.map(\.asRow) ?? []
+                let resultSupportMeasures = try? await loadedSupportMeasures
+                let resultTutoringSessions = try? await loadedTutoringSessions
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard store.localSelectedStudentId == studentId,
@@ -1463,8 +1487,12 @@ struct MacStudentsView: View {
                           (selectedClassId ?? store.rows.first(where: { $0.id == studentId })?.classId) == requestedClassId else { return }
                     store.profile = resultProfile
                     store.riskPack = resultRiskPack
-                    store.supportMeasures = resultSupportMeasures
-                    store.tutoringSessions = resultTutoringSessions
+                    store.loadedProfileStudentId = studentId
+                    if resultSupportMeasures == nil || resultTutoringSessions == nil {
+                        store.profileErrorMessage = ProfileReloadKeep.failureMessage
+                    }
+                    store.supportMeasures = ProfileReloadKeep.list(loaded: resultSupportMeasures?.map(\.asRow), previous: previousMeasures, samePerson: samePerson)
+                    store.tutoringSessions = ProfileReloadKeep.list(loaded: resultTutoringSessions?.map(\.asRow), previous: previousTutoring, samePerson: samePerson)
                     store.profileLoadingStudentId = nil
                     store.isLoadingProfile = false
                 }
@@ -1474,10 +1502,12 @@ struct MacStudentsView: View {
                     guard store.localSelectedStudentId == studentId,
                           selectedStudentId == studentId,
                           (selectedClassId ?? store.rows.first(where: { $0.id == studentId })?.classId) == requestedClassId else { return }
-                    store.profile = nil
-                    store.riskPack = nil
+                    store.profile = ProfileReloadKeep.snapshot(loaded: nil, previous: previousProfile, samePerson: samePerson)
+                    store.riskPack = samePerson ? previousRisk : nil
+                    store.supportMeasures = ProfileReloadKeep.list(loaded: nil, previous: previousMeasures, samePerson: samePerson)
+                    store.tutoringSessions = ProfileReloadKeep.list(loaded: nil, previous: previousTutoring, samePerson: samePerson)
                     store.profileLoadingStudentId = nil
-                    store.profileErrorMessage = error.localizedDescription
+                    store.profileErrorMessage = ProfileReloadKeep.failureMessage
                     store.isLoadingProfile = false
                 }
             }
@@ -1609,31 +1639,21 @@ struct MacStudentsView: View {
     }
 
     @MainActor
-    private func assignStudentToClass(_ student: Student, classId: Int64) async {
-        assigningStudent = nil
-        do {
-            try await bridge.assignStudentToClass(studentId: student.id, classId: classId)
-            await reloadRows(preferredStudentId: student.id)
-            let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
-            bridge.status = "\(student.fullName) se ha asignado a \(className)."
-        } catch {
-            store.errorMessage = "No se pudo asignar al curso: \(error.localizedDescription)"
-        }
+    private func assignStudentToClass(_ student: Student, classId: Int64) async throws {
+        try await bridge.assignStudentToClass(studentId: student.id, classId: classId)
+        await reloadRows(preferredStudentId: student.id)
+        let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
+        bridge.status = "\(student.fullName) se ha asignado a \(className)."
     }
 
     @MainActor
-    private func assignMultipleStudentsToClass(_ students: [Student], classId: Int64) async {
-        assigningMultipleStudents = nil
+    private func assignMultipleStudentsToClass(_ students: [Student], classId: Int64) async throws {
         let ids = students.map(\.id)
-        do {
-            try await bridge.assignStudentsToClass(studentIds: ids, classId: classId)
-            store.selectedStudentIds.removeAll()
-            await reloadRows(preferredStudentId: ids.first)
-            let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
-            bridge.status = "\(students.count) alumnos asignados a \(className)."
-        } catch {
-            store.errorMessage = "No se pudieron asignar los alumnos: \(error.localizedDescription)"
-        }
+        try await bridge.assignStudentsToClass(studentIds: ids, classId: classId)
+        store.selectedStudentIds.removeAll()
+        await reloadRows(preferredStudentId: ids.first)
+        let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
+        bridge.status = "\(students.count) alumnos asignados a \(className)."
     }
 
     @MainActor

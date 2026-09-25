@@ -146,8 +146,9 @@ extension KmpBridge {
             return nil
         }
 
-        let sessions = try await container.plannerRepository.listAllSessions()
-            .filter { $0.groupId == classId && Calendar.current.isDate(self.date(from: $0), inSameDayAs: date) }
+        // Solo el día y el grupo visibles: evita listAllSessions al abrir captura de aula.
+        let dayIso = ClassroomCaptureQuery.dayIso(for: date)
+        let sessions = try await plannerListSessions(fromIso: dayIso, toIso: dayIso, classId: classId)
             .sorted {
                 if $0.period == $1.period {
                     return ($0.startTime ?? "") < ($1.startTime ?? "")
@@ -171,4 +172,13 @@ extension KmpBridge {
         )
     }
 
+}
+
+enum ClassroomCaptureQuery {
+    /// Día ISO del calendario local del docente (mismo día que ve en captura de aula).
+    static func dayIso(for date: Date, calendar: Calendar = .current) -> String {
+        let comps = calendar.dateComponents([.year, .month, .day], from: date)
+        guard let year = comps.year, let month = comps.month, let day = comps.day else { return "" }
+        return String(format: "%04d-%02d-%02d", year, month, day)
+    }
 }

@@ -6,6 +6,38 @@ import Foundation
 // y consulta aquí; nunca redacta el informe sociopsicopedagógico ni el PAP en
 // sí — solo referencia el documento oficial y sus propias observaciones.
 
+enum SupportGroupOverviewReload {
+    static let failure = "No se pudieron leer algunas medidas. Esos alumnos no se muestran como si no tuvieran."
+
+    static func includeInWithoutList(loadFailed: Bool, hadPrevious: Bool, isEmpty: Bool) -> Bool {
+        if loadFailed && !hadPrevious { return false }
+        return isEmpty
+    }
+}
+
+enum SupportMeasureImportGuard {
+    static let existingLoadFailure = "No se pudieron leer las medidas ya guardadas. No se ha importado nada para no duplicarlas."
+
+    static func shouldSave<T: Hashable>(alreadyKnown: Set<T>?, measure: T) -> Bool {
+        guard let alreadyKnown else { return false }
+        return !alreadyKnown.contains(measure)
+    }
+}
+
+enum ProfileReloadKeep {
+    static let failureMessage = "No se pudo actualizar la ficha. Se mantiene lo que ya ves."
+
+    static func snapshot<T>(loaded: T?, previous: T?, samePerson: Bool) -> T? {
+        if let loaded { return loaded }
+        return samePerson ? previous : nil
+    }
+
+    static func list<T>(loaded: [T]?, previous: [T], samePerson: Bool) -> [T] {
+        if let loaded { return loaded }
+        return samePerson ? previous : []
+    }
+}
+
 enum SupportMeasureLevelUI: String, CaseIterable, Identifiable {
     case iii = "III"
     case iv = "IV"

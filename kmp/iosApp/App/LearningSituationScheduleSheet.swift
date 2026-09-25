@@ -677,7 +677,14 @@ struct LearningSituationScheduleSheet: View {
             }
 
             // Discover linked groups from SA
-            let links = (try? await bridge.learningSituationClassLinks(id: situation.id)) ?? []
+            let links: [LearningSituationClassLink]
+            do {
+                links = try await bridge.learningSituationClassLinks(id: situation.id)
+            } catch {
+                errorMessage = LearningSituationScheduleLoad.linksFailure
+                showingErrorAlert = true
+                return
+            }
             var initialGroupIds = links.map(\.classId)
             if initialGroupIds.isEmpty, let initial = initialClassId {
                 initialGroupIds = [initial]
@@ -744,7 +751,11 @@ struct LearningSituationScheduleSheet: View {
 
             let allScheduleSlots = try await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)
             let globalNonTeaching = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
-            let allSessions = try await bridge.plannerListAllSessions()
+            let allSessions = try await bridge.plannerListSessions(
+                fromIso: resolvedPeriod.startDateIso,
+                toIso: resolvedPeriod.endDateIso,
+                classId: nil
+            )
             let visibleSlots = bridge.plannerTimeSlots().map {
                 PlannerVisibleSlot(period: Int($0.period), startTime: $0.startTime, endTime: $0.endTime)
             }
@@ -763,10 +774,24 @@ struct LearningSituationScheduleSheet: View {
                 }
             } else {
                 var loadedPlans: [TermSimulationPlanItem] = []
-                let versions = (try? await bridge.learningSituationSessionSequenceVersionsAll()) ?? []
+                let versions: [LearningSituationSessionSequenceVersion]
+                do {
+                    versions = try await bridge.learningSituationSessionSequenceVersionsAll()
+                } catch {
+                    errorMessage = LearningSituationScheduleLoad.sequenceFailure
+                    showingErrorAlert = true
+                    return
+                }
                 let sitVersions = versions.filter { $0.learningSituationId == situation.id }
                 if let latestVersion = sitVersions.max(by: { $0.versionNumber < $1.versionNumber }) {
-                    let allPlans = (try? await bridge.learningSituationSessionPlansAll()) ?? []
+                    let allPlans: [LearningSituationSessionPlan]
+                    do {
+                        allPlans = try await bridge.learningSituationSessionPlansAll()
+                    } catch {
+                        errorMessage = LearningSituationScheduleLoad.sequenceFailure
+                        showingErrorAlert = true
+                        return
+                    }
                     let plans = allPlans
                         .filter { $0.sequenceVersionId == latestVersion.id }
                         .sorted { $0.sessionNumber < $1.sessionNumber }

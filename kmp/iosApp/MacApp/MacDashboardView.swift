@@ -133,19 +133,47 @@ struct MacDashboardView: View {
         }
     }
 
+    private var isClassroomMode: Bool {
+        modePreference.resolved(for: operationalSnapshot?.currentContext) == .classroom
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.dateFormat = "EEEE, d 'de' MMMM"
+        return formatter
+    }()
+
+    private var dashboardFormattedDate: String {
+        let dateStr = Self.dateFormatter.string(from: Date())
+        return dateStr.prefix(1).uppercased() + dateStr.dropFirst()
+    }
+
+    private var dashboardGreeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour >= 6 && hour < 14 {
+            return "Buenos días"
+        } else if hour >= 14 && hour < 21 {
+            return "Buenas tardes"
+        } else {
+            return "Buenas noches"
+        }
+    }
+
     private var dashboardHeader: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Hoy")
-                    .font(MacAppStyle.pageTitle)
-                Text(headerSubtitle)
-                    .font(.subheadline)
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(dashboardGreeting)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                Text("\(dashboardFormattedDate) · \(headerSubtitle)")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
             }
-            Spacer()
+            Spacer(minLength: 16)
             dashboardModePicker
             SyncStatusCompactView(summary: DashboardSyncSummary(bridge: bridge))
         }
+        .padding(.bottom, 8)
     }
 
     private var headerSubtitle: String {
@@ -168,18 +196,67 @@ struct MacDashboardView: View {
 
     @ViewBuilder
     private func readyContent(snapshot: MacDashboardSnapshot, isWide: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 24) {
-            if isWide {
-                HStack(alignment: .top, spacing: 24) {
-                    DashboardHeroNowCard(
-                        context: snapshot.context,
-                        tintHex: snapshot.context?.classId.flatMap { bridge.plannerCourseColor(for: $0.int64Value) },
-                        onAction: handleQuickAction,
-                        onOpenSheet: { activeSheet = $0 }
-                    )
-                    .frame(maxWidth: .infinity)
+        if isClassroomMode {
+            classroomModeContent
+        } else {
+            officeModeContent(snapshot: snapshot, isWide: isWide)
+        }
+    }
 
-                    VStack(alignment: .leading, spacing: 24) {
+    @ViewBuilder
+    private var classroomModeContent: some View {
+        if let operationalSnapshot {
+            VStack(spacing: 24) {
+                DashboardClassroomView(
+                    snapshot: operationalSnapshot,
+                    colorScheme: colorScheme,
+                    isCompact: false,
+                    onAction: handleNowAction,
+                    onExitClassroomMode: {
+                        modePreferenceRaw = DashboardModePreference.office.rawValue
+                        scheduleReload()
+                    }
+                )
+                .frame(maxWidth: 680)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 24)
+        } else {
+            DashboardLoadingView()
+        }
+    }
+
+    @ViewBuilder
+    private func officeModeContent(snapshot: MacDashboardSnapshot, isWide: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // 1. Hero compacto para optimizar espacio vertical
+            if let operationalSnapshot {
+                DashboardCompactHeroStrip(
+                    context: operationalSnapshot.currentContext,
+                    colorScheme: colorScheme,
+                    onAction: handleNowAction
+                )
+            }
+
+            // 2. Fila de KPIs
+            if let operationalSnapshot {
+                dashboardKpiRow(snapshot: operationalSnapshot, colorScheme: colorScheme, isCompact: false)
+            }
+
+            // 3. Grid de escritorio (3 columnas si es >= 1040, 2 columnas si es más estrecha)
+            if isWide {
+                HStack(alignment: .top, spacing: 20) {
+                    // Columna 1: Agenda docente + Resumen por grupo
+                    VStack(alignment: .leading, spacing: 20) {
+                        if let operationalSnapshot {
+                            dashboardAgendaBlock(snapshot: operationalSnapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
+                            dashboardGroupSummaryBlock(snapshot: operationalSnapshot, isWide: false)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                    // Columna 2: Radar docente (Insights + IA Briefing) + Auditoría LOMLOE
+                    VStack(alignment: .leading, spacing: 20) {
                         DashboardProactiveInsightCard(
                             insights: proactiveInsights,
                             aiBriefing: aiBriefing,
@@ -187,80 +264,83 @@ struct MacDashboardView: View {
                             actionAvailability: proactiveActionAvailable,
                             onAction: handleProactiveAction
                         )
+                        dashboardLomloeAuditBlock(
+                            trends: classTrends,
+                            isLoading: isLoadingClassTrends,
+                            loadFailed: classTrendsLoadFailed,
+                            onRetry: { Task { await rebuildProactiveRadarForCurrentState() } }
+                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                    // Columna 3: Tareas pendientes + Bloque Educación Física + Riesgo + Estado del Sistema
+                    VStack(alignment: .leading, spacing: 20) {
                         DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
+                        if let operationalSnapshot {
+                            dashboardPEBlock(snapshot: operationalSnapshot, colorScheme: colorScheme, onSelectItem: handleSelectPEItem)
+                        }
                         DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
                         DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
                     }
-                    .frame(width: 380)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             } else {
-                VStack(alignment: .leading, spacing: 24) {
-                    DashboardProactiveInsightCard(
-                        insights: proactiveInsights,
-                        aiBriefing: aiBriefing,
-                        aiBriefingState: aiBriefingState,
-                        actionAvailability: proactiveActionAvailable,
-                        onAction: handleProactiveAction
-                    )
-                    DashboardHeroNowCard(
-                        context: snapshot.context,
-                        tintHex: snapshot.context?.classId.flatMap { bridge.plannerCourseColor(for: $0.int64Value) },
-                        onAction: handleQuickAction,
-                        onOpenSheet: { activeSheet = $0 }
-                    )
-                    DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
-                    DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
-                    DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
-                }
-            }
+                HStack(alignment: .top, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if let operationalSnapshot {
+                            dashboardAgendaBlock(snapshot: operationalSnapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
+                            dashboardGroupSummaryBlock(snapshot: operationalSnapshot, isWide: false)
+                        }
+                        DashboardProactiveInsightCard(
+                            insights: proactiveInsights,
+                            aiBriefing: aiBriefing,
+                            aiBriefingState: aiBriefingState,
+                            actionAvailability: proactiveActionAvailable,
+                            onAction: handleProactiveAction
+                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
 
-            if let operationalSnapshot {
-                sharedOperationalBlocks(snapshot: operationalSnapshot, isWide: isWide)
+                    VStack(alignment: .leading, spacing: 20) {
+                        DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
+                        dashboardLomloeAuditBlock(
+                            trends: classTrends,
+                            isLoading: isLoadingClassTrends,
+                            loadFailed: classTrendsLoadFailed,
+                            onRetry: { Task { await rebuildProactiveRadarForCurrentState() } }
+                        )
+                        if let operationalSnapshot {
+                            dashboardPEBlock(snapshot: operationalSnapshot, colorScheme: colorScheme, onSelectItem: handleSelectPEItem)
+                        }
+                        DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
+                        DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
             }
         }
     }
 
-    /// Resumen por grupo, Agenda docente, Educación Física y Auditoría
-    /// LOMLOE, sobre el mismo `DashboardSnapshot` del backend que usa iPad
-    /// (capa compartida en DashboardSharedBlocks.swift). El `MacDashboardSnapshot`
-    /// que queda ya solo lleva pendientes, sync y acciones: el contexto de
-    /// "Ahora" también viene del snapshot compartido.
-    @ViewBuilder
-    private func sharedOperationalBlocks(snapshot: DashboardSnapshot, isWide: Bool) -> some View {
-        // En modo Clase estos bloques no se pintan: comparan grupos entre sí o
-        // miran la semana entera, y el backend ya los devuelve vacíos. Se
-        // omiten en vez de dibujar cuatro tarjetas diciendo "sin datos".
-        let isClassroom = modePreference.resolved(for: snapshot.currentContext) == .classroom
-        VStack(alignment: .leading, spacing: 16) {
-            if !isClassroom {
-                dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme)
-            }
-            if isClassroom {
-                EmptyView()
-            } else if isWide {
-                HStack(alignment: .top, spacing: 16) {
-                    dashboardGroupSummaryBlock(snapshot: snapshot, isWide: true)
-                    dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
-                }
-                HStack(alignment: .top, spacing: 16) {
-                    dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme, onSelectItem: handleSelectPEItem)
-                    dashboardLomloeAuditBlock(
-                        trends: classTrends,
-                        isLoading: isLoadingClassTrends,
-                        loadFailed: classTrendsLoadFailed,
-                        onRetry: { Task { await rebuildProactiveRadarForCurrentState() } }
-                    )
-                }
+    private func handleNowAction(_ action: DashboardNowAction) {
+        let classId = operationalSnapshot?.currentContext?.classId?.int64Value
+        switch action {
+        case .passList:
+            handleQuickAction(.attendance(classId: classId))
+        case .openNotebook:
+            handleQuickAction(.notebook(classId: classId))
+        case .evaluate:
+            handleQuickAction(.rubrics(classId: classId))
+        case .observation:
+            activeSheet = .observation(classId: classId)
+        case .quickEvaluation:
+            activeSheet = .quickEvaluation(classId: classId)
+        case .openPlanner:
+            handleQuickAction(.plannerAgenda)
+        case .openJournal:
+            if let sessionId = operationalSnapshot?.currentContext?.sessionId?.int64Value {
+                handleQuickAction(.plannerSession(sessionId: sessionId))
             } else {
-                dashboardGroupSummaryBlock(snapshot: snapshot, isWide: false)
-                dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
-                dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme, onSelectItem: handleSelectPEItem)
-                dashboardLomloeAuditBlock(
-                    trends: classTrends,
-                    isLoading: isLoadingClassTrends,
-                    loadFailed: classTrendsLoadFailed,
-                    onRetry: { Task { await rebuildProactiveRadarForCurrentState() } }
-                )
+                handleQuickAction(.plannerAgenda)
             }
         }
     }
@@ -701,76 +781,6 @@ private struct MacPanel<Content: View>: View {
         }
         .padding(MacAppStyle.innerPadding)
         .macLiquidGlassPanel(role, isActive: true, tint: tint)
-    }
-}
-
-private struct DashboardHeroNowCard: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let context: DashboardSessionContext?
-    /// El color del grupo se sigue resolviendo en Swift (`plannerCourseColor`),
-    /// porque es cromado de la app y no dato del snapshot.
-    let tintHex: String?
-    let onAction: (MacDashboardDestination) -> Void
-    let onOpenSheet: (DashboardSheet) -> Void
-
-    var body: some View {
-        MacPanel(title: "Ahora", tint: panelTint) {
-            // El cuerpo de la tarjeta es exactamente el mismo que en iPad
-            // (`dashboardNowCard`): antes eran dos implementaciones distintas
-            // sobre dos modelos distintos. Aquí solo queda el marco de macOS.
-            dashboardNowCard(
-                context: context,
-                colorScheme: colorScheme,
-                isCompact: false,
-                onAction: handle
-            )
-        }
-    }
-
-    private var panelTint: Color {
-        guard let tintHex else { return MacAppStyle.infoTint }
-        return Color(hex: tintHex)
-    }
-
-    private func handle(_ action: DashboardNowAction) {
-        let classId = context?.classId?.int64Value
-        switch action {
-        case .passList:
-            onAction(.attendance(classId: classId))
-        case .openNotebook:
-            onAction(.notebook(classId: classId))
-        case .evaluate:
-            onAction(.rubrics(classId: classId))
-        case .observation:
-            onOpenSheet(.observation(classId: classId))
-        case .quickEvaluation:
-            onOpenSheet(.quickEvaluation(classId: classId))
-        case .openPlanner:
-            onAction(.plannerAgenda)
-        case .openJournal:
-            onAction(.plannerSession(sessionId: context?.sessionId?.int64Value))
-        }
-    }
-}
-
-
-private struct DashboardQuickActionButton: View {
-    let title: String
-    let systemImage: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .frame(width: 18)
-            Text(title)
-                .font(.callout.weight(.semibold))
-                .lineLimit(2)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(minHeight: 48)
-        .macLiquidGlassPanel(.secondaryPanel, cornerRadius: 12, isInteractive: true)
     }
 }
 

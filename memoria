@@ -3,16 +3,17 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
-## Avance 2026-09-26 - Rediseño visual y adaptativo del Dashboard docente (Organic Precision v2.2)
+## Avance 2026-09-26 - Rediseño visual y adaptativo del Dashboard docente (Organic Precision v2.2) y unificación en macOS
 
 Resumen:
 - Qué cambio se hizo:
-  1. `DashboardClassroomView.swift`: Nueva vista cockpit ultra-enfocada para el aula con tarjeta central dominante, tipografía grande (36pt rounded), tiempo transcurrido en tiempo real con `DashboardTimeProgressBar`, dos botones táctiles prominentes de 56pt (*Pasar lista* y *Nueva observación*) y barra inferior contextual con área táctil accesible de 44pt.
-  2. `DashboardCompactHeroStrip.swift`: Franja horizontal compacta para el bloque "Ahora" en Modo Despacho, minimizando el impacto vertical para dar visibilidad inmediata a los paneles analíticos, con soporte responsive `ViewThatFits` para pantallas estrechas.
-  3. `DashboardTimeProgressBar.swift`: Barra visual reactiva de tiempo transcurrido de la sesión lectiva en curso con `Timer.publish` estático, porcentaje y horario.
-  4. `DashboardSharedBlocks.swift`: `dashboardKpiRow` mejorado con modelo `DashboardKpiItem`, iconos, colores semánticos, badges accesibles y rejilla responsive 2x2 en iPhone (`LazyVGrid`) vs 4 columnas en iPad/Mac.
-  5. `DashboardView.swift`: Saludo contextualizado por hora del día (*Buenos días*, *Buenas tardes*, *Buenas noches*) con fecha formateada en español mediante `DateFormatter` estático. Soporte adaptativo por modo: cockpit centrado en Modo Clase, 3 columnas con fallback a 2 columnas (`ViewThatFits`) en Modo Despacho (Jornada, Radar IA, LOMLOE/Grupos/Agenda sin desplegables ocultos), y 2 columnas balanceadas en Modo Auto.
-  6. Regeneración de Xcode (`xcodegen`) y validación de compilación dual para macOS Native y iOS Simulator.
+  1. `MacDashboardView.swift`: Unificación completa del Dashboard nativo de macOS con paridad de experiencia: cabecera con saludo horario dinámico y fecha localizada en español, selector segmented reactivo de modos (`Auto`, `Clase`, `Despacho`), Modo Clase centrado (`DashboardClassroomView` con ancho acotado a 680pt) y Modo Despacho reestructurado con franja compacta (`DashboardCompactHeroStrip`), KPIs compartidos a ancho completo y grid responsivo en 3 columnas analíticas (Agenda & Grupos, Radar IA & LOMLOE, Pendientes & Riesgo & Sistema) con fallback balanceado a 2 columnas. Eliminación de estructuras redundantes obsoletas (`DashboardHeroNowCard` y `DashboardQuickActionButton`).
+  2. `DashboardClassroomView.swift`: Nueva vista cockpit ultra-enfocada para el aula con tarjeta central dominante, tipografía grande (36pt rounded), tiempo transcurrido en tiempo real con `DashboardTimeProgressBar`, dos botones táctiles prominentes de 56pt (*Pasar lista* y *Nueva observación*) y barra inferior contextual con área táctil accesible de 44pt.
+  3. `DashboardCompactHeroStrip.swift`: Franja horizontal compacta para el bloque "Ahora" en Modo Despacho, minimizando el impacto vertical para dar visibilidad inmediata a los paneles analíticos, con soporte responsive `ViewThatFits` para pantallas estrechas.
+  4. `DashboardTimeProgressBar.swift`: Barra visual reactiva de tiempo transcurrido de la sesión lectiva en curso con `Timer.publish` estático, porcentaje y horario.
+  5. `DashboardSharedBlocks.swift`: `dashboardKpiRow` mejorado con modelo `DashboardKpiItem`, iconos, colores semánticos, badges accesibles y rejilla responsive 2x2 en iPhone (`LazyVGrid`) vs 4 columnas en iPad/Mac.
+  6. `DashboardView.swift`: Saludo contextualizado por hora del día (*Buenos días*, *Buenas tardes*, *Buenas noches*) con fecha formateada en español mediante `DateFormatter` estático. Soporte adaptativo por modo: cockpit centrado en Modo Clase, 3 columnas con fallback a 2 columnas (`ViewThatFits`) en Modo Despacho (Jornada, Radar IA, LOMLOE/Grupos/Agenda sin desplegables ocultos), y 2 columnas balanceadas en Modo Auto.
+  7. Regeneración de Xcode (`xcodegen`) y validación de compilación dual para macOS Native y iOS Simulator.
 - Por qué importa:
   - Elimina la sobrecarga cognitiva en el aula al permitir operar con dos botones de 56pt entre timbre y timbre, y maximiza la densidad informativa en el despacho aprovechando el ancho del iPad y Mac en 3 columnas visibles.
 - Dónde vive el cambio:

@@ -325,15 +325,15 @@ struct WeeklyStudentEmailWorkspaceView: View {
                     Text("\(student.firstName) \(student.lastName)")
                         .font(.body.bold())
                     TextField("correo@ejemplo.com", text: $tempEditingEmail)
+                        #if os(iOS)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                        #endif
                     if let emailSaveError {
                         Text(emailSaveError)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.red)
                     }
-                        #if os(iOS)
-                        .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
-                        #endif
                 }
             }
             .navigationTitle("Añadir Correo")

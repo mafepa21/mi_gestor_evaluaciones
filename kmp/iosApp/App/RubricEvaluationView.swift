@@ -4,6 +4,7 @@ import MiGestorKit
 struct RubricEvaluationView: View {
     @EnvironmentObject var bridge: KmpBridge
     @State private var showingFamilyReportSheet: Bool = false
+    @State private var showingMetacognitionSheet: Bool = false
 
     private var state: RubricEvaluationUiState {
         bridge.rubricEvaluationState
@@ -56,6 +57,15 @@ struct RubricEvaluationView: View {
                             studentName: state.studentName,
                             className: resolvedClass,
                             currentScore: selectedScore
+                        )
+                    }
+                    .sheet(isPresented: $showingMetacognitionSheet) {
+                        let band = qualitativeGradeBand(for: selectedScore)
+                        RubricMetacognitionSheet(
+                            rubricTitle: rubric.rubric.name,
+                            studentName: state.studentName,
+                            scoreSummary: "\(IosFormatting.scoreOutOfTen(from: selectedScore))/10 · \(band.label)",
+                            criteriaNames: rubric.criteria.map { $0.criterion.description_ }
                         )
                     }
                 } else if let error = state.error {
@@ -354,6 +364,22 @@ struct RubricEvaluationView: View {
                         .buttonStyle(NotebookScaleButtonStyle())
                         .help("Exportar informe PDF para familias")
                         .accessibilityLabel("Exportar informe PDF para familias")
+
+                        Button {
+                            showingMetacognitionSheet = true
+                        } label: {
+                            Image(systemName: "brain.head.profile")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color.indigo)
+                                .frame(width: 40, height: 40)
+                                .background(
+                                    Circle().fill(Color.indigo.opacity(0.12))
+                                )
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(NotebookScaleButtonStyle())
+                        .help("Metacognición y coevaluación (IA)")
+                        .accessibilityLabel("Metacognición y coevaluación con IA")
                     }
                 }
             }

@@ -3,6 +3,62 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-26 - Integración en SwiftUI de las 4 capacidades pedagógicas de Apple Intelligence (Rúbricas LOMLOE, DUA, Planner, Metacognición)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Integración en `RubricsBuilderScreen.swift`: botón «Crear con IA LOMLOE» en toolbar y acción secundaria con hoja modal `AIRubricGeneratorSheet.swift`, permitiendo definir situación de aprendizaje, etapa y criterios, graduando automáticamente descriptores de 4 niveles LOMLOE y volcándolos directamente a la matriz del constructor de rúbricas.
+  2. Integración en `StudentProfile360Sheet.swift`: nueva tarjeta interactiva «Pautas DUA y Adaptaciones» en la sección de Salud y Apoyo, permitiendo generar pautas DUA contextualizadas al alumno (representación, acción/expresión, implicación y evaluación alternativa) según su aptitud física y medidas NEAE activas, con opción de copia al portapapeles.
+  3. Integración en `PlannerSessionComposerSheet.swift`: botón «Asistente didáctico IA» en la barra de plantillas con la hoja modal `PlannerSessionAIAssistantSheet.swift`, que estructura automáticamente la sesión en sus 3 fases pedagógicas (calentamiento/activación, bloque principal y vuelta a la calma/reflexión) insertándolas en objetivos y actividades.
+  4. Integración en `RubricEvaluationView.swift`: botón de metacognición en la cabecera de evaluación que despliega `RubricMetacognitionSheet.swift`, generando preguntas de autoevaluación, coevaluación entre iguales y ticket de salida calibradas según el nivel y puntuación del alumno.
+  5. Regeneración de Xcode project con `xcodegen` y verificación completa.
+- Por qué importa:
+  - Cierra el ciclo completo de la Fase 1 pasando de las capacidades en backend a una experiencia visual interactiva nativa en SwiftUI para iOS, iPadOS y macOS, con jerarquía limpia, espaciado de 8pt (Jobs Design Philosophy) y respuesta instantánea on-device sin nube.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/AIRubricGeneratorSheet.swift`
+  - `kmp/iosApp/App/RubricsBuilderScreen.swift`
+  - `kmp/iosApp/App/StudentProfile360Sheet.swift`
+  - `kmp/iosApp/App/PlannerSessionAIAssistantSheet.swift`
+  - `kmp/iosApp/App/PlannerSessionComposerSheet.swift`
+  - `kmp/iosApp/App/RubricMetacognitionSheet.swift`
+  - `kmp/iosApp/App/RubricEvaluationView.swift`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+- Validación realizada:
+  - `xcodegen generate`: proyecto regenerado con éxito.
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+
+## Avance 2026-09-25 - Fase 1 de Inteligencia Educativa: Poda y Nuevas Capacidades Apple Foundation Models (Rúbricas LOMLOE, DUA, Planner, Metacognición)
+
+Resumen:
+- Qué cambio se hizo:
+  1. Creación de `AppleFoundationPedagogicalService.swift` implementando 4 nuevas capacidades docentes de alto valor con doble rama (Apple Foundation Models on-device con `@Generable` + fallback determinista local):
+     - `AIRubricDraft`: Generador y graduador de matrices de rúbricas analíticas LOMLOE con descriptores graduales y observables por nivel (niveles 1..4).
+     - `DUAAdaptationDraft`: Asistente de pautas DUA para diversificación curricular según necesidades específicas del alumno (representación, acción/expresión, implicación y evaluación formativa alternativa).
+     - `PlannerSequenceDraft`: Secuenciador didáctico de sesiones para el planificador (activación, desarrollo competencial, reflexión/coevaluación y requerimientos de aula).
+     - `MetacognitionPromptsDraft`: Generador de preguntas de autoevaluación, coevaluación entre iguales y ticket de salida.
+  2. Registro tipado en `AppleAIOrchestrator.swift` (`EducationalIntelligenceCapability`), asociando las nuevas capacidades a sus agentes internos (`.evaluator` y `.tutor`), con soporte para `generateWithTrace` y precalentamiento (`prewarm`).
+  3. Poda y optimización de superficies con ruido visual o llamadas redundantes:
+     - En `NotebookFormulaEditorSheet.swift`: la asistencia experimental de fórmulas por lenguaje natural se envolvió en un `DisclosureGroup` colapsable, devolviendo el protagonismo al teclado táctil directo y a la validación aritmética visual.
+     - En `NotebookStudentInspector.swift`: se eliminó la llamada redundante a `averageExplanation` durante la apertura del inspector del alumno, ahorrando un ciclo pesado de inferencia LLM y eliminando la duplicidad con `NotebookAverageCompactSummaryView`.
+  4. Corrección de colocación de `.keyboardType` en `WeeklyStudentEmailWorkspaceView.swift`.
+  5. Actualización de fixtures y pruebas de verificación en `AppleAIReadinessFixtures.swift`.
+- Por qué importa:
+  - Elimina cuellos de botella de latencia y ruido cognitivo en el cuaderno diario, y dota a la app de herramientas de generación pedagógica real (Rúbricas LOMLOE y adaptaciones DUA) manteniendo una arquitectura 100% on-device, sin nube y con privacidad estricta de datos de menores.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/AppleFoundationPedagogicalService.swift`
+  - `kmp/iosApp/App/AppleAIOrchestrator.swift`
+  - `kmp/iosApp/App/AppleAIReadinessFixtures.swift`
+  - `kmp/iosApp/App/NotebookFormulaEditorSheet.swift`
+  - `kmp/iosApp/App/NotebookStudentInspector.swift`
+  - `kmp/iosApp/App/WeeklyStudentEmailWorkspaceView.swift`
+- Validación realizada:
+  - `xcodegen generate`: proyecto Xcode regenerado con éxito.
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+
 ## Avance 2026-09-17 - Supresión de preguntas abiertas espurias en autoevaluación y filtrado de metadatos DOCX
 
 Resumen:

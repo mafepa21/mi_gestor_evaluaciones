@@ -661,19 +661,9 @@ struct NotebookStudentInspector: View {
                 educationalInsight = draft
             }
 
-            if let explanation = averageExplanation {
-                let averageGeneration = try await educationalInsightOrchestrator.generateWithTrace(
-                    capability: .averageExplanation,
-                    input: .average(explanation, evidence),
-                    dataSource: "Inspector del Cuaderno",
-                    includedEvidence: evidence.evidenceLines
-                )
-                if case .averageExplanation(let draft) = averageGeneration.result {
-                    averageInsight = draft
-                }
-            } else {
-                averageInsight = nil
-            }
+            // La sección 'Media explicada' ya renderiza visualmente el desglose de pesos y columnas
+            // mediante NotebookAverageCompactSummaryView, por lo que evitamos la llamada redundante a Foundation Models.
+            averageInsight = nil
 
             let tutorGeneration = try await educationalInsightOrchestrator.generateWithTrace(
                 capability: .tutorMeetingSummary,

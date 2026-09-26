@@ -58,6 +58,7 @@ struct TeacherRadarStudentSnapshot: Identifiable, Hashable {
     let isInjured: Bool
     let suggestedAction: String
     let risk: TeacherRadarInsightDraft.Priority
+    var mlSignal: EducationalPatternSignal? = nil
 }
 
 struct TeacherRadarGroupSummary: Hashable {
@@ -170,9 +171,41 @@ enum TeacherRadarBuilder {
                 ))
             }
 
+            // Inferencia matemática local con Core ML
+            let delta = (average ?? 6.0) - (previousAverage ?? average ?? 6.0)
+            let attRate = Double(attendanceRate ?? 95)
+            let pendingRatio = Double(pending) / Double(max(requiredColumns.count, 1))
+            let evaluableAbsence = evaluableAbsenceRatioEstimate(for: item, requiredColumns: requiredColumns)
+            let rubricVar = rubricVarianceEstimate(for: item, rubricColumns: rubricColumns)
+            let incidentScore = Double(item.student.isInjured ? 1 : 0)
+
+            let vector = StudentFeatureVector(
+                averageGrade: average ?? 6.0,
+                gradeDelta: delta,
+                attendanceRate: attRate,
+                evaluableDayAbsenceRatio: evaluableAbsence,
+                pendingTaskRatio: pendingRatio,
+                rubricVariance: rubricVar,
+                incidentCount: incidentScore
+            )
+            let mlSignal = CoreMLPatternDetectionService.shared.predict(vector: vector)
+
+            if mlSignal.isActionableRisk {
+                insights.append(.init(
+                    id: "student-\(item.student.id)-ml-\(mlSignal.patternType.rawValue)",
+                    title: "\(studentName): \(mlSignal.patternType.badgeTitle)",
+                    detail: mlSignal.summary,
+                    priority: mlSignal.patternType == .silentDisengagement ? .high : .medium,
+                    studentId: item.student.id,
+                    classId: classId,
+                    suggestedAction: mlSignal.suggestedPreventiveAction,
+                    evidence: mlSignal.keyFactors
+                ))
+            }
+
             let risk: TeacherRadarInsightDraft.Priority = {
-                if average.map({ $0 < 5 }) == true || evidenceCount == 0 { return .high }
-                if missingRubrics > 0 || pending > 0 || falling { return .medium }
+                if average.map({ $0 < 5 }) == true || evidenceCount == 0 || (mlSignal.isActionableRisk && mlSignal.patternType == .silentDisengagement) { return .high }
+                if missingRubrics > 0 || pending > 0 || falling || mlSignal.isActionableRisk { return .medium }
                 if improved { return .positive }
                 return .low
             }()
@@ -187,8 +220,9 @@ enum TeacherRadarBuilder {
                 missingRubricCount: missingRubrics,
                 pendingCount: pending,
                 isInjured: item.student.isInjured,
-                suggestedAction: suggestedStudentAction(risk: risk, missingRubrics: missingRubrics, evidenceCount: evidenceCount),
-                risk: risk
+                suggestedAction: mlSignal.isActionableRisk ? mlSignal.suggestedPreventiveAction : suggestedStudentAction(risk: risk, missingRubrics: missingRubrics, evidenceCount: evidenceCount),
+                risk: risk,
+                mlSignal: mlSignal
             ))
         }
 
@@ -295,6 +329,32 @@ enum TeacherRadarBuilder {
         if evidenceCount < 3 { return "Recoger una evidencia observable en la próxima sesión." }
         if risk == .high { return "Revisar asistencia, media y evidencias hoy." }
         return "Mantener seguimiento ordinario."
+    }
+
+    private static func evaluableAbsenceRatioEstimate(for item: NotebookTableRow, requiredColumns: [NotebookColumnDefinition]) -> Double {
+        let requiredIds = Set(requiredColumns.map(\.id))
+        let cells = item.row.persistedCells.filter { requiredIds.contains($0.columnId) }
+        let absentCount = cells.filter { cell in
+            let val = (cell.displayValue ?? cell.textValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let status = NotebookAttendanceStatus.canonical(val)
+            return status == NotebookAttendanceStatus.absent
+        }.count
+        guard !cells.isEmpty else {
+            let pending = pendingRequiredCount(for: item, requiredColumns: requiredColumns)
+            return Double(pending) / Double(max(requiredColumns.count, 1))
+        }
+        return Double(absentCount) / Double(cells.count)
+    }
+
+    private static func rubricVarianceEstimate(for item: NotebookTableRow, rubricColumns: [NotebookColumnDefinition]) -> Double {
+        let values = item.row.persistedGrades.compactMap { grade -> Double? in
+            guard let val = grade.value?.doubleValue else { return nil }
+            return val
+        }
+        guard values.count >= 2 else { return 0.5 }
+        let mean = values.reduce(0.0, +) / Double(values.count)
+        let sumSquaredDiffs = values.map { pow($0 - mean, 2.0) }.reduce(0.0, +)
+        return sqrt(sumSquaredDiffs / Double(values.count))
     }
 }
 

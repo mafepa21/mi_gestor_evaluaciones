@@ -644,7 +644,25 @@ struct NotebookStudentInspector: View {
     }
 
     private func refreshEducationalInsight() async {
-        let evidence = studentInsightEvidence.withTrends(trends)
+        let avgVal = studentInsightEvidence.averageScore ?? 6.0
+        let delta = trends?.averageGradeDelta ?? 0.0
+        let attRate = trends?.attendanceRate ?? 95.0
+        let pendingCount = pendingColumns.count
+        let totalCount = max(pendingColumns.count + (studentInsightEvidence.averageExplanation?.includedColumns.count ?? 1), 1)
+        let pendingRatio = Double(pendingCount) / Double(totalCount)
+
+        let vector = StudentFeatureVector(
+            averageGrade: avgVal,
+            gradeDelta: delta,
+            attendanceRate: attRate,
+            evaluableDayAbsenceRatio: attRate < 88.0 ? 0.35 : 0.05,
+            pendingTaskRatio: pendingRatio,
+            rubricVariance: rubricSummaries.isEmpty ? 0.6 : 1.5,
+            incidentCount: Double(studentInsightEvidence.incidentCount)
+        )
+        let mlSignal = CoreMLPatternDetectionService.shared.predict(vector: vector)
+        let evidence = studentInsightEvidence.withTrends(trends).withMLPattern(mlSignal)
+
         isLoadingEducationalInsight = true
         educationalInsightError = nil
         defer { isLoadingEducationalInsight = false }
@@ -919,6 +937,10 @@ private struct NotebookEducationalInsightView: View {
             }
 
             if let insight {
+                if let mlSignal = insight.mlPatternSignal, mlSignal.isActionableRisk {
+                    NotebookMLPatternCard(signal: mlSignal)
+                }
+
                 if let earlyWarning {
                     NotebookEarlyWarningView(warning: earlyWarning)
                 }
@@ -1184,3 +1206,80 @@ private struct NotebookInspectorSection<Content: View>: View {
         }
     }
 }
+
+private struct NotebookMLPatternCard: View {
+    let signal: EducationalPatternSignal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: signal.patternType.systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.purple)
+                    .frame(width: 24, height: 24)
+                    .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(signal.patternType.badgeTitle)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.primary)
+                        Text("Core ML")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.purple)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.purple.opacity(0.12), in: Capsule())
+                    }
+                    Text(String(format: "Confianza matemática: %.0f%%", signal.confidence * 100))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            Text(signal.summary)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !signal.keyFactors.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(signal.keyFactors, id: \.self) { factor in
+                        HStack(alignment: .top, spacing: 6) {
+                            Circle()
+                                .fill(Color.purple.opacity(0.8))
+                                .frame(width: 4, height: 4)
+                                .padding(.top, 5)
+                            Text(factor)
+                                .font(.caption2)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            }
+
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "hand.tap.fill")
+                    .font(.caption2)
+                    .foregroundStyle(Color.purple)
+                    .padding(.top, 2)
+                Text(signal.suggestedPreventiveAction)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            .padding(.top, 4)
+        }
+        .padding(12)
+        .background(
+            Color.purple.opacity(0.04)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.purple.opacity(0.18), lineWidth: 1)
+                )
+        )
+        .cornerRadius(12)
+    }
+}
+

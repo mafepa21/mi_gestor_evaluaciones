@@ -232,14 +232,38 @@ struct DashboardView: View {
 
     private var dashboardHeaderTitle: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Hoy")
+            Text(dashboardGreeting)
                 .font(.system(size: 26, weight: .black, design: .rounded))
-            Text("\(selectedClassLabel) · Dashboard y radar docente")
+            Text("\(dashboardFormattedDate) · \(selectedClassLabel)")
                 .font(.system(size: 14, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private var dashboardGreeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour >= 6 && hour < 14 {
+            return "Buenos días"
+        } else if hour >= 14 && hour < 21 {
+            return "Buenas tardes"
+        } else {
+            return "Buenas noches"
+        }
+    }
+
+    private static let dashboardDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.dateFormat = "EEEE, d 'de' MMMM"
+        return formatter
+    }()
+
+    private var dashboardFormattedDate: String {
+        let dateString = Self.dashboardDateFormatter.string(from: Date())
+        guard let first = dateString.first else { return dateString }
+        return String(first).uppercased() + String(dateString.dropFirst())
     }
 
     private var dashboardHeaderControls: some View {
@@ -406,75 +430,244 @@ struct DashboardView: View {
 
     @ViewBuilder
     private func dashboardLoadedContent(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-            // 1. Ahora — qué clase tengo delante. Es lo primero que mira un
-            // profesor entre timbre y timbre, y hasta ahora solo existía en
-            // macOS. Viene del mismo snapshot compartido.
-            dashboardNowCard(
-                context: snapshot.currentContext,
-                colorScheme: colorScheme,
-                isCompact: isCompactWidth,
-                onAction: handleNowAction
-            )
-
+        Group {
             if isClassroomMode {
-                // En Clase el dashboard se queda en tres bloques: Ahora, lo
-                // urgente del grupo y los accesos para evaluar. Ni KPIs, ni
-                // filtros, ni comparativas: eso no se consulta con el grupo
-                // delante.
-                if loadPhase.includes(.lists) {
-                    dashboardRiskBlock(snapshot: snapshot)
-                } else {
-                    dashboardListSkeleton
-                }
-
-                if isInspectorPresented {
-                    dashboardInspector
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                dashboardQuickEvalBlock(snapshot: snapshot)
+                DashboardClassroomView(
+                    snapshot: snapshot,
+                    colorScheme: colorScheme,
+                    isCompact: isCompactWidth,
+                    onAction: handleNowAction,
+                    onExitClassroomMode: {
+                        modeRawValue = DashboardModePreference.office.rawValue
+                    }
+                )
+            } else if isCompactWidth {
+                dashboardCompactLoadedContent(snapshot: snapshot)
+            } else if modePreference == .office {
+                dashboardOfficeLoadedContent(snapshot: snapshot)
             } else {
-                // 2. KPIs — la única fila numérica, de un vistazo y arriba del
-                // todo. Antes vivía después de Hoy/Pendiente/Riesgo repitiendo
-                // los mismos contadores que ya llevan esas tarjetas en su
-                // cabecera; ahora es el resumen y las tarjetas dejan de duplicar
-                // el número de la KPI correspondiente.
-                dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme)
-
-                // 3. Hoy — qué requiere atención inmediata
-                dashboardTodayBlock(snapshot: snapshot)
-
-                // 4. Alertas — accionables, priorizadas. Los filtros van
-                // pegados a lo que filtran, no sueltos en la cabecera.
-                dashboardFilterChips
-
-                if loadPhase.includes(.lists) {
-                    dashboardAlertsSection(snapshot: snapshot)
-                } else {
-                    dashboardListSkeleton
-                }
-
-                if isInspectorPresented {
-                    dashboardInspector
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                // 5. Accesos rápidos — iniciar una tarea
-                dashboardQuickEvalBlock(snapshot: snapshot)
-
-                // 6. Insight proactivo — una única tarjeta, descartable
-                if loadPhase.includes(.ai) {
-                    dashboardProactiveRadar(snapshot: snapshot)
-                } else {
-                    dashboardRadarSkeleton
-                }
-
-                // 7. Contexto secundario — plegado por defecto
-                dashboardSecondaryGrid(snapshot: snapshot)
+                dashboardAutoLoadedContent(snapshot: snapshot)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: loadPhase.rawValue)
+        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: mode)
+    }
+
+    @ViewBuilder
+    private func dashboardOfficeLoadedContent(snapshot: DashboardSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 24) {
+            // 1. Hero compacto para optimizar espacio vertical
+            DashboardCompactHeroStrip(
+                context: snapshot.currentContext,
+                colorScheme: colorScheme,
+                onAction: handleNowAction
+            )
+
+            // 2. Fila de KPIs
+            dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme, isCompact: false)
+
+            // 3. Layout adaptativo (3 columnas si cabe, fallback a 2 columnas en iPad portrait / Split View)
+            ViewThatFits(in: .horizontal) {
+                // Variante 3 Columnas (Pantalla ancha / Mac / iPad apaisado)
+                HStack(alignment: .top, spacing: 16) {
+                    // Columna 1 (~33%): Jornada y Operativa
+                    VStack(alignment: .leading, spacing: 16) {
+                        dashboardTodayBlock(snapshot: snapshot)
+                        dashboardQuickEvalBlock(snapshot: snapshot)
+                    }
+                    .frame(minWidth: 260, maxWidth: .infinity, alignment: .topLeading)
+
+                    // Columna 2 (~34%): Radar IA y Alertas
+                    VStack(alignment: .leading, spacing: 16) {
+                        if loadPhase.includes(.ai) {
+                            dashboardProactiveRadar(snapshot: snapshot)
+                        } else {
+                            dashboardRadarSkeleton
+                        }
+
+                        dashboardFilterChips
+
+                        if loadPhase.includes(.lists) {
+                            dashboardAlertsSection(snapshot: snapshot)
+                        } else {
+                            dashboardListSkeleton
+                        }
+
+                        if isInspectorPresented {
+                            dashboardInspector
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
+
+                    // Columna 3 (~33%): LOMLOE, Grupos y Agenda
+                    VStack(alignment: .leading, spacing: 16) {
+                        dashboardLomloeAuditBlock(
+                            trends: classTrends,
+                            isLoading: isLoadingClassTrends,
+                            loadFailed: classTrendsLoadFailed
+                        ) {
+                            Task { await loadClassTrends() }
+                        }
+
+                        dashboardGroupSummaryBlock(snapshot: snapshot, isWide: false)
+
+                        dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
+
+                        dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme) { item in
+                            inspectorSelection = .pe(item.id)
+                            isInspectorPresented = true
+                        }
+
+                        dashboardSystemBlock()
+                    }
+                    .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
+                }
+
+                // Variante 2 Columnas (iPad vertical o Split View 1/2)
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        dashboardTodayBlock(snapshot: snapshot)
+                        dashboardQuickEvalBlock(snapshot: snapshot)
+                        dashboardGroupSummaryBlock(snapshot: snapshot, isWide: false)
+                        dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        if loadPhase.includes(.ai) {
+                            dashboardProactiveRadar(snapshot: snapshot)
+                        } else {
+                            dashboardRadarSkeleton
+                        }
+
+                        dashboardFilterChips
+
+                        if loadPhase.includes(.lists) {
+                            dashboardAlertsSection(snapshot: snapshot)
+                        } else {
+                            dashboardListSkeleton
+                        }
+
+                        if isInspectorPresented {
+                            dashboardInspector
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+
+                        dashboardLomloeAuditBlock(
+                            trends: classTrends,
+                            isLoading: isLoadingClassTrends,
+                            loadFailed: classTrendsLoadFailed
+                        ) {
+                            Task { await loadClassTrends() }
+                        }
+
+                        dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme) { item in
+                            inspectorSelection = .pe(item.id)
+                            isInspectorPresented = true
+                        }
+
+                        dashboardSystemBlock()
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dashboardAutoLoadedContent(snapshot: DashboardSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 24) {
+            dashboardNowCard(
+                context: snapshot.currentContext,
+                colorScheme: colorScheme,
+                isCompact: false,
+                onAction: handleNowAction
+            )
+
+            dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme, isCompact: false)
+
+            HStack(alignment: .top, spacing: 16) {
+                // Columna Izquierda (55%): Jornada y Acciones
+                VStack(alignment: .leading, spacing: 16) {
+                    dashboardTodayBlock(snapshot: snapshot)
+                    dashboardQuickEvalBlock(snapshot: snapshot)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                // Columna Derecha (45%): Radar, Alertas y Contexto
+                VStack(alignment: .leading, spacing: 16) {
+                    if loadPhase.includes(.ai) {
+                        dashboardProactiveRadar(snapshot: snapshot)
+                    } else {
+                        dashboardRadarSkeleton
+                    }
+
+                    dashboardFilterChips
+
+                    if loadPhase.includes(.lists) {
+                        dashboardAlertsSection(snapshot: snapshot)
+                    } else {
+                        dashboardListSkeleton
+                    }
+
+                    if isInspectorPresented {
+                        dashboardInspector
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+
+                    dashboardSecondaryGrid(snapshot: snapshot)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dashboardCompactLoadedContent(snapshot: DashboardSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if modePreference == .office {
+                DashboardCompactHeroStrip(
+                    context: snapshot.currentContext,
+                    colorScheme: colorScheme,
+                    onAction: handleNowAction
+                )
+            } else {
+                dashboardNowCard(
+                    context: snapshot.currentContext,
+                    colorScheme: colorScheme,
+                    isCompact: true,
+                    onAction: handleNowAction
+                )
+            }
+
+            dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme, isCompact: true)
+
+            dashboardTodayBlock(snapshot: snapshot)
+
+            if loadPhase.includes(.ai) {
+                dashboardProactiveRadar(snapshot: snapshot)
+            } else {
+                dashboardRadarSkeleton
+            }
+
+            dashboardFilterChips
+
+            if loadPhase.includes(.lists) {
+                dashboardAlertsSection(snapshot: snapshot)
+            } else {
+                dashboardListSkeleton
+            }
+
+            if isInspectorPresented {
+                dashboardInspector
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            dashboardQuickEvalBlock(snapshot: snapshot)
+
+            dashboardSecondaryGrid(snapshot: snapshot)
+        }
     }
 
     private func handleNowAction(_ action: DashboardNowAction) {

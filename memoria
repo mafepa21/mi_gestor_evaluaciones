@@ -3,6 +3,36 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-26 - Rediseño visual y adaptativo del Dashboard docente (Organic Precision v2.2)
+
+Resumen:
+- Qué cambio se hizo:
+  1. `DashboardClassroomView.swift`: Nueva vista cockpit ultra-enfocada para el aula con tarjeta central dominante, tipografía grande (36pt rounded), tiempo transcurrido en tiempo real con `DashboardTimeProgressBar`, dos botones táctiles prominentes de 56pt (*Pasar lista* y *Nueva observación*) y barra inferior contextual con área táctil accesible de 44pt.
+  2. `DashboardCompactHeroStrip.swift`: Franja horizontal compacta para el bloque "Ahora" en Modo Despacho, minimizando el impacto vertical para dar visibilidad inmediata a los paneles analíticos, con soporte responsive `ViewThatFits` para pantallas estrechas.
+  3. `DashboardTimeProgressBar.swift`: Barra visual reactiva de tiempo transcurrido de la sesión lectiva en curso con `Timer.publish` estático, porcentaje y horario.
+  4. `DashboardSharedBlocks.swift`: `dashboardKpiRow` mejorado con modelo `DashboardKpiItem`, iconos, colores semánticos, badges accesibles y rejilla responsive 2x2 en iPhone (`LazyVGrid`) vs 4 columnas en iPad/Mac.
+  5. `DashboardView.swift`: Saludo contextualizado por hora del día (*Buenos días*, *Buenas tardes*, *Buenas noches*) con fecha formateada en español mediante `DateFormatter` estático. Soporte adaptativo por modo: cockpit centrado en Modo Clase, 3 columnas con fallback a 2 columnas (`ViewThatFits`) en Modo Despacho (Jornada, Radar IA, LOMLOE/Grupos/Agenda sin desplegables ocultos), y 2 columnas balanceadas en Modo Auto.
+  6. Regeneración de Xcode (`xcodegen`) y validación de compilación dual para macOS Native y iOS Simulator.
+- Por qué importa:
+  - Elimina la sobrecarga cognitiva en el aula al permitir operar con dos botones de 56pt entre timbre y timbre, y maximiza la densidad informativa en el despacho aprovechando el ancho del iPad y Mac en 3 columnas visibles.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/DashboardClassroomView.swift`
+  - `kmp/iosApp/App/DashboardCompactHeroStrip.swift`
+  - `kmp/iosApp/App/DashboardTimeProgressBar.swift`
+  - `kmp/iosApp/App/DashboardSharedBlocks.swift`
+  - `kmp/iosApp/App/DashboardView.swift`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+  - `docs/CHANGELOG.md`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - Auditoría de código (`reviewer`): superada con correcciones de `modePreference`, adaptabilidad `ViewThatFits`, espaciados a 8pt y accesibilidad.
+  - Auditoría Git (`janitor`): árbol limpio, sin contaminación de archivos huérfanos.
+
+Notas para futuras conversaciones:
+- Al trabajar con `DashboardModePreference` y `DashboardMode`, recordar que `DashboardMode` tiene solo 2 casos resueltos (`.classroom` y `.office`), mientras que la preferencia del usuario (`DashboardModePreference`) tiene 3 (`.auto`, `.classroom`, `.office`). Las decisiones de presentación de 3 columnas vs 2 columnas en modo no-aula deben comparar contra `modePreference`.
+
 ## Avance 2026-09-26 - Fase 2: Motor de Detección de Patrones No Obvios con Core ML e Integración Híbrida con Apple Intelligence
 
 Resumen:

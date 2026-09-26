@@ -39,6 +39,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Rediseño visual y adaptativo del Dashboard docente (Organic Precision v2.2)**:
+  - `DashboardClassroomView.swift`: Nueva vista cockpit ultra-enfocada para el aula con tarjeta central dominante, tipografía grande (36pt rounded), tiempo transcurrido en tiempo real con `DashboardTimeProgressBar`, dos botones táctiles prominentes de 56pt (*Pasar lista* y *Nueva observación*) y barra inferior contextual con área táctil accesible.
+  - `DashboardCompactHeroStrip.swift`: Franja horizontal compacta para el bloque "Ahora" en Modo Despacho, minimizando el impacto vertical para dar visibilidad inmediata a los paneles analíticos, con soporte responsive `ViewThatFits` para pantallas estrechas.
+  - `DashboardTimeProgressBar.swift`: Barra visual reactiva de tiempo transcurrido de la sesión lectiva en curso con `Timer.publish` estático, porcentaje y horario.
+  - `DashboardSharedBlocks.swift`: `dashboardKpiRow` mejorado con modelo `DashboardKpiItem`, iconos, colores semánticos, badges accesibles y rejilla responsive 2x2 en iPhone (`LazyVGrid`) vs 4 columnas en iPad/Mac.
+  - `DashboardView.swift`: Saludo contextualizado por hora del día (*Buenos días*, *Buenas tardes*, *Buenas noches*) con fecha formateada en español. Soporte adaptativo por modo: cockpit centrado en Modo Clase, 3 columnas con fallback a 2 columnas (`ViewThatFits`) en Modo Despacho (Jornada, Radar IA, LOMLOE/Grupos/Agenda sin desplegables ocultos), y 2 columnas balanceadas en Modo Auto.
 - **Poda y optimización de superficies IA**:
   - `NotebookFormulaEditorSheet.swift`: la asistencia de fórmulas mediante lenguaje natural se colocó en un `DisclosureGroup` colapsable secundario, dando máxima prioridad visual a la edición táctil directa y a la validación de sintaxis.
   - `NotebookStudentInspector.swift`: eliminada la llamada secuencial redundante a `averageExplanation` durante la apertura del inspector del alumno, reduciendo la latencia de carga en ~35% y evitando duplicidad con `NotebookAverageCompactSummaryView`.

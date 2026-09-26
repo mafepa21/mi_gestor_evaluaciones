@@ -581,33 +581,101 @@ private func dashboardNowPrimaryHint(for context: DashboardSessionContext) -> St
 
 // MARK: - KPI row
 
+struct DashboardKpiItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let value: String
+    let icon: String
+    let tint: Color
+    let isNumeric: Bool
+}
+
 @ViewBuilder
-func dashboardKpiRow(snapshot: DashboardSnapshot, colorScheme: ColorScheme) -> some View {
-    HStack(spacing: 12) {
-        dashboardKpiCard(title: "Hoy", value: "\(snapshot.todayCount)", isNumeric: true, colorScheme: colorScheme)
-        dashboardKpiCard(title: "Alertas", value: "\(snapshot.alertsCount)", isNumeric: true, colorScheme: colorScheme)
-        dashboardKpiCard(title: "Pendientes", value: "\(snapshot.pendingCount)", isNumeric: true, colorScheme: colorScheme)
-        dashboardKpiCard(title: "Próxima sesión", value: snapshot.nextSessionLabel, isNumeric: false, colorScheme: colorScheme)
+func dashboardKpiRow(snapshot: DashboardSnapshot, colorScheme: ColorScheme, isCompact: Bool = false) -> some View {
+    let cards = [
+        DashboardKpiItem(
+            title: "Sesiones hoy",
+            value: "\(snapshot.todayCount)",
+            icon: "calendar",
+            tint: EvaluationDesign.accent,
+            isNumeric: true
+        ),
+        DashboardKpiItem(
+            title: "Alertas",
+            value: "\(snapshot.alertsCount)",
+            icon: "exclamationmark.triangle.fill",
+            tint: snapshot.alertsCount > 0 ? IOSAppStyle.warning : .secondary,
+            isNumeric: true
+        ),
+        DashboardKpiItem(
+            title: "Pendientes",
+            value: "\(snapshot.pendingCount)",
+            icon: "checklist",
+            tint: snapshot.pendingCount > 0 ? EvaluationDesign.accent : .secondary,
+            isNumeric: true
+        ),
+        DashboardKpiItem(
+            title: "Próxima sesión",
+            value: snapshot.nextSessionLabel.isEmpty ? "Sin horario" : snapshot.nextSessionLabel,
+            icon: "clock.fill",
+            tint: .secondary,
+            isNumeric: false
+        )
+    ]
+
+    if isCompact {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            ForEach(cards) { card in
+                dashboardEnhancedKpiCard(card: card, colorScheme: colorScheme)
+            }
+        }
+    } else {
+        HStack(spacing: 12) {
+            ForEach(cards) { card in
+                dashboardEnhancedKpiCard(card: card, colorScheme: colorScheme)
+            }
+        }
     }
 }
 
 @ViewBuilder
-private func dashboardKpiCard(title: String, value: String, isNumeric: Bool, colorScheme: ColorScheme) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
-        Text(title).font(.footnote).foregroundStyle(.secondary)
-        if isNumeric {
-            Text(value)
-                .font(.system(.title, design: .rounded).weight(.bold))
+private func dashboardEnhancedKpiCard(card: DashboardKpiItem, colorScheme: ColorScheme) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+        HStack(spacing: 8) {
+            Image(systemName: card.icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(card.tint)
+            Text(card.title)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+
+        if card.isNumeric {
+            Text(card.value)
+                .font(.system(size: 24, weight: .black, design: .rounded))
                 .monospacedDigit()
+                .foregroundStyle(card.value != "0" && card.tint != .secondary ? card.tint : .primary)
                 .lineLimit(1)
         } else {
-            Text(value).font(.headline).lineLimit(2)
+            Text(card.value)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
         }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(12)
+    .padding(16)
     .background(appCardBackground(for: colorScheme))
     .cornerRadius(12)
+    .overlay(
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), lineWidth: 1)
+    )
+    .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("\(card.title): \(card.value)")
 }
 
 // MARK: - Resumen por grupo

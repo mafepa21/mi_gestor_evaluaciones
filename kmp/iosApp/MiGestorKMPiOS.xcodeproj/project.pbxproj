@@ -30,6 +30,7 @@
 		099689EBA9E98BA1364417F4 /* KmpBridge+Meetings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 212337E509470CFD689BB7F8 /* KmpBridge+Meetings.swift */; };
 		09F8FF2F1C0C6AF0075371AD /* LanSyncDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 412BDB0BE52A021D8CFE19FE /* LanSyncDiscovery.swift */; };
 		0A94F3EA584945A698FC6F74 /* PlannerSequenceGanttView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D56DE443EAEED31903DC305 /* PlannerSequenceGanttView.swift */; };
+		0AE7E14FE315094662D8C033 /* AIRubricGeneratorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A474B147014D2A130BF246 /* AIRubricGeneratorSheet.swift */; };
 		0B33E01BA1D995654A80EA9C /* SettingsDangerZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0998A4D4BC5E85BB92250336 /* SettingsDangerZoneView.swift */; };
 		0B3B32F606E1E6961B27FFB9 /* AppleBackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E44007C231E03029435B056F /* AppleBackupService.swift */; };
 		0BC22D63E601A057D766AC00 /* NotebookGridStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B3BE9F44CA518C26426C79 /* NotebookGridStyle.swift */; };
@@ -86,6 +87,7 @@
 		24CE11CD926F694D56F3EAFA /* SupportMeasureGroupOverviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C58CFF01D452588EAF8D687 /* SupportMeasureGroupOverviewSheet.swift */; };
 		24D47EF106F8AC88D8F44F8C /* NotebookClassPickerComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 808AE922E0187FD7FAEA5FFC /* NotebookClassPickerComponents.swift */; };
 		25030D55953EC835EE1792DD /* NotebookGridContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD759479FF5E71467F7276D /* NotebookGridContent.swift */; };
+		256DE4DCB327DA5DD750AF1A /* AIRubricGeneratorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A474B147014D2A130BF246 /* AIRubricGeneratorSheet.swift */; };
 		25BA7CFC8B77B20BCAEC638E /* MacPhysicalTestsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B928B856CB84C9E4660F8B34 /* MacPhysicalTestsView.swift */; };
 		26B8D3F18BA24C01F5F03275 /* NotebookTabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E112239AB1D009CECE6FC5F /* NotebookTabStrip.swift */; };
 		27AF804AC32BE9BB7CB8E3BC /* PhysicalTestsColumnOptionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41139A912BA4EE69F5B2DC1A /* PhysicalTestsColumnOptionsView.swift */; };
@@ -198,6 +200,7 @@
 		540623C2D775B2E7CE0A5AD5 /* PlannerSessionComposerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB48C7B33C7EB638C18CEF5 /* PlannerSessionComposerSheet.swift */; };
 		541330321B3E26376DF94E13 /* MacAttendanceDayRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB9B92354A1345110A45747 /* MacAttendanceDayRow.swift */; };
 		55881333E8EF00D0F018B1B8 /* NotebookFormulaEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9967D38B9A879C71B174CAE6 /* NotebookFormulaEditorSheet.swift */; };
+		55BC740588BFC9C4D12C7A55 /* PlannerSessionAIAssistantSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0243BF8C00C29271B58D894B /* PlannerSessionAIAssistantSheet.swift */; };
 		56234DAACC18188F7C681066 /* AppleLifecycleNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */; };
 		565A5DD311EB69A97F331722 /* WorkspaceSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */; };
 		56AC9CE1CBF37A30F9BCA8DA /* PlannerSessionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E409AC49E4C2F349EEC469ED /* PlannerSessionDetailSheet.swift */; };
@@ -524,6 +527,7 @@
 		DE599C50071E5A0823817F7F /* NotebookDataGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */; };
 		DE6AFA926D29786B8E7A5148 /* NotebookGroupBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBAB767831B374EE9C56A739 /* NotebookGroupBoardView.swift */; };
 		DEF0A0A4EF14D55FB47F66E5 /* AppleAISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F8916B5C4C8F6DBC133D2B /* AppleAISettingsView.swift */; };
+		DF281D857A3AEFE50AF43F2A /* RubricMetacognitionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A2242F5FBFA0C7B6892334B /* RubricMetacognitionSheet.swift */; };
 		DF2840097D2921E61D2A2FDB /* IOSFeatureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335E30511BBCB3DFBF1FA0BE /* IOSFeatureRegistry.swift */; };
 		DFEEA8B716E874E7C7BE0E8B /* AssignRubricToTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 893DD0805D75AD4923832EDD /* AssignRubricToTabView.swift */; };
 		DFFE663E21FDE8303C0A282A /* ScheduleImportCatalogResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71BEA9C12B3B5D07B2227901 /* ScheduleImportCatalogResolver.swift */; };
@@ -580,6 +584,7 @@
 		F1D09F5DF977701D749A19AD /* MacAppSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66F3C885EB6EAF74EACD0D6 /* MacAppSessionController.swift */; };
 		F24DB51F8B47008FC096EECC /* MacPlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4057739C2F6FADFA30289C7 /* MacPlannerView.swift */; };
 		F2583B49F4F8E23B0B2C49E2 /* MacBackupSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36FD8823E354BF50CAD0B9E3 /* MacBackupSupport.swift */; };
+		F3318E032714F5CE6175FA52 /* PlannerSessionAIAssistantSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0243BF8C00C29271B58D894B /* PlannerSessionAIAssistantSheet.swift */; };
 		F3AF4051FD1E837FA1009D63 /* PlannerWorkspaceViewModel+Journal.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37D119F98E876CB3CAA8910 /* PlannerWorkspaceViewModel+Journal.swift */; };
 		F3EF2A03225D74BCCF271EFC /* KmpBridge+Notebook.swift in Sources */ = {isa = PBXBuildFile; fileRef = A682E1CAE862C15E3F1B2065 /* KmpBridge+Notebook.swift */; };
 		F4E26E4B8D0895AF6C970EB2 /* PlannerSessionGlance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316939D68DF5F8E07E2635E9 /* PlannerSessionGlance.swift */; };
@@ -603,6 +608,7 @@
 		FAB91D97BB3D24245BEBB7BD /* WorkspaceLayoutState+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB9B3E078267BD94A53D6B2 /* WorkspaceLayoutState+Extensions.swift */; };
 		FAF9D1F8EE5E77D85E248623 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 574A36D51DB905768D1450DF /* ContentView.swift */; };
 		FB055151EE3D206236A08C2F /* PlannerWeekDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E31019B3456252E21063E25 /* PlannerWeekDetailPane.swift */; };
+		FB325786BC7726582CF1A026 /* RubricMetacognitionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A2242F5FBFA0C7B6892334B /* RubricMetacognitionSheet.swift */; };
 		FCFCDB058F5AC765537750B3 /* NotebookModuleOrganization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEEB5AEB802B224689F0882B /* NotebookModuleOrganization.swift */; };
 		FD1CB4E8A91F032590280EB6 /* KmpBridge+Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 831A193F350D0D1EF8FA3BF6 /* KmpBridge+Dashboard.swift */; };
 		FD2174F0F00D3AED49472BA1 /* KmpBridgeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A47C8FEAEAB280FF9E56FDA /* KmpBridgeModels.swift */; };
@@ -662,6 +668,7 @@
 
 /* Begin PBXFileReference section */
 		0176FC5D534ADFA4ACFC6F20 /* PlannerJournalDetailPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerJournalDetailPane.swift; sourceTree = "<group>"; };
+		0243BF8C00C29271B58D894B /* PlannerSessionAIAssistantSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionAIAssistantSheet.swift; sourceTree = "<group>"; };
 		04A85F9CF28068A080599D71 /* DiaryClassPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryClassPDFRenderer.swift; sourceTree = "<group>"; };
 		05FB1EEE057F9F3861BEECD8 /* LearningSituationsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSituationsWorkspaceView.swift; sourceTree = "<group>"; };
 		06247DBCEF5FCAED33273150 /* NotebookCellStampCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookCellStampCatalog.swift; sourceTree = "<group>"; };
@@ -837,6 +844,7 @@
 		880A34E6ED9FC0F10FE40AC2 /* LearningSituationDocumentImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSituationDocumentImportTests.swift; sourceTree = "<group>"; };
 		88590DE40405667ADB84E5CF /* KmpFlowSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KmpFlowSupport.swift; sourceTree = "<group>"; };
 		893DD0805D75AD4923832EDD /* AssignRubricToTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssignRubricToTabView.swift; sourceTree = "<group>"; };
+		8A2242F5FBFA0C7B6892334B /* RubricMetacognitionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricMetacognitionSheet.swift; sourceTree = "<group>"; };
 		8A4E8D89679CED5E074F1005 /* NotebookModuleToolbarState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleToolbarState.swift; sourceTree = "<group>"; };
 		8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerWorkspaceIOS.swift; sourceTree = "<group>"; };
 		8DCBCA7CED9B1F0B0659CDD7 /* AppleFoundationStudentEmailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationStudentEmailService.swift; sourceTree = "<group>"; };
@@ -895,6 +903,7 @@
 		B3CA8D09864762412D9ACD81 /* PlannerSessionDetailComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionDetailComponents.swift; sourceTree = "<group>"; };
 		B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSharedBridge.swift; sourceTree = "<group>"; };
 		B45DCEB32A99C22B048911B0 /* MacSqliteCompat.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = MacSqliteCompat.c; sourceTree = "<group>"; };
+		B7A474B147014D2A130BF246 /* AIRubricGeneratorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRubricGeneratorSheet.swift; sourceTree = "<group>"; };
 		B819027ADD26559CC96B1BDB /* KmpBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KmpBridge.swift; sourceTree = "<group>"; };
 		B8AD3A2E943A41407A974460 /* EvaluationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationSettingsView.swift; sourceTree = "<group>"; };
 		B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentProfilesWorkspaceView.swift; sourceTree = "<group>"; };
@@ -1242,6 +1251,7 @@
 			isa = PBXGroup;
 			children = (
 				583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */,
+				B7A474B147014D2A130BF246 /* AIRubricGeneratorSheet.swift */,
 				7DB760443A1EAA2F7DCB8484 /* AppIcon.icon */,
 				7D47CE5CC1A1F907BFA2E477 /* AppleAIOrchestrator.swift */,
 				A9A2227E2644C8AFEC65949F /* AppleAIPremiumSupport.swift */,
@@ -1351,6 +1361,7 @@
 				54E29E6656614742E3F82C4C /* PlannerReportDocument.swift */,
 				A792A5460048557CD8302A4F /* PlannerReportPDFRenderer.swift */,
 				5D56DE443EAEED31903DC305 /* PlannerSequenceGanttView.swift */,
+				0243BF8C00C29271B58D894B /* PlannerSessionAIAssistantSheet.swift */,
 				BCB48C7B33C7EB638C18CEF5 /* PlannerSessionComposerSheet.swift */,
 				B3CA8D09864762412D9ACD81 /* PlannerSessionDetailComponents.swift */,
 				FAF7BFD4EFF6709ADBEF1A34 /* PlannerSessionDetailProjection.swift */,
@@ -1381,6 +1392,7 @@
 				A866C1384FDBACD5D7ED109B /* RubricEvaluationView.swift */,
 				8FD4764CBD4DFF4C9367A3DA /* RubricExportFamilyPDFSheet.swift */,
 				E8834AC7CDFE59FC326A835A /* RubricFamilyReportPDFRenderer.swift */,
+				8A2242F5FBFA0C7B6892334B /* RubricMetacognitionSheet.swift */,
 				CABF3C938060DE09EB0F96BB /* RubricsBuilderScreen.swift */,
 				58D7199BBDD6580774907119 /* RubricsReportsWorkspaceViews.swift */,
 				368016D041EDBFDB4E2A7D0E /* RubricsStyle.swift */,
@@ -1671,6 +1683,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0AE7E14FE315094662D8C033 /* AIRubricGeneratorSheet.swift in Sources */,
 				F5B53E702D8FF43EAC82D921 /* AddColumnSheet.swift in Sources */,
 				3AE623CB81BFD9045AF75C72 /* AppSettingsModels.swift in Sources */,
 				66CF6F61A89B48BE7660BA19 /* AppSettingsStore.swift in Sources */,
@@ -1877,6 +1890,7 @@
 				B9B68D9E690D243A1CE3D414 /* PlannerReportDocument.swift in Sources */,
 				327304EC3CF948D6CC9F049D /* PlannerReportPDFRenderer.swift in Sources */,
 				1E0CCE81083A1420776AE50E /* PlannerSequenceGanttView.swift in Sources */,
+				55BC740588BFC9C4D12C7A55 /* PlannerSessionAIAssistantSheet.swift in Sources */,
 				540623C2D775B2E7CE0A5AD5 /* PlannerSessionComposerSheet.swift in Sources */,
 				DABC9239733459309B3965D6 /* PlannerSessionDetailComponents.swift in Sources */,
 				4D9D029615E5AF59C9C9A60A /* PlannerSessionDetailProjection.swift in Sources */,
@@ -1909,6 +1923,7 @@
 				1CE2E6B16C6F676B65D50109 /* RubricEvaluationView.swift in Sources */,
 				2EB385012A21D269C959FC8B /* RubricExportFamilyPDFSheet.swift in Sources */,
 				1EB13359A4D0E74E31BB5B44 /* RubricFamilyReportPDFRenderer.swift in Sources */,
+				DF281D857A3AEFE50AF43F2A /* RubricMetacognitionSheet.swift in Sources */,
 				FA6E812F0B24E08F1F138D29 /* RubricTemplateCatalog.swift in Sources */,
 				EE35672DB0633D9E207D6E90 /* RubricTemplateCatalogSheet.swift in Sources */,
 				D1B9D52C2AA3D97454DC8C8B /* RubricsBuilderScreen.swift in Sources */,
@@ -1978,6 +1993,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				256DE4DCB327DA5DD750AF1A /* AIRubricGeneratorSheet.swift in Sources */,
 				7FC3CC82E0DA9D27DCD9A52D /* AddColumnSheet.swift in Sources */,
 				C0C679220300C227A477781F /* AppSettingsModels.swift in Sources */,
 				64A4859F73FFD04440F85F24 /* AppSettingsStore.swift in Sources */,
@@ -2157,6 +2173,7 @@
 				CEB81A79CE507AE4CB4B70EB /* PlannerReportDocument.swift in Sources */,
 				B7BE69B6080EE42E556C5BD8 /* PlannerReportPDFRenderer.swift in Sources */,
 				0A94F3EA584945A698FC6F74 /* PlannerSequenceGanttView.swift in Sources */,
+				F3318E032714F5CE6175FA52 /* PlannerSessionAIAssistantSheet.swift in Sources */,
 				43101C459EA2DE9D65B9E71B /* PlannerSessionComposerSheet.swift in Sources */,
 				861AF99A486CC8EA7B8399F8 /* PlannerSessionDetailComponents.swift in Sources */,
 				CEF5BE47BEA4853C851AA0C7 /* PlannerSessionDetailProjection.swift in Sources */,
@@ -2189,6 +2206,7 @@
 				0765494CC55A29A19AE9FF6D /* RubricEvaluationView.swift in Sources */,
 				E74BD87EF0F722E615AE627A /* RubricExportFamilyPDFSheet.swift in Sources */,
 				7AD60B259368D2DF5526BE8A /* RubricFamilyReportPDFRenderer.swift in Sources */,
+				FB325786BC7726582CF1A026 /* RubricMetacognitionSheet.swift in Sources */,
 				0160FECEFD9F5118E841CE27 /* RubricTemplateCatalog.swift in Sources */,
 				96DE82FA5E9D76C477DCFDC4 /* RubricTemplateCatalogSheet.swift in Sources */,
 				42355FA614EB4F899CB54DBA /* RubricsBuilderScreen.swift in Sources */,

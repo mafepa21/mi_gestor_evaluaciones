@@ -15,6 +15,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Integración en SwiftUI de capacidades pedagógicas de Apple Intelligence**:
+  - `AIRubricGeneratorSheet.swift`: Hoja modal para generar rúbricas analíticas LOMLOE con descriptores graduados e insertarlos directamente en el constructor de rúbricas (`RubricsBuilderScreen.swift`).
+  - `StudentProfile360Sheet.swift`: Tarjeta interactiva de pautas DUA en la sección de Salud y Apoyo, contextualizada a las necesidades y condición física del alumno con copia al portapapeles.
+  - `PlannerSessionAIAssistantSheet.swift`: Asistente didáctico en `PlannerSessionComposerSheet.swift` para estructurar sesiones en 3 fases pedagógicas insertándolas en los campos de objetivos y actividades.
+  - `RubricMetacognitionSheet.swift`: Hoja modal en `RubricEvaluationView.swift` con preguntas de autoevaluación, coevaluación entre iguales y ticket de salida según el desempeño alcanzado.
 - **Nuevas capacidades pedagógicas de Apple Foundation Models**:
   - `AIRubricDraft`: Generador estructurado de matrices de rúbricas analíticas LOMLOE con descriptores observables y diferenciados por nivel (1..4) a partir de criterios o tareas.
   - `DUAAdaptationDraft`: Asistente de pautas DUA (Diseño Universal para el Aprendizaje) con estrategias de representación, acción/expresión, implicación y evaluación formativa alternativa para alumnado con adaptaciones o NEAE.

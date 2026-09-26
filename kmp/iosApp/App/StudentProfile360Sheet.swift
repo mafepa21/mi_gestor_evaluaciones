@@ -62,6 +62,10 @@ struct StudentProfile360Sheet: View {
     @State private var injuryError: String?
     @State private var showCopiedAlert = false
     @State private var showTutoringSheet = false
+    @State private var duaAdaptation: DUAAdaptationDraft? = nil
+    @State private var isGeneratingDUA = false
+    @State private var duaError: String? = nil
+    @State private var showDUACopiedAlert = false
     @State private var orchestrator = AppleAIOrchestrator()
     @Environment(\.colorScheme) private var colorScheme
 
@@ -868,6 +872,9 @@ struct StudentProfile360Sheet: View {
             .background(cardBackground.opacity(0.6))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(NotebookGridStyle.gridLine, lineWidth: 1))
+
+            // Pautas DUA recomendadas con Apple Intelligence
+            duaAdaptationCard
         }
     }
 
@@ -1246,5 +1253,236 @@ struct StudentProfile360Sheet: View {
         #else
         return Color(uiColor: .secondarySystemGroupedBackground)
         #endif
+    }
+
+    // MARK: - Tarjeta DUA con Apple Intelligence
+
+    private var duaAdaptationCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Pautas DUA y Adaptaciones", systemImage: "sparkles")
+                    .font(.headline)
+                    .foregroundStyle(Color.purple)
+
+                Spacer()
+
+                if duaAdaptation != nil {
+                    Button {
+                        Task { await generateDUA() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Regenerar")
+                        }
+                        .font(.caption.weight(.bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.purple)
+
+                    Button {
+                        copyDUASummary()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: showDUACopiedAlert ? "checkmark.circle.fill" : "doc.on.doc")
+                            Text(showDUACopiedAlert ? "Copiado" : "Copiar")
+                        }
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(showDUACopiedAlert ? Color.green : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if let dua = duaAdaptation {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !dua.studentContext.isEmpty {
+                        Text(dua.studentContext)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    duaStrategyBlock(
+                        title: "Representación (Principio I)",
+                        icon: "eye.fill",
+                        color: Color.purple,
+                        strategies: dua.representationStrategies
+                    )
+
+                    duaStrategyBlock(
+                        title: "Acción y Expresión (Principio II)",
+                        icon: "figure.run",
+                        color: Color.blue,
+                        strategies: dua.actionAndExpressionStrategies
+                    )
+
+                    duaStrategyBlock(
+                        title: "Implicación y Motivación (Principio III)",
+                        icon: "flame.fill",
+                        color: Color.orange,
+                        strategies: dua.engagementStrategies
+                    )
+
+                    if !dua.evaluationAlternative.isEmpty {
+                        duaStrategyBlock(
+                            title: "Alternativa de Evaluación",
+                            icon: "checklist.checked",
+                            color: Color.teal,
+                            strategies: [dua.evaluationAlternative]
+                        )
+                    }
+                }
+                .padding(14)
+                .background(Color.purple.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.purple.opacity(0.2), lineWidth: 1))
+            } else if isGeneratingDUA {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .scaleEffect(1.1)
+                    Text("Generando pautas DUA con Apple Intelligence local…")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                    Text("Analizando medidas de apoyo y aptitud física del alumno.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(20)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Genera pautas adaptadas basadas en el Diseño Universal para el Aprendizaje (DUA) y adaptaciones específicas para Educación Física según sus medidas de apoyo y aptitud física.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        Task { await generateDUA() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkles")
+                            Text("Generar pautas DUA para este alumno")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.purple, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if let duaError {
+                Text(duaError)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding(16)
+        .background(cardBackground.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(NotebookGridStyle.gridLine, lineWidth: 1))
+    }
+
+    private func duaStrategyBlock(title: String, icon: String, color: Color, strategies: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(color)
+            }
+
+            ForEach(strategies, id: \.self) { strat in
+                HStack(alignment: .top, spacing: 6) {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 4, height: 4)
+                        .padding(.top, 6)
+                    Text(strat)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                }
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func generateDUA() async {
+        guard let student = currentStudent else { return }
+        isGeneratingDUA = true
+        duaError = nil
+
+        let activeMeasures = supportMeasures.filter(\.isActive).map {
+            "\($0.level.displayName) - \($0.measureType.displayName): \($0.followUpNotes)"
+        }
+        let physicalCondition = student.isInjured ? "Alumno con lesión o limitación física activa" : "Apto sin limitaciones motrices declaradas"
+
+        let needs = """
+        Condición física: \(physicalCondition).
+        Medidas de apoyo activas: \(activeMeasures.isEmpty ? "Ninguna medida previa" : activeMeasures.joined(separator: ", "))
+        """
+
+        let input = DUAAdaptationInput(
+            activityTitle: "Sesión práctica y seguimiento de \(student.fullName)",
+            activityDescription: "Desarrollo motriz y situaciones de aprendizaje continuas.",
+            studentNeeds: needs,
+            subjectArea: "Educación Física y seguimiento tutorial"
+        )
+
+        do {
+            let result = try await orchestrator.generate(.duaAdaptation(input))
+            await MainActor.run {
+                if case let .duaAdaptation(draft) = result {
+                    self.duaAdaptation = draft
+                }
+                self.isGeneratingDUA = false
+            }
+        } catch {
+            await MainActor.run {
+                self.duaError = "No se pudieron generar las pautas DUA: \(error.localizedDescription)"
+                self.isGeneratingDUA = false
+            }
+        }
+    }
+
+    private func copyDUASummary() {
+        guard let dua = duaAdaptation, let student = currentStudent else { return }
+        let text = """
+        PAUTAS DUA Y ADAPTACIONES EDUCATIVAS - \(student.fullName.uppercased())
+        ==================================================
+        \(dua.studentContext)
+
+        1. REPRESENTACIÓN (PRINCIPIO I):
+        \(dua.representationStrategies.map { "• \($0)" }.joined(separator: "\n"))
+
+        2. ACCIÓN Y EXPRESIÓN (PRINCIPIO II):
+        \(dua.actionAndExpressionStrategies.map { "• \($0)" }.joined(separator: "\n"))
+
+        3. IMPLICACIÓN Y MOTIVACIÓN (PRINCIPIO III):
+        \(dua.engagementStrategies.map { "• \($0)" }.joined(separator: "\n"))
+
+        4. ALTERNATIVA DE EVALUACIÓN:
+        • \(dua.evaluationAlternative)
+        ==================================================
+        Generado localmente con Apple Intelligence (\(dua.confidenceNote))
+        """
+
+        #if canImport(UIKit)
+        UIPasteboard.general.string = text
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
+
+        showDUACopiedAlert = true
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            showDUACopiedAlert = false
+        }
     }
 }

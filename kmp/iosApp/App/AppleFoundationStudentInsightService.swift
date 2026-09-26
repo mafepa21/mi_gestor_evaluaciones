@@ -19,6 +19,39 @@ struct StudentInsightEvidence {
     let rubricSummaries: [NotebookInspectorRubricSummary]
     let averageExplanation: NotebookAverageExplanation?
     let trends: KmpBridge.AITrendsSnapshot?
+    let mlPatternSignal: EducationalPatternSignal?
+
+    init(
+        studentId: Int64,
+        studentName: String,
+        averageText: String,
+        averageScore: Double?,
+        attendanceStatus: String?,
+        followUpCount: Int,
+        incidentCount: Int,
+        evidenceCount: Int,
+        competencyLabels: [String],
+        observations: [NotebookInspectorObservation],
+        rubricSummaries: [NotebookInspectorRubricSummary],
+        averageExplanation: NotebookAverageExplanation?,
+        trends: KmpBridge.AITrendsSnapshot?,
+        mlPatternSignal: EducationalPatternSignal? = nil
+    ) {
+        self.studentId = studentId
+        self.studentName = studentName
+        self.averageText = averageText
+        self.averageScore = averageScore
+        self.attendanceStatus = attendanceStatus
+        self.followUpCount = followUpCount
+        self.incidentCount = incidentCount
+        self.evidenceCount = evidenceCount
+        self.competencyLabels = competencyLabels
+        self.observations = observations
+        self.rubricSummaries = rubricSummaries
+        self.averageExplanation = averageExplanation
+        self.trends = trends
+        self.mlPatternSignal = mlPatternSignal
+    }
 
     var hasEnoughData: Bool {
         averageScore != nil ||
@@ -29,7 +62,8 @@ struct StudentInsightEvidence {
         !competencyLabels.isEmpty ||
         !observations.isEmpty ||
         !rubricSummaries.isEmpty ||
-        trends != nil
+        trends != nil ||
+        mlPatternSignal != nil
     }
 
     func withTrends(_ trends: KmpBridge.AITrendsSnapshot?) -> StudentInsightEvidence {
@@ -46,7 +80,27 @@ struct StudentInsightEvidence {
             observations: observations,
             rubricSummaries: rubricSummaries,
             averageExplanation: averageExplanation,
-            trends: trends
+            trends: trends,
+            mlPatternSignal: mlPatternSignal
+        )
+    }
+
+    func withMLPattern(_ pattern: EducationalPatternSignal?) -> StudentInsightEvidence {
+        StudentInsightEvidence(
+            studentId: studentId,
+            studentName: studentName,
+            averageText: averageText,
+            averageScore: averageScore,
+            attendanceStatus: attendanceStatus,
+            followUpCount: followUpCount,
+            incidentCount: incidentCount,
+            evidenceCount: evidenceCount,
+            competencyLabels: competencyLabels,
+            observations: observations,
+            rubricSummaries: rubricSummaries,
+            averageExplanation: averageExplanation,
+            trends: trends,
+            mlPatternSignal: pattern
         )
     }
 
@@ -84,6 +138,11 @@ struct StudentInsightEvidence {
             if !trends.behaviorIncidentSummary.isEmpty {
                 lines.append("Comportamiento: \(trends.behaviorIncidentSummary)")
             }
+        }
+        if let mlPattern = mlPatternSignal, mlPattern.isActionableRisk {
+            lines.append("Patrón sutil detectado por Machine Learning (Core ML): \(mlPattern.patternType.displayName) (confianza \(Int(mlPattern.confidence * 100))%)")
+            lines.append("Factores clave ML: \(mlPattern.keyFactors.joined(separator: "; "))")
+            lines.append("Acción preventiva sugerida por ML: \(mlPattern.suggestedPreventiveAction)")
         }
         lines += observations.prefix(3).map { "Observación \($0.columnTitle): \($0.note)" }
         lines += rubricSummaries.prefix(3).map { "Rúbrica \($0.title): \($0.value)" }
@@ -125,6 +184,7 @@ struct StudentInsight: Codable, Hashable, Sendable {
     let riskAnalysis: RiskAnalysis
     let recommendations: [String]
     let confidenceNote: String
+    let mlPatternSignal: EducationalPatternSignal?
 
     var risks: [String] {
         riskAnalysis.causes
@@ -138,7 +198,8 @@ struct StudentInsight: Codable, Hashable, Sendable {
         performanceSignal: String,
         riskAnalysis: RiskAnalysis,
         recommendations: [String],
-        confidenceNote: String
+        confidenceNote: String,
+        mlPatternSignal: EducationalPatternSignal? = nil
     ) {
         self.summary = AppleAIOutputNormalizer.nonEmpty(summary, fallback: "Lectura educativa no disponible.")
         self.strengths = AppleAIOutputNormalizer.compactLimited(strengths, limit: 3)
@@ -151,6 +212,7 @@ struct StudentInsight: Codable, Hashable, Sendable {
             confidenceNote,
             fallback: "Confianza basada en evidencias disponibles."
         )
+        self.mlPatternSignal = mlPatternSignal
     }
 
     init(
@@ -161,7 +223,8 @@ struct StudentInsight: Codable, Hashable, Sendable {
         performanceSignal: String,
         risks: [String],
         recommendations: [String],
-        confidenceNote: String
+        confidenceNote: String,
+        mlPatternSignal: EducationalPatternSignal? = nil
     ) {
         self.init(
             summary: summary,
@@ -177,7 +240,8 @@ struct StudentInsight: Codable, Hashable, Sendable {
                 confidenceNote: confidenceNote
             ),
             recommendations: recommendations,
-            confidenceNote: confidenceNote
+            confidenceNote: confidenceNote,
+            mlPatternSignal: mlPatternSignal
         )
     }
 }
@@ -369,7 +433,8 @@ final class AppleFoundationStudentInsightService {
                     performanceSignal: response.content.performanceSignal,
                     risks: response.content.risks,
                     recommendations: response.content.recommendations,
-                    confidenceNote: response.content.confidenceNote
+                    confidenceNote: response.content.confidenceNote,
+                    mlPatternSignal: evidence.mlPatternSignal
                 )
             } catch {
                 AppleFoundationModelSupport.recordRuntimeFailure(error)
@@ -570,7 +635,19 @@ final class AppleFoundationStudentInsightService {
     #endif
 
     private func studentInsightPrompt(from evidence: StudentInsightEvidence) -> String {
-        AIContextBudget.prompt(
+        var extraPromptRules = ""
+        if let mlPattern = evidence.mlPatternSignal, mlPattern.isActionableRisk {
+            extraPromptRules = """
+
+            Alerta temprana de Machine Learning local:
+            - Patrón detectado: \(mlPattern.patternType.displayName) (confianza \(Int(mlPattern.confidence * 100))%).
+            - Factores determinantes: \(mlPattern.keyFactors.joined(separator: "; ")).
+            - Acción preventiva sugerida: \(mlPattern.suggestedPreventiveAction).
+            - Integra esta señal preventiva en el resumen y formula recomendaciones concretas sin alarmismos ni tecnicismos.
+            """
+        }
+
+        return AIContextBudget.prompt(
             """
             Genera un StudentInsightDraft para el inspector del Cuaderno.
 
@@ -580,7 +657,7 @@ final class AppleFoundationStudentInsightService {
             Reglas:
             - Máximo 3 fortalezas, 3 áreas de mejora, 3 riesgos y 3 recomendaciones.
             - Si una señal es insuficiente, indícalo con prudencia.
-            - No propongas sanciones ni diagnósticos.
+            - No propongas sanciones ni diagnósticos.\(extraPromptRules)
             """
         )
     }
@@ -670,16 +747,21 @@ final class AppleFoundationStudentInsightService {
             evidence.averageExplanation?.pendingCells.isEmpty == false ? "Hay columnas evaluables pendientes." : nil,
             evidence.trends?.trendDirection == "DOWNWARD" ? "La tendencia reciente recomienda seguimiento." : nil
         ], limit: 3)
-        let risks = compactLimited([
+        var risks = compactLimited([
             evidence.incidentCount > 0 ? "Existen incidencias registradas." : nil,
             evidence.followUpCount > 0 ? "Hay seguimientos activos." : nil,
             (evidence.trends?.attendanceRate ?? 100) < 80 ? "La asistencia acumulada es baja." : nil
         ], limit: 3)
-        let recommendations = compactLimited([
+        var recommendations = compactLimited([
             "Revisar próximas evidencias antes de tomar decisiones.",
             evidence.averageExplanation?.pendingCells.isEmpty == false ? "Priorizar el cierre de columnas pendientes." : nil,
             !evidence.rubricSummaries.isEmpty ? "Contrastar la lectura con las rúbricas asociadas." : nil
         ], limit: 3)
+
+        if let mlPattern = evidence.mlPatternSignal, mlPattern.isActionableRisk {
+            risks.insert("Alerta Core ML: \(mlPattern.summary)", at: 0)
+            recommendations.insert(mlPattern.suggestedPreventiveAction, at: 0)
+        }
 
         return StudentInsightDraft(
             summary: evidence.hasEnoughData
@@ -689,9 +771,10 @@ final class AppleFoundationStudentInsightService {
             improvementAreas: improvementAreas.isEmpty ? ["Sin áreas críticas detectadas con los datos actuales."] : improvementAreas,
             attendanceSignal: evidence.attendanceStatus.map { "Último estado: \($0)" } ?? "Sin señal reciente de asistencia.",
             performanceSignal: evidence.trends.map { "Tendencia \($0.trendDirection.lowercased())." } ?? "Sin tendencia suficiente.",
-            risks: risks,
-            recommendations: recommendations,
-            confidenceNote: reason
+            risks: Array(risks.prefix(3)),
+            recommendations: Array(recommendations.prefix(3)),
+            confidenceNote: reason,
+            mlPatternSignal: evidence.mlPatternSignal
         )
     }
 

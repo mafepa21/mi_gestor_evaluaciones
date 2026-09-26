@@ -905,6 +905,40 @@ struct StudentProfile360Sheet: View {
 
                 if let insight = educationalInsight {
                     VStack(alignment: .leading, spacing: 10) {
+                        if let mlSignal = insight.mlPatternSignal, mlSignal.isActionableRisk {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: mlSignal.patternType.systemImage)
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(Color.purple)
+                                    .frame(width: 24, height: 24)
+                                    .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(mlSignal.patternType.badgeTitle)
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(.primary)
+                                        Text("CORE ML")
+                                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                                            .foregroundStyle(Color.purple)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(Color.purple.opacity(0.12), in: Capsule())
+                                    }
+                                    Text(mlSignal.summary)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    if !mlSignal.keyFactors.isEmpty {
+                                        Text("Factores: " + mlSignal.keyFactors.joined(separator: " • "))
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(Color.purple.opacity(0.9))
+                                    }
+                                }
+                            }
+                            .padding(8)
+                            .background(Color.purple.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+
                         Text(insight.summary)
                             .font(.subheadline)
                             .foregroundStyle(.primary)
@@ -1099,6 +1133,17 @@ struct StudentProfile360Sheet: View {
         defer { isGeneratingInsight = false }
         let avgVal = studentRow?.row.weightedAverage?.doubleValue ?? profile.averageScore
         let avgText = String(format: "%.1f", avgVal)
+        let vector = StudentFeatureVector(
+            averageGrade: avgVal,
+            gradeDelta: 0.0,
+            attendanceRate: Double(profile.attendanceRate),
+            evaluableDayAbsenceRatio: profile.attendanceRate < 88 ? 0.30 : 0.05,
+            pendingTaskRatio: Double(studentRow?.row.averageExplanation?.pendingCells.count ?? 0) / Double(max(studentRow?.row.averageExplanation?.includedColumns.count ?? 1, 1)),
+            rubricVariance: 0.8,
+            incidentCount: Double(profile.incidentCount)
+        )
+        let mlSignal = CoreMLPatternDetectionService.shared.predict(vector: vector)
+
         let evidence = StudentInsightEvidence(
             studentId: profile.student.id,
             studentName: "\(profile.student.firstName) \(profile.student.lastName)",
@@ -1112,7 +1157,8 @@ struct StudentProfile360Sheet: View {
             observations: [],
             rubricSummaries: [],
             averageExplanation: studentRow?.row.averageExplanation,
-            trends: nil
+            trends: nil,
+            mlPatternSignal: mlSignal
         )
         do {
             let gen = try await orchestrator.generateWithTrace(

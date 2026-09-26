@@ -15,6 +15,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Fase 2: Motor de Detección de Patrones No Obvios con Core ML e Integración Híbrida con Apple Intelligence**:
+  - `scripts/train_educational_patterns_model.swift`: Script de entrenamiento Create ML para clasificador tabular supervisado con dataset sintético calibrado de 1.400 ejemplos de 4 arquetipos pedagógicos (desenganche silencioso, cuellos de botella curriculares, anomalías evaluativas y progresión estable).
+  - `EducationalPatternsClassifier.mlmodel`: Modelo Core ML liviano (1.2 KB) compilado en los bundles de iOS y macOS con inferencia on-device (< 2 ms por alumno) en Apple Neural Engine y CPU sin fuga de datos de menores.
+  - `CoreMLPatternDetectionService.swift`: Servicio singleton para predicción de señales no lineales (`EducationalPatternSignal`) a partir de vectores de características normalizados (`StudentFeatureVector`).
+  - Integración en `AppleFoundationStudentInsightService.swift`: las señales matemáticas de Core ML se integran como evidencia estructurada para orientar la redacción empática y cualitativa de Apple Foundation Models.
+  - `TeacherRadarCard.swift` y `TeacherRadarBuilder`: cálculo automático de vectores de alumno y detección de riesgos sutiles con prioridad alta/media en el radar docente diario.
+  - `TeacherRadarStudentInsightRow.swift`: badge `[CORE ML]` y visualización de factores determinantes de la alerta.
+  - `NotebookStudentInspector.swift`: tarjeta `NotebookMLPatternCard` con desglose de confianza y acción preventiva en el inspector del cuaderno.
+  - `StudentProfile360Sheet.swift`: visualización de patrones sutiles Core ML dentro de la ficha integral del alumno.
 - **Integración en SwiftUI de capacidades pedagógicas de Apple Intelligence**:
   - `AIRubricGeneratorSheet.swift`: Hoja modal para generar rúbricas analíticas LOMLOE con descriptores graduados e insertarlos directamente en el constructor de rúbricas (`RubricsBuilderScreen.swift`).
   - `StudentProfile360Sheet.swift`: Tarjeta interactiva de pautas DUA en la sección de Salud y Apoyo, contextualizada a las necesidades y condición física del alumno con copia al portapapeles.

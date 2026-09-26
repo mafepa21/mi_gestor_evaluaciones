@@ -15,6 +15,18 @@ struct TeacherRadarStudentInsightRow: View {
                     Text(insight.priority.title.uppercased())
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(insight.priority.tint)
+                    if insight.id.contains("-ml-") {
+                        HStack(spacing: 3) {
+                            Image(systemName: "cpu")
+                                .font(.system(size: 8, weight: .bold))
+                            Text("CORE ML")
+                                .font(.system(size: 9, weight: .black, design: .rounded))
+                        }
+                        .foregroundStyle(Color.purple)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.purple.opacity(0.12), in: Capsule())
+                    }
                     Text(insight.title)
                         .font(.subheadline.weight(.bold))
                         .lineLimit(1)
@@ -24,6 +36,12 @@ struct TeacherRadarStudentInsightRow: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                if insight.id.contains("-ml-") && !insight.evidence.isEmpty {
+                    Text("Factores: " + insight.evidence.joined(separator: " • "))
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Color.purple.opacity(0.85))
+                        .lineLimit(2)
+                }
                 Text(insight.suggestedAction)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)

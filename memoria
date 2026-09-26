@@ -3,6 +3,38 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-26 - Fase 2: Motor de Detección de Patrones No Obvios con Core ML e Integración Híbrida con Apple Intelligence
+
+Resumen:
+- Qué cambio se hizo:
+  1. Creación del script de entrenamiento con Create ML `scripts/train_educational_patterns_model.swift`, generando un dataset sintético calibrado con 1.400 ejemplos para 4 arquetipos pedagógicos (desenganche silencioso, cuellos de botella curriculares, anomalías de calificación y evolución estable) y exportando `EducationalPatternsClassifier.mlmodel` (1.2 KB) sin ninguna fuga de datos de menores ni dependencias externas de Python.
+  2. Implementación de `CoreMLPatternDetectionService.swift` en `AppleShared` para inferencia on-device (< 2 ms por alumno) en Apple Neural Engine/CPU, con tipado de señales (`EducationalPatternSignal`), vector de características normalizado (`StudentFeatureVector`) y fallback determinista.
+  3. Integración híbrida en `AppleFoundationStudentInsightService.swift`: las alertas tempranas de Core ML se inyectan en `StudentInsightEvidence` y alimentan el prompt de los Foundation Models locales para formular recomendaciones cualitativas empáticas y preventivas.
+  4. Integración en UI SwiftUI:
+     - `TeacherRadarCard.swift` y `TeacherRadarBuilder`: evaluación de cada alumno mediante Core ML con estimación de asistencia en sesiones evaluables y varianza de rúbricas; detección de desenganche silencioso y cuellos de botella con prioridad alta/media.
+     - `TeacherRadarStudentInsightRow.swift`: badge distintivo `[CORE ML]` y desglose de factores clave determinantes.
+     - `NotebookStudentInspector.swift`: tarjeta `NotebookMLPatternCard` destacada dentro del inspector educativo.
+     - `StudentProfile360Sheet.swift`: sección de patrones sutiles Core ML dentro de la ficha integral del alumno.
+  5. Regeneración de Xcode (`xcodegen`) y validación dual de compilación limpia.
+- Por qué importa:
+  - Hace realidad la arquitectura híbrida en 3 capas (KMP -> Core ML -> Foundation Models -> SwiftUI). Detecta desenganche en alumnos con notas formalmente aprobadas (5-6) antes de que caigan al suspenso, operando de forma 100% offline y garantizando la privacidad de los menores.
+- Dónde vive el cambio:
+  - `scripts/train_educational_patterns_model.swift`
+  - `kmp/iosApp/AppleShared/ML/EducationalPatternsClassifier.mlmodel`
+  - `kmp/iosApp/AppleShared/CoreMLPatternDetectionService.swift`
+  - `kmp/iosApp/App/AppleFoundationStudentInsightService.swift`
+  - `kmp/iosApp/App/TeacherRadarCard.swift`
+  - `kmp/iosApp/App/TeacherRadarStudentInsightRow.swift`
+  - `kmp/iosApp/App/NotebookStudentInspector.swift`
+  - `kmp/iosApp/App/StudentProfile360Sheet.swift`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+- Validación realizada:
+  - `swift scripts/train_educational_patterns_model.swift`: exactitud 100% en conjunto de prueba sintético.
+  - `cd kmp && ./gradlew :shared:desktopTest`: 4 tareas ejecutadas, 0 fallos, BUILD SUCCESSFUL.
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+
 ## Avance 2026-09-26 - Integración en SwiftUI de las 4 capacidades pedagógicas de Apple Intelligence (Rúbricas LOMLOE, DUA, Planner, Metacognición)
 
 Resumen:

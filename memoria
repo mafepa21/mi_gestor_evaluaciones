@@ -3,6 +3,40 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-26 - Fase 3: Explicabilidad Pedagógica, Generador de Equipos Cooperativos y Calibración Continua On-Device
+
+Resumen:
+- Qué cambio se hizo:
+  1. Creación de `PedagogicalMLCalibrationService.swift` en `AppleShared` para el feedback loop docente y la calibración continua de Core ML con persistencia local en `UserDefaults` (`isSignalSuppressed`, `setStatus`, `reactivateSignal`, `setConfidenceThreshold`). Soporta estados (`active`, `addressed`, `dismissed`), motivos pedagógicos tipados (`personalCircumstance`, `trackingStarted`, `falsePositive`, `pedagogicalAgreement`) y umbrales de sensibilidad (`sensitive >50%`, `balanced >70%`, `conservative >85%`) con sincronización thread-safe (`NSLock`).
+  2. Creación de `CooperativeGroupGeneratorService.swift` en `AppleShared` para la formación inteligente y determinista de equipos cooperativos en el aula con estrategias pedagógicas tipadas (Kagan heterogéneo por draft serpenteante, homogéneo por niveles de logro, y aleatorio balanceado), equilibrio de género opcional, cálculo de dispersión inter-grupal y adaptador nativo hacia `ImportedNotebookGroup`.
+  3. Creación de la hoja interactiva `CooperativeGroupGeneratorSheet.swift` en SwiftUI para configurar número de grupos, previsualizar métricas de equilibrio, examinar integrantes y volcar los equipos directamente al cuaderno de notas o copiarlos al portapapeles.
+  4. Integración en `NotebookGroupManagementSheet.swift`: acceso en toolbar y en la lista de gestión de grupos («Generar con IA»).
+  5. Integración de calibración y feedback loop en `TeacherRadarCard.swift` (menú de sensibilidad de umbrales en cabecera) y `TeacherRadarStudentInsightRow.swift` (menú de resolución/descarte de alertas con motivos tipados).
+  6. Actualización de `NotebookStudentInspector.swift`: controles de resolución, descarte y reactivación en `NotebookMLPatternCard`.
+  7. Enriquecimiento de `AppleFoundationReportService.swift`: inyección de patrones sutiles activos de Core ML en el prompt estructurado para informes de tutoría y pre-evaluación.
+  8. Detección de distorsión evaluativa on-device en `NotebookColumnStatisticsSheet.swift`: alerta visual pedagógica ante alta concentración de suspensos (>45%), efecto techo (sigma < 0.6) o dispersión bimodal extrema (sigma > 2.8).
+  9. Tests unitarios en `CooperativeGroupAndCalibrationTests.swift` validando equilibrio de medias, particionamiento homogéneo, adaptación a grupos del cuaderno y filtrado por calibración y umbrales (100% éxito).
+- Por qué importa:
+  - Cierra la tríada de Inteligencia Educativa dotando al docente de control bidireccional sobre los modelos (evita fatiga de alertas), resuelve la necesidad diaria de formación de equipos cooperativos sin depender de Excels externos, y conecta las predicciones con los informes de tutoría bajo un entorno 100% privado y on-device.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/PedagogicalMLCalibrationService.swift` (Nuevo)
+  - `kmp/iosApp/AppleShared/CooperativeGroupGeneratorService.swift` (Nuevo)
+  - `kmp/iosApp/App/CooperativeGroupGeneratorSheet.swift` (Nuevo)
+  - `kmp/iosApp/PlannerTests/CooperativeGroupAndCalibrationTests.swift` (Nuevo)
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift`
+  - `kmp/iosApp/App/TeacherRadarCard.swift`
+  - `kmp/iosApp/App/TeacherRadarStudentInsightRow.swift`
+  - `kmp/iosApp/App/NotebookStudentInspector.swift`
+  - `kmp/iosApp/App/AppleFoundationReportService.swift`
+  - `kmp/iosApp/App/NotebookColumnStatisticsSheet.swift`
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
+- Validación realizada:
+  - `xcodebuild -scheme MiGestorPlannerTests -only-testing:CooperativeGroupAndCalibrationTests`: 4 tests ejecutados, 0 fallos (TEST SUCCEEDED).
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+  - `cd kmp && ./gradlew :shared:desktopTest`: 4 tareas ejecutadas, 0 fallos (BUILD SUCCESSFUL).
+
 ## Avance 2026-09-26 - Fase 2: Motor de Detección de Patrones No Obvios con Core ML e Integración Híbrida con Apple Intelligence
 
 Resumen:

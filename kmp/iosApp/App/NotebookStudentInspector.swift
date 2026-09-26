@@ -160,6 +160,8 @@ struct NotebookStudentInspector: View {
                 tutorMeetingSummary: tutorMeetingSummary,
                 earlyWarning: earlyWarning,
                 metadata: educationalInsightMetadata,
+                studentId: studentId,
+                classId: classId ?? 0,
                 isLoading: isLoadingEducationalInsight,
                 errorMessage: educationalInsightError,
                 onRefresh: {
@@ -891,6 +893,8 @@ private struct NotebookEducationalInsightView: View {
     let tutorMeetingSummary: TutorMeetingSummaryDraft?
     let earlyWarning: EarlyWarning?
     let metadata: AppleAIGenerationMetadata?
+    let studentId: Int64
+    let classId: Int64
     let isLoading: Bool
     let errorMessage: String?
     let onRefresh: () -> Void
@@ -938,7 +942,7 @@ private struct NotebookEducationalInsightView: View {
 
             if let insight {
                 if let mlSignal = insight.mlPatternSignal, mlSignal.isActionableRisk {
-                    NotebookMLPatternCard(signal: mlSignal)
+                    NotebookMLPatternCard(signal: mlSignal, studentId: studentId, classId: classId)
                 }
 
                 if let earlyWarning {
@@ -1209,6 +1213,14 @@ private struct NotebookInspectorSection<Content: View>: View {
 
 private struct NotebookMLPatternCard: View {
     let signal: EducationalPatternSignal
+    let studentId: Int64
+    let classId: Int64
+
+    @ObservedObject private var calibration = PedagogicalMLCalibrationService.shared
+
+    private var record: MLCalibrationRecord? {
+        calibration.record(for: studentId, classId: classId, patternType: signal.patternType)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1236,6 +1248,15 @@ private struct NotebookMLPatternCard: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+
+                if let record, record.status != .active {
+                    Text(record.reason?.shortBadge ?? record.status.title)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                }
             }
 
             Text(signal.summary)
@@ -1270,6 +1291,97 @@ private struct NotebookMLPatternCard: View {
                     .foregroundStyle(.primary)
             }
             .padding(.top, 4)
+
+            Divider()
+
+            HStack {
+                if let record, record.status != .active {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                        Text("Alerta atendida / justificada")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button("Reactivar") {
+                        calibration.reactivateSignal(studentId: studentId, classId: classId, patternType: signal.patternType)
+                    }
+                    .font(.caption2.weight(.bold))
+                    .buttonStyle(.borderless)
+                } else {
+                    Menu {
+                        Section("Resolución docente") {
+                            Button {
+                                calibration.setStatus(
+                                    studentId: studentId,
+                                    classId: classId,
+                                    patternType: signal.patternType,
+                                    status: .addressed,
+                                    reason: .trackingStarted,
+                                    note: "Seguimiento iniciado en tutoría"
+                                )
+                            } label: {
+                                Label("Marcar como atendida (En seguimiento)", systemImage: "checkmark.circle")
+                            }
+
+                            Button {
+                                calibration.setStatus(
+                                    studentId: studentId,
+                                    classId: classId,
+                                    patternType: signal.patternType,
+                                    status: .dismissed,
+                                    reason: .personalCircumstance,
+                                    note: "Circunstancia personal o médica justificada"
+                                )
+                            } label: {
+                                Label("Descartar: Justificado / Médico", systemImage: "cross.case")
+                            }
+
+                            Button {
+                                calibration.setStatus(
+                                    studentId: studentId,
+                                    classId: classId,
+                                    patternType: signal.patternType,
+                                    status: .dismissed,
+                                    reason: .falsePositive,
+                                    note: "Evolución real adecuada (Falso positivo)"
+                                )
+                            } label: {
+                                Label("Descartar: Falso positivo", systemImage: "hand.thumbsup")
+                            }
+
+                            Button {
+                                calibration.setStatus(
+                                    studentId: studentId,
+                                    classId: classId,
+                                    patternType: signal.patternType,
+                                    status: .dismissed,
+                                    reason: .pedagogicalAgreement,
+                                    note: "Acuerdo de trabajo alcanzado"
+                                )
+                            } label: {
+                                Label("Descartar: Acuerdo de trabajo", systemImage: "person.badge.shield.checkmark")
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "slider.horizontal.2.square")
+                                .font(.caption2)
+                            Text("Resolver / Descartar...")
+                                .font(.caption2.weight(.bold))
+                        }
+                        .foregroundStyle(Color.purple)
+                    }
+                    .buttonStyle(.borderless)
+
+                    Spacer()
+                }
+            }
+            .padding(.top, 2)
         }
         .padding(12)
         .background(

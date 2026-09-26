@@ -15,6 +15,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Fase 3: Explicabilidad Pedagógica, Generador de Equipos Cooperativos y Calibración Continua On-Device**:
+  - `PedagogicalMLCalibrationService.swift`: Servicio singleton en `AppleShared` para el feedback loop docente y la calibración continua de Core ML con persistencia local en `UserDefaults`. Permite registrar estados de alertas (`active`, `addressed`, `dismissed`), motivos pedagógicos tipados (`personalCircumstance`, `trackingStarted`, `falsePositive`, `pedagogicalAgreement`) y regular la sensibilidad con umbrales configurables (`sensitive >50%`, `balanced >70%`, `conservative >85%`), garantizando seguridad ante concurrencia con `NSLock`.
+  - `CooperativeGroupGeneratorService.swift`: Servicio en `AppleShared` para la formación inteligente y determinista de agrupamientos cooperativos en el aula con estrategias pedagógicas tipadas (Kagan heterogéneo por draft serpenteante, homogéneo por niveles de logro, y aleatorio balanceado), equilibrio de género opcional, métricas de dispersión inter-grupal y adaptador nativo hacia `ImportedNotebookGroup`.
+  - `CooperativeGroupGeneratorSheet.swift`: Hoja interactiva en SwiftUI para configurar equipos, visualizar tarjetas con miembros, puntuaciones medias y dispersión, reordenar alumnos y aplicarlos directamente como grupos de trabajo del cuaderno de notas o copiarlos al portapapeles.
+  - Integración en `NotebookGroupManagementSheet.swift`: acceso en toolbar y en la lista de gestión de grupos («Generar con IA»).
+  - Integración de calibración y feedback loop en `TeacherRadarCard.swift` (menú de sensibilidad de umbrales en cabecera) y `TeacherRadarStudentInsightRow.swift` (menú contextual de resolución y descarte con motivos tipados).
+  - Actualización de `NotebookStudentInspector.swift`: controles de resolución, descarte y reactivación en `NotebookMLPatternCard`.
+  - Enriquecimiento de `AppleFoundationReportService.swift`: inyección de patrones sutiles activos de Core ML en el prompt estructurado para informes de tutoría y pre-evaluación.
+  - Detección de distorsión evaluativa on-device en `NotebookColumnStatisticsSheet.swift`: alerta visual pedagógica ante alta concentración de suspensos (>45%), efecto techo (sigma < 0.6) o dispersión bimodal extrema (sigma > 2.8).
+  - Tests unitarios en `CooperativeGroupAndCalibrationTests.swift` validando equilibrio de medias, particionamiento homogéneo, adaptación a grupos del cuaderno y filtrado por calibración y umbrales (100% éxito).
 - **Fase 2: Motor de Detección de Patrones No Obvios con Core ML e Integración Híbrida con Apple Intelligence**:
   - `scripts/train_educational_patterns_model.swift`: Script de entrenamiento Create ML para clasificador tabular supervisado con dataset sintético calibrado de 1.400 ejemplos de 4 arquetipos pedagógicos (desenganche silencioso, cuellos de botella curriculares, anomalías evaluativas y progresión estable).
   - `EducationalPatternsClassifier.mlmodel`: Modelo Core ML liviano (1.2 KB) compilado en los bundles de iOS y macOS con inferencia on-device (< 2 ms por alumno) en Apple Neural Engine y CPU sin fuga de datos de menores.

@@ -44,6 +44,7 @@ struct TeacherRadarInsightDraft: Identifiable, Hashable {
     let classId: Int64?
     let suggestedAction: String
     let evidence: [String]
+    var patternType: EducationalPatternType? = nil
 }
 
 struct TeacherRadarStudentSnapshot: Identifiable, Hashable {
@@ -189,8 +190,14 @@ enum TeacherRadarBuilder {
                 incidentCount: incidentScore
             )
             let mlSignal = CoreMLPatternDetectionService.shared.predict(vector: vector)
+            let isSuppressed = PedagogicalMLCalibrationService.shared.isSignalSuppressed(
+                studentId: item.student.id,
+                classId: classId,
+                patternType: mlSignal.patternType,
+                confidence: mlSignal.confidence
+            )
 
-            if mlSignal.isActionableRisk {
+            if mlSignal.isActionableRisk && !isSuppressed {
                 insights.append(.init(
                     id: "student-\(item.student.id)-ml-\(mlSignal.patternType.rawValue)",
                     title: "\(studentName): \(mlSignal.patternType.badgeTitle)",
@@ -199,13 +206,14 @@ enum TeacherRadarBuilder {
                     studentId: item.student.id,
                     classId: classId,
                     suggestedAction: mlSignal.suggestedPreventiveAction,
-                    evidence: mlSignal.keyFactors
+                    evidence: mlSignal.keyFactors,
+                    patternType: mlSignal.patternType
                 ))
             }
 
             let risk: TeacherRadarInsightDraft.Priority = {
-                if average.map({ $0 < 5 }) == true || evidenceCount == 0 || (mlSignal.isActionableRisk && mlSignal.patternType == .silentDisengagement) { return .high }
-                if missingRubrics > 0 || pending > 0 || falling || mlSignal.isActionableRisk { return .medium }
+                if average.map({ $0 < 5 }) == true || evidenceCount == 0 || (!isSuppressed && mlSignal.isActionableRisk && mlSignal.patternType == .silentDisengagement) { return .high }
+                if missingRubrics > 0 || pending > 0 || falling || (!isSuppressed && mlSignal.isActionableRisk) { return .medium }
                 if improved { return .positive }
                 return .low
             }()
@@ -361,6 +369,7 @@ enum TeacherRadarBuilder {
 struct TeacherRadarCard: View {
     let snapshot: TeacherRadarSnapshot
     let onOpenDetail: () -> Void
+    @ObservedObject private var calibration = PedagogicalMLCalibrationService.shared
 
     var body: some View {
         NotebookSurface {
@@ -372,6 +381,31 @@ struct TeacherRadarCard: View {
                             .font(.system(size: 24, weight: .black, design: .rounded))
                     }
                     Spacer()
+                    
+                    Menu {
+                        Section("Sensibilidad de alertas Core ML") {
+                            ForEach(MLConfidenceThreshold.allCases, id: \.self) { threshold in
+                                Button {
+                                    calibration.setConfidenceThreshold(threshold)
+                                } label: {
+                                    HStack {
+                                        Text(threshold.title)
+                                        if calibration.threshold == threshold {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 34, height: 34)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Ajustar sensibilidad de las alertas Core ML")
+
                     Button(action: onOpenDetail) {
                         Image(systemName: "arrow.up.right")
                             .frame(width: 34, height: 34)

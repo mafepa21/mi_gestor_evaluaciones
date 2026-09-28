@@ -428,10 +428,10 @@ struct DashboardView: View {
         .buttonStyle(ScaleButtonStyle())
     }
 
-    @ViewBuilder
-    private func dashboardLoadedContent(snapshot: DashboardSnapshot) -> some View {
-        Group {
-            if isClassroomMode {
+    private func dashboardLoadedContent(snapshot: DashboardSnapshot) -> AnyView {
+        let content: AnyView
+        if isClassroomMode {
+            content = AnyView(
                 DashboardClassroomView(
                     snapshot: snapshot,
                     colorScheme: colorScheme,
@@ -441,233 +441,244 @@ struct DashboardView: View {
                         modeRawValue = DashboardModePreference.office.rawValue
                     }
                 )
-            } else if isCompactWidth {
-                dashboardCompactLoadedContent(snapshot: snapshot)
-            } else if modePreference == .office {
-                dashboardOfficeLoadedContent(snapshot: snapshot)
-            } else {
-                dashboardAutoLoadedContent(snapshot: snapshot)
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: loadPhase.rawValue)
-        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: mode)
-    }
-
-    @ViewBuilder
-    private func dashboardOfficeLoadedContent(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 24) {
-            // 1. Hero compacto para optimizar espacio vertical
-            DashboardCompactHeroStrip(
-                context: snapshot.currentContext,
-                colorScheme: colorScheme,
-                onAction: handleNowAction
             )
-
-            // 2. Fila de KPIs
-            dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme, isCompact: false)
-
-            // 3. Layout adaptativo (3 columnas si cabe, fallback a 2 columnas en iPad portrait / Split View)
-            ViewThatFits(in: .horizontal) {
-                // Variante 3 Columnas (Pantalla ancha / Mac / iPad apaisado)
-                HStack(alignment: .top, spacing: 16) {
-                    // Columna 1 (~33%): Jornada y Operativa
-                    VStack(alignment: .leading, spacing: 16) {
-                        dashboardTodayBlock(snapshot: snapshot)
-                        dashboardQuickEvalBlock(snapshot: snapshot)
-                    }
-                    .frame(minWidth: 260, maxWidth: .infinity, alignment: .topLeading)
-
-                    // Columna 2 (~34%): Radar IA y Alertas
-                    VStack(alignment: .leading, spacing: 16) {
-                        if loadPhase.includes(.ai) {
-                            dashboardProactiveRadar(snapshot: snapshot)
-                        } else {
-                            dashboardRadarSkeleton
-                        }
-
-                        dashboardFilterChips
-
-                        if loadPhase.includes(.lists) {
-                            dashboardAlertsSection(snapshot: snapshot)
-                        } else {
-                            dashboardListSkeleton
-                        }
-
-                        if isInspectorPresented {
-                            dashboardInspector
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-                    }
-                    .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
-
-                    // Columna 3 (~33%): LOMLOE, Grupos y Agenda
-                    VStack(alignment: .leading, spacing: 16) {
-                        dashboardLomloeAuditBlock(
-                            trends: classTrends,
-                            isLoading: isLoadingClassTrends,
-                            loadFailed: classTrendsLoadFailed
-                        ) {
-                            Task { await loadClassTrends() }
-                        }
-
-                        dashboardGroupSummaryBlock(snapshot: snapshot, isWide: false)
-
-                        dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
-
-                        dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme) { item in
-                            inspectorSelection = .pe(item.id)
-                            isInspectorPresented = true
-                        }
-
-                        dashboardSystemBlock()
-                    }
-                    .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
-                }
-
-                // Variante 2 Columnas (iPad vertical o Split View 1/2)
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        dashboardTodayBlock(snapshot: snapshot)
-                        dashboardQuickEvalBlock(snapshot: snapshot)
-                        dashboardGroupSummaryBlock(snapshot: snapshot, isWide: false)
-                        dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                    VStack(alignment: .leading, spacing: 16) {
-                        if loadPhase.includes(.ai) {
-                            dashboardProactiveRadar(snapshot: snapshot)
-                        } else {
-                            dashboardRadarSkeleton
-                        }
-
-                        dashboardFilterChips
-
-                        if loadPhase.includes(.lists) {
-                            dashboardAlertsSection(snapshot: snapshot)
-                        } else {
-                            dashboardListSkeleton
-                        }
-
-                        if isInspectorPresented {
-                            dashboardInspector
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-
-                        dashboardLomloeAuditBlock(
-                            trends: classTrends,
-                            isLoading: isLoadingClassTrends,
-                            loadFailed: classTrendsLoadFailed
-                        ) {
-                            Task { await loadClassTrends() }
-                        }
-
-                        dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme) { item in
-                            inspectorSelection = .pe(item.id)
-                            isInspectorPresented = true
-                        }
-
-                        dashboardSystemBlock()
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-            }
+        } else if isCompactWidth {
+            content = dashboardCompactLoadedContent(snapshot: snapshot)
+        } else if modePreference == .office {
+            content = dashboardOfficeLoadedContent(snapshot: snapshot)
+        } else {
+            content = dashboardAutoLoadedContent(snapshot: snapshot)
         }
+
+        return AnyView(
+            content
+                .animation(.spring(response: 0.35, dampingFraction: 0.82), value: loadPhase.rawValue)
+                .animation(.spring(response: 0.35, dampingFraction: 0.82), value: mode)
+        )
     }
 
-    @ViewBuilder
-    private func dashboardAutoLoadedContent(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 24) {
-            dashboardNowCard(
-                context: snapshot.currentContext,
-                colorScheme: colorScheme,
-                isCompact: false,
-                onAction: handleNowAction
-            )
-
-            dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme, isCompact: false)
-
-            HStack(alignment: .top, spacing: 16) {
-                // Columna Izquierda (55%): Jornada y Acciones
-                VStack(alignment: .leading, spacing: 16) {
-                    dashboardTodayBlock(snapshot: snapshot)
-                    dashboardQuickEvalBlock(snapshot: snapshot)
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                // Columna Derecha (45%): Radar, Alertas y Contexto
-                VStack(alignment: .leading, spacing: 16) {
-                    if loadPhase.includes(.ai) {
-                        dashboardProactiveRadar(snapshot: snapshot)
-                    } else {
-                        dashboardRadarSkeleton
-                    }
-
-                    dashboardFilterChips
-
-                    if loadPhase.includes(.lists) {
-                        dashboardAlertsSection(snapshot: snapshot)
-                    } else {
-                        dashboardListSkeleton
-                    }
-
-                    if isInspectorPresented {
-                        dashboardInspector
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-
-                    dashboardSecondaryGrid(snapshot: snapshot)
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func dashboardCompactLoadedContent(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if modePreference == .office {
+    private func dashboardOfficeLoadedContent(snapshot: DashboardSnapshot) -> AnyView {
+        AnyView(
+            VStack(alignment: .leading, spacing: 24) {
+                // 1. Hero compacto para optimizar espacio vertical
                 DashboardCompactHeroStrip(
                     context: snapshot.currentContext,
                     colorScheme: colorScheme,
                     onAction: handleNowAction
                 )
-            } else {
+
+                // 2. Fila de KPIs
+                dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme, isCompact: false)
+
+                // 3. Layout adaptativo (3 columnas si cabe, fallback a 2 columnas en iPad portrait / Split View)
+                ViewThatFits(in: .horizontal) {
+                    // Variante 3 Columnas (Pantalla ancha / Mac / iPad apaisado)
+                    AnyView(
+                        HStack(alignment: .top, spacing: 16) {
+                            // Columna 1 (~33%): Jornada y Operativa
+                            VStack(alignment: .leading, spacing: 16) {
+                                dashboardTodayBlock(snapshot: snapshot)
+                                dashboardQuickEvalBlock(snapshot: snapshot)
+                            }
+                            .frame(minWidth: 260, maxWidth: .infinity, alignment: .topLeading)
+
+                            // Columna 2 (~34%): Radar IA y Alertas
+                            VStack(alignment: .leading, spacing: 16) {
+                                if loadPhase.includes(.ai) {
+                                    dashboardProactiveRadar(snapshot: snapshot)
+                                } else {
+                                    dashboardRadarSkeleton
+                                }
+
+                                dashboardFilterChips
+
+                                if loadPhase.includes(.lists) {
+                                    dashboardAlertsSection(snapshot: snapshot)
+                                } else {
+                                    dashboardListSkeleton
+                                }
+
+                                if isInspectorPresented {
+                                    dashboardInspector
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
+                            }
+                            .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
+
+                            // Columna 3 (~33%): LOMLOE, Grupos y Agenda
+                            VStack(alignment: .leading, spacing: 16) {
+                                dashboardLomloeAuditBlock(
+                                    trends: classTrends,
+                                    isLoading: isLoadingClassTrends,
+                                    loadFailed: classTrendsLoadFailed
+                                ) {
+                                    Task { await loadClassTrends() }
+                                }
+
+                                dashboardGroupSummaryBlock(snapshot: snapshot, isWide: false)
+
+                                dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
+
+                                dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme) { item in
+                                    inspectorSelection = .pe(item.id)
+                                    isInspectorPresented = true
+                                }
+
+                                dashboardSystemBlock()
+                            }
+                            .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
+                        }
+                    )
+
+                    // Variante 2 Columnas (iPad vertical o Split View 1/2)
+                    AnyView(
+                        HStack(alignment: .top, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 16) {
+                                dashboardTodayBlock(snapshot: snapshot)
+                                dashboardQuickEvalBlock(snapshot: snapshot)
+                                dashboardGroupSummaryBlock(snapshot: snapshot, isWide: false)
+                                dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                            VStack(alignment: .leading, spacing: 16) {
+                                if loadPhase.includes(.ai) {
+                                    dashboardProactiveRadar(snapshot: snapshot)
+                                } else {
+                                    dashboardRadarSkeleton
+                                }
+
+                                dashboardFilterChips
+
+                                if loadPhase.includes(.lists) {
+                                    dashboardAlertsSection(snapshot: snapshot)
+                                } else {
+                                    dashboardListSkeleton
+                                }
+
+                                if isInspectorPresented {
+                                    dashboardInspector
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
+
+                                dashboardLomloeAuditBlock(
+                                    trends: classTrends,
+                                    isLoading: isLoadingClassTrends,
+                                    loadFailed: classTrendsLoadFailed
+                                ) {
+                                    Task { await loadClassTrends() }
+                                }
+
+                                dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme) { item in
+                                    inspectorSelection = .pe(item.id)
+                                    isInspectorPresented = true
+                                }
+
+                                dashboardSystemBlock()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        }
+                    )
+                }
+            }
+        )
+    }
+
+    private func dashboardAutoLoadedContent(snapshot: DashboardSnapshot) -> AnyView {
+        AnyView(
+            VStack(alignment: .leading, spacing: 24) {
                 dashboardNowCard(
                     context: snapshot.currentContext,
                     colorScheme: colorScheme,
-                    isCompact: true,
+                    isCompact: false,
                     onAction: handleNowAction
                 )
+
+                dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme, isCompact: false)
+
+                HStack(alignment: .top, spacing: 16) {
+                    // Columna Izquierda (55%): Jornada y Acciones
+                    VStack(alignment: .leading, spacing: 16) {
+                        dashboardTodayBlock(snapshot: snapshot)
+                        dashboardQuickEvalBlock(snapshot: snapshot)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                    // Columna Derecha (45%): Radar, Alertas y Contexto
+                    VStack(alignment: .leading, spacing: 16) {
+                        if loadPhase.includes(.ai) {
+                            dashboardProactiveRadar(snapshot: snapshot)
+                        } else {
+                            dashboardRadarSkeleton
+                        }
+
+                        dashboardFilterChips
+
+                        if loadPhase.includes(.lists) {
+                            dashboardAlertsSection(snapshot: snapshot)
+                        } else {
+                            dashboardListSkeleton
+                        }
+
+                        if isInspectorPresented {
+                            dashboardInspector
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+
+                        dashboardSecondaryGrid(snapshot: snapshot)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
             }
+        )
+    }
 
-            dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme, isCompact: true)
+    private func dashboardCompactLoadedContent(snapshot: DashboardSnapshot) -> AnyView {
+        AnyView(
+            VStack(alignment: .leading, spacing: 16) {
+                if modePreference == .office {
+                    DashboardCompactHeroStrip(
+                        context: snapshot.currentContext,
+                        colorScheme: colorScheme,
+                        onAction: handleNowAction
+                    )
+                } else {
+                    dashboardNowCard(
+                        context: snapshot.currentContext,
+                        colorScheme: colorScheme,
+                        isCompact: true,
+                        onAction: handleNowAction
+                    )
+                }
 
-            dashboardTodayBlock(snapshot: snapshot)
+                dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme, isCompact: true)
 
-            if loadPhase.includes(.ai) {
-                dashboardProactiveRadar(snapshot: snapshot)
-            } else {
-                dashboardRadarSkeleton
+                dashboardTodayBlock(snapshot: snapshot)
+
+                if loadPhase.includes(.ai) {
+                    dashboardProactiveRadar(snapshot: snapshot)
+                } else {
+                    dashboardRadarSkeleton
+                }
+
+                dashboardFilterChips
+
+                if loadPhase.includes(.lists) {
+                    dashboardAlertsSection(snapshot: snapshot)
+                } else {
+                    dashboardListSkeleton
+                }
+
+                if isInspectorPresented {
+                    dashboardInspector
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                dashboardQuickEvalBlock(snapshot: snapshot)
+
+                dashboardSecondaryGrid(snapshot: snapshot)
             }
-
-            dashboardFilterChips
-
-            if loadPhase.includes(.lists) {
-                dashboardAlertsSection(snapshot: snapshot)
-            } else {
-                dashboardListSkeleton
-            }
-
-            if isInspectorPresented {
-                dashboardInspector
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            dashboardQuickEvalBlock(snapshot: snapshot)
-
-            dashboardSecondaryGrid(snapshot: snapshot)
-        }
+        )
     }
 
     private func handleNowAction(_ action: DashboardNowAction) {

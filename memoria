@@ -3,6 +3,23 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-28 - Erradicación de Congelación en Runtime de Swift al Entrar a 'Hoy' en iPad
+
+Resumen:
+- Qué cambio se hizo:
+  1. `DashboardView.swift`: Eliminada la explosión de tipos genéricos opacos en tiempo de ejecución modificando `dashboardLoadedContent(snapshot:) -> AnyView`, y envolviendo en `AnyView` los modos de visualización (`dashboardOfficeLoadedContent`, `dashboardAutoLoadedContent`, `dashboardCompactLoadedContent`) y las variantes de `ViewThatFits(in: .horizontal)`.
+  2. Preservación íntegra de la experiencia adaptativa (3 columnas en pantallas anchas / apaisadas, 2 columnas en orientación vertical o Split View, Modo Clase y Modo Compacto), animaciones de carga y microinteracciones.
+- Por qué importa:
+  - En iPad, al entrar a la sección «Hoy», el hilo principal se congelaba en `swift::_gatherGenericParameterCounts ()` durante la inicialización de `dashboardLoadedContent(snapshot:)`. La causa era la decodificación por el runtime de Swift (`__swift_instantiateConcreteTypeFromMangledNameV2`) de un tipo opaco gigantesco con decenas de niveles de anidamiento y ramas duplicadas en `ViewThatFits`. El type-erasure con `AnyView` a nivel de los modos raíz elimina por completo la sobrecarga de resolución de metadatos genéricos y permite una apertura inmediata de la vista.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/DashboardView.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`:
+    - macOS Native / Catalyst: ✓ COMPILADO CORRECTAMENTE
+    - iOS Simulator: ✓ COMPILADO CORRECTAMENTE
+
 ## Avance 2026-09-28 - Corrección de Persistencia en Llavero de macOS para Emparejamiento SyncLAN iPad-Desktop
 
 Resumen:

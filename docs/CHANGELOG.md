@@ -13,6 +13,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Dashboard: erradicación de congelación en tiempo de ejecución de Swift al entrar a 'Hoy' en iPad**:
+  - `DashboardView.swift`: Eliminada la explosión combinatoria de tipos genéricos opacos en `dashboardLoadedContent(snapshot:)`, `dashboardOfficeLoadedContent(snapshot:)`, `dashboardAutoLoadedContent(snapshot:)` y `dashboardCompactLoadedContent(snapshot:)` mediante type-erasure con `AnyView`.
+  - Resuelve el bloqueo del hilo principal en `swift::_gatherGenericParameterCounts ()` provocado por la reconstrucción en tiempo de ejecución (`__swift_instantiateConcreteTypeFromMangledNameV2`) del árbol genérico monstruoso con dos variantes completas en `ViewThatFits` y más de 12 sub-bloques anidados.
+  - La navegación a la pestaña «Hoy» en iPad y Mac carga ahora de forma instantánea sin impactar las animaciones ni la disposición adaptativa.
+
 - **SyncLAN: guardado fiable en el llavero de macOS sin bloqueos ni tiempos de espera agotados**:
   - `LocalSyncServer.kt`: `DesktopKeychainCommand` ahora utiliza la opción nativa `-X <hexData>` para añadir contraseñas al llavero de macOS (`security add-generic-password`). Esto previene que el comando `security -w` intente solicitar datos de forma interactiva por `/dev/tty` (lo cual causaba bloqueos de subproceso, dejaba tokens vacíos en el llavero y provocaba el error de timeout en el primer pull tras el handshake con el iPad).
   - `DesktopKeychainCommandTest.kt`: Actualizado el test unitario para verificar la codificación hexadecimal segura con `-X` y la ausencia de texto plano o banderas interactivas.

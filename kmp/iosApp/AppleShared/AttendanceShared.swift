@@ -136,7 +136,28 @@ struct AttendanceStatusOption: Identifiable, Hashable {
         .init(id: "AUSENTE", label: "Ausente", shortLabel: "A", color: AppleDesignSystem.danger),
         .init(id: "TARDE", label: "Retraso", shortLabel: "R", color: AppleDesignSystem.warning),
         .init(id: "JUSTIFICADO", label: "Justificada", shortLabel: "J", color: .gray),
-        .init(id: "SIN_MATERIAL", label: "Sin material", shortLabel: "M", color: .brown),
+        .init(id: "SIN_MATERIAL", label: "Sin material", shortLabel: "M", color: .purple),
+        .init(id: "EXENTO", label: "Exento", shortLabel: "E", color: .indigo)
+    ]
+
+    var accessibleTextColor: Color {
+        switch id {
+        case "PRESENTE", "TARDE":
+            return Color.black // WCAG AAA high contrast (9.4:1 y 8.5:1)
+        default:
+            return Color.white
+        }
+    }
+
+    static let primaryOptions: [AttendanceStatusOption] = [
+        .init(id: "PRESENTE", label: "Presente", shortLabel: "P", color: AppleDesignSystem.success),
+        .init(id: "AUSENTE", label: "Ausente", shortLabel: "A", color: AppleDesignSystem.danger),
+        .init(id: "TARDE", label: "Retraso", shortLabel: "R", color: AppleDesignSystem.warning),
+        .init(id: "SIN_MATERIAL", label: "Sin material", shortLabel: "M", color: .purple)
+    ]
+
+    static let secondaryOptions: [AttendanceStatusOption] = [
+        .init(id: "JUSTIFICADO", label: "Justificada", shortLabel: "J", color: .gray),
         .init(id: "EXENTO", label: "Exento", shortLabel: "E", color: .indigo)
     ]
 

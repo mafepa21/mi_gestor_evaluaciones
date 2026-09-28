@@ -8,6 +8,9 @@ struct AttendanceWorkspaceView: View {
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @EnvironmentObject var layoutState: WorkspaceLayoutState
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @Binding var selectedClassId: Int64?
     @Binding var preselectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -45,6 +48,7 @@ struct AttendanceWorkspaceView: View {
     @State var noteDraft = ""
     @State var isAttendanceInspectorPresented = false
     @State var showAllPresent = false
+    @State var showOnlyExceptions = false
     @State var classSelectionTask: Task<Void, Never>?
     @State var incidentHeatmapFacts: KmpBridge.ChartFacts?
     @State var isLoadingIncidentHeatmap = false
@@ -90,6 +94,10 @@ struct AttendanceWorkspaceView: View {
 
     var presentRows: [AttendanceEntryRow] {
         filteredRows.filter { !AttendanceLogic.isRowUnresolved($0) }
+    }
+
+    var displayRows: [AttendanceEntryRow] {
+        showOnlyExceptions ? exceptionRows : filteredRows
     }
 
     var selectedStudent: Student? {
@@ -180,11 +188,37 @@ struct AttendanceWorkspaceView: View {
     var body: some View {
         Group {
             if #available(iOS 17.0, macOS 14.0, *) {
+                #if os(iOS)
+                if horizontalSizeClass == .compact {
+                    attendanceWorkspacePrimaryPane
+                        .sheet(isPresented: $isAttendanceInspectorPresented) {
+                            NavigationStack {
+                                attendanceInspector
+                                    .toolbar {
+                                        ToolbarItem(placement: .cancellationAction) {
+                                            Button("Cerrar") {
+                                                isAttendanceInspectorPresented = false
+                                                selectedStudentId = nil
+                                            }
+                                        }
+                                    }
+                            }
+                            .presentationDetents([.medium, .large])
+                        }
+                } else {
+                    attendanceWorkspacePrimaryPane
+                        .inspector(isPresented: $isAttendanceInspectorPresented) {
+                            attendanceInspector
+                                .inspectorColumnWidth(min: 300, ideal: 336, max: 420)
+                        }
+                }
+                #else
                 attendanceWorkspacePrimaryPane
                     .inspector(isPresented: $isAttendanceInspectorPresented) {
                         attendanceInspector
                             .inspectorColumnWidth(min: 300, ideal: 336, max: 420)
                     }
+                #endif
             } else {
                 attendanceWorkspacePrimaryPane
                     .sheet(isPresented: $isAttendanceInspectorPresented) {
@@ -267,62 +301,135 @@ struct AttendanceWorkspaceView: View {
 
     var attendanceWorkspacePrimaryPane: some View {
         VStack(spacing: 0) {
-            attendanceHeader
-            if !criticalAlerts.isEmpty {
-                criticalAlertsRow
+            if boardMode == .day {
+                if !criticalAlerts.isEmpty {
+                    criticalAlertsBanner
+                }
+                attendanceMetricsSubbar
+            } else if boardMode == .courses {
+                coursesOverviewToolbar
             }
-            attendanceToolbar
             attendanceMainContent
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(appPageBackground(for: colorScheme))
     }
 
-    var criticalAlertsRow: some View {
+    var criticalAlertsBanner: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ForEach(criticalAlerts) { alert in
                     Button {
                         historySelection = nil
                         selectedStudentId = alert.student.id
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             Image(systemName: alert.systemImage)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(alert.student.fullName)
-                                    .font(.caption.weight(.bold))
-                                Text(alert.message)
-                                    .font(.caption2)
-                            }
+                                .font(.caption2.bold())
+                            Text("\(alert.student.firstName): \(alert.message)")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
                         }
                         .foregroundStyle(alert.tint)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(alert.tint.opacity(0.14), in: Capsule())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(alert.tint.opacity(0.12), in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
         }
-        .padding(.bottom, 12)
+        .background(appPageBackground(for: colorScheme))
     }
 
-    var attendanceHeader: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Asistencia")
-                    .font(.system(size: 30, weight: .black, design: .rounded))
-                Text(attendanceContextSummary)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+    var attendanceMetricsSubbar: some View {
+        HStack(spacing: 8) {
+            // Pills de filtrado rápido
+            Button {
+                withAnimation(uiFeatureFlags.animation(.easeInOut(duration: 0.15))) {
+                    showOnlyExceptions = false
+                }
+            } label: {
+                Text("Todos (\(filteredRows.count))")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(!showOnlyExceptions ? Color.primary : Color.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        !showOnlyExceptions ? appMutedCardBackground(for: colorScheme) : Color.clear,
+                        in: Capsule()
+                    )
             }
+            .buttonStyle(.plain)
+
+            Button {
+                withAnimation(uiFeatureFlags.animation(.easeInOut(duration: 0.15))) {
+                    showOnlyExceptions = true
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Excepciones (\(exceptionRows.count))")
+                    if !exceptionRows.isEmpty {
+                        Circle()
+                            .fill(EvaluationDesign.danger)
+                            .frame(width: 6, height: 6)
+                    }
+                }
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(showOnlyExceptions ? Color.primary : Color.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    showOnlyExceptions ? appMutedCardBackground(for: colorScheme) : Color.clear,
+                    in: Capsule()
+                )
+            }
+            .buttonStyle(.plain)
 
             Spacer()
+
+            // Mini-stats en texto compacto
+            HStack(spacing: 10) {
+                Label("\(boardSummary.present)", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(AppleDesignSystem.success)
+                Label("\(boardSummary.absent)", systemImage: "xmark.circle.fill")
+                    .foregroundStyle(AppleDesignSystem.danger)
+                Label("\(boardSummary.late)", systemImage: "clock.fill")
+                    .foregroundStyle(AppleDesignSystem.warning)
+            }
+            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .padding(.trailing, 4)
+
+            // Botón primario: Marcar todos presentes (alta velocidad)
+            Button {
+                Task { await markAllPresent() }
+            } label: {
+                Label("Marcar todos (P)", systemImage: "checkmark.circle")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppleDesignSystem.success)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(AppleDesignSystem.success.opacity(0.12), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Marcar todos los alumnos filtrados como presentes")
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 20)
-        .padding(.bottom, 16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(appPageBackground(for: colorScheme))
+        .overlay(Divider().opacity(0.15), alignment: .bottom)
+    }
+
+    var coursesOverviewToolbar: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
+            WorkspaceCompactStat(title: "Cursos", value: "\(classOverviews.count)", tint: .blue)
+            WorkspaceCompactStat(title: "Alumnado", value: "\(classOverviews.map(\.studentCount).reduce(0, +))", tint: EvaluationDesign.success)
+            WorkspaceCompactStat(title: "Pendientes hoy", value: "\(classOverviews.map(\.pendingTodayCount).reduce(0, +))", tint: AppleDesignSystem.warning)
+            WorkspaceCompactStat(title: "Media", value: "\(averageOverviewRate)%", tint: .indigo)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
         .background(appPageBackground(for: colorScheme))
     }
 
@@ -406,106 +513,49 @@ struct AttendanceWorkspaceView: View {
 
     var dayRollCallContent: some View {
         Group {
-            if filteredRows.isEmpty {
-                WorkspaceEmptyState(title: "Sin alumnos visibles", subtitle: "Ajusta el curso, búsqueda o filtro de estado.")
+            if displayRows.isEmpty {
+                WorkspaceEmptyState(
+                    title: showOnlyExceptions ? "Sin incidencias ni ausencias" : "Sin alumnos visibles",
+                    subtitle: showOnlyExceptions ? "Todos los alumnos están marcados como presentes." : "Ajusta el curso, búsqueda o filtro de estado."
+                )
             } else {
                 List {
-                    if exceptionRows.isEmpty {
-                        allPresentBanner
-                    } else {
-                        ForEach(exceptionRows) { row in
-                            dayRow(for: row)
-                        }
-                    }
-
-                    if !presentRows.isEmpty {
-                        presentSummaryDisclosure
+                    ForEach(Array(displayRows.enumerated()), id: \.element.id) { index, row in
+                        AttendanceCompactRow(
+                            row: row,
+                            index: index + 1,
+                            isSelected: selectedStudentId == row.student.id,
+                            isSaving: savingStudentIds.contains(row.student.id) || savingInjuryStudentIds.contains(row.student.id),
+                            onPickStatus: { option in
+                                Task { await updateAttendance(for: row.student, status: option.id) }
+                            },
+                            onSelect: {
+                                if selectedStudentId == row.student.id {
+                                    selectedStudentId = nil
+                                    historySelection = nil
+                                } else {
+                                    historySelection = nil
+                                    selectedStudentId = row.student.id
+                                    AppleInteractionFeedback.play(.selection)
+                                }
+                            },
+                            onToggleInjury: {
+                                Task { await toggleStudentInjury(row.student) }
+                            },
+                            onQuickNote: {
+                                historySelection = nil
+                                selectedStudentId = row.student.id
+                            }
+                        )
+                        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                     }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
         }
-    }
-
-    func dayRow(for row: AttendanceEntryRow) -> some View {
-        AttendanceRowCard(
-            row: row,
-            isInjured: row.isInjured,
-            onPickStatus: { status in
-                Task { await updateAttendance(for: row.student, status: status.id) }
-            },
-            onSelect: {
-                historySelection = nil
-                selectedStudentId = row.student.id
-                AppleInteractionFeedback.play(.selection)
-            },
-            isSaving: savingStudentIds.contains(row.student.id)
-                || savingInjuryStudentIds.contains(row.student.id)
-        )
-        #if os(iOS)
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button("Presente") {
-                Task { await updateAttendance(for: row.student, status: "PRESENTE") }
-            }
-            .tint(AppleDesignSystem.success)
-            Button("Ausente") {
-                Task { await updateAttendance(for: row.student, status: "AUSENTE") }
-            }
-            .tint(AppleDesignSystem.danger)
-            Button("Retraso") {
-                Task { await updateAttendance(for: row.student, status: "TARDE") }
-            }
-            .tint(AppleDesignSystem.warning)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button("Sin material") {
-                Task { await updateAttendance(for: row.student, status: "SIN_MATERIAL") }
-            }
-            .tint(.brown)
-            Button("Justificada") {
-                Task { await updateAttendance(for: row.student, status: "JUSTIFICADO") }
-            }
-            .tint(.gray)
-            Button("Lesión") {
-                Task { await markStudentInjured(row.student) }
-            }
-            .tint(.orange)
-        }
-        #endif
-    }
-
-    var allPresentBanner: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 34))
-                .foregroundStyle(EvaluationDesign.success)
-            Text("Todos presentes")
-                .font(.headline)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-    }
-
-    var presentSummaryDisclosure: some View {
-        DisclosureGroup(isExpanded: $showAllPresent) {
-            ForEach(presentRows) { row in
-                dayRow(for: row)
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.circle")
-                    .foregroundStyle(EvaluationDesign.success)
-                Text("\(presentRows.count) presentes")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-        }
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
     }
 
     var monthlyHistoryContent: some View {
@@ -647,49 +697,6 @@ struct AttendanceWorkspaceView: View {
         }
     }
 
-    var attendanceToolbar: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if let selectedStudent {
-                Button {
-                    selectedStudentId = nil
-                } label: {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("\(selectedStudent.firstName) \(selectedStudent.lastName)")
-                                .font(.headline)
-                            Text(selectedInspectionAttendance?.status ?? "Sin registro")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text("Ocultar ficha")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.accentColor)
-                    }
-                    .padding(16)
-                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
-                if boardMode == .courses {
-                    WorkspaceCompactStat(title: "Cursos", value: "\(classOverviews.count)", tint: .blue)
-                    WorkspaceCompactStat(title: "Alumnado", value: "\(classOverviews.map(\.studentCount).reduce(0, +))", tint: EvaluationDesign.success)
-                    WorkspaceCompactStat(title: "Pendientes hoy", value: "\(classOverviews.map(\.pendingTodayCount).reduce(0, +))", tint: AppleDesignSystem.warning)
-                    WorkspaceCompactStat(title: "Media", value: "\(averageOverviewRate)%", tint: .indigo)
-                } else {
-                    WorkspaceCompactStat(title: "Presentes", value: "\(boardSummary.present)", tint: EvaluationDesign.success)
-                    WorkspaceCompactStat(title: "Ausencias", value: "\(boardSummary.absent)", tint: EvaluationDesign.danger)
-                    WorkspaceCompactStat(title: "Retrasos", value: "\(boardSummary.late)", tint: AppleDesignSystem.warning)
-                    WorkspaceCompactStat(title: "Pendientes", value: "\(boardSummary.untracked)", tint: .gray)
-                }
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 16)
-        .background(appPageBackground(for: colorScheme))
-    }
 
     @ViewBuilder
     var attendanceInspector: some View {
@@ -728,6 +735,18 @@ struct AttendanceWorkspaceView: View {
                             value: latest.followUpRequired ? "Requiere revisión" : "Sin seguimiento",
                             systemImage: latest.followUpRequired ? "arrow.triangle.branch" : "checkmark.circle"
                         )
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Educación Física")
+                            .font(.headline)
+                        Toggle("Lesión motriz activa", isOn: Binding(
+                            get: { isStudentInjured(student) },
+                            set: { _ in Task { await toggleStudentInjury(student) } }
+                        ))
+                        .tint(.orange)
+                        .padding(12)
+                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -1039,7 +1058,6 @@ struct AttendanceWorkspaceView: View {
                 status: status,
                 sessionId: attendanceSessionId(for: selectedDate, existingRecord: previousRecord)
             )
-            selectedStudentId = student.id
             if saveRevisionByStudentId[student.id] == revision {
                 savingStudentIds.remove(student.id)
                 bridge.status = "Asistencia actualizada."
@@ -1056,15 +1074,12 @@ struct AttendanceWorkspaceView: View {
     }
 
     @MainActor
-    func markStudentInjured(_ student: Student) async {
+    func toggleStudentInjury(_ student: Student) async {
         guard let selectedClassId else { return }
-        guard !(localInjuryStatuses[student.id] ?? student.isInjured) else {
-            selectedStudentId = student.id
-            bridge.status = "La lesión de \(student.fullName) ya está activa."
-            return
-        }
+        let current = localInjuryStatuses[student.id] ?? student.isInjured
+        let target = !current
 
-        localInjuryStatuses[student.id] = true
+        localInjuryStatuses[student.id] = target
         savingInjuryStudentIds.insert(student.id)
         selectedStudentId = student.id
         defer { savingInjuryStudentIds.remove(student.id) }
@@ -1072,16 +1087,21 @@ struct AttendanceWorkspaceView: View {
         do {
             try await bridge.updateStudentInjuryStatus(
                 studentId: student.id,
-                isInjured: true,
+                isInjured: target,
                 classId: selectedClassId
             )
-            bridge.status = "Lesión activa para \(student.fullName)."
+            bridge.status = target ? "Lesión activa para \(student.fullName)." : "Lesión desactivada para \(student.fullName)."
             AppleInteractionFeedback.play(.success)
         } catch {
-            localInjuryStatuses[student.id] = student.isInjured
-            bridge.status = "No se pudo marcar la lesión: \(error.localizedDescription)"
+            localInjuryStatuses[student.id] = current
+            bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"
             AppleInteractionFeedback.play(.error)
         }
+    }
+
+    @MainActor
+    func markStudentInjured(_ student: Student) async {
+        await toggleStudentInjury(student)
     }
 
     func applyLocalAttendanceStatus(_ status: String, for student: Student, classId: Int64) {

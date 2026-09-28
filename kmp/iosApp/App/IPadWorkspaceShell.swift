@@ -2057,149 +2057,20 @@ struct EFPlaceholderModuleView: View {
 }
 
 struct AttendanceRowCard: View {
-    @Environment(\.colorScheme) var colorScheme
     let row: AttendanceEntryRow
     let isInjured: Bool
     let onPickStatus: (AttendanceStatusOption) -> Void
     let onSelect: () -> Void
     let isSaving: Bool
 
-    var primaryOptions: [AttendanceStatusOption] {
-        AttendanceStatusOption.all.filter { ["PRESENTE", "AUSENTE", "TARDE"].contains($0.id) }
-    }
-
-    var secondaryOptions: [AttendanceStatusOption] {
-        AttendanceStatusOption.all.filter { !["PRESENTE", "AUSENTE", "TARDE"].contains($0.id) }
-    }
-
-    var selectedOption: AttendanceStatusOption? {
-        AttendanceStatusOption.all.first(where: { $0.id == row.record?.status })
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("\(row.student.firstName) \(row.student.lastName)")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                    HStack(spacing: 8) {
-                        Text((selectedOption?.label ?? "Sin registro").uppercased())
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                        if isSaving {
-                            ProgressView()
-                                .controlSize(.mini)
-                        }
-                        if isInjured {
-                            Label("LESIÓN", systemImage: "cross.case.fill")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.orange)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.orange.opacity(0.14), in: Capsule())
-                        }
-                    }
-                }
-                Spacer()
-                Button("Ficha") { onSelect() }
-                    .buttonStyle(.bordered)
-            }
-
-            HStack(spacing: 12) {
-                ForEach(primaryOptions) { option in
-                    attendanceStatusButton(option)
-                }
-
-                Menu {
-                    ForEach(secondaryOptions) { option in
-                        Button(option.label) {
-                            if row.record?.status != option.id {
-                                onPickStatus(option)
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.body.weight(.semibold))
-                        Text(secondaryLabel)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                        if let selectedOption,
-                           secondaryOptions.contains(where: { $0.id == selectedOption.id }) {
-                            Circle()
-                                .fill(selectedOption.color)
-                                .frame(width: 10, height: 10)
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 14)
-                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-                    .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .appInteractiveHighlight()
-            }
-        }
-        .padding(24)
-        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+        AttendanceCompactRow(
+            row: row,
+            isSelected: false,
+            isSaving: isSaving,
+            onPickStatus: onPickStatus,
+            onSelect: onSelect
         )
-        .listRowInsets(EdgeInsets(top: 12, leading: 24, bottom: 12, trailing: 24))
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-    }
-
-    var secondaryLabel: String {
-        guard let selectedOption,
-              secondaryOptions.contains(where: { $0.id == selectedOption.id }) else {
-            return "Más estados"
-        }
-        return selectedOption.label
-    }
-
-    func attendanceStatusButton(_ option: AttendanceStatusOption) -> some View {
-        Button {
-            if row.record?.status != option.id {
-                onPickStatus(option)
-            }
-        } label: {
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(option.color)
-                    .frame(width: 10, height: 10)
-                Text(option.label)
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                if row.record?.status == option.id {
-                    Image(systemName: "checkmark")
-                        .font(.body.weight(.bold))
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-            .background(
-                option.color.opacity(row.record?.status == option.id ? 0.18 : 0.08),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(option.color.opacity(row.record?.status == option.id ? 0.42 : 0.14), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .appInteractiveHighlight()
-        .accessibilityAddTraits(row.record?.status == option.id ? .isSelected : [])
-        .opacity(isSaving && row.record?.status != option.id ? 0.84 : 1)
     }
 }
 

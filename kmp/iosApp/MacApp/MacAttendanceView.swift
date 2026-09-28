@@ -199,22 +199,25 @@ struct MacAttendanceView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-            header
-            metricsStrip
-            mainContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+                header
+                metricsStrip
+                mainContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(MacAppStyle.pagePadding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if isAttendanceInspectorVisible {
+                Divider()
+                inspector
+                    .frame(width: 360)
+                    .background(MacAppStyle.cardBackground)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
-        .padding(MacAppStyle.pagePadding)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MacAppStyle.pageBackground)
-        // Native .inspector() (rather than a manual HSplitView pane) lets the enclosing
-        // NavigationSplitView negotiate space correctly. Starts closed (no student
-        // selected yet) and opens itself when a student is picked, below.
-        .inspector(isPresented: $isAttendanceInspectorVisible) {
-            inspector
-                .inspectorColumnWidth(min: 300, ideal: 360, max: 430)
-        }
         .background(
             Button("") { Task { await markAllPresent() } }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
@@ -235,8 +238,8 @@ struct MacAttendanceView: View {
         }
         .appOnChange(of: selectedStudentId) { _, newValue in
             noteDraft = selectedInspectionAttendance?.note ?? ""
-            if newValue != nil {
-                isAttendanceInspectorVisible = true
+            withAnimation(uiFeatureFlags.animation(.easeInOut(duration: 0.2))) {
+                isAttendanceInspectorVisible = (newValue != nil)
             }
             publishToolbarActions()
         }

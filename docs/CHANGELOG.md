@@ -29,7 +29,10 @@ El formato sigue una variante practica de Keep a Changelog:
   - `PlannerSessionCLILChunksCard`: Componente SwiftUI con estética Liquid Glass / Organic Precision, colapsable, con píldoras de color semántico (teal, indigo, purple) y microchips copiables.
   - `PlannerSessionDetailSheet.swift`: Integración de la tarjeta en la pestaña de anexos pedagógicos de la cabina de sesión en iPhone, iPad y Mac.
   - Cobertura con tests unitarios en `PlannerSessionDetailProjectionTests.swift` validando decodificación directa y parseo robusto desde texto markdown con títulos y listas formateadas.
+- **Eliminación del crash de constraints de AppKit en Asistencia en macOS**:
+  - `MacAttendanceView.swift`: Sustituido el modificador nativo `.inspector(isPresented: $isAttendanceInspectorVisible)` por un contenedor horizontal desacoplado `HStack(spacing: 0)` + `Divider()` + panel `inspector` de ancho fijo (360pt). El modificador `.inspector()` anidado dentro de la columna de detalle del `NavigationSplitView` de `MacRootView.swift` disparaba un bucle recursivo de Auto Layout en AppKit (`NSGenericException: The window has been marked as needing another Update Constraints in Window pass, but it has already had more passes than there are views in the window`), tumbando la aplicación al seleccionar alumnos o abrir el inspector.
 
+### Added
 
 - **Desmarcado y rectificación rápida de asistencia (Toggle y reset a "Sin pasar") en iOS, iPadOS y macOS**:
   - `AttendanceCompactRow.swift`: Soporte para toggle directo en los botones del control segmentado (`P | A | R | M`): al pulsar sobre un estado ya activo, este se desmarca inmediatamente devolviendo al alumno al estado "Sin pasar" (`status: ""`) con avatar neutro. Soporte análogo en los estados secundarios ("Otros estados") y nueva opción explícita «Desmarcar asistencia» (`arrow.counterclockwise`) en el menú de acciones `···`.

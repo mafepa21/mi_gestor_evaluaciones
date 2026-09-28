@@ -2,7 +2,6 @@
 
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
-
 ## Avance 2026-09-28 - Erradicación de Congelación en Runtime de Swift al Entrar a 'Hoy' en iPad
 
 Resumen:
@@ -64,6 +63,20 @@ Resumen:
 - Validación realizada:
   - `./scripts/verify_apple_builds.sh`: Succeeded en macOS Native (`MiGestorKMPMac`) e iOS Simulator (`MiGestorKMPiOS`).
   - `xcodebuild test`: Suite `PlannerSessionDetailProjectionTests` ejecutada con éxito (8/8 tests passed al 100%).
+
+## Avance 2026-09-28 - Corrección del Crash de Constraints de AppKit en Asistencia en macOS
+
+Resumen:
+- Qué cambio se hizo:
+  - En `MacAttendanceView.swift`, se sustituyó el modificador nativo `.inspector(isPresented: $isAttendanceInspectorVisible)` por un contenedor `HStack(spacing: 0)` con `Divider()` y el panel de inspector lateral con ancho fijo de 360pt animado con `.easeInOut(duration: 0.2)` y transición `.move(edge: .trailing).combined(with: .opacity)`.
+- Por qué importa:
+  - El modificador nativo `.inspector()` anidado dentro de la columna de detalle del `NavigationSplitView` raíz de `MacRootView.swift` provocaba que el `NSSplitView` de AppKit y el contenedor principal entraran en conflicto durante los pases de cálculo de Auto Layout, arrojando la excepción irrecuperable: `NSGenericException: The window has been marked as needing another Update Constraints in Window pass, but it has already had more Update Constraints in Window passes than there are views in the window`. Con `HStack` + `Divider()`, el cálculo de ancho es estático y 100% inmune a bucles de constraints, siguiendo la misma arquitectura probada en `MacMeetingsView`, `MacStudentsView`, `MacSyncView` y `MacRubricsView`.
+- Dónde vive el cambio:
+  - `kmp/iosApp/MacApp/MacAttendanceView.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `xcodebuild -scheme MiGestorKMPMac -destination 'platform=macOS' build`: **BUILD SUCCEEDED**.
 
 ## Avance 2026-09-28 - Soporte de Desmarcado y Rectificación Rápida de Asistencia (Toggle y Reset a "Sin pasar") en iOS, iPadOS y macOS
 

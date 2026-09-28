@@ -201,6 +201,37 @@ struct NotebookColumnStatisticsReport {
         return LomloeBandKind.band(for: mean).title
     }
 
+    // Diagnóstico de distorsión evaluativa on-device
+    var evaluationDriftWarning: (title: String, detail: String, severity: Color)? {
+        guard evaluatedCount >= 5, let mean, let sigma = standardDeviation else { return nil }
+
+        if failedPercentage > 45.0 {
+            return (
+                title: "Alta concentración de suspensos (\(String(format: "%.0f%%", failedPercentage)))",
+                detail: "La proporción de calificaciones insuficientes supera el umbral estándar. Revisa si el instrumento exige prerrequisitos no asentados o si los criterios de rúbrica están sobre-exigentes.",
+                severity: Color.red
+            )
+        }
+
+        if sigma < 0.6 && mean > 8.5 {
+            return (
+                title: "Efecto techo / Baja discriminación (σ = \(String(format: "%.2f", sigma)))",
+                detail: "Casi todas las notas se concentran en el tramo superior con dispersión mínima, lo que reduce la capacidad de discriminar niveles de logro competencial.",
+                severity: Color.orange
+            )
+        }
+
+        if sigma > 2.8 {
+            return (
+                title: "Dispersión evaluativa extrema (σ = \(String(format: "%.2f", sigma)))",
+                detail: "Existe una polarización muy acusada entre notas altas y bajas sin zona media, lo que puede reflejar dificultades metodológicas en la comprensión de la tarea.",
+                severity: Color.purple
+            )
+        }
+
+        return nil
+    }
+
     // Generador de texto para actas y claustro
     func generateSummaryText() -> String {
         let meanText = mean.map { String(format: "%.2f", $0) } ?? "N/D"
@@ -359,6 +390,10 @@ struct NotebookColumnStatisticsSheet: View {
                     // Cabecera temática enriquecida
                     headerCard
 
+                    if let warning = report.evaluationDriftWarning {
+                        driftWarningCard(warning: warning)
+                    }
+
                     if report.evaluatedCount == 0 {
                         emptyStateCard
                     } else {
@@ -488,6 +523,44 @@ struct NotebookColumnStatisticsSheet: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(cardBackground)
                 .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
+        )
+    }
+
+    private func driftWarningCard(warning: (title: String, detail: String, severity: Color)) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(warning.severity)
+                .frame(width: 24, height: 24)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(warning.title)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(warning.severity)
+                    Text("Alerta Pedagógica")
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .foregroundStyle(warning.severity)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(warning.severity.opacity(0.12), in: Capsule())
+                }
+
+                Text(warning.detail)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(warning.severity.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(warning.severity.opacity(0.18), lineWidth: 1)
+                )
         )
     }
 

@@ -11,6 +11,7 @@ struct NotebookGroupManagementSheet: View {
     @State private var showingEditSheet = false
 
     @State private var showingFileImporter = false
+    @State private var showingGeneratorSheet = false
     @State private var importPreview: NotebookWorkGroupImportPreview? = nil
     @State private var importErrorMessage: String? = nil
 
@@ -151,6 +152,13 @@ struct NotebookGroupManagementSheet: View {
                 }
                 ToolbarItem(placement: .automatic) {
                     Button {
+                        showingGeneratorSheet = true
+                    } label: {
+                        Label("Generar con IA", systemImage: "sparkles")
+                    }
+                }
+                ToolbarItem(placement: .automatic) {
+                    Button {
                         showingFileImporter = true
                     } label: {
                         Label("Importar Excel", systemImage: "square.and.arrow.down")
@@ -168,6 +176,12 @@ struct NotebookGroupManagementSheet: View {
                 allowsMultipleSelection: false
             ) { result in
                 handleFileImport(result)
+            }
+            .sheet(isPresented: $showingGeneratorSheet) {
+                CooperativeGroupGeneratorSheet(bridge: bridge) { generatedGroups in
+                    applyImportedGroups(generatedGroups, clearExisting: false, learningSituationId: nil)
+                    onToast("Equipos cooperativos aplicados al cuaderno", .success)
+                }
             }
             .sheet(item: $importPreview) { preview in
                 NotebookGroupImportPreviewSheet(
@@ -404,6 +418,12 @@ struct NotebookGroupManagementSheet: View {
                     showingEditSheet = true
                 } label: {
                     Label("Nuevo grupo de trabajo", systemImage: "person.2.badge.plus")
+                }
+
+                Button {
+                    showingGeneratorSheet = true
+                } label: {
+                    Label("Generar equipos cooperativos (IA)", systemImage: "sparkles")
                 }
 
                 Button {

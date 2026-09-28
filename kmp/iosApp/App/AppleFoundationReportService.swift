@@ -510,6 +510,34 @@ final class AppleFoundationReportService {
             """
         }()
 
+        let mlSignalInfo: String = {
+            guard let studentId = context.studentId, let trends = context.trends else { return "Sin patrones de Core ML adicionales." }
+            let vector = StudentFeatureVector(
+                averageGrade: context.numericScore ?? 6.0,
+                gradeDelta: trends.averageGradeDelta,
+                attendanceRate: trends.attendanceRate,
+                evaluableDayAbsenceRatio: max(0.0, (100.0 - trends.attendanceRate) / 100.0),
+                pendingTaskRatio: max(0.0, (100.0 - trends.curriculumCoveragePct) / 100.0),
+                rubricVariance: 0.5,
+                incidentCount: 0.0
+            )
+            let signal = CoreMLPatternDetectionService.shared.predict(vector: vector)
+            let suppressed = PedagogicalMLCalibrationService.shared.isSignalSuppressed(
+                studentId: studentId,
+                classId: context.classId,
+                patternType: signal.patternType,
+                confidence: signal.confidence
+            )
+            guard signal.isActionableRisk && !suppressed else {
+                return "Sin patrones de riesgo predictivo no atendidos."
+            }
+            return """
+            - Patrón detectado por Core ML: \(signal.patternType.badgeTitle) (Confianza: \(Int(signal.confidence * 100))%)
+            - Factores clave: \(signal.keyFactors.joined(separator: ", "))
+            - Acción preventiva sugerida: \(signal.suggestedPreventiveAction)
+            """
+        }()
+
         let audienceDirectives: String = {
             switch audience {
             case .docente:
@@ -547,6 +575,9 @@ final class AppleFoundationReportService {
 
         Análisis consolidado de tendencias de IA
         \(trendsInfo)
+
+        Patrones sutiles y señales predictivas (Core ML on-device)
+        \(mlSignalInfo)
 
         Métricas verificables
         \(metrics)

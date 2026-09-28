@@ -44,6 +44,7 @@ struct NotebookTabStrip: View {
                         }
                         .padding(.horizontal, 4)
                         .padding(.vertical, 2)
+                        .animation(.spring(response: 0.34, dampingFraction: 0.82), value: activeTabId)
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)

@@ -442,18 +442,17 @@ extension NotebookModuleView {
         if !drafts.isEmpty, let draft = drafts["\(item.student.id)|\(columnId)"] {
             return draft
         }
-        if let grade = item.row.persistedGrades.first(where: { $0.columnId == columnId })?.value {
+        let lookup = item.lookup
+        if let grade = lookup.gradesByColumnId[columnId]?.value {
             return IosFormatting.decimal(from: grade.doubleValue)
         }
-        guard columnId.hasPrefix("eval_") else { return "" }
-        if let grade = item.row.persistedGrades.first(where: { grade in
-            guard let evalId = grade.evaluationId?.int64Value else { return false }
-            return columnId == "eval_\(evalId)"
-        })?.value {
+        guard columnId.hasPrefix("eval_"),
+              let evalId = Int64(columnId.dropFirst(5)) else { return "" }
+        if columnId == "eval_\(evalId)",
+           let grade = lookup.gradesByEvaluationId[evalId]?.value {
             return IosFormatting.decimal(from: grade.doubleValue)
         }
-        guard let evalId = Int64(columnId.dropFirst(5)),
-              let cellValue = item.row.cells.first(where: { $0.evaluationId == evalId })?.value else {
+        guard let cellValue = lookup.cellsByEvaluationId[evalId]?.value else {
             return ""
         }
         return IosFormatting.decimal(from: cellValue.doubleValue)
@@ -486,15 +485,16 @@ extension NotebookModuleView {
             }
             return ""
         }
-        if let grade = item.row.persistedGrades.first(where: { $0.columnId == column.id })?.value {
+        let lookup = item.lookup
+        if let grade = lookup.gradesByColumnId[column.id]?.value {
             return IosFormatting.decimal(from: grade.doubleValue)
         }
         if let evaluationId = column.evaluationId?.int64Value,
-           let grade = item.row.persistedGrades.first(where: { $0.evaluationId?.int64Value == evaluationId })?.value {
+           let grade = lookup.gradesByEvaluationId[evaluationId]?.value {
             return IosFormatting.decimal(from: grade.doubleValue)
         }
         if let evaluationId = column.evaluationId?.int64Value,
-           let cellValue = item.row.cells.first(where: { $0.evaluationId == evaluationId })?.value {
+           let cellValue = lookup.cellsByEvaluationId[evaluationId]?.value {
             return IosFormatting.decimal(from: cellValue.doubleValue)
         }
         return ""
@@ -514,7 +514,7 @@ extension NotebookModuleView {
         if let override = optimisticTextOverride(studentId: item.student.id, columnId: column.id) {
             return override
         }
-        let cell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let cell = item.lookup.cellsByColumnId[column.id]
         if let display = cell?.displayValue, !display.isEmpty {
             return notebookSanitizePersistedCellText(display, columnType: column.type)
         }
@@ -529,7 +529,7 @@ extension NotebookModuleView {
         if !skipOptimistic, let override = optimisticTextOverride(studentId: item.student.id, columnId: column.id) {
             return override
         }
-        let cell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let cell = item.lookup.cellsByColumnId[column.id]
         if column.type == .icon {
             return cell?.iconValue ?? ""
         }
@@ -550,14 +550,14 @@ extension NotebookModuleView {
             if override == "1" { return true }
             if override == "0" { return false }
         }
-        return item.row.persistedCells.first(where: { $0.columnId == columnId })?.boolValue?.boolValue ?? false
+        return item.lookup.cellsByColumnId[columnId]?.boolValue?.boolValue ?? false
     }
 
     func persistedAnnotation(
         for item: NotebookTableRow,
         columnId: String
     ) -> (note: String?, icon: String?, attachmentCount: Int) {
-        let cell = item.row.persistedCells.first(where: { $0.columnId == columnId })
+        let cell = item.lookup.cellsByColumnId[columnId]
         let annotations = bridge.optimisticAnnotations
         if !annotations.isEmpty, let optimistic = annotations["\(item.student.id)|\(columnId)"] {
             return (

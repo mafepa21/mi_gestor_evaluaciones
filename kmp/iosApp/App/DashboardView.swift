@@ -754,7 +754,6 @@ struct DashboardView: View {
             dashboardRadarSkeleton
             dashboardListSkeleton
         }
-        .redacted(reason: .placeholder)
         .accessibilityLabel("Cargando dashboard operativo")
     }
 
@@ -987,18 +986,14 @@ struct DashboardView: View {
                     dashboardSkeletonBlock(rowCount: 3)
                 }
             } else {
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
-                        GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
-                        GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top)
-                    ],
-                    alignment: .center,
-                    spacing: EvaluationDesign.cardSpacing
-                ) {
-                    dashboardSkeletonBlock(rowCount: 3)
-                    dashboardSkeletonBlock(rowCount: 3)
-                    dashboardSkeletonBlock(rowCount: 3)
+                // Fila, no rejilla: en el iPad la columna aún no tiene ancho
+                // al arrancar. Una LazyVGrid flexible pide ancho infinito,
+                // las cajas también, y el dibujo se desborda hasta cerrar la app.
+                HStack(alignment: .top, spacing: EvaluationDesign.cardSpacing) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        dashboardSkeletonBlock(rowCount: 3)
+                            .frame(maxWidth: .infinity, alignment: .top)
+                    }
                 }
             }
         }

@@ -75,6 +75,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **El panel ya no cierra la app al arrancar en el iPad**: las cajas grises de carga van en una fila, no en una rejilla de ancho flexible. Así el dibujo no entra en bucle cuando la columna todavía no tiene ancho.
 - **Colocación de modificador keyboardType en campo de correo**: corregido el modificador `#if os(iOS) .keyboardType(.emailAddress)` en `WeeklyStudentEmailWorkspaceView.swift` para que se aplique directamente sobre el `TextField` y no sobre el bloque condicional.
 - **La sincronización no borra lo que el otro aparato no envió**: si llega un cambio sin un campo, se conserva el valor que ya había (nota, falta, sesión, diario, horario, rúbrica, clase, curso).
 - **Un fallo no se disfraza de éxito**: guardar una nota, una columna, una plantilla, una matrícula, una incidencia o una nota rápida avisa en español y no cierra como si hubiera ido bien. En el Mac, un fallo de sync ya no dice «Sincronizado».

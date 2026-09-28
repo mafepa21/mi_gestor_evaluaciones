@@ -80,12 +80,14 @@ private struct NotebookTabButton: View {
 
     var body: some View {
         Button {
-            // El cambio de pestaña se envuelve en animación para que la pastilla
-            // (glassEffectID / matchedGeometryEffect) se deslice de una posición a
-            // otra en vez de aparecer/desaparecer.
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
-                onSelect()
+            // Sin `withAnimation`: la pestaña activa cambia en el acto en el bridge
+            // y la animación arrastraría la reconstrucción del grid entero. El
+            // deslizamiento de la pastilla lo anima `NotebookTabStrip` solo en su
+            // propio subárbol.
+            if !isSelected {
+                AppleInteractionFeedback.play(.selection)
             }
+            onSelect()
         } label: {
             Text(tab.title)
                 .font(.footnote.weight(isSelected ? .semibold : .medium))

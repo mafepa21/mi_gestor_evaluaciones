@@ -282,6 +282,17 @@ struct NotebookModuleView: View {
         structuralGridRevision += 1
     }
 
+    /// En iPad regular `IOSRootView` ya pone el selector de clase en la barra y no
+    /// es personalizable; en Mac se mantiene porque el usuario puede quitar el
+    /// selector de la barra personalizable de `MacRootView`.
+    var showsClassSectionInTitleMenu: Bool {
+        #if os(iOS)
+        toolbarMode != .macShellOwned
+        #else
+        true
+        #endif
+    }
+
     var isMacInspectorOnly: Bool {
         macPresentation == .inspector
     }
@@ -370,6 +381,7 @@ struct NotebookModuleView: View {
                         isAttendanceQuickMode: isAttendanceQuickMode,
                         showsAdvancedActions: focusMode == .normal,
                         selectionContext: toolbarSelectionContext(data: data),
+                        activeFilterCount: (groupByWorkGroupMode == "none" ? 0 : 1) + (selectedGroupId == nil ? 0 : 1),
                         isQuickKeypadPresented: isQuickKeypadPresented,
                         onToggleQuickKeypad: {
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
@@ -1800,15 +1812,17 @@ struct NotebookModuleView: View {
                 }
                 .toolbarTitleMenu {
                     if toolbarMode == .shellOwned || toolbarMode == .macWindowOwned || toolbarMode == .macShellOwned || toolbarMode == .inlineCompact {
-                        Section("Clase") {
-                            ForEach(sortedClasses, id: \.id) { schoolClass in
-                                Button {
-                                    selectNotebookClass(schoolClass.id)
-                                } label: {
-                                    HStack {
-                                        Text(classLabel(for: schoolClass))
-                                        if selectedClassId == schoolClass.id {
-                                            Image(systemName: "checkmark")
+                        if showsClassSectionInTitleMenu {
+                            Section("Clase") {
+                                ForEach(sortedClasses, id: \.id) { schoolClass in
+                                    Button {
+                                        selectNotebookClass(schoolClass.id)
+                                    } label: {
+                                        HStack {
+                                            Text(classLabel(for: schoolClass))
+                                            if selectedClassId == schoolClass.id {
+                                                Image(systemName: "checkmark")
+                                            }
                                         }
                                     }
                                 }

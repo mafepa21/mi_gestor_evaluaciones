@@ -54,6 +54,7 @@ struct NotebookStudentInspector: View {
     @State private var educationalInsightError: String? = nil
     @State private var educationalInsightOrchestrator = AppleAIOrchestrator()
     @State private var showWeeklyEmailSheet = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ScrollView {
@@ -82,7 +83,7 @@ struct NotebookStudentInspector: View {
             }
             .padding(24)
         }
-        .background(EvaluationBackdrop())
+        .background(appPageBackground(for: colorScheme))
         .task(id: studentId) {
             await loadTrends()
             await refreshEducationalInsight()
@@ -95,55 +96,54 @@ struct NotebookStudentInspector: View {
     }
 
     private var inspectorHeader: some View {
-        NotebookSurface(cornerRadius: 16, fill: NotebookStyle.surface, padding: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "sidebar.right")
-                        .font(.headline)
-                        .foregroundStyle(NotebookStyle.primaryTint)
-                        .frame(width: 36, height: 36)
-                        .background(NotebookStyle.primaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "sidebar.right")
+                    .font(.headline)
+                    .foregroundStyle(NotebookStyle.primaryTint)
+                    .frame(width: 36, height: 36)
+                    .background(NotebookStyle.primaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(studentName)
-                            .font(.title3.weight(.semibold))
-                            .lineLimit(2)
-                        Text(columnTitle)
-                            .font(.subheadline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(studentName)
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(2)
+                    Text(columnTitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+
+                if let onClose = onClose {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
                     }
-
-                    Spacer(minLength: 8)
-
-                    if let onClose = onClose {
-                        Button(action: onClose) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(-4)
-                        .accessibilityLabel("Cerrar inspector")
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    NotebookPill(label: valueText.isEmpty ? "Sin valor" : valueText, systemImage: "number", active: true, tint: NotebookStyle.primaryTint, compact: true)
-                    NotebookPill(label: "Peso \(weightText)", systemImage: "scalemass", active: false, tint: NotebookStyle.primaryTint, compact: true)
-                }
-
-                if let groupComparison {
-                    HStack(spacing: 6) {
-                        Image(systemName: groupComparison.systemImage)
-                            .font(.caption.weight(.bold))
-                        Text(groupComparison.label)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    }
-                    .foregroundStyle(groupComparison.tint)
+                    .buttonStyle(.plain)
+                    .padding(-4)
+                    .accessibilityLabel("Cerrar inspector")
                 }
             }
+
+            HStack(spacing: 8) {
+                NotebookPill(label: valueText.isEmpty ? "Sin valor" : valueText, systemImage: "number", active: true, tint: NotebookStyle.primaryTint, compact: true)
+                NotebookPill(label: "Peso \(weightText)", systemImage: "scalemass", active: false, tint: NotebookStyle.primaryTint, compact: true)
+            }
+
+            if let groupComparison {
+                HStack(spacing: 6) {
+                    Image(systemName: groupComparison.systemImage)
+                        .font(.caption.weight(.bold))
+                    Text(groupComparison.label)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(groupComparison.tint)
+            }
         }
+        .notebookInspectorCard()
     }
 
     private var averageSection: some View {
@@ -1195,15 +1195,23 @@ private struct NotebookInspectorSection<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        NotebookSurface(cornerRadius: 16, fill: NotebookStyle.surface, padding: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                Label(title, systemImage: systemImage)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .foregroundStyle(.primary)
 
-                content()
-            }
+            content()
         }
+        .notebookInspectorCard()
+    }
+}
+
+private extension View {
+    /// Misma tarjeta que `WorkspaceMetricCard` del inspector de Asistencia.
+    func notebookInspectorCard() -> some View {
+        frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

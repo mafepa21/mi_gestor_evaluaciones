@@ -440,6 +440,7 @@ struct IOSRootView: View {
             } label: {
                 Label("Nueva columna", systemImage: "plus")
             }
+            .instrumentEvaluationGlassButton(isProminent: true)
             .disabled(!layoutState.notebookAddColumnAvailable)
         }
 
@@ -459,7 +460,8 @@ struct IOSRootView: View {
                 } label: {
                     Label("Ocultar inspector", systemImage: "sidebar.right")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
+                .tint(NotebookStyle.primaryTint)
                 .disabled(!layoutState.notebookInspectorAvailable)
             } else {
                 Button {
@@ -468,6 +470,7 @@ struct IOSRootView: View {
                     Label("Mostrar inspector", systemImage: "sidebar.right")
                 }
                 .buttonStyle(.bordered)
+                .tint(.secondary)
                 .disabled(!layoutState.notebookInspectorAvailable)
             }
         }

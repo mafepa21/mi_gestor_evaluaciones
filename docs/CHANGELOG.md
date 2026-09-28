@@ -15,6 +15,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Rediseño de Asistencia Relámpago y ergonomía táctil rápida (<15s)**:
+  - `AttendanceCompactRow.swift`: Componente nativo modular en `AppleShared` con fila compacta de 52pt, avatar táctil con halo cromático semántico según el estado de asistencia, badge de lesión activa, selector horizontal P|A|R|M con targets táctiles expandidos a 44×44pt sobre botones visuales de 34×30pt, alto contraste WCAG AAA (texto negro sobre P y R para uso en exteriores bajo luz solar), menú contextual de acciones `···` y swipe actions.
+  - `mockup/index.html`: Maqueta viva interactiva con 7 escenas completas (asistencia normal, filtro de excepciones, inspector lateral con detents, sábana 2D, estado de carga skeleton, estado vacío y modal de error con Save Gate) auditada por `ui_reviewer` (83.5/100).
 - **Fase 2: Motor de Detección de Patrones No Obvios con Core ML e Integración Híbrida con Apple Intelligence**:
   - `scripts/train_educational_patterns_model.swift`: Script de entrenamiento Create ML para clasificador tabular supervisado con dataset sintético calibrado de 1.400 ejemplos de 4 arquetipos pedagógicos (desenganche silencioso, cuellos de botella curriculares, anomalías evaluativas y progresión estable).
   - `EducationalPatternsClassifier.mlmodel`: Modelo Core ML liviano (1.2 KB) compilado en los bundles de iOS y macOS con inferencia on-device (< 2 ms por alumno) en Apple Neural Engine y CPU sin fuga de datos de menores.
@@ -39,6 +42,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Optimización integral de la pantalla de Asistencia docente**:
+  - `AttendanceWorkspaceView.swift`: Eliminada la cabecera duplicada y las 4 tarjetas de métricas fijas que ocupaban más del 50% de la pantalla. Incorporada la sub-barra compacta `attendanceMetricsSubbar` con píldoras de filtro («Todos» / «Excepciones») y botón rápido «Marcar todos (P)». Erradicado el antipatrón de colapso de filas en `DisclosureGroup`: la lista de alumnos es ahora 100% continua, alfabética y estable. Inspector adaptativo por `horizontalSizeClass` (sheet modal en iPhone con detents .medium/.large, panel lateral derecho en iPad/Mac) desacoplado del pase rápido para evitar aperturas no deseadas. Toggle directo de lesión del alumno (`toggleStudentInjury`).
+  - `IPadWorkspaceShell.swift`: Simplificado `AttendanceRowCard` para delegar en el nuevo `AttendanceCompactRow`.
+  - `AttendanceShared.swift`: Añadidos `primaryOptions`, `secondaryOptions` y `accessibleTextColor(for:)`.
 - **Rediseño visual y adaptativo del Dashboard docente (Organic Precision v2.2)**:
   - `MacDashboardView.swift`: Unificación completa del Dashboard nativo de macOS con paridad de experiencia: cabecera con saludo horario dinámico y fecha localizada en español, selector segmented reactivo de modos (`Auto`, `Clase`, `Despacho`), Modo Clase centrado (`DashboardClassroomView` con ancho acotado a 680pt) y Modo Despacho reestructurado con franja compacta (`DashboardCompactHeroStrip`), KPIs compartidos a ancho completo y grid responsivo en 3 columnas analíticas (Agenda & Grupos, Radar IA & LOMLOE, Pendientes & Riesgo & Sistema) con fallback balanceado a 2 columnas. Eliminación de estructuras redundantes obsoletas (`DashboardHeroNowCard` y `DashboardQuickActionButton`).
   - `DashboardClassroomView.swift`: Nueva vista cockpit ultra-enfocada para el aula con tarjeta central dominante, tipografía grande (36pt rounded), tiempo transcurrido en tiempo real con `DashboardTimeProgressBar`, dos botones táctiles prominentes de 56pt (*Pasar lista* y *Nueva observación*) y barra inferior contextual con área táctil accesible.

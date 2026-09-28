@@ -3,6 +3,25 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-28 - Corrección de Persistencia en Llavero de macOS para Emparejamiento SyncLAN iPad-Desktop
+
+Resumen:
+- Qué cambio se hizo:
+  1. `LocalSyncServer.kt`: Modificado `DesktopKeychainCommand` y `writeToMacKeychain` para utilizar `-X <hexString>` en lugar de `-w` interactivo al invocar `/usr/bin/security add-generic-password`. Al pasar `-w` sin valor en procesos background, macOS intentaba leer interactivamente desde la tty del terminal, colgando el proceso o guardando contraseñas vacías en el llavero.
+  2. `DesktopKeychainCommandTest.kt`: Test unitario actualizado para validar la transformación a hexadecimal con `-X` y la ausencia de cadenas planas con `-w`.
+  3. Reempaquetado del bundle `MiGestorCommandCenter.app` e instalación en el build de la app macOS, junto a la purga defensiva de entradas incompletas previas en el llavero.
+- Por qué importa:
+  - Resuelve el error «No se pudo enlazar: El desktop respondió al emparejamiento, pero no al primer pull. Detalle: Tiempo de espera agotado» al emparejar el iPad con el Mac, permitiendo que el handshake complete la persistencia del token de forma inmediata y el primer pull de sincronización sea autorizado con HTTP 200.
+- Dónde vive el cambio:
+  - `kmp/data/src/desktopMain/kotlin/com/migestor/desktop/sync/LocalSyncServer.kt`
+  - `kmp/data/src/desktopTest/kotlin/com/migestor/desktop/sync/DesktopKeychainCommandTest.kt`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./gradlew :data:desktopTest --tests "com.migestor.desktop.sync.DesktopKeychainCommandTest"`: Passed.
+  - `./gradlew :data:desktopTest --tests "com.migestor.desktop.sync.LocalSyncServerTest"` y `LocalSyncServerAdoptionTest`: Passed.
+  - Verificación end-to-end de handshake y pull con servidor real en ejecución, respondiendo con 3.925 cambios persistidos y token almacenado íntegro en Keychain.
+
 ## Avance 2026-09-28 - Integración Curricular y Soporte en App de Chunks Lingüísticos (CLIL / Pista bilingüe) en Educación Física y Planner
 
 Resumen:

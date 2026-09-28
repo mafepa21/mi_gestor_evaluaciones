@@ -11,9 +11,11 @@ El formato sigue una variante practica de Keep a Changelog:
 - `Docs`: documentacion relevante.
 - `Verification`: builds, tests, auditorias o evidencias.
 
-## Unreleased
+### Fixed
 
-### Added
+- **SyncLAN: guardado fiable en el llavero de macOS sin bloqueos ni tiempos de espera agotados**:
+  - `LocalSyncServer.kt`: `DesktopKeychainCommand` ahora utiliza la opción nativa `-X <hexData>` para añadir contraseñas al llavero de macOS (`security add-generic-password`). Esto previene que el comando `security -w` intente solicitar datos de forma interactiva por `/dev/tty` (lo cual causaba bloqueos de subproceso, dejaba tokens vacíos en el llavero y provocaba el error de timeout en el primer pull tras el handshake con el iPad).
+  - `DesktopKeychainCommandTest.kt`: Actualizado el test unitario para verificar la codificación hexadecimal segura con `-X` y la ausencia de texto plano o banderas interactivas.
 
 - **Soporte de Chunks Lingüísticos (CLIL / Pista bilingüe) en el Planificador (iOS/iPadOS y macOS)**:
   - `LearningSituationCLILChunksDraft`: Modelo de datos estructurado en `LearningSituationDocumentImportService.swift` para representar las 3 dimensiones comunicativas de Educación Física bilingüe: *Pautas de acción docente (Teacher Cues)*, *Comunicación en juego (Student Interaction)* y *Feedback y reflexión (Debrief)*.

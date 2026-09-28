@@ -3,15 +3,22 @@ package com.migestor.desktop.sync
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class DesktopKeychainCommandTest {
     @Test
-    fun elSecretoNoViajaEnLosArgumentosDelLlavero() {
+    fun elSecretoNoViajaEnTextoPlanoConOpcionW() {
         val secret = "token-que-no-debe-verse"
-        val args = DesktopKeychainCommand.addArgs(account = "paired-token", serviceName = "com.migestor.sync.desktop")
+        val args = DesktopKeychainCommand.addArgs(
+            account = "paired-token",
+            serviceName = "com.migestor.sync.desktop",
+            value = secret
+        )
 
-        assertEquals("-w", args.last())
+        val hexSecret = secret.toByteArray(Charsets.UTF_8).joinToString("") { "%02x".format(it) }
+        assertTrue(args.contains("-X"))
+        assertEquals(hexSecret, args.getOrNull(args.indexOf("-X") + 1))
         assertFalse(args.contains(secret))
-        assertFalse(args.any { it == "-w" && args.getOrNull(args.indexOf("-w") + 1) == secret })
+        assertFalse(args.contains("-w"))
     }
 }

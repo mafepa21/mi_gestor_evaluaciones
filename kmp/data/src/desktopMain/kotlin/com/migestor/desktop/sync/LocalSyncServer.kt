@@ -1120,13 +1120,16 @@ private class DesktopTlsIdentity(
 }
 
 internal object DesktopKeychainCommand {
-    fun addArgs(account: String, serviceName: String): List<String> = listOf(
-        "security", "add-generic-password",
-        "-a", account,
-        "-s", serviceName,
-        "-U",
-        "-w",
-    )
+    fun addArgs(account: String, serviceName: String, value: String): List<String> {
+        val hexValue = value.toByteArray(Charsets.UTF_8).joinToString("") { "%02x".format(it) }
+        return listOf(
+            "security", "add-generic-password",
+            "-a", account,
+            "-s", serviceName,
+            "-U",
+            "-X", hexValue,
+        )
+    }
 }
 
 private class DesktopSecureStore(
@@ -1176,11 +1179,7 @@ private class DesktopSecureStore(
     private fun writeToMacKeychain(account: String, value: String): Boolean {
         if (!isMac()) return false
         return runCatching {
-            val process = ProcessBuilder(DesktopKeychainCommand.addArgs(account, serviceName)).start()
-            process.outputStream.use { stream ->
-                stream.write(value.toByteArray(Charsets.UTF_8))
-                stream.write('\n'.code)
-            }
+            val process = ProcessBuilder(DesktopKeychainCommand.addArgs(account, serviceName, value)).start()
             process.waitFor() == 0
         }.getOrDefault(false)
     }

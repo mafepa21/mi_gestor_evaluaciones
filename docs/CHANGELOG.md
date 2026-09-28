@@ -44,6 +44,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - **Optimización integral de la pantalla de Asistencia docente**:
   - `AttendanceWorkspaceView.swift`: Eliminada la cabecera duplicada y las 4 tarjetas de métricas fijas que ocupaban más del 50% de la pantalla. Incorporada la sub-barra compacta `attendanceMetricsSubbar` con píldoras de filtro («Todos» / «Excepciones») y botón rápido «Marcar todos (P)». Erradicado el antipatrón de colapso de filas en `DisclosureGroup`: la lista de alumnos es ahora 100% continua, alfabética y estable. Inspector adaptativo por `horizontalSizeClass` (sheet modal en iPhone con detents .medium/.large, panel lateral derecho en iPad/Mac) desacoplado del pase rápido para evitar aperturas no deseadas. Toggle directo de lesión del alumno (`toggleStudentInjury`).
+  - `MacAttendanceView.swift`: Paridad total en macOS. Eliminadas las 3 tarjetas de estadísticas fijas en Modo Día, sustituidas por `attendanceMetricsSubbar`. Eliminado `DisclosureGroup` colapsable (`presentSummaryDisclosure`) para mantener la lista continua y alfabética. Conexión de `AttendanceCompactRow` (52pt) y conservación plena de los atajos de teclado nativos (`.onKeyPress` para flechas y estados 'p', 'a', 'r', etc.) con avance de foco automático.
+  - `MacAttendanceDayRow.swift`: Simplificado para delegar directamente en `AttendanceCompactRow`, preservando compatibilidad.
   - `IPadWorkspaceShell.swift`: Simplificado `AttendanceRowCard` para delegar en el nuevo `AttendanceCompactRow`.
   - `AttendanceShared.swift`: Añadidos `primaryOptions`, `secondaryOptions` y `accessibleTextColor(for:)`.
 - **Rediseño visual y adaptativo del Dashboard docente (Organic Precision v2.2)**:

@@ -11,14 +11,17 @@ Resumen:
   2. `AttendanceShared.swift`: Ampliación tipada de estados de asistencia con agrupaciones semánticas `primaryOptions` (P, A, R, M con M en `.purple` para Educación Física) y `secondaryOptions`. Inclusión de helper de color tipográfico `accessibleTextColor(for:)` para garantizar legibilidad exterior bajo luz solar directa.
   3. `AttendanceWorkspaceView.swift`: Rediseño integral de la vista de asistencia docente. Erradicación de la cabecera duplicada y de las tarjetas fijas de estadísticas que consumían >50% del viewport vertical; sustitución por la sub-barra compacta `attendanceMetricsSubbar` con píldoras de filtro («Todos» / «Excepciones») y botón de acción masiva («Marcar todos (P)»). Eliminación del antipatrón de colapso de filas en `DisclosureGroup`: la lista de alumnos es ahora 100% continua, alfabética y estable. Inspector lateral adaptativo (`selectedStudentId`) que se presenta como sheet con detents nativos (.medium / .large) en iPhone y como panel lateral derecho (280pt) en iPad y Mac. Corrección de la auto-apertura del inspector en iPhone durante el pase rápido (el toque en P/A/R/M solo registra el estado sin abrir modales). Soporte para alternar el estado de lesión del alumno directamente (`toggleStudentInjury`).
   4. `IPadWorkspaceShell.swift`: Refactorización de `AttendanceRowCard` para delegar en el nuevo `AttendanceCompactRow`, unificando la experiencia entre la navegación por tabs y la navegación por sidebar en iPad.
-  5. `mockup/index.html`: Maqueta viva interactiva creada con las 7 escenas operativas (normal, excepciones, inspector lateral, sábana/matriz 2D, carga skeleton, vacío y error con Save Gate), auditada por `ui_reviewer` (puntuación 83.5/100).
+  5. `MacAttendanceView.swift` y `MacAttendanceDayRow.swift`: Paridad completa en macOS. Erradicación de las tarjetas fijas de estadísticas en Modo Día y del `DisclosureGroup` colapsable (`presentSummaryDisclosure`). Integración de `attendanceMetricsSubbar` (píldoras «Todos»/«Excepciones» y botón «Marcar todos (P)»), adopción de `AttendanceCompactRow` (52pt) y conservación plena de los atajos de teclado (`.onKeyPress` para flechas arriba/abajo y teclas de estado 'p', 'a', 'r', etc.) con avance de foco automático.
+  6. `mockup/index.html`: Maqueta viva interactiva creada con las 7 escenas operativas (normal, excepciones, inspector lateral, sábana/matriz 2D, carga skeleton, vacío y error con Save Gate), auditada por `ui_reviewer` (puntuación 83.5/100).
 - Por qué importa:
-  - Permite al docente completar el pase de lista de un grupo de 30 alumnos en menos de 15 segundos sin interrupciones modales, con ergonomía táctil en exteriores, integración de la casuística de Educación Física (lesión y falta de material) y pleno cumplimiento de los principios HIG y Jobs Design Philosophy.
+  - Permite al docente completar el pase de lista de un grupo de 30 alumnos en menos de 15 segundos sin interrupciones modales, tanto en iPad/iPhone como en macOS con teclado o ratón, con ergonomía táctil y visual, integración de la casuística de Educación Física (lesión y falta de material) y pleno cumplimiento de los principios HIG y Jobs Design Philosophy.
 - Dónde vive el cambio:
   - `kmp/iosApp/AppleShared/AttendanceCompactRow.swift`
   - `kmp/iosApp/AppleShared/AttendanceShared.swift`
   - `kmp/iosApp/App/AttendanceWorkspaceView.swift`
   - `kmp/iosApp/App/IPadWorkspaceShell.swift`
+  - `kmp/iosApp/MacApp/MacAttendanceView.swift`
+  - `kmp/iosApp/MacApp/MacAttendanceDayRow.swift`
   - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`
   - `mockup/index.html`
   - `docs/CHANGELOG.md`

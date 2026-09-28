@@ -618,6 +618,7 @@ extension NotebookModuleView {
     }
 
     @MainActor
+    @ViewBuilder
     func rowCell(
         for segment: NotebookDisplaySegment,
         item: NotebookTableRow,
@@ -628,242 +629,265 @@ extension NotebookModuleView {
     ) -> some View {
         switch segment {
         case .fixed(let fixed):
-            return AnyView(fixedRowCell(for: fixed, item: item, data: data))
+            fixedRowCell(for: fixed, item: item, data: data)
         case .column(let column):
-            let isCellSelected = inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-            let isInGradeRange = cellIsInsideGradeRange(studentId: item.student.id, columnId: column.id, rows: allRows)
-            let formulaCellDisplay = formulaDisplay(for: item, column: column, data: data)
-            let displaySnapshot = cellDisplaySnapshot(for: item, column: column, formulaDisplay: formulaCellDisplay)
-            let cellActions = notebookCellActions()
-            return AnyView(
-                ZStack {
-                    Rectangle()
-                        .fill(isInGradeRange && !isCellSelected
-                              ? Color.accentColor.opacity(0.12)
-                              : notebookColumnCellFill(for: column, rowIndex: rowIndex))
-
-                    NotebookEditableTableCell(
-                        displaySnapshot: displaySnapshot,
-                        actions: cellActions,
-                        item: item,
-                        column: column,
-                        classId: data.sheet.classId,
-                        width: resolvedColumnWidth(for: column),
-                        tint: displayTint(for: column),
-                        categoryTint: column.categoryId.flatMap { id in
-                            data.sheet.columnCategories.first(where: { $0.id == id }).map { tint(for: $0) }
-                        },
-                        hasColumnColor: hasCustomColumnColor(column),
-                        focusedCellId: $focusedCellId,
-                        activeChoiceCellId: $activeChoiceCellId,
-                        navigationDirection: navigationDirection,
-                        formulaDisplay: formulaCellDisplay,
-                        isSelected: isCellSelected,
-                        isAttendanceQuickMode: isAttendanceQuickMode,
-                        reloadToken: rowReloadRevisions[item.student.id, default: 0],
-                        onSelect: {
-                            selectedColumnId = nil
-                            let newCellId = cellFocusId(studentId: item.student.id, columnId: column.id)
-                            #if os(macOS)
-                            if let captureId = keyboardCaptureCellId, captureId != newCellId {
-                                commitKeyboardCaptureInPlace()
-                            }
-                            #endif
-                            let sameColumn = (selectedCellRange?.columnId ?? inspectorSelection?.columnId) == column.id
-                            if notebookShiftClickIsDown(),
-                               sameColumn,
-                               let anchorId = selectedCellRange?.anchorStudentId ?? inspectorSelection?.studentId {
-                                selectedCellRange = NotebookCellRange(
-                                    columnId: column.id,
-                                    anchorStudentId: anchorId,
-                                    endStudentId: item.student.id
-                                )
-                                inspectorSelection = NotebookInspectorSelection(studentId: anchorId, columnId: column.id)
-                            } else {
-                                inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-                                selectedCellRange = NotebookCellRange(
-                                    columnId: column.id,
-                                    anchorStudentId: item.student.id,
-                                    endStudentId: item.student.id
-                                )
-                            }
-                            if focusedCellId == nil && activeChoiceCellId == nil && !isInspectorPresented {
-                                focusMode = .normal
-                            }
-                            #if os(macOS)
-                            if notebookColumnAcceptsGradeKeyboard(column),
-                               focusedCellId != newCellId {
-                                notebookGridKeyboardFocused = true
-                            }
-                            #endif
-                        },
-                        onPrepareUndo: { previousValue, previousDisplayLabel in
-                            recordCellUndo(
-                                studentId: item.student.id,
-                                column: column,
-                                previousValue: previousValue,
-                                previousDisplayLabel: previousDisplayLabel
-                            )
-                        },
-                        onOpenFormula: {
-                            focusMode = .editing
-                            presentFormulaEditor(for: column)
-                        },
-                        onOpenRubricIndividual: {
-                            focusMode = .editing
-                            openRubricIndividual(column: column, item: item)
-                        },
-                        onOpenRubricBulk: {
-                            focusMode = .editing
-                            openRubricBulk(column: column, data: data)
-                        },
-                        onOpenStructuredInstrument: {
-                            focusMode = .editing
-                            structuredInstrumentRequest = StructuredInstrumentEvaluationRequest(
-                                id: "\(data.sheet.classId)-\(item.student.id)-\(column.id)",
-                                classId: data.sheet.classId,
-                                studentId: item.student.id,
-                                studentName: "\(item.student.firstName) \(item.student.lastName)",
-                                columnId: column.id,
-                                title: column.title
-                            )
-                        },
-                        onGenerateSummary: {
-                            inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-                            focusMode = .reviewing
-                            notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
-                        },
-                        onNavigate: { direction in
-                            navigateCell(
-                                from: item.student.id,
-                                column: column,
-                                direction: direction,
-                                rows: allRows,
-                                segments: navigableSegments
-                            )
-                        },
-                        onCellSaved: {
-                            reloadNotebookRow(item.student.id)
-                        },
-                        onAttendanceSaved: {
-                            Task { await refreshNotebookSignals() }
-                        }
-                    )
-                }
-                .frame(width: resolvedColumnWidth(for: column), height: notebookGridRowHeight)
-                .contextMenu {
-                    Button("Abrir inspector") {
-                        selectedColumnId = nil
-                        inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-                        isInspectorPresented = true
-                        focusMode = .reviewing
-                    }
-
-                    if column.type == .calculated {
-                        Button("Editar fórmula…") {
-                            focusMode = .editing
-                            presentFormulaEditor(for: column)
-                        }
-                    }
-
-                    if column.type == .rubric {
-                        Button("Evaluar alumno…") {
-                            focusMode = .editing
-                            openRubricIndividual(column: column, item: item)
-                        }
-                        Button("Evaluar grupo…") {
-                            focusMode = .editing
-                            openRubricBulk(column: column, data: data)
-                        }
-                    }
-
-                    if isNotebookIndividualSummaryColumn(column) {
-                        Button(summaryActionTitle(for: column, data: data)) {
-                            selectedColumnId = nil
-                            inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-                            focusMode = .reviewing
-                            notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
-                        }
-                    }
-
-                    Divider()
-
-                    Button {
-                        openCellStampPicker(for: item, column: column)
-                    } label: {
-                        Label("Sellos formativos e icono…", systemImage: "seal.fill")
-                    }
-
-                    Menu {
-                        ForEach(NotebookCellStampCatalog.quickStamps) { stamp in
-                            Button {
-                                applyQuickStamp(stamp, for: item, column: column)
-                            } label: {
-                                Label(stamp.title, systemImage: stamp.symbol)
-                            }
-                        }
-
-                        if hasStampOrIcon(item: item, column: column) {
-                            Divider()
-                            Button(role: .destructive) {
-                                removeStamp(for: item, column: column)
-                            } label: {
-                                Label("Quitar sello", systemImage: "trash")
-                            }
-                        }
-                    } label: {
-                        Label("Sellos rápidos", systemImage: "sparkles")
-                    }
-                }
+            columnRowCell(
+                column: column,
+                item: item,
+                data: data,
+                rowIndex: rowIndex,
+                allRows: allRows,
+                navigableSegments: navigableSegments
             )
         case .collapsedCategory(let category, let columns):
-            let visibleColumns = columns.filter(\.isVisibleInGrid)
-            let filled = filledCellCount(item, columns: visibleColumns)
-            let total = visibleColumns.count
-            let categoryTint = tint(for: category)
-
-            return AnyView(
-                Button {
-                    setCategoryCollapsed(category, collapsed: false)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "rectangle.stack")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(categoryTint.opacity(0.82))
-                            .accessibilityHidden(true)
-
-                        Text(total == 0 ? "Vacía" : "\(filled)/\(total)")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(total == 0 ? .secondary : .primary)
-                            .monospacedDigit()
-                            .lineLimit(1)
-
-                        Spacer(minLength: 0)
-                    }
-                        .padding(.horizontal, 12)
-                        .frame(width: segmentWidth(segment), height: 40)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(categoryTint.opacity(0.055))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(categoryTint.opacity(0.12), lineWidth: 1)
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(NotebookCategoryHeaderButtonStyle())
-                .frame(width: segmentWidth(segment), height: notebookGridRowHeight)
-                .contextMenu {
-                    categoryContextMenu(category, data: data)
-                }
-                .help(total == 0 ? "Categoría vacía." : "Resumen de categoría colapsada: \(filled) de \(total) columnas con datos.")
-                .accessibilityLabel(
-                    "\(category.name), \(item.student.fullName), categoría colapsada"
-                )
-                .accessibilityValue(total == 0 ? "Vacía" : "\(filled) de \(total) columnas con datos")
-            )
+            collapsedCategoryRowCell(category: category, columns: columns, segment: segment, item: item, data: data)
         }
+    }
+
+    @MainActor
+    private func columnRowCell(
+        column: NotebookColumnDefinition,
+        item: NotebookTableRow,
+        data: NotebookUiStateData,
+        rowIndex: Int,
+        allRows: [NotebookTableRow],
+        navigableSegments: [NotebookDisplaySegment]
+    ) -> some View {
+        let isCellSelected = inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+        let isInGradeRange = cellIsInsideGradeRange(studentId: item.student.id, columnId: column.id, rows: allRows)
+        let formulaCellDisplay = formulaDisplay(for: item, column: column, data: data)
+        let displaySnapshot = cellDisplaySnapshot(for: item, column: column, formulaDisplay: formulaCellDisplay)
+        let cellActions = notebookCellActions()
+        let cellFill = isInGradeRange && !isCellSelected
+            ? Color.accentColor.opacity(0.12)
+            : notebookColumnCellFill(for: column, rowIndex: rowIndex)
+        return NotebookEditableTableCell(
+            displaySnapshot: displaySnapshot,
+            actions: cellActions,
+            item: item,
+            column: column,
+            classId: data.sheet.classId,
+            width: resolvedColumnWidth(for: column),
+            tint: displayTint(for: column),
+            categoryTint: column.categoryId.flatMap { id in
+                data.sheet.columnCategories.first(where: { $0.id == id }).map { tint(for: $0) }
+            },
+            hasColumnColor: hasCustomColumnColor(column),
+            focusedCellId: $focusedCellId,
+            activeChoiceCellId: $activeChoiceCellId,
+            navigationDirection: navigationDirection,
+            formulaDisplay: formulaCellDisplay,
+            isSelected: isCellSelected,
+            isAttendanceQuickMode: isAttendanceQuickMode,
+            reloadToken: rowReloadRevisions[item.student.id, default: 0],
+            onSelect: {
+                selectedColumnId = nil
+                let newCellId = cellFocusId(studentId: item.student.id, columnId: column.id)
+                #if os(macOS)
+                if let captureId = keyboardCaptureCellId, captureId != newCellId {
+                    commitKeyboardCaptureInPlace()
+                }
+                #endif
+                let sameColumn = (selectedCellRange?.columnId ?? inspectorSelection?.columnId) == column.id
+                if notebookShiftClickIsDown(),
+                   sameColumn,
+                   let anchorId = selectedCellRange?.anchorStudentId ?? inspectorSelection?.studentId {
+                    selectedCellRange = NotebookCellRange(
+                        columnId: column.id,
+                        anchorStudentId: anchorId,
+                        endStudentId: item.student.id
+                    )
+                    inspectorSelection = NotebookInspectorSelection(studentId: anchorId, columnId: column.id)
+                } else {
+                    inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                    selectedCellRange = NotebookCellRange(
+                        columnId: column.id,
+                        anchorStudentId: item.student.id,
+                        endStudentId: item.student.id
+                    )
+                }
+                if focusedCellId == nil && activeChoiceCellId == nil && !isInspectorPresented {
+                    focusMode = .normal
+                }
+                #if os(macOS)
+                if notebookColumnAcceptsGradeKeyboard(column),
+                   focusedCellId != newCellId {
+                    notebookGridKeyboardFocused = true
+                }
+                #endif
+            },
+            onPrepareUndo: { previousValue, previousDisplayLabel in
+                recordCellUndo(
+                    studentId: item.student.id,
+                    column: column,
+                    previousValue: previousValue,
+                    previousDisplayLabel: previousDisplayLabel
+                )
+            },
+            onOpenFormula: {
+                focusMode = .editing
+                presentFormulaEditor(for: column)
+            },
+            onOpenRubricIndividual: {
+                focusMode = .editing
+                openRubricIndividual(column: column, item: item)
+            },
+            onOpenRubricBulk: {
+                focusMode = .editing
+                openRubricBulk(column: column, data: data)
+            },
+            onOpenStructuredInstrument: {
+                focusMode = .editing
+                structuredInstrumentRequest = StructuredInstrumentEvaluationRequest(
+                    id: "\(data.sheet.classId)-\(item.student.id)-\(column.id)",
+                    classId: data.sheet.classId,
+                    studentId: item.student.id,
+                    studentName: "\(item.student.firstName) \(item.student.lastName)",
+                    columnId: column.id,
+                    title: column.title
+                )
+            },
+            onGenerateSummary: {
+                inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                focusMode = .reviewing
+                notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
+            },
+            onNavigate: { direction in
+                navigateCell(
+                    from: item.student.id,
+                    column: column,
+                    direction: direction,
+                    rows: allRows,
+                    segments: navigableSegments
+                )
+            },
+            onCellSaved: {
+                reloadNotebookRow(item.student.id)
+            },
+            onAttendanceSaved: {
+                Task { await refreshNotebookSignals() }
+            }
+        )
+            .frame(width: resolvedColumnWidth(for: column), height: notebookGridRowHeight)
+            .background(cellFill)
+            .contextMenu {
+                Button("Abrir inspector") {
+                    selectedColumnId = nil
+                    inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                    isInspectorPresented = true
+                    focusMode = .reviewing
+                }
+
+                if column.type == .calculated {
+                    Button("Editar fórmula…") {
+                        focusMode = .editing
+                        presentFormulaEditor(for: column)
+                    }
+                }
+
+                if column.type == .rubric {
+                    Button("Evaluar alumno…") {
+                        focusMode = .editing
+                        openRubricIndividual(column: column, item: item)
+                    }
+                    Button("Evaluar grupo…") {
+                        focusMode = .editing
+                        openRubricBulk(column: column, data: data)
+                    }
+                }
+
+                if isNotebookIndividualSummaryColumn(column) {
+                    Button(summaryActionTitle(for: column, data: data)) {
+                        selectedColumnId = nil
+                        inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                        focusMode = .reviewing
+                        notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
+                    }
+                }
+
+                Divider()
+
+                Button {
+                    openCellStampPicker(for: item, column: column)
+                } label: {
+                    Label("Sellos formativos e icono…", systemImage: "seal.fill")
+                }
+
+                Menu {
+                    ForEach(NotebookCellStampCatalog.quickStamps) { stamp in
+                        Button {
+                            applyQuickStamp(stamp, for: item, column: column)
+                        } label: {
+                            Label(stamp.title, systemImage: stamp.symbol)
+                        }
+                    }
+
+                    if hasStampOrIcon(item: item, column: column) {
+                        Divider()
+                        Button(role: .destructive) {
+                            removeStamp(for: item, column: column)
+                        } label: {
+                            Label("Quitar sello", systemImage: "trash")
+                        }
+                    }
+                } label: {
+                    Label("Sellos rápidos", systemImage: "sparkles")
+                }
+            }
+    }
+
+    @MainActor
+    private func collapsedCategoryRowCell(
+        category: NotebookColumnCategory,
+        columns: [NotebookColumnDefinition],
+        segment: NotebookDisplaySegment,
+        item: NotebookTableRow,
+        data: NotebookUiStateData
+    ) -> some View {
+        let visibleColumns = columns.filter(\.isVisibleInGrid)
+        let filled = filledCellCount(item, columns: visibleColumns)
+        let total = visibleColumns.count
+        let categoryTint = tint(for: category)
+
+        return Button {
+                setCategoryCollapsed(category, collapsed: false)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "rectangle.stack")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(categoryTint.opacity(0.82))
+                        .accessibilityHidden(true)
+
+                    Text(total == 0 ? "Vacía" : "\(filled)/\(total)")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(total == 0 ? .secondary : .primary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+                }
+                    .padding(.horizontal, 12)
+                    .frame(width: segmentWidth(segment), height: 40)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(categoryTint.opacity(0.055))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(categoryTint.opacity(0.12), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(NotebookCategoryHeaderButtonStyle())
+            .frame(width: segmentWidth(segment), height: notebookGridRowHeight)
+            .contextMenu {
+                categoryContextMenu(category, data: data)
+            }
+            .help(total == 0 ? "Categoría vacía." : "Resumen de categoría colapsada: \(filled) de \(total) columnas con datos.")
+            .accessibilityLabel(
+                "\(category.name), \(item.student.fullName), categoría colapsada"
+            )
+            .accessibilityValue(total == 0 ? "Vacía" : "\(filled) de \(total) columnas con datos")
     }
 
     @MainActor

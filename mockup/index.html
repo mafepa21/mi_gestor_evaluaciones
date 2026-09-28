@@ -1023,6 +1023,7 @@
 
     let currentSelectedStudentId = 3; // David Cano
     let currentFilter = "TODOS";
+    let currentSceneId = "dia-normal";
 
     const scenes = {
       "dia-normal": {
@@ -1115,6 +1116,7 @@
       const aCount = mockStudents.filter(s => s.status === "A").length;
       const rCount = mockStudents.filter(s => s.status === "R").length;
       const mCount = mockStudents.filter(s => s.status === "M").length;
+      const pendingCount = mockStudents.filter(s => !s.status).length;
       const injuryCount = mockStudents.filter(s => s.injury).length;
 
       const selectedStudent = mockStudents.find(s => s.id === currentSelectedStudentId);
@@ -1153,6 +1155,7 @@
               <span class="metric-dot" style="background: var(--status-r); margin-left: 6px;"></span>${rCount} R
               <span class="metric-dot" style="background: var(--status-m); margin-left: 6px;"></span>${mCount} M
               ${injuryCount > 0 ? `<span class="metric-dot" style="background: var(--injury-color); margin-left: 6px;"></span>${injuryCount} Lesión` : ''}
+              ${pendingCount > 0 ? `<span class="metric-dot" style="background: var(--text-muted); margin-left: 6px;"></span>${pendingCount} Pendiente` : ''}
               <span class="info-tag" data-info="Toca para filtrar solo las incidencias o volver a todos.">(i)</span>
             </button>
           </div>
@@ -1228,6 +1231,11 @@
                   <button class="btn btn-secondary" style="flex: 1; font-size: 12px; font-weight: 700;">
                     ${getStatusLabel(selectedStudent.status)}
                   </button>
+                  ${selectedStudent.status ? `
+                    <button class="btn btn-secondary" style="font-size: 11px; color: var(--text-secondary); font-weight: 600;" title="Desmarcar y dejar sin pasar" onclick="setStatus(${selectedStudent.id}, '')">
+                      ↺ Desmarcar
+                    </button>
+                  ` : ''}
                 </div>
                 <div style="margin-top: 8px;">
                   <label style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">Nota de la sesión</label>
@@ -1345,9 +1353,18 @@
     function setStatus(studentId, newStatus) {
       const student = mockStudents.find(s => s.id === studentId);
       if (student) {
-        student.status = newStatus;
-        // Re-render sin parpadeos
-        document.getElementById('viewport').innerHTML = scenes["dia-normal"].render();
+        // Toggle: si ya tenía este estado y se vuelve a pulsar, o si se pide '', se desmarca
+        if (student.status === newStatus || newStatus === '') {
+          student.status = "";
+        } else {
+          student.status = newStatus;
+        }
+        // Re-render sin parpadeos conservando la vista activa
+        if (currentSceneId === "inspector") {
+          renderScene('inspector');
+        } else {
+          document.getElementById('viewport').innerHTML = scenes["dia-normal"].render();
+        }
       }
     }
 
@@ -1380,6 +1397,7 @@
     }
 
     function renderScene(sceneKey, btnElement) {
+      currentSceneId = sceneKey;
       const scene = scenes[sceneKey];
       if (!scene) return;
       document.getElementById('viewport').innerHTML = scene.render();

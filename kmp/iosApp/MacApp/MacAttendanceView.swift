@@ -135,7 +135,7 @@ struct MacAttendanceView: View {
         let present = recordsByStudentId.values.filter { AttendanceLogic.isPresentStatus($0.status) }.count
         let absent = recordsByStudentId.values.filter { AttendanceLogic.isAbsentStatus($0.status) }.count
         let late = recordsByStudentId.values.filter { AttendanceLogic.isLateStatus($0.status) }.count
-        let pending = max(attendanceStore.studentsInClass.count - recordsByStudentId.count, 0)
+        let pending = attendanceStore.studentsInClass.filter { (recordsByStudentId[$0.id]?.status ?? "").isEmpty }.count
         return (present, absent, late, pending)
     }
 
@@ -414,6 +414,10 @@ struct MacAttendanceView: View {
                     .foregroundStyle(MacAppStyle.dangerTint)
                 Label("\(boardSummary.late)", systemImage: "clock.fill")
                     .foregroundStyle(MacAppStyle.warningTint)
+                if boardSummary.pending > 0 {
+                    Label("\(boardSummary.pending)", systemImage: "clock")
+                        .foregroundStyle(Color.secondary)
+                }
             }
             .font(.system(size: 12, weight: .bold, design: .rounded))
             .padding(.trailing, 8)
@@ -593,6 +597,9 @@ struct MacAttendanceView: View {
                             case .downArrow:
                                 moveRosterSelection(by: 1)
                                 return .handled
+                            case .delete, .deleteForward:
+                                applyStatusShortcut("")
+                                return .handled
                             default:
                                 guard let char = press.characters.first,
                                       let status = Self.statusShortcut(for: char) else { return .ignored }
@@ -614,6 +621,9 @@ struct MacAttendanceView: View {
             isSaving: savingStudentIds.contains(row.student.id) || savingInjuryStudentIds.contains(row.student.id),
             onPickStatus: { option in
                 Task { await updateAttendance(for: row.student, status: option.id) }
+            },
+            onClearStatus: {
+                Task { await updateAttendance(for: row.student, status: "") }
             },
             onSelect: {
                 if selectedStudentId == row.student.id {
@@ -971,13 +981,23 @@ struct MacAttendanceView: View {
 
     private func inspectorStatusContent(record: KmpBridge.AttendanceRecordSnapshot?) -> some View {
         HStack(spacing: 8) {
+            let status = record?.status ?? ""
             MacStatusPill(
-                label: record.map { statusLabel($0.status) } ?? "Sin registro",
-                isActive: record != nil,
+                label: status.isEmpty ? "Sin registro" : statusLabel(status),
+                isActive: !status.isEmpty,
                 tint: AttendanceStatusOption.option(for: record?.status)?.color ?? .secondary
             )
             if record?.followUpRequired == true {
                 MacStatusPill(label: "Seguimiento", isActive: true, tint: MacAppStyle.warningTint)
+            }
+            if !status.isEmpty, let student = selectedStudent {
+                Button {
+                    Task { await updateAttendance(for: student, status: "") }
+                } label: {
+                    Label("Desmarcar", systemImage: "arrow.counterclockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
     }
@@ -1182,7 +1202,9 @@ struct MacAttendanceView: View {
               let student = displayRows.first(where: { $0.student.id == studentId })?.student else { return }
         historySelection = nil
         selectedStudentId = studentId
-        Task { await updateAttendance(for: student, status: status) }
+        let currentStatus = recordsByStudentId[studentId]?.status ?? ""
+        let targetStatus = (currentStatus == status) ? "" : status
+        Task { await updateAttendance(for: student, status: targetStatus) }
         moveRosterSelection(by: 1)
     }
 

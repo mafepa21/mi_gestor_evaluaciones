@@ -3,6 +3,31 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-28 - Soporte de Desmarcado y Rectificación Rápida de Asistencia (Toggle y Reset a "Sin pasar") en iOS, iPadOS y macOS
+
+Resumen:
+- Qué cambio se hizo:
+  1. `AttendanceCompactRow.swift`: Implementado soporte de toggle directo en los botones segmentados `P | A | R | M`. Si el usuario pulsa sobre un estado que ya está activo (`isCurrent == true`), el estado se conmuta a desmarcado ("Sin pasar" / `status: ""`), restaurando el avatar neutro y apagando la selección. Lo mismo aplica a estados secundarios y a la nueva acción explícita «Desmarcar asistencia» (`arrow.counterclockwise`) dentro del menú contextual `···`.
+  2. `AttendanceWorkspaceView.swift` & `MacAttendanceView.swift`: Conexión de `onClearStatus` guardando `status: ""` vía `KmpBridge.saveAttendance`. Se preservan las notas de sesión y los flags de incidencia sin destruirlos. Botón de desmarcado añadido también en el inspector lateral del alumno.
+  3. Cálculo de métricas: Recalibrado `boardSummary.untracked` (iOS) y `boardSummary.pending` (macOS) evaluando `(recordsByStudentId[id]?.status ?? "").isEmpty` para que tanto los alumnos sin registrar como los desmarcados computen correctamente como pendientes y se reflejen en la sub-barra métrica.
+  4. macOS Keyboard Navigation: En `MacAttendanceView.swift`, captura de `.delete` y `.deleteForward` (Supr / Backspace) para desmarcar al alumno seleccionado, y soporte de toggle al pulsar repetidamente la misma tecla (`p`, `a`, `r`, `m`), con avance automático de fila.
+  5. `mockup/index.html`: Maqueta viva actualizada con toggle en `setStatus`, botón `↺ Desmarcar` en el inspector y contador de pendientes reactivo.
+- Por qué importa:
+  - Garantiza que cualquier pulsación accidental durante el pase de lista de alta velocidad (<15s) pueda ser rectificada de forma inmediata sin fricción, ya sea mediante un segundo toque, desde el menú de la fila, desde el inspector o con la tecla Supr/Backspace en Mac.
+- Dónde vive el cambio:
+  - `kmp/iosApp/AppleShared/AttendanceCompactRow.swift`
+  - `kmp/iosApp/App/AttendanceWorkspaceView.swift`
+  - `kmp/iosApp/MacApp/MacAttendanceView.swift`
+  - `kmp/iosApp/MacApp/MacAttendanceDayRow.swift`
+  - `mockup/index.html`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`: Succeeded en macOS Native y iOS Simulator.
+  - Auditoría de UI (`ui_reviewer`): superada.
+  - Auditoría de código (`reviewer`): APROBADO sin regresiones, respetando `status: ""` en SQLite/SQLDelight.
+  - Auditoría Git (`janitor`): APROBADO, árbol limpio y listo para merge seguro.
+
 ## Avance 2026-09-28 - Rediseño de Asistencia Relámpago (Pase de lista en <15s, fila compacta de 52pt, atajos rápidos y accesibilidad WCAG AAA)
 
 Resumen:

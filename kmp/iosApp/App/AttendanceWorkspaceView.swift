@@ -60,7 +60,7 @@ struct AttendanceWorkspaceView: View {
         let present = rows.filter { AttendanceLogic.isPresentStatus($0?.status) }.count
         let absent = rows.filter { AttendanceLogic.isAbsentStatus($0?.status) }.count
         let late = rows.filter { AttendanceLogic.isLateStatus($0?.status) }.count
-        let untracked = max(attendanceStore.studentsInClass.count - present - absent - late, 0)
+        let untracked = attendanceStore.studentsInClass.filter { (recordsByStudentId[$0.id]?.status ?? "").isEmpty }.count
         return (present, absent, late, untracked)
     }
 
@@ -397,6 +397,10 @@ struct AttendanceWorkspaceView: View {
                     .foregroundStyle(AppleDesignSystem.danger)
                 Label("\(boardSummary.late)", systemImage: "clock.fill")
                     .foregroundStyle(AppleDesignSystem.warning)
+                if boardSummary.untracked > 0 {
+                    Label("\(boardSummary.untracked)", systemImage: "clock")
+                        .foregroundStyle(Color.secondary)
+                }
             }
             .font(.system(size: 12, weight: .bold, design: .rounded))
             .padding(.trailing, 4)
@@ -528,6 +532,9 @@ struct AttendanceWorkspaceView: View {
                             isSaving: savingStudentIds.contains(row.student.id) || savingInjuryStudentIds.contains(row.student.id),
                             onPickStatus: { option in
                                 Task { await updateAttendance(for: row.student, status: option.id) }
+                            },
+                            onClearStatus: {
+                                Task { await updateAttendance(for: row.student, status: "") }
                             },
                             onSelect: {
                                 if selectedStudentId == row.student.id {
@@ -728,6 +735,16 @@ struct AttendanceWorkspaceView: View {
                         value: selectedInspectionAttendance?.status ?? recentStatuses.first?.status ?? "Sin registros",
                         systemImage: "clock.badge.checkmark"
                     )
+
+                    if let currentRecord = recordsByStudentId[student.id], !currentRecord.status.isEmpty {
+                        Button {
+                            Task { await updateAttendance(for: student, status: "") }
+                        } label: {
+                            Label("Desmarcar asistencia de hoy", systemImage: "arrow.counterclockwise")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                    }
 
                     if let latest = selectedInspectionAttendance ?? recentStatuses.first {
                         WorkspaceMetricCard(

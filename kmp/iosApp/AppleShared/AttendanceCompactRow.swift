@@ -11,6 +11,7 @@ struct AttendanceCompactRow: View {
     let isSelected: Bool
     let isSaving: Bool
     let onPickStatus: (AttendanceStatusOption) -> Void
+    var onClearStatus: (() -> Void)? = nil
     let onSelect: () -> Void
     var onToggleInjury: (() -> Void)? = nil
     var onQuickNote: (() -> Void)? = nil
@@ -103,8 +104,10 @@ struct AttendanceCompactRow: View {
                 ForEach(AttendanceStatusOption.primaryOptions) { option in
                     let isCurrent = row.record?.status == option.id
                     Button {
-                        if !isCurrent {
-                            AppleInteractionFeedback.play(.selection)
+                        AppleInteractionFeedback.play(.selection)
+                        if isCurrent {
+                            onClearStatus?()
+                        } else {
                             onPickStatus(option)
                         }
                     } label: {
@@ -121,7 +124,7 @@ struct AttendanceCompactRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(option.label)
+                    .accessibilityLabel(isCurrent ? "\(option.label) (activo, pulsar para desmarcar)" : option.label)
                     .accessibilityAddTraits(isCurrent ? .isSelected : [])
                 }
             }
@@ -136,16 +139,32 @@ struct AttendanceCompactRow: View {
             Menu {
                 Section("Otros estados") {
                     ForEach(AttendanceStatusOption.secondaryOptions) { option in
+                        let isCurrent = row.record?.status == option.id
                         Button {
                             AppleInteractionFeedback.play(.selection)
-                            onPickStatus(option)
+                            if isCurrent {
+                                onClearStatus?()
+                            } else {
+                                onPickStatus(option)
+                            }
                         } label: {
-                            Label(option.label, systemImage: option.id == "JUSTIFICADO" ? "checkmark.seal" : "person.badge.shield.checkmark")
+                            Label(
+                                isCurrent ? "\(option.label) (Desmarcar)" : option.label,
+                                systemImage: option.id == "JUSTIFICADO" ? "checkmark.seal" : "person.badge.shield.checkmark"
+                            )
                         }
                     }
                 }
 
                 Section("Acciones") {
+                    if let status = row.record?.status, !status.isEmpty {
+                        Button {
+                            AppleInteractionFeedback.play(.selection)
+                            onClearStatus?()
+                        } label: {
+                            Label("Desmarcar asistencia", systemImage: "arrow.counterclockwise")
+                        }
+                    }
                     Button(action: onSelect) {
                         Label("Abrir ficha completa", systemImage: "person.crop.circle")
                     }

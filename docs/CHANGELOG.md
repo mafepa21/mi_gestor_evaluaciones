@@ -15,6 +15,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Desmarcado y rectificación rápida de asistencia (Toggle y reset a "Sin pasar") en iOS, iPadOS y macOS**:
+  - `AttendanceCompactRow.swift`: Soporte para toggle directo en los botones del control segmentado (`P | A | R | M`): al pulsar sobre un estado ya activo, este se desmarca inmediatamente devolviendo al alumno al estado "Sin pasar" (`status: ""`) con avatar neutro. Soporte análogo en los estados secundarios ("Otros estados") y nueva opción explícita «Desmarcar asistencia» (`arrow.counterclockwise`) en el menú de acciones `···`.
+  - `AttendanceWorkspaceView.swift` & `MacAttendanceView.swift`: Conexión del callback `onClearStatus` persistiendo `status: ""` mediante `KmpBridge.saveAttendance` (preservando notas de sesión e incidencias existentes), botón directo de desmarcado en el inspector lateral y actualización precisa del cómputo de alumnos pendientes/sin pasar (`untracked` / `pending`) en la sub-barra métrica.
+  - `MacAttendanceView.swift`: Soporte de teclado nativo en macOS mediante atajos `.delete` y `.deleteForward` (Supr / Backspace) para desmarcar el estado del alumno seleccionado, y toggle al pulsar repetidamente la misma tecla de estado (`p`, `a`, `r`, `m`), con avance automático del foco al siguiente alumno.
+  - `mockup/index.html`: Maqueta viva actualizada con toggle en `setStatus`, botón neutral `↺ Desmarcar` en el inspector lateral y visualización reactiva del contador de pendientes.
 - **Rediseño de Asistencia Relámpago y ergonomía táctil rápida (<15s)**:
   - `AttendanceCompactRow.swift`: Componente nativo modular en `AppleShared` con fila compacta de 52pt, avatar táctil con halo cromático semántico según el estado de asistencia, badge de lesión activa, selector horizontal P|A|R|M con targets táctiles expandidos a 44×44pt sobre botones visuales de 34×30pt, alto contraste WCAG AAA (texto negro sobre P y R para uso en exteriores bajo luz solar), menú contextual de acciones `···` y swipe actions.
   - `mockup/index.html`: Maqueta viva interactiva con 7 escenas completas (asistencia normal, filtro de excepciones, inspector lateral con detents, sábana 2D, estado de carga skeleton, estado vacío y modal de error con Save Gate) auditada por `ui_reviewer` (83.5/100).

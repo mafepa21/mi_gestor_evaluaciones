@@ -10,6 +10,7 @@ struct MacAttendanceDayRow: View {
     let isSaving: Bool
     let onSelect: () -> Void
     let onPickStatus: (AttendanceStatusOption) -> Void
+    var onClearStatus: (() -> Void)? = nil
     let onMarkInjury: () -> Void
 
     var body: some View {
@@ -18,6 +19,7 @@ struct MacAttendanceDayRow: View {
             isSelected: isSelected,
             isSaving: isSaving,
             onPickStatus: onPickStatus,
+            onClearStatus: onClearStatus,
             onSelect: onSelect,
             onToggleInjury: onMarkInjury
         )

@@ -769,7 +769,7 @@ extension NotebookModuleView {
             }
         )
             .frame(width: resolvedColumnWidth(for: column), height: notebookGridRowHeight)
-            .background(cellFill)
+            .background { cellFill }
             .contextMenu {
                 Button("Abrir inspector") {
                     selectedColumnId = nil

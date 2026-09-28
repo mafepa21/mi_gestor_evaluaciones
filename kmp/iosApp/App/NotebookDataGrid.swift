@@ -299,6 +299,7 @@ struct NotebookResizableHeader<Content: View>: View {
     @State private var isDragging = false
     @State private var dragStartWidth: CGFloat = 0
     @State private var lastDraggedWidth: CGFloat = 0
+    @GestureState private var isGestureActive = false
 
     /// `onWidthChange` se llama en cada movimiento y debe ser barato (solo
     /// layout); `onWidthCommit` se llama una vez al soltar y es donde se persiste.
@@ -329,6 +330,9 @@ struct NotebookResizableHeader<Content: View>: View {
                 .modifier(NotebookResizeCursorModifier())
                 .gesture(
                     DragGesture(minimumDistance: 2)
+                        .updating($isGestureActive) { _, active, _ in
+                            active = true
+                        }
                         .onChanged { value in
                             if !isDragging {
                                 isDragging = true
@@ -343,14 +347,24 @@ struct NotebookResizableHeader<Content: View>: View {
                             }
                         }
                         .onEnded { _ in
-                            isDragging = false
-                            guard lastDraggedWidth > 0 else { return }
-                            onWidthCommit(lastDraggedWidth)
-                            lastDraggedWidth = 0
+                            finishDrag()
                         }
                 )
         }
         .frame(width: width)
+        // `onEnded` no llega si el sistema cancela el gesto; `@GestureState`
+        // vuelve a `false` en ambos casos.
+        .appOnChange(of: isGestureActive) { active in
+            if !active { finishDrag() }
+        }
+    }
+
+    private func finishDrag() {
+        isDragging = false
+        guard lastDraggedWidth > 0 else { return }
+        let finalWidth = lastDraggedWidth
+        lastDraggedWidth = 0
+        onWidthCommit(finalWidth)
     }
 }
 

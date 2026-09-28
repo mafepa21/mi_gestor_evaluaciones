@@ -883,6 +883,10 @@ struct PlannerSessionDetailSheet: View {
             PlannerSessionAttachmentGalleryView(store: attachmentStore, tint: tint)
 
             if let detailedPlan {
+                if let chunks = decodedCLILChunks(detailedPlan), !chunks.isEmpty {
+                    PlannerSessionCLILChunksCard(chunks: chunks, tint: tint)
+                }
+
                 if !decodedGuidingQuestions(detailedPlan).isEmpty {
                     teacherCard(
                         title: "Preguntas guía",
@@ -1162,6 +1166,11 @@ struct PlannerSessionDetailSheet: View {
 
     private func decodedClosure(_ plan: LearningSituationSessionPlan) -> String {
         LearningSituationSessionDevelopmentPayload.decode(from: plan.developmentJson)?.closure ?? ""
+    }
+
+    private func decodedCLILChunks(_ plan: LearningSituationSessionPlan) -> LearningSituationCLILChunksDraft? {
+        let projection = PlannerSessionDetailProjection(plan: plan)
+        return projection.clilChunks
     }
     @MainActor
     private func loadDetailedPlan() async {

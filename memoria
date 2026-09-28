@@ -3,6 +3,32 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-09-28 - Integración Curricular y Soporte en App de Chunks Lingüísticos (CLIL / Pista bilingüe) en Educación Física y Planner
+
+Resumen:
+- Qué cambio se hizo:
+  1. **Fase 1 (Curricular EF Bilingüe):** Completada la integración del 100% de los bloques CLIL en las 26 Situaciones de Aprendizaje de Educación Física (3.º ESO: 8 SAs, 52 bloques; 4.º ESO: 8 SAs, 58 bloques; 1.º Bachillerato: 10 SAs, 125 bloques; total global de 235 bloques CLIL). Estructura disciplinada en tres dimensiones por sesión: *Pautas de acción docente (Teacher Cues)*, *Comunicación en juego (Student Interaction)* y *Feedback y reflexión (Debrief)*.
+  2. **Fase 2 (App Técnica - Planner):**
+     - `LearningSituationCLILChunksDraft`: Modelo de datos en `LearningSituationDocumentImportService.swift` y `LearningSituationSessionDevelopmentPayload` para decodificar, serializar y parsear chunks CLIL.
+     - `PlannerSessionDetailProjection.swift`: Extracción de chunks directos del payload o fallback parsing de secciones de texto/markdown con tolerancia a sintaxis markdown y etiquetas bilingües.
+     - `PlannerSessionCLILChunksCard`: Componente SwiftUI con Liquid Glass, colapsable, badges semánticos coloreados (`teal` para Teacher Cues, `indigo` para Student Interaction, `purple` para Debrief) y chips de frase con botón rápido de copiado al portapapeles.
+     - `PlannerSessionDetailSheet.swift`: Integración en la cabina de sesión del Planner (pestaña Anexos) para iOS, iPadOS y macOS.
+     - `PlannerSessionDetailProjectionTests.swift`: Tests unitarios validando la decodificación directa y el parseo desde markdown.
+- Por qué importa:
+  - Da soporte real y sostenible a la enseñanza bilingüe (CLIL/AICLE) en el área de Educación Física, permitiendo al docente consultar y proyectar en mano o escritorio las expresiones exactas en inglés necesarias para las consignas, la dinámica de juego del alumnado y la metacognición final.
+- Dónde vive el cambio:
+  - `/Users/mariofernandez/Desktop/Programaciones/EF/` (Archivos curriculares markdown)
+  - `kmp/iosApp/AppleShared/LearningSituationDocumentImportService.swift`
+  - `kmp/iosApp/App/PlannerSessionDetailProjection.swift`
+  - `kmp/iosApp/App/PlannerSessionDetailComponents.swift`
+  - `kmp/iosApp/App/PlannerSessionDetailSheet.swift`
+  - `kmp/iosApp/PlannerTests/PlannerSessionDetailProjectionTests.swift`
+  - `docs/CHANGELOG.md`
+  - `memoria`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`: Succeeded en macOS Native (`MiGestorKMPMac`) e iOS Simulator (`MiGestorKMPiOS`).
+  - `xcodebuild test`: Suite `PlannerSessionDetailProjectionTests` ejecutada con éxito (8/8 tests passed al 100%).
+
 ## Avance 2026-09-28 - Soporte de Desmarcado y Rectificación Rápida de Asistencia (Toggle y Reset a "Sin pasar") en iOS, iPadOS y macOS
 
 Resumen:

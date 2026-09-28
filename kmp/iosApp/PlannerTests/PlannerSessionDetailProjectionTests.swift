@@ -182,6 +182,49 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
         XCTAssertEqual(activities.map(\.activity), ["Timed warm-up", "Timed relay"])
     }
 
+    func testCLILChunksExtractedFromPayloadAndMarkdownSection() throws {
+        let chunksDraft = LearningSituationCLILChunksDraft(
+            teacherCues: ["Freeze on whistle!", "Low center of gravity!"],
+            studentInteraction: ["I am open!", "Switch sides!"],
+            debrief: ["How did communication help you recover?"]
+        )
+        let payload = LearningSituationSessionDevelopmentPayload(
+            sections: [],
+            activities: [],
+            clilChunks: chunksDraft
+        )
+        let payloadJSON = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        let plan = try makePlan(
+            material: "Conos",
+            criteria: [],
+            sections: []
+        ).withDevelopment(payloadJSON)
+
+        let projection = PlannerSessionDetailProjection(plan: plan)
+        XCTAssertNotNil(projection.clilChunks)
+        XCTAssertEqual(projection.clilChunks?.teacherCues.count, 2)
+        XCTAssertEqual(projection.clilChunks?.studentInteraction.count, 2)
+        XCTAssertEqual(projection.clilChunks?.debrief.count, 1)
+        XCTAssertEqual(projection.clilChunks?.teacherCues.first, "Freeze on whistle!")
+    }
+
+    func testCLILChunksParsedFromMarkdownText() throws {
+        let text = """
+        ### Chunks Lingüísticos (CLIL / Pista bilingüe)
+        - **Pautas de acción docente (Teacher Cues):** "Check scene safety first!", "Call 112 with exact location!"
+        - **Comunicación en juego (Student Interaction):** "Is the scene safe?", "Calling 112 now!"
+        - **Feedback y reflexión (Debrief):** "Why is scene safety non-negotiable?"
+        """
+        let parsed = LearningSituationDocumentImportService.parseCLILChunks(from: text)
+        XCTAssertNotNil(parsed)
+        XCTAssertEqual(parsed?.teacherCues.count, 2)
+        XCTAssertEqual(parsed?.studentInteraction.count, 2)
+        XCTAssertEqual(parsed?.debrief.count, 1)
+        XCTAssertEqual(parsed?.teacherCues[0], "Check scene safety first!")
+        XCTAssertEqual(parsed?.studentInteraction[1], "Calling 112 now!")
+        XCTAssertEqual(parsed?.debrief[0], "Why is scene safety non-negotiable?")
+    }
+
     private func makePlan(
         material: String,
         criteria: [String],

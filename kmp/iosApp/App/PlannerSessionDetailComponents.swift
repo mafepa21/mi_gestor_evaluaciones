@@ -586,6 +586,134 @@ struct PlannerSessionCLILBanner: View {
     }
 }
 
+// MARK: - Structured CLIL Chunks Card
+
+/// Tarjeta estructurada con las 3 dimensiones pedagógicas de Chunks Lingüísticos (CLIL / AICLE)
+/// de la sesión: Teacher Cues, Student Interaction y Debrief.
+struct PlannerSessionCLILChunksCard: View {
+    let chunks: LearningSituationCLILChunksDraft
+    let tint: Color
+    
+    @State private var isExpanded: Bool = true
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "globe.europe.africa.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(tint)
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(0.15), in: Circle())
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("CHUNKS LINGÜÍSTICOS")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(tint)
+                        
+                        Text("Pista bilingüe · CLIL / AICLE")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Chunks lingüísticos bilingües")
+            
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !chunks.teacherCues.isEmpty {
+                        clilDimensionSection(
+                            title: "Pautas de acción docente (Teacher Cues)",
+                            icon: "person.wave.2.fill",
+                            items: chunks.teacherCues,
+                            accentColor: Color.teal
+                        )
+                    }
+                    
+                    if !chunks.studentInteraction.isEmpty {
+                        clilDimensionSection(
+                            title: "Comunicación en juego (Student Interaction)",
+                            icon: "bubble.left.and.bubble.right.fill",
+                            items: chunks.studentInteraction,
+                            accentColor: Color.indigo
+                        )
+                    }
+                    
+                    if !chunks.debrief.isEmpty {
+                        clilDimensionSection(
+                            title: "Feedback y reflexión (Debrief)",
+                            icon: "questionmark.bubble.fill",
+                            items: chunks.debrief,
+                            accentColor: Color.purple
+                        )
+                    }
+                }
+                .padding(.top, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(14)
+        .background(EvaluationDesign.surfaceSoft)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tint.opacity(0.25), lineWidth: 1)
+        )
+    }
+    
+    @ViewBuilder
+    private func clilDimensionSection(
+        title: String,
+        icon: String,
+        items: [String],
+        accentColor: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(accentColor)
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(accentColor)
+            }
+            
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("•")
+                            .font(.headline)
+                            .foregroundStyle(accentColor)
+                        Text(item)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(accentColor.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(accentColor.opacity(0.18), lineWidth: 1)
+            )
+        }
+    }
+}
+
 // MARK: - Material Chips Grid
 
 struct PlannerSessionMaterialChipsView: View {

@@ -15,6 +15,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Soporte de Chunks Lingüísticos (CLIL / Pista bilingüe) en el Planificador (iOS/iPadOS y macOS)**:
+  - `LearningSituationCLILChunksDraft`: Modelo de datos estructurado en `LearningSituationDocumentImportService.swift` para representar las 3 dimensiones comunicativas de Educación Física bilingüe: *Pautas de acción docente (Teacher Cues)*, *Comunicación en juego (Student Interaction)* y *Feedback y reflexión (Debrief)*.
+  - `LearningSituationSessionDevelopmentPayload`: Soporte de serialización y decodificación JSON de `clilChunks` preservando retrocompatibilidad absoluta.
+  - `PlannerSessionDetailProjection.swift`: Extracción automática de chunks CLIL desde el payload estructurado o fallback parsing desde secciones de documento (`clil`, `chunk`, `bilingue`).
+  - `PlannerSessionCLILChunksCard`: Componente SwiftUI con estética Liquid Glass / Organic Precision, colapsable, con píldoras de color semántico (teal, indigo, purple) y microchips copiables.
+  - `PlannerSessionDetailSheet.swift`: Integración de la tarjeta en la pestaña de anexos pedagógicos de la cabina de sesión en iPhone, iPad y Mac.
+  - Cobertura con tests unitarios en `PlannerSessionDetailProjectionTests.swift` validando decodificación directa y parseo robusto desde texto markdown con títulos y listas formateadas.
+
+
 - **Desmarcado y rectificación rápida de asistencia (Toggle y reset a "Sin pasar") en iOS, iPadOS y macOS**:
   - `AttendanceCompactRow.swift`: Soporte para toggle directo en los botones del control segmentado (`P | A | R | M`): al pulsar sobre un estado ya activo, este se desmarca inmediatamente devolviendo al alumno al estado "Sin pasar" (`status: ""`) con avatar neutro. Soporte análogo en los estados secundarios ("Otros estados") y nueva opción explícita «Desmarcar asistencia» (`arrow.counterclockwise`) en el menú de acciones `···`.
   - `AttendanceWorkspaceView.swift` & `MacAttendanceView.swift`: Conexión del callback `onClearStatus` persistiendo `status: ""` mediante `KmpBridge.saveAttendance` (preservando notas de sesión e incidencias existentes), botón directo de desmarcado en el inspector lateral y actualización precisa del cómputo de alumnos pendientes/sin pasar (`untracked` / `pending`) en la sub-barra métrica.

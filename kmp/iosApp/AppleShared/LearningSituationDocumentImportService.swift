@@ -479,6 +479,10 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
         }
         return Self(schema: "legacy", schemaVersion: 1, sections: sections, activities: [])
     }
+
+    static func parseCLILChunks(from text: String) -> LearningSituationCLILChunksDraft? {
+        NarrativeSessionActivityCompactor.parseCLILChunks(from: text)
+    }
 }
 
 /// Reduce la prosa narrativa de cada segmento curricular a los cuatro momentos que el profesor
@@ -763,15 +767,15 @@ enum NarrativeSessionActivityCompactor {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
 
-            if let range = trimmed.range(of: #"(?i)(?:Pautas de acci[oó]n docente|Teacher Cues)\s*:\s*(.+)$"#, options: .regularExpression) {
+            if let range = trimmed.range(of: #"(?i)(?:Pautas de acci[oó]n docente|Teacher Cues)[^:]*:\s*(.+)$"#, options: .regularExpression) {
                 let matched = String(trimmed[range])
                 let content = matched.replacingOccurrences(of: #"(?i)^.*?:\s*"#, with: "", options: .regularExpression)
                 teacherCues.append(contentsOf: extractItems(from: content))
-            } else if let range = trimmed.range(of: #"(?i)(?:Comunicaci[oó]n en juego|Student Interaction)\s*:\s*(.+)$"#, options: .regularExpression) {
+            } else if let range = trimmed.range(of: #"(?i)(?:Comunicaci[oó]n en juego|Student Interaction)[^:]*:\s*(.+)$"#, options: .regularExpression) {
                 let matched = String(trimmed[range])
                 let content = matched.replacingOccurrences(of: #"(?i)^.*?:\s*"#, with: "", options: .regularExpression)
                 studentInteraction.append(contentsOf: extractItems(from: content))
-            } else if let range = trimmed.range(of: #"(?i)(?:Feedback y reflexi[oó]n|Debrief)\s*:\s*(.+)$"#, options: .regularExpression) {
+            } else if let range = trimmed.range(of: #"(?i)(?:Feedback y reflexi[oó]n|Debrief)[^:]*:\s*(.+)$"#, options: .regularExpression) {
                 let matched = String(trimmed[range])
                 let content = matched.replacingOccurrences(of: #"(?i)^.*?:\s*"#, with: "", options: .regularExpression)
                 debrief.append(contentsOf: extractItems(from: content))

@@ -22,6 +22,7 @@ struct PlannerSessionDetailProjection {
     let activities: [LearningSituationSessionActivityDraft]
     let timeline: [PlannerSessionTimelineBlock]
     let supportSections: [PlannerSessionSupportSection]
+    let clilChunks: LearningSituationCLILChunksDraft?
     let activityCount: Int
 
     init(plan: LearningSituationSessionPlan) {
@@ -58,6 +59,19 @@ struct PlannerSessionDetailProjection {
         self.supportSections = sections
             .filter { !Self.isTimelineSection($0) && !Self.isEvidenceSection($0) }
             .compactMap(PlannerSessionSupportSection.init)
+
+        // Recuperar clilChunks del payload si existen, o intentar extraerlos de las secciones
+        if let directChunks = payload.clilChunks, !directChunks.isEmpty {
+            self.clilChunks = directChunks
+        } else {
+            let clilSections = sections.filter { section in
+                let title = Self.normalized(section.title)
+                return title.contains("chunk") || title.contains("clil") || title.contains("bilingue")
+            }
+            let clilText = clilSections.flatMap(\.lines).joined(separator: "\n")
+            self.clilChunks = LearningSituationSessionDevelopmentPayload.parseCLILChunks(from: clilText)
+        }
+
         self.activityCount = normalizedActivities.isEmpty
             ? timeline.reduce(0) { $0 + $1.steps.count }
             : normalizedActivities.count

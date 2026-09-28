@@ -255,7 +255,9 @@ extension NotebookModuleView {
                     minWidth: 80,
                     maxWidth: 400
                 ) { newWidth in
-                    updateColumnWidth(column, width: newWidth)
+                    updateColumnLiveWidth(column, width: newWidth)
+                } onWidthCommit: { finalWidth in
+                    updateColumnWidth(column, width: finalWidth)
                 } content: {
                     headerChip(
                         title: column.title,

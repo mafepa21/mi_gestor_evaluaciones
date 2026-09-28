@@ -293,22 +293,28 @@ struct NotebookResizableHeader<Content: View>: View {
     let minWidth: CGFloat
     let maxWidth: CGFloat
     let onWidthChange: (CGFloat) -> Void
+    let onWidthCommit: (CGFloat) -> Void
     let content: Content
 
     @State private var isDragging = false
     @State private var dragStartWidth: CGFloat = 0
+    @State private var lastDraggedWidth: CGFloat = 0
 
+    /// `onWidthChange` se llama en cada movimiento y debe ser barato (solo
+    /// layout); `onWidthCommit` se llama una vez al soltar y es donde se persiste.
     init(
         width: CGFloat,
         minWidth: CGFloat = 80,
         maxWidth: CGFloat = 400,
         onWidthChange: @escaping (CGFloat) -> Void,
+        onWidthCommit: @escaping (CGFloat) -> Void,
         @ViewBuilder content: () -> Content
     ) {
         self.width = width
         self.minWidth = minWidth
         self.maxWidth = maxWidth
         self.onWidthChange = onWidthChange
+        self.onWidthCommit = onWidthCommit
         self.content = content()
     }
 
@@ -328,10 +334,19 @@ struct NotebookResizableHeader<Content: View>: View {
                                 isDragging = true
                                 dragStartWidth = width
                             }
-                            onWidthChange(min(maxWidth, max(minWidth, dragStartWidth + value.translation.width)))
+                            let nextWidth = min(maxWidth, max(minWidth, dragStartWidth + value.translation.width))
+                            lastDraggedWidth = nextWidth
+                            var transaction = Transaction(animation: nil)
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) {
+                                onWidthChange(nextWidth)
+                            }
                         }
                         .onEnded { _ in
                             isDragging = false
+                            guard lastDraggedWidth > 0 else { return }
+                            onWidthCommit(lastDraggedWidth)
+                            lastDraggedWidth = 0
                         }
                 )
         }

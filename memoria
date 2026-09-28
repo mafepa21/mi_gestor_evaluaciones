@@ -2,6 +2,25 @@
 
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
+## Avance 2026-09-28 - Consolidación Total en Develop: PR #263 (IA Fase 3), Cadena Local de Estabilidad/Asistencia y Pulido Visual del Cuaderno
+
+Resumen:
+- Qué cambio se hizo:
+  1. Integración y cierre del PR #263 (`codex/ai-foundation-phase3-calibration-grouping`): Explicabilidad pedagógica on-device, feedback loop docente con calibración continua en Core ML, generador inteligente de agrupamientos cooperativos (Kagan / balanceado) y detección on-device de distorsión evaluativa.
+  2. Integración de la cadena local de Asistencia Relámpago: rediseño con filas compactas de 52pt, avatar táctil semántico, atajos rápidos, persistencia y toggle de desmarcado en iOS/iPadOS y macOS (`AttendanceCompactRow`, `MacAttendanceView`).
+  3. Integración de correcciones críticas de estabilidad: eliminación del crash de constraints de AppKit en macOS mediante `HStack + Divider` en `MacAttendanceView`, erradicación de congelación en tiempo de ejecución de Swift al entrar a 'Hoy' en iPad (`AnyView` type-erasure), resolución de EXC_BAD_ACCESS en el skeleton de carga y corrección de persistencia en llavero de macOS con `-X` para SyncLAN.
+  4. Integración del soporte pedagógico y curricular de Chunks Lingüísticos (CLIL / Educación Física bilingüe) en el Planificador (`PlannerSessionCLILChunksCard`).
+  5. Integración del pulido visual del Cuaderno proveniente del worktree de Claude: contenedor Liquid Glass en barra de comandos, badge dinámico de filtros activos, selección de pestañas con feedback háptico (`AppleInteractionFeedback.play(.selection)`) y estilo unificado de tarjetas en `NotebookStudentInspector` con `.ultraThinMaterial` (`notebookInspectorCard`).
+- Por qué importa:
+  - Unifica en la rama de integración `develop` todas las líneas de trabajo paralelas desarrolladas por los distintos agentes, dejando el árbol completamente sincronizado con el repositorio remoto, con CI verde y builds duales Apple pasando al 100%.
+- Dónde vive el cambio:
+  - Todo el árbol de desarrollo bajo la rama `develop`.
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`: macOS Native / Catalyst (✓ COMPILADO CORRECTAMENTE), iOS Simulator (✓ COMPILADO CORRECTAMENTE).
+  - `xcodebuild -scheme MiGestorPlannerTests -destination 'platform=macOS' -only-testing:MiGestorPlannerTests/CooperativeGroupAndCalibrationTests`: 4 tests ejecutados, 0 fallos (TEST SUCCEEDED).
+  - `cd kmp && ./gradlew :shared:desktopTest`: 4 tareas ejecutadas, 0 fallos (BUILD SUCCESSFUL).
+  - Sincronización remota `origin/develop` verificada.
+
 ## Avance 2026-09-28 - Erradicación de Congelación en Runtime de Swift al Entrar a 'Hoy' en iPad
 
 Resumen:

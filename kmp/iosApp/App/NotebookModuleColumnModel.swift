@@ -20,6 +20,9 @@ final class NotebookGridLayoutModel: ObservableObject {
 
     @Published private(set) var collapsedCategoryIds: Set<String> = []
     @Published private(set) var columnWidths: [String: CGFloat] = [:]
+    /// Las filas del grid son `Equatable` por firma: sin esta revisión en la firma
+    /// no se redibujarían al cambiar un ancho y quedarían descuadradas con la cabecera.
+    private(set) var columnWidthsRevision = 0
 
     private var storageClassKey = "no-class"
     private var renderCache: NotebookGridRenderModel?
@@ -426,7 +429,9 @@ final class NotebookGridLayoutModel: ObservableObject {
 
     func updateColumnWidth(_ column: NotebookColumnDefinition, width: CGFloat) -> CGFloat {
         let clampedWidth = min(Metrics.maximumColumnWidth, max(Metrics.minimumColumnWidth, width))
+        guard columnWidths[column.id] != clampedWidth else { return clampedWidth }
         columnWidths[column.id] = clampedWidth
+        columnWidthsRevision &+= 1
         return clampedWidth
     }
 
@@ -769,6 +774,10 @@ extension NotebookModuleView {
             emptyCellPolicy: column.emptyCellPolicy,
             trace: column.trace
         )
+    }
+
+    func updateColumnLiveWidth(_ column: NotebookColumnDefinition, width: CGFloat) {
+        _ = gridLayoutModel.updateColumnWidth(column, width: width)
     }
 
     func updateColumnWidth(_ column: NotebookColumnDefinition, width: CGFloat) {

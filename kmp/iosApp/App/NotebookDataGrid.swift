@@ -293,22 +293,29 @@ struct NotebookResizableHeader<Content: View>: View {
     let minWidth: CGFloat
     let maxWidth: CGFloat
     let onWidthChange: (CGFloat) -> Void
+    let onWidthCommit: (CGFloat) -> Void
     let content: Content
 
     @State private var isDragging = false
     @State private var dragStartWidth: CGFloat = 0
+    @State private var lastDraggedWidth: CGFloat = 0
+    @GestureState private var isGestureActive = false
 
+    /// `onWidthChange` se llama en cada movimiento y debe ser barato (solo
+    /// layout); `onWidthCommit` se llama una vez al soltar y es donde se persiste.
     init(
         width: CGFloat,
         minWidth: CGFloat = 80,
         maxWidth: CGFloat = 400,
         onWidthChange: @escaping (CGFloat) -> Void,
+        onWidthCommit: @escaping (CGFloat) -> Void,
         @ViewBuilder content: () -> Content
     ) {
         self.width = width
         self.minWidth = minWidth
         self.maxWidth = maxWidth
         self.onWidthChange = onWidthChange
+        self.onWidthCommit = onWidthCommit
         self.content = content()
     }
 
@@ -323,19 +330,41 @@ struct NotebookResizableHeader<Content: View>: View {
                 .modifier(NotebookResizeCursorModifier())
                 .gesture(
                     DragGesture(minimumDistance: 2)
+                        .updating($isGestureActive) { _, active, _ in
+                            active = true
+                        }
                         .onChanged { value in
                             if !isDragging {
                                 isDragging = true
                                 dragStartWidth = width
                             }
-                            onWidthChange(min(maxWidth, max(minWidth, dragStartWidth + value.translation.width)))
+                            let nextWidth = min(maxWidth, max(minWidth, dragStartWidth + value.translation.width))
+                            lastDraggedWidth = nextWidth
+                            var transaction = Transaction(animation: nil)
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) {
+                                onWidthChange(nextWidth)
+                            }
                         }
                         .onEnded { _ in
-                            isDragging = false
+                            finishDrag()
                         }
                 )
         }
         .frame(width: width)
+        // `onEnded` no llega si el sistema cancela el gesto; `@GestureState`
+        // vuelve a `false` en ambos casos.
+        .appOnChange(of: isGestureActive) { active in
+            if !active { finishDrag() }
+        }
+    }
+
+    private func finishDrag() {
+        isDragging = false
+        guard lastDraggedWidth > 0 else { return }
+        let finalWidth = lastDraggedWidth
+        lastDraggedWidth = 0
+        onWidthCommit(finalWidth)
     }
 }
 

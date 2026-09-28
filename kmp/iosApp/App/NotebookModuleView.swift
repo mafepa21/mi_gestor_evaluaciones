@@ -2248,6 +2248,7 @@ struct NotebookModuleView: View {
         [
             "\(isAttendanceQuickMode)",
             "\(structuralGridRevision)",
+            "widths:\(gridLayoutModel.columnWidthsRevision)",
             "columns:\(data.sheet.columns.count)",
             "rows:\(data.sheet.rows.count)"
         ].joined(separator: "¬")

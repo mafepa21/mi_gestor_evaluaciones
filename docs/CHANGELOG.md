@@ -39,6 +39,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Cuaderno: celdas del grid sin `AnyView`**: `rowCell` (`NotebookModuleGridCells.swift`) pasa a `@ViewBuilder` y delega en `columnRowCell` y `collapsedCategoryRowCell`, con tipos concretos que SwiftUI puede comparar. El fondo de cada celda deja de ser un `Rectangle` hermano en un `ZStack` y pasa a `.background`, una capa menos por celda. Se elimina `NotebookDynamicCellsRow.swift`, que no usaba ninguna pantalla.
+- **Cuaderno: cambiar de pestaña no anima el grid entero**: `NotebookTabButton` ya no envuelve `onSelect` en `withAnimation`. Como `bridge.selectedNotebookTabId` cambia en el acto, la animación arrastraba la reconstrucción de todas las celdas visibles. El deslizamiento de la pastilla se conserva con `.animation(_:value: activeTabId)` limitado al subárbol de `NotebookTabStrip`.
+- **Cuaderno: redimensionar una columna ya no guarda en cada movimiento**: `NotebookResizableHeader` separa `onWidthChange` (solo layout, sin animación) de `onWidthCommit` (al soltar). Antes cada píxel de arrastre llamaba a `bridge.saveColumn` y recargaba el cuaderno. La revisión de anchos entra en la firma de las filas (`gridStructuralInvalidationKey`) para que celdas y cabecera sigan alineadas durante el arrastre.
+- **Cuaderno: índice por columna en cada fila del grid**: `NotebookTableRow.lookup` (`NotebookModuleTypes.swift`) construye una sola vez por fila diccionarios de celdas y notas por columna y por evaluación. Las lecturas por celda visible de `NotebookModuleDisplayFormatting.swift`, `NotebookModuleGridCells.swift` y `NotebookEditableTableCell.swift` pasan de recorrer `persistedCells`/`persistedGrades` a una consulta directa, con la misma regla de "primera coincidencia".
 - **Rediseño visual y adaptativo del Dashboard docente (Organic Precision v2.2)**:
   - `MacDashboardView.swift`: Unificación completa del Dashboard nativo de macOS con paridad de experiencia: cabecera con saludo horario dinámico y fecha localizada en español, selector segmented reactivo de modos (`Auto`, `Clase`, `Despacho`), Modo Clase centrado (`DashboardClassroomView` con ancho acotado a 680pt) y Modo Despacho reestructurado con franja compacta (`DashboardCompactHeroStrip`), KPIs compartidos a ancho completo y grid responsivo en 3 columnas analíticas (Agenda & Grupos, Radar IA & LOMLOE, Pendientes & Riesgo & Sistema) con fallback balanceado a 2 columnas. Eliminación de estructuras redundantes obsoletas (`DashboardHeroNowCard` y `DashboardQuickActionButton`).
   - `DashboardClassroomView.swift`: Nueva vista cockpit ultra-enfocada para el aula con tarjeta central dominante, tipografía grande (36pt rounded), tiempo transcurrido en tiempo real con `DashboardTimeProgressBar`, dos botones táctiles prominentes de 56pt (*Pasar lista* y *Nueva observación*) y barra inferior contextual con área táctil accesible.
@@ -64,6 +68,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Rendimiento del grid del Cuaderno: `./scripts/verify_apple_builds.sh` compila macOS e iOS Simulator antes y después del cambio, sin avisos nuevos en los archivos tocados. No se midió con Instruments ni se probó a mano en iPad o Mac con 35 alumnos y 20 columnas; queda pendiente de QA manual.
 - Pasaron, entre otras: ida y vuelta de sesión en base vacía, borrado tras reiniciar el adaptador, `GradePartialSyncTest`, `LocalSyncServerAdoptionTest`, `IsoWeekHelperTest`, `GetWeeklyPlannerUseCaseTest`, `DesktopKeychainCommandTest`, y pruebas sueltas de `MiGestorPlannerTests` en macOS (`** TEST SUCCEEDED **`).
 - No se midieron 60 fps con Instruments. No se hizo una prueba manual de matar la app.
 

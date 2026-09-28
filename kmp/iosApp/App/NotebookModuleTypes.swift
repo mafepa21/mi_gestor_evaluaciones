@@ -65,8 +65,64 @@ struct NotebookTableRow: Identifiable {
     let groupName: String
     var isFirstInGroup: Bool = false
     var groupMemberCount: Int = 0
+    private let lookupBox = NotebookRowLookupBox()
 
     var id: Int64 { student.id }
+
+    /// Índices por columna de `row`, construidos una vez por fila y compartidos
+    /// entre copias del struct. `row` es inmutable, así que nunca quedan obsoletos.
+    var lookup: NotebookRowLookup { lookupBox.lookup(for: row) }
+}
+
+struct NotebookRowLookup {
+    let cellsByColumnId: [String: PersistedNotebookCell]
+    let gradesByColumnId: [String: Grade]
+    let gradesByEvaluationId: [Int64: Grade]
+    let cellsByEvaluationId: [Int64: NotebookCell]
+
+    /// Conserva la primera coincidencia de cada clave, igual que `first(where:)`.
+    init(row: NotebookRow) {
+        var cellsByColumnId: [String: PersistedNotebookCell] = [:]
+        cellsByColumnId.reserveCapacity(row.persistedCells.count)
+        for cell in row.persistedCells where cellsByColumnId[cell.columnId] == nil {
+            cellsByColumnId[cell.columnId] = cell
+        }
+
+        var gradesByColumnId: [String: Grade] = [:]
+        var gradesByEvaluationId: [Int64: Grade] = [:]
+        gradesByColumnId.reserveCapacity(row.persistedGrades.count)
+        for grade in row.persistedGrades {
+            if gradesByColumnId[grade.columnId] == nil {
+                gradesByColumnId[grade.columnId] = grade
+            }
+            if let evaluationId = grade.evaluationId?.int64Value,
+               gradesByEvaluationId[evaluationId] == nil {
+                gradesByEvaluationId[evaluationId] = grade
+            }
+        }
+
+        var cellsByEvaluationId: [Int64: NotebookCell] = [:]
+        cellsByEvaluationId.reserveCapacity(row.cells.count)
+        for cell in row.cells where cellsByEvaluationId[cell.evaluationId] == nil {
+            cellsByEvaluationId[cell.evaluationId] = cell
+        }
+
+        self.cellsByColumnId = cellsByColumnId
+        self.gradesByColumnId = gradesByColumnId
+        self.gradesByEvaluationId = gradesByEvaluationId
+        self.cellsByEvaluationId = cellsByEvaluationId
+    }
+}
+
+private final class NotebookRowLookupBox {
+    private var cached: NotebookRowLookup?
+
+    func lookup(for row: NotebookRow) -> NotebookRowLookup {
+        if let cached { return cached }
+        let built = NotebookRowLookup(row: row)
+        cached = built
+        return built
+    }
 }
 
 enum NotebookDeletionKind {

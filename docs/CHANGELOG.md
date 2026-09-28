@@ -39,6 +39,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Cuaderno: cambiar de pestaña no anima el grid entero**: `NotebookTabButton` ya no envuelve `onSelect` en `withAnimation`. Como `bridge.selectedNotebookTabId` cambia en el acto, la animación arrastraba la reconstrucción de todas las celdas visibles. El deslizamiento de la pastilla se conserva con `.animation(_:value: activeTabId)` limitado al subárbol de `NotebookTabStrip`.
 - **Cuaderno: redimensionar una columna ya no guarda en cada movimiento**: `NotebookResizableHeader` separa `onWidthChange` (solo layout, sin animación) de `onWidthCommit` (al soltar). Antes cada píxel de arrastre llamaba a `bridge.saveColumn` y recargaba el cuaderno. La revisión de anchos entra en la firma de las filas (`gridStructuralInvalidationKey`) para que celdas y cabecera sigan alineadas durante el arrastre.
 - **Cuaderno: índice por columna en cada fila del grid**: `NotebookTableRow.lookup` (`NotebookModuleTypes.swift`) construye una sola vez por fila diccionarios de celdas y notas por columna y por evaluación. Las lecturas por celda visible de `NotebookModuleDisplayFormatting.swift`, `NotebookModuleGridCells.swift` y `NotebookEditableTableCell.swift` pasan de recorrer `persistedCells`/`persistedGrades` a una consulta directa, con la misma regla de "primera coincidencia".
 - **Rediseño visual y adaptativo del Dashboard docente (Organic Precision v2.2)**:

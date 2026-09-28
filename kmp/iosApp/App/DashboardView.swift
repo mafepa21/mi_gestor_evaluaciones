@@ -938,7 +938,6 @@ struct DashboardView: View {
                 .cornerRadius(12)
             }
         }
-        .redacted(reason: .placeholder)
     }
 
     private var dashboardRadarSkeleton: some View {
@@ -967,24 +966,19 @@ struct DashboardView: View {
             .background(EvaluationDesign.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(appCardBackground(for: colorScheme))
+        .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(IOSAppStyle.cardBorder, lineWidth: 1)
         )
         .shadow(color: IOSAppStyle.shadow, radius: 12, x: 0, y: 4)
-        .redacted(reason: .placeholder)
     }
 
+    @ViewBuilder
     private var dashboardListSkeleton: some View {
         VStack(spacing: EvaluationDesign.cardSpacing) {
             dashboardSkeletonBlock(rowCount: 3)
-
-            let columns = [
-                GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
-                GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
-                GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top)
-            ]
 
             if isCompactWidth {
                 VStack(spacing: EvaluationDesign.cardSpacing) {
@@ -993,14 +987,21 @@ struct DashboardView: View {
                     dashboardSkeletonBlock(rowCount: 3)
                 }
             } else {
-                LazyVGrid(columns: columns, alignment: .center, spacing: EvaluationDesign.cardSpacing) {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
+                        GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
+                        GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top)
+                    ],
+                    alignment: .center,
+                    spacing: EvaluationDesign.cardSpacing
+                ) {
                     dashboardSkeletonBlock(rowCount: 3)
                     dashboardSkeletonBlock(rowCount: 3)
                     dashboardSkeletonBlock(rowCount: 3)
                 }
             }
         }
-        .redacted(reason: .placeholder)
     }
 
     private func dashboardSkeletonBlock(rowCount: Int) -> some View {
@@ -1031,7 +1032,7 @@ struct DashboardView: View {
             }
         }
         .padding(EvaluationDesign.cardSpacing)
-        .background(.regularMaterial)
+        .background(appCardBackground(for: colorScheme))
         .cornerRadius(EvaluationDesign.innerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)

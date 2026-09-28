@@ -144,6 +144,27 @@ struct LearningSituationSessionSectionDraft: Identifiable, Codable {
     }
 }
 
+/// Chunks lingüísticos (CLIL / AICLE / Pista bilingüe) estructurados en sus tres dimensiones pedagógicas.
+struct LearningSituationCLILChunksDraft: Codable, Equatable, Hashable {
+    var teacherCues: [String]
+    var studentInteraction: [String]
+    var debrief: [String]
+
+    init(
+        teacherCues: [String] = [],
+        studentInteraction: [String] = [],
+        debrief: [String] = []
+    ) {
+        self.teacherCues = teacherCues
+        self.studentInteraction = studentInteraction
+        self.debrief = debrief
+    }
+
+    var isEmpty: Bool {
+        teacherCues.isEmpty && studentInteraction.isEmpty && debrief.isEmpty
+    }
+}
+
 /// Referencia estable a una imagen embebida en el DOCX original. El binario sigue viviendo
 /// dentro del documento cacheado; el payload solo conserva la relación y el contexto que
 /// permiten volver a resolverla sin inflar cada plan guardado con base64.
@@ -389,6 +410,8 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
     var closure: String
     var visuals: [LearningSituationSessionVisualDraft]
     var sequenceRoute: LearningSituationWeeklySequenceRoute?
+    /// Chunks lingüísticos bilingües estructurados (Teacher cues, Student interaction, Debrief)
+    var clilChunks: LearningSituationCLILChunksDraft?
     /// SHA-256 del DOCX que produjo este payload. Es opcional para leer payloads históricos.
     var sourceDocumentSHA256: String?
 
@@ -404,6 +427,7 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
         closure: String = "",
         visuals: [LearningSituationSessionVisualDraft] = [],
         sequenceRoute: LearningSituationWeeklySequenceRoute? = nil,
+        clilChunks: LearningSituationCLILChunksDraft? = nil,
         sourceDocumentSHA256: String? = nil
     ) {
         self.schema = schema
@@ -417,12 +441,13 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
         self.closure = closure
         self.visuals = visuals
         self.sequenceRoute = sequenceRoute
+        self.clilChunks = clilChunks
         self.sourceDocumentSHA256 = sourceDocumentSHA256
     }
 
     private enum CodingKeys: String, CodingKey {
         case schema, schemaVersion, organisation, coreKnowledge, assessment
-        case sections, activities, guidingQuestions, closure, visuals, sequenceRoute, sourceDocumentSHA256
+        case sections, activities, guidingQuestions, closure, visuals, sequenceRoute, clilChunks, sourceDocumentSHA256
     }
 
     init(from decoder: Decoder) throws {
@@ -438,6 +463,7 @@ struct LearningSituationSessionDevelopmentPayload: Codable {
         closure = try container.decodeIfPresent(String.self, forKey: .closure) ?? ""
         visuals = try container.decodeIfPresent([LearningSituationSessionVisualDraft].self, forKey: .visuals) ?? []
         sequenceRoute = try container.decodeIfPresent(LearningSituationWeeklySequenceRoute.self, forKey: .sequenceRoute)
+        clilChunks = try container.decodeIfPresent(LearningSituationCLILChunksDraft.self, forKey: .clilChunks)
         sourceDocumentSHA256 = try container.decodeIfPresent(String.self, forKey: .sourceDocumentSHA256)
     }
 
@@ -723,6 +749,62 @@ enum NarrativeSessionActivityCompactor {
         }
         return ""
     }
+
+    /// Extrae los chunks lingüísticos bilingües estructurados (Teacher cues, Student interaction, Debrief)
+    /// a partir de texto o líneas del documento de sesión.
+    static func parseCLILChunks(from text: String) -> LearningSituationCLILChunksDraft? {
+        guard !text.isEmpty else { return nil }
+        var teacherCues: [String] = []
+        var studentInteraction: [String] = []
+        var debrief: [String] = []
+
+        let lines = text.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+
+            if let range = trimmed.range(of: #"(?i)(?:Pautas de acci[oó]n docente|Teacher Cues)\s*:\s*(.+)$"#, options: .regularExpression) {
+                let matched = String(trimmed[range])
+                let content = matched.replacingOccurrences(of: #"(?i)^.*?:\s*"#, with: "", options: .regularExpression)
+                teacherCues.append(contentsOf: extractItems(from: content))
+            } else if let range = trimmed.range(of: #"(?i)(?:Comunicaci[oó]n en juego|Student Interaction)\s*:\s*(.+)$"#, options: .regularExpression) {
+                let matched = String(trimmed[range])
+                let content = matched.replacingOccurrences(of: #"(?i)^.*?:\s*"#, with: "", options: .regularExpression)
+                studentInteraction.append(contentsOf: extractItems(from: content))
+            } else if let range = trimmed.range(of: #"(?i)(?:Feedback y reflexi[oó]n|Debrief)\s*:\s*(.+)$"#, options: .regularExpression) {
+                let matched = String(trimmed[range])
+                let content = matched.replacingOccurrences(of: #"(?i)^.*?:\s*"#, with: "", options: .regularExpression)
+                debrief.append(contentsOf: extractItems(from: content))
+            }
+        }
+
+        let draft = LearningSituationCLILChunksDraft(
+            teacherCues: teacherCues,
+            studentInteraction: studentInteraction,
+            debrief: debrief
+        )
+        return draft.isEmpty ? nil : draft
+    }
+
+    private static func extractItems(from text: String) -> [String] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        // Si contiene citas entre comillas tipo "Item 1", "Item 2"
+        let pattern = #"["“]([^"”]+)["”]"#
+        if let regex = try? NSRegularExpression(pattern: pattern) {
+            let nsRange = NSRange(trimmed.startIndex..., in: trimmed)
+            let matches = regex.matches(in: trimmed, range: nsRange)
+            if !matches.isEmpty {
+                return matches.compactMap { match in
+                    guard let r = Range(match.range(at: 1), in: trimmed) else { return nil }
+                    let item = String(trimmed[r]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    return item.isEmpty ? nil : item
+                }
+            }
+        }
+        // Fallback: separar por comas si no hay comillas
+        return [trimmed]
+    }
 }
 
 enum LearningSituationWeeklyBlockRole: String, Codable, CaseIterable, Hashable {
@@ -939,6 +1021,10 @@ struct LearningSituationDocumentImportBatch {
 }
 
 struct LearningSituationDocumentImportService {
+    static func parseCLILChunks(from text: String) -> LearningSituationCLILChunksDraft? {
+        NarrativeSessionActivityCompactor.parseCLILChunks(from: text)
+    }
+
     func preview(from url: URL) throws -> LearningSituationImportDraft {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }

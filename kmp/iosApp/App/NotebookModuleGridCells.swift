@@ -915,7 +915,7 @@ extension NotebookModuleView {
             )
         default:
             let val = displayValue(for: item, column: column)
-            let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+            let persistedCell = item.lookup.cellsByColumnId[column.id]
             return NotebookCellDisplaySnapshot(
                 text: !val.isEmpty ? val : (persistedCell?.textValue ?? persistedCell?.displayValue ?? ""),
                 stampIcon: stampIcon,

@@ -631,7 +631,7 @@ private struct NotebookStatefulEditableTableCell: View {
     let onAttendanceSaved: () -> Void
 
     private var persistedCell: PersistedNotebookCell? {
-        item.row.persistedCells.first(where: { $0.columnId == column.id })
+        item.lookup.cellsByColumnId[column.id]
     }
 
     @State private var numericDraft = ""
@@ -1989,7 +1989,7 @@ private struct NotebookReadOnlyCell: View, Equatable {
     let onOpenStructuredInstrument: () -> Void
 
     private var persistedCell: PersistedNotebookCell? {
-        item.row.persistedCells.first(where: { $0.columnId == column.id })
+        item.lookup.cellsByColumnId[column.id]
     }
 
     private var displayText: String {
@@ -2088,7 +2088,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
     }
 
     private var persistedCell: PersistedNotebookCell? {
-        item.row.persistedCells.first(where: { $0.columnId == column.id })
+        item.lookup.cellsByColumnId[column.id]
     }
 
     var body: some View {

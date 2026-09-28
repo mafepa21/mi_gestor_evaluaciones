@@ -445,7 +445,11 @@ extension KmpBridge {
         pairedServerFingerprint = result.certificateFingerprint
 
         do {
-            try await runSyncOperationWithTimeout(seconds: 12) {
+            // El primer pull descarga TODO el dataset (since=0). Con datasets
+            // grandes (~4 MB / ~4 000 cambios) la transferencia WiFi + aplicación
+            // en SQLite local puede superar los 12 s fácilmente. 45 s da margen
+            // suficiente para redes domésticas reales.
+            try await runSyncOperationWithTimeout(seconds: 45) {
                 try await self.performPullSync(
                     silent: true,
                     sinceEpochMsOverride: 0,

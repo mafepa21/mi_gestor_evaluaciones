@@ -380,8 +380,8 @@ final class LanSyncClient {
     private func makeSession(pinnedFingerprint: String?) -> URLSession {
         let delegate = PinnedTLSDelegate(pinnedFingerprint: pinnedFingerprint)
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 12
-        config.timeoutIntervalForResource = 18
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
         config.waitsForConnectivity = false
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(

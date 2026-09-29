@@ -9,6 +9,16 @@ struct NotebookRenderCacheKey: Hashable {
     let structuralRevision: Int
 }
 
+struct NotebookDataSignatures {
+    let data: NotebookUiStateData
+    let columns: Int
+    let categories: Int
+    let hiddenColumns: Int
+    let rows: Int
+    let groups: Int
+    let members: Int
+}
+
 final class NotebookGridLayoutModel: ObservableObject {
     private enum Metrics {
         static let fixedZoneHorizontalPadding: CGFloat = 32
@@ -26,7 +36,26 @@ final class NotebookGridLayoutModel: ObservableObject {
 
     private var storageClassKey = "no-class"
     private var renderCache: NotebookGridRenderModel?
+    private var signaturesCache: NotebookDataSignatures?
     private var rowsCache: NotebookVisibleRowsCache?
+
+    /// Firmas de `data` calculadas una sola vez por instancia de estado Kotlin (inmutable).
+    /// Evita recalcular ordenaciones y hashes de todas las filas en cada `body`.
+    func signatures(for data: NotebookUiStateData) -> NotebookDataSignatures {
+        if let cached = signaturesCache, cached.data === data { return cached }
+        let sheet = data.sheet
+        let computed = NotebookDataSignatures(
+            data: data,
+            columns: Self.version(sheet.columns.map { "\($0.id):\($0.order):\($0.visibility):\($0.isPinned):\($0.categoryId ?? ""):\($0.widthDp)" }),
+            categories: Self.version(sheet.columnCategories.map { "\($0.id):\($0.tabId):\($0.order):\($0.isCollapsed)" }),
+            hiddenColumns: Self.version(sheet.columns.map { "\($0.id):\($0.visibility):\($0.isHidden):\($0.isArchived)" }),
+            rows: Self.rowsVersion(sheet.rows),
+            groups: Self.version(sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
+            members: Self.version(sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" })
+        )
+        signaturesCache = computed
+        return computed
+    }
 
     func configure(classId: Int64?) {
         let nextKey = classId.map(String.init) ?? "no-class"
@@ -72,8 +101,8 @@ final class NotebookGridLayoutModel: ObservableObject {
             renderCacheKey: renderCacheKey,
             viewPreset: viewPreset.rawValue,
             isCompact: isCompact,
-            columnsVersion: Self.version(data.sheet.columns.map { "\($0.id):\($0.order):\($0.visibility):\($0.isPinned):\($0.categoryId ?? ""):\($0.widthDp)" }),
-            categoriesVersion: Self.version(data.sheet.columnCategories.map { "\($0.id):\($0.tabId):\($0.order):\($0.isCollapsed)" }),
+            columnsVersion: signatures(for: data).columns,
+            categoriesVersion: signatures(for: data).categories,
             collapsedCategoriesVersion: Self.version(Array(collapsedCategoryIds)),
             fixedMode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "none"
         )
@@ -91,8 +120,8 @@ final class NotebookGridLayoutModel: ObservableObject {
             activeTabId: activeTabId,
             viewPreset: viewPreset.rawValue,
             isCompact: isCompact,
-            columnsVersion: Self.version(data.sheet.columns.map { "\($0.id):\($0.order):\($0.visibility):\($0.isPinned):\($0.categoryId ?? ""):\($0.widthDp)" }),
-            categoriesVersion: Self.version(data.sheet.columnCategories.map { "\($0.id):\($0.tabId):\($0.order):\($0.isCollapsed)" }),
+            columnsVersion: signatures(for: data).columns,
+            categoriesVersion: signatures(for: data).categories,
             collapsedCategoriesVersion: Self.version(Array(collapsedCategoryIds)),
             fixedMode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "none"
         )
@@ -149,9 +178,9 @@ final class NotebookGridLayoutModel: ObservableObject {
             selectedGroupId: selectedGroupId,
             hiddenColumnsRevision: renderCacheKey?.hiddenColumnsRevision ?? 0,
             structuralRevision: renderCacheKey?.structuralRevision ?? 0,
-            rowsVersion: Self.rowsVersion(data.sheet.rows),
-            groupsVersion: Self.version(data.sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
-            membersVersion: Self.version(data.sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" })
+            rowsVersion: signatures(for: data).rows,
+            groupsVersion: signatures(for: data).groups,
+            membersVersion: signatures(for: data).members
         )
         if let rowsCache, rowsCache.key == key {
             NotebookGridPerformanceDebug.event("visibleRows hit")

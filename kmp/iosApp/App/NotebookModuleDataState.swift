@@ -92,12 +92,7 @@ extension NotebookModuleView {
     }
 
     func notebookHiddenColumnsRevision(data: NotebookUiStateData) -> Int {
-        data.sheet.columns
-            .map { "\($0.id):\($0.visibility):\($0.isHidden):\($0.isArchived)" }
-            .sorted()
-            .reduce(17) { partial, part in
-                partial &* 31 &+ part.hashValue
-            }
+        gridLayoutModel.signatures(for: data).hiddenColumns
     }
 
     func cellAlignment(for segment: NotebookDisplaySegment) -> Alignment {

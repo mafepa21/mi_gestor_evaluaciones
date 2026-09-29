@@ -116,6 +116,9 @@ enum NotebookGridStyle {
     /// <5 suspenso · 5–6,9 aprobado · ≥7 notable+. Mismo corte de "aprobado" que
     /// ya usa el resto de la app (ver `averageState`); no es un umbral nuevo.
     static let gradeLow = appAdaptiveBrandColor(light: (0.86, 0.20, 0.18), dark: (1.0, 0.38, 0.36))
+    /// Rojo oscuro para el TEXTO de notas <5 (#d70015 en claro): el `gradeLow`
+    /// claro no llega a contraste AA sobre fondo blanco.
+    static let gradeLowText = appAdaptiveBrandColor(light: (0.843, 0.0, 0.082), dark: (1.0, 0.27, 0.23))
     static let gradeMid = appAdaptiveBrandColor(light: (0.79, 0.53, 0.0), dark: (0.94, 0.67, 0.19))
     static let gradeHigh = appAdaptiveBrandColor(light: (0.12, 0.60, 0.32), dark: (0.28, 0.80, 0.50))
 

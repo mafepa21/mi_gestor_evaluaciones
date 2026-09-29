@@ -965,7 +965,7 @@ private struct NotebookStatefulEditableTableCell: View {
                             Text(numericDraft.isEmpty ? "—" : numericDraft)
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
                                 .monospacedDigit()
-                                .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                                .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                                 .lineLimit(1)
                             if let physicalScore {
                                 Text("· \(IosFormatting.decimal(physicalScore))")
@@ -1077,7 +1077,7 @@ private struct NotebookStatefulEditableTableCell: View {
                     if isNotebookIndividualSummaryColumn(column) {
                         Text(textDraft.isEmpty ? "Síntesis pendiente" : textDraft)
                             .font(.system(size: 13))
-                            .foregroundStyle(textDraft.isEmpty ? .tertiary : .primary)
+                            .foregroundStyle(textDraft.isEmpty ? .secondary : .primary)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -1182,7 +1182,7 @@ private struct NotebookStatefulEditableTableCell: View {
                 Text(numericDraft.isEmpty ? "—" : numericDraft)
                     .font(NotebookGridStyle.cellFont)
                     .monospacedDigit()
-                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -1222,7 +1222,7 @@ private struct NotebookStatefulEditableTableCell: View {
                 Text(numericDraft.isEmpty ? "—" : numericDraft)
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                 if let physicalScore {
                     Text("· \(IosFormatting.decimal(physicalScore))")

@@ -13,6 +13,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Cuaderno: grid más fluido (menos repintados y menos coste por celda)**:
+  - `KmpBridgeObservationStores.swift`: los stores no repiten valores iguales y ya no crean ciclos de retención.
+  - `NotebookModuleColumnModel.swift`: firmas de columnas, filas y grupos calculadas una vez por estado, no en cada `body`.
+  - `NotebookEditableTableCell.swift`, `NotebookModuleGridCells.swift`: el foco se calcula en el padre; sombra y animación solo en la celda seleccionada; comparación de celdas sin `String(describing:)`.
+  - `NotebookDataGrid.swift`: al redimensionar una columna solo se mueve el tirador y el ancho se guarda al soltar (las celdas cambian de ancho al soltar, no durante el arrastre).
+  - La firma de fila incluye selección, resaltados, zebra, riesgo y asistencia. Enter desplaza hasta la celda antes de enfocar.
+  - Cambiar de grupo cancela tareas pendientes y comprueba el grupo antes de aplicar resultados. En modo grupos un alumno en dos grupos ya no se duplica.
+  - Verificación: `xcodebuild` esquemas `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK tras cada bloque. No se ejecutaron tests, no se midió con Instruments y no se probó a mano en la app.
+
 - **Planificador (macOS): toolbar fija en todas las secciones**:
   - `MacRootView.swift`: los controles de la toolbar (sección, navegación anterior/Hoy/siguiente, grupo, búsqueda, «Más» y «Nueva sesión») se pintan siempre, en el mismo orden y con ancho fijo. Lo que no aplica a la sección activa se deshabilita en vez de desaparecer, así que nada se desplaza al cambiar entre Semana, Día, Mes, Secuencia y Resumen.
   - Densidad del Gantt, Compartir resumen y las acciones de selección múltiple pasan al menú «Más», que es fijo.

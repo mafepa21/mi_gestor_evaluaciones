@@ -1022,6 +1022,7 @@ extension KmpBridge {
         }
 
         var index = NotebookCellValueIndex()
+        var persistedAnnotations: [String: (note: String?, icon: String?, uris: [String])] = [:]
 
         let columnTypesById = Dictionary(
             data.sheet.columns.map { ($0.id, $0.type) },
@@ -1048,6 +1049,9 @@ extension KmpBridge {
                     index.textByKey[key] = ""
                 }
                 index.checkByKey[key] = persisted.boolValue?.boolValue ?? false
+                if let annotation = persisted.annotation {
+                    persistedAnnotations[key] = (annotation.note, annotation.icon, annotation.attachmentUris)
+                }
             }
 
             for grade in row.persistedGrades {
@@ -1068,6 +1072,8 @@ extension KmpBridge {
                 }
             }
         }
+
+        pruneOptimisticDrafts(classId: data.sheet.classId, index: index, annotations: persistedAnnotations)
 
         for (key, value) in data.numericDrafts {
             guard let studentId = key.first?.int64Value, let columnId = key.second as String? else { continue }
@@ -1103,6 +1109,54 @@ extension KmpBridge {
         cachedNotebookStateIdentity = stateIdentity
         cachedNotebookCellValueIndex = index
         return index
+    }
+
+    /// Descarta los borradores optimistas cuando el dato persistido ya coincide con ellos
+    /// (o al cambiar de clase). Mientras no coincidan se mantienen, para evitar parpadeos.
+    private func pruneOptimisticDrafts(
+        classId: Int64,
+        index: NotebookCellValueIndex,
+        annotations: [String: (note: String?, icon: String?, uris: [String])]
+    ) {
+        if let previous = optimisticDraftsClassId, previous != classId {
+            optimisticGradeDrafts.removeAll()
+            optimisticTextDrafts.removeAll()
+            optimisticAnnotations.removeAll()
+        }
+        optimisticDraftsClassId = classId
+
+        func number(_ text: String) -> Double? {
+            Double(text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
+        }
+        for (key, draft) in optimisticGradeDrafts {
+            let persisted = index.numericByKey[key] ?? index.numericByEvalKey[key]
+            let matches: Bool
+            if let persisted {
+                matches = (number(draft) != nil && number(draft) == number(persisted)) || draft == persisted
+            } else {
+                matches = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            if matches { optimisticGradeDrafts[key] = nil }
+        }
+        for (key, draft) in optimisticTextDrafts {
+            let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+            var matches = draft == (index.textByKey[key] ?? "") || draft == (index.displayByKey[key] ?? "")
+            if !matches, let persistedCheck = index.checkByKey[key] {
+                if let b = Bool(trimmed) { matches = b == persistedCheck }
+                else if trimmed == "1" { matches = persistedCheck }
+                else if trimmed == "0" { matches = !persistedCheck }
+            }
+            if matches { optimisticTextDrafts[key] = nil }
+        }
+        for (key, draft) in optimisticAnnotations {
+            if let persisted = annotations[key] {
+                if persisted.note == draft.note && persisted.icon == draft.icon && persisted.uris == draft.attachmentUris {
+                    optimisticAnnotations[key] = nil
+                }
+            } else if draft.note == nil && draft.icon == nil && draft.attachmentUris.isEmpty {
+                optimisticAnnotations[key] = nil
+            }
+        }
     }
 
     func cellText(studentId: Int64, columnId: String) -> String {

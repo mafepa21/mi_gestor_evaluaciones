@@ -149,7 +149,7 @@ final class NotebookGridLayoutModel: ObservableObject {
             selectedGroupId: selectedGroupId,
             hiddenColumnsRevision: renderCacheKey?.hiddenColumnsRevision ?? 0,
             structuralRevision: renderCacheKey?.structuralRevision ?? 0,
-            rowsVersion: Self.version(data.sheet.rows.map { "\($0.student.id):\($0.student.firstName):\($0.student.lastName):\($0.weightedAverage ?? -1)" }),
+            rowsVersion: Self.rowsVersion(data.sheet.rows),
             groupsVersion: Self.version(data.sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
             membersVersion: Self.version(data.sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" })
         )
@@ -468,6 +468,40 @@ final class NotebookGridLayoutModel: ObservableObject {
                 .split(separator: ",")
                 .map(String.init) ?? []
         )
+    }
+
+    /// Firma barata de las filas: incluye alumno, media y el contenido de celdas y notas,
+    /// de modo que una edición que no cambia la media también invalide la caché.
+    private static func rowsVersion(_ rows: [NotebookRow]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(rows.count)
+        for row in rows {
+            hasher.combine(row.student.id)
+            hasher.combine(row.student.firstName)
+            hasher.combine(row.student.lastName)
+            hasher.combine(row.weightedAverage?.doubleValue)
+            for cell in row.cells {
+                hasher.combine(cell.evaluationId)
+                hasher.combine(cell.value?.doubleValue)
+            }
+            for cell in row.persistedCells {
+                hasher.combine(cell.columnId)
+                hasher.combine(cell.textValue)
+                hasher.combine(cell.boolValue?.boolValue)
+                hasher.combine(cell.ordinalValue)
+                hasher.combine(cell.displayValue)
+                hasher.combine(cell.iconValue)
+                hasher.combine(cell.annotation?.icon)
+                hasher.combine(cell.annotation?.note)
+                hasher.combine(cell.annotation?.attachmentUris.count ?? 0)
+            }
+            for grade in row.persistedGrades {
+                hasher.combine(grade.columnId)
+                hasher.combine(grade.evaluationId)
+                hasher.combine(grade.value?.doubleValue)
+            }
+        }
+        return hasher.finalize()
     }
 
     private static func version(_ parts: [String]) -> Int {

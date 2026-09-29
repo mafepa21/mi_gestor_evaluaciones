@@ -1079,7 +1079,34 @@ struct MacRootView: View {
             }
 
             if selectedFeature == .planner, let plannerToolbarActions {
+                // Toolbar fija: los mismos controles, en el mismo orden y con el
+                // mismo ancho en todas las secciones. Lo que no aplica se
+                // deshabilita en vez de desaparecer, para que nada se mueva.
                 let plannerSection = plannerToolbarActions.activeSection.wrappedValue
+                let usesSearch = plannerSection == .week || plannerSection == .day
+                let usesNavigation = plannerSection != .sequence
+                let navUnit = plannerSection == .day ? "Día" : (plannerSection == .month ? "Mes" : "Semana")
+                let navPrevious: () -> Void = {
+                    switch plannerSection {
+                    case .day: plannerToolbarActions.onPreviousDay()
+                    case .month: plannerToolbarActions.onPreviousMonth()
+                    default: plannerToolbarActions.onPreviousWeek()
+                    }
+                }
+                let navToday: () -> Void = {
+                    switch plannerSection {
+                    case .day: plannerToolbarActions.onTodayDay()
+                    case .month: plannerToolbarActions.onTodayMonth()
+                    default: plannerToolbarActions.onToday()
+                    }
+                }
+                let navNext: () -> Void = {
+                    switch plannerSection {
+                    case .day: plannerToolbarActions.onNextDay()
+                    case .month: plannerToolbarActions.onNextMonth()
+                    default: plannerToolbarActions.onNextWeek()
+                    }
+                }
 
                 Picker("Sección", selection: Binding(
                     get: { plannerToolbarActions.activeSection.wrappedValue },
@@ -1097,55 +1124,24 @@ struct MacRootView: View {
                 .frame(maxWidth: 480)
                 .help("Cambiar de sección del planificador (⌘⌥1–6)")
 
-                if plannerSection == .day {
-                    Button(action: plannerToolbarActions.onPreviousDay) {
-                        Label("Día anterior", systemImage: "chevron.left")
-                    }
-                    .keyboardShortcut(.leftArrow, modifiers: .command)
-                    .help("Día anterior (⌘←)")
-
-                    Button("Hoy", action: plannerToolbarActions.onTodayDay)
-                        .keyboardShortcut("t", modifiers: .command)
-                        .help("Ir a hoy (⌘T)")
-
-                    Button(action: plannerToolbarActions.onNextDay) {
-                        Label("Día siguiente", systemImage: "chevron.right")
-                    }
-                    .keyboardShortcut(.rightArrow, modifiers: .command)
-                    .help("Día siguiente (⌘→)")
-                } else if plannerSection == .month {
-                    Button(action: plannerToolbarActions.onPreviousMonth) {
-                        Label("Mes anterior", systemImage: "chevron.left")
-                    }
-                    .keyboardShortcut(.leftArrow, modifiers: .command)
-                    .help("Mes anterior (⌘←)")
-
-                    Button("Hoy", action: plannerToolbarActions.onTodayMonth)
-                        .keyboardShortcut("t", modifiers: .command)
-                        .help("Ir al mes actual (⌘T)")
-
-                    Button(action: plannerToolbarActions.onNextMonth) {
-                        Label("Mes siguiente", systemImage: "chevron.right")
-                    }
-                    .keyboardShortcut(.rightArrow, modifiers: .command)
-                    .help("Mes siguiente (⌘→)")
-                } else if plannerSection == .week || plannerSection == .summary {
-                    Button(action: plannerToolbarActions.onPreviousWeek) {
-                        Label("Semana anterior", systemImage: "chevron.left")
-                    }
-                    .keyboardShortcut(.leftArrow, modifiers: .command)
-                    .help("Semana anterior (⌘←)")
-
-                    Button("Hoy", action: plannerToolbarActions.onToday)
-                        .keyboardShortcut("t", modifiers: .command)
-                        .help("Ir a la semana actual (⌘T)")
-
-                    Button(action: plannerToolbarActions.onNextWeek) {
-                        Label("Semana siguiente", systemImage: "chevron.right")
-                    }
-                    .keyboardShortcut(.rightArrow, modifiers: .command)
-                    .help("Semana siguiente (⌘→)")
+                Button(action: navPrevious) {
+                    Label("\(navUnit) anterior", systemImage: "chevron.left")
                 }
+                .keyboardShortcut(.leftArrow, modifiers: .command)
+                .disabled(!usesNavigation)
+                .help("\(navUnit) anterior (⌘←)")
+
+                Button("Hoy", action: navToday)
+                    .keyboardShortcut("t", modifiers: .command)
+                    .disabled(!usesNavigation)
+                    .help("Ir a hoy (⌘T)")
+
+                Button(action: navNext) {
+                    Label("\(navUnit) siguiente", systemImage: "chevron.right")
+                }
+                .keyboardShortcut(.rightArrow, modifiers: .command)
+                .disabled(!usesNavigation)
+                .help("\(navUnit) siguiente (⌘→)")
 
                 Picker("Grupo", selection: plannerToolbarActions.selectedGroupId) {
                     Text("Todos").tag(Optional<Int64>.none)
@@ -1153,54 +1149,34 @@ struct MacRootView: View {
                         Text(group.name).tag(Optional(group.id))
                     }
                 }
-                .frame(maxWidth: 160)
+                .frame(width: 160)
                 .help("Filtrar por grupo")
 
-                if plannerSection == .week || plannerSection == .day {
-                    TextField("Buscar sesión, unidad, objetivo…", text: plannerToolbarActions.searchText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
-                }
+                TextField("Buscar sesión, unidad, objetivo…", text: plannerToolbarActions.searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 220)
+                    .disabled(!usesSearch)
+                    .opacity(usesSearch ? 1 : 0.45)
+                    .help(usesSearch ? "Buscar en las sesiones" : "La búsqueda solo está en Semana y Día")
 
-                if plannerSection == .sequence {
-                    Picker("Densidad", selection: plannerToolbarActions.density) {
-                        ForEach(PlannerDensity.allCases) { density in
-                            Text(density.rawValue).tag(density)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .help("Cambiar la densidad del Gantt")
-                }
-
-                if plannerSection == .summary {
-                    ShareLink(item: plannerToolbarActions.shareText) {
-                        Label("Compartir", systemImage: "square.and.arrow.up")
-                    }
-                    .help("Compartir el resumen de la semana actual")
-                }
-
-                if plannerSection == .week, plannerToolbarActions.isSelectionModeActive {
-                    Button(action: plannerToolbarActions.onCopyToNextWeek) {
-                        Label("Copiar", systemImage: "doc.on.doc")
-                    }
-                    .disabled(!plannerToolbarActions.canCopySelection)
-
-                    Button(action: plannerToolbarActions.onMoveOneDay) {
-                        Label("Mover +1 día", systemImage: "arrow.right")
-                    }
-                    .disabled(!plannerToolbarActions.canCopySelection)
-
-                    Button(action: plannerToolbarActions.onToggleSelectionMode) {
-                        Label("Salir de selección", systemImage: "checklist.checked")
-                    }
-                } else if plannerSection == .week {
-                    Menu {
-                        Button(action: plannerToolbarActions.onShowCalendarMilestones) {
-                            Label("Hitos y salidas del curso…", systemImage: "calendar.badge.clock")
-                        }
-                        Divider()
-                        Button(action: plannerToolbarActions.onToggleSelectionMode) {
-                            Label("Seleccionar sesiones", systemImage: "checklist")
+                Menu {
+                    if plannerSection == .week {
+                        if plannerToolbarActions.isSelectionModeActive {
+                            Button(action: plannerToolbarActions.onCopyToNextWeek) {
+                                Label("Copiar a la semana siguiente", systemImage: "doc.on.doc")
+                            }
+                            .disabled(!plannerToolbarActions.canCopySelection)
+                            Button(action: plannerToolbarActions.onMoveOneDay) {
+                                Label("Mover +1 día", systemImage: "arrow.right")
+                            }
+                            .disabled(!plannerToolbarActions.canCopySelection)
+                            Button(action: plannerToolbarActions.onToggleSelectionMode) {
+                                Label("Salir de selección", systemImage: "checklist.checked")
+                            }
+                        } else {
+                            Button(action: plannerToolbarActions.onToggleSelectionMode) {
+                                Label("Seleccionar sesiones", systemImage: "checklist")
+                            }
                         }
                         if plannerToolbarActions.canUndoCascadeMove {
                             Button(action: plannerToolbarActions.onUndoCascadeMove) {
@@ -1213,20 +1189,34 @@ struct MacRootView: View {
                                 Label("Limpiar semana sin franjas", systemImage: "trash")
                             }
                         }
-                    } label: {
-                        Label("Más", systemImage: "ellipsis.circle")
+                        Divider()
                     }
-                    .help("Hitos del curso, selección y operaciones de la semana")
-                }
-
-
-                if plannerSection == .week || plannerSection == .day {
-                    Button(action: plannerToolbarActions.onNewSession) {
-                        Label("Nueva sesión", systemImage: "plus")
+                    Button(action: plannerToolbarActions.onShowCalendarMilestones) {
+                        Label("Hitos y salidas del curso…", systemImage: "calendar.badge.clock")
                     }
-                    .keyboardShortcut("n", modifiers: [.command, .shift])
-                    .help("Nueva sesión (⌘⇧N)")
+                    if plannerSection == .sequence {
+                        Picker("Densidad del Gantt", selection: plannerToolbarActions.density) {
+                            ForEach(PlannerDensity.allCases) { density in
+                                Text(density.rawValue).tag(density)
+                            }
+                        }
+                    }
+                    if plannerSection == .summary {
+                        ShareLink(item: plannerToolbarActions.shareText) {
+                            Label("Compartir resumen de la semana", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                } label: {
+                    Label("Más", systemImage: "ellipsis.circle")
                 }
+                .help("Acciones de la sección actual")
+
+                Button(action: plannerToolbarActions.onNewSession) {
+                    Label("Nueva sesión", systemImage: "plus")
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(!usesSearch)
+                .help("Nueva sesión (⌘⇧N)")
             }
 
             Button {

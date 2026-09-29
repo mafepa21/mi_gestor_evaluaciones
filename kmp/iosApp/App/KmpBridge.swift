@@ -179,6 +179,8 @@ final class KmpBridge: ObservableObject {
     var optimisticGradeDrafts: [String: String] = [:]
     var optimisticTextDrafts: [String: String] = [:]
     var optimisticAnnotations: [String: OptimisticAnnotation] = [:]
+    /// Clase a la que pertenecen los borradores optimistas; al cambiar se descartan.
+    var optimisticDraftsClassId: Int64? = nil
 
     struct NotebookCellValueIndex {
         var textByKey: [String: String] = [:]

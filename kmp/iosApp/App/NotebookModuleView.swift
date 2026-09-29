@@ -25,7 +25,7 @@ struct NotebookModuleView: View {
     }
     #else
     var notebookGridRowHeight: CGFloat {
-        isCompactViewActive ? 40 : (isCompact ? 56 : 52)
+        isCompactViewActive ? 44 : (isCompact ? 56 : 52)
     }
     #endif
     let notebookGridHeaderHeight: CGFloat = 56

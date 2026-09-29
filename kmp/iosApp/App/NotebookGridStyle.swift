@@ -157,6 +157,15 @@ enum NotebookGradeBand {
         }
     }
 
+    /// Nombre del nivel, para `.help` y accesibilidad (no depender solo del color).
+    var levelName: String {
+        switch self {
+        case .low: return "Insuficiente"
+        case .mid: return "Aprobado"
+        case .high: return "Notable o superior"
+        }
+    }
+
     var color: Color {
         switch self {
         case .low: return NotebookGridStyle.gradeLow

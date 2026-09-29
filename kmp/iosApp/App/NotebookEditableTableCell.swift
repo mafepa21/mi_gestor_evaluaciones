@@ -112,6 +112,15 @@ struct NotebookEditableTableCell: View {
         if column.type == .check {
             return displaySnapshot.checkValue ? "Marcado" : "Sin marcar"
         }
+        if column.inputKind.isStructuredInstrument {
+            let raw = displaySnapshot.text.isEmpty
+                ? (item.lookup.cellsByColumnId[column.id]?.displayValue ?? item.lookup.cellsByColumnId[column.id]?.textValue ?? "")
+                : displaySnapshot.text
+            return NotebookStructuredValueLabel.accessibilityValue(for: raw)
+        }
+        if column.type == .rubric {
+            return NotebookRubricValueLabel.accessibilityValue(for: displaySnapshot.rubricText)
+        }
         let value = [
             displaySnapshot.numericText,
             displaySnapshot.calculatedText,
@@ -752,7 +761,7 @@ private struct NotebookStatefulEditableTableCell: View {
                     .transition(.opacity)
             }
         }
-        .frame(width: width, height: 52)
+        .frame(width: width) // la altura la fija la fila (notebookGridRowHeight)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onAppear {
@@ -956,7 +965,7 @@ private struct NotebookStatefulEditableTableCell: View {
                             Text(numericDraft.isEmpty ? "—" : numericDraft)
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
                                 .monospacedDigit()
-                                .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                                .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                                 .lineLimit(1)
                             if let physicalScore {
                                 Text("· \(IosFormatting.decimal(physicalScore))")
@@ -1046,16 +1055,11 @@ private struct NotebookStatefulEditableTableCell: View {
                     }
                 }
             case .rubric:
-                let rubricText = displayRubricText()
                 Button {
                     onSelect()
                     onOpenRubricIndividual()
                 } label: {
-                    Text(rubricText)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .contentShape(Rectangle())
+                    NotebookRubricValueLabel(rubricText: displaySnapshot.rubricText)
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -1073,7 +1077,7 @@ private struct NotebookStatefulEditableTableCell: View {
                     if isNotebookIndividualSummaryColumn(column) {
                         Text(textDraft.isEmpty ? "Síntesis pendiente" : textDraft)
                             .font(.system(size: 13))
-                            .foregroundStyle(textDraft.isEmpty ? .tertiary : .primary)
+                            .foregroundStyle(textDraft.isEmpty ? .secondary : .primary)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -1178,7 +1182,7 @@ private struct NotebookStatefulEditableTableCell: View {
                 Text(numericDraft.isEmpty ? "—" : numericDraft)
                     .font(NotebookGridStyle.cellFont)
                     .monospacedDigit()
-                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -1218,7 +1222,7 @@ private struct NotebookStatefulEditableTableCell: View {
                 Text(numericDraft.isEmpty ? "—" : numericDraft)
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                 if let physicalScore {
                     Text("· \(IosFormatting.decimal(physicalScore))")
@@ -1381,17 +1385,7 @@ private struct NotebookStatefulEditableTableCell: View {
             onSelect()
             onOpenStructuredInstrument()
         } label: {
-            HStack(spacing: 6) {
-                Text(structuredDisplayText)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(structuredDisplayText == "Pendiente" ? .tertiary : .primary)
-                    .lineLimit(1)
-                Image(systemName: "checklist")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+            NotebookStructuredValueLabel(text: structuredDisplayText)
         }
         .buttonStyle(.plain)
         .help("Abrir instrumento")
@@ -1875,11 +1869,6 @@ private struct NotebookStatefulEditableTableCell: View {
         }
     }
 
-    private func displayRubricText() -> String {
-        let value = displaySnapshot.rubricText
-        return value.isEmpty ? "—" : value
-    }
-
     private func hasContextualSignal(in cell: PersistedNotebookCell) -> Bool {
         !(cell.annotation?.note?.isEmpty ?? true) ||
             !((cell.annotation?.icon ?? cell.iconValue ?? "").isEmpty) ||
@@ -1976,10 +1965,6 @@ private struct NotebookRubricCell: View, Equatable {
     let onOpenRubricIndividual: () -> Void
     let onOpenRubricBulk: () -> Void
 
-    private var rubricText: String {
-        displaySnapshot.rubricText.isEmpty ? "—" : displaySnapshot.rubricText
-    }
-
     var body: some View {
         NotebookReadOnlyCellChrome(
             displaySnapshot: displaySnapshot,
@@ -1997,11 +1982,7 @@ private struct NotebookRubricCell: View, Equatable {
                 onSelect()
                 onOpenRubricIndividual()
             } label: {
-                Text(rubricText)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
+                NotebookRubricValueLabel(rubricText: displaySnapshot.rubricText)
             }
             .buttonStyle(.plain)
             .contextMenu {
@@ -2072,17 +2053,7 @@ private struct NotebookReadOnlyCell: View, Equatable {
                 onSelect()
                 onOpenStructuredInstrument()
             } label: {
-                HStack(spacing: 6) {
-                    Text(displayText)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(displayText == "Pendiente" ? .tertiary : .primary)
-                        .lineLimit(1)
-                    Image(systemName: "checklist")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
+                NotebookStructuredValueLabel(text: displayText)
             }
             .buttonStyle(.plain)
             .help("Abrir instrumento")
@@ -2183,7 +2154,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
 
             cellStateOverlay
         }
-        .frame(width: width, height: 52)
+        .frame(width: width) // la altura la fija la fila (notebookGridRowHeight)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
     }
@@ -2297,5 +2268,208 @@ private extension NotebookColumnDefinition {
             unitOrSituation == other.unitOrSituation &&
             ordinalLevels == other.ordinalLevels &&
             dateEpochMs?.int64Value == other.dateEpochMs?.int64Value
+    }
+}
+
+
+// MARK: - Marcas de celda (rúbrica, instrumentos)
+
+/// Marca de celda vacía. En macOS muestra un "+" tenue al pasar el ratón
+/// (`@State` local, sin animación); en iOS es solo la marca.
+private struct NotebookEmptyCellMark<Mark: View>: View {
+    let helpText: String
+    let mark: Mark
+    #if os(macOS)
+    @State private var isHovering = false
+    #endif
+
+    init(helpText: String, @ViewBuilder mark: () -> Mark) {
+        self.helpText = helpText
+        self.mark = mark()
+    }
+
+    var body: some View {
+        ZStack {
+            #if os(macOS)
+            if isHovering {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            } else {
+                mark
+            }
+            #else
+            mark
+            #endif
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        #if os(macOS)
+        .onHover { isHovering = $0 }
+        #endif
+        .help(helpText)
+    }
+}
+
+/// Número de nota con micro-animación local: transición numérica y rebote
+/// 1.0→1.06→1.0 solo cuando cambia `value` con la celda ya montada (SwiftUI no
+/// dispara `animation(value:)` ni `keyframeAnimator(trigger:)` en el primer
+/// render, así que ni la carga ni el scroll lo animan). Respeta Reduce Motion.
+/// Sin sombras, materiales ni observadores: solo `@Environment` de solo lectura.
+struct NotebookAnimatedGradeText: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    let text: String
+    let value: Double
+    let font: Font
+    let style: AnyShapeStyle
+
+    var body: some View {
+        let label = Text(text)
+            .font(font)
+            .monospacedDigit()
+            .foregroundStyle(style)
+            .lineLimit(1)
+            .contentTransition(.numericText(value: value))
+            .animation(uiFeatureFlags.animation(.snappy(duration: 0.25)), value: value)
+        if uiFeatureFlags.reduceMotion {
+            label
+        } else {
+            label.keyframeAnimator(initialValue: 1.0, trigger: value) { view, scale in
+                view.scaleEffect(scale)
+            } keyframes: { _ in
+                CubicKeyframe(1.06, duration: 0.12)
+                CubicKeyframe(1.0, duration: 0.16)
+            }
+        }
+    }
+}
+
+/// Nota de rúbrica: solo el número, con barra vertical del color del nivel.
+/// El nivel también va en `.help` y en el valor de accesibilidad (no depende
+/// solo del color). Vacía: barra gris, sin "—".
+private struct NotebookRubricValueLabel: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    let rubricText: String
+
+    /// Devuelve el número tal como se muestra ("7,5") y su valor, o nil si no es numérico.
+    static func parse(_ raw: String) -> (text: String, value: Double)? {
+        let parts = raw.components(separatedBy: "/")
+        let head = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Solo se acepta nota sobre 10: sin denominador o con denominador 10.
+        if parts.count > 1 {
+            let denominator = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard parts.count == 2,
+                  let d = Double(denominator.replacingOccurrences(of: ",", with: ".")),
+                  d == 10 else { return nil }
+        }
+        guard let value = Double(head.replacingOccurrences(of: ",", with: ".")),
+              value.isFinite else { return nil }
+        return (head, value)
+    }
+
+    private static func isEmpty(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed == "Sin dato" || trimmed == "—"
+    }
+
+    static func accessibilityValue(for raw: String) -> String {
+        if let parsed = parse(raw) {
+            return "\(parsed.text), nivel \(NotebookGradeBand(scoreOutOfTen: parsed.value).levelName)"
+        }
+        return isEmpty(raw) ? "Pendiente" : raw
+    }
+
+    var body: some View {
+        if let parsed = Self.parse(rubricText) {
+            let band = NotebookGradeBand(scoreOutOfTen: parsed.value)
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(band.color)
+                    .frame(width: 3, height: 16)
+                    .animation(uiFeatureFlags.animation(.snappy(duration: 0.25)), value: parsed.value)
+                NotebookAnimatedGradeText(
+                    text: parsed.text,
+                    value: parsed.value,
+                    font: NotebookGridStyle.cellFont,
+                    style: AnyShapeStyle(.primary)
+                )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .help("Nivel \(band.levelName)")
+        } else if Self.isEmpty(rubricText) {
+            NotebookEmptyCellMark(helpText: "Pendiente") {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(NotebookGridStyle.stateEmpty)
+                    .frame(width: 3, height: 16)
+            }
+        } else {
+            Text(rubricText)
+                .font(NotebookGridStyle.cellFont)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+    }
+}
+
+/// Estado de un instrumento estructurado (observación, checklist): vacío =
+/// círculo hueco, parcial = "n/m" en dígitos monoespaciados, completo = marca verde.
+private struct NotebookStructuredValueLabel: View {
+    let text: String
+
+    private static func progress(_ raw: String) -> (done: Int, total: Int)? {
+        let parts = raw.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              let done = Int(parts[0].trimmingCharacters(in: .whitespaces)),
+              let total = Int(parts[1].trimmingCharacters(in: .whitespaces)),
+              total > 0 else { return nil }
+        return (done, total)
+    }
+
+    private static func isPending(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed == "Pendiente"
+    }
+
+    static func accessibilityValue(for raw: String) -> String {
+        if isPending(raw) { return "Pendiente" }
+        if let p = progress(raw) { return "\(p.done) de \(p.total)" }
+        return raw
+    }
+
+    var body: some View {
+        if Self.isPending(text) {
+            NotebookEmptyCellMark(helpText: "Pendiente") {
+                Circle()
+                    .strokeBorder(NotebookGridStyle.stateEmpty, lineWidth: 1.5)
+                    .frame(width: 6, height: 6)
+            }
+        } else if let p = Self.progress(text) {
+            Group {
+                if p.done >= p.total {
+                    Image(systemName: "checkmark")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(NotebookStyle.successTint)
+                } else {
+                    Text("\(p.done)/\(p.total)")
+                        .font(.footnote.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .help(p.done >= p.total ? "Completo" : "\(p.done) de \(p.total)")
+        } else {
+            Text(text)
+                .font(NotebookGridStyle.cellFont)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
     }
 }

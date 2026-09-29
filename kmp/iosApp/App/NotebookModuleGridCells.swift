@@ -19,49 +19,51 @@ extension NotebookModuleView {
         hasColumnColor: Bool = false,
         isHighlighted: Bool = false
     ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: NotebookGridStyle.Space.xs) {
             HStack(spacing: 5) {
                 if let systemIcon {
                     Image(systemName: systemIcon)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(isSystemColumn ? Color.secondary : tint)
+                        .frame(width: 16, height: 16)
                         .accessibilityHidden(true)
                 }
 
                 Text(title)
-                    .font(isSystemColumn ? .footnote : NotebookGridStyle.columnTitle)
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(isSystemColumn ? .secondary : .primary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .truncationMode(.tail)
+                    .help(title)
             }
 
             HStack(spacing: 5) {
                 if !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(NotebookGridStyle.columnMeta)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+                        .truncationMode(.tail)
                 }
 
                 if let weightBadge, !weightBadge.isEmpty {
+                    let excluded = weightBadge == "no cuenta"
                     Text(weightBadge)
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundStyle(weightBadge == "no cuenta" ? Color.secondary : tint)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1.5)
-                        .background(
-                            (weightBadge == "no cuenta" ? Color.secondary : tint).opacity(0.12),
-                            in: Capsule()
-                        )
+                        .font(.caption2.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(NotebookGridStyle.chipText)
+                        .strikethrough(excluded)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(NotebookGridStyle.chipFill, in: Capsule())
                         .lineLimit(1)
                 }
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
+        .padding(.horizontal, NotebookGridStyle.Space.s)
+        .padding(.top, NotebookGridStyle.Space.s)
+        .padding(.bottom, NotebookGridStyle.Space.s + 3)
         .frame(width: width, alignment: .leading)
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
         .frame(minHeight: 52, alignment: .topLeading)
         .background(
             ZStack {
@@ -600,8 +602,8 @@ extension NotebookModuleView {
         return highlightedCategoryId == column.categoryId
     }
 
-    /// Fondo de celda: única técnica de separación de filas (zebra plana + wash de
-    /// color de columna o de columna resaltada cuando aplica). La selección **no**
+    /// Fondo de celda: wash de color de columna o de columna resaltada cuando aplica
+    /// (la zebra es de la fila). La selección **no**
     /// se pinta aquí: la dibuja la celda editable interior como un chip elevado
     /// (superficie + sombra + anillo), para que se lea sobre un fondo limpio sin
     /// doble tinte de acento.
@@ -612,7 +614,8 @@ extension NotebookModuleView {
         if hasCustomColumnColor(column) {
             return displayTint(for: column).opacity(0.035)
         }
-        return rowIndex.isMultiple(of: 2) ? NotebookGridStyle.zebra : Color.clear
+        // La zebra la pinta la fila entera; la celda no la repite.
+        return Color.clear
     }
 
     @MainActor

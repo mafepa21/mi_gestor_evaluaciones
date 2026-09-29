@@ -21,3 +21,8 @@
 - `scrollToRow` no hace nada si el viewport aún no está medido.
 - `xcodebuild` puede reescribir `*.xcscheme`: restaurar antes de commitear.
 - Los avisos de fondo y de teclado van por `NotebookCellNoticeRouter` (un observador); toda celda editable debe registrarse ahí, no con `onReceive` propio.
+- La zebra se pinta solo en el fondo de la fila (`notebookRowView`); `notebookColumnCellFill` no debe volver a pintarla.
+- Las celdas de solo lectura no fijan altura: la impone la fila (`notebookGridRowHeight`). No reintroducir `height: 52`.
+- La nota de rúbrica llega como texto ("7,5 / 10"): `NotebookRubricValueLabel.parse` lo interpreta; si cambia el formato, ajustar ahí.
+- El nombre de nivel (`NotebookGradeBand.levelName`) es por bandas de nota, no los niveles reales de la rúbrica.
+- Las micro-animaciones del grid (`NotebookAnimatedGradeText`, anillo de Media, barra de nivel) dependen de que `animation(value:)`/`keyframeAnimator(trigger:)` no disparen en el primer render: no envolver el grid en `withAnimation` ni cambiar la identidad de la celda al hacer scroll, o los números "rodarán" al aparecer.

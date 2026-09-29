@@ -277,8 +277,12 @@ extension NotebookModuleView {
         item.row.averageExplanation?.pendingCells.count ?? 0
     }
 
-    /// La Media puede ir coloreada por banda si el menú lo pide. Las notas
-    /// sueltas no: el grid se lee por el número, no por un semáforo.
+    /// Media: anillo de progreso (columnas evaluadas / evaluables, el mismo
+    /// recuento de pendientes que ya calcula la app) + número protagonista.
+    /// Nada de naranja por pendientes: el color del número solo sigue a la nota
+    /// (rojo oscuro accesible por debajo de 5; bandas completas si el menú
+    /// "color semántico" está activo). Sin `GeometryReader`: el anillo es un
+    /// `Circle().trim` de tamaño fijo.
     func averageBadge(for item: NotebookTableRow) -> some View {
         let state = averageState(for: item)
         let pendingCount = averagePendingCount(for: item)
@@ -286,70 +290,62 @@ extension NotebookModuleView {
         let completedFraction: Double = totalCount > 0
             ? Double(totalCount - pendingCount) / Double(totalCount)
             : (state == .complete ? 1 : 0)
+        let average = item.row.weightedAverage?.doubleValue
+        let band = average.map { NotebookGradeBand(scoreOutOfTen: $0) }
 
-        let band: NotebookGradeBand? = {
-            guard semanticGradeColorEnabled, let average = item.row.weightedAverage?.doubleValue else { return nil }
-            return NotebookGradeBand(scoreOutOfTen: average)
+        let numberColor: Color = {
+            guard let band else { return .primary }
+            if band == .low { return NotebookGridStyle.gradeLowText }
+            return semanticGradeColorEnabled ? band.color : .primary
         }()
 
-        let tint: Color = {
-            if let band { return band.color }
-            switch state {
-            case .complete: return NotebookStyle.successTint
-            case .pending: return NotebookStyle.warningTint
-            case .insufficient: return .secondary
-            }
-        }()
+        let averageDescription = average == nil ? "sin datos" : averageText(for: item)
+        let pendingDescription = pendingCount == 0
+            ? ""
+            : (pendingCount == 1 ? ", 1 columna pendiente" : ", \(pendingCount) columnas pendientes")
 
-        let statusText: String = {
-            switch state {
-            case .complete: return "Completa"
-            case .pending: return pendingCount == 1 ? "1 pendiente" : "\(pendingCount) pendientes"
-            case .insufficient: return "Sin datos"
-            }
-        }()
-
-        // Sin fill/borde propio: la columna Media ya se distingue como panel fijo
-        // con fondo sólido (`NotebookDataGrid.fixedColumnBackground`); el valor se
-        // destaca por tipografía y tinte semántico, no por otra caja encima.
-        //
-        // El número es el dato más importante de la columna: debe dominar sobre
-        // el medidor y el estado, no competir con ellos. El `ProgressView` nativo
-        // reservaba una altura variable por plataforma que, sumada al resto,
-        // desbordaba la altura de fila (`notebookGridRowHeight`, 50pt en macOS) y
-        // se veía como texto solapado con la fila de abajo; el medidor pasa a una
-        // cápsula propia de 3pt de alto, exacta, para que las tres líneas quepan
-        // siempre dentro de la fila.
-        return VStack(alignment: .leading, spacing: 3) {
-            Text(averageText(for: item))
-                .font(.system(size: 19, weight: .heavy, design: .rounded))
-                .foregroundStyle(state == .insufficient ? .secondary : tint)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-
-            Capsule()
-                .fill(NotebookGridStyle.gridLineStrong)
-                .frame(maxWidth: .infinity)
-                .frame(height: 3)
-                .overlay(alignment: .leading) {
-                    GeometryReader { proxy in
-                        Capsule()
-                            .fill(tint)
-                            .frame(width: max(3, proxy.size.width * completedFraction))
-                    }
+        return HStack(spacing: NotebookGridStyle.Space.s) {
+            if average != nil {
+                ZStack {
+                    Circle()
+                        .stroke(NotebookGridStyle.gridLine, lineWidth: 3)
+                    Circle()
+                        .trim(from: 0, to: max(0.02, min(1, completedFraction)))
+                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(uiFeatureFlags.animation(.snappy(duration: 0.3)), value: completedFraction)
                 }
+                .frame(width: 22, height: 22)
+            }
 
-            Text(statusText)
-                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(tint)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            VStack(alignment: .leading, spacing: 0) {
+                if average != nil {
+                    NotebookAnimatedGradeText(
+                        text: averageText(for: item),
+                        value: average ?? 0,
+                        font: .system(size: 17, weight: .bold, design: .rounded),
+                        style: AnyShapeStyle(numberColor)
+                    )
+                    if pendingCount > 0 {
+                        Text("\(pendingCount) pend.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text("Sin datos")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, NotebookGridStyle.Space.s)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .clipped()
         .help(averageHelpText(for: state))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Media, \(averageDescription)\(pendingDescription)")
     }
 
     func averageHelpText(for state: AverageCellState) -> String {

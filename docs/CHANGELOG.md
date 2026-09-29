@@ -13,6 +13,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Cuaderno y rúbricas: rediseño visual con micro-animaciones**:
+  - Evaluación de rúbricas (`RubricEvaluationView.swift`, `RubricsStyle.swift`): tarjetas de nivel en rejilla adaptativa de igual altura y con título completo; neutras en reposo y color solo en la elegida (escala rojo, naranja, menta, verde, con número de nivel); un solo anillo de nota; menú «…» para PDF e IA; botón de cerrar; barra inferior con progreso por criterio; teclas 1 a 4 y flechas; aviso al salir con cambios sin guardar; plural correcto de «punto(s)».
+  - Grid (`NotebookModuleGridCells.swift`, `NotebookGridStyle.swift`, `NotebookDataGrid.swift`): cabeceras de una línea con nombre completo en ayuda y chip de peso legible; franja de filas única y tabla estirada hasta el borde; celda de rúbrica con número y barra de nivel; celda de observación con círculo hueco / «2/3» / marca; etiquetas de VoiceOver por celda.
+  - Media (`NotebookModuleDisplayFormatting.swift`): anillo de progreso y número en color normal; rojo oscuro solo si suspende (ya no naranja por pendientes).
+  - Animaciones: número con transición y rebote al guardar, anillo animado; solo en la celda que cambia y con «reducir movimiento» respetado.
+  - Verificación: `xcodebuild` esquemas `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK tras cada fase. No se ejecutaron tests, no se vio en pantalla ni se probó con VoiceOver, y no se midió el rendimiento con Instruments.
+
 - **Cuaderno: grid más fluido (menos repintados y menos coste por celda)**:
   - `KmpBridgeObservationStores.swift`: los stores no repiten valores iguales y ya no crean ciclos de retención.
   - `NotebookModuleColumnModel.swift`: firmas de columnas, filas y grupos calculadas una vez por estado, no en cada `body`.

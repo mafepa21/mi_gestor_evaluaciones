@@ -136,7 +136,7 @@ extension NotebookModuleView {
         .frame(height: notebookGridRowHeight, alignment: .center)
         .padding(.horizontal, 16)
         .background(
-            (rowIndex.isMultiple(of: 2) ? NotebookStyle.surfaceSoft.opacity(0.38) : Color.clear)
+            (rowIndex.isMultiple(of: 2) ? NotebookGridStyle.zebra : Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(

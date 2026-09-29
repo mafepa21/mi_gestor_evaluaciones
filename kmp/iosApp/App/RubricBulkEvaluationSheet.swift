@@ -1036,7 +1036,7 @@ struct RubricLevelDescriptionPopover: View {
 
                 Spacer(minLength: 12)
 
-                Text("\(Int(level.points)) pts")
+                Text(RubricsStyle.pointsText(Double(level.points)))
                     .font(.system(size: 12, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)

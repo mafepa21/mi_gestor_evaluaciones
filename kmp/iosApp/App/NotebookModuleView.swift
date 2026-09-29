@@ -25,10 +25,10 @@ struct NotebookModuleView: View {
     }
     #else
     var notebookGridRowHeight: CGFloat {
-        isCompactViewActive ? 40 : (isCompact ? 56 : 52)
+        isCompactViewActive ? 44 : (isCompact ? 56 : 52)
     }
     #endif
-    let notebookGridHeaderHeight: CGFloat = 56
+    let notebookGridHeaderHeight: CGFloat = 60
     let notebookGridFolderLaneHeight: CGFloat = 34
 
     @EnvironmentObject var layoutState: WorkspaceLayoutState
@@ -723,7 +723,7 @@ struct NotebookModuleView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .frame(height: notebookGridHeaderHeight, alignment: .topLeading)
-        .background(.thinMaterial)
+        .background(appSecondarySystemBackgroundColor())
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(NotebookGridStyle.gridLineStrong)

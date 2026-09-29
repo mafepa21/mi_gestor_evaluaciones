@@ -26,3 +26,5 @@
 - La nota de rúbrica llega como texto ("7,5 / 10"): `NotebookRubricValueLabel.parse` lo interpreta; si cambia el formato, ajustar ahí.
 - El nombre de nivel (`NotebookGradeBand.levelName`) es por bandas de nota, no los niveles reales de la rúbrica.
 - Las micro-animaciones del grid (`NotebookAnimatedGradeText`, anillo de Media, barra de nivel) dependen de que `animation(value:)`/`keyframeAnimator(trigger:)` no disparen en el primer render: no envolver el grid en `withAnimation` ni cambiar la identidad de la celda al hacer scroll, o los números "rodarán" al aparecer.
+- Grupos de trabajo: `WorkGroupBoardDraft` guarda movimientos recientes 2 s para que una recarga vieja no los pise; el emparejado provisional-real es por nombre y luego por orden. No volver a `selectClass(force = true)` por cada arrastre: usar `scheduleWorkGroupReload` (Kotlin).
+- Los tests de `NotebookViewModelTest` usan scope `Unconfined`: para probar `delay`/debounce hay que pasar un scope con `StandardTestDispatcher(testScheduler)`.

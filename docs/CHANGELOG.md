@@ -13,6 +13,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Cuaderno: gestión de grupos más fluida y sin grupos fantasma**:
+  - `NotebookViewModel.kt`: mover alumnos entre grupos actualiza el estado al instante y agrupa las recargas del cuaderno en una sola tras 300 ms de silencio; los guardados van en orden (antes, una recarga completa por alumno arrastrado).
+  - `NotebookGroupBoardView.swift`: números provisionales con contador propio; emparejado grupo provisional con real por nombre y, si el sistema añadió «(2)», por orden; una recarga con datos viejos ya no devuelve al alumno a su sitio; reparto por grupo en una sola pasada; sin `ViewThatFits`; scroll horizontal con muchos grupos; firmas baratas.
+  - `NotebookGroupManagementSheet.swift`: resumen y recuento por grupo calculados una vez; aviso si falla vincular la situación de aprendizaje (antes salía éxito falso); el detector de etapa usa palabras completas («Primero A» ya no cuenta como Primaria).
+  - Verificación: `./gradlew :shared:desktopTest` OK (incluye prueba nueva de ráfaga de 10 movimientos = 1 recarga); `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No se probó a mano en pantalla ni se midió con Instruments. Se mantiene la recarga al cerrar la hoja (una sola).
+
 - **Cuaderno y rúbricas: rediseño visual con micro-animaciones**:
   - Evaluación de rúbricas (`RubricEvaluationView.swift`, `RubricsStyle.swift`): tarjetas de nivel en rejilla adaptativa de igual altura y con título completo; neutras en reposo y color solo en la elegida (escala rojo, naranja, menta, verde, con número de nivel); un solo anillo de nota; menú «…» para PDF e IA; botón de cerrar; barra inferior con progreso por criterio; teclas 1 a 4 y flechas; aviso al salir con cambios sin guardar; plural correcto de «punto(s)».
   - Grid (`NotebookModuleGridCells.swift`, `NotebookGridStyle.swift`, `NotebookDataGrid.swift`): cabeceras de una línea con nombre completo en ayuda y chip de peso legible; franja de filas única y tabla estirada hasta el borde; celda de rúbrica con número y barra de nivel; celda de observación con círculo hueco / «2/3» / marca; etiquetas de VoiceOver por celda.

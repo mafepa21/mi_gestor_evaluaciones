@@ -22,6 +22,22 @@ struct RubricEvaluationView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
                             headerSection(rubric: rubric, score: selectedScore, progress: progress)
+                            if let error = state.error {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(EvaluationDesign.danger)
+                                    Text(error)
+                                        .font(.footnote.weight(.medium))
+                                        .foregroundStyle(.primary)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(EvaluationDesign.danger.opacity(0.12))
+                                )
+                                .accessibilityElement(children: .combine)
+                            }
                             if !state.criterionStatements.isEmpty
                                 || !(state.criterionLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 EvaluationCriterionSection(
@@ -185,11 +201,8 @@ struct RubricEvaluationView: View {
         let classId = context.classId
         let studentIds = context.studentIds
 
-        bridge.saveRubricEvaluation(
-            manual: true,
-            emitNotebookRefresh: true,
-            onSuccess: {
-                bridge.rubricEvaluationCoordinator.start(
+        let navigate = {
+            bridge.rubricEvaluationCoordinator.start(
                     columnId: columnId,
                     rubricId: rubricId,
                     classId: classId,
@@ -203,7 +216,18 @@ struct RubricEvaluationView: View {
                     rubricId: rubricId,
                     evaluationId: evaluationId
                 )
-            }
+        }
+
+        // Sin niveles elegidos no hay nada que guardar: evita crear una nota 0.0 falsa.
+        if state.selectedLevels.isEmpty {
+            navigate()
+            return
+        }
+
+        bridge.saveRubricEvaluation(
+            manual: true,
+            emitNotebookRefresh: true,
+            onSuccess: navigate
         )
     }
 
@@ -219,10 +243,11 @@ struct RubricEvaluationView: View {
     }
 
     private func saveAndNextOrFinish() {
-        AppleInteractionFeedback.play(.selection)
         if canNavigateNext {
+            // La vibración la emite saveAndNavigate.
             navigateToNextStudent()
         } else {
+            AppleInteractionFeedback.play(.selection)
             bridge.saveRubricEvaluation(
                 manual: true,
                 emitNotebookRefresh: true,
@@ -457,6 +482,11 @@ struct RubricEvaluationView: View {
 
     private func actionButtons(isComplete: Bool) -> some View {
         HStack(spacing: 10) {
+            if state.isSaving {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
             Button(action: saveOnly) {
                 HStack(spacing: 5) {
                     Image(systemName: "square.and.arrow.down")
@@ -478,6 +508,7 @@ struct RubricEvaluationView: View {
                 .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .buttonStyle(NotebookScaleButtonStyle())
+            .disabled(state.isSaving)
             .accessibilityLabel("Guardar evaluación actual")
 
             Button(action: saveAndNextOrFinish) {
@@ -504,6 +535,7 @@ struct RubricEvaluationView: View {
                 .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .buttonStyle(NotebookScaleButtonStyle())
+            .disabled(state.isSaving)
             .keyboardShortcut(.return, modifiers: [.command])
             .help(canNavigateNext ? "Guardar y siguiente alumno (⌘↩)" : "Guardar y cerrar (⌘↩)")
             .accessibilityLabel(canNavigateNext ? "Guardar y siguiente alumno" : "Guardar y finalizar rúbrica")
@@ -559,7 +591,7 @@ struct RubricCriterionRow: View {
                     .foregroundStyle(.primary)
 
                 if item.criterion.weight > 0 {
-                    Text("\(Int(item.criterion.weight))%")
+                    Text("\(Int((item.criterion.weight * 100).rounded()))%")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)

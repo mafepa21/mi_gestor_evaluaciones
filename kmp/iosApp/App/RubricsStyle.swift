@@ -102,7 +102,7 @@ enum RubricsStyle {
     /// global 0-10): esta escala tiñe varios niveles del mismo criterio a la
     /// vez. Compartida entre la evaluación individual y la masiva.
     static func levelStep(points: Double, maxPoints: Double) -> Int {
-        guard maxPoints > 0 else { return 3 }
+        guard maxPoints > 0 else { return 0 } // sin escala: paso neutro, no verde
         let ratio = points / maxPoints
         switch ratio {
         case 0.8...: return 3
@@ -124,7 +124,8 @@ enum RubricsStyle {
 
     /// Color de un nivel según su ratio de puntos (ver `levelStep`).
     static func levelColor(points: Double, maxPoints: Double) -> Color {
-        stepColor(levelStep(points: points, maxPoints: maxPoints))
+        guard maxPoints > 0 else { return .secondary }
+        return stepColor(levelStep(points: points, maxPoints: maxPoints))
     }
 
     /// Color para usar como **texto** sobre fondo claro/tintado. Los tonos de
@@ -141,7 +142,8 @@ enum RubricsStyle {
     }
 
     static func levelTextColor(points: Double, maxPoints: Double, scheme: ColorScheme) -> Color {
-        stepTextColor(levelStep(points: points, maxPoints: maxPoints), scheme: scheme)
+        guard maxPoints > 0 else { return .secondary }
+        return stepTextColor(levelStep(points: points, maxPoints: maxPoints), scheme: scheme)
     }
 
     /// Paso de la escala para una nota 0-10 cualitativa (misma paleta que los

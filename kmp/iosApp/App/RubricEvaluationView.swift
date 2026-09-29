@@ -99,6 +99,9 @@ struct RubricEvaluationView: View {
                     .appOnChange(of: state.rubricDetail?.rubric.id) { _ in
                         refreshResolvedCriteria(rubric: rubric)
                     }
+                    .appOnChange(of: state.studentId) { _ in
+                        resetSnapshot(rubric: rubric)
+                    }
                     .appOnChange(of: state.isLoading) { loading in
                         if !loading { resetSnapshot(rubric: rubric) }
                     }
@@ -270,6 +273,7 @@ struct RubricEvaluationView: View {
         var answered = Set(currentLevels.keys)
         answered.insert(criterionId)
         activeCriterionId = nextUnansweredCriterionId(after: criterionId, answered: answered, rubric: rubric) ?? criterionId
+        keysFocused = true
     }
 
     private func handleDigitKey(_ press: KeyPress, rubric: RubricDetail) -> KeyPress.Result {
@@ -662,7 +666,10 @@ struct RubricEvaluationView: View {
                     totalWeight: totalWeight,
                     selectedLevelId: state.selectedLevels[KotlinLong(value: criterion.criterion.id)]?.int64Value,
                     isActive: activeCriterionId == criterion.criterion.id,
-                    onActivate: { activeCriterionId = criterion.criterion.id },
+                    onActivate: {
+                        activeCriterionId = criterion.criterion.id
+                        keysFocused = true
+                    },
                     onSelectLevel: { levelId in
                         selectLevel(levelId, for: criterion, rubric: rubric)
                     }

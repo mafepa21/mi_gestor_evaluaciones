@@ -13,6 +13,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Grupos del Cuaderno: Liquid Glass y generador de equipos sin cortes**:
+  - `CooperativeGroupGeneratorSheet.swift`: layout adaptativo (`ViewThatFits`: dos zonas en ancho, una columna en estrecho); selector segmentado con títulos cortos; `Stepper`, `Toggle` y botones nativos; tarjetas sólidas y botones de vidrio; estado sin alumnado; tamaños de letra por estilo (Dynamic Type); ancho mínimo de macOS 680.
+  - `NotebookGroupBoardView.swift`: barra de acciones con vidrio (`GlassEffectContainer`), un solo botón principal («Agrupar automáticamente»), menú «Más» con importar Excel y equipos cooperativos, versión solo iconos en estrecho; columnas al 82 % en compacto con desplazamiento por columna; resalte con borde grueso al soltar; alumnos con altura táctil de 44 pt en iOS; menú contextual «Mover a…» como alternativa accesible al arrastre; helpers `groupGlassButton`, `groupSolidCard` y `groupGlassContainer` con fallback a estilos clásicos antes de iOS/macOS 26.
+  - `NotebookGroupManagementSheet.swift`: se quitan de la barra superior «Generar con IA» e «Importar Excel» (ya viven en el menú «Más»).
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No se probó a mano en pantalla (ni macOS, ni iPad, ni iPhone), ni con «reducir transparencia», ni con VoiceOver. Maqueta revisada por `ui-reviewer`.
+
 - **Cuaderno: gestión de grupos más fluida y sin grupos fantasma**:
   - `NotebookViewModel.kt`: mover alumnos entre grupos actualiza el estado al instante y agrupa las recargas del cuaderno en una sola tras 300 ms de silencio; los guardados van en orden (antes, una recarga completa por alumno arrastrado).
   - `NotebookGroupBoardView.swift`: números provisionales con contador propio; emparejado grupo provisional con real por nombre y, si el sistema añadió «(2)», por orden; una recarga con datos viejos ya no devuelve al alumno a su sitio; reparto por grupo en una sola pasada; sin `ViewThatFits`; scroll horizontal con muchos grupos; firmas baratas.

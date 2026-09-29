@@ -434,26 +434,30 @@ extension NotebookModuleView {
         let nextColumn = navigableColumns[nextColumnIndex]
         let nextCellId = cellFocusId(studentId: nextStudentId, columnId: nextColumn.id)
 
+        // Con la virtualización de filas, la celda destino puede no estar materializada:
+        // se desplaza antes de enfocar para no perder el foco al bajar.
+        gridScrollProxy.scrollToRow?(nextRowIndex)
+        navigationFocusWorkItem?.cancel()
+        navigationFocusWorkItem = nil
+
         if moveWithoutEditing {
             applyKeyboardSelection(studentId: nextStudentId, columnId: nextColumn.id)
             return
         }
 
-        withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
-            inspectorSelection = NotebookInspectorSelection(studentId: nextStudentId, columnId: nextColumn.id)
-            focusedCellId = nil
-            activeChoiceCellId = nil
-        }
+        inspectorSelection = NotebookInspectorSelection(studentId: nextStudentId, columnId: nextColumn.id)
+        focusedCellId = nil
+        activeChoiceCellId = nil
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
-                if nextColumn.type == .ordinal || nextColumn.type == .attendance || nextColumn.categoryKind == .attendance {
-                    activeChoiceCellId = nextCellId
-                } else if nextColumn.type != .calculated && nextColumn.type != .rubric && nextColumn.type != .check {
-                    focusedCellId = nextCellId
-                }
+        let workItem = DispatchWorkItem {
+            if nextColumn.type == .ordinal || nextColumn.type == .attendance || nextColumn.categoryKind == .attendance {
+                activeChoiceCellId = nextCellId
+            } else if nextColumn.type != .calculated && nextColumn.type != .rubric && nextColumn.type != .check {
+                focusedCellId = nextCellId
             }
         }
+        navigationFocusWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: workItem)
     }
 
 }

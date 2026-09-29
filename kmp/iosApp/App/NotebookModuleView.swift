@@ -126,6 +126,8 @@ struct NotebookModuleView: View {
     @State var riskLevelCache: [Int64: RiskLevel] = [:]
     /// Referencia al estado vigente para la navegación con teclado: las celdas no capturan arrays viejos.
     @State var gridNavigationContext = NotebookGridNavigationContext()
+    @State var gridScrollProxy = NotebookGridScrollProxy()
+    @State var navigationFocusWorkItem: DispatchWorkItem?
     @State var riskComputationKey: String?
     @State var isPrecomputingRiskLevels = false
     @AppStorage("notebook.fixedZoneWidth") var fixedZoneWidthStored = 240.0
@@ -571,6 +573,7 @@ struct NotebookModuleView: View {
             rowReloadRevisions: rowReloadRevisions,
             transientCellIds: transientGridCellIds,
             rowContextDigest: notebookRowContextDigest(rows: rows),
+            scrollProxy: gridScrollProxy,
             fixedSegments: renderModel.fixedSegments,
             trailingFixedSegments: renderModel.trailingFixedSegments,
             scrollableSegments: renderModel.scrollableSegments

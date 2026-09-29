@@ -24,6 +24,7 @@ struct NotebookGridContent<
     let transientCellIds: Set<String>
     /// Resumen barato del contexto que afecta al pintado de una fila (rango, zebra, resaltados, riesgo, lesión...).
     let rowContextDigest: (Int, NotebookTableRow) -> Int
+    let scrollProxy: NotebookGridScrollProxy?
     let fixedSegments: [NotebookDisplaySegment]
     let trailingFixedSegments: [NotebookDisplaySegment]
     let scrollableSegments: [NotebookDisplaySegment]
@@ -67,7 +68,8 @@ struct NotebookGridContent<
             rowHeight: rowHeight,
             groupHeaderInfo: { row in
                 (isFirst: row.isFirstInGroup, groupName: row.groupName, count: row.groupMemberCount)
-            }
+            },
+            scrollProxy: scrollProxy
         ) {
             emptyContent()
         } filterEmptyContent: {

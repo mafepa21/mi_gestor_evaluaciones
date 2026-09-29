@@ -37,6 +37,7 @@ struct NotebookGridContainer<
 
     let groupHeaderHeight: CGFloat
     let groupHeaderInfo: ((Row) -> (isFirst: Bool, groupName: String, count: Int))?
+    let scrollProxy: NotebookGridScrollProxy?
 
     init(
         rows: [Row],
@@ -50,6 +51,7 @@ struct NotebookGridContainer<
         rowHeight: CGFloat,
         groupHeaderHeight: CGFloat = 34,
         groupHeaderInfo: ((Row) -> (isFirst: Bool, groupName: String, count: Int))? = nil,
+        scrollProxy: NotebookGridScrollProxy? = nil,
         @ViewBuilder emptyContent: @escaping () -> EmptyContent,
         @ViewBuilder filterEmptyContent: @escaping () -> FilterEmptyContent,
         @ViewBuilder seatingContent: @escaping ([Row]) -> SeatingContent,
@@ -73,6 +75,7 @@ struct NotebookGridContainer<
         self.rowHeight = rowHeight
         self.groupHeaderHeight = groupHeaderHeight
         self.groupHeaderInfo = groupHeaderInfo
+        self.scrollProxy = scrollProxy
         self.emptyContent = emptyContent
         self.filterEmptyContent = filterEmptyContent
         self.seatingContent = seatingContent
@@ -123,6 +126,11 @@ struct NotebookGridContainer<
                 rowStack(rows: rows, pane: .trailingFixed, rowContent: trailingFixedRow)
             } scrollRows: {
                 rowStack(rows: rows, pane: .scroll, rowContent: scrollRow)
+            }
+            .onAppear {
+                scrollProxy?.scrollToRow = { [scrollSyncCoordinator] index in
+                    scrollSyncCoordinator.scrollToRow(index)
+                }
             }
             .overlay {
                 if rows.isEmpty {

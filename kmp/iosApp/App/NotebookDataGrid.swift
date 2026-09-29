@@ -190,6 +190,11 @@ enum NotebookRowVirtualizationDebug {
     }
 }
 
+/// Puente para que el Cuaderno pida desplazar el grid hasta una fila (p. ej. al navegar con Enter).
+final class NotebookGridScrollProxy {
+    var scrollToRow: ((Int) -> Void)?
+}
+
 final class NotebookScrollSyncCoordinator: ObservableObject {
     @Published private(set) var visibleRange: Range<Int> = 0..<24
     private var metrics = NotebookRowWindowMath.Metrics.empty
@@ -221,6 +226,34 @@ final class NotebookScrollSyncCoordinator: ObservableObject {
         viewportHeight = nextHeight
         guard metrics.rowCount > 0 else { return }
         publishRangeIfNeeded()
+    }
+
+    /// Desplaza el grid lo justo para que la fila `index` quede completamente visible.
+    /// Sin animación: la ventana de filas se recalcula en el mismo ciclo de scroll.
+    func scrollToRow(_ index: Int) {
+        guard metrics.prefixY.indices.contains(index + 1), viewportHeight > 1 else { return }
+        let top = metrics.prefixY[index]
+        let bottom = metrics.prefixY[index + 1]
+        let target: CGFloat
+        if top < offsetY {
+            target = top
+        } else if bottom > offsetY + viewportHeight {
+            target = max(0, bottom - viewportHeight)
+        } else {
+            return
+        }
+        #if canImport(UIKit)
+        if let scrollView = uiScrollViews.object(forKey: "center" as NSString) {
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: target), animated: false)
+        }
+        #endif
+        #if canImport(AppKit)
+        if let scrollView = nsScrollViews.object(forKey: "center" as NSString) {
+            let origin = scrollView.contentView.bounds.origin
+            scrollView.contentView.scroll(to: NSPoint(x: origin.x, y: target))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+        #endif
     }
 
     private func publishRangeIfNeeded() {

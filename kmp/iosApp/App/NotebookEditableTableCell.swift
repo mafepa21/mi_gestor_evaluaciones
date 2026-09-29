@@ -81,6 +81,8 @@ struct NotebookEditableTableCell: View {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -160,6 +162,7 @@ struct NotebookEditableTableCell: View {
                 categoryTint: categoryTint,
                 hasColumnColor: hasColumnColor,
                 focusedCellId: focusedCellId,
+                isFocused: isFocused,
                 activeChoiceCellId: $activeChoiceCellId,
                 navigationDirection: navigationDirection,
                 formulaDisplay: formulaDisplay,
@@ -192,6 +195,7 @@ struct NotebookEditableTableCell: View {
                     categoryTint: categoryTint,
                     hasColumnColor: hasColumnColor,
                     focusedCellId: focusedCellId,
+                    isFocused: isFocused,
                     activeChoiceCellId: $activeChoiceCellId,
                     navigationDirection: navigationDirection,
                     formulaDisplay: formulaDisplay,
@@ -222,6 +226,7 @@ struct NotebookEditableTableCell: View {
                     categoryTint: categoryTint,
                     hasColumnColor: hasColumnColor,
                     focusedCellId: focusedCellId,
+                    isFocused: isFocused,
                     activeChoiceCellId: $activeChoiceCellId,
                     navigationDirection: navigationDirection,
                     formulaDisplay: formulaDisplay,
@@ -285,6 +290,7 @@ struct NotebookEditableTableCell: View {
                     categoryTint: categoryTint,
                     hasColumnColor: hasColumnColor,
                     focusedCellId: focusedCellId,
+                    isFocused: isFocused,
                     activeChoiceCellId: $activeChoiceCellId,
                     navigationDirection: navigationDirection,
                     formulaDisplay: formulaDisplay,
@@ -319,6 +325,8 @@ private struct NotebookNumericCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -344,6 +352,7 @@ private struct NotebookNumericCell: View, Equatable {
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -359,6 +368,8 @@ private struct NotebookTextCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -384,6 +395,7 @@ private struct NotebookTextCell: View, Equatable {
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -399,6 +411,8 @@ private struct NotebookCheckCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -424,6 +438,7 @@ private struct NotebookCheckCell: View, Equatable {
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -439,6 +454,8 @@ private struct NotebookAttendanceCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -464,6 +481,7 @@ private struct NotebookAttendanceCell: View, Equatable {
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
             lhs.isAttendanceQuickMode == rhs.isAttendanceQuickMode &&
             lhs.reloadToken == rhs.reloadToken
     }
@@ -482,6 +500,7 @@ extension NotebookNumericCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -515,6 +534,7 @@ extension NotebookTextCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -548,6 +568,7 @@ extension NotebookCheckCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -581,6 +602,7 @@ extension NotebookAttendanceCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -613,6 +635,8 @@ private struct NotebookStatefulEditableTableCell: View {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -738,8 +762,8 @@ private struct NotebookStatefulEditableTableCell: View {
         .appOnChange(of: displaySnapshot) { _ in
             loadDraftsUnlessEditing()
         }
-        .appOnChange(of: focusedCellId.wrappedValue) { newValue in
-            if newValue == cellId {
+        .appOnChange(of: isFocused) { newValue in
+            if newValue {
                 onSelect()
             } else {
                 saveFocusedDraftIfNeeded()
@@ -1104,7 +1128,7 @@ private struct NotebookStatefulEditableTableCell: View {
     #if os(macOS)
     private var numericMacField: some View {
         HStack(spacing: 6) {
-            if focusedCellId.wrappedValue == cellId {
+            if isFocused {
                 TextField("", text: $numericDraft)
                     .textFieldStyle(.plain)
                     .multilineTextAlignment(.trailing)

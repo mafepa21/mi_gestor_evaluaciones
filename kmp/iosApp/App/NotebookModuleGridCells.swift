@@ -674,6 +674,7 @@ extension NotebookModuleView {
             },
             hasColumnColor: hasCustomColumnColor(column),
             focusedCellId: $focusedCellId,
+            isFocused: focusedCellId == cellFocusId(studentId: item.student.id, columnId: column.id),
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaCellDisplay,

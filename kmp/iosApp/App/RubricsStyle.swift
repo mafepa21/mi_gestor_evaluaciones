@@ -94,30 +94,83 @@ enum RubricsStyle {
         NotebookGradeBand(scoreOutOfTen: score).softFill
     }
 
-    /// Color de un nivel según su ratio de puntos frente al máximo del
-    /// criterio (4 bandas: ≥0,8 éxito · 0,6-0,8 acento · 0,4-0,6 naranja ·
-    /// resto peligro). Deliberadamente **no** es `gradeColor` (3 bandas,
-    /// pensada para "nota global 0-10"): esta función tiñe varios niveles del
-    /// mismo criterio a la vez para que se distingan entre sí de un vistazo —
-    /// un propósito distinto (orden relativo entre opciones) al de una nota
-    /// final. Colapsar sus 4 bandas a las 3 de `gradeColor` fusionaría
-    /// niveles adyacentes en el mismo color con más frecuencia, perdiendo
-    /// justo la distinción que existe para dar. Compartida entre la
-    /// evaluación masiva (`RubricBulkEvaluationSheet`) y la individual.
-    static func levelColor(points: Double, maxPoints: Double) -> Color {
-        guard maxPoints > 0 else { return EvaluationDesign.accent }
+    /// Paso (0-3) de un nivel según su ratio de puntos frente al máximo del
+    /// criterio: 0 = el más bajo (rojo) … 3 = el más alto (verde). Escala
+    /// ordenada de 4 pasos rojo · naranja · menta · verde, **sin azul**, para
+    /// que el orden se lea de un vistazo y no se confunda con el acento de la
+    /// app. Deliberadamente no es `gradeColor` (3 bandas, pensada para la nota
+    /// global 0-10): esta escala tiñe varios niveles del mismo criterio a la
+    /// vez. Compartida entre la evaluación individual y la masiva.
+    static func levelStep(points: Double, maxPoints: Double) -> Int {
+        guard maxPoints > 0 else { return 3 }
         let ratio = points / maxPoints
-
         switch ratio {
-        case 0.8...:
-            return EvaluationDesign.success
-        case 0.6..<0.8:
-            return EvaluationDesign.accent
-        case 0.4..<0.6:
-            return .orange
-        default:
-            return EvaluationDesign.danger
+        case 0.8...: return 3
+        case 0.6..<0.8: return 2
+        case 0.4..<0.6: return 1
+        default: return 0
         }
+    }
+
+    /// Color de relleno/borde de un paso de la escala (0-3).
+    static func stepColor(_ step: Int) -> Color {
+        switch step {
+        case 3: return EvaluationDesign.success
+        case 2: return .mint
+        case 1: return .orange
+        default: return EvaluationDesign.danger
+        }
+    }
+
+    /// Color de un nivel según su ratio de puntos (ver `levelStep`).
+    static func levelColor(points: Double, maxPoints: Double) -> Color {
+        stepColor(levelStep(points: points, maxPoints: maxPoints))
+    }
+
+    /// Color para usar como **texto** sobre fondo claro/tintado. Los tonos de
+    /// relleno (menta, naranja, verde) no llegan a contraste 4,5:1 sobre
+    /// blanco; en claro se usan variantes oscuras, en oscuro el color base.
+    static func stepTextColor(_ step: Int, scheme: ColorScheme) -> Color {
+        guard scheme == .light else { return stepColor(step) }
+        switch step {
+        case 3: return Color(red: 0.05, green: 0.42, blue: 0.20)
+        case 2: return Color(red: 0.00, green: 0.42, blue: 0.36)
+        case 1: return Color(red: 0.62, green: 0.27, blue: 0.00)
+        default: return Color(red: 0.70, green: 0.08, blue: 0.10)
+        }
+    }
+
+    static func levelTextColor(points: Double, maxPoints: Double, scheme: ColorScheme) -> Color {
+        stepTextColor(levelStep(points: points, maxPoints: maxPoints), scheme: scheme)
+    }
+
+    /// Paso de la escala para una nota 0-10 cualitativa (misma paleta que los
+    /// niveles): ≥9 verde · ≥6 menta · ≥5 naranja · resto rojo.
+    static func scoreStep(forScoreOutOfTen score: Double) -> Int {
+        if score >= 9 { return 3 }
+        if score >= 6 { return 2 }
+        if score >= 5 { return 1 }
+        return 0
+    }
+
+    /// Texto de puntos con plural correcto ("1 punto", "2 puntos", "1,5 puntos").
+    static func pointsText(_ points: Double) -> String {
+        let isWhole = points.truncatingRemainder(dividingBy: 1) == 0
+        let number = isWhole ? "\(Int(points))" : IosFormatting.scoreOutOfTen(from: points)
+        return points == 1 ? "\(number) punto" : "\(number) puntos"
+    }
+
+    /// Quita el prefijo numérico de orden ("1 — ", "2 - ") que algunas
+    /// rúbricas importadas traen dentro del nombre del nivel: la tarjeta ya
+    /// muestra su propia posición.
+    static func cleanLevelTitle(_ title: String) -> String {
+        let cleaned = title.replacingOccurrences(
+            of: #"^\s*\d+\s*[—–-]\s*"#,
+            with: "",
+            options: .regularExpression
+        )
+        let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? title : trimmed
     }
 }
 
@@ -170,7 +223,10 @@ struct RubricScoreRing: View {
     var diameter: CGFloat = 56
 
     private var hasStarted: Bool { progress > 0 }
-    private var color: Color { RubricsStyle.gradeColor(forScoreOutOfTen: scoreOutOfTen) }
+    @Environment(\.colorScheme) private var colorScheme
+    private var step: Int { RubricsStyle.scoreStep(forScoreOutOfTen: scoreOutOfTen) }
+    private var color: Color { RubricsStyle.stepColor(step) }
+    private var textColor: Color { RubricsStyle.stepTextColor(step, scheme: colorScheme) }
 
     var body: some View {
         ZStack {
@@ -184,115 +240,107 @@ struct RubricScoreRing: View {
 
             Text(hasStarted ? IosFormatting.scoreOutOfTen(from: scoreOutOfTen) : "–")
                 .font(.system(.footnote, design: .rounded).weight(.bold))
-                .foregroundStyle(hasStarted ? color : .secondary)
+                .foregroundStyle(hasStarted ? textColor : .secondary)
                 .monospacedDigit()
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
+                .contentTransition(.numericText(value: scoreOutOfTen))
         }
         .frame(width: diameter, height: diameter)
         .animation(.easeInOut(duration: 0.25), value: progress)
+        .animation(.easeInOut(duration: 0.25), value: scoreOutOfTen)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Nota actual")
         .accessibilityValue(hasStarted ? IosFormatting.scoreOutOfTen(from: scoreOutOfTen) : "Sin empezar")
     }
 }
 
-/// Tarjeta horizontal de nivel de rúbrica en la evaluación individual.
-/// El ancho es estable tanto en reposo como seleccionada para que la fila no
-/// salte de línea. La descripción permanece visible junto al nivel y toda la
-/// tarjeta funciona como una única zona de selección táctil.
+/// Tarjeta de nivel de rúbrica en la evaluación individual. Se coloca en una
+/// rejilla adaptativa (`RubricCriterionRow`): todas las tarjetas de una fila
+/// miden lo mismo de alto y el título se ve entero. En reposo es neutra; el
+/// color (borde 2pt + tinte suave) solo aparece en la elegida. Lleva un número
+/// de posición (1…n, el mismo que la tecla rápida) para no depender solo del
+/// color. Sin sombra ni `scaleEffect`: el `ScrollView` que la contiene los
+/// recortaría.
 struct RubricLevelPill: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let title: String
     let points: Double
     let maxPoints: Double
     let isSelected: Bool
     let onSelect: () -> Void
     let description: String?
+    /// Posición 1-based del nivel dentro del criterio (símbolo + tecla).
+    var position: Int = 1
 
     private var color: Color { RubricsStyle.levelColor(points: points, maxPoints: maxPoints) }
+    private var textColor: Color {
+        RubricsStyle.levelTextColor(points: points, maxPoints: maxPoints, scheme: colorScheme)
+    }
+    private var displayTitle: String { RubricsStyle.cleanLevelTitle(title) }
     private var trimmedDescription: String {
         description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
-    private var pointsBadgeFill: Color {
-        isSelected ? contrastingTextColor(for: color).opacity(0.20) : color.opacity(0.14)
-    }
-    private var descriptionForeground: Color {
-        isSelected ? contrastingTextColor(for: color).opacity(0.92) : .secondary
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
     }
 
     var body: some View {
         Button(action: onSelect) {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(isSelected ? contrastingTextColor(for: color) : color)
-                        .frame(width: 20, height: 20)
-
-                    Text(title)
-                        .font(.system(.subheadline, design: .rounded).weight(.bold))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
+                HStack(alignment: .top, spacing: 8) {
+                    Text("\(position)")
+                        .font(.caption.weight(.bold))
+                        .monospacedDigit()
+                        .foregroundStyle(isSelected ? contrastingTextColor(for: color) : textColor)
+                        .frame(width: 24, height: 24)
+                        .background(Circle().fill(isSelected ? color : color.opacity(0.16)))
+                        .accessibilityHidden(true)
 
                     Spacer(minLength: 0)
 
-                    pointsBadge
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(isSelected ? textColor : Color.secondary.opacity(0.6))
+                        .contentTransition(.symbolEffect(.replace))
+                        .accessibilityHidden(true)
                 }
 
-                descriptionContent
+                Text(displayTitle)
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(RubricsStyle.pointsText(points))
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+
+                if !trimmedDescription.isEmpty {
+                    Text(trimmedDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                }
             }
-            .foregroundStyle(isSelected ? contrastingTextColor(for: color) : .primary)
             .padding(12)
-            .frame(width: 156, alignment: .topLeading)
-            .frame(minHeight: 116, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected ? color : color.opacity(0.07))
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(minHeight: 44)
+            .background(shape.fill(isSelected ? color.opacity(0.14) : Color.primary.opacity(0.04)))
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(
-                        isSelected ? color : color.opacity(0.22),
-                        lineWidth: isSelected ? 2 : 1
-                    )
+                shape.stroke(
+                    isSelected ? color : RubricsStyle.hairline,
+                    lineWidth: isSelected ? 2 : 1
+                )
             }
-            .shadow(
-                color: isSelected ? color.opacity(0.28) : .clear,
-                radius: 6,
-                x: 0,
-                y: 3
-            )
-            .scaleEffect(isSelected ? 1.02 : 1.0)
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(shape)
         }
-        .buttonStyle(NotebookScaleButtonStyle())
-        .accessibilityLabel("Nivel \(title), \(IosFormatting.scoreOutOfTen(from: points)) puntos")
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(displayTitle), \(RubricsStyle.pointsText(points))")
         .accessibilityHint(trimmedDescription.isEmpty ? "Pulsa para seleccionar este nivel" : trimmedDescription)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-    }
-
-    private var pointsBadge: some View {
-        let ptsText = points.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(points))" : String(format: "%.1f", points)
-        return Text("\(ptsText) pts")
-            .font(.system(size: 11, weight: .bold, design: .rounded))
-            .monospacedDigit()
-            .foregroundStyle(isSelected ? contrastingTextColor(for: color) : color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .fill(pointsBadgeFill)
-            )
-    }
-
-    @ViewBuilder
-    private var descriptionContent: some View {
-        if !trimmedDescription.isEmpty {
-            Text(trimmedDescription)
-                .font(.caption)
-                .foregroundStyle(descriptionForeground)
-                .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(2)
-        }
     }
 }

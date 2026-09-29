@@ -11,6 +11,13 @@ El formato sigue una variante practica de Keep a Changelog:
 - `Docs`: documentacion relevante.
 - `Verification`: builds, tests, auditorias o evidencias.
 
+### Changed
+
+- **Planificador (macOS): toolbar fija en todas las secciones**:
+  - `MacRootView.swift`: los controles de la toolbar (sección, navegación anterior/Hoy/siguiente, grupo, búsqueda, «Más» y «Nueva sesión») se pintan siempre, en el mismo orden y con ancho fijo. Lo que no aplica a la sección activa se deshabilita en vez de desaparecer, así que nada se desplaza al cambiar entre Semana, Día, Mes, Secuencia y Resumen.
+  - Densidad del Gantt, Compartir resumen y las acciones de selección múltiple pasan al menú «Más», que es fijo.
+  - Verificación: `xcodebuild -scheme MiGestorKMPMac` OK. No se probó visualmente cada sección ni se ejecutaron tests unitarios (el cambio es solo de layout de toolbar).
+
 ### Fixed
 
 - **Dashboard: erradicación de congelación en tiempo de ejecución de Swift al entrar a 'Hoy' en iPad**:

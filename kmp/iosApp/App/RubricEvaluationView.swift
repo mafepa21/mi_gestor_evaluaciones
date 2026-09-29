@@ -193,6 +193,7 @@ struct RubricEvaluationView: View {
     }
 
     private func saveAndNavigate(to targetStudentId: Int64) {
+        guard !state.isSaving else { return }
         AppleInteractionFeedback.play(.selection)
         guard let context = bridge.rubricEvaluationCoordinator.context else { return }
         let columnId = context.columnId

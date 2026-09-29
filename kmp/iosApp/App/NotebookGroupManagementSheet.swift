@@ -42,20 +42,6 @@ struct NotebookGroupManagementSheet: View {
         )
     }
 
-    private func courseLabel(for schoolClass: SchoolClass) -> String {
-        let lowercasedName = schoolClass.name.lowercased()
-        if lowercasedName.contains("bach") || lowercasedName.contains("bac") || lowercasedName.contains("bto") || lowercasedName.contains("bat") {
-            return "\(schoolClass.course)º Bachillerato"
-        }
-        if lowercasedName.contains("prim") || lowercasedName.contains("pri") {
-            return "\(schoolClass.course)º Primaria"
-        }
-        if lowercasedName.contains("eso") || (1...4).contains(schoolClass.course) {
-            return "\(schoolClass.course)º ESO"
-        }
-        return "\(schoolClass.course)º"
-    }
-
     private func extractCourseNumber(from text: String) -> Int? {
         NotebookLearningSituationMatcher.extractCourseNumber(from: text)
     }
@@ -209,23 +195,24 @@ struct NotebookGroupManagementSheet: View {
                 ) { name, situationId in
                     let classId = data?.sheet.classId
                     Task {
+                        var linkFailed = false
                         if let situationId = situationId, let classId = classId {
                             do {
                                 try await bridge.addLearningSituationClassLink(situationId: situationId, classId: classId)
                             } catch {
-                                // ignore
+                                linkFailed = true
                             }
                         }
                         await MainActor.run {
                             let tabId = activeTabId ?? ""
                             if let target = editGroupTarget {
-                                boardDraft.updateGroup(id: target.id, name: name, learningSituationId: situationId)
-                                bridge.updateNotebookWorkGroup(groupId: target.id, name: name, learningSituationId: situationId, tabId: tabId)
-                                onToast("Grupo actualizado", .success)
+                                boardDraft.updateGroup(id: target.id, name: name, learningSituationId: linkFailed ? nil : situationId)
+                                bridge.updateNotebookWorkGroup(groupId: target.id, name: name, learningSituationId: linkFailed ? nil : situationId, tabId: tabId)
+                                onToast(linkFailed ? "Grupo actualizado, pero no se pudo vincular la situación" : "Grupo actualizado", linkFailed ? .warning : .success)
                             } else {
-                                boardDraft.addTemporaryGroup(name: name, tabId: tabId, learningSituationId: situationId)
-                                bridge.saveNotebookWorkGroup(name: name, learningSituationId: situationId, tabId: tabId)
-                                onToast("Grupo creado", .success)
+                                boardDraft.addTemporaryGroup(name: name, tabId: tabId, learningSituationId: linkFailed ? nil : situationId)
+                                bridge.saveNotebookWorkGroup(name: name, learningSituationId: linkFailed ? nil : situationId, tabId: tabId)
+                                onToast(linkFailed ? "Grupo creado, pero no se pudo vincular la situación" : "Grupo creado", linkFailed ? .warning : .success)
                             }
                         }
                     }
@@ -313,30 +300,33 @@ struct NotebookGroupManagementSheet: View {
         }
     }
 
-    private func memberCount(_ groupId: Int64) -> Int {
-        guard let data = data else { return 0 }
-        return data.sheet.workGroupMembers.filter { $0.groupId == groupId }.count
-    }
-
-    private func memberSummary(for groupId: Int64) -> String {
-        guard let data else { return "Sin alumnado" }
-        let ids = Set(data.sheet.workGroupMembers.filter { $0.groupId == groupId }.map(\.studentId))
-        let names = data.sheet.rows.map(\.student).filter { ids.contains($0.id) }
-            .sorted {
+    /// Recuento y resumen de alumnado por grupo, calculado una vez por pintado.
+    private func memberSummaries() -> [Int64: (count: Int, text: String)] {
+        guard let data else { return [:] }
+        let studentsById = Dictionary(data.sheet.rows.map { ($0.student.id, $0.student) }, uniquingKeysWith: { first, _ in first })
+        var idsByGroup: [Int64: [Int64]] = [:]
+        for member in data.sheet.workGroupMembers {
+            idsByGroup[member.groupId, default: []].append(member.studentId)
+        }
+        var result: [Int64: (count: Int, text: String)] = [:]
+        for (groupId, ids) in idsByGroup {
+            let students = ids.compactMap { studentsById[$0] }.sorted {
                 "\($0.lastName) \($0.firstName)".localizedStandardCompare("\($1.lastName) \($1.firstName)") == .orderedAscending
             }
-            .prefix(4)
-            .map { "\($0.lastName), \($0.firstName)" }
-        if names.isEmpty { return "Sin alumnado" }
-        if ids.count > names.count {
-            return names.joined(separator: " · ") + "…"
+            let names = students.prefix(4).map { "\($0.lastName), \($0.firstName)" }
+            let text = names.isEmpty
+                ? "Sin alumnado"
+                : names.joined(separator: " · ") + (students.count > names.count ? "…" : "")
+            result[groupId] = (ids.count, text)
         }
-        return names.joined(separator: " · ")
+        return result
     }
 
     @ViewBuilder
     private var groupsList: some View {
-        List {
+        let summaries = memberSummaries()
+        let situationsById = Dictionary(classSituations.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return List {
             if currentGroups.isEmpty {
                 Section {
                     VStack(spacing: 16) {
@@ -367,17 +357,17 @@ struct NotebookGroupManagementSheet: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(group.name)
                                         .font(.headline)
-                                    Text(memberSummary(for: group.id))
+                                    Text(summaries[group.id]?.text ?? "Sin alumnado")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(2)
                                     HStack(spacing: 6) {
-                                        Text("\(memberCount(group.id)) alumnos")
+                                        Text("\(summaries[group.id]?.count ?? 0) alumnos")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
 
                                         if let sitId = group.learningSituationId?.int64Value,
-                                           let situation = classSituations.first(where: { $0.id == sitId }) {
+                                           let situation = situationsById[sitId] {
                                             Text("•")
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
@@ -550,7 +540,14 @@ private struct GroupMembersView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        let members = data?.sheet.workGroupMembers ?? []
+        let currentIds = Set(members.filter { $0.groupId == group.id }.map(\.studentId))
+        let groupNames = Dictionary((data?.sheet.workGroups ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        var otherByStudent: [Int64: String] = [:]
+        for member in members where member.groupId != group.id && otherByStudent[member.studentId] == nil {
+            otherByStudent[member.studentId] = groupNames[member.groupId]
+        }
+        return VStack(spacing: 0) {
             SearchBar(text: $searchText, placeholder: "Buscar alumno...")
                 .padding()
                 .background(IOSAppStyle.pageBackground)
@@ -558,8 +555,8 @@ private struct GroupMembersView: View {
             List {
                 Section {
                     ForEach(filteredStudents, id: \.id) { student in
-                        let isMember = isStudentInCurrentGroup(student.id)
-                        let otherGroupName = studentOtherGroupName(student.id)
+                        let isMember = currentIds.contains(student.id)
+                        let otherGroupName = otherByStudent[student.id]
 
                         Button {
                             toggleStudentMembership(student.id, isMember: isMember)
@@ -604,22 +601,6 @@ private struct GroupMembersView: View {
             #endif
         }
         .navigationTitle(group.name)
-    }
-
-    private func isStudentInCurrentGroup(_ studentId: Int64) -> Bool {
-        guard let data = data else { return false }
-        return data.sheet.workGroupMembers.contains {
-            $0.studentId == studentId && $0.groupId == group.id
-        }
-    }
-
-    private func studentOtherGroupName(_ studentId: Int64) -> String? {
-        guard let data = data else { return nil }
-        guard let member = data.sheet.workGroupMembers.first(where: {
-            $0.studentId == studentId && $0.groupId != group.id
-        }) else { return nil }
-
-        return data.sheet.workGroups.first(where: { $0.id == member.groupId })?.name
     }
 
     private func toggleStudentMembership(_ studentId: Int64, isMember: Bool) {
@@ -686,14 +667,14 @@ enum NotebookLearningSituationMatcher {
             }
         }
 
-        // 2. Etapa educativa
-        let isClassBach = className.contains("bach") || className.contains("bac") || className.contains("bto") || className.contains("bat")
-        let isClassEso = className.contains("eso") || className.contains("secundaria")
-        let isClassPrimaria = className.contains("prim") || className.contains("pri")
+        // 2. Etapa educativa (por palabras completas: "Primero A" no es Primaria)
+        let isClassBach = hasStage(className, .bachillerato)
+        let isClassEso = hasStage(className, .eso)
+        let isClassPrimaria = hasStage(className, .primaria)
 
-        let isSitBach = sitCombined.contains("bach") || sitCombined.contains("bac") || sitCombined.contains("bto") || sitCombined.contains("bat")
-        let isSitEso = sitCombined.contains("eso") || sitCombined.contains("secundaria")
-        let isSitPrimaria = sitCombined.contains("prim") || sitCombined.contains("pri")
+        let isSitBach = hasStage(sitCombined, .bachillerato)
+        let isSitEso = hasStage(sitCombined, .eso)
+        let isSitPrimaria = hasStage(sitCombined, .primaria)
 
         if isClassBach {
             return isSitBach || (!isSitEso && !isSitPrimaria)
@@ -708,5 +689,17 @@ enum NotebookLearningSituationMatcher {
         let classLabel = className.filter { $0.isLetter || $0.isNumber }
         return !sitLabel.isEmpty && (classLabel.contains(sitLabel) || sitLabel.contains(classLabel))
     }
-}
 
+    private enum Stage { case bachillerato, eso, primaria }
+
+    private static func hasStage(_ text: String, _ stage: Stage) -> Bool {
+        let tokens = text.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
+        return tokens.contains { token in
+            switch stage {
+            case .bachillerato: return token.hasPrefix("bach") || ["bac", "bto", "bat"].contains(token)
+            case .eso: return token == "eso" || token.hasPrefix("secundaria")
+            case .primaria: return token.hasPrefix("primaria") || ["prim", "pri"].contains(token)
+            }
+        }
+    }
+}

@@ -18,7 +18,21 @@ struct RubricEvaluationView: View {
     @FocusState private var keysFocused: Bool
 
     private var currentLevels: [Int64: Int64] {
-        Dictionary(uniqueKeysWithValues: state.selectedLevels.map { ($0.key.int64Value, $0.value.int64Value) })
+        Self.levelsById(state.selectedLevels)
+    }
+
+    /// Convierte el mapa Kotlin (criterio -> nivel) a `[Int64: Int64]`.
+    /// Tras `selectLevel`, Kotlin guarda `NSNumber` sueltos y no `KotlinLong`, así que
+    /// recorrer el diccionario como `[KotlinLong: KotlinLong]` aborta con un cast fallido.
+    /// `NSNumber` vale para ambos casos (`KotlinLong` es subclase suya).
+    static func levelsById(_ levels: [KotlinLong: KotlinLong]) -> [Int64: Int64] {
+        var result: [Int64: Int64] = [:]
+        for (rawKey, rawValue) in (levels as NSDictionary) {
+            if let key = rawKey as? NSNumber, let value = rawValue as? NSNumber {
+                result[key.int64Value] = value.int64Value
+            }
+        }
+        return result
     }
 
     /// Hay niveles cambiados respecto a la última carga o guardado.
@@ -114,7 +128,7 @@ struct RubricEvaluationView: View {
                         }
                     }
                     .sheet(isPresented: $showingFamilyReportSheet) {
-                        let selectedIds = Dictionary(uniqueKeysWithValues: state.selectedLevels.map { ($0.key.int64Value, $0.value.int64Value) })
+                        let selectedIds = Self.levelsById(state.selectedLevels)
                         let resolvedClass = bridge.classes.first(where: { $0.id == (bridge.rubricEvaluationCoordinator.context?.classId ?? -1) })?.name ?? "Educación Física"
                         RubricExportFamilyPDFSheet(
                             rubricDetail: rubric,

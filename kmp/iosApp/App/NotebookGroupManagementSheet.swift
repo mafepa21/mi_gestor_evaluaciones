@@ -117,6 +117,9 @@ struct NotebookGroupManagementSheet: View {
                         },
                         onImportExcel: {
                             showingFileImporter = true
+                        },
+                        onGenerateCooperative: {
+                            showingGeneratorSheet = true
                         }
                     )
                 } else {
@@ -135,20 +138,6 @@ struct NotebookGroupManagementSheet: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 220)
-                }
-                ToolbarItem(placement: .automatic) {
-                    Button {
-                        showingGeneratorSheet = true
-                    } label: {
-                        Label("Generar con IA", systemImage: "sparkles")
-                    }
-                }
-                ToolbarItem(placement: .automatic) {
-                    Button {
-                        showingFileImporter = true
-                    } label: {
-                        Label("Importar Excel", systemImage: "square.and.arrow.down")
-                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Listo") {

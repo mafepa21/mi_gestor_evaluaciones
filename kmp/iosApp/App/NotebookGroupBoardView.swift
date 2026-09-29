@@ -267,8 +267,11 @@ struct NotebookGroupBoardView: View {
     let onToast: (String, NotebookToastStyle) -> Void
     let onCreateGroup: () -> Void
     let onImportExcel: () -> Void
+    let onGenerateCooperative: () -> Void
 
     @State private var showingAutoCompose = false
+    @State private var targetedColumnKey: String?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var data: NotebookUiStateData? {
         bridge.notebookState as? NotebookUiStateData
@@ -285,27 +288,11 @@ struct NotebookGroupBoardView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Button(action: onCreateGroup) {
-                    Label("Nuevo grupo", systemImage: "plus")
-                }
-                .buttonStyle(.bordered)
-
-                Button(action: onImportExcel) {
-                    Label("Importar Excel", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    showingAutoCompose = true
-                } label: {
-                    Label("Agrupar automáticamente", systemImage: "sparkles")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(students.isEmpty)
-
-                Spacer(minLength: 0)
+            ViewThatFits(in: .horizontal) {
+                actionBar(compact: false)
+                actionBar(compact: true)
             }
+            .groupGlassContainer(spacing: 8)
             .padding(.horizontal, 16)
             .padding(.top, 8)
 
@@ -313,7 +300,10 @@ struct NotebookGroupBoardView: View {
                 let columnCount = max(draft.groups.count + 1, 1)
                 let spacing: CGFloat = 8
                 let available = max(geo.size.width - 32, 160)
-                let columnWidth = max((available - spacing * CGFloat(columnCount - 1)) / CGFloat(columnCount), 132)
+                let isCompact = horizontalSizeClass == .compact
+                let columnWidth = isCompact
+                    ? max(available * 0.82, 220)
+                    : max((available - spacing * CGFloat(columnCount - 1)) / CGFloat(columnCount), 160)
                 let grouped = draft.studentsByGroup(from: students)
 
                 ScrollView(.horizontal, showsIndicators: true) {
@@ -336,8 +326,10 @@ struct NotebookGroupBoardView: View {
                             .frame(width: columnWidth)
                         }
                     }
+                    .scrollTargetLayout()
                     .padding(.horizontal, 16)
                 }
+                .scrollTargetBehavior(.viewAligned)
                 .frame(width: geo.size.width, height: geo.size.height)
             }
         }
@@ -408,61 +400,125 @@ struct NotebookGroupBoardView: View {
         }
     }
 
+    private func actionBar(compact: Bool) -> some View {
+        HStack(spacing: 8) {
+            Button(action: onCreateGroup) {
+                if compact {
+                    Image(systemName: "plus").frame(minWidth: 32, minHeight: 32)
+                } else {
+                    Label("Nuevo grupo", systemImage: "plus").frame(minHeight: 32)
+                }
+            }
+            .groupGlassButton(circular: compact)
+            .accessibilityLabel("Nuevo grupo")
+
+            Menu {
+                Button(action: onImportExcel) {
+                    Label("Importar desde Excel", systemImage: "square.and.arrow.down")
+                }
+                Button(action: onGenerateCooperative) {
+                    Label("Equipos cooperativos (IA)", systemImage: "sparkles")
+                }
+            } label: {
+                Image(systemName: "ellipsis").frame(minWidth: 32, minHeight: 32)
+            }
+            .groupGlassButton(circular: true)
+            .accessibilityLabel("Más acciones")
+
+            Spacer(minLength: 0)
+
+            Button {
+                showingAutoCompose = true
+            } label: {
+                if compact {
+                    Image(systemName: "sparkles").frame(minWidth: 32, minHeight: 32)
+                } else {
+                    Label("Agrupar automáticamente", systemImage: "sparkles").frame(minHeight: 32)
+                }
+            }
+            .groupGlassButton(prominent: true, circular: compact)
+            .disabled(students.isEmpty)
+            .accessibilityLabel("Agrupar automáticamente")
+        }
+    }
+
     private func boardColumn(
         title: String,
         students: [Student],
         groupId: Int64?,
         height: CGFloat
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let key = groupId.map(String.init) ?? "none"
+        let isTargeted = targetedColumnKey == key
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(title)
                     .font(.headline)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.85)
                 Spacer(minLength: 0)
                 Text("\(students.count)")
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(NotebookStyle.primaryTint.opacity(0.14), in: Capsule())
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(title), \(students.count) alumnos")
 
             ScrollView {
-                studentStack(students)
+                studentStack(students, currentGroupId: groupId)
             }
             .padding(8)
             .frame(maxWidth: .infinity, minHeight: max(height - 48, 120), maxHeight: max(height - 48, 120), alignment: .top)
-            .background(IOSAppStyle.cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(NotebookStyle.softBorder, lineWidth: 1)
-            )
+            .groupSolidCard(highlighted: isTargeted)
             .dropDestination(for: String.self) { items, _ in
                 return handleDrop(items: items, groupId: groupId)
+            } isTargeted: { targeted in
+                if targeted {
+                    targetedColumnKey = key
+                } else if targetedColumnKey == key {
+                    targetedColumnKey = nil
+                }
             }
         }
     }
 
-    private func studentStack(_ students: [Student]) -> some View {
-        VStack(spacing: 2) {
+    private func studentStack(_ students: [Student], currentGroupId: Int64?) -> some View {
+        VStack(spacing: 8) {
             ForEach(students, id: \.id) { student in
-                studentChip(student)
+                studentChip(student, currentGroupId: currentGroupId)
                     .draggable(String(student.id))
             }
             Spacer(minLength: 0)
         }
     }
 
-    private func studentChip(_ student: Student) -> some View {
-        Text("\(student.lastName), \(student.firstName)")
-            .font(.caption2)
+    private func studentChip(_ student: Student, currentGroupId: Int64?) -> some View {
+        #if os(iOS)
+        let minHeight: CGFloat = 44
+        #else
+        let minHeight: CGFloat = 32
+        #endif
+        return Text("\(student.lastName), \(student.firstName)")
+            .font(.subheadline)
             .lineLimit(1)
-            .minimumScaleFactor(0.75)
+            .minimumScaleFactor(0.85)
             .padding(.horizontal, 8)
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contextMenu {
+                // Alternativa accesible y de teclado al arrastre.
+                Menu("Mover a…") {
+                    if currentGroupId != nil {
+                        Button("Sin grupo") { _ = handleDrop(items: [String(student.id)], groupId: nil) }
+                    }
+                    ForEach(draft.groups.filter { $0.id != currentGroupId }) { group in
+                        Button(group.name) { _ = handleDrop(items: [String(student.id)], groupId: group.id) }
+                    }
+                }
+            }
     }
 
     private func handleDrop(items: [String], groupId: Int64?) -> Bool {
@@ -573,5 +629,48 @@ private struct NotebookGroupAutoComposeSheet: View {
         #if os(macOS)
         .frame(minWidth: 440, minHeight: 460)
         #endif
+    }
+}
+
+// MARK: - Estilo Liquid Glass de grupos
+
+extension View {
+    /// Botón de vidrio (iOS/macOS 26) con fallback a los estilos clásicos.
+    @ViewBuilder
+    func groupGlassButton(prominent: Bool = false, circular: Bool = false) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            if prominent {
+                self.buttonStyle(.glassProminent).buttonBorderShape(circular ? .circle : .capsule)
+            } else {
+                self.buttonStyle(.glass).buttonBorderShape(circular ? .circle : .capsule)
+            }
+        } else if prominent {
+            self.buttonStyle(.borderedProminent).buttonBorderShape(circular ? .circle : .capsule)
+        } else {
+            self.buttonStyle(.bordered).buttonBorderShape(circular ? .circle : .capsule)
+        }
+    }
+
+    /// Tarjeta de contenido sólida: el vidrio se reserva para barras y controles.
+    func groupSolidCard(highlighted: Bool = false) -> some View {
+        self
+            .background(
+                highlighted ? NotebookStyle.primaryTint.opacity(0.12) : IOSAppStyle.cardBackground,
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(highlighted ? NotebookStyle.primaryTint : NotebookStyle.softBorder, lineWidth: highlighted ? 3 : 1)
+            )
+    }
+
+    /// Agrupa controles de vidrio para que se fundan entre sí (iOS/macOS 26).
+    @ViewBuilder
+    func groupGlassContainer(spacing: CGFloat = 8) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) { self }
+        } else {
+            self
+        }
     }
 }

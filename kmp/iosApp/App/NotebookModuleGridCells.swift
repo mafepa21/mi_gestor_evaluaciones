@@ -63,6 +63,7 @@ extension NotebookModuleView {
         .padding(.top, NotebookGridStyle.Space.s)
         .padding(.bottom, NotebookGridStyle.Space.s + 3)
         .frame(width: width, alignment: .leading)
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
         .frame(minHeight: 52, alignment: .topLeading)
         .background(
             ZStack {

@@ -2354,9 +2354,17 @@ private struct NotebookRubricValueLabel: View {
 
     /// Devuelve el número tal como se muestra ("7,5") y su valor, o nil si no es numérico.
     static func parse(_ raw: String) -> (text: String, value: Double)? {
-        let head = raw.components(separatedBy: "/").first?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard let value = Double(head.replacingOccurrences(of: ",", with: ".")) else { return nil }
+        let parts = raw.components(separatedBy: "/")
+        let head = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Solo se acepta nota sobre 10: sin denominador o con denominador 10.
+        if parts.count > 1 {
+            let denominator = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard parts.count == 2,
+                  let d = Double(denominator.replacingOccurrences(of: ",", with: ".")),
+                  d == 10 else { return nil }
+        }
+        guard let value = Double(head.replacingOccurrences(of: ",", with: ".")),
+              value.isFinite else { return nil }
         return (head, value)
     }
 

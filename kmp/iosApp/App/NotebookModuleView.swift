@@ -28,7 +28,7 @@ struct NotebookModuleView: View {
         isCompactViewActive ? 44 : (isCompact ? 56 : 52)
     }
     #endif
-    let notebookGridHeaderHeight: CGFloat = 56
+    let notebookGridHeaderHeight: CGFloat = 60
     let notebookGridFolderLaneHeight: CGFloat = 34
 
     @EnvironmentObject var layoutState: WorkspaceLayoutState

@@ -721,6 +721,39 @@ class NotebookViewModelTest {
     }
 
     @Test
+    fun `assignStudentsToWorkGroup en rafaga hace una sola recarga y actualiza el estado al instante`() = runTest {
+        val classId = 1L
+        val group = NotebookWorkGroup(id = 9L, classId = classId, tabId = "ROOT", name = "Equipo A")
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = listOf(NotebookTab(id = "ROOT", title = "1ª Evaluación")),
+                columns = emptyList(),
+                rows = emptyList(),
+                workGroups = listOf(group),
+            )
+        )
+        val viewModel = createViewModel(
+            repository,
+            scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+        )
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        val loadsBefore = repository.loadNotebookSnapshotCount
+
+        (101L..110L).forEach { studentId ->
+            viewModel.assignStudentsToWorkGroup(groupId = 9L, studentIds = listOf(studentId), tabId = "ROOT")
+        }
+        val optimistic = (viewModel.state.value as NotebookUiState.Data).workGroupMembers
+        assertEquals(10, optimistic.count { it.groupId == 9L })
+
+        advanceUntilIdle()
+
+        assertEquals(10, repository.assignedWorkGroupCalls.size)
+        assertEquals(1, repository.loadNotebookSnapshotCount - loadsBefore)
+    }
+
+    @Test
     fun `deleteColumn by evaluation id deletes custom column id when found`() = runTest {
         val classId = 1L
         val evaluationId = 123L

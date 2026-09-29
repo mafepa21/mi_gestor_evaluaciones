@@ -8,10 +8,13 @@ import com.migestor.shared.usecase.*
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 import kotlin.native.ObjCName
 
 enum class NotebookViewModelSaveState { Saved, Unsaved, Saving, Failed }
+
+private const val WORK_GROUP_RELOAD_DEBOUNCE_MS = 300L
 
 class NotebookViewModel(
     private val notebookRepository: NotebookRepository,
@@ -151,6 +154,8 @@ class NotebookViewModel(
     // un valor de un guardado anterior. Cada carga captura su generación antes del primer
     // `suspend` y descarta su resultado si una carga más reciente ya se lanzó mientras esperaba.
     private var loadGeneration: Long = 0
+    private val workGroupWriteMutex = kotlinx.coroutines.sync.Mutex()
+    private var workGroupReloadJob: Job? = null
 
     private fun loadInitialData() {
         // Placeholder for initial data loading if needed
@@ -1914,13 +1919,52 @@ class NotebookViewModel(
             )
             ?: currentState.sheet.tabs.firstOrNull()?.id
             ?: return
+        // Estado local inmediato: el tablero no espera a la recarga completa del cuaderno.
+        applyWorkGroupMembershipLocally(resolvedTabId, groupId, studentIds, classId)
         scope.launch {
-            if (groupId == null) {
-                notebookRepository.clearStudentsFromWorkGroup(classId, resolvedTabId, studentIds)
-            } else {
-                notebookRepository.assignStudentsToWorkGroup(classId, resolvedTabId, groupId, studentIds)
+            // Serializa los guardados para que una ráfaga de arrastres conserve el orden.
+            workGroupWriteMutex.withLock {
+                if (groupId == null) {
+                    notebookRepository.clearStudentsFromWorkGroup(classId, resolvedTabId, studentIds)
+                } else {
+                    notebookRepository.assignStudentsToWorkGroup(classId, resolvedTabId, groupId, studentIds)
+                }
             }
-            selectClass(classId, force = true)
+            scheduleWorkGroupReload(classId)
+        }
+    }
+
+    private fun applyWorkGroupMembershipLocally(
+        tabId: String,
+        groupId: Long?,
+        studentIds: List<Long>,
+        classId: Long,
+    ) {
+        val moved = studentIds.toSet()
+        _state.update { current ->
+            if (current !is NotebookUiState.Data) return@update current
+            val kept = current.sheet.workGroupMembers.filterNot { it.tabId == tabId && it.studentId in moved }
+            val added = if (groupId == null) {
+                emptyList()
+            } else {
+                studentIds.distinct().map {
+                    NotebookWorkGroupMember(classId = classId, tabId = tabId, groupId = groupId, studentId = it)
+                }
+            }
+            val members = kept + added
+            current.copy(
+                sheet = current.sheet.copy(workGroupMembers = members),
+                workGroupMembers = members,
+            )
+        }
+    }
+
+    /** Una sola recarga completa tras una ráfaga de cambios de grupo (cada nuevo cambio reinicia la espera). */
+    private fun scheduleWorkGroupReload(classId: Long) {
+        workGroupReloadJob?.cancel()
+        workGroupReloadJob = scope.launch {
+            delay(WORK_GROUP_RELOAD_DEBOUNCE_MS)
+            if (activeClassId == classId) selectClass(classId, force = true)
         }
     }
 

@@ -762,7 +762,7 @@ extension NotebookModuleView {
                 reloadNotebookRow(item.student.id)
             },
             onAttendanceSaved: {
-                Task { await refreshNotebookSignals() }
+                scheduleNotebookSignalsRefresh()
             }
         )
             .frame(width: resolvedColumnWidth(for: column), height: notebookGridRowHeight)

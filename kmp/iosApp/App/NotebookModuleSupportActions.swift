@@ -46,6 +46,13 @@ extension NotebookModuleView {
         inspectorAttachmentUris = persisted?.annotation?.attachmentUris ?? []
     }
 
+    /// Lanza una sola recarga de señales a la vez: cancela la anterior (p. ej. al cambiar de grupo
+    /// coinciden onAppear, onChange y .task) y evita aplicar resultados de una petición vieja.
+    func scheduleNotebookSignalsRefresh() {
+        signalsRefreshTask?.cancel()
+        signalsRefreshTask = Task { await refreshNotebookSignals() }
+    }
+
     func refreshNotebookSignals() async {
         guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
         async let attendanceResult = try? bridge.attendanceRecords(for: classId, on: Date())
@@ -59,6 +66,7 @@ extension NotebookModuleView {
         let sameClass = notebookSignalsClassId == requestedId
 
         await MainActor.run {
+            guard !Task.isCancelled else { return }
             guard (selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value) == requestedId else { return }
             if attendance == nil || incidents == nil || supportMeasureStudentIds == nil {
                 bridge.status = NotebookSignalsReload.failureMessage

@@ -678,6 +678,9 @@ private struct NotebookStatefulEditableTableCell: View {
     @State private var physicalScore: Double?
     @State private var isResolvingPhysicalScore = false
     @State private var physicalScoreRequestID = UUID()
+    @State private var physicalScoreTask: Task<Void, Never>?
+    /// Clave alumno+columna+valor de la última resolución terminada o en curso (caché por celda).
+    @State private var physicalScoreKey: String?
     @State private var lastExternalReloadTime: Date = .distantPast
 
     private var cellId: String {
@@ -746,6 +749,13 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         .onDisappear {
             saveFocusedDraftIfNeeded(requireFocusReleased: false)
+            // La celda sale de la ventana virtualizada: no se deja una resolución colgada.
+            if isResolvingPhysicalScore {
+                physicalScoreTask?.cancel()
+                physicalScoreTask = nil
+                physicalScoreKey = nil
+                isResolvingPhysicalScore = false
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .appleAppDidEnterBackground)) { _ in
             saveFocusedDraftIfNeeded(requireFocusReleased: false)
@@ -1569,17 +1579,26 @@ private struct NotebookStatefulEditableTableCell: View {
               let resolver = actions.resolvePhysicalScore,
               let rawValue = physicalRawValue()
         else {
+            physicalScoreTask?.cancel()
+            physicalScoreTask = nil
+            physicalScoreKey = nil
             physicalScore = nil
             isResolvingPhysicalScore = false
             return
         }
 
+        // Caché por alumno + columna + valor: si no cambió nada, no se vuelve a resolver.
+        let key = "\(classId)|\(item.student.id)|\(column.id)|\(rawValue)"
+        if physicalScoreKey == key { return }
+        physicalScoreKey = key
+        physicalScoreTask?.cancel()
+
         let requestID = UUID()
         physicalScoreRequestID = requestID
         isResolvingPhysicalScore = true
-        Task { @MainActor in
+        physicalScoreTask = Task { @MainActor in
             let resolved = await resolver(item.student, classId, column.id, rawValue)
-            guard physicalScoreRequestID == requestID else { return }
+            guard !Task.isCancelled, physicalScoreRequestID == requestID else { return }
             physicalScore = resolved
             isResolvingPhysicalScore = false
         }

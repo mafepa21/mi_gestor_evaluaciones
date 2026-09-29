@@ -329,7 +329,7 @@ extension NotebookModuleView {
                 }
                 .task(id: notebookSupportRefreshKey) {
                     restoreSeatPositions()
-                    await refreshNotebookSignals()
+                    scheduleNotebookSignalsRefresh()
                 }
         }
     }
@@ -348,7 +348,7 @@ extension NotebookModuleView {
                     redoStack.removeAll()
                     selectedCellRange = nil
                     refreshNotebookEditMenu()
-                    guard let newValue else { return }
+                    guard let newValue, selectedClassId == newValue else { return }
                     guard bridge.notebookViewModel.currentClassId?.int64Value != newValue else { return }
                     selectNotebookClass(newValue)
                 }
@@ -365,6 +365,8 @@ extension NotebookModuleView {
             }
             .appOnChange(of: inspectorSelection) { newValue in
                 Task { @MainActor in
+                    // El Task es diferido: si la selección ya cambió, esta notificación está obsoleta.
+                    guard inspectorSelection == newValue else { return }
                     syncInspectorDraft()
                     startSelectionAuditObservationIfNeeded(for: newValue)
 
@@ -378,6 +380,7 @@ extension NotebookModuleView {
             }
             .appOnChange(of: isInspectorPresented) { presented in
                 Task { @MainActor in
+                    guard isInspectorPresented == presented else { return }
                     if presented {
                         focusMode = .reviewing
                         startSelectionAuditObservationIfNeeded(for: inspectorSelection)

@@ -448,6 +448,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     let fixedRows: FixedRows
     let trailingFixedRows: TrailingFixedRows
     let scrollRows: ScrollRows
+    @State private var viewportWidth: CGFloat = 0
     let scrollSyncCoordinator: NotebookScrollSyncCoordinator
 
     init(
@@ -571,6 +572,21 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            // La tabla se estira al viewport: sin hueco blanco a la derecha
+            // cuando las columnas no lo llenan; si son más anchas, scroll normal.
+            .frame(minWidth: viewportWidth, alignment: .leading)
+            .overlay(alignment: .trailing) {
+                // Línea de cierre tras la última columna (si hay zona fija
+                // derecha, ya la separa su propio borde).
+                if trailingFixedColumnWidth <= 0 {
+                    NotebookGridStyle.gridLine.frame(width: 1)
+                }
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { newWidth in
+            if abs(newWidth - viewportWidth) > 0.5 { viewportWidth = newWidth }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

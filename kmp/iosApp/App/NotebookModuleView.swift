@@ -723,7 +723,7 @@ struct NotebookModuleView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .frame(height: notebookGridHeaderHeight, alignment: .topLeading)
-        .background(.thinMaterial)
+        .background(appSecondarySystemBackgroundColor())
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(NotebookGridStyle.gridLineStrong)

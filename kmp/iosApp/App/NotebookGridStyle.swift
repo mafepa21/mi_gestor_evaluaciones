@@ -25,8 +25,24 @@ enum NotebookGridStyle {
     static let gridLineStrong = Color.primary.opacity(0.14)
 
     /// Franja de fila par (zebra), plana. Es la única técnica de separación
-    /// de filas junto con `gridLine`; no se combina con bordes por celda.
-    static let zebra = Color.primary.opacity(0.025)
+    /// de filas junto con `gridLine`. Se pinta UNA sola vez, en el fondo de la
+    /// fila (`notebookRowView`); las celdas no vuelven a pintarla (doble zebra).
+    static let zebra = Color.primary.opacity(0.035)
+
+    /// Chip de peso de la cabecera: neutro; el color de la columna vive solo
+    /// en la barra de 3pt inferior.
+    static let chipFill = Color.primary.opacity(0.07)
+    static let chipText = Color.primary.opacity(0.72)
+
+    /// Estado vacío (barra/círculo hueco de una celda sin dato).
+    static let stateEmpty = Color.primary.opacity(0.22)
+
+    /// Escala de espaciado (múltiplos de 4/8).
+    enum Space {
+        static let xs: CGFloat = 4
+        static let s: CGFloat = 8
+        static let m: CGFloat = 16
+    }
 
     // MARK: - Tipografía de datos
 

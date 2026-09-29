@@ -397,6 +397,7 @@ private struct NotebookTextCell: View, Equatable {
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -440,6 +441,7 @@ private struct NotebookCheckCell: View, Equatable {
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -483,6 +485,7 @@ private struct NotebookAttendanceCell: View, Equatable {
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.isAttendanceQuickMode == rhs.isAttendanceQuickMode &&
             lhs.reloadToken == rhs.reloadToken
     }
@@ -1588,7 +1591,7 @@ private struct NotebookStatefulEditableTableCell: View {
         }
 
         // Caché por alumno + columna + valor: si no cambió nada, no se vuelve a resolver.
-        let key = "\(classId)|\(item.student.id)|\(column.id)|\(rawValue)"
+        let key = "\(classId)|\(item.student.id)|\(column.id)|\(rawValue)|\(reloadToken)"
         if physicalScoreKey == key { return }
         physicalScoreKey = key
         physicalScoreTask?.cancel()

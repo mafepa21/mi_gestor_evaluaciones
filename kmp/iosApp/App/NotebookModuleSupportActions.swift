@@ -274,6 +274,7 @@ extension NotebookModuleView {
         let risks = riskLevelCache
         let supportIds = activeSupportMeasureStudentIds
         let injuries = localInjuryStatuses
+        let attendance = todayAttendanceByStudentId
         return { index, item in
             let studentId = item.student.id
             var hasher = Hasher()
@@ -285,6 +286,7 @@ extension NotebookModuleView {
             hasher.combine(risks[studentId]?.rawValue)
             hasher.combine(supportIds.contains(studentId))
             hasher.combine(injuries[studentId] ?? item.student.isInjured)
+            hasher.combine(attendance[studentId])
             return hasher.finalize()
         }
     }

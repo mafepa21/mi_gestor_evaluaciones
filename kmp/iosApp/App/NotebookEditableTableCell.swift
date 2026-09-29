@@ -690,6 +690,18 @@ private struct NotebookStatefulEditableTableCell: View {
         "\(item.student.id)|\(column.id)"
     }
 
+    @State private var noticeToken = UUID()
+
+    /// Se re-registra al cambiar los datos de la celda para que los cierres no queden con valores viejos.
+    private func registerNoticeHandlers() {
+        NotebookCellNoticeRouter.shared.register(
+            token: noticeToken,
+            cellId: cellId,
+            onBackground: { saveFocusedDraftIfNeeded(requireFocusReleased: false) },
+            onKeyboardEdit: { applyKeyboardEditNotice($0) }
+        )
+    }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
@@ -744,6 +756,7 @@ private struct NotebookStatefulEditableTableCell: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onAppear {
+            registerNoticeHandlers()
             loadDrafts()
             if NotebookKeyboardEditBuffer.isCapturing(cellId) {
                 numericDraft = NotebookKeyboardEditBuffer.text
@@ -752,6 +765,7 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         .onDisappear {
             saveFocusedDraftIfNeeded(requireFocusReleased: false)
+            NotebookCellNoticeRouter.shared.unregister(token: noticeToken)
             // La celda sale de la ventana virtualizada: no se deja una resolución colgada.
             if isResolvingPhysicalScore {
                 physicalScoreTask?.cancel()
@@ -760,15 +774,14 @@ private struct NotebookStatefulEditableTableCell: View {
                 isResolvingPhysicalScore = false
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .appleAppDidEnterBackground)) { _ in
-            saveFocusedDraftIfNeeded(requireFocusReleased: false)
-        }
         .appOnChange(of: reloadToken) { _ in
+            registerNoticeHandlers()
             lastExternalReloadTime = Date()
             loadDraftsUnlessEditing()
             refreshPhysicalScore()
         }
         .appOnChange(of: displaySnapshot) { _ in
+            registerNoticeHandlers()
             loadDraftsUnlessEditing()
         }
         .appOnChange(of: isFocused) { newValue in
@@ -778,9 +791,7 @@ private struct NotebookStatefulEditableTableCell: View {
                 saveFocusedDraftIfNeeded()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .notebookKeyboardEdit)) { note in
-            applyKeyboardEditNotice(note)
-        }
+        .appOnChange(of: cellId) { _ in registerNoticeHandlers() }
         .appOnChange(of: textDraft) { newText in
             guard focusedCellId.wrappedValue == cellId else { return }
             if originalTextDraft != newText {

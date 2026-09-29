@@ -20,3 +20,4 @@
 - Los borradores optimistas solo se limpian cuando el valor guardado coincide; un formato distinto los deja hasta cambiar de grupo.
 - `scrollToRow` no hace nada si el viewport aún no está medido.
 - `xcodebuild` puede reescribir `*.xcscheme`: restaurar antes de commitear.
+- Los avisos de fondo y de teclado van por `NotebookCellNoticeRouter` (un observador); toda celda editable debe registrarse ahí, no con `onReceive` propio.

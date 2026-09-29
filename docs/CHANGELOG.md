@@ -20,6 +20,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Cuaderno y rúbricas: datos viejos en pantalla y notas falsas**:
+  - `NotebookModuleColumnModel.swift`, `NotebookGridContent.swift`: la caché de filas se invalida con una firma de las celdas, no solo con id, nombre y media. Editar una celda sin cambiar la media ya actualiza la fila.
+  - `KmpBridge.swift`, `KmpBridge+Notebook.swift`: los borradores optimistas se limpian cuando llega el valor guardado o al cambiar de grupo.
+  - `RubricEvaluationView.swift`: navegar a otro alumno sin niveles elegidos ya no guarda un 0.0 falso; el error de guardado se ve en la vista; los botones y los atajos ‹ › se bloquean mientras se guarda; el peso del criterio se muestra como porcentaje del total (antes salía «0%»).
+  - Verificación: `xcodebuild` esquemas `MiGestorKMPiOS` (simulador iOS) y `MiGestorKMPMac` OK. No se ejecutaron tests ni se probó a mano en la app.
+
 - **Dashboard: erradicación de congelación en tiempo de ejecución de Swift al entrar a 'Hoy' en iPad**:
   - `DashboardView.swift`: Eliminada la explosión combinatoria de tipos genéricos opacos en `dashboardLoadedContent(snapshot:)`, `dashboardOfficeLoadedContent(snapshot:)`, `dashboardAutoLoadedContent(snapshot:)` y `dashboardCompactLoadedContent(snapshot:)` mediante type-erasure con `AnyView`.
   - Resuelve el bloqueo del hilo principal en `swift::_gatherGenericParameterCounts ()` provocado por la reconstrucción en tiempo de ejecución (`__swift_instantiateConcreteTypeFromMangledNameV2`) del árbol genérico monstruoso con dos variantes completas en `ViewThatFits` y más de 12 sub-bloques anidados.

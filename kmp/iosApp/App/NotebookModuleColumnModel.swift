@@ -839,10 +839,6 @@ extension NotebookModuleView {
         )
     }
 
-    func updateColumnLiveWidth(_ column: NotebookColumnDefinition, width: CGFloat) {
-        _ = gridLayoutModel.updateColumnWidth(column, width: width)
-    }
-
     func updateColumnWidth(_ column: NotebookColumnDefinition, width: CGFloat) {
         let clampedWidth = gridLayoutModel.updateColumnWidth(column, width: width)
         saveColumnMutation(column, widthDp: Double(clampedWidth))

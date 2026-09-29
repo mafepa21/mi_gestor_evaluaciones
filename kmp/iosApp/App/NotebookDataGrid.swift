@@ -292,29 +292,29 @@ struct NotebookResizableHeader<Content: View>: View {
     let width: CGFloat
     let minWidth: CGFloat
     let maxWidth: CGFloat
-    let onWidthChange: (CGFloat) -> Void
     let onWidthCommit: (CGFloat) -> Void
     let content: Content
 
     @State private var isDragging = false
     @State private var dragStartWidth: CGFloat = 0
     @State private var lastDraggedWidth: CGFloat = 0
+    /// Ancho en vivo durante el arrastre: vive solo aquí para no republicar `columnWidths`
+    /// (y repintar todo el grid) en cada fotograma. Se confirma al padre al soltar.
+    @State private var liveWidth: CGFloat?
     @GestureState private var isGestureActive = false
 
-    /// `onWidthChange` se llama en cada movimiento y debe ser barato (solo
-    /// layout); `onWidthCommit` se llama una vez al soltar y es donde se persiste.
+    /// `onWidthCommit` se llama una sola vez al soltar y es donde se aplica y persiste el ancho.
+    /// Durante el arrastre solo se mueve el tirador de esta cabecera.
     init(
         width: CGFloat,
         minWidth: CGFloat = 80,
         maxWidth: CGFloat = 400,
-        onWidthChange: @escaping (CGFloat) -> Void,
         onWidthCommit: @escaping (CGFloat) -> Void,
         @ViewBuilder content: () -> Content
     ) {
         self.width = width
         self.minWidth = minWidth
         self.maxWidth = maxWidth
-        self.onWidthChange = onWidthChange
         self.onWidthCommit = onWidthCommit
         self.content = content()
     }
@@ -326,6 +326,7 @@ struct NotebookResizableHeader<Content: View>: View {
             Rectangle()
                 .fill(isDragging ? Color.accentColor : Color.clear)
                 .frame(width: isDragging ? 2 : 4)
+                .offset(x: (liveWidth ?? width) - width)
                 .contentShape(Rectangle())
                 .modifier(NotebookResizeCursorModifier())
                 .gesture(
@@ -343,7 +344,7 @@ struct NotebookResizableHeader<Content: View>: View {
                             var transaction = Transaction(animation: nil)
                             transaction.disablesAnimations = true
                             withTransaction(transaction) {
-                                onWidthChange(nextWidth)
+                                liveWidth = nextWidth
                             }
                         }
                         .onEnded { _ in
@@ -361,6 +362,7 @@ struct NotebookResizableHeader<Content: View>: View {
 
     private func finishDrag() {
         isDragging = false
+        liveWidth = nil
         guard lastDraggedWidth > 0 else { return }
         let finalWidth = lastDraggedWidth
         lastDraggedWidth = 0

@@ -353,6 +353,7 @@ private struct NotebookNumericCell: View, Equatable {
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.reloadToken == rhs.reloadToken
     }
 }

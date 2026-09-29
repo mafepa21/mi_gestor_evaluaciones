@@ -247,6 +247,40 @@ extension NotebookModuleView {
         return index >= min(start, end) && index <= max(start, end)
     }
 
+    /// Resumen barato (un Int) de todo lo que, fuera de los datos de la fila, cambia su pintado:
+    /// rango con shift, resaltados de columna/categoría, dirección de navegación, paridad de zebra
+    /// (cambia al filtrar), nivel de riesgo, medida de apoyo y lesión.
+    func notebookRowContextDigest(rows: [NotebookTableRow]) -> (Int, NotebookTableRow) -> Int {
+        var rangeBounds: (columnId: String, lower: Int, upper: Int)?
+        if let range = selectedCellRange,
+           let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
+           let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }) {
+            rangeBounds = (range.columnId, min(start, end), max(start, end))
+        }
+        var base = Hasher()
+        base.combine(selectedColumnId)
+        base.combine(highlightedColumnId)
+        base.combine(highlightedCategoryId)
+        base.combine(navigationDirectionRaw)
+        let baseDigest = base.finalize()
+        let risks = riskLevelCache
+        let supportIds = activeSupportMeasureStudentIds
+        let injuries = localInjuryStatuses
+        return { index, item in
+            let studentId = item.student.id
+            var hasher = Hasher()
+            hasher.combine(baseDigest)
+            hasher.combine(index.isMultiple(of: 2))
+            if let bounds = rangeBounds, index >= bounds.lower, index <= bounds.upper {
+                hasher.combine(bounds.columnId)
+            }
+            hasher.combine(risks[studentId]?.rawValue)
+            hasher.combine(supportIds.contains(studentId))
+            hasher.combine(injuries[studentId] ?? item.student.isInjured)
+            return hasher.finalize()
+        }
+    }
+
     func notebookShiftClickIsDown() -> Bool {
         #if os(macOS)
         NSEvent.modifierFlags.contains(.shift)

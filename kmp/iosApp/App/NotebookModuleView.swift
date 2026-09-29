@@ -124,6 +124,8 @@ struct NotebookModuleView: View {
     @State var toolbarSyncTask: Task<Void, Never>? = nil
     @State var lastToolbarStateKey: String? = nil
     @State var riskLevelCache: [Int64: RiskLevel] = [:]
+    /// Referencia al estado vigente para la navegación con teclado: las celdas no capturan arrays viejos.
+    @State var gridNavigationContext = NotebookGridNavigationContext()
     @State var riskComputationKey: String?
     @State var isPrecomputingRiskLevels = false
     @AppStorage("notebook.fixedZoneWidth") var fixedZoneWidthStored = 240.0
@@ -553,6 +555,8 @@ struct NotebookModuleView: View {
         let trailingPaddingCompensation = NotebookStyle.outerPadding * 2
         let shouldShowFolderLane = renderModel.hasGroupedHeaders
 
+        let _ = gridNavigationContext.update(rows: rows, segments: renderModel.scrollableSegments)
+
         NotebookGridContent(
             rows: rows,
             hasSourceRows: !data.sheet.rows.isEmpty,
@@ -566,6 +570,7 @@ struct NotebookModuleView: View {
             structuralInvalidationKey: gridStructuralInvalidationKey(data: data),
             rowReloadRevisions: rowReloadRevisions,
             transientCellIds: transientGridCellIds,
+            rowContextDigest: notebookRowContextDigest(rows: rows),
             fixedSegments: renderModel.fixedSegments,
             trailingFixedSegments: renderModel.trailingFixedSegments,
             scrollableSegments: renderModel.scrollableSegments

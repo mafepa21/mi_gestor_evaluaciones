@@ -756,8 +756,8 @@ extension NotebookModuleView {
                     from: item.student.id,
                     column: column,
                     direction: direction,
-                    rows: allRows,
-                    segments: navigableSegments
+                    rows: gridNavigationContext.rows,
+                    segments: gridNavigationContext.segments
                 )
             },
             onCellSaved: {

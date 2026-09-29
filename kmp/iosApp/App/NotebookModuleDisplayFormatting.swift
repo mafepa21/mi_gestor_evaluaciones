@@ -313,17 +313,19 @@ extension NotebookModuleView {
                         .trim(from: 0, to: max(0.02, min(1, completedFraction)))
                         .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                         .rotationEffect(.degrees(-90))
+                        .animation(uiFeatureFlags.animation(.snappy(duration: 0.3)), value: completedFraction)
                 }
                 .frame(width: 22, height: 22)
             }
 
             VStack(alignment: .leading, spacing: 0) {
                 if average != nil {
-                    Text(averageText(for: item))
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(numberColor)
-                        .lineLimit(1)
+                    NotebookAnimatedGradeText(
+                        text: averageText(for: item),
+                        value: average ?? 0,
+                        font: .system(size: 17, weight: .bold, design: .rounded),
+                        style: AnyShapeStyle(numberColor)
+                    )
                     if pendingCount > 0 {
                         Text("\(pendingCount) pend.")
                             .font(.caption2)

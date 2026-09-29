@@ -25,3 +25,4 @@
 - Las celdas de solo lectura no fijan altura: la impone la fila (`notebookGridRowHeight`). No reintroducir `height: 52`.
 - La nota de rúbrica llega como texto ("7,5 / 10"): `NotebookRubricValueLabel.parse` lo interpreta; si cambia el formato, ajustar ahí.
 - El nombre de nivel (`NotebookGradeBand.levelName`) es por bandas de nota, no los niveles reales de la rúbrica.
+- Las micro-animaciones del grid (`NotebookAnimatedGradeText`, anillo de Media, barra de nivel) dependen de que `animation(value:)`/`keyframeAnimator(trigger:)` no disparen en el primer render: no envolver el grid en `withAnimation` ni cambiar la identidad de la celda al hacer scroll, o los números "rodarán" al aparecer.

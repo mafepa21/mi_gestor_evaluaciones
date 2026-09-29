@@ -2312,10 +2312,44 @@ private struct NotebookEmptyCellMark<Mark: View>: View {
     }
 }
 
+/// Número de nota con micro-animación local: transición numérica y rebote
+/// 1.0→1.06→1.0 solo cuando cambia `value` con la celda ya montada (SwiftUI no
+/// dispara `animation(value:)` ni `keyframeAnimator(trigger:)` en el primer
+/// render, así que ni la carga ni el scroll lo animan). Respeta Reduce Motion.
+/// Sin sombras, materiales ni observadores: solo `@Environment` de solo lectura.
+struct NotebookAnimatedGradeText: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    let text: String
+    let value: Double
+    let font: Font
+    let style: AnyShapeStyle
+
+    var body: some View {
+        let label = Text(text)
+            .font(font)
+            .monospacedDigit()
+            .foregroundStyle(style)
+            .lineLimit(1)
+            .contentTransition(.numericText(value: value))
+            .animation(uiFeatureFlags.animation(.snappy(duration: 0.25)), value: value)
+        if uiFeatureFlags.reduceMotion {
+            label
+        } else {
+            label.keyframeAnimator(initialValue: 1.0, trigger: value) { view, scale in
+                view.scaleEffect(scale)
+            } keyframes: { _ in
+                CubicKeyframe(1.06, duration: 0.12)
+                CubicKeyframe(1.0, duration: 0.16)
+            }
+        }
+    }
+}
+
 /// Nota de rúbrica: solo el número, con barra vertical del color del nivel.
 /// El nivel también va en `.help` y en el valor de accesibilidad (no depende
 /// solo del color). Vacía: barra gris, sin "—".
 private struct NotebookRubricValueLabel: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     let rubricText: String
 
     /// Devuelve el número tal como se muestra ("7,5") y su valor, o nil si no es numérico.
@@ -2345,10 +2379,13 @@ private struct NotebookRubricValueLabel: View {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(band.color)
                     .frame(width: 3, height: 16)
-                Text(parsed.text)
-                    .font(NotebookGridStyle.cellFont)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .animation(uiFeatureFlags.animation(.snappy(duration: 0.25)), value: parsed.value)
+                NotebookAnimatedGradeText(
+                    text: parsed.text,
+                    value: parsed.value,
+                    font: NotebookGridStyle.cellFont,
+                    style: AnyShapeStyle(.primary)
+                )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())

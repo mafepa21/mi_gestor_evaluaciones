@@ -546,7 +546,10 @@ struct RubricEvaluationView: View {
     // MARK: - Criteria Panel
 
     private func criteriaPanel(rubric: RubricDetail) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // El peso es relativo (la nota se calcula sobre el total), así que el
+        // porcentaje se saca del total y vale igual con pesos 0,4 o 40.
+        let totalWeight = rubric.criteria.reduce(0.0) { $0 + max($1.criterion.weight, 0) }
+        return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(rubric.criteria.enumerated()), id: \.element.criterion.id) { index, criterion in
                 if index > 0 {
                     Rectangle()
@@ -556,6 +559,7 @@ struct RubricEvaluationView: View {
 
                 RubricCriterionRow(
                     item: criterion,
+                    totalWeight: totalWeight,
                     selectedLevelId: state.selectedLevels[KotlinLong(value: criterion.criterion.id)]?.int64Value,
                     onSelectLevel: { levelId in
                         bridge.rubricEvaluationViewModel.selectLevel(
@@ -577,6 +581,7 @@ struct RubricEvaluationView: View {
 struct RubricCriterionRow: View {
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     let item: RubricCriterionWithLevels
+    var totalWeight: Double = 0
     let selectedLevelId: Int64?
     let onSelectLevel: (Int64) -> Void
 
@@ -591,8 +596,8 @@ struct RubricCriterionRow: View {
                     .font(.system(.body, design: .rounded).weight(.semibold))
                     .foregroundStyle(.primary)
 
-                if item.criterion.weight > 0 {
-                    Text("\(Int((item.criterion.weight * 100).rounded()))%")
+                if item.criterion.weight > 0, totalWeight > 0 {
+                    Text("\(Int((item.criterion.weight / totalWeight * 100).rounded()))%")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)

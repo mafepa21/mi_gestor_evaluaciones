@@ -13,9 +13,16 @@ final class WorkGroupBoardDraft: ObservableObject {
     @Published private(set) var groups: [GroupItem] = []
     @Published private(set) var membership: [Int64: Int64] = [:]
 
-    private var pendingMutations = 0
-    private var lastLocalMemberCount = 0
     private var pendingAssignments: [Int64: Set<Int64>] = [:]
+    private var nextTemporaryId: Int64 = -1
+    /// Movimientos locales recientes: una recarga con datos viejos no los pisa (caducan solos).
+    private var recentMoves: [Int64: (groupId: Int64?, at: Date)] = [:]
+    private static let recentMoveGrace: TimeInterval = 2.0
+
+    private func makeTemporaryId() -> Int64 {
+        defer { nextTemporaryId -= 1 }
+        return nextTemporaryId
+    }
 
     func ingest(
         groups remoteGroups: [NotebookWorkGroup],
@@ -61,10 +68,23 @@ final class WorkGroupBoardDraft: ObservableObject {
             }
         }
 
-        groups = nextGroups
-        membership = nextMembership
-        lastLocalMemberCount = nextMembership.count
-        pendingMutations = 0
+        let now = Date()
+        let knownGroupIds = Set(nextGroups.map(\.id))
+        for (studentId, move) in recentMoves {
+            if now.timeIntervalSince(move.at) > Self.recentMoveGrace || remoteMembership[studentId] == move.groupId {
+                recentMoves.removeValue(forKey: studentId)
+                continue
+            }
+            if let target = move.groupId {
+                guard knownGroupIds.contains(target) else { continue }
+                nextMembership[studentId] = target
+            } else {
+                nextMembership.removeValue(forKey: studentId)
+            }
+        }
+
+        if groups != nextGroups { groups = nextGroups }
+        if membership != nextMembership { membership = nextMembership }
     }
 
     @discardableResult
@@ -75,12 +95,17 @@ final class WorkGroupBoardDraft: ObservableObject {
         guard groups.contains(where: \.isTemporary) else { return [:] }
         var remapped: [Int64: Int64] = [:]
         var nextGroups = groups
-        for index in nextGroups.indices {
+        func normalized(_ text: String) -> String {
+            text.trimmingCharacters(in: .whitespaces).lowercased()
+        }
+        let localRealIds = Set(nextGroups.filter { !$0.isTemporary }.map(\.id))
+        var unclaimed = remoteGroups
+            .sorted { $0.order != $1.order ? $0.order < $1.order : $0.id < $1.id }
+            .filter { !localRealIds.contains($0.id) }
+
+        func claim(_ remote: NotebookWorkGroup, for index: Int) {
             let local = nextGroups[index]
-            guard local.isTemporary,
-                  let remote = remoteGroups.first(where: {
-                      $0.name.trimmingCharacters(in: .whitespaces).localizedCaseInsensitiveCompare(local.name.trimmingCharacters(in: .whitespaces)) == .orderedSame
-                  }) else { continue }
+            unclaimed.removeAll { $0.id == remote.id }
             remapped[local.id] = remote.id
             nextGroups[index] = GroupItem(
                 id: remote.id,
@@ -89,10 +114,23 @@ final class WorkGroupBoardDraft: ObservableObject {
                 learningSituationId: remote.learningSituationId?.int64Value,
                 isTemporary: false
             )
-
             if let pendingStudentIds = pendingAssignments[local.id], !pendingStudentIds.isEmpty {
                 onResolve?(remote.id, Array(pendingStudentIds), remote.tabId)
                 pendingAssignments.removeValue(forKey: local.id)
+            }
+        }
+
+        // 1) Mismo nombre, cada grupo real se usa una sola vez.
+        for index in nextGroups.indices where nextGroups[index].isTemporary {
+            if let remote = unclaimed.first(where: { normalized($0.name) == normalized(nextGroups[index].name) }) {
+                claim(remote, for: index)
+            }
+        }
+        // 2) Si el sistema renombró (p. ej. "Grupo (2)"), se emparejan por orden con los sobrantes.
+        for index in nextGroups.indices where nextGroups[index].isTemporary {
+            let base = normalized(nextGroups[index].name)
+            if let remote = unclaimed.first(where: { normalized($0.name).hasPrefix(base) }) {
+                claim(remote, for: index)
             }
         }
         guard !remapped.isEmpty else { return [:] }
@@ -115,8 +153,7 @@ final class WorkGroupBoardDraft: ObservableObject {
     }
 
     func addTemporaryGroup(name: String, tabId: String, learningSituationId: Int64?) {
-        pendingMutations += 1
-        let id = -Int64(Date().timeIntervalSince1970 * 1000)
+        let id = makeTemporaryId()
         groups.append(
             GroupItem(
                 id: id,
@@ -129,13 +166,12 @@ final class WorkGroupBoardDraft: ObservableObject {
     }
 
     func applyComposed(_ composed: [ComposedWorkGroup], tabId: String, learningSituationId: Int64?) {
-        pendingMutations += 1
         pendingAssignments.removeAll()
+        recentMoves.removeAll()
         var nextGroups: [GroupItem] = []
         var nextMembership: [Int64: Int64] = [:]
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        for (index, group) in composed.enumerated() {
-            let id = -(now + Int64(index) + 1)
+        for group in composed {
+            let id = makeTemporaryId()
             nextGroups.append(
                 GroupItem(
                     id: id,
@@ -151,7 +187,6 @@ final class WorkGroupBoardDraft: ObservableObject {
         }
         groups = nextGroups
         membership = nextMembership
-        lastLocalMemberCount = nextMembership.count
     }
 
     func applyImported(
@@ -159,13 +194,12 @@ final class WorkGroupBoardDraft: ObservableObject {
         tabId: String,
         learningSituationId: Int64?
     ) {
-        pendingMutations += 1
         pendingAssignments.removeAll()
+        recentMoves.removeAll()
         var nextGroups: [GroupItem] = []
         var nextMembership: [Int64: Int64] = [:]
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        for (index, group) in imported.enumerated() {
-            let id = -(now + Int64(index) + 1)
+        for group in imported {
+            let id = makeTemporaryId()
             nextGroups.append(
                 GroupItem(
                     id: id,
@@ -181,12 +215,11 @@ final class WorkGroupBoardDraft: ObservableObject {
         }
         groups = nextGroups
         membership = nextMembership
-        lastLocalMemberCount = nextMembership.count
     }
 
     func move(studentIds: [Int64], to groupId: Int64?) {
-        pendingMutations += 1
         for studentId in studentIds {
+            recentMoves[studentId] = (groupId, Date())
             for tempId in pendingAssignments.keys {
                 pendingAssignments[tempId]?.remove(studentId)
                 if pendingAssignments[tempId]?.isEmpty == true {
@@ -202,15 +235,12 @@ final class WorkGroupBoardDraft: ObservableObject {
                 membership.removeValue(forKey: studentId)
             }
         }
-        lastLocalMemberCount = membership.count
     }
 
     func removeGroup(id: Int64) {
-        pendingMutations += 1
         groups.removeAll { $0.id == id }
         membership = membership.filter { $0.value != id }
         pendingAssignments.removeValue(forKey: id)
-        lastLocalMemberCount = membership.count
     }
 
     private func kotlinInt64(_ value: Any) -> Int64 {
@@ -223,14 +253,9 @@ final class WorkGroupBoardDraft: ObservableObject {
         return 0
     }
 
-    func students(in groupId: Int64?, from all: [Student]) -> [Student] {
-        all.filter { student in
-            let assigned = membership[student.id]
-            if let groupId {
-                return assigned == groupId
-            }
-            return assigned == nil
-        }
+    /// Reparto de alumnado por grupo en una sola pasada (clave `nil` = sin grupo).
+    func studentsByGroup(from all: [Student]) -> [Int64?: [Student]] {
+        Dictionary(grouping: all, by: { membership[$0.id] })
     }
 }
 
@@ -288,31 +313,32 @@ struct NotebookGroupBoardView: View {
                 let columnCount = max(draft.groups.count + 1, 1)
                 let spacing: CGFloat = 8
                 let available = max(geo.size.width - 32, 160)
-                let columnWidth = max((available - spacing * CGFloat(columnCount - 1)) / CGFloat(columnCount), 112)
+                let columnWidth = max((available - spacing * CGFloat(columnCount - 1)) / CGFloat(columnCount), 132)
+                let grouped = draft.studentsByGroup(from: students)
 
-                HStack(alignment: .top, spacing: spacing) {
-                    boardColumn(
-                        title: "Sin grupo",
-                        count: draft.students(in: nil, from: students).count,
-                        students: draft.students(in: nil, from: students),
-                        groupId: nil,
-                        height: geo.size.height
-                    )
-                    .frame(width: columnWidth)
-
-                    ForEach(draft.groups) { group in
+                ScrollView(.horizontal, showsIndicators: true) {
+                    HStack(alignment: .top, spacing: spacing) {
                         boardColumn(
-                            title: group.name,
-                            count: draft.students(in: group.id, from: students).count,
-                            students: draft.students(in: group.id, from: students),
-                            groupId: group.id,
+                            title: "Sin grupo",
+                            students: grouped[nil] ?? [],
+                            groupId: nil,
                             height: geo.size.height
                         )
                         .frame(width: columnWidth)
+
+                        ForEach(draft.groups) { group in
+                            boardColumn(
+                                title: group.name,
+                                students: grouped[group.id] ?? [],
+                                groupId: group.id,
+                                height: geo.size.height
+                            )
+                            .frame(width: columnWidth)
+                        }
                     }
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 16)
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                .frame(width: geo.size.width, height: geo.size.height)
             }
         }
         .onAppear {
@@ -350,13 +376,25 @@ struct NotebookGroupBoardView: View {
         }
     }
 
-    private var groupSignature: String {
-        groups.map { "\($0.id):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }.joined(separator: "|")
+    private var groupSignature: Int {
+        var hasher = Hasher()
+        for group in groups {
+            hasher.combine(group.id)
+            hasher.combine(group.name)
+            hasher.combine(group.order)
+            hasher.combine(group.learningSituationId?.int64Value ?? -1)
+        }
+        return hasher.finalize()
     }
 
-    private var memberSignature: String {
-        guard let data else { return "" }
-        return data.sheet.workGroupMembers.map { "\($0.groupId):\($0.studentId)" }.joined(separator: ",")
+    private var memberSignature: Int {
+        guard let data else { return 0 }
+        var hasher = Hasher()
+        for member in data.sheet.workGroupMembers {
+            hasher.combine(member.groupId)
+            hasher.combine(member.studentId)
+        }
+        return hasher.finalize()
     }
 
     private func seedDraft() {
@@ -372,7 +410,6 @@ struct NotebookGroupBoardView: View {
 
     private func boardColumn(
         title: String,
-        count: Int,
         students: [Student],
         groupId: Int64?,
         height: CGFloat
@@ -384,21 +421,18 @@ struct NotebookGroupBoardView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
-                Text("\(count)")
+                Text("\(students.count)")
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(NotebookStyle.primaryTint.opacity(0.14), in: Capsule())
             }
 
-            ViewThatFits(in: .vertical) {
+            ScrollView {
                 studentStack(students)
-                ScrollView {
-                    studentStack(students)
-                }
             }
             .padding(8)
-            .frame(maxWidth: .infinity, minHeight: max(height - 48, 120), alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: max(height - 48, 120), maxHeight: max(height - 48, 120), alignment: .top)
             .background(IOSAppStyle.cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)

@@ -363,7 +363,7 @@ struct NotebookResizableHeader<Content: View>: View {
                 .contentShape(Rectangle())
                 .modifier(NotebookResizeCursorModifier())
                 .gesture(
-                    DragGesture(minimumDistance: 2)
+                    DragGesture(minimumDistance: 2, coordinateSpace: .global)
                         .updating($isGestureActive) { _, active, _ in
                             active = true
                         }

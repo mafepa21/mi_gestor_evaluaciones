@@ -273,9 +273,7 @@ extension NotebookModuleView {
                 requestMarkAllVisibleStudentsPresent(data: data)
             },
             onRefresh: {
-                Task {
-                    await refreshNotebookSignals()
-                }
+                scheduleNotebookSignalsRefresh()
             },
             onGenerateSummary: {
                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
@@ -339,7 +337,7 @@ extension NotebookModuleView {
                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
             },
             onRefresh: {
-                Task { await refreshNotebookSignals() }
+                scheduleNotebookSignalsRefresh()
             },
             onExportSM: {
                 isEducamosSMExportPresented = true

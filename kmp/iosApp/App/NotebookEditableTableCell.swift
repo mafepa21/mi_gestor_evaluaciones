@@ -81,6 +81,8 @@ struct NotebookEditableTableCell: View {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -160,6 +162,7 @@ struct NotebookEditableTableCell: View {
                 categoryTint: categoryTint,
                 hasColumnColor: hasColumnColor,
                 focusedCellId: focusedCellId,
+                isFocused: isFocused,
                 activeChoiceCellId: $activeChoiceCellId,
                 navigationDirection: navigationDirection,
                 formulaDisplay: formulaDisplay,
@@ -192,6 +195,7 @@ struct NotebookEditableTableCell: View {
                     categoryTint: categoryTint,
                     hasColumnColor: hasColumnColor,
                     focusedCellId: focusedCellId,
+                    isFocused: isFocused,
                     activeChoiceCellId: $activeChoiceCellId,
                     navigationDirection: navigationDirection,
                     formulaDisplay: formulaDisplay,
@@ -222,6 +226,7 @@ struct NotebookEditableTableCell: View {
                     categoryTint: categoryTint,
                     hasColumnColor: hasColumnColor,
                     focusedCellId: focusedCellId,
+                    isFocused: isFocused,
                     activeChoiceCellId: $activeChoiceCellId,
                     navigationDirection: navigationDirection,
                     formulaDisplay: formulaDisplay,
@@ -285,6 +290,7 @@ struct NotebookEditableTableCell: View {
                     categoryTint: categoryTint,
                     hasColumnColor: hasColumnColor,
                     focusedCellId: focusedCellId,
+                    isFocused: isFocused,
                     activeChoiceCellId: $activeChoiceCellId,
                     navigationDirection: navigationDirection,
                     formulaDisplay: formulaDisplay,
@@ -319,6 +325,8 @@ private struct NotebookNumericCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -341,9 +349,11 @@ private struct NotebookNumericCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -359,6 +369,8 @@ private struct NotebookTextCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -381,9 +393,11 @@ private struct NotebookTextCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -399,6 +413,8 @@ private struct NotebookCheckCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -421,9 +437,11 @@ private struct NotebookCheckCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -439,6 +457,8 @@ private struct NotebookAttendanceCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -461,9 +481,11 @@ private struct NotebookAttendanceCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.isAttendanceQuickMode == rhs.isAttendanceQuickMode &&
             lhs.reloadToken == rhs.reloadToken
     }
@@ -482,6 +504,7 @@ extension NotebookNumericCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -515,6 +538,7 @@ extension NotebookTextCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -548,6 +572,7 @@ extension NotebookCheckCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -581,6 +606,7 @@ extension NotebookAttendanceCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -613,6 +639,8 @@ private struct NotebookStatefulEditableTableCell: View {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -653,10 +681,25 @@ private struct NotebookStatefulEditableTableCell: View {
     @State private var physicalScore: Double?
     @State private var isResolvingPhysicalScore = false
     @State private var physicalScoreRequestID = UUID()
+    @State private var physicalScoreTask: Task<Void, Never>?
+    /// Clave alumno+columna+valor de la última resolución terminada o en curso (caché por celda).
+    @State private var physicalScoreKey: String?
     @State private var lastExternalReloadTime: Date = .distantPast
 
     private var cellId: String {
         "\(item.student.id)|\(column.id)"
+    }
+
+    @State private var noticeToken = UUID()
+
+    /// Se re-registra al cambiar los datos de la celda para que los cierres no queden con valores viejos.
+    private func registerNoticeHandlers() {
+        NotebookCellNoticeRouter.shared.register(
+            token: noticeToken,
+            cellId: cellId,
+            onBackground: { saveFocusedDraftIfNeeded(requireFocusReleased: false) },
+            onKeyboardEdit: { applyKeyboardEditNotice($0) }
+        )
     }
 
     var body: some View {
@@ -666,14 +709,9 @@ private struct NotebookStatefulEditableTableCell: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                         .stroke(editableCellBorder, lineWidth: editableCellBorderWidth)
-                .animation(.easeOut(duration: 0.15), value: isSelected)
+                .animation(isSelected ? .easeOut(duration: 0.15) : nil, value: isSelected)
                 )
-                .shadow(
-                    color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,
-                    radius: isSelected ? 4 : 0,
-                    x: 0,
-                    y: isSelected ? 1.5 : 0
-                )
+                .notebookCellSelectionShadow(isSelected)
                 .padding(2)
 
             content
@@ -718,6 +756,7 @@ private struct NotebookStatefulEditableTableCell: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onAppear {
+            registerNoticeHandlers()
             loadDrafts()
             if NotebookKeyboardEditBuffer.isCapturing(cellId) {
                 numericDraft = NotebookKeyboardEditBuffer.text
@@ -726,28 +765,33 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         .onDisappear {
             saveFocusedDraftIfNeeded(requireFocusReleased: false)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .appleAppDidEnterBackground)) { _ in
-            saveFocusedDraftIfNeeded(requireFocusReleased: false)
+            NotebookCellNoticeRouter.shared.unregister(token: noticeToken)
+            // La celda sale de la ventana virtualizada: no se deja una resolución colgada.
+            if isResolvingPhysicalScore {
+                physicalScoreTask?.cancel()
+                physicalScoreTask = nil
+                physicalScoreKey = nil
+                isResolvingPhysicalScore = false
+            }
         }
         .appOnChange(of: reloadToken) { _ in
+            registerNoticeHandlers()
             lastExternalReloadTime = Date()
             loadDraftsUnlessEditing()
             refreshPhysicalScore()
         }
         .appOnChange(of: displaySnapshot) { _ in
+            registerNoticeHandlers()
             loadDraftsUnlessEditing()
         }
-        .appOnChange(of: focusedCellId.wrappedValue) { newValue in
-            if newValue == cellId {
+        .appOnChange(of: isFocused) { newValue in
+            if newValue {
                 onSelect()
             } else {
                 saveFocusedDraftIfNeeded()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .notebookKeyboardEdit)) { note in
-            applyKeyboardEditNotice(note)
-        }
+        .appOnChange(of: cellId) { _ in registerNoticeHandlers() }
         .appOnChange(of: textDraft) { newText in
             guard focusedCellId.wrappedValue == cellId else { return }
             if originalTextDraft != newText {
@@ -1104,7 +1148,7 @@ private struct NotebookStatefulEditableTableCell: View {
     #if os(macOS)
     private var numericMacField: some View {
         HStack(spacing: 6) {
-            if focusedCellId.wrappedValue == cellId {
+            if isFocused {
                 TextField("", text: $numericDraft)
                     .textFieldStyle(.plain)
                     .multilineTextAlignment(.trailing)
@@ -1549,17 +1593,26 @@ private struct NotebookStatefulEditableTableCell: View {
               let resolver = actions.resolvePhysicalScore,
               let rawValue = physicalRawValue()
         else {
+            physicalScoreTask?.cancel()
+            physicalScoreTask = nil
+            physicalScoreKey = nil
             physicalScore = nil
             isResolvingPhysicalScore = false
             return
         }
 
+        // Caché por alumno + columna + valor: si no cambió nada, no se vuelve a resolver.
+        let key = "\(classId)|\(item.student.id)|\(column.id)|\(rawValue)|\(reloadToken)"
+        if physicalScoreKey == key { return }
+        physicalScoreKey = key
+        physicalScoreTask?.cancel()
+
         let requestID = UUID()
         physicalScoreRequestID = requestID
         isResolvingPhysicalScore = true
-        Task { @MainActor in
+        physicalScoreTask = Task { @MainActor in
             let resolved = await resolver(item.student, classId, column.id, rawValue)
-            guard physicalScoreRequestID == requestID else { return }
+            guard !Task.isCancelled, physicalScoreRequestID == requestID else { return }
             physicalScore = resolved
             isResolvingPhysicalScore = false
         }
@@ -1899,7 +1952,7 @@ private struct NotebookFormulaCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.reloadToken == rhs.reloadToken &&
@@ -1967,7 +2020,7 @@ private struct NotebookRubricCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.reloadToken == rhs.reloadToken
@@ -2039,7 +2092,7 @@ private struct NotebookReadOnlyCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.reloadToken == rhs.reloadToken &&
@@ -2099,12 +2152,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
                     RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                         .stroke(cellBorder, lineWidth: isSelected ? NotebookGridStyle.cellSelectionRingWidth : 0.6)
                 )
-                .shadow(
-                    color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,
-                    radius: isSelected ? 4 : 0,
-                    x: 0,
-                    y: isSelected ? 1.5 : 0
-                )
+                .notebookCellSelectionShadow(isSelected)
                 .padding(2)
 
             content
@@ -2221,34 +2269,33 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
     }
 }
 
-private struct NotebookCellColumnEquatableKey: Equatable {
-    let id: String
-    let type: String
-    let inputKind: String
-    let categoryKind: String
-    let categoryId: String
-    let colorHex: String
-    let isLocked: Bool
-    let countsTowardAverage: Bool
-    let unitOrSituation: String
-    let ordinalLevels: [String]
-    let dateEpochMs: String
+private extension View {
+    /// La sombra de selección solo existe en la celda seleccionada: `.shadow` con color `.clear`
+    /// sigue costando en cada celda visible.
+    @ViewBuilder
+    func notebookCellSelectionShadow(_ isSelected: Bool) -> some View {
+        if isSelected {
+            shadow(color: NotebookGridStyle.cellSelectionShadow, radius: 4, x: 0, y: 1.5)
+        } else {
+            self
+        }
+    }
 }
 
 private extension NotebookColumnDefinition {
-    var cellEquatableKey: NotebookCellColumnEquatableKey {
-        NotebookCellColumnEquatableKey(
-            id: id,
-            type: String(describing: type),
-            inputKind: String(describing: inputKind),
-            categoryKind: String(describing: categoryKind),
-            categoryId: String(describing: categoryId),
-            colorHex: colorHex ?? "",
-            isLocked: isLocked,
-            countsTowardAverage: countsTowardAverage,
-            unitOrSituation: unitOrSituation ?? "",
-            ordinalLevels: ordinalLevels,
-            dateEpochMs: String(describing: dateEpochMs)
-        )
+    /// Comparación directa de los campos que afectan al pintado de la celda: sin `String(describing:)`
+    /// sobre enums Kotlin ni structs intermedios por cada comparación.
+    func hasSameCellAppearance(as other: NotebookColumnDefinition) -> Bool {
+        id == other.id &&
+            type == other.type &&
+            inputKind == other.inputKind &&
+            categoryKind == other.categoryKind &&
+            categoryId == other.categoryId &&
+            colorHex == other.colorHex &&
+            isLocked == other.isLocked &&
+            countsTowardAverage == other.countsTowardAverage &&
+            unitOrSituation == other.unitOrSituation &&
+            ordinalLevels == other.ordinalLevels &&
+            dateEpochMs?.int64Value == other.dateEpochMs?.int64Value
     }
 }

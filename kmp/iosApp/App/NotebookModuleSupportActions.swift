@@ -46,6 +46,13 @@ extension NotebookModuleView {
         inspectorAttachmentUris = persisted?.annotation?.attachmentUris ?? []
     }
 
+    /// Lanza una sola recarga de señales a la vez: cancela la anterior (p. ej. al cambiar de grupo
+    /// coinciden onAppear, onChange y .task) y evita aplicar resultados de una petición vieja.
+    func scheduleNotebookSignalsRefresh() {
+        signalsRefreshTask?.cancel()
+        signalsRefreshTask = Task { await refreshNotebookSignals() }
+    }
+
     func refreshNotebookSignals() async {
         guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
         async let attendanceResult = try? bridge.attendanceRecords(for: classId, on: Date())
@@ -59,6 +66,7 @@ extension NotebookModuleView {
         let sameClass = notebookSignalsClassId == requestedId
 
         await MainActor.run {
+            guard !Task.isCancelled else { return }
             guard (selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value) == requestedId else { return }
             if attendance == nil || incidents == nil || supportMeasureStudentIds == nil {
                 bridge.status = NotebookSignalsReload.failureMessage
@@ -245,6 +253,42 @@ extension NotebookModuleView {
             return false
         }
         return index >= min(start, end) && index <= max(start, end)
+    }
+
+    /// Resumen barato (un Int) de todo lo que, fuera de los datos de la fila, cambia su pintado:
+    /// rango con shift, resaltados de columna/categoría, dirección de navegación, paridad de zebra
+    /// (cambia al filtrar), nivel de riesgo, medida de apoyo y lesión.
+    func notebookRowContextDigest(rows: [NotebookTableRow]) -> (Int, NotebookTableRow) -> Int {
+        var rangeBounds: (columnId: String, lower: Int, upper: Int)?
+        if let range = selectedCellRange,
+           let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
+           let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }) {
+            rangeBounds = (range.columnId, min(start, end), max(start, end))
+        }
+        var base = Hasher()
+        base.combine(selectedColumnId)
+        base.combine(highlightedColumnId)
+        base.combine(highlightedCategoryId)
+        base.combine(navigationDirectionRaw)
+        let baseDigest = base.finalize()
+        let risks = riskLevelCache
+        let supportIds = activeSupportMeasureStudentIds
+        let injuries = localInjuryStatuses
+        let attendance = todayAttendanceByStudentId
+        return { index, item in
+            let studentId = item.student.id
+            var hasher = Hasher()
+            hasher.combine(baseDigest)
+            hasher.combine(index.isMultiple(of: 2))
+            if let bounds = rangeBounds, index >= bounds.lower, index <= bounds.upper {
+                hasher.combine(bounds.columnId)
+            }
+            hasher.combine(risks[studentId]?.rawValue)
+            hasher.combine(supportIds.contains(studentId))
+            hasher.combine(injuries[studentId] ?? item.student.isInjured)
+            hasher.combine(attendance[studentId])
+            return hasher.finalize()
+        }
     }
 
     func notebookShiftClickIsDown() -> Bool {

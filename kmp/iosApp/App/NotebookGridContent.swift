@@ -22,6 +22,9 @@ struct NotebookGridContent<
     let structuralInvalidationKey: String
     let rowReloadRevisions: [Int64: Int]
     let transientCellIds: Set<String>
+    /// Resumen barato del contexto que afecta al pintado de una fila (rango, zebra, resaltados, riesgo, lesión...).
+    let rowContextDigest: (Int, NotebookTableRow) -> Int
+    let scrollProxy: NotebookGridScrollProxy?
     let fixedSegments: [NotebookDisplaySegment]
     let trailingFixedSegments: [NotebookDisplaySegment]
     let scrollableSegments: [NotebookDisplaySegment]
@@ -49,6 +52,7 @@ struct NotebookGridContent<
             ],
             rowReloadRevisions: rowReloadRevisions,
             transientCellIds: transientCellIds,
+            rowContextDigest: rowContextDigest,
             structuralInvalidationKey: structuralInvalidationKey
         )
 
@@ -64,7 +68,8 @@ struct NotebookGridContent<
             rowHeight: rowHeight,
             groupHeaderInfo: { row in
                 (isFirst: row.isFirstInGroup, groupName: row.groupName, count: row.groupMemberCount)
-            }
+            },
+            scrollProxy: scrollProxy
         ) {
             emptyContent()
         } filterEmptyContent: {
@@ -82,17 +87,17 @@ struct NotebookGridContent<
         } scrollHeader: {
             header(scrollableSegments)
         } fixedRow: { index, item in
-            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(studentId: item.student.id, segmentKey: fixedSegmentKey)) {
+            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(index: index, item: item, segmentKey: fixedSegmentKey)) {
                 rowContent(index, item, fixedSegments)
             }
             .equatable()
         } trailingFixedRow: { index, item in
-            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(studentId: item.student.id, segmentKey: trailingFixedSegmentKey)) {
+            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(index: index, item: item, segmentKey: trailingFixedSegmentKey)) {
                 rowContent(index, item, trailingFixedSegments)
             }
             .equatable()
         } scrollRow: { index, item in
-            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(studentId: item.student.id, segmentKey: scrollableSegmentKey)) {
+            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(index: index, item: item, segmentKey: scrollableSegmentKey)) {
                 rowContent(index, item, scrollableSegments)
             }
             .equatable()
@@ -140,6 +145,7 @@ private final class NotebookRowFingerprintProvider {
     private let panesBySegmentKey: [String: NotebookRowFingerprintPane]
     private let rowReloadRevisions: [Int64: Int]
     private let transientDigestByStudentId: [Int64: String]
+    private let rowContextDigest: (Int, NotebookTableRow) -> Int
     private let structuralInvalidationKey: String
     private var signatures: [Key: String] = [:]
 
@@ -148,8 +154,10 @@ private final class NotebookRowFingerprintProvider {
         panes: [NotebookRowFingerprintPane],
         rowReloadRevisions: [Int64: Int],
         transientCellIds: Set<String>,
+        rowContextDigest: @escaping (Int, NotebookTableRow) -> Int,
         structuralInvalidationKey: String
     ) {
+        self.rowContextDigest = rowContextDigest
         self.rowsByStudentId = Dictionary(rows.map { ($0.student.id, $0) }, uniquingKeysWith: { first, _ in first })
         self.panesBySegmentKey = Dictionary(panes.map { ($0.segmentKey, $0) }, uniquingKeysWith: { first, _ in first })
         self.rowReloadRevisions = rowReloadRevisions
@@ -157,7 +165,8 @@ private final class NotebookRowFingerprintProvider {
         self.structuralInvalidationKey = structuralInvalidationKey
     }
 
-    func signature(studentId: Int64, segmentKey: String) -> String {
+    func signature(index: Int, item: NotebookTableRow, segmentKey: String) -> String {
+        let studentId = item.student.id
         let key = Key(studentId: studentId, segmentKey: segmentKey)
         if let cached = signatures[key] {
             return cached
@@ -175,6 +184,7 @@ private final class NotebookRowFingerprintProvider {
             cellDigestByColumnId: Self.cellDigestByColumnId(item.row.persistedCells, visibleIds: visibleIds),
             gradeDigestByColumnId: Self.gradeDigestByColumnId(item.row.persistedGrades, visibleIds: visibleIds),
             rowReloadRevision: rowReloadRevisions[studentId, default: 0],
+            rowContext: rowContextDigest(index, item),
             structuralInvalidationKey: structuralInvalidationKey
         )
         signatures[key] = value
@@ -190,6 +200,7 @@ private final class NotebookRowFingerprintProvider {
         cellDigestByColumnId: [String: String],
         gradeDigestByColumnId: [String: String],
         rowReloadRevision: Int,
+        rowContext: Int,
         structuralInvalidationKey: String
     ) -> String {
         guard !visibleColumnIds.isEmpty else {
@@ -199,6 +210,7 @@ private final class NotebookRowFingerprintProvider {
                 segmentKey,
                 transientRowDigest,
                 "\(rowReloadRevision)",
+                "\(rowContext)",
                 structuralInvalidationKey
             ].joined(separator: "¬")
         }
@@ -217,6 +229,7 @@ private final class NotebookRowFingerprintProvider {
             visibleCellDigest,
             visibleGradeDigest,
             "\(rowReloadRevision)",
+            "\(rowContext)",
             structuralInvalidationKey
         ].joined(separator: "¬")
     }

@@ -254,9 +254,7 @@ extension NotebookModuleView {
                     width: resolvedColumnWidth(for: column),
                     minWidth: 80,
                     maxWidth: 400
-                ) { newWidth in
-                    updateColumnLiveWidth(column, width: newWidth)
-                } onWidthCommit: { finalWidth in
+                ) { finalWidth in
                     updateColumnWidth(column, width: finalWidth)
                 } content: {
                     headerChip(
@@ -669,11 +667,10 @@ extension NotebookModuleView {
             classId: data.sheet.classId,
             width: resolvedColumnWidth(for: column),
             tint: displayTint(for: column),
-            categoryTint: column.categoryId.flatMap { id in
-                data.sheet.columnCategories.first(where: { $0.id == id }).map { tint(for: $0) }
-            },
+            categoryTint: column.categoryId.flatMap { gridNavigationContext.categoryTintById[$0] },
             hasColumnColor: hasCustomColumnColor(column),
             focusedCellId: $focusedCellId,
+            isFocused: focusedCellId == cellFocusId(studentId: item.student.id, columnId: column.id),
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaCellDisplay,
@@ -757,15 +754,15 @@ extension NotebookModuleView {
                     from: item.student.id,
                     column: column,
                     direction: direction,
-                    rows: allRows,
-                    segments: navigableSegments
+                    rows: gridNavigationContext.rows,
+                    segments: gridNavigationContext.segments
                 )
             },
             onCellSaved: {
                 reloadNotebookRow(item.student.id)
             },
             onAttendanceSaved: {
-                Task { await refreshNotebookSignals() }
+                scheduleNotebookSignalsRefresh()
             }
         )
             .frame(width: resolvedColumnWidth(for: column), height: notebookGridRowHeight)

@@ -2,6 +2,32 @@ import Combine
 import Foundation
 import MiGestorKit
 
+extension ObservableObject where Self: AnyObject {
+    /// Reenvía un @Published del bridge al store solo cuando el valor cambia de verdad
+    /// (los tipos Kotlin comparan con `isEqual`/`equals`). Usa `weak self` para no crear ciclos de retención.
+    @MainActor
+    fileprivate func bridgeSink<Value>(
+        _ publisher: Published<Value>.Publisher,
+        _ keyPath: ReferenceWritableKeyPath<Self, Value>,
+        into cancellables: inout Set<AnyCancellable>,
+        isEqual: @escaping (Value, Value) -> Bool
+    ) {
+        publisher
+            .removeDuplicates(by: isEqual)
+            .sink { [weak self] value in self?[keyPath: keyPath] = value }
+            .store(in: &cancellables)
+    }
+
+    @MainActor
+    fileprivate func bridgeSink<Value: Equatable>(
+        _ publisher: Published<Value>.Publisher,
+        _ keyPath: ReferenceWritableKeyPath<Self, Value>,
+        into cancellables: inout Set<AnyCancellable>
+    ) {
+        bridgeSink(publisher, keyPath, into: &cancellables, isEqual: ==)
+    }
+}
+
 @MainActor
 final class NotebookBridgeStore: ObservableObject {
     @Published private(set) var classes: [SchoolClass] = []
@@ -81,19 +107,21 @@ final class NotebookBridgeStore: ObservableObject {
         showingBulkRubricEvaluation = bridge.showingBulkRubricEvaluation
         syncPendingChanges = bridge.syncPendingChanges
 
-        bridge.$classes.assign(to: \.classes, on: self).store(in: &cancellables)
-        bridge.$notebookState.assign(to: \.notebookState, on: self).store(in: &cancellables)
-        bridge.$notebookStructureState.assign(to: \.notebookStructureState, on: self).store(in: &cancellables)
-        bridge.$notebookRowsState.assign(to: \.notebookRowsState, on: self).store(in: &cancellables)
-        bridge.$notebookSelectionState.assign(to: \.notebookSelectionState, on: self).store(in: &cancellables)
-        bridge.$notebookSaveState.assign(to: \.notebookSaveState, on: self).store(in: &cancellables)
-        bridge.$notebookSplitSaveState.assign(to: \.notebookSplitSaveState, on: self).store(in: &cancellables)
-        bridge.$notebookInspectorState.assign(to: \.notebookInspectorState, on: self).store(in: &cancellables)
-        bridge.$notebookAverageState.assign(to: \.notebookAverageState, on: self).store(in: &cancellables)
-        bridge.$rubricEvaluationState.assign(to: \.rubricEvaluationState, on: self).store(in: &cancellables)
-        bridge.$isNotebookRubricAutoAdvanceActive.assign(to: \.isNotebookRubricAutoAdvanceActive, on: self).store(in: &cancellables)
-        bridge.$showingBulkRubricEvaluation.assign(to: \.showingBulkRubricEvaluation, on: self).store(in: &cancellables)
-        bridge.$syncPendingChanges.assign(to: \.syncPendingChanges, on: self).store(in: &cancellables)
+        bridgeSink(bridge.$classes, \.classes, into: &cancellables)
+        bridgeSink(bridge.$notebookState, \.notebookState, into: &cancellables) {
+            ($0 as AnyObject).isEqual($1 as AnyObject)
+        }
+        bridgeSink(bridge.$notebookStructureState, \.notebookStructureState, into: &cancellables)
+        bridgeSink(bridge.$notebookRowsState, \.notebookRowsState, into: &cancellables)
+        bridgeSink(bridge.$notebookSelectionState, \.notebookSelectionState, into: &cancellables)
+        bridgeSink(bridge.$notebookSaveState, \.notebookSaveState, into: &cancellables)
+        bridgeSink(bridge.$notebookSplitSaveState, \.notebookSplitSaveState, into: &cancellables)
+        bridgeSink(bridge.$notebookInspectorState, \.notebookInspectorState, into: &cancellables)
+        bridgeSink(bridge.$notebookAverageState, \.notebookAverageState, into: &cancellables)
+        bridgeSink(bridge.$rubricEvaluationState, \.rubricEvaluationState, into: &cancellables)
+        bridgeSink(bridge.$isNotebookRubricAutoAdvanceActive, \.isNotebookRubricAutoAdvanceActive, into: &cancellables)
+        bridgeSink(bridge.$showingBulkRubricEvaluation, \.showingBulkRubricEvaluation, into: &cancellables)
+        bridgeSink(bridge.$syncPendingChanges, \.syncPendingChanges, into: &cancellables)
     }
 }
 
@@ -123,13 +151,13 @@ final class DashboardBridgeStore: ObservableObject {
         syncLastRunAt = bridge.syncLastRunAt
         pairedSyncHost = bridge.pairedSyncHost
 
-        bridge.$classes.assign(to: \.classes, on: self).store(in: &cancellables)
-        bridge.$studentsInClass.assign(to: \.studentsInClass, on: self).store(in: &cancellables)
-        bridge.$dashboardSnapshot.assign(to: \.dashboardSnapshot, on: self).store(in: &cancellables)
-        bridge.$syncStatusMessage.assign(to: \.syncStatusMessage, on: self).store(in: &cancellables)
-        bridge.$syncPendingChanges.assign(to: \.syncPendingChanges, on: self).store(in: &cancellables)
-        bridge.$syncLastRunAt.assign(to: \.syncLastRunAt, on: self).store(in: &cancellables)
-        bridge.$pairedSyncHost.assign(to: \.pairedSyncHost, on: self).store(in: &cancellables)
+        bridgeSink(bridge.$classes, \.classes, into: &cancellables)
+        bridgeSink(bridge.$studentsInClass, \.studentsInClass, into: &cancellables)
+        bridgeSink(bridge.$dashboardSnapshot, \.dashboardSnapshot, into: &cancellables)
+        bridgeSink(bridge.$syncStatusMessage, \.syncStatusMessage, into: &cancellables)
+        bridgeSink(bridge.$syncPendingChanges, \.syncPendingChanges, into: &cancellables)
+        bridgeSink(bridge.$syncLastRunAt, \.syncLastRunAt, into: &cancellables)
+        bridgeSink(bridge.$pairedSyncHost, \.pairedSyncHost, into: &cancellables)
     }
 }
 
@@ -157,12 +185,12 @@ final class StudentsBridgeStore: ObservableObject {
         studentImportPreview = bridge.studentImportPreview
         isImportingStudents = bridge.isImportingStudents
 
-        bridge.$classes.assign(to: \.classes, on: self).store(in: &cancellables)
-        bridge.$studentsInClass.assign(to: \.studentsInClass, on: self).store(in: &cancellables)
-        bridge.$allStudents.assign(to: \.allStudents, on: self).store(in: &cancellables)
-        bridge.$selectedStudentsClassId.assign(to: \.selectedStudentsClassId, on: self).store(in: &cancellables)
-        bridge.$studentImportPreview.assign(to: \.studentImportPreview, on: self).store(in: &cancellables)
-        bridge.$isImportingStudents.assign(to: \.isImportingStudents, on: self).store(in: &cancellables)
+        bridgeSink(bridge.$classes, \.classes, into: &cancellables)
+        bridgeSink(bridge.$studentsInClass, \.studentsInClass, into: &cancellables)
+        bridgeSink(bridge.$allStudents, \.allStudents, into: &cancellables)
+        bridgeSink(bridge.$selectedStudentsClassId, \.selectedStudentsClassId, into: &cancellables)
+        bridgeSink(bridge.$studentImportPreview, \.studentImportPreview, into: &cancellables) { _, _ in false }
+        bridgeSink(bridge.$isImportingStudents, \.isImportingStudents, into: &cancellables)
     }
 }
 
@@ -186,9 +214,9 @@ final class AttendanceBridgeStore: ObservableObject {
         allStudents = bridge.allStudents
         selectedStudentsClassId = bridge.selectedStudentsClassId
 
-        bridge.$classes.assign(to: \.classes, on: self).store(in: &cancellables)
-        bridge.$studentsInClass.assign(to: \.studentsInClass, on: self).store(in: &cancellables)
-        bridge.$allStudents.assign(to: \.allStudents, on: self).store(in: &cancellables)
-        bridge.$selectedStudentsClassId.assign(to: \.selectedStudentsClassId, on: self).store(in: &cancellables)
+        bridgeSink(bridge.$classes, \.classes, into: &cancellables)
+        bridgeSink(bridge.$studentsInClass, \.studentsInClass, into: &cancellables)
+        bridgeSink(bridge.$allStudents, \.allStudents, into: &cancellables)
+        bridgeSink(bridge.$selectedStudentsClassId, \.selectedStudentsClassId, into: &cancellables)
     }
 }

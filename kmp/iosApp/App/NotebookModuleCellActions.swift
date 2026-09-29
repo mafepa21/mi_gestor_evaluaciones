@@ -59,6 +59,50 @@ enum NotebookKeyboardEditBuffer {
     }
 }
 
+/// Un solo observador de avisos para todo el grid (antes: 2 `onReceive` por celda).
+/// Las celdas se registran al aparecer y se dan de baja al desaparecer.
+@MainActor
+final class NotebookCellNoticeRouter {
+    static let shared = NotebookCellNoticeRouter()
+
+    private struct Entry {
+        let cellId: String
+        let onBackground: () -> Void
+        let onKeyboardEdit: (Notification) -> Void
+    }
+
+    private var entries: [UUID: Entry] = [:]
+    private var observers: [NSObjectProtocol] = []
+
+    private init() {
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: .appleAppDidEnterBackground, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.handleBackground() }
+        })
+        observers.append(center.addObserver(forName: .notebookKeyboardEdit, object: nil, queue: .main) { [weak self] note in
+            MainActor.assumeIsolated { self?.handleKeyboardEdit(note) }
+        })
+    }
+
+    func register(token: UUID, cellId: String, onBackground: @escaping () -> Void, onKeyboardEdit: @escaping (Notification) -> Void) {
+        entries[token] = Entry(cellId: cellId, onBackground: onBackground, onKeyboardEdit: onKeyboardEdit)
+    }
+
+    func unregister(token: UUID) {
+        entries[token] = nil
+    }
+
+    private func handleBackground() {
+        // Solo guardan las celdas con edición pendiente; el resto sale sin hacer nada.
+        for entry in Array(entries.values) { entry.onBackground() }
+    }
+
+    private func handleKeyboardEdit(_ note: Notification) {
+        guard let id = note.userInfo?["cellId"] as? String else { return }
+        for entry in Array(entries.values) where entry.cellId == id { entry.onKeyboardEdit(note) }
+    }
+}
+
 extension Notification.Name {
     static let notebookKeyboardEdit = Notification.Name("notebook.keyboard.edit")
 }
@@ -434,26 +478,30 @@ extension NotebookModuleView {
         let nextColumn = navigableColumns[nextColumnIndex]
         let nextCellId = cellFocusId(studentId: nextStudentId, columnId: nextColumn.id)
 
+        // Con la virtualización de filas, la celda destino puede no estar materializada:
+        // se desplaza antes de enfocar para no perder el foco al bajar.
+        gridScrollProxy.scrollToRow?(nextRowIndex)
+        navigationFocusWorkItem?.cancel()
+        navigationFocusWorkItem = nil
+
         if moveWithoutEditing {
             applyKeyboardSelection(studentId: nextStudentId, columnId: nextColumn.id)
             return
         }
 
-        withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
-            inspectorSelection = NotebookInspectorSelection(studentId: nextStudentId, columnId: nextColumn.id)
-            focusedCellId = nil
-            activeChoiceCellId = nil
-        }
+        inspectorSelection = NotebookInspectorSelection(studentId: nextStudentId, columnId: nextColumn.id)
+        focusedCellId = nil
+        activeChoiceCellId = nil
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
-                if nextColumn.type == .ordinal || nextColumn.type == .attendance || nextColumn.categoryKind == .attendance {
-                    activeChoiceCellId = nextCellId
-                } else if nextColumn.type != .calculated && nextColumn.type != .rubric && nextColumn.type != .check {
-                    focusedCellId = nextCellId
-                }
+        let workItem = DispatchWorkItem {
+            if nextColumn.type == .ordinal || nextColumn.type == .attendance || nextColumn.categoryKind == .attendance {
+                activeChoiceCellId = nextCellId
+            } else if nextColumn.type != .calculated && nextColumn.type != .rubric && nextColumn.type != .check {
+                focusedCellId = nextCellId
             }
         }
+        navigationFocusWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: workItem)
     }
 
 }

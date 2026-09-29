@@ -124,6 +124,12 @@ struct NotebookModuleView: View {
     @State var toolbarSyncTask: Task<Void, Never>? = nil
     @State var lastToolbarStateKey: String? = nil
     @State var riskLevelCache: [Int64: RiskLevel] = [:]
+    /// Referencia al estado vigente para la navegación con teclado: las celdas no capturan arrays viejos.
+    @State var gridNavigationContext = NotebookGridNavigationContext()
+    @State var gridScrollProxy = NotebookGridScrollProxy()
+    @State var signalsRefreshTask: Task<Void, Never>?
+    @State var learningSituationsTask: Task<Void, Never>?
+    @State var navigationFocusWorkItem: DispatchWorkItem?
     @State var riskComputationKey: String?
     @State var isPrecomputingRiskLevels = false
     @AppStorage("notebook.fixedZoneWidth") var fixedZoneWidthStored = 240.0
@@ -256,6 +262,7 @@ struct NotebookModuleView: View {
         focusedCellId = nil
         focusMode = .normal
         searchText = ""
+        debouncedGridSearchText = ""
 
         undoStack = []
         redoStack = []
@@ -528,7 +535,7 @@ struct NotebookModuleView: View {
             if let classId = Int64(newValue) {
                 loadClassLearningSituations(classId: classId)
             }
-            Task { await refreshNotebookSignals() }
+            scheduleNotebookSignalsRefresh()
         }
         .appOnChange(of: toolbarStateKey(data: data)) { _ in
             if !isMacInspectorOnly {
@@ -553,6 +560,15 @@ struct NotebookModuleView: View {
         let trailingPaddingCompensation = NotebookStyle.outerPadding * 2
         let shouldShowFolderLane = renderModel.hasGroupedHeaders
 
+        let _ = gridNavigationContext.update(
+            rows: rows,
+            segments: renderModel.scrollableSegments,
+            categoryTintById: Dictionary(
+                data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        )
+
         NotebookGridContent(
             rows: rows,
             hasSourceRows: !data.sheet.rows.isEmpty,
@@ -566,6 +582,8 @@ struct NotebookModuleView: View {
             structuralInvalidationKey: gridStructuralInvalidationKey(data: data),
             rowReloadRevisions: rowReloadRevisions,
             transientCellIds: transientGridCellIds,
+            rowContextDigest: notebookRowContextDigest(rows: rows),
+            scrollProxy: gridScrollProxy,
             fixedSegments: renderModel.fixedSegments,
             trailingFixedSegments: renderModel.trailingFixedSegments,
             scrollableSegments: renderModel.scrollableSegments
@@ -742,7 +760,8 @@ struct NotebookModuleView: View {
     var maxFixedZoneWidth: CGFloat { 700 }
  
     func loadClassLearningSituations(classId: Int64) {
-        Task {
+        learningSituationsTask?.cancel()
+        learningSituationsTask = Task {
             do {
                 let situations = try await bridge.learningSituations()
                 let links = (try? await bridge.learningSituationClassLinksAll()) ?? []
@@ -775,6 +794,9 @@ struct NotebookModuleView: View {
                 let finalFiltered = linked + other
 
                 await MainActor.run {
+                    // Si el usuario cambió de clase mientras cargaba, no se pisa el estado nuevo.
+                    let currentId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value
+                    guard !Task.isCancelled, currentId == nil || currentId == classId else { return }
                     self.classSituations = finalFiltered
                 }
             } catch {
@@ -1556,7 +1578,7 @@ struct NotebookModuleView: View {
                 .onAppear {
                     scheduleActiveNotebookTabSync(data: data)
                     scheduleToolbarStateSync(data: data)
-                    Task { await refreshNotebookSignals() }
+                    scheduleNotebookSignalsRefresh()
                 }
                 .appOnChange(of: layoutState.notebookHiddenColumnsRequestID) { requestID in
                     guard requestID != nil else { return }

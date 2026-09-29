@@ -190,6 +190,11 @@ enum NotebookRowVirtualizationDebug {
     }
 }
 
+/// Puente para que el Cuaderno pida desplazar el grid hasta una fila (p. ej. al navegar con Enter).
+final class NotebookGridScrollProxy {
+    var scrollToRow: ((Int) -> Void)?
+}
+
 final class NotebookScrollSyncCoordinator: ObservableObject {
     @Published private(set) var visibleRange: Range<Int> = 0..<24
     private var metrics = NotebookRowWindowMath.Metrics.empty
@@ -221,6 +226,34 @@ final class NotebookScrollSyncCoordinator: ObservableObject {
         viewportHeight = nextHeight
         guard metrics.rowCount > 0 else { return }
         publishRangeIfNeeded()
+    }
+
+    /// Desplaza el grid lo justo para que la fila `index` quede completamente visible.
+    /// Sin animación: la ventana de filas se recalcula en el mismo ciclo de scroll.
+    func scrollToRow(_ index: Int) {
+        guard metrics.prefixY.indices.contains(index + 1), viewportHeight > 1 else { return }
+        let top = metrics.prefixY[index]
+        let bottom = metrics.prefixY[index + 1]
+        let target: CGFloat
+        if top < offsetY {
+            target = top
+        } else if bottom > offsetY + viewportHeight {
+            target = max(0, bottom - viewportHeight)
+        } else {
+            return
+        }
+        #if canImport(UIKit)
+        if let scrollView = uiScrollViews.object(forKey: "center" as NSString) {
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: target), animated: false)
+        }
+        #endif
+        #if canImport(AppKit)
+        if let scrollView = nsScrollViews.object(forKey: "center" as NSString) {
+            let origin = scrollView.contentView.bounds.origin
+            scrollView.contentView.scroll(to: NSPoint(x: origin.x, y: target))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+        #endif
     }
 
     private func publishRangeIfNeeded() {
@@ -292,29 +325,29 @@ struct NotebookResizableHeader<Content: View>: View {
     let width: CGFloat
     let minWidth: CGFloat
     let maxWidth: CGFloat
-    let onWidthChange: (CGFloat) -> Void
     let onWidthCommit: (CGFloat) -> Void
     let content: Content
 
     @State private var isDragging = false
     @State private var dragStartWidth: CGFloat = 0
     @State private var lastDraggedWidth: CGFloat = 0
+    /// Ancho en vivo durante el arrastre: vive solo aquí para no republicar `columnWidths`
+    /// (y repintar todo el grid) en cada fotograma. Se confirma al padre al soltar.
+    @State private var liveWidth: CGFloat?
     @GestureState private var isGestureActive = false
 
-    /// `onWidthChange` se llama en cada movimiento y debe ser barato (solo
-    /// layout); `onWidthCommit` se llama una vez al soltar y es donde se persiste.
+    /// `onWidthCommit` se llama una sola vez al soltar y es donde se aplica y persiste el ancho.
+    /// Durante el arrastre solo se mueve el tirador de esta cabecera.
     init(
         width: CGFloat,
         minWidth: CGFloat = 80,
         maxWidth: CGFloat = 400,
-        onWidthChange: @escaping (CGFloat) -> Void,
         onWidthCommit: @escaping (CGFloat) -> Void,
         @ViewBuilder content: () -> Content
     ) {
         self.width = width
         self.minWidth = minWidth
         self.maxWidth = maxWidth
-        self.onWidthChange = onWidthChange
         self.onWidthCommit = onWidthCommit
         self.content = content()
     }
@@ -326,10 +359,11 @@ struct NotebookResizableHeader<Content: View>: View {
             Rectangle()
                 .fill(isDragging ? Color.accentColor : Color.clear)
                 .frame(width: isDragging ? 2 : 4)
+                .offset(x: (liveWidth ?? width) - width)
                 .contentShape(Rectangle())
                 .modifier(NotebookResizeCursorModifier())
                 .gesture(
-                    DragGesture(minimumDistance: 2)
+                    DragGesture(minimumDistance: 2, coordinateSpace: .global)
                         .updating($isGestureActive) { _, active, _ in
                             active = true
                         }
@@ -343,7 +377,7 @@ struct NotebookResizableHeader<Content: View>: View {
                             var transaction = Transaction(animation: nil)
                             transaction.disablesAnimations = true
                             withTransaction(transaction) {
-                                onWidthChange(nextWidth)
+                                liveWidth = nextWidth
                             }
                         }
                         .onEnded { _ in
@@ -361,6 +395,7 @@ struct NotebookResizableHeader<Content: View>: View {
 
     private func finishDrag() {
         isDragging = false
+        liveWidth = nil
         guard lastDraggedWidth > 0 else { return }
         let finalWidth = lastDraggedWidth
         lastDraggedWidth = 0

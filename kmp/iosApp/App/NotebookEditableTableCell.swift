@@ -349,7 +349,7 @@ private struct NotebookNumericCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.isFocused == rhs.isFocused &&
@@ -393,7 +393,7 @@ private struct NotebookTextCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.isFocused == rhs.isFocused &&
@@ -436,7 +436,7 @@ private struct NotebookCheckCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.isFocused == rhs.isFocused &&
@@ -479,7 +479,7 @@ private struct NotebookAttendanceCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.isFocused == rhs.isFocused &&
@@ -691,14 +691,9 @@ private struct NotebookStatefulEditableTableCell: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                         .stroke(editableCellBorder, lineWidth: editableCellBorderWidth)
-                .animation(.easeOut(duration: 0.15), value: isSelected)
+                .animation(isSelected ? .easeOut(duration: 0.15) : nil, value: isSelected)
                 )
-                .shadow(
-                    color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,
-                    radius: isSelected ? 4 : 0,
-                    x: 0,
-                    y: isSelected ? 1.5 : 0
-                )
+                .notebookCellSelectionShadow(isSelected)
                 .padding(2)
 
             content
@@ -1924,7 +1919,7 @@ private struct NotebookFormulaCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.reloadToken == rhs.reloadToken &&
@@ -1992,7 +1987,7 @@ private struct NotebookRubricCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.reloadToken == rhs.reloadToken
@@ -2064,7 +2059,7 @@ private struct NotebookReadOnlyCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
             lhs.reloadToken == rhs.reloadToken &&
@@ -2124,12 +2119,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
                     RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                         .stroke(cellBorder, lineWidth: isSelected ? NotebookGridStyle.cellSelectionRingWidth : 0.6)
                 )
-                .shadow(
-                    color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,
-                    radius: isSelected ? 4 : 0,
-                    x: 0,
-                    y: isSelected ? 1.5 : 0
-                )
+                .notebookCellSelectionShadow(isSelected)
                 .padding(2)
 
             content
@@ -2246,34 +2236,33 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
     }
 }
 
-private struct NotebookCellColumnEquatableKey: Equatable {
-    let id: String
-    let type: String
-    let inputKind: String
-    let categoryKind: String
-    let categoryId: String
-    let colorHex: String
-    let isLocked: Bool
-    let countsTowardAverage: Bool
-    let unitOrSituation: String
-    let ordinalLevels: [String]
-    let dateEpochMs: String
+private extension View {
+    /// La sombra de selección solo existe en la celda seleccionada: `.shadow` con color `.clear`
+    /// sigue costando en cada celda visible.
+    @ViewBuilder
+    func notebookCellSelectionShadow(_ isSelected: Bool) -> some View {
+        if isSelected {
+            shadow(color: NotebookGridStyle.cellSelectionShadow, radius: 4, x: 0, y: 1.5)
+        } else {
+            self
+        }
+    }
 }
 
 private extension NotebookColumnDefinition {
-    var cellEquatableKey: NotebookCellColumnEquatableKey {
-        NotebookCellColumnEquatableKey(
-            id: id,
-            type: String(describing: type),
-            inputKind: String(describing: inputKind),
-            categoryKind: String(describing: categoryKind),
-            categoryId: String(describing: categoryId),
-            colorHex: colorHex ?? "",
-            isLocked: isLocked,
-            countsTowardAverage: countsTowardAverage,
-            unitOrSituation: unitOrSituation ?? "",
-            ordinalLevels: ordinalLevels,
-            dateEpochMs: String(describing: dateEpochMs)
-        )
+    /// Comparación directa de los campos que afectan al pintado de la celda: sin `String(describing:)`
+    /// sobre enums Kotlin ni structs intermedios por cada comparación.
+    func hasSameCellAppearance(as other: NotebookColumnDefinition) -> Bool {
+        id == other.id &&
+            type == other.type &&
+            inputKind == other.inputKind &&
+            categoryKind == other.categoryKind &&
+            categoryId == other.categoryId &&
+            colorHex == other.colorHex &&
+            isLocked == other.isLocked &&
+            countsTowardAverage == other.countsTowardAverage &&
+            unitOrSituation == other.unitOrSituation &&
+            ordinalLevels == other.ordinalLevels &&
+            dateEpochMs?.int64Value == other.dateEpochMs?.int64Value
     }
 }

@@ -667,9 +667,7 @@ extension NotebookModuleView {
             classId: data.sheet.classId,
             width: resolvedColumnWidth(for: column),
             tint: displayTint(for: column),
-            categoryTint: column.categoryId.flatMap { id in
-                data.sheet.columnCategories.first(where: { $0.id == id }).map { tint(for: $0) }
-            },
+            categoryTint: column.categoryId.flatMap { gridNavigationContext.categoryTintById[$0] },
             hasColumnColor: hasCustomColumnColor(column),
             focusedCellId: $focusedCellId,
             isFocused: focusedCellId == cellFocusId(studentId: item.student.id, columnId: column.id),

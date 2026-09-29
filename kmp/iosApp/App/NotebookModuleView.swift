@@ -557,7 +557,14 @@ struct NotebookModuleView: View {
         let trailingPaddingCompensation = NotebookStyle.outerPadding * 2
         let shouldShowFolderLane = renderModel.hasGroupedHeaders
 
-        let _ = gridNavigationContext.update(rows: rows, segments: renderModel.scrollableSegments)
+        let _ = gridNavigationContext.update(
+            rows: rows,
+            segments: renderModel.scrollableSegments,
+            categoryTintById: Dictionary(
+                data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        )
 
         NotebookGridContent(
             rows: rows,

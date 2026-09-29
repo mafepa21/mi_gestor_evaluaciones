@@ -565,7 +565,10 @@ final class NotebookGridLayoutModel: ObservableObject {
                     members: data.sheet.workGroupMembers
                 )
 
-                let groupRows = data.sheet.rows.filter { memberIds.contains($0.student.id) }
+                // Un alumno en varios grupos solo se añade en el primero (evita ids duplicados en ForEach).
+                let groupRows = data.sheet.rows.filter {
+                    memberIds.contains($0.student.id) && !groupedStudentIds.contains($0.student.id)
+                }
                 for row in groupRows {
                     groupedStudentIds.insert(row.student.id)
                     resultRows.append(NotebookTableRow(student: row.student, row: row, groupName: group.name))
@@ -580,13 +583,16 @@ final class NotebookGridLayoutModel: ObservableObject {
             }
             rows = resultRows + sortedUngrouped.map { NotebookTableRow(student: $0.student, row: $0, groupName: "Sin grupo") }
         } else {
+            var firstGroupIdByStudentId: [Int64: Int64] = [:]
+            for member in data.sheet.workGroupMembers where firstGroupIdByStudentId[member.studentId] == nil {
+                firstGroupIdByStudentId[member.studentId] = member.groupId
+            }
+            var groupNameById: [Int64: String] = [:]
+            for group in data.sheet.workGroups where groupNameById[group.id] == nil {
+                groupNameById[group.id] = group.name
+            }
             rows = data.sheet.rows.map { row in
-                let memberGroupId = data.sheet.workGroupMembers.first(where: {
-                    $0.studentId == row.student.id
-                })?.groupId
-                let groupName = memberGroupId.flatMap { groupId in
-                    data.sheet.workGroups.first(where: { $0.id == groupId })?.name
-                } ?? "Sin grupo"
+                let groupName = firstGroupIdByStudentId[row.student.id].flatMap { groupNameById[$0] } ?? "Sin grupo"
                 return NotebookTableRow(student: row.student, row: row, groupName: groupName)
             }
             .sorted {
@@ -596,9 +602,23 @@ final class NotebookGridLayoutModel: ObservableObject {
             }
         }
 
+        // Los grupos activos se calculan una sola vez, no por fila.
+        let activeGroupsForFilter: [NotebookWorkGroup]? = selectedGroupId == nil ? nil : NotebookWorkGroupPolicy.activeGroups(
+            groups: data.sheet.workGroups,
+            members: data.sheet.workGroupMembers,
+            tabs: data.sheet.tabs,
+            activeTabId: activeTabId,
+            mode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "general"
+        )
         let filteredRows = rows.filter { item in
             let matchesSearch = searchText.isEmpty || "\(item.student.firstName) \(item.student.lastName)".localizedCaseInsensitiveContains(searchText)
-            let matchesGroup = selectedGroupId == nil || groupId(for: item.student.id, activeTabId: activeTabId, data: data) == selectedGroupId
+            let matchesGroup = activeGroupsForFilter.map {
+                NotebookWorkGroupPolicy.groupIdForStudent(
+                    studentId: item.student.id,
+                    members: data.sheet.workGroupMembers,
+                    activeGroups: $0
+                ) == selectedGroupId
+            } ?? true
             return matchesSearch && matchesGroup
         }
 

@@ -426,10 +426,13 @@ struct NotebookCellRange: Equatable {
 final class NotebookGridNavigationContext {
     private(set) var rows: [NotebookTableRow] = []
     private(set) var segments: [NotebookDisplaySegment] = []
+    /// Tinte por categoría precalculado una vez por render (evita `first(where:)` por celda).
+    private(set) var categoryTintById: [String: Color] = [:]
 
-    func update(rows: [NotebookTableRow], segments: [NotebookDisplaySegment]) {
+    func update(rows: [NotebookTableRow], segments: [NotebookDisplaySegment], categoryTintById: [String: Color]) {
         self.rows = rows
         self.segments = segments
+        self.categoryTintById = categoryTintById
     }
 }
 

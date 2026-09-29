@@ -37,20 +37,25 @@ struct CooperativeGroupGeneratorSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    headerView
+                ViewThatFits(in: .horizontal) {
+                    // Ancho (macOS / iPad): parámetros a la izquierda, equipos a la derecha.
+                    HStack(alignment: .top, spacing: 24) {
+                        parametersCard
+                            .frame(width: 320)
+                        resultsColumn
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .frame(minWidth: 640)
 
-                    parametersSection
-
-                    if let result = generatedResult {
-                        previewSection(result: result)
-                    } else {
-                        emptyPromptView
+                    // Estrecho (iPhone / ventana pequeña): una sola columna.
+                    VStack(alignment: .leading, spacing: 24) {
+                        parametersCard
+                        resultsColumn
                     }
                 }
-                .padding(20)
+                .padding(24)
             }
-            .navigationTitle("Generador de Equipos")
+            .navigationTitle("Generador de equipos")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -65,7 +70,7 @@ struct CooperativeGroupGeneratorSheet: View {
                             onApply(imported)
                             dismiss()
                         }
-                        .buttonStyle(.borderedProminent)
+                        .groupGlassButton(prominent: true)
                     }
                 }
             }
@@ -76,118 +81,103 @@ struct CooperativeGroupGeneratorSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 540, minHeight: 520)
+        .frame(minWidth: 680, idealWidth: 800, minHeight: 560)
         #endif
     }
 
     // MARK: - Componentes de Vista
 
-    private var headerView: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles")
-                    .font(.title2.weight(.bold))
+    private var parametersCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("\(candidates.count) alumnos", systemImage: "sparkles")
+                    .font(.headline)
                     .foregroundStyle(NotebookStyle.primaryTint)
-                Text("Agrupamiento Cooperativo On-Device")
-                    .font(.title3.weight(.bold))
+                Text("Equipos equilibrados calculados en tu dispositivo.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
-            Text("Distribuye a los \(candidates.count) alumnos de la clase en equipos equilibrados mediante algoritmos pedagógicos multidimensionales.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.bottom, 4)
-    }
 
-    private var parametersSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Criterio y Parámetros")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            // Selector de estrategia
             Picker("Estrategia", selection: $strategy) {
                 ForEach(CooperativeGroupingStrategy.allCases) { strat in
-                    Label(strat.title, systemImage: strat.systemImage).tag(strat)
+                    Text(strat.shortTitle).tag(strat)
                 }
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.large)
             .onChange(of: strategy) { _ in generate() }
 
             Text(strategy.description)
-                .font(.caption2)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
+                .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 16) {
-                // Selector de número de grupos
-                Stepper(value: $groupCount, in: 2...max(2, candidates.count / 2)) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.3")
+            Stepper(value: $groupCount, in: 2...max(2, candidates.count / 2)) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(groupCount) equipos")
+                        .font(.body.weight(.semibold))
+                    if !candidates.isEmpty {
+                        Text("Unos \(Int(ceil(Double(candidates.count) / Double(groupCount)))) por equipo")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("\(groupCount) equipos")
-                            .font(.subheadline.weight(.medium))
-                        if !candidates.isEmpty {
-                            Text("(~\(Int(ceil(Double(candidates.count) / Double(groupCount)))) por grupo)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
                     }
                 }
-                .onChange(of: groupCount) { _ in generate() }
-
-                Spacer()
-
-                // Botón regenerar
-                Button(action: generate) {
-                    Label("Regenerar", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .buttonStyle(.bordered)
             }
+            .onChange(of: groupCount) { _ in generate() }
 
-            Toggle("Equilibrar género en los equipos si consta", isOn: $balanceGender)
-                .font(.subheadline)
+            Toggle("Equilibrar género si consta", isOn: $balanceGender)
                 .onChange(of: balanceGender) { _ in generate() }
+
+            Button(action: generate) {
+                Label("Regenerar", systemImage: "arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity, minHeight: 32)
+            }
+            .groupGlassButton()
+            .disabled(candidates.isEmpty)
         }
-        .padding(14)
-        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(16)
+        .groupSolidCard()
+    }
+
+    @ViewBuilder
+    private var resultsColumn: some View {
+        if let result = generatedResult {
+            previewSection(result: result)
+        } else {
+            emptyPromptView
+        }
     }
 
     private func previewSection(result: CooperativeGroupingResult) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Equipos Generados (\(result.groups.count))")
-                    .font(.subheadline.weight(.bold))
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                Text("\(result.groups.count) equipos")
+                    .font(.headline)
 
                 Spacer()
 
-                // Métrica de varianza entre grupos
+                // Métrica de varianza entre grupos (icono + texto, no solo color)
                 let variance = result.betweenGroupVariance
-                HStack(spacing: 4) {
-                    Image(systemName: variance < 0.6 ? "checkmark.circle.fill" : "chart.bar.xaxis")
-                        .font(.caption2)
-                    Text(variance < 0.6 ? "Equilibrio excelente" : "Equilibrio estándar")
-                        .font(.caption2.weight(.bold))
-                }
-                .foregroundStyle(variance < 0.6 ? Color.green : Color.orange)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(
-                    (variance < 0.6 ? Color.green : Color.orange).opacity(0.12),
-                    in: Capsule()
+                Label(
+                    variance < 0.6 ? "Equilibrio excelente" : "Equilibrio estándar",
+                    systemImage: variance < 0.6 ? "checkmark.circle.fill" : "chart.bar.xaxis"
                 )
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(variance < 0.6 ? Color.green : Color.orange)
 
-                // Botón copiar
                 Button {
                     copyToClipboard(result: result)
                 } label: {
                     Image(systemName: copiedToClipboard ? "checkmark" : "doc.on.doc")
-                        .font(.caption)
+                        .frame(minWidth: 32, minHeight: 32)
                 }
-                .buttonStyle(.borderless)
+                .groupGlassButton(circular: true)
                 .help("Copiar lista de equipos al portapapeles")
+                .accessibilityLabel("Copiar lista de equipos")
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 12)], spacing: 12) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 16)], spacing: 16) {
                 ForEach(result.groups) { group in
                     groupCard(group: group)
                 }
@@ -199,64 +189,57 @@ struct CooperativeGroupGeneratorSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(group.name)
-                    .font(.subheadline.weight(.bold))
+                    .font(.headline)
                 Spacer()
                 if let avg = group.averageScore {
-                    Text("Media: \(String(format: "%.1f", avg))")
-                        .font(.caption.weight(.bold))
+                    Text("Media \(String(format: "%.1f", avg))")
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(NotebookStyle.primaryTint)
                 }
             }
 
             if let gender = group.genderSummary {
                 Text("Género: \(gender)")
-                    .font(.caption2)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
-            Divider()
-
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
                 ForEach(group.members) { member in
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(NotebookStyle.primaryTint.opacity(0.8))
-                            .frame(width: 5, height: 5)
+                    HStack(spacing: 8) {
                         Text(member.name)
-                            .font(.caption)
+                            .font(.subheadline)
                             .lineLimit(1)
                         Spacer()
                         if let avg = member.average {
                             Text(String(format: "%.1f", avg))
-                                .font(.caption2.weight(.medium))
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
             }
+            .padding(.top, 8)
         }
-        .padding(12)
-        .background(
-            Color.secondary.opacity(0.04)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.secondary.opacity(0.14), lineWidth: 1)
-                )
-        )
-        .cornerRadius(10)
+        .padding(16)
+        .groupSolidCard()
+        .accessibilityElement(children: .combine)
     }
 
     private var emptyPromptView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             Image(systemName: "person.3.fill")
-                .font(.system(size: 36))
+                .font(.largeTitle)
                 .foregroundStyle(.secondary)
-            Text("Pulsa 'Generar' para crear equipos cooperativos")
+            Text(candidates.isEmpty
+                 ? "No hay alumnado en esta clase. Añade alumnos para generar equipos."
+                 : "Pulsa «Regenerar» para crear equipos cooperativos.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.vertical, 48)
     }
 
     // MARK: - Lógica
@@ -293,5 +276,16 @@ struct CooperativeGroupGeneratorSheet: View {
         #endif
 
         copiedToClipboard = true
+    }
+}
+
+private extension CooperativeGroupingStrategy {
+    /// Título corto para el selector segmentado (el largo va en la descripción).
+    var shortTitle: String {
+        switch self {
+        case .heterogeneous: return "Heterogéneo"
+        case .homogeneous: return "Homogéneo"
+        case .balancedRandom: return "Azar"
+        }
     }
 }

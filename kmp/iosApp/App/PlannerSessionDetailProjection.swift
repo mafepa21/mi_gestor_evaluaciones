@@ -24,6 +24,14 @@ struct PlannerSessionDetailProjection {
     let supportSections: [PlannerSessionSupportSection]
     let clilChunks: LearningSituationCLILChunksDraft?
     let activityCount: Int
+    // Repaso rápido: se calculan una sola vez al construir la proyección.
+    let reviewObjective: String
+    let setupBullets: [String]
+    let attentionNotes: [String]
+    /// Montaje y atención completos, por si `setupBullets`/`attentionNotes` recortaron algo.
+    let setupAll: [String]
+    let attentionAll: [String]
+    let guideBlocks: [PlannerSessionReviewBlock]
 
     init(plan: LearningSituationSessionPlan) {
         let payload = Self.decodePayload(plan.developmentJson)
@@ -96,6 +104,31 @@ struct PlannerSessionDetailProjection {
         self.activityCount = normalizedActivities.isEmpty
             ? timeline.reduce(0) { $0 + $1.steps.count }
             : normalizedActivities.count
+
+        let review = PlannerSessionReviewBuilder(
+            objective: self.objective,
+            organisation: self.organisation,
+            adaptations: self.adaptations,
+            activities: normalizedActivities
+        )
+        self.reviewObjective = review.objective
+        self.setupAll = review.setupAll
+        self.setupBullets = review.setupBullets
+        self.attentionAll = review.attentionAll
+        self.attentionNotes = review.attentionNotes
+        self.guideBlocks = review.blocks
+    }
+
+    /// Etiqueta de bloque/segmento de una sesión LONG (`U01 · Título`). No repite la clave si el título ya la lleva.
+    static func segmentLabel(for activity: LearningSituationSessionActivityDraft) -> String? {
+        let key = activity.segmentKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let title = activity.segmentTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // El título del segmento ya suele empezar por la clave (`U01`): no se repite («U01 · U01»).
+        if !title.isEmpty, key.isEmpty || title.lowercased().hasPrefix(key.lowercased()) || title.caseInsensitiveCompare(key) == .orderedSame {
+            return title
+        }
+        let label = [key, title].filter { !$0.isEmpty }.joined(separator: " · ")
+        return label.isEmpty ? nil : label
     }
 
     var hasTeacherBrief: Bool {
@@ -558,5 +591,301 @@ struct PlannerSessionSupportSection: Identifiable {
         self.id = section.id.uuidString
         self.title = section.title
         self.lines = lines
+    }
+}
+
+
+// MARK: - Repaso rápido
+
+/// Un paso del guion en el visor de repaso: una actividad (o su recogida) lista para pintar.
+struct PlannerSessionReviewStep: Identifiable, Equatable {
+    struct Extra: Equatable {
+        let label: String
+        let text: String
+    }
+
+    let activityKey: String
+    let minutes: Int?
+    /// Minuto de inicio acumulado en la sesión (sin contar el descanso). `nil` si no hay duración conocida.
+    let startOffsetMinutes: Int?
+    let phase: String
+    let title: String
+    let detail: String
+    let clil: String?
+    let isMain: Bool
+    let isCollection: Bool
+    /// Datos secundarios de la actividad (alumnado, evidencia, temporización…): salen al pulsar «Ver más».
+    let extras: [Extra]
+
+    var id: String { activityKey }
+
+    /// `00:04` (horas:minutos desde el inicio de la sesión).
+    static func offsetLabel(_ minutes: Int) -> String {
+        String(format: "%02d:%02d", max(minutes, 0) / 60, max(minutes, 0) % 60)
+    }
+}
+
+/// Un bloque del guion (una unidad `U01`, `U02`…). En una sesión LONG el segundo va tras el descanso legal.
+struct PlannerSessionReviewBlock: Identifiable, Equatable {
+    let id: String
+    let label: String?
+    let totalMinutes: Int
+    let precededByBreak: Bool
+    let steps: [PlannerSessionReviewStep]
+}
+
+struct PlannerSessionReviewBuilder {
+    static let maxSetupBullets = 4
+    static let maxSetupBulletLength = 80
+    static let maxAttentionNotes = 3
+
+    let objective: String
+    let setupAll: [String]
+    let setupBullets: [String]
+    let attentionAll: [String]
+    let attentionNotes: [String]
+    let blocks: [PlannerSessionReviewBlock]
+
+    init(
+        objective planObjective: String,
+        organisation: String,
+        adaptations: [String],
+        activities: [LearningSituationSessionActivityDraft]
+    ) {
+        let purposes = activities.map { PlannerSessionPresentationHelper.splitPurpose($0.purpose) }
+
+        let objective = planObjective.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.objective = objective.isEmpty
+            ? (purposes.map(\.objective).first { !$0.isEmpty } ?? "")
+            : objective
+
+        let setupSources = [organisation]
+            + activities.flatMap { [$0.organisation, $0.setup] }
+            + purposes.map(\.material)
+        let setup = Self.unique(setupSources.flatMap { Self.fragments($0, splitSentences: true) })
+        self.setupAll = setup
+        self.setupBullets = setup.prefix(Self.maxSetupBullets).map { Self.shortened($0, to: Self.maxSetupBulletLength) }
+
+        let attentionSources = adaptations
+            + activities.map(\.adaptations)
+            + purposes.map(\.attention)
+        let attention = Self.unique(attentionSources.flatMap { Self.fragments($0, splitSentences: false) })
+        self.attentionAll = attention
+        self.attentionNotes = Array(attention.prefix(Self.maxAttentionNotes))
+
+        self.blocks = Self.makeBlocks(from: activities)
+    }
+
+    // MARK: Bloques y pasos
+
+    private static func makeBlocks(from activities: [LearningSituationSessionActivityDraft]) -> [PlannerSessionReviewBlock] {
+        var groups: [(precededByBreak: Bool, activities: [LearningSituationSessionActivityDraft])] = []
+        for (index, activity) in activities.enumerated() {
+            if index == 0 {
+                groups.append((false, [activity]))
+            } else if startsNewBlock(previous: activities[index - 1], current: activity) {
+                groups.append((true, [activity]))
+            } else {
+                groups[groups.count - 1].activities.append(activity)
+            }
+        }
+
+        var cursor = 0
+        return groups.enumerated().map { index, group in
+            let steps = makeSteps(from: group.activities, cursor: &cursor)
+            let label = group.activities.lazy.compactMap(PlannerSessionDetailProjection.segmentLabel(for:)).first
+            return PlannerSessionReviewBlock(
+                id: "\(index)-\(group.activities.first?.activityKey ?? "")",
+                label: label,
+                totalMinutes: steps.reduce(0) { $0 + ($1.minutes ?? 0) },
+                precededByBreak: group.precededByBreak,
+                steps: steps
+            )
+        }
+    }
+
+    /// Una sesión LONG lleva dos bloques; el descanso legal se sitúa donde cambia el segmento.
+    private static func startsNewBlock(
+        previous: LearningSituationSessionActivityDraft,
+        current: LearningSituationSessionActivityDraft
+    ) -> Bool {
+        guard let previousKey = previous.segmentKey?.trimmingCharacters(in: .whitespacesAndNewlines), !previousKey.isEmpty,
+              let currentKey = current.segmentKey?.trimmingCharacters(in: .whitespacesAndNewlines), !currentKey.isEmpty
+        else { return false }
+        return previousKey != currentKey
+    }
+
+    private static func makeSteps(
+        from activities: [LearningSituationSessionActivityDraft],
+        cursor: inout Int
+    ) -> [PlannerSessionReviewStep] {
+        var drafts: [(step: PlannerSessionReviewStep, moment: NarrativeSessionActivityCompactor.Moment?)] = []
+        for (index, activity) in activities.enumerated() {
+            let key = activity.activityKey.isEmpty ? "Actividad \(index + 1)" : activity.activityKey
+            let title = PlannerSessionPresentationHelper.displayTitle(for: activity)
+            let phase = activity.phase.trimmingCharacters(in: .whitespacesAndNewlines)
+            let minutes = activity.plannedMinutes ?? minutes(fromTimeLabel: activity.timeLabel)
+            let isCollection = isCollectionName(title) || isCollectionName(phase)
+            let clil = PlannerSessionPresentationHelper.clilCallout(for: activity)
+
+            var teacherText = activity.teacherActions
+            if clil?.isEmpty == false {
+                teacherText = PlannerSessionPresentationHelper.removingCLILConsigna(from: teacherText)
+            }
+            var collectionTitle: String?
+            if !isCollection {
+                let extracted = extractingCollection(from: teacherText)
+                teacherText = extracted.text
+                collectionTitle = extracted.collection
+            }
+            let studentText = [activity.studentInstructions, activity.studentActions]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
+            let detail = teacherText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? studentText
+                : teacherText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            var startOffset: Int?
+            if !isCollection, let minutes {
+                startOffset = cursor
+                cursor += minutes
+            }
+            let purpose = PlannerSessionPresentationHelper.splitPurpose(activity.purpose)
+            let extras: [PlannerSessionReviewStep.Extra] = [
+                ("Propósito", purpose.objective),
+                ("Organización", [activity.organisation, activity.setup].filter { !$0.isEmpty }.joined(separator: "\n")),
+                ("Material", activity.materials),
+                ("Alumnado", detail == studentText ? "" : studentText),
+                ("Temporización", activity.timingBreakdown),
+                ("Evidencia", activity.evidence),
+                ("Si el grupo va lento", activity.slowGroupPlan),
+                ("Extensión si termina antes", activity.fastGroupExtension),
+                ("Continuidad", [activity.prepares, activity.consolidates].filter { !$0.isEmpty }.joined(separator: "\n"))
+            ].compactMap { label, text in
+                let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return value.isEmpty ? nil : PlannerSessionReviewStep.Extra(label: label, text: value)
+            }
+
+            let moment = NarrativeSessionActivityCompactor.moment(for: phase.isEmpty ? activity.activity : phase)
+            drafts.append((
+                PlannerSessionReviewStep(
+                    activityKey: key,
+                    minutes: minutes,
+                    startOffsetMinutes: startOffset,
+                    phase: phase,
+                    title: title,
+                    detail: detail,
+                    clil: clil,
+                    isMain: false,
+                    isCollection: isCollection,
+                    extras: extras
+                ),
+                isCollection ? nil : moment
+            ))
+            if let collectionTitle {
+                drafts.append((
+                    PlannerSessionReviewStep(
+                        activityKey: "\(key)#recogida",
+                        minutes: nil,
+                        startOffsetMinutes: nil,
+                        phase: "Recogida",
+                        title: collectionTitle,
+                        detail: "",
+                        clil: nil,
+                        isMain: false,
+                        isCollection: true,
+                        extras: []
+                    ),
+                    nil
+                ))
+            }
+        }
+
+        // El paso principal es el de más minutos entre los del momento «principal».
+        let mainIndex = drafts.indices
+            .filter { drafts[$0].moment == .main }
+            .max { (drafts[$0].step.minutes ?? 0) < (drafts[$1].step.minutes ?? 0) }
+            .map { candidate -> Int in
+                // `max` devuelve el último empate: se prefiere el primero.
+                let best = drafts[candidate].step.minutes ?? 0
+                return drafts.indices.first { drafts[$0].moment == .main && (drafts[$0].step.minutes ?? 0) == best } ?? candidate
+            }
+        return drafts.enumerated().map { index, entry in
+            let step = entry.step
+            guard index == mainIndex else { return step }
+            return PlannerSessionReviewStep(
+                activityKey: step.activityKey, minutes: step.minutes, startOffsetMinutes: step.startOffsetMinutes,
+                phase: step.phase, title: step.title, detail: step.detail, clil: step.clil,
+                isMain: true, isCollection: step.isCollection, extras: step.extras
+            )
+        }
+    }
+
+    private static func isCollectionName(_ value: String) -> Bool {
+        normalized(value).hasPrefix("recogida")
+    }
+
+    /// Saca de un texto docente la línea «Recogida: …» para mostrarla como paso propio.
+    private static func extractingCollection(from text: String) -> (text: String, collection: String?) {
+        var collection: String?
+        var kept: [String] = []
+        for line in text.components(separatedBy: .newlines) {
+            let stripped = line
+                .replacingOccurrences(of: #"^[\s\-\u2022*#]+"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: "*", with: "")
+            if collection == nil, normalized(stripped).hasPrefix("recogida"),
+               let colon = stripped.firstIndex(where: { $0 == ":" || $0 == "." }) {
+                let rest = stripped[stripped.index(after: colon)...].trimmingCharacters(in: .whitespacesAndNewlines)
+                collection = rest.isEmpty ? "Recoger el material" : rest
+            } else {
+                kept.append(line)
+            }
+        }
+        return (kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines), collection)
+    }
+
+    private static func minutes(fromTimeLabel label: String) -> Int? {
+        let value = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let range = value.range(of: #"^([0-9]{1,3})\s*(?:['’′]|min)?\s*[-–—]\s*([0-9]{1,3})"#, options: .regularExpression) {
+            let numbers = value[range].components(separatedBy: CharacterSet.decimalDigits.inverted).compactMap(Int.init)
+            if numbers.count >= 2, numbers[1] > numbers[0] { return numbers[1] - numbers[0] }
+            return nil
+        }
+        if let range = value.range(of: #"^[0-9]{1,3}(?=\s*(?:['’′]|min))"#, options: .regularExpression) {
+            return Int(value[range])
+        }
+        return nil
+    }
+
+    // MARK: Texto
+
+    /// Parte un texto en viñetas por salto de línea, `;` y (opcional) `. `.
+    private static func fragments(_ text: String, splitSentences: Bool) -> [String] {
+        var value = text.replacingOccurrences(of: ";", with: "\n")
+        if splitSentences {
+            value = value.replacingOccurrences(of: #"\.\s+"#, with: "\n", options: .regularExpression)
+        }
+        return value.components(separatedBy: .newlines)
+            .map { $0.replacingOccurrences(of: #"^[\s\-\u2022*]+"#, with: "", options: .regularExpression) }
+            .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "."))) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func shortened(_ text: String, to limit: Int) -> String {
+        guard text.count > limit else { return text }
+        let head = String(text.prefix(limit))
+        let cut = head.lastIndex(of: " ").map { String(head[..<$0]) } ?? head
+        return cut.trimmingCharacters(in: .whitespaces) + "…"
+    }
+
+    private static func unique(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert(normalized($0)).inserted }
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
     }
 }

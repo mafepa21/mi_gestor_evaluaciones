@@ -336,19 +336,19 @@ enum PlannerSessionPresentationHelper {
 
 // MARK: - Timeline Bar
 
+/// Barra resumen de la sesión: solo informa (no es interactiva). Un único elemento de accesibilidad
+/// con la duración total, el número de actividades y si hay descanso.
 struct PlannerSessionTimelineBar: View {
     let activities: [LearningSituationSessionActivityDraft]
-    let selectedKey: String?
     let tint: Color
     let effectiveMinutes: Int
-    let onSelectActivity: (String) -> Void
 
     private enum Item {
         case activity(Int)
         case rest
     }
 
-    private static let restWidth: CGFloat = 34
+    private static let restWidth: CGFloat = 32
     private static let spacing: CGFloat = 4
 
     /// Los segmentos (bloques de una sesión LONG) se separan con el descanso legal; ya no depende
@@ -367,6 +367,10 @@ struct PlannerSessionTimelineBar: View {
         return result
     }
 
+    private var hasRest: Bool {
+        items.contains { if case .rest = $0 { return true } else { return false } }
+    }
+
     private func segment(of activity: LearningSituationSessionActivityDraft) -> String? {
         let key = activity.segmentKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return key.isEmpty ? nil : key
@@ -380,8 +384,22 @@ struct PlannerSessionTimelineBar: View {
         activity.plannedMinutes ?? max(totalMinutes / max(activities.count, 1), 1)
     }
 
+    private var planned: Int { activities.compactMap(\.plannedMinutes).reduce(0, +) }
+
+    private var summaryLabel: String {
+        var parts: [String] = []
+        let total = planned > 0 ? planned : effectiveMinutes
+        if total > 0 { parts.append("Sesión de \(total) minutos") }
+        parts.append(activities.count == 1 ? "1 actividad" : "\(activities.count) actividades")
+        if hasRest { parts.append("con descanso legal de 15 minutos") }
+        if effectiveMinutes > 0, planned > 0, planned != effectiveMinutes {
+            parts.append("\(planned) de \(effectiveMinutes) minutos planificados")
+        }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             GeometryReader { geometry in
                 let restCount = items.filter { if case .rest = $0 { return true } else { return false } }.count
                 let gaps = CGFloat(max(items.count - 1, 0)) * Self.spacing
@@ -391,67 +409,51 @@ struct PlannerSessionTimelineBar: View {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                         switch item {
                         case .activity(let index):
-                            segmentButton(activities[index], width: max(usable * CGFloat(minutes(activities[index])) / CGFloat(sum), 22))
+                            segmentView(activities[index], width: max(usable * CGFloat(minutes(activities[index])) / CGFloat(sum), 16))
                         case .rest:
-                            VStack(spacing: 3) {
+                            VStack(spacing: 4) {
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                                     .fill(Color.secondary.opacity(0.18))
                                     .frame(height: 8)
                                 Text("15'")
-                                    .font(.system(size: 9, weight: .semibold))
+                                    .font(.caption2.weight(.semibold))
                                     .foregroundStyle(.secondary)
+                                    .minimumScaleFactor(0.7)
+                                    .lineLimit(1)
                             }
                             .frame(width: Self.restWidth)
-                            .accessibilityLabel("Descanso legal 15 minutos")
                         }
                     }
                 }
             }
-            .frame(height: 30)
+            .frame(height: 32)
 
-            let planned = activities.compactMap(\.plannedMinutes).reduce(0, +)
             if effectiveMinutes > 0, planned > 0, planned != effectiveMinutes {
                 Text("\(planned) de \(effectiveMinutes) min planificados")
-                    .font(.caption2.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.orange)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(EvaluationDesign.surfaceSoft.opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(summaryLabel)
     }
 
-    private func segmentButton(_ activity: LearningSituationSessionActivityDraft, width: CGFloat) -> some View {
-        let isSelected = activity.activityKey == selectedKey
-        let minutes = minutes(activity)
-        return Button {
-            onSelectActivity(activity.activityKey)
-        } label: {
-            VStack(spacing: 3) {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(barColor(for: activity, isSelected: isSelected))
-                    .frame(height: isSelected ? 12 : 8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .stroke(isSelected ? Color.primary : Color.clear, lineWidth: 1.5)
-                    )
-                Text("\(minutes)'")
-                    .font(.system(size: 10, weight: isSelected ? .bold : .regular, design: .monospaced))
-                    .foregroundStyle(isSelected ? tint : .secondary)
-                    .lineLimit(1)
-            }
+    private func segmentView(_ activity: LearningSituationSessionActivityDraft, width: CGFloat) -> some View {
+        VStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(barColor(for: activity))
+                .frame(height: 8)
+            Text("\(minutes(activity))'")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
-        .buttonStyle(.plain)
         .frame(width: width)
-        .accessibilityLabel("\(PlannerSessionPresentationHelper.displayTitle(for: activity)), \(minutes) minutos")
     }
 
-    private func barColor(for activity: LearningSituationSessionActivityDraft, isSelected: Bool) -> Color {
+    private func barColor(for activity: LearningSituationSessionActivityDraft) -> Color {
         let phase = activity.phase.lowercased()
-        if isSelected {
-            return tint
-        }
         if phase.contains("activacion") || phase.contains("calentamiento") {
             return tint.opacity(0.60)
         }
@@ -1122,46 +1124,6 @@ enum PlannerSectionKind: Equatable {
     }
 }
 
-struct PlannerActivityDetailSectionCard: View {
-    let kind: PlannerSectionKind
-    let text: String
-    let tint: Color
-    
-    private var cleanText: String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    var body: some View {
-        if !cleanText.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: kind.icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(kind.accentColor ?? tint)
-                        .frame(width: 26, height: 26)
-                        .background((kind.accentColor ?? tint).opacity(0.12), in: Circle())
-                    
-                    Text(kind.title)
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    
-                    Spacer()
-                }
-                
-                PlannerFormattedTextView(text: cleanText, kind: kind, tint: tint)
-            }
-            .padding(14)
-            .background(EvaluationDesign.surfaceSoft)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(EvaluationDesign.border, lineWidth: 1)
-            )
-            .padding(.bottom, 10)
-        }
-    }
-}
-
 struct PlannerFormattedTextView: View {
     let text: String
     let kind: PlannerSectionKind
@@ -1415,83 +1377,6 @@ enum FormattedTextBlock {
 
 
 // MARK: - Activity Timer
-
-/// Cuenta atrás de una actividad (para usar en pista). El estado vive en la vista: se reinicia al
-/// cambiar de actividad porque el contenedor le asigna `.id(activityKey)`.
-struct PlannerSessionActivityTimer: View {
-    let minutes: Int
-    let tint: Color
-
-    @State private var endDate: Date?
-    @State private var pausedRemaining: TimeInterval?
-
-    private var total: TimeInterval { TimeInterval(max(minutes, 1) * 60) }
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let remaining = remainingSeconds(at: context.date)
-            let finished = endDate != nil && remaining <= 0
-            HStack(spacing: 10) {
-                Button {
-                    toggle(now: context.date)
-                } label: {
-                    Label(
-                        Self.format(remaining),
-                        systemImage: endDate != nil && !finished ? "pause.fill" : "play.fill"
-                    )
-                    .font(.system(.body, design: .monospaced).weight(.bold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background((finished ? Color.red : tint).opacity(0.14), in: Capsule())
-                    .foregroundStyle(finished ? Color.red : tint)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(finished ? "Tiempo agotado" : "Temporizador de la actividad")
-
-                if endDate != nil || pausedRemaining != nil {
-                    Button {
-                        endDate = nil
-                        pausedRemaining = nil
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.caption.weight(.bold))
-                            .padding(8)
-                            .background(Color.secondary.opacity(0.12), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Reiniciar temporizador")
-                }
-            }
-        }
-    }
-
-    private func remainingSeconds(at date: Date) -> TimeInterval {
-        if let endDate { return max(endDate.timeIntervalSince(date), 0) }
-        return pausedRemaining ?? total
-    }
-
-    private func toggle(now: Date) {
-        if let endDate {
-            let remaining = max(endDate.timeIntervalSince(now), 0)
-            if remaining <= 0 {
-                self.endDate = nil
-                pausedRemaining = nil
-            } else {
-                pausedRemaining = remaining
-                self.endDate = nil
-            }
-        } else {
-            endDate = now.addingTimeInterval(pausedRemaining ?? total)
-            pausedRemaining = nil
-        }
-    }
-
-    private static func format(_ seconds: TimeInterval) -> String {
-        let value = Int(seconds.rounded(.up))
-        return String(format: "%d:%02d", value / 60, value % 60)
-    }
-}
-
 
 // MARK: - Enlarged Visual
 

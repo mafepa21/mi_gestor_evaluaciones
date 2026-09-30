@@ -13,6 +13,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Visor de sesiones del Planner: modo repaso rápido**:
+  - Una sola pantalla con un solo scroll (columna de 820 pt, igual en hoja e inspector). Se quitan Anterior/Siguiente, las pestañas Actividad/Anexos y las tarjetas Organización, Profesorado y Temporización.
+  - Arriba: Objetivo, Montaje (viñetas cortas) y Atención. Debajo: guion por bloques con minutos, hora acumulada desde 00:00 (sin contar el descanso), tipo, título, descripción y consigna CLIL pegada al paso; diagrama ampliable en el paso principal; descanso y Recogida como filas.
+  - «Evidencia y trazabilidad» queda plegada (chunks CLIL, evidencias, criterios, preguntas guía, cierre, adjuntos, DOCX, instrumentos). Los datos que ya no caben en el resumen salen con «Ver más».
+  - Estados de carga, vacío y error reales (antes `try?` tragaba el error). Cabecera sin «LONG», botones de 44 pt, Dynamic Type y VoiceOver por paso.
+  - `PlannerSessionReviewBuilder` (proyección) calcula todo una vez; `PlannerSessionDetailSheet.swift` baja de 1387 a 784 líneas. Nuevo `PlannerSessionReviewComponents.swift` y ámbito `docs/ambitos/planner.md`.
+  - Verificación: `xcodebuild build` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK; `MiGestorPlannerTests` (macOS): 228 tests, 4 omitidos, 0 fallos, con 10 nuevos. No se hizo QA visual ni capturas.
+
+### Changed
+
 - **Grupos del Cuaderno: Liquid Glass y generador de equipos sin cortes**:
   - `CooperativeGroupGeneratorSheet.swift`: layout adaptativo (`ViewThatFits`: dos zonas en ancho, una columna en estrecho); selector segmentado con títulos cortos; `Stepper`, `Toggle` y botones nativos; tarjetas sólidas y botones de vidrio; estado sin alumnado; tamaños de letra por estilo (Dynamic Type); ancho mínimo de macOS 680.
   - `NotebookGroupBoardView.swift`: barra de acciones con vidrio (`GlassEffectContainer`), un solo botón principal («Agrupar automáticamente»), menú «Más» con importar Excel y equipos cooperativos, versión solo iconos en estrecho; columnas al 82 % en compacto con desplazamiento por columna; resalte con borde grueso al soltar; alumnos con altura táctil de 44 pt en iOS; menú contextual «Mover a…» como alternativa accesible al arrastre; helpers `groupGlassButton`, `groupSolidCard` y `groupGlassContainer` con fallback a estilos clásicos antes de iOS/macOS 26.

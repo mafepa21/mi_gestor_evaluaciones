@@ -329,7 +329,6 @@
 		802527B386B74746FC01044B /* PhysicalTestsColumnCreationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADD746834EBC2A6B190831A /* PhysicalTestsColumnCreationPolicy.swift */; };
 		80AB8A54BCEB9D6E00C4EB6C /* KmpBridge+LearningSituations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 821B86EBC3A6F3E280190B15 /* KmpBridge+LearningSituations.swift */; };
 		8177D8D46978C81F4594E4B4 /* NotebookSeatingPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5BB221D33601136CB3F7F0F /* NotebookSeatingPlanView.swift */; };
-		818FCDBC74CE8164CCB573FC /* DashboardCompactHeroStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E043F0727FE9EB7F61F194B /* DashboardCompactHeroStrip.swift */; };
 		8260D6F8F24ABD735B285EBA /* AppleSpreadsheetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E628D0904D069E276C888E /* AppleSpreadsheetReader.swift */; };
 		82E4E70524506517472625EB /* EvaluationDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61DBB79CD6256350F830529A /* EvaluationDesign.swift */; };
 		830479F2E8118437B8115C2F /* NotebookWorkGroupImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D74476D5561462609506B631 /* NotebookWorkGroupImportService.swift */; };
@@ -432,7 +431,6 @@
 		AEB56910316695CFA6122CFA /* DashboardStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91ADE8A482466798768F2752 /* DashboardStyle.swift */; };
 		AECA2C0EFA83D8E8A49E5829 /* PlannerSessionDocxRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69A305DF1545D94374103F78 /* PlannerSessionDocxRenderer.swift */; };
 		AF65A163476461639913FA8E /* PlannerWorkspaceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 282FEB62319DAF8B963180EB /* PlannerWorkspaceViewModel.swift */; };
-		AFB7EB30232D55348ED71260 /* DashboardCompactHeroStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E043F0727FE9EB7F61F194B /* DashboardCompactHeroStrip.swift */; };
 		B01252AA878F99C736D23E0B /* SettingsDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F2CF5E5B8BFCE0959388B9 /* SettingsDiagnosticsView.swift */; };
 		B0E1302F3B9A1C94FD25615B /* SettingsSectionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF5F802820D600F56AC6F2D /* SettingsSectionCard.swift */; };
 		B0E826181DFA287ECBDB84D5 /* SupportMeasureShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7EEE397867C9AB1B682637 /* SupportMeasureShared.swift */; };
@@ -777,7 +775,6 @@
 		3B0B097D45446340980CA846 /* MeetingsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsWorkspaceView.swift; sourceTree = "<group>"; };
 		3C0B0E3ED2C6BFAF2C222AA3 /* NotebookEditableTableCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookEditableTableCell.swift; sourceTree = "<group>"; };
 		3C45D5A2BB65125E3D5FC54F /* NotebookModuleColumnModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleColumnModel.swift; sourceTree = "<group>"; };
-		3E043F0727FE9EB7F61F194B /* DashboardCompactHeroStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCompactHeroStrip.swift; sourceTree = "<group>"; };
 		3E44ACF17D174B125022ED67 /* KmpBridge+Rubrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+Rubrics.swift"; sourceTree = "<group>"; };
 		3F4818F5D8B238485F914767 /* KmpBridgeObservationStores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KmpBridgeObservationStores.swift; sourceTree = "<group>"; };
 		4046A78B0D3C0FB40273F527 /* NotebookModuleCellActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleCellActions.swift; sourceTree = "<group>"; };
@@ -1331,7 +1328,6 @@
 				17DC815694CD18046E1FE41A /* CooperativeGroupGeneratorSheet.swift */,
 				DC6FF32972AD484A9FAEABBC /* CoursesWorkspaceView.swift */,
 				A2C577C58E87983763516A38 /* DashboardClassroomView.swift */,
-				3E043F0727FE9EB7F61F194B /* DashboardCompactHeroStrip.swift */,
 				BCF119E0DE892DBACD7073A3 /* DashboardDispatchView.swift */,
 				7584348C117723D12BC316D2 /* DashboardHeaderView.swift */,
 				F22BDA4232E8DFE363E47C79 /* DashboardInspectorContent.swift */,
@@ -1797,7 +1793,6 @@
 				AE85501F3A967AA77A325F0E /* CoreMLPatternDetectionService.swift in Sources */,
 				288029144DAFFC789B765F85 /* CoursesWorkspaceView.swift in Sources */,
 				B9341158012C67878A8D5A2C /* DashboardClassroomView.swift in Sources */,
-				AFB7EB30232D55348ED71260 /* DashboardCompactHeroStrip.swift in Sources */,
 				40FBB644C354353E94CE0F81 /* DashboardDispatchView.swift in Sources */,
 				AA0ED3BC85670482134F0721 /* DashboardHeaderView.swift in Sources */,
 				7A492EF7DE989EDE9511E768 /* DashboardInspectorContent.swift in Sources */,
@@ -2121,7 +2116,6 @@
 				D057BFC554BFD9611D1A3E7E /* CoreMLPatternDetectionService.swift in Sources */,
 				C3F8BC42806F5865C3CBF99B /* CoursesWorkspaceView.swift in Sources */,
 				8DB5E90EADE2781312D1FFFE /* DashboardClassroomView.swift in Sources */,
-				818FCDBC74CE8164CCB573FC /* DashboardCompactHeroStrip.swift in Sources */,
 				35E4CB3140B5AC23435486FE /* DashboardDispatchView.swift in Sources */,
 				E785920FA5690521CD93B0D3 /* DashboardHeaderView.swift in Sources */,
 				C53B209DF80B294DA9A79962 /* DashboardInspectorContent.swift in Sources */,

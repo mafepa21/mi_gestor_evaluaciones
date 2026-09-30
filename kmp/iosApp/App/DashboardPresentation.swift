@@ -12,6 +12,8 @@ enum DashboardInspectorSelection: Hashable {
     case session(Int64)
     case alert(String)
     case pe(String)
+    /// Fila de Atención sin alerta detrás (asistencia de hoy sin pasar, solo Mac).
+    case attendance(classId: Int64)
 }
 
 // MARK: - Atención
@@ -268,8 +270,11 @@ struct DashboardPresentation {
         )
     }
 
-    static func make(snapshot: DashboardSnapshot) -> DashboardPresentation {
-        let queue = buildQueue(snapshot: snapshot)
+    /// `extraItems`: filas de Atención que no salen del snapshot (p. ej. la
+    /// asistencia de hoy pendiente en Mac). Entran con la prioridad más alta de
+    /// su urgencia.
+    static func make(snapshot: DashboardSnapshot, extraItems: [DashboardAttentionItem] = []) -> DashboardPresentation {
+        let queue = buildQueue(snapshot: snapshot, extraItems: extraItems)
         return DashboardPresentation(
             queue: queue,
             now: buildNow(snapshot: snapshot),
@@ -308,9 +313,12 @@ struct DashboardPresentation {
     /// cada una, por prioridad. Los "recordatorios" de la agenda se omiten a
     /// propósito: el backend los genera 1:1 desde cada alerta y contarlos
     /// duplicaría la fila.
-    private static func buildQueue(snapshot: DashboardSnapshot) -> [DashboardAttentionItem] {
+    private static func buildQueue(snapshot: DashboardSnapshot, extraItems: [DashboardAttentionItem] = []) -> [DashboardAttentionItem] {
         var entries: [(item: DashboardAttentionItem, priority: Int, order: Int)] = []
         var order = 0
+        for extra in extraItems {
+            entries.append((extra, 4, -1))
+        }
 
         for alert in snapshot.alerts {
             let kind: DashboardAttentionKind = isPending(alert)
@@ -549,14 +557,14 @@ struct DashboardPresentation {
 /// Guarda el modelo del último snapshot. Es una clase (no `@Published`) para
 /// poder consultarla desde `body` sin provocar otro repintado.
 final class DashboardPresentationCache {
-    private var snapshotId: ObjectIdentifier?
+    private var key: String?
     private var cached: DashboardPresentation?
 
-    func model(for snapshot: DashboardSnapshot) -> DashboardPresentation {
-        let id = ObjectIdentifier(snapshot)
-        if snapshotId == id, let cached { return cached }
-        let model = DashboardPresentation.make(snapshot: snapshot)
-        snapshotId = id
+    func model(for snapshot: DashboardSnapshot, extraItems: [DashboardAttentionItem] = []) -> DashboardPresentation {
+        let id = "\(ObjectIdentifier(snapshot).hashValue)|" + extraItems.map(\.id).joined(separator: ",")
+        if key == id, let cached { return cached }
+        let model = DashboardPresentation.make(snapshot: snapshot, extraItems: extraItems)
+        key = id
         cached = model
         return model
     }

@@ -60,6 +60,18 @@ struct DashboardInspectorContent: View {
                 } else {
                     unavailable("Elemento de Educación Física no encontrado")
                 }
+            case .attendance(let classId):
+                VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s2) {
+                    Text("Asistencia pendiente de hoy").font(DashboardStyle.Typography.headline)
+                    Text("Abre Asistencia para pasar lista; el Dashboard no marca nada automáticamente.")
+                        .font(DashboardStyle.Typography.subheadline)
+                        .foregroundStyle(.secondary)
+                    actions {
+                        navigationButton("Pasar lista", "checkmark.circle", prominent: true) {
+                            onOpenModule(.attendance, classId, nil)
+                        }
+                    }
+                }
             case .none:
                 unavailable("Elige una fila para ver su detalle.")
             }

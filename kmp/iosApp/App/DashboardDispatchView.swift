@@ -530,9 +530,7 @@ private struct DashboardAttentionRow: View {
             .padding(.leading, singleColumn ? iconSize + DashboardStyle.Spacing.s2 : 0)
         }
         .padding(.vertical, DashboardStyle.Spacing.micro)
-#if os(iOS)
-        .hoverEffect(.highlight)
-#endif
+        .dashboardRowHover()
         .contextMenu {
             Button(item.action.title, action: onAction)
             Button("Ver detalle", action: onSelect)

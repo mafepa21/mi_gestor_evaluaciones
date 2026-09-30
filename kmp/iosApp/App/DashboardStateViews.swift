@@ -224,3 +224,82 @@ struct DashboardLoadFailureView: View {
         .accessibilityElement(children: .contain)
     }
 }
+
+// MARK: Sin clases
+
+/// Con cero clases todos los bloques dirían "sin datos": un único estado con
+/// una salida clara. Lo usan iPad y Mac; cada uno resuelve el destino.
+struct DashboardNoClassesView: View {
+    let singleColumn: Bool
+    let onOpen: (AppWorkspaceModule) -> Void
+
+    var body: some View {
+        let layout = singleColumn
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s1))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: DashboardStyle.Spacing.s1))
+        return VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s3) {
+            HStack(alignment: .top, spacing: DashboardStyle.Spacing.s2) {
+                Image(systemName: "person.3.sequence")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(DashboardStyle.accent)
+                    .frame(width: 56, height: 56)
+                    .background(DashboardStyle.accent.opacity(0.12), in: DashboardStyle.controlShape())
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s1) {
+                    Text("Sin clases todavía")
+                        .font(DashboardStyle.Typography.title)
+                    Text("Crea tu primera clase para empezar a ver aquí las sesiones, alertas y evaluaciones del día.")
+                        .font(DashboardStyle.Typography.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Sin clases, la salida buena es el recorrido guiado:
+            // fechas → horario → grupos → alumnado.
+            Button("Configurar mi curso") {
+                OnboardingStore.shared.openChecklist()
+            }
+            .dashboardButtonStyle(prominent: true, large: true)
+
+            layout {
+                actionCard("Crear grupo", "Empieza por el alumnado y sus clases.", "person.3.sequence", .courses)
+                actionCard("Planificar semana", "Define sesiones aunque no haya grupo aún.", "calendar.badge.plus", .planner)
+                actionCard("Importar situación", "Sube un documento LOMLOE para programarlo después.", "doc.text.magnifyingglass", .situations)
+            }
+        }
+        .dashboardCard()
+    }
+
+    private func actionCard(_ title: String, _ subtitle: String, _ systemImage: String, _ module: AppWorkspaceModule) -> some View {
+        Button { onOpen(module) } label: {
+            HStack(alignment: .top, spacing: DashboardStyle.Spacing.s1) {
+                Image(systemName: systemImage)
+                    .font(.headline)
+                    .foregroundStyle(DashboardStyle.accent)
+                    .frame(width: 32, height: 32)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: DashboardStyle.Spacing.micro) {
+                    Text(title)
+                        .font(DashboardStyle.Typography.headline)
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(DashboardStyle.Typography.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(DashboardStyle.Spacing.s2)
+            .frame(maxWidth: .infinity, minHeight: 88, alignment: .topLeading)
+            .background(DashboardStyle.insetFill, in: DashboardStyle.controlShape())
+            .contentShape(DashboardStyle.controlShape())
+        }
+        .buttonStyle(.plain)
+        .dashboardRowHover()
+    }
+}

@@ -347,89 +347,9 @@ struct DashboardView: View {
     // MARK: Sin clases
 
     private var dashboardEmptyState: some View {
-        let layout = singleColumn
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s1))
-            : AnyLayout(HStackLayout(alignment: .top, spacing: DashboardStyle.Spacing.s1))
-        return VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s3) {
-            HStack(alignment: .top, spacing: DashboardStyle.Spacing.s2) {
-                Image(systemName: "person.3.sequence")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(DashboardStyle.accent)
-                    .frame(width: 56, height: 56)
-                    .background(DashboardStyle.accent.opacity(0.12), in: DashboardStyle.controlShape())
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s1) {
-                    Text("Sin clases todavía")
-                        .font(DashboardStyle.Typography.title)
-                    Text("Crea tu primera clase para empezar a ver aquí las sesiones, alertas y evaluaciones del día.")
-                        .font(DashboardStyle.Typography.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            // Sin clases, la salida buena no es "crea una clase suelta" sino el
-            // recorrido guiado: fechas → horario → grupos → alumnado.
-            Button("Configurar mi curso") {
-                OnboardingStore.shared.openChecklist()
-            }
-            .dashboardButtonStyle(prominent: true, large: true)
-
-            layout {
-                emptyActionCard(
-                    title: "Crear grupo",
-                    subtitle: "Empieza por el alumnado y sus clases.",
-                    systemImage: "person.3.sequence"
-                ) { onOpenModule(.courses, nil, nil) }
-                emptyActionCard(
-                    title: "Planificar semana",
-                    subtitle: "Define sesiones aunque no haya grupo aún.",
-                    systemImage: "calendar.badge.plus"
-                ) { onOpenModule(.planner, nil, nil) }
-                emptyActionCard(
-                    title: "Importar situación",
-                    subtitle: "Sube un documento LOMLOE para programarlo después.",
-                    systemImage: "doc.text.magnifyingglass"
-                ) { onOpenModule(.situations, nil, nil) }
-            }
+        DashboardNoClassesView(singleColumn: singleColumn) { module in
+            onOpenModule(module, nil, nil)
         }
-        .dashboardCard()
-    }
-
-    private func emptyActionCard(
-        title: String,
-        subtitle: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(alignment: .top, spacing: DashboardStyle.Spacing.s1) {
-                Image(systemName: systemImage)
-                    .font(.headline)
-                    .foregroundStyle(DashboardStyle.accent)
-                    .frame(width: 32, height: 32)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: DashboardStyle.Spacing.micro) {
-                    Text(title)
-                        .font(DashboardStyle.Typography.headline)
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(DashboardStyle.Typography.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.leading)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
-            }
-            .padding(DashboardStyle.Spacing.s2)
-            .frame(maxWidth: .infinity, minHeight: 88, alignment: .topLeading)
-            .background(DashboardStyle.insetFill, in: DashboardStyle.controlShape())
-            .contentShape(DashboardStyle.controlShape())
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: Acciones
@@ -516,6 +436,8 @@ struct DashboardView: View {
             inspectorKey = "alert_\(id)"
         case .pe(let id):
             inspectorKey = "pe_\(id)"
+        case .attendance(let classId):
+            inspectorKey = "attendance_\(classId)"
         case .none:
             inspectorKey = "none"
         }
@@ -1037,7 +959,7 @@ struct ScaleButtonStyle: ButtonStyle {
 
 // MARK: - Formulario de nueva observación
 
-private struct DashboardObservationSheet: View {
+struct DashboardObservationSheet: View {
     @ObservedObject var bridge: KmpBridge
     let initialClassId: Int64?
     @Environment(\.dismiss) private var dismiss

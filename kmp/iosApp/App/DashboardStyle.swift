@@ -35,8 +35,12 @@ enum DashboardStyle {
         static let sheet: CGFloat = 28
     }
 
-    /// Zona táctil mínima.
+    /// Zona táctil mínima: 44 pt en táctil; en Mac los controles miden 32 pt.
+#if os(macOS)
+    static let minTapSize: CGFloat = 32
+#else
     static let minTapSize: CGFloat = 44
+#endif
 
     /// Tipografías semánticas (escalan con Dynamic Type). Los tamaños propios
     /// (número de minutos) usan `@ScaledMetric` en la vista.
@@ -320,5 +324,33 @@ struct DashboardSkeletonShape: View {
                 }
             }
             .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Hover de filas
+
+private struct DashboardRowHover: ViewModifier {
+#if os(macOS)
+    @State private var hovering = false
+#endif
+
+    func body(content: Content) -> some View {
+#if os(iOS)
+        content.hoverEffect(.highlight)
+#else
+        content
+            .background(
+                DashboardStyle.controlShape().fill(Color.primary.opacity(hovering ? 0.06 : 0))
+            )
+            .onHover { hovering = $0 }
+            .animation(.easeOut(duration: 0.15), value: hovering)
+#endif
+    }
+}
+
+extension View {
+    /// Resalte al pasar el puntero (iPad con ratón o Pencil, y Mac).
+    func dashboardRowHover() -> some View {
+        modifier(DashboardRowHover())
     }
 }

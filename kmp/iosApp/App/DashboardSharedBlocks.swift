@@ -289,7 +289,7 @@ enum DashboardNowAction: String, Identifiable {
         case .passList: return "Pasar lista"
         case .openNotebook: return "Abrir cuaderno"
         case .evaluate: return "Evaluar"
-        case .observation: return "Observación"
+        case .observation: return "Nueva observación"
         case .quickEvaluation: return "Evaluación rápida"
         case .openPlanner: return "Abrir Planner"
         case .openJournal: return "Diario"

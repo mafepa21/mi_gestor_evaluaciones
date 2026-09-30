@@ -275,6 +275,158 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
         XCTAssertEqual(parsed?.debrief[0], "Why is scene safety non-negotiable?")
     }
 
+    // MARK: - Repaso rápido (guion por bloques)
+
+    private func reviewActivity(
+        _ key: String, segment: String, minutes: Int?, phase: String, title: String,
+        teacher: String = "", purpose: String = "", organisation: String = "", adaptations: String = ""
+    ) -> LearningSituationSessionActivityDraft {
+        LearningSituationSessionActivityDraft(
+            activityKey: key, plannedMinutes: minutes, timeLabel: minutes.map { "\($0) min" } ?? "",
+            phase: phase, activity: title, purpose: purpose, organisation: organisation,
+            teacherActions: teacher, adaptations: adaptations,
+            segmentKey: segment, segmentTitle: "\(segment) · Título \(segment)"
+        )
+    }
+
+    private func makeReviewPlan(
+        activities: [LearningSituationSessionActivityDraft],
+        organisation: String = "",
+        objective: String? = nil
+    ) throws -> LearningSituationSessionPlan {
+        let payload = LearningSituationSessionDevelopmentPayload(organisation: organisation, sections: [], activities: activities)
+        let json = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        var plan = try makePlan(material: "", criteria: [], sections: []).withDevelopment(json)
+        if let objective { plan = plan.withObjective(objective) }
+        return plan
+    }
+
+    private func longSessionActivities() -> [LearningSituationSessionActivityDraft] {
+        [
+            reviewActivity("W01-L-01", segment: "U01", minutes: 4, phase: "Explicación", title: "Demostración de agarres"),
+            reviewActivity("W01-L-02", segment: "U01", minutes: 6, phase: "Calentamiento", title: "Keep-Up Trail"),
+            reviewActivity("W01-L-03", segment: "U01", minutes: 24, phase: "Principal", title: "Control Ladder"),
+            reviewActivity("W01-L-04", segment: "U01", minutes: 6, phase: "Reflexión", title: "Semicírculo"),
+            reviewActivity("W01-L-05", segment: "U02", minutes: 4, phase: "Explicación", title: "Saque corto y largo")
+        ]
+    }
+
+    func testLongSessionSplitsIntoTwoBlocksAndSecondFollowsBreak() throws {
+        let projection = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: longSessionActivities()))
+
+        XCTAssertEqual(projection.guideBlocks.count, 2)
+        XCTAssertFalse(projection.guideBlocks[0].precededByBreak)
+        XCTAssertTrue(projection.guideBlocks[1].precededByBreak)
+        XCTAssertEqual(projection.guideBlocks[0].label, "U01 · Título U01")
+        XCTAssertEqual(projection.guideBlocks[0].totalMinutes, 40)
+        XCTAssertEqual(projection.guideBlocks[1].totalMinutes, 4)
+    }
+
+    func testStartOffsetsAccumulateWithoutCountingBreak() throws {
+        let projection = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: longSessionActivities()))
+
+        let offsets = projection.guideBlocks.flatMap(\.steps).map(\.startOffsetMinutes)
+        XCTAssertEqual(offsets, [0, 4, 10, 34, 40])
+        XCTAssertEqual(PlannerSessionReviewStep.offsetLabel(4), "00:04")
+        XCTAssertEqual(PlannerSessionReviewStep.offsetLabel(75), "01:15")
+    }
+
+    func testMainStepIsTheLongestMainMomentOfEachBlock() throws {
+        let projection = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: longSessionActivities()))
+
+        XCTAssertEqual(projection.guideBlocks[0].steps.map(\.isMain), [false, false, true, false])
+        XCTAssertEqual(projection.guideBlocks[1].steps.map(\.isMain), [false])
+    }
+
+    func testCLILConsignaLeavesTeacherTextAndGoesToClil() throws {
+        let activity = reviewActivity(
+            "W01-L-01", segment: "U01", minutes: 4, phase: "Explicación", title: "Agarres",
+            teacher: "Demuestra el agarre.\nConsigna CLIL: V-shape for forehand"
+        )
+        let projection = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: [activity]))
+        let step = try XCTUnwrap(projection.guideBlocks.first?.steps.first)
+
+        XCTAssertEqual(step.detail, "Demuestra el agarre.")
+        XCTAssertEqual(step.clil, "V-shape for forehand")
+    }
+
+    func testCollectionLineBecomesOwnStepWithoutTime() throws {
+        let activity = reviewActivity(
+            "W01-L-04", segment: "U01", minutes: 6, phase: "Reflexión", title: "Semicírculo",
+            teacher: "Charla en semicírculo.\nRecogida: Recoger volantes y conos."
+        )
+        let projection = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: [activity]))
+        let steps = try XCTUnwrap(projection.guideBlocks.first?.steps)
+
+        XCTAssertEqual(steps.count, 2)
+        XCTAssertEqual(steps[0].detail, "Charla en semicírculo.")
+        XCTAssertTrue(steps[1].isCollection)
+        XCTAssertEqual(steps[1].title, "Recoger volantes y conos.")
+        XCTAssertNil(steps[1].startOffsetMinutes)
+        XCTAssertNil(steps[1].minutes)
+    }
+
+    func testOwnCollectionActivityHasNoStartTimeAndDoesNotAdvanceOffsets() throws {
+        let activities = [
+            reviewActivity("W01-L-01", segment: "U01", minutes: 4, phase: "Explicación", title: "Saque"),
+            reviewActivity("W01-L-02", segment: "U01", minutes: 2, phase: "Recogida", title: "Recoger volantes"),
+            reviewActivity("W01-L-03", segment: "U02", minutes: 4, phase: "Explicación", title: "Saque largo")
+        ]
+        let steps = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: activities)).guideBlocks.flatMap(\.steps)
+
+        XCTAssertEqual(steps.map(\.isCollection), [false, true, false])
+        XCTAssertEqual(steps.map(\.startOffsetMinutes), [0, nil, 4])
+    }
+
+    func testSetupBulletsAreSplitDeduplicatedAndCapped() throws {
+        let plan = try makeReviewPlan(
+            activities: [reviewActivity("W01-L-01", segment: "U01", minutes: 4, phase: "Explicación", title: "A", organisation: "Pistas: 12 parejas")],
+            organisation: "Pistas: 12 parejas; Zona libre: 5 parejas. Rotan al silbato\nCada pareja con su raqueta\nAros a 4 m\nConos en las esquinas del campo con una descripción muy larga que supera claramente los ochenta caracteres permitidos"
+        )
+        let projection = PlannerSessionDetailProjection(plan: plan)
+
+        XCTAssertEqual(projection.setupBullets.count, 4)
+        XCTAssertEqual(Array(projection.setupBullets.prefix(3)), ["Pistas: 12 parejas", "Zona libre: 5 parejas", "Rotan al silbato"])
+        XCTAssertTrue(projection.setupBullets.allSatisfy { $0.count <= 81 })
+        XCTAssertEqual(projection.setupAll.count, 6)
+    }
+
+    func testAttentionComesFromPlanAdaptationsActivityAndPurposeAndIsCapped() throws {
+        let activity = reviewActivity(
+            "W01-L-01", segment: "U01", minutes: 4, phase: "Explicación", title: "A",
+            purpose: "Objetivo de la tarea. Atención especial: Evitar choques.",
+            adaptations: "Burbuja de raqueta"
+        )
+        let projection = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: [activity]))
+
+        // La adaptación del plan viene de `makePlan` («Analista de datos»).
+        XCTAssertEqual(projection.attentionNotes, ["Analista de datos", "Burbuja de raqueta", "Evitar choques"])
+
+        let many = reviewActivity("W01-L-02", segment: "U01", minutes: 4, phase: "Explicación", title: "B", adaptations: "Uno\nDos\nTres\nCuatro")
+        let capped = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: [many]))
+        XCTAssertEqual(capped.attentionNotes.count, 3)
+        XCTAssertEqual(capped.attentionAll.count, 5)
+    }
+
+    func testReviewObjectiveFallsBackToFirstActivityPurpose() throws {
+        let activity = reviewActivity(
+            "W01-L-01", segment: "U01", minutes: 4, phase: "Explicación", title: "A",
+            purpose: "Sacar en diagonal a los aros. Atención especial: Sin golpear al cruzar."
+        )
+        let withoutObjective = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: [activity], objective: ""))
+        XCTAssertEqual(withoutObjective.reviewObjective, "Sacar en diagonal a los aros.")
+
+        let withObjective = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: [activity]))
+        XCTAssertEqual(withObjective.reviewObjective, "Aplicar el reto con seguridad.")
+    }
+
+    func testEmptyPayloadProducesEmptyGuide() throws {
+        let projection = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: []))
+
+        XCTAssertTrue(projection.guideBlocks.isEmpty)
+        XCTAssertTrue(projection.setupBullets.isEmpty)
+    }
+
     private func makePlan(
         material: String,
         criteria: [String],
@@ -325,6 +477,27 @@ private extension LearningSituationSessionPlan {
             criteriaJson: criteriaJson,
             material: material,
             developmentJson: developmentJSON,
+            adaptationsJson: adaptationsJson,
+            trace: trace
+        )
+    }
+}
+
+private extension LearningSituationSessionPlan {
+    func withObjective(_ newObjective: String) -> LearningSituationSessionPlan {
+        LearningSituationSessionPlan(
+            id: id,
+            learningSituationId: learningSituationId,
+            sequenceVersionId: sequenceVersionId,
+            sessionNumber: sessionNumber,
+            sourceLabel: sourceLabel,
+            title: title,
+            sessionType: sessionType,
+            effectiveMinutes: effectiveMinutes,
+            objective: newObjective,
+            criteriaJson: criteriaJson,
+            material: material,
+            developmentJson: developmentJson,
             adaptationsJson: adaptationsJson,
             trace: trace
         )

@@ -234,6 +234,16 @@ struct PlannerSessionDetailSheet: View {
     @State private var selectedSection: PlannerSessionDetailSection = .activity
     @State private var selectedActivityKey: String?
     @State private var enlargedVisual: PlannerEnlargedVisual?
+    /// Proyección de repaso rápido: se calcula una sola vez al cargar el plan.
+    @State private var reviewProjection: PlannerSessionDetailProjection?
+    @State private var loadState: LoadState = .loading
+
+    enum LoadState: Equatable {
+        case loading
+        case loaded
+        case empty
+        case failed
+    }
 
     private var tint: Color {
         Color(hex: session.teachingUnitColor)
@@ -615,8 +625,8 @@ struct PlannerSessionDetailSheet: View {
                         }
 
                         let key = activityIdentity(activity, index: index)
-                        if let segmentLabel = narrativeSegmentLabel(activity),
-                           index == 0 || narrativeSegmentLabel(activities[index - 1]) != segmentLabel {
+                        if let segmentLabel = PlannerSessionDetailProjection.segmentLabel(for: activity),
+                           index == 0 || PlannerSessionDetailProjection.segmentLabel(for: activities[index - 1]) != segmentLabel {
                             Text(segmentLabel)
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(tint)
@@ -967,7 +977,7 @@ struct PlannerSessionDetailSheet: View {
             }
             .padding(.top, 8)
 
-            if let segmentLabel = narrativeSegmentLabel(activity) {
+            if let segmentLabel = PlannerSessionDetailProjection.segmentLabel(for: activity) {
                 Text(segmentLabel)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(tint)
@@ -1053,17 +1063,6 @@ struct PlannerSessionDetailSheet: View {
         return values
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
-    }
-
-    private func narrativeSegmentLabel(_ activity: LearningSituationSessionActivityDraft) -> String? {
-        let key = activity.segmentKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let title = activity.segmentTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        // El título del segmento ya suele empezar por la clave (`U01`): no se repite («U01 · U01»).
-        if !title.isEmpty, key.isEmpty || title.lowercased().hasPrefix(key.lowercased()) || title.caseInsensitiveCompare(key) == .orderedSame {
-            return title
-        }
-        let label = [key, title].filter { !$0.isEmpty }.joined(separator: " · ")
-        return label.isEmpty ? nil : label
     }
 
     /// Una sesión LONG lleva dos bloques; el descanso legal se sitúa donde cambia el segmento.
@@ -1238,9 +1237,31 @@ struct PlannerSessionDetailSheet: View {
         renderedDocument = nil
         renderedActivityVisuals = [:]
         isLoadingRenderedDocument = false
-        guard let planId = session.learningSituationSessionPlanId?.int64Value else { return }
-        guard let plan = try? await bridge.learningSituationSessionPlan(id: planId) else { return }
+        reviewProjection = nil
+        guard let planId = session.learningSituationSessionPlanId?.int64Value else {
+            detailedPlan = nil
+            loadState = .empty
+            return
+        }
+        loadState = .loading
+        let plan: LearningSituationSessionPlan
+        do {
+            guard let loaded = try await bridge.learningSituationSessionPlan(id: planId) else {
+                detailedPlan = nil
+                loadState = .empty
+                return
+            }
+            plan = loaded
+        } catch {
+            if Task.isCancelled { return }
+            detailedPlan = nil
+            loadState = .failed
+            return
+        }
         detailedPlan = plan
+        let projection = PlannerSessionDetailProjection(plan: plan)
+        reviewProjection = projection
+        loadState = projection.guideBlocks.isEmpty ? .empty : .loaded
         selectedActivityKey = nil
         let loadedSequenceVersion = try? await bridge.learningSituationSessionSequenceVersion(
             id: plan.sequenceVersionId,

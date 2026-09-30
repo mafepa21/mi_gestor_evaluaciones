@@ -476,6 +476,8 @@ private struct DashboardAttentionRow: View {
     let onSelect: () -> Void
     let onAction: () -> Void
 
+    @ScaledMetric(relativeTo: .headline) private var iconSize: CGFloat = 40
+
     var body: some View {
         let layout = singleColumn
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s1))
@@ -486,7 +488,7 @@ private struct DashboardAttentionRow: View {
                     Image(systemName: item.kind.systemImage)
                         .font(.headline)
                         .foregroundStyle(item.kind.tint)
-                        .frame(width: 40, height: 40)
+                        .frame(width: iconSize, height: iconSize)
                         .background(item.kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                     VStack(alignment: .leading, spacing: DashboardStyle.Spacing.micro) {
@@ -521,7 +523,7 @@ private struct DashboardAttentionRow: View {
             .tint(DashboardStyle.accent)
             .frame(minHeight: DashboardStyle.minTapSize)
             .accessibilityLabel("\(item.action.title): \(item.title)")
-            .padding(.leading, singleColumn ? 56 : 0)
+            .padding(.leading, singleColumn ? iconSize + DashboardStyle.Spacing.s2 : 0)
         }
         .padding(.vertical, DashboardStyle.Spacing.micro)
 #if os(iOS)

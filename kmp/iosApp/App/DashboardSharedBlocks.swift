@@ -136,7 +136,7 @@ func dashboardSecondaryCard<Content: View>(@ViewBuilder content: () -> Content) 
 
 func dashboardSecondaryTitle(_ title: String, systemImage: String) -> some View {
     Label(title, systemImage: systemImage)
-        .font(.system(size: 13, weight: .semibold, design: .rounded))
+        .font(.footnote.weight(.semibold))
         .foregroundStyle(.secondary)
 }
 
@@ -346,23 +346,23 @@ private func dashboardEnhancedKpiCard(card: DashboardKpiItem, colorScheme: Color
     VStack(alignment: .leading, spacing: 8) {
         HStack(spacing: 8) {
             Image(systemName: card.icon)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(card.tint)
             Text(card.title)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
 
         if card.isNumeric {
             Text(card.value)
-                .font(.system(size: 24, weight: .black, design: .rounded))
+                .font(.title2.bold())
                 .monospacedDigit()
                 .foregroundStyle(card.value != "0" && card.tint != .secondary ? card.tint : .primary)
                 .lineLimit(1)
         } else {
             Text(card.value)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.subheadline.bold())
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .minimumScaleFactor(0.85)
@@ -414,12 +414,12 @@ func dashboardGroupSummaryBlock(snapshot: DashboardSnapshot, isWide: Bool) -> so
                         Spacer()
                         Text("As \(summary.attendancePct)% · Ev \(summary.evaluationCompletedPct)%")
                     }
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.footnote.weight(.medium))
                 }
             }
             if snapshot.groupSummaries.isEmpty {
                 Text("Sin datos de grupos")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
@@ -445,18 +445,18 @@ func dashboardAgendaBlock(
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.title)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .font(.subheadline.bold())
                             Text(item.subtitle)
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Text(item.timeLabel)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.tertiary)
                         if isNavigable {
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.caption2.bold())
                                 .foregroundStyle(.tertiary)
                         }
                     }
@@ -476,7 +476,7 @@ func dashboardAgendaBlock(
             }
             if snapshot.agendaItems.isEmpty {
                 Text("Sin agenda para hoy")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
@@ -501,14 +501,14 @@ func dashboardPEBlock(
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.title)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .font(.subheadline.bold())
                             Text(item.detail)
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Text(dashboardFilterLabel(item.severity))
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.caption2.bold())
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(riskTint(item.severity).opacity(0.12), in: Capsule())
@@ -529,7 +529,7 @@ func dashboardPEBlock(
             }
             if snapshot.peItems.isEmpty {
                 Text("Sin incidencias EF hoy")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
@@ -563,7 +563,7 @@ func dashboardLomloeAuditBlock(
                         Image(systemName: directionInfo.icon)
                             .foregroundStyle(directionInfo.color)
                         Text("Trayectoria: \(directionInfo.label)")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .font(.footnote.bold())
                             .foregroundStyle(directionInfo.color)
 
                         Spacer()
@@ -575,10 +575,10 @@ func dashboardLomloeAuditBlock(
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Cobertura Curricular del Grupo")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.caption2.bold())
                                 .foregroundStyle(.secondary)
                             Text("\(IosFormatting.decimal(from: trends.curriculumCoveragePct))%")
-                                .font(.system(size: 24, weight: .black, design: .rounded))
+                                .font(.title2.bold())
                                 .foregroundStyle(NotebookStyle.primaryTint)
                         }
 
@@ -586,10 +586,10 @@ func dashboardLomloeAuditBlock(
 
                         VStack(alignment: .trailing, spacing: 4) {
                             Text("Asistencia Media")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.caption2.bold())
                                 .foregroundStyle(.secondary)
                             Text("\(IosFormatting.decimal(from: trends.attendanceRate))%")
-                                .font(.system(size: 24, weight: .black, design: .rounded))
+                                .font(.title2.bold())
                                 .foregroundStyle(trends.attendanceRate >= 85 ? Color.primary : Color.orange)
                         }
                     }
@@ -608,13 +608,13 @@ func dashboardLomloeAuditBlock(
 
                     if !trends.attendanceCorrelationNote.isEmpty {
                         Text(trends.attendanceCorrelationNote)
-                            .font(.system(size: 12))
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
 
                     if !trends.behaviorIncidentSummary.isEmpty {
                         Text(trends.behaviorIncidentSummary)
-                            .font(.system(size: 12))
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
 
@@ -624,7 +624,7 @@ func dashboardLomloeAuditBlock(
 
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Competencias clave sin evidencias en el grupo:")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.caption2.bold())
                                 .foregroundStyle(.secondary)
 
                             FlexibleTagRow(
@@ -638,17 +638,17 @@ func dashboardLomloeAuditBlock(
             } else if loadFailed {
                 HStack(spacing: 10) {
                     Label("No se pudo cargar la auditoría de este grupo.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.footnote.weight(.medium))
                         .foregroundStyle(IOSAppStyle.warning)
                     Spacer()
                     Button("Reintentar") {
                         onRetry()
                     }
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.footnote.weight(.semibold))
                 }
             } else if !isLoading {
                 Text("No hay datos suficientes para generar la auditoría de cobertura curricular y tendencias de este grupo.")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }

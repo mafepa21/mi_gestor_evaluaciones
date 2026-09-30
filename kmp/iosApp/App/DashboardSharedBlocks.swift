@@ -601,7 +601,7 @@ func dashboardLomloeAuditBlock(
                                 .frame(height: 8)
                             RoundedRectangle(cornerRadius: 4)
                                 .fill(NotebookStyle.primaryTint)
-                                .frame(width: geo.size.width * CGFloat(trends.curriculumCoveragePct / 100.0), height: 8)
+                                .frame(width: geo.size.width * CGFloat(min(max(trends.curriculumCoveragePct / 100.0, 0), 1)), height: 8)
                         }
                     }
                     .frame(height: 8)

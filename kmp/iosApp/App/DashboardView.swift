@@ -177,8 +177,7 @@ struct DashboardView: View {
                     modeRawValue: $modeRawValue,
                     modeHint: modePreference.resolvedHint(for: dashboardStore.dashboardSnapshot?.currentContext),
                     snapshot: dashboardStore.dashboardSnapshot,
-                    syncPill: syncPill,
-                    singleColumn: singleColumn
+                    syncPill: syncPill
                 )
 
                 if loadFailed, dashboardStore.dashboardSnapshot != nil {

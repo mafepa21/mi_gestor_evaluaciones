@@ -11,44 +11,54 @@ struct DashboardHeaderView: View {
     let modeHint: String?
     let snapshot: DashboardSnapshot?
     let syncPill: DashboardSyncPill
-    let singleColumn: Bool
-
     var body: some View {
-        let layout = singleColumn
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s2))
-            : AnyLayout(HStackLayout(alignment: .center, spacing: DashboardStyle.Spacing.s2))
-
-        layout {
-            VStack(alignment: .leading, spacing: DashboardStyle.Spacing.micro) {
-                Text(dateLine)
-                    .font(DashboardStyle.Typography.footnote)
-                    .foregroundStyle(.secondary)
-                Text(greeting)
-                    .font(DashboardStyle.Typography.largeTitle)
-                    .accessibilityAddTraits(.isHeader)
+        // Tres formas, de más a menos ancha: título y controles en una fila;
+        // título arriba y controles debajo; y controles en columna. Las piezas
+        // no se comprimen (fixedSize), así que ViewThatFits mide su ancho real.
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: DashboardStyle.Spacing.s2) {
+                titleBlock
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                controls(vertical: false)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            DashboardGlassGroup {
-                controls
+            VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s2) {
+                titleBlock
+                controls(vertical: false)
+            }
+            VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s2) {
+                titleBlock
+                controls(vertical: true)
             }
         }
         .dashboardReveal(0)
     }
 
-    private var controls: some View {
-        // Un solo contenedor plano: en Dynamic Type grande pasa a varias filas
-        // en vez de recortarse.
-        let layout = singleColumn
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s1))
-            : AnyLayout(HStackLayout(alignment: .center, spacing: DashboardStyle.Spacing.s2))
-        return layout {
-            DashboardModeSelector(selection: $modeRawValue, hint: modeHint)
-            if let snapshot {
-                DashboardExportMenu(snapshot: snapshot)
-            }
-            DashboardSyncPillView(state: syncPill)
+    /// El aviso "Auto · Despacho" va con la fecha, no suelto bajo el selector.
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: DashboardStyle.Spacing.micro) {
+            Text(modeHint.map { "\(dateLine) · \($0)" } ?? dateLine)
+                .font(DashboardStyle.Typography.footnote)
+                .foregroundStyle(.secondary)
+            Text(greeting)
+                .font(DashboardStyle.Typography.largeTitle)
+                .accessibilityAddTraits(.isHeader)
         }
+    }
+
+    private func controls(vertical: Bool) -> some View {
+        let layout = vertical
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s1))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: DashboardStyle.Spacing.s1))
+        return DashboardGlassGroup(spacing: DashboardStyle.Spacing.s1) {
+            layout {
+                DashboardModeSelector(selection: $modeRawValue)
+                if let snapshot {
+                    DashboardExportMenu(snapshot: snapshot)
+                }
+                DashboardSyncPillView(state: syncPill)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -56,36 +66,27 @@ struct DashboardHeaderView: View {
 
 struct DashboardModeSelector: View {
     @Binding var selection: String
-    let hint: String?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var selectionNamespace
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DashboardStyle.Spacing.micro) {
-            if dynamicTypeSize.isAccessibilitySize {
-                // Con texto enorme un segmentado no cabe: menú nativo.
-                Picker("Modo del Dashboard", selection: $selection) {
-                    ForEach(DashboardModePreference.allCases) { option in
-                        Text(option.title).tag(option.rawValue)
-                    }
+        if dynamicTypeSize.isAccessibilitySize {
+            // Con texto enorme un segmentado no cabe: menú nativo.
+            Picker("Modo del Dashboard", selection: $selection) {
+                ForEach(DashboardModePreference.allCases) { option in
+                    Text(option.title).tag(option.rawValue)
                 }
-                .pickerStyle(.menu)
-                .frame(minHeight: DashboardStyle.minTapSize)
-            } else {
-                segmented
             }
-
-            if let hint {
-                Text(hint)
-                    .font(DashboardStyle.Typography.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, DashboardStyle.Spacing.s1)
-            }
+            .pickerStyle(.menu)
+            .frame(minHeight: DashboardStyle.minTapSize)
+        } else {
+            segmented
         }
     }
 
+    /// Los segmentos nunca se comprimen: una línea, ancho mínimo y 44 pt de alto.
     private var segmented: some View {
         HStack(spacing: 2) {
             ForEach(DashboardModePreference.allCases) { option in
@@ -98,8 +99,11 @@ struct DashboardModeSelector: View {
                     Text(option.title)
                         .font(DashboardStyle.Typography.subheadline.weight(isSelected ? .semibold : .medium))
                         .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: true, vertical: false)
                         .padding(.horizontal, DashboardStyle.Spacing.s2)
-                        .frame(minHeight: DashboardStyle.minTapSize)
+                        .frame(minWidth: 80, minHeight: DashboardStyle.minTapSize)
                         .background {
                             if isSelected {
                                 Capsule()
@@ -114,6 +118,7 @@ struct DashboardModeSelector: View {
             }
         }
         .padding(DashboardStyle.Spacing.micro)
+        .fixedSize(horizontal: true, vertical: false)
         .dashboardGlass(in: Capsule(), interactive: true)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Modo del Dashboard")
@@ -134,6 +139,7 @@ struct DashboardSyncPillView: View {
             }
             Text(state.title)
                 .font(DashboardStyle.Typography.footnoteStrong)
+                .lineLimit(1)
         }
         .padding(.horizontal, DashboardStyle.Spacing.s2)
         .frame(minHeight: DashboardStyle.minTapSize)
@@ -221,6 +227,7 @@ struct DashboardExportMenu: View {
         } label: {
             Label("Exportar", systemImage: "square.and.arrow.up")
                 .font(DashboardStyle.Typography.footnoteStrong)
+                .lineLimit(1)
         }
         .dashboardButtonStyle()
     }

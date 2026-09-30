@@ -234,7 +234,8 @@ struct DashboardView: View {
                     onExitClassroomMode: {
                         // Salir de Clase devuelve el selector a Auto; no fija Despacho.
                         modeRawValue = DashboardModePreference.auto.rawValue
-                    }
+                    },
+                    studentNames: classroomStudentNames
                 )
                 .dashboardModeTransition(reduceMotion: reduceMotion)
                 .id("modo-clase")
@@ -331,6 +332,16 @@ struct DashboardView: View {
 
     private var dashboardActionClassId: Int64? {
         selectedClassId ?? dashboardStore.classes.first?.id
+    }
+
+    /// Nombres cortos ("Hugo P.") para la ficha de alerta del modo Clase.
+    private var classroomStudentNames: [Int64: String] {
+        Dictionary(
+            dashboardStore.studentsInClass.map { student in
+                (student.id, "\(student.firstName) \(student.lastName.prefix(1)).")
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     // MARK: Sin clases

@@ -194,18 +194,21 @@ struct DashboardNowCard: View {
         .accessibilityLabel(spoken)
     }
 
+    /// Acción principal de cristal prominente y "Más" de cristal, en cápsula,
+    /// alineadas a la izquierda y agrupadas en un mismo contenedor de cristal.
     private func actions(_ model: DashboardNowModel) -> some View {
         let layout = singleColumn
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s2))
-            : AnyLayout(HStackLayout(alignment: .center, spacing: DashboardStyle.Spacing.s2))
-        return DashboardGlassGroup {
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s1))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: DashboardStyle.Spacing.s1))
+        return DashboardGlassGroup(spacing: DashboardStyle.Spacing.s1) {
             layout {
                 Button {
                     onAction(model.primary)
                 } label: {
                     Label(model.primaryTitle, systemImage: model.primary.systemImage)
                         .font(DashboardStyle.Typography.headline)
-                        .frame(maxWidth: singleColumn ? .infinity : nil)
+                        .imageScale(.small)
+                        .padding(.horizontal, DashboardStyle.Spacing.micro)
                 }
                 .dashboardButtonStyle(prominent: true, large: true)
                 .disabled(model.classId == nil)
@@ -240,12 +243,14 @@ struct DashboardNowCard: View {
                 } label: {
                     Label("Más", systemImage: "ellipsis")
                         .font(DashboardStyle.Typography.headline)
-                        .frame(maxWidth: singleColumn ? .infinity : nil)
+                        .imageScale(.small)
+                        .padding(.horizontal, DashboardStyle.Spacing.micro)
                 }
                 .dashboardButtonStyle(large: true)
                 .accessibilityLabel("Más acciones")
             }
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: Sin clase
@@ -516,12 +521,11 @@ private struct DashboardAttentionRow: View {
             Button(action: onAction) {
                 Text(item.action.title)
                     .font(DashboardStyle.Typography.footnoteStrong)
-                    .padding(.horizontal, DashboardStyle.Spacing.micro)
+                    .lineLimit(1)
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .tint(DashboardStyle.accent)
-            .frame(minHeight: DashboardStyle.minTapSize)
+            .dashboardButtonStyle()
+            .tint(item.kind.tint)
+            .fixedSize(horizontal: true, vertical: false)
             .accessibilityLabel("\(item.action.title): \(item.title)")
             .padding(.leading, singleColumn ? iconSize + DashboardStyle.Spacing.s2 : 0)
         }

@@ -201,34 +201,33 @@ extension View {
     }
 
     /// Estilo de botón de cristal: `.glass`/`.glassProminent` en 26 y
-    /// `.bordered`/`.borderedProminent` antes. El sistema ya adapta el cristal
+    /// `.bordered`/`.borderedProminent` antes; siempre en cápsula. El sistema ya adapta el cristal
     /// a "Reducir transparencia". Zona táctil mínima de 44 pt.
     @ViewBuilder
     func dashboardButtonStyle(prominent: Bool = false, large: Bool = false) -> some View {
-        let radius = large ? DashboardStyle.Radius.largeControl : DashboardStyle.Radius.control
         if #available(iOS 26.0, macOS 26.0, *) {
             if prominent {
                 self.buttonStyle(.glassProminent)
-                    .buttonBorderShape(.roundedRectangle(radius: radius))
+                    .buttonBorderShape(.capsule)
                     .controlSize(large ? .large : .regular)
                     .tint(DashboardStyle.accent)
                     .frame(minHeight: DashboardStyle.minTapSize)
             } else {
                 self.buttonStyle(.glass)
-                    .buttonBorderShape(.roundedRectangle(radius: radius))
+                    .buttonBorderShape(.capsule)
                     .controlSize(large ? .large : .regular)
                     .frame(minHeight: DashboardStyle.minTapSize)
             }
         } else {
             if prominent {
                 self.buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.roundedRectangle(radius: radius))
+                    .buttonBorderShape(.capsule)
                     .controlSize(large ? .large : .regular)
                     .tint(DashboardStyle.accent)
                     .frame(minHeight: DashboardStyle.minTapSize)
             } else {
                 self.buttonStyle(.bordered)
-                    .buttonBorderShape(.roundedRectangle(radius: radius))
+                    .buttonBorderShape(.capsule)
                     .controlSize(large ? .large : .regular)
                     .frame(minHeight: DashboardStyle.minTapSize)
             }

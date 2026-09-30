@@ -582,7 +582,9 @@ private func dashboardNowPrimaryHint(for context: DashboardSessionContext) -> St
 // MARK: - KPI row
 
 struct DashboardKpiItem: Identifiable {
-    let id = UUID()
+    /// Estable entre repintados (un `UUID()` nuevo por pintado rompía las
+    /// transiciones de número y forzaba recrear las tarjetas).
+    var id: String { title }
     let title: String
     let value: String
     let icon: String

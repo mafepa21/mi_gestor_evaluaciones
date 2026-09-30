@@ -38,7 +38,7 @@ h1,h2,h3,p{margin:0}
 .t-head{font-size:var(--t-head);font-weight:600;line-height:1.3}
 .t-sub{font-size:var(--t-sub)}
 .t-foot{font-size:var(--t-foot)}
-.t-cap{font-size:var(--t-cap);letter-spacing:.04em;text-transform:uppercase;font-weight:600}
+.t-cap{font-size:var(--t-foot);font-weight:600}
 .mut{color:var(--mut)}
 .num{font-variant-numeric:tabular-nums}
 
@@ -129,7 +129,6 @@ h1,h2,h3,p{margin:0}
 .row{display:grid;grid-template-columns:2.5rem 1fr auto;gap:var(--s2);align-items:center;min-height:4.5rem;padding:var(--s1) var(--s1);border-radius:var(--r-ctrl);transition:background .15s ease}
 .row+.row{border-top:1px solid var(--line)}
 @media(hover:hover){.row:hover{background:var(--card2)}.row:hover .row-t{color:var(--acc)}}
-.row[aria-selected=true]{background:var(--blu-bg)}
 .row-main{background:none;border:0;text-align:left;padding:0;min-height:2.75rem;display:grid;align-content:center}
 .row-t{font-weight:600;transition:color .15s}
 .ico{width:2.5rem;height:2.5rem;border-radius:.75rem;display:grid;place-items:center}
@@ -164,7 +163,7 @@ details .inner{padding:0 var(--s3) var(--s3);display:grid;gap:var(--s1)}
 /* ---- Estados ---- */
 .err-banner{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;background:var(--org-bg);color:var(--fg);border:1px solid var(--org);border-radius:var(--r-ctrl);padding:var(--s1) var(--s2);margin-bottom:var(--s3)}
 .err-banner svg{width:1.25rem;height:1.25rem;color:var(--org)}
-.dim{opacity:.5;filter:saturate(.6)}
+.dim{opacity:.75;filter:saturate(.7)}
 .sk{background:var(--line);border-radius:.375rem;animation:shim 1.2s ease-in-out infinite alternate}
 .sk.c{border-radius:50%}.sk.p{border-radius:var(--r-pill)}
 @keyframes shim{to{opacity:.45}}
@@ -224,7 +223,31 @@ dialog[open]{animation:sheet .3s cubic-bezier(.2,.8,.2,1) both}
 }
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
+  .modein{animation:xf .2s linear both!important}
 }
+@keyframes xf{from{opacity:0}}
+/* ---- Tamaño de texto (simula Dynamic Type) ---- */
+html[data-ts="150"]{font-size:150%}html[data-ts="200"]{font-size:200%}
+html[data-ts="150"] .now,html[data-ts="200"] .now{grid-template-columns:1fr}
+html[data-ts="150"] .now .time,html[data-ts="200"] .now .time{text-align:left}
+html[data-ts="150"] .tiles,html[data-ts="200"] .tiles,html[data-ts="150"] .ctx,html[data-ts="200"] .ctx{grid-template-columns:1fr}
+html[data-ts="150"] .tile,html[data-ts="200"] .tile{display:flex;justify-content:space-between;align-items:center;gap:var(--s1);flex-wrap:wrap}
+html[data-ts="150"] .row,html[data-ts="200"] .row{grid-template-columns:2.5rem 1fr}
+html[data-ts="150"] .row .act,html[data-ts="200"] .row .act{grid-column:2;justify-self:start}
+html[data-ts="150"] .exit,html[data-ts="200"] .exit{position:static;justify-self:end}
+html[data-ts="150"] .hdr .ctl,html[data-ts="200"] .hdr .ctl{flex-wrap:wrap}
+html[data-ts="150"] .seg,html[data-ts="200"] .seg{flex-wrap:wrap;border-radius:var(--r-card)}
+.row.sel{background:var(--blu-bg)}
+.gap-err{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;padding:var(--s2)}
+.gap-err svg{width:1.5rem;height:1.5rem;color:var(--org)}
+/* ---- Accesibilidad: cristal a fondo sólido ---- */
+@media(prefers-contrast:more),(prefers-reduced-transparency:reduce){
+  .glass{background:var(--card);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;border:1px solid var(--fg)}
+  .btn.primary{box-shadow:none}.seg button[aria-checked=true]{outline:.125rem solid var(--fg)}
+  :root{--mut:var(--fg);--line:var(--fg)}
+  dialog::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
+}
+
 
 /* ---- Notas ---- */
 .notes{max-width:73.75rem;margin:0 auto;padding:var(--s3) var(--s2) var(--s6);display:grid;gap:var(--s3)}
@@ -240,6 +263,7 @@ dialog[open]{animation:sheet .3s cubic-bezier(.2,.8,.2,1) both}
   <fieldset><legend>Estado</legend><span id="l-state"></span></fieldset>
   <fieldset><legend>Dispositivo</legend><span id="l-dev"></span></fieldset>
   <fieldset><legend>Simular</legend><span id="l-sim"></span></fieldset>
+  <fieldset><legend>Texto</legend><span id="l-ts"></span></fieldset>
   <fieldset><legend>Tema</legend><span id="l-theme"></span></fieldset>
 </div>
 
@@ -258,7 +282,7 @@ dialog[open]{animation:sheet .3s cubic-bezier(.2,.8,.2,1) both}
 <!-- ============ Hojas ============ -->
 <dialog id="dlg-obs" aria-labelledby="t-obs"><form method="dialog" class="sheet" onsubmit="return false">
   <header><h2 class="t-title" id="t-obs">Nueva observación</h2>
-    <span class="i" tabindex="0" data-tip="Hoja: entra desde abajo con opacidad y 24px de desplazamiento; el fondo se desenfoca. Escape o Cancelar la cierra.">i</span></header>
+    <span class="i" aria-hidden="true" data-tip="Hoja: entra desde abajo con opacidad y 24px de desplazamiento; el fondo se desenfoca. Escape o Cancelar la cierra.">i</span></header>
   <label>Alumno<select id="o-al"></select></label>
   <label>Observación<textarea id="o-tx" placeholder="Qué has visto en clase…"></textarea></label>
   <div class="tags" role="group" aria-label="Etiqueta"><button type="button" class="chip" aria-pressed="false">Logro</button><button type="button" class="chip" aria-pressed="false">Conducta</button><button type="button" class="chip" aria-pressed="false">Salud</button></div>
@@ -267,7 +291,7 @@ dialog[open]{animation:sheet .3s cubic-bezier(.2,.8,.2,1) both}
 
 <dialog id="dlg-ev" aria-labelledby="t-ev"><form method="dialog" class="sheet" onsubmit="return false">
   <header><h2 class="t-title" id="t-ev">Evaluación rápida</h2>
-    <span class="i" tabindex="0" data-tip="Un toque elige el nivel; el botón elegido cambia de color con transición de 150 ms. Cuatro niveles, sin teclear.">i</span></header>
+    <span class="i" aria-hidden="true" data-tip="Un toque elige el nivel; el botón elegido cambia de color con transición de 150 ms. Cuatro niveles, sin teclear.">i</span></header>
   <label>Alumno<select class="o-al"></select></label>
   <label>Criterio<select><option>Resistencia aeróbica</option><option>Trabajo en equipo</option><option>Técnica de voleibol</option></select></label>
   <div class="lvl" role="group" aria-label="Nivel"><button type="button" aria-pressed="false">Insuf.</button><button type="button" aria-pressed="false">Sufic.</button><button type="button" aria-pressed="true">Notable</button><button type="button" aria-pressed="false">Sobres.</button></div>
@@ -309,7 +333,7 @@ dialog[open]{animation:sheet .3s cubic-bezier(.2,.8,.2,1) both}
     </ul></div>
     <div class="card"><h3 class="t-head">Se elimina</h3><ul>
       <li>Las tarjetas separadas Radar docente, Pendientes y Riesgo.</li>
-      <li>El KPI "Pendientes" (ya está en la lista) y el KPI "Alertas 70": un único contador "Por atender" que cuenta lo mismo que la lista.</li>
+      <li>La franja completa de KPIs (Sesiones hoy, Alertas 70, Pendientes, Próxima sesión): cada dato vive en un solo bloque. Sesiones hoy y próxima sesión ya están en Agenda y AHORA; "Por atender" queda como insignia en el título de Atención, con el mismo total que la lista.</li>
       <li>Los datos repetidos en 3 sitios: cada dato vive en un único bloque.</li>
       <li>La tarjeta central antigua del modo Clase.</li>
     </ul></div>
@@ -321,6 +345,28 @@ dialog[open]{animation:sheet .3s cubic-bezier(.2,.8,.2,1) both}
       <li>Skeleton con la forma real de cada bloque; sin brillo si hay movimiento reducido.</li>
       <li>Inspector: lateral en iPad ancho y Mac; superpuesto en iPad 1/2 pantalla.</li>
       <li>Las hojas de esta maqueta se ven en el navegador sin marco de dispositivo; en la app serán <code>.sheet</code> con detents.</li>
+    </ul></div>
+  </div>
+
+  <div class="cols">
+    <div class="card"><h3 class="t-head">Accesibilidad (SwiftUI)</h3><ul>
+      <li>Los (i) son notas de la maqueta, no se portan a SwiftUI: por eso están ocultos a lectores de pantalla y no son táctiles.</li>
+      <li>Texto: probar 100, 150 y 200 %. Usar <code>@ScaledMetric</code> para tamaños propios, <code>ViewThatFits</code> y <code>dynamicTypeSize.isAccessibilitySize</code> para pasar AHORA, fichas y Contexto a 1 columna sin cortes.</li>
+      <li>Fila de Atención: <code>.accessibilityElement(children: .combine)</code> más <code>.accessibilityAction(named: "Evaluar")</code>. Sin estado de selección falso: la selección se ve, pero no se declara como lista seleccionable.</li>
+      <li>Modo Clase: número con etiqueta "Quedan N minutos"; barra con valor "Han pasado X de Y minutos" (<code>.accessibilityValue</code>). Al entrar, <code>UIApplication.shared.isIdleTimerDisabled = true</code> (y restaurar al salir); el temporizador con <code>TimelineView(.periodic)</code> o <code>.updatesFrequently</code> en el widget/live activity.</li>
+      <li>Esc sale del modo Clase (<code>.keyboardShortcut(.cancelAction)</code>).</li>
+      <li>Cristal: con <code>accessibilityReduceTransparency</code> o contraste alto, fondo sólido con borde visible (<code>@Environment(\.colorSchemeContrast)</code>).</li>
+      <li>Movimiento reducido: el cambio de modo pasa de escala a fundido simple.</li>
+      <li>Skeleton: un solo <code>.accessibilityLabel("Cargando")</code> en el contenedor y los rectángulos con <code>.accessibilityHidden(true)</code>.</li>
+      <li>Anuncios (fila resuelta, lista pasada, reintento): <code>AccessibilityNotification.Announcement("…").post()</code>.</li>
+      <li>Error de red: contenido atenuado al 75 % como mínimo, con la etiqueta "Datos de las HH:MM". Error parcial: solo la franja afectada muestra el fallo con su Reintentar.</li>
+    </ul></div>
+    <div class="card"><h3 class="t-head">Mac e iPad</h3><ul>
+      <li>Mac: controles de 28 a 32 pt (los 44 pt son para táctil), con hover y anillo de foco visibles.</li>
+      <li>Atajos: Cmd+N nueva observación, Esc salir de Clase.</li>
+      <li>Menú contextual en filas de Atención (<code>.contextMenu</code>) con la misma acción y Ver ficha.</li>
+      <li>iPad con ratón o Pencil: <code>.hoverEffect(.highlight)</code> en filas y botones.</li>
+      <li>Etiquetas de franja en <code>.footnote</code> semibold, sin mayúsculas forzadas.</li>
     </ul></div>
   </div>
 </section>
@@ -351,7 +397,7 @@ const IC={
  filter:'<path d="M3 6h18M6 12h12M10 18h4"/>',
  cal:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>'};
 const ic=(k,c='')=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="${c}">${IC[k]}</svg>`;
-const tip=t=>`<span class="i" tabindex="0" role="note" aria-label="${t}" data-tip="${t}">i</span>`;
+const tip=t=>`<span class="i" aria-hidden="true" data-tip="${t}">i</span>`;
 
 /* ====== Estado ====== */
 const S={state:'data',dev:'ipad',mode:'despacho',enClase:false,elapsed:38,total:55,resueltas:[],
@@ -387,7 +433,7 @@ function ahora(){
   return `<article class="card ${anim?'reveal':''}" style="--i:1"><div class="band-h"><span class="t-cap mut">${live?'Ahora':'Siguiente clase'}${tip(live?'La barra se anima de 0 % al valor real en 1 segundo al entrar. El número del tiempo cambia con desplazamiento vertical.':'Fuera de horario se muestra la próxima sesión y cuánto falta.')}</span></div>
    <div class="now"><div><h2 class="big">${live?'3º ESO B':'1º Bach. A'}</h2><p class="mut t-sub">Educación Física · ${live?'Pabellón 2 · 10:05 a 11:00':'Pista 1 · 12:10 a 13:05'}</p></div>
    <div class="time"><b>${numero('min',live?rest():25)}</b><p class="mut t-sub">${live?'min restantes':'min para empezar'}</p></div>
-   <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Progreso de la sesión"><span data-w="${pct}"></span></div>
+   <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Han pasado ${S.elapsed} de ${S.total} minutos" aria-label="Progreso de la sesión"><span data-w="${pct}"></span></div>
    <div class="acts"><button class="btn primary lg" data-act="${live?'lista':'preparar'}">${live?(S.lista?'Lista pasada (25 de 27)':'Pasar lista'):'Preparar sesión'}</button>
      <div class="menu-wrap"><button class="btn glass lg" aria-haspopup="menu" aria-expanded="${S.menu==='more'}" data-menu="more" aria-label="Más acciones">${ic('more','')}<span>Más</span></button>
      ${S.menu==='more'?`<div class="menu glass" role="menu"><button role="menuitem" data-sheet="obs">Nueva observación</button><button role="menuitem" data-sheet="ev">Evaluación rápida</button><hr><button role="menuitem" data-act="grupo">Ver grupo</button><button role="menuitem" data-act="cuaderno">Abrir en el Cuaderno</button></div>`:''}</div>
@@ -395,18 +441,19 @@ function ahora(){
 }
 function atencion(){
   const total=cola().length, list=visibles();
+  if(S.state==='partial')return `<section class="card ${anim?'reveal':''}" style="--i:2" role="alert"><div class="band-h"><span class="t-cap mut">Atención</span></div><div class="gap-err">${ic('off')}<span class="t-sub" style="flex:1"><b>No se pudo cargar Atención.</b> El resto sigue al día.</span><button class="btn glass sm" data-act="retryPart">Reintentar</button></div></section>`;
   const nf=Object.values(S.filtros).filter(v=>!v).length;
   const filtro=`<div class="menu-wrap"><button class="btn glass sm" aria-haspopup="menu" aria-expanded="${S.menu==='filter'}" data-menu="filter">${ic('filter')}Filtrar${nf?`<span class="badge">${nf}</span>`:''}</button>
    ${S.menu==='filter'?`<div class="menu glass" role="menu">${[['risk','Riesgo'],['alert','Alertas'],['pend','Pendientes']].map(([k,l])=>`<button role="menuitemcheckbox" aria-checked="${S.filtros[k]}" data-f="${k}"><span style="width:1.25rem">${S.filtros[k]?'✓':''}</span>${l}</button>`).join('')}</div>`:''}</div>`;
   let body;
   if(empty()||total===0)body=`<div class="empty"><div class="ico">${ic('ok')}</div><h3 class="t-head">Todo al día</h3><p class="mut t-sub">No hay nada que atender ahora.</p></div>`;
   else if(!list.length)body=`<div class="empty"><h3 class="t-head">Nada con estos filtros</h3><button class="btn glass" data-act="limpiar">Quitar filtros</button></div>`;
-  else body=`<div class="rows" role="list">${list.map((x,i)=>`<div class="row ${anim?'reveal':''}" style="--i:${i+3}" role="listitem" aria-selected="${S.sel===x.id}">
+  else body=`<div class="rows" role="list">${list.map((x,i)=>`<div class="row ${S.sel===x.id?'sel':''} ${anim?'reveal':''}" style="--i:${i+3}" role="listitem">
       <span class="ico ${x.t}">${ic(x.t)}</span>
       <button class="row-main" data-sel="${x.id}"><span class="row-t">${x.ti}</span><span class="mut t-sub">${x.de}</span></button>
-      <button class="act" data-done="${x.id}">${x.ac}</button></div>`).join('')}</div>`;
+      <button class="act" data-done="${x.id}" aria-label="${x.ac}: ${x.ti}">${x.ac}</button></div>`).join('')}</div>`;
   const brief=empty()||total===0?'':`<p class="brief t-sub">${ic('spark','')}<span>Hoy destaca Hugo Peña: baja la media y hay 3 asuntos con fecha límite.</span>${tip('Resumen de IA en una frase. Sustituye al bloque Radar docente. Aparece con fundido.')}</p>`;
-  return `<section class="card ${anim?'reveal':''}" style="--i:2"><div class="band-h"><span class="t-cap mut">Atención${tip('Una sola lista por urgencia (riesgo, alerta, pendiente). Al pulsar la acción, la fila sale y entra la siguiente; el contador cambia con transición.')}</span>${filtro}</div>
+  return `<section class="card ${anim?'reveal':''}" style="--i:2"><div class="band-h"><span class="t-cap mut">Atención${empty()||total===0?'':`<span class="badge" style="margin-left:.5rem" aria-label="${total} por atender">${numero('k2',total)}</span>`}${tip('Una sola lista por urgencia (riesgo, alerta, pendiente). Al pulsar la acción, la fila sale y entra la siguiente; el número por atender cambia con transición. Es el único contador y sustituye a los KPIs.')}</span>${filtro}</div>
    ${brief}${body}
    ${total>list.length&&!empty()?`<p class="t-foot mut" style="margin-top:.5rem">Mostrando ${list.length} de ${total}. <button class="act" style="border:0;background:none;padding:0" data-act="todas">Ver todas</button></p>`:''}</section>`;
 }
@@ -427,28 +474,27 @@ function contexto(){
 }
 function skDespacho(){
   const r=`<div class="sk-row"><div class="sk c" style="width:2.5rem;height:2.5rem;border-radius:.75rem"></div><div><div class="sk" style="height:1rem;width:70%"></div><div class="sk" style="height:.875rem;width:45%;margin-top:.5rem"></div></div><div class="sk p" style="height:2.75rem"></div></div>`;
-  return `<div class="stack" aria-busy="true" aria-label="Cargando">
-   <div style="display:flex;gap:var(--s3)">${[1,2,3].map(()=>'<div><div class="sk" style="width:5rem;height:.875rem"></div><div class="sk" style="width:3rem;height:1.5rem;margin-top:.5rem"></div></div>').join('')}</div>
+  return `<div class="stack" role="status" aria-busy="true" aria-label="Cargando">
    <div class="card"><div class="sk" style="width:5rem;height:.75rem"></div><div style="display:flex;justify-content:space-between;margin:var(--s2) 0"><div><div class="sk" style="width:12rem;height:2.125rem"></div><div class="sk" style="width:16rem;height:1rem;margin-top:.5rem"></div></div><div class="sk" style="width:6rem;height:3rem"></div></div>
      <div class="sk p" style="height:.5rem"></div><div style="display:flex;gap:var(--s2);margin-top:var(--s2)"><div class="sk" style="width:10rem;height:3.5rem;border-radius:1.125rem"></div><div class="sk" style="width:6rem;height:3.5rem;border-radius:1.125rem"></div></div></div>
    <div class="card"><div class="sk" style="width:16rem;height:1rem;margin-bottom:var(--s2)"></div>${r.repeat(5)}</div>
    <div class="ctx">${[1,2,3].map(()=>'<div class="card"><div class="sk" style="width:60%;height:1rem"></div></div>').join('')}</div></div>`;
 }
 function skClase(){
-  return `<div class="clase" aria-busy="true" aria-label="Cargando"><div class="sk" style="width:min(18rem,80%);height:6rem"></div><div class="sk" style="width:14rem;height:2.125rem"></div><div class="sk p" style="width:100%;max-width:28rem;height:.5rem"></div>
+  return `<div class="clase" role="status" aria-busy="true" aria-label="Cargando"><div class="sk" style="width:min(18rem,80%);height:6rem"></div><div class="sk" style="width:14rem;height:2.125rem"></div><div class="sk p" style="width:100%;max-width:28rem;height:.5rem"></div>
    <div class="tiles">${[1,2,3].map(()=>'<div class="tile"><div class="sk" style="width:60%;height:.75rem"></div><div class="sk" style="width:40%;height:1.5rem;margin:.5rem 0"></div></div>').join('')}</div>
    <div class="acts">${[10,9,9].map(w=>`<div class="sk" style="width:${w}rem;height:3.5rem;border-radius:1.125rem"></div>`).join('')}</div></div>`;
 }
 function despacho(){
-  return `<div class="stack modein">${kpis()}${ahora()}${atencion()}${contexto()}</div>`;
+  return `<div class="stack modein">${ahora()}${atencion()}${contexto()}</div>`;
 }
 function clase(){
   if(empty())return `<div class="clase modein"><div class="empty"><h2 class="t-title">No hay clase ahora</h2><p class="mut">Hoy no tienes sesiones.</p><button class="btn primary lg" data-mode="auto">Volver a Auto</button></div></div>`;
   const nal=cola().filter(x=>x.t==='risk'||x.t==='alert').length;
   return `<div class="clase modein">
-   <div class="${anim?'reveal':''}" style="--i:1"><p class="t-cap mut">Quedan${tip('El número grande cambia con desplazamiento vertical cada minuto (aquí, botón Avanzar 1 min).')}</p><div class="huge">${numero('min',rest())}</div><p class="t-title mut">minutos</p></div>
+   <div class="${anim?'reveal':''}" style="--i:1"><p class="t-cap mut">Quedan${tip('El número grande cambia con desplazamiento vertical cada minuto (aquí, botón Avanzar 1 min).')}</p><div class="huge" role="img" aria-label="Quedan ${rest()} minutos">${numero('min',rest())}</div><p class="t-title mut">minutos</p></div>
    <div class="${anim?'reveal':''}" style="--i:2"><h2 class="t-large">3º ESO B</h2><p class="mut t-sub">Educación Física · Pabellón 2 · hasta las 11:00</p></div>
-   <div class="bar ${anim?'reveal':''}" style="--i:3" role="progressbar" aria-valuenow="${Math.round(S.elapsed/S.total*100)}" aria-valuemin="0" aria-valuemax="100" aria-label="Progreso"><span data-w="${Math.round(S.elapsed/S.total*100)}"></span></div>
+   <div class="bar ${anim?'reveal':''}" style="--i:3" role="progressbar" aria-valuenow="${Math.round(S.elapsed/S.total*100)}" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Han pasado ${S.elapsed} de ${S.total} minutos" aria-label="Progreso"><span data-w="${Math.round(S.elapsed/S.total*100)}"></span></div>
    <div class="tiles ${anim?'reveal':''}" style="--i:4">
     <div class="tile"><span class="t-foot mut">Asistencia de hoy</span><b class="num">${S.lista?'25 de 27':'Sin pasar'}</b><span class="t-foot mut">${S.lista?'2 ausentes':'27 alumnos'}</span></div>
     <div class="tile"><span class="t-foot mut">Pendientes de evaluar</span><b class="num">4</b><span class="t-foot mut">Test de resistencia</span></div>
@@ -470,7 +516,7 @@ function inspector(){
    :'<p class="mut t-sub" style="margin-top:var(--s1)">Elige una fila para ver su detalle.</p>'}</aside>`;
 }
 function errorBanner(){
-  return S.state==='error'?`<div class="err-banner" role="alert">${ic('off')}<span class="t-sub" style="flex:1"><b>Sin conexión.</b> Mostrando lo último de las 09:41.</span><button class="btn glass sm" data-act="retry">Reintentar</button></div>`:'';
+  return S.state==='error'?`<div class="err-banner" role="alert">${ic('off')}<span class="t-sub" style="flex:1"><b>Sin conexión.</b> <span class="num">Datos de las 09:41.</span></span><button class="btn glass sm" data-act="retry">Reintentar</button></div>`:'';
 }
 function render(){
   const modo=modoEfectivo();
@@ -481,6 +527,7 @@ function render(){
   const dim=S.state==='error'?'dim':'';
   const exit=modo==='clase'&&S.state!=='loading'?`<button class="btn glass exit" data-act="salir">Salir de modo Clase</button>`:'';
   app.innerHTML=`${header()}${exit}${errorBanner()}<div class="split ${S.ins&&modo==='despacho'?'ins':''}"><div class="${dim}">${body}</div>${modo==='despacho'?inspector():''}</div>`;
+  app.querySelectorAll('.sk').forEach(x=>x.setAttribute('aria-hidden','true'));
   anim=false;
   requestAnimationFrame(()=>requestAnimationFrame(()=>app.querySelectorAll('.bar>span').forEach(b=>b.style.width=b.dataset.w+'%')));
   $('#device').dataset.dev=S.dev;
@@ -492,12 +539,15 @@ function go(){anim=true;prevNums={};render()}
 function mk(host,items,key,cb){$(host).innerHTML=items.map(([k,l])=>`<button class="chip" data-k="${k}" aria-pressed="${S[key]===k}">${l}</button>`).join('');
   $(host).onclick=e=>{const b=e.target.closest('[data-k]');if(b)cb(b.dataset.k)}}
 function labSync(){
-  mk('#l-state',[['data','Datos'],['loading','Cargando'],['empty','Vacío'],['error','Error de red'],['sync','Sync en curso']],'state',k=>{S.state=k;S.menu=null;go()});
+  mk('#l-state',[['data','Datos'],['loading','Cargando'],['empty','Vacío'],['error','Error de red'],['sync','Sync en curso'],['partial','Error parcial']],'state',k=>{S.state=k;S.menu=null;go()});
   mk('#l-dev',[['ipad','iPad ancho'],['half','iPad 1/2 pantalla'],['mac','Mac']],'dev',k=>{S.dev=k;S.ins=false;go()});
   $('#l-sim').innerHTML=`<button class="chip" aria-pressed="${S.enClase}" id="b-cl">En horario de clase</button><button class="chip" id="b-min">Avanzar 1 min</button><button class="chip" id="b-ins" aria-pressed="${S.ins}">Inspector</button>`;
   $('#b-cl').onclick=()=>{S.enClase=!S.enClase;go()};
   $('#b-min').onclick=()=>{S.elapsed=Math.min(S.total,S.elapsed+1);render()};
   $('#b-ins').onclick=()=>{S.ins=!S.ins;render()};
+  const ts=document.documentElement.dataset.ts||'100';
+  $('#l-ts').innerHTML=['100','150','200'].map(k=>`<button class="chip" data-ts="${k}" aria-pressed="${ts===k}">${k} %</button>`).join('');
+  $('#l-ts').onclick=e=>{const b=e.target.closest('[data-ts]');if(b){document.documentElement.dataset.ts=b.dataset.ts;labSync()}};
   const th=document.documentElement.dataset.theme||'auto';
   $('#l-theme').innerHTML=[['auto','Auto'],['light','Claro'],['dark','Oscuro']].map(([k,l])=>`<button class="chip" data-t="${k}" aria-pressed="${th===k}">${l}</button>`).join('');
   $('#l-theme').onclick=e=>{const b=e.target.closest('[data-t]');if(!b)return;b.dataset.t==='auto'?document.documentElement.removeAttribute('data-theme'):document.documentElement.dataset.theme=b.dataset.t;labSync()};
@@ -516,6 +566,7 @@ app.addEventListener('click',e=>{
   const a=t.dataset.act;
   if(a==='salir'){S.mode='auto';toast('Modo Auto');return go()}
   if(a==='lista'){S.lista=true;render();return toast('Lista pasada: 25 de 27')}
+  if(a==='retryPart'){S.state='data';go();return toast('Atención recargada')}
   if(a==='retry'){S.state='loading';go();return setTimeout(()=>{S.state='data';go()},1500)}
   if(a==='sync'){toast(S.state==='sync'?'Sincronizando con el Mac…':S.state==='error'?'Sin conexión. Pulsa Reintentar':'Todo sincronizado');return}
   if(a==='cerrarIns'){S.ins=false;return render()}
@@ -523,7 +574,7 @@ app.addEventListener('click',e=>{
   if(a){S.menu=null;render();toast('Acción de ejemplo: '+a)}
 });
 document.addEventListener('click',e=>{if(S.menu&&e.target.isConnected&&!e.target.closest('.menu-wrap')){S.menu=null;render()}});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.menu){S.menu=null;render()}});
+document.addEventListener('keydown',e=>{if(e.key!=='Escape'||document.querySelector('dialog[open]'))return;if(S.menu){S.menu=null;return render()}if(modoEfectivo()==='clase'&&S.mode==='clase'){S.mode='auto';toast('Modo Auto');go()}});
 app.addEventListener('toggle',e=>{const d=e.target.closest('[data-ctx]');if(d)S.openCtx[d.dataset.ctx]=d.open},true);
 
 /* ====== Hojas ====== */

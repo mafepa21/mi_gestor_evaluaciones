@@ -52,7 +52,12 @@ enum PlannerSessionPresentationHelper {
             || raw.caseInsensitiveCompare(phase) == .orderedSame
             || genericTerms.contains(normalize(raw))
         
-        if isGeneric {
+        // En explicación y reflexión la primera cita «…» suele ser una consigna o una pregunta, no el
+        // nombre de una tarea: esas fases se titulan con su propia etiqueta.
+        let phaseMoment = NarrativeSessionActivityCompactor.moment(for: phase.isEmpty ? raw : phase)
+        let keepsPhaseTitle = isGeneric && (phaseMoment == .explanation || phaseMoment == .reflection)
+
+        if isGeneric && !keepsPhaseTitle {
             if let extracted = extractGameOrTaskTitle(from: activity.teacherActions) {
                 return extracted
             }
@@ -284,6 +289,44 @@ enum PlannerSessionPresentationHelper {
         )
     }
     
+    /// Separa un texto de propósito que trae fundidos objetivo, material y atención especial
+    /// (documentos antiguos que escribieron las etiquetas en el mismo párrafo).
+    static func splitPurpose(_ text: String) -> (objective: String, material: String, attention: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let materialPattern = #"(?i)material,?\s+(?:space\s+and\s+grouping|espacio\s+y\s+agrupamiento)\s*:"#
+        let attentionPattern = #"(?i)(?:special\s+attention|atenci[oó]n\s+especial)\s*:"#
+        let materialRange = trimmed.range(of: materialPattern, options: .regularExpression)
+        let attentionRange = trimmed.range(of: attentionPattern, options: .regularExpression)
+        guard materialRange != nil || attentionRange != nil else { return (trimmed, "", "") }
+
+        let firstMarker = [materialRange?.lowerBound, attentionRange?.lowerBound].compactMap { $0 }.min() ?? trimmed.endIndex
+        let objective = String(trimmed[..<firstMarker]).trimmingCharacters(in: .whitespacesAndNewlines)
+        var material = ""
+        if let materialRange {
+            let end = attentionRange.map { $0.lowerBound > materialRange.upperBound ? $0.lowerBound : trimmed.endIndex } ?? trimmed.endIndex
+            material = String(trimmed[materialRange.upperBound..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var attention = ""
+        if let attentionRange {
+            let end = materialRange.map { $0.lowerBound > attentionRange.upperBound ? $0.lowerBound : trimmed.endIndex } ?? trimmed.endIndex
+            attention = String(trimmed[attentionRange.upperBound..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return (objective, material, attention)
+    }
+
+    /// Quita del texto docente la línea «Consigna CLIL: …» cuando esa consigna ya se muestra en su banner.
+    static func removingCLILConsigna(from text: String) -> String {
+        text.components(separatedBy: .newlines)
+            .filter { !normalize($0).hasPrefix("consigna clil") }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Identificador técnico del importador (`SF-U01-NARRATIVE-A01`, `LF-U03-A02`…): no se enseña al docente.
+    static func isTechnicalActivityKey(_ key: String) -> Bool {
+        key.range(of: #"^(?:SF|LF)-U[0-9]{2,3}-"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     private static func normalize(_ value: String) -> String {
         value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
@@ -299,56 +342,78 @@ struct PlannerSessionTimelineBar: View {
     let tint: Color
     let effectiveMinutes: Int
     let onSelectActivity: (String) -> Void
-    
-    private var totalMinutes: Int {
-        let sum = activities.compactMap(\.plannedMinutes).reduce(0, +)
-        return sum > 0 ? sum : max(effectiveMinutes, 1)
+
+    private enum Item {
+        case activity(Int)
+        case rest
     }
-    
+
+    private static let restWidth: CGFloat = 34
+    private static let spacing: CGFloat = 4
+
+    /// Los segmentos (bloques de una sesión LONG) se separan con el descanso legal; ya no depende
+    /// de que haya exactamente 8 actividades.
+    private var items: [Item] {
+        var result: [Item] = []
+        for index in activities.indices {
+            if index > 0,
+               let previous = segment(of: activities[index - 1]),
+               let current = segment(of: activities[index]),
+               previous != current {
+                result.append(.rest)
+            }
+            result.append(.activity(index))
+        }
+        return result
+    }
+
+    private func segment(of activity: LearningSituationSessionActivityDraft) -> String? {
+        let key = activity.segmentKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return key.isEmpty ? nil : key
+    }
+
+    private var totalMinutes: Int {
+        max(activities.compactMap(\.plannedMinutes).reduce(0, +), 1)
+    }
+
+    private func minutes(_ activity: LearningSituationSessionActivityDraft) -> Int {
+        activity.plannedMinutes ?? max(totalMinutes / max(activities.count, 1), 1)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                ForEach(Array(activities.enumerated()), id: \.element.activityKey) { index, activity in
-                    let isSelected = activity.activityKey == selectedKey
-                    let minutes = activity.plannedMinutes ?? (totalMinutes / max(activities.count, 1))
-                    let weight = CGFloat(minutes) / CGFloat(totalMinutes)
-                    
-                    Button {
-                        onSelectActivity(activity.activityKey)
-                    } label: {
-                        VStack(spacing: 3) {
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(barColor(for: activity, isSelected: isSelected))
-                                .frame(height: isSelected ? 12 : 8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .stroke(isSelected ? Color.primary : Color.clear, lineWidth: 1.5)
-                                )
-                            
-                            Text("\(minutes)'")
-                                .font(.system(size: 10, weight: isSelected ? .bold : .regular, design: .monospaced))
-                                .foregroundStyle(isSelected ? tint : .secondary)
-                                .lineLimit(1)
+            GeometryReader { geometry in
+                let restCount = items.filter { if case .rest = $0 { return true } else { return false } }.count
+                let gaps = CGFloat(max(items.count - 1, 0)) * Self.spacing
+                let usable = max(geometry.size.width - gaps - CGFloat(restCount) * Self.restWidth, 40)
+                let sum = max(activities.map(minutes).reduce(0, +), 1)
+                HStack(alignment: .top, spacing: Self.spacing) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                        switch item {
+                        case .activity(let index):
+                            segmentButton(activities[index], width: max(usable * CGFloat(minutes(activities[index])) / CGFloat(sum), 22))
+                        case .rest:
+                            VStack(spacing: 3) {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.secondary.opacity(0.18))
+                                    .frame(height: 8)
+                                Text("15'")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(width: Self.restWidth)
+                            .accessibilityLabel("Descanso legal 15 minutos")
                         }
-                    }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity)
-                    .layoutPriority(Double(weight * 100))
-                    
-                    // Insertar marcador de descanso legal tras el Bloque 1 si hay 8 actividades en sesión LONG
-                    if activities.count >= 8 && index == 3 {
-                        VStack(spacing: 3) {
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(Color.secondary.opacity(0.18))
-                                .frame(height: 8)
-                            Text("15'☕")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(width: 32)
-                        .accessibilityLabel("Descanso legal 15 minutos")
                     }
                 }
+            }
+            .frame(height: 30)
+
+            let planned = activities.compactMap(\.plannedMinutes).reduce(0, +)
+            if effectiveMinutes > 0, planned > 0, planned != effectiveMinutes {
+                Text("\(planned) de \(effectiveMinutes) min planificados")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
             }
         }
         .padding(.horizontal, 16)
@@ -356,7 +421,32 @@ struct PlannerSessionTimelineBar: View {
         .background(EvaluationDesign.surfaceSoft.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
-    
+
+    private func segmentButton(_ activity: LearningSituationSessionActivityDraft, width: CGFloat) -> some View {
+        let isSelected = activity.activityKey == selectedKey
+        let minutes = minutes(activity)
+        return Button {
+            onSelectActivity(activity.activityKey)
+        } label: {
+            VStack(spacing: 3) {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(barColor(for: activity, isSelected: isSelected))
+                    .frame(height: isSelected ? 12 : 8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .stroke(isSelected ? Color.primary : Color.clear, lineWidth: 1.5)
+                    )
+                Text("\(minutes)'")
+                    .font(.system(size: 10, weight: isSelected ? .bold : .regular, design: .monospaced))
+                    .foregroundStyle(isSelected ? tint : .secondary)
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(width: width)
+        .accessibilityLabel("\(PlannerSessionPresentationHelper.displayTitle(for: activity)), \(minutes) minutos")
+    }
+
     private func barColor(for activity: LearningSituationSessionActivityDraft, isSelected: Bool) -> Color {
         let phase = activity.phase.lowercased()
         if isSelected {
@@ -1322,3 +1412,127 @@ enum FormattedTextBlock {
     case paragraph(text: String)
 }
 
+
+
+// MARK: - Activity Timer
+
+/// Cuenta atrás de una actividad (para usar en pista). El estado vive en la vista: se reinicia al
+/// cambiar de actividad porque el contenedor le asigna `.id(activityKey)`.
+struct PlannerSessionActivityTimer: View {
+    let minutes: Int
+    let tint: Color
+
+    @State private var endDate: Date?
+    @State private var pausedRemaining: TimeInterval?
+
+    private var total: TimeInterval { TimeInterval(max(minutes, 1) * 60) }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let remaining = remainingSeconds(at: context.date)
+            let finished = endDate != nil && remaining <= 0
+            HStack(spacing: 10) {
+                Button {
+                    toggle(now: context.date)
+                } label: {
+                    Label(
+                        Self.format(remaining),
+                        systemImage: endDate != nil && !finished ? "pause.fill" : "play.fill"
+                    )
+                    .font(.system(.body, design: .monospaced).weight(.bold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background((finished ? Color.red : tint).opacity(0.14), in: Capsule())
+                    .foregroundStyle(finished ? Color.red : tint)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(finished ? "Tiempo agotado" : "Temporizador de la actividad")
+
+                if endDate != nil || pausedRemaining != nil {
+                    Button {
+                        endDate = nil
+                        pausedRemaining = nil
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.caption.weight(.bold))
+                            .padding(8)
+                            .background(Color.secondary.opacity(0.12), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Reiniciar temporizador")
+                }
+            }
+        }
+    }
+
+    private func remainingSeconds(at date: Date) -> TimeInterval {
+        if let endDate { return max(endDate.timeIntervalSince(date), 0) }
+        return pausedRemaining ?? total
+    }
+
+    private func toggle(now: Date) {
+        if let endDate {
+            let remaining = max(endDate.timeIntervalSince(now), 0)
+            if remaining <= 0 {
+                self.endDate = nil
+                pausedRemaining = nil
+            } else {
+                pausedRemaining = remaining
+                self.endDate = nil
+            }
+        } else {
+            endDate = now.addingTimeInterval(pausedRemaining ?? total)
+            pausedRemaining = nil
+        }
+    }
+
+    private static func format(_ seconds: TimeInterval) -> String {
+        let value = Int(seconds.rounded(.up))
+        return String(format: "%d:%02d", value / 60, value % 60)
+    }
+}
+
+
+// MARK: - Enlarged Visual
+
+struct PlannerEnlargedVisual: Identifiable {
+    let id = UUID()
+    let title: String
+    let html: String
+}
+
+/// Diagrama táctico a pantalla completa (o hoja grande en Mac) para verlo desde lejos en pista.
+struct PlannerEnlargedVisualSheet: View {
+    let visual: PlannerEnlargedVisual
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(visual.title)
+                    .font(.headline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Cerrar", systemImage: "xmark.circle.fill")
+                        .labelStyle(.iconOnly)
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cerrar diagrama")
+            }
+            .padding(16)
+            ScrollView {
+                PlannerDocxWebView(html: visual.html, minHeight: 640, idealHeight: 900, maxHeight: 2400)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 16)
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 900, minHeight: 640)
+        #endif
+    }
+}

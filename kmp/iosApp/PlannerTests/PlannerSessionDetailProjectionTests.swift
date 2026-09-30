@@ -208,6 +208,56 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
         XCTAssertEqual(projection.clilChunks?.teacherCues.first, "Freeze on whistle!")
     }
 
+    func testCLILChunksEmbeddedInLastNumberedPhaseAreExtractedAndStripped() throws {
+        let text = """
+        Semicircle talk about the thumb position.
+        Recogida: Cooperative pack-up.
+        Chunks Lingüísticos (CLIL) · Language Chunks
+        Teacher Cues: "V-shape grip!", "Keep your racket up!"
+        Student Interaction: "Nice lift!", "Switch hands now!"
+        Debrief: "Why does the thumb position matter?" (CE 2.2)
+        """
+        let activity = LearningSituationSessionActivityDraft(
+            activityKey: "SF-U01-A04", plannedMinutes: 4, timeLabel: "4 min", phase: "Reflection and record",
+            activity: "Reflection and record", purpose: "", teacherActions: text
+        )
+        let payload = LearningSituationSessionDevelopmentPayload(sections: [], activities: [activity])
+        let json = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        let plan = try makePlan(material: "Cones", criteria: [], sections: []).withDevelopment(json)
+
+        let projection = PlannerSessionDetailProjection(plan: plan)
+        XCTAssertEqual(projection.clilChunks?.teacherCues, ["V-shape grip!", "Keep your racket up!"])
+        XCTAssertEqual(projection.clilChunks?.studentInteraction.count, 2)
+        XCTAssertEqual(projection.clilChunks?.debrief.count, 1)
+        let shown = projection.activities.first?.teacherActions ?? ""
+        XCTAssertTrue(shown.contains("Semicircle talk"))
+        XCTAssertTrue(shown.contains("Recogida"))
+        XCTAssertFalse(shown.contains("Teacher Cues"))
+        XCTAssertFalse(shown.contains("Chunks"))
+    }
+
+    func testSessionPlansMatchDistinguishesRoutesOfTheSameDocument() throws {
+        let stored = try makePlan(material: "Cones", criteria: [], sections: [])
+        func draft(label: String, type: String, route: LearningSituationWeeklySequenceRoute?) -> LearningSituationSessionPlanDraft {
+            LearningSituationSessionPlanDraft(
+                sessionNumber: 1, sourceLabel: label, title: "t", sessionType: type, effectiveMinutes: 90,
+                objective: "", criteria: [], material: "", development: [], adaptations: [], sequenceRoute: route
+            )
+        }
+        // Misma ruta y mismas etiquetas: se reutiliza la versión guardada.
+        XCTAssertTrue(KmpBridge.sessionPlansMatch(
+            existing: [stored], draft: [draft(label: "Semana 1 · Bloque largo", type: "Bloque largo", route: .longFirst)]
+        ))
+        // Otra ruta del mismo archivo (etiqueta o tipo distintos): versión propia, sin sobrescribir.
+        XCTAssertFalse(KmpBridge.sessionPlansMatch(
+            existing: [stored], draft: [draft(label: "Encuentro E01 · SHORT", type: "SHORT", route: .shortFirst)]
+        ))
+        // Documentos sin rutas conservan el criterio histórico (mismo SHA).
+        XCTAssertTrue(KmpBridge.sessionPlansMatch(
+            existing: [stored], draft: [draft(label: "otra", type: "otro", route: nil)]
+        ))
+    }
+
     func testCLILChunksParsedFromMarkdownText() throws {
         let text = """
         ### Chunks Lingüísticos (CLIL / Pista bilingüe)

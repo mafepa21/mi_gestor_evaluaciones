@@ -1126,6 +1126,23 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.routeVariants[.longFirst]?[1].effectiveMinutes, 30)
     }
 
+    func testBachilleratoSA2BadmintonSessionsImportBothRoutes() throws {
+        let url = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/SA 2 - Smash Together Badminton (1 BAC)/02_SESIONES/sesiones_secuenciadas.docx")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
+        for route in [LearningSituationWeeklySequenceRoute.shortFirst, .longFirst] {
+            let plans = try XCTUnwrap(draft.routeVariants[route])
+            XCTAssertEqual(plans.count, 8)
+            for plan in plans {
+                let expected = plan.sessionType == "LONG" ? 80 : 30
+                let unitKeys = Set(plan.activities.compactMap(\.segmentKey))
+                print("SA2-IMPORT \(route.rawValue) \(plan.sourceLabel.prefix(30)) type=\(plan.sessionType) min=\(plan.effectiveMinutes) acts=\(plan.activities.count) units=\(unitKeys.sorted()) sum=\(plan.activities.compactMap(\.plannedMinutes).reduce(0, +)) dev=\(plan.development.count)")
+                XCTAssertEqual(plan.effectiveMinutes, expected)
+                XCTAssertEqual(plan.activities.compactMap(\.plannedMinutes).reduce(0, +), expected, "\(route.rawValue) \(plan.sourceLabel)")
+            }
+        }
+    }
+
     func testMislataCurricularFilesImportSuccessfully() throws {
         let service = LearningSituationSessionSequenceDocumentImportService()
 

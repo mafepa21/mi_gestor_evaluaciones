@@ -27,8 +27,39 @@ struct PlannerSessionDetailProjection {
 
     init(plan: LearningSituationSessionPlan) {
         let payload = Self.decodePayload(plan.developmentJson)
-        let normalizedActivities = PlannerSessionPlanPayloadNormalizer.activities(from: payload)
-        let sections = PlannerSessionPlanPayloadNormalizer.sections(from: payload)
+        let rawActivities = PlannerSessionPlanPayloadNormalizer.activities(from: payload)
+        let rawSections = PlannerSessionPlanPayloadNormalizer.sections(from: payload)
+
+        // Los documentos narrativos (p. ej. 1º BAC) incluyen el bloque de chunks CLIL como texto dentro
+        // de la última fase numerada, sin sección propia. Se extraen de cualquier línea y se retiran
+        // del texto de actividades/secciones para que se muestren solo en su tarjeta.
+        let chunkSectionsText = rawSections
+            .filter { section in
+                let title = Self.normalized(section.title)
+                return title.contains("chunk") || title.contains("clil") || title.contains("bilingue")
+            }
+            .flatMap(\.lines)
+            .joined(separator: "\n")
+        let anyLineText = (rawSections.flatMap(\.lines) + rawActivities.map(\.teacherActions)).joined(separator: "\n")
+        let embeddedChunks = payload.clilChunks.flatMap { $0.isEmpty ? nil : $0 }
+            ?? LearningSituationSessionDevelopmentPayload.parseCLILChunks(from: chunkSectionsText)
+            ?? LearningSituationSessionDevelopmentPayload.parseCLILChunks(from: anyLineText)
+        let stripsChunkLines = embeddedChunks != nil
+        let normalizedActivities: [LearningSituationSessionActivityDraft] = stripsChunkLines
+            ? rawActivities.map { activity in
+                var copy = activity
+                copy.teacherActions = Self.strippingChunkLines(from: activity.teacherActions)
+                return copy
+            }
+            : rawActivities
+        let sections: [LearningSituationSessionSectionDraft] = stripsChunkLines
+            ? rawSections.map { section in
+                LearningSituationSessionSectionDraft(
+                    title: section.title,
+                    lines: section.lines.map(Self.strippingChunkLines).filter { !$0.isEmpty }
+                )
+            }
+            : rawSections
         let timelineSections = sections.filter(Self.isTimelineSection)
         let timeline = timelineSections.map(PlannerSessionTimelineBlock.init)
 
@@ -53,24 +84,14 @@ struct PlannerSessionDetailProjection {
         self.coreKnowledge = Self.cleaned(payload.coreKnowledge)
         self.assessment = Self.cleaned(payload.assessment)
         self.guidingQuestions = Self.unique(payload.guidingQuestions.map(Self.cleaned).filter { !$0.isEmpty })
-        self.closure = Self.cleaned(payload.closure)
+        self.closure = Self.cleaned(stripsChunkLines ? Self.strippingChunkLines(from: payload.closure) : payload.closure)
         self.activities = normalizedActivities
         self.timeline = timeline
         self.supportSections = sections
             .filter { !Self.isTimelineSection($0) && !Self.isEvidenceSection($0) }
             .compactMap(PlannerSessionSupportSection.init)
 
-        // Recuperar clilChunks del payload si existen, o intentar extraerlos de las secciones
-        if let directChunks = payload.clilChunks, !directChunks.isEmpty {
-            self.clilChunks = directChunks
-        } else {
-            let clilSections = sections.filter { section in
-                let title = Self.normalized(section.title)
-                return title.contains("chunk") || title.contains("clil") || title.contains("bilingue")
-            }
-            let clilText = clilSections.flatMap(\.lines).joined(separator: "\n")
-            self.clilChunks = LearningSituationSessionDevelopmentPayload.parseCLILChunks(from: clilText)
-        }
+        self.clilChunks = embeddedChunks
 
         self.activityCount = normalizedActivities.isEmpty
             ? timeline.reduce(0) { $0 + $1.steps.count }
@@ -79,6 +100,24 @@ struct PlannerSessionDetailProjection {
 
     var hasTeacherBrief: Bool {
         !objective.isEmpty || !criteria.isEmpty || !evidence.isEmpty || !materials.isEmpty || !basicKnowledge.isEmpty
+    }
+
+    /// Quita de un texto multilínea el encabezado del bloque de chunks CLIL y sus líneas etiquetadas
+    /// (Teacher Cues / Student Interaction / Debrief o su equivalente en castellano).
+    static func strippingChunkLines(from text: String) -> String {
+        let labelPattern = #"^(?:pautas de accion docente|teacher cues|comunicacion en juego|student interaction|feedback y reflexion|debrief)\b"#
+        let headingPattern = #"^(?:chunks?\s+linguisticos?|language\s+chunks)\b"#
+        return text
+            .components(separatedBy: .newlines)
+            .filter { line in
+                let value = normalized(line)
+                    .replacingOccurrences(of: #"^[\s\-\u2022*#]+"#, with: "", options: .regularExpression)
+                    .replacingOccurrences(of: "*", with: "")
+                return value.range(of: labelPattern, options: .regularExpression) == nil
+                    && value.range(of: headingPattern, options: .regularExpression) == nil
+            }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func decodePayload(_ json: String) -> LearningSituationSessionDevelopmentPayload {

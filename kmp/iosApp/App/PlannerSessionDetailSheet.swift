@@ -233,6 +233,7 @@ struct PlannerSessionDetailSheet: View {
     @State private var isDeleteConfirmationPresented = false
     @State private var selectedSection: PlannerSessionDetailSection = .activity
     @State private var selectedActivityKey: String?
+    @State private var enlargedVisual: PlannerEnlargedVisual?
 
     private var tint: Color {
         Color(hex: session.teachingUnitColor)
@@ -596,7 +597,7 @@ struct PlannerSessionDetailSheet: View {
                     let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
                     let activeKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
                     ForEach(Array(activities.enumerated()), id: \.element.activityKey) { index, activity in
-                        if index == 4 && activities.count >= 8 {
+                        if startsNewBlock(at: index, in: activities) {
                             HStack(spacing: 8) {
                                 Image(systemName: "cup.and.saucer.fill")
                                     .font(.caption.weight(.bold))
@@ -834,8 +835,17 @@ struct PlannerSessionDetailSheet: View {
                 let keys = activities.enumerated().map { activityIdentity($0.element, index: $0.offset) }
                 let selectedKey = selectedActivityKey.flatMap { keys.contains($0) ? $0 : nil } ?? keys.first!
                 let selectedIndex = keys.firstIndex(of: selectedKey) ?? 0
-                activityDetailCard(activities[selectedIndex], index: selectedIndex)
-                    .onAppear {
+                VStack(alignment: .leading, spacing: 16) {
+                    activityDetailCard(activities[selectedIndex], index: selectedIndex)
+                    if selectedIndex == activities.count - 1,
+                       let chunks = decodedCLILChunks(detailedPlan), !chunks.isEmpty {
+                        PlannerSessionCLILChunksCard(chunks: chunks, tint: tint)
+                    }
+                }
+                .sheet(item: $enlargedVisual) { visual in
+                    PlannerEnlargedVisualSheet(visual: visual)
+                }
+                .onAppear {
                         if selectedActivityKey == nil || !keys.contains(selectedActivityKey!) {
                             selectedActivityKey = keys.first
                         }
@@ -929,10 +939,11 @@ struct PlannerSessionDetailSheet: View {
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(activity.activityKey.isEmpty ? "Actividad \(index + 1)" : activity.activityKey)
+                let isTechnicalKey = activity.activityKey.isEmpty || PlannerSessionPresentationHelper.isTechnicalActivityKey(activity.activityKey)
+                Text(isTechnicalKey ? "Actividad \(index + 1)" : activity.activityKey)
                     .font(.caption.weight(.bold).monospacedDigit())
                     .foregroundStyle(tint)
-                if !activity.activityType.isEmpty {
+                if !activity.activityType.isEmpty, !isTechnicalKey, activity.activityType.lowercased() != "narrative" {
                     Text(activity.activityType.capitalized)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -944,10 +955,17 @@ struct PlannerSessionDetailSheet: View {
                 }
             }
 
-            Text(displayTitle)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.primary)
-                .padding(.top, 8)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(displayTitle)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                if let plannedMinutes = activity.plannedMinutes, plannedMinutes > 0 {
+                    PlannerSessionActivityTimer(minutes: plannedMinutes, tint: tint)
+                        .id(activityIdentity(activity, index: index))
+                }
+            }
+            .padding(.top, 8)
 
             if let segmentLabel = narrativeSegmentLabel(activity) {
                 Text(segmentLabel)
@@ -979,9 +997,21 @@ struct PlannerSessionDetailSheet: View {
             if let visualHTML = renderedActivityVisuals[activityIdentity(activity, index: index)],
                !visualHTML.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Apoyo visual", systemImage: "photo.on.rectangle.angled")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(tint)
+                    HStack {
+                        Label("Apoyo visual", systemImage: "photo.on.rectangle.angled")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(tint)
+                        Spacer()
+                        Button {
+                            enlargedVisual = PlannerEnlargedVisual(title: displayTitle, html: visualHTML)
+                        } label: {
+                            Label("Ampliar", systemImage: "arrow.up.left.and.arrow.down.right")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityLabel("Ampliar el diagrama a pantalla completa")
+                    }
                     PlannerDocxWebView(
                         html: visualHTML,
                         minHeight: 160,
@@ -992,14 +1022,21 @@ struct PlannerSessionDetailSheet: View {
                 .padding(.top, 16)
             }
 
+            let purposeParts = PlannerSessionPresentationHelper.splitPurpose(activity.purpose)
+            let organisationText = Self.uniqueNonEmpty([activity.organisation, activity.setup, purposeParts.material]).joined(separator: "\n")
+            let attentionText = Self.uniqueNonEmpty([activity.adaptations, purposeParts.attention]).joined(separator: "\n")
+            let teacherText = (clilCallout?.isEmpty == false)
+                ? PlannerSessionPresentationHelper.removingCLILConsigna(from: activity.teacherActions)
+                : activity.teacherActions
+
             VStack(alignment: .leading, spacing: 12) {
-                PlannerActivityDetailSectionCard(kind: .purpose, text: activity.purpose, tint: tint)
-                PlannerActivityDetailSectionCard(kind: .organization, text: [activity.organisation, activity.setup].filter { !$0.isEmpty }.joined(separator: "\n"), tint: tint)
-                PlannerActivityDetailSectionCard(kind: .teacher, text: activity.teacherActions, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .purpose, text: purposeParts.objective, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .organization, text: organisationText, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .teacher, text: teacherText, tint: tint)
                 PlannerActivityDetailSectionCard(kind: .students, text: [activity.studentInstructions, activity.studentActions].filter { !$0.isEmpty }.joined(separator: "\n"), tint: tint)
                 PlannerActivityDetailSectionCard(kind: .timing, text: activity.timingBreakdown, tint: tint)
                 PlannerActivityDetailSectionCard(kind: .evidence, text: activity.evidence, tint: tint)
-                PlannerActivityDetailSectionCard(kind: .adaptations, text: activity.adaptations, tint: tint)
+                PlannerActivityDetailSectionCard(kind: .adaptations, text: attentionText, tint: tint)
                 PlannerActivityDetailSectionCard(kind: .slowGroup, text: activity.slowGroupPlan, tint: tint)
                 PlannerActivityDetailSectionCard(kind: .fastGroup, text: activity.fastGroupExtension, tint: tint)
                 PlannerActivityDetailSectionCard(kind: .continuity, text: [activity.prepares, activity.consolidates].filter { !$0.isEmpty }.joined(separator: "\n"), tint: tint)
@@ -1011,12 +1048,30 @@ struct PlannerSessionDetailSheet: View {
         .accessibilityLabel("Detalle de actividad \(activity.activityKey.isEmpty ? "\(index + 1)" : activity.activityKey)")
     }
 
+    private static func uniqueNonEmpty(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+    }
+
     private func narrativeSegmentLabel(_ activity: LearningSituationSessionActivityDraft) -> String? {
-        let label = [activity.segmentKey, activity.segmentTitle]
-            .compactMap { value in value?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " · ")
+        let key = activity.segmentKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let title = activity.segmentTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // El título del segmento ya suele empezar por la clave (`U01`): no se repite («U01 · U01»).
+        if !title.isEmpty, key.isEmpty || title.lowercased().hasPrefix(key.lowercased()) || title.caseInsensitiveCompare(key) == .orderedSame {
+            return title
+        }
+        let label = [key, title].filter { !$0.isEmpty }.joined(separator: " · ")
         return label.isEmpty ? nil : label
+    }
+
+    /// Una sesión LONG lleva dos bloques; el descanso legal se sitúa donde cambia el segmento.
+    private func startsNewBlock(at index: Int, in activities: [LearningSituationSessionActivityDraft]) -> Bool {
+        guard index > 0,
+              let previous = activities[index - 1].segmentKey, !previous.isEmpty,
+              let current = activities[index].segmentKey, !current.isEmpty else { return false }
+        return previous != current
     }
 
     private func activityIdentity(_ activity: LearningSituationSessionActivityDraft, index: Int) -> String {
@@ -1157,7 +1212,13 @@ struct PlannerSessionDetailSheet: View {
 
     private func decodedActivities(_ plan: LearningSituationSessionPlan) -> [LearningSituationSessionActivityDraft] {
         let payload = LearningSituationSessionDevelopmentPayload.decode(from: plan.developmentJson)
-        return payload.map(PlannerSessionPlanPayloadNormalizer.activities(from:)) ?? []
+        let activities = payload.map(PlannerSessionPlanPayloadNormalizer.activities(from:)) ?? []
+        // Los chunks CLIL tienen su propia tarjeta: no se repiten como texto suelto en la ficha.
+        return activities.map { activity in
+            var copy = activity
+            copy.teacherActions = PlannerSessionDetailProjection.strippingChunkLines(from: activity.teacherActions)
+            return copy
+        }
     }
 
     private func decodedGuidingQuestions(_ plan: LearningSituationSessionPlan) -> [String] {

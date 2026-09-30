@@ -1124,46 +1124,6 @@ enum PlannerSectionKind: Equatable {
     }
 }
 
-struct PlannerActivityDetailSectionCard: View {
-    let kind: PlannerSectionKind
-    let text: String
-    let tint: Color
-    
-    private var cleanText: String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    var body: some View {
-        if !cleanText.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: kind.icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(kind.accentColor ?? tint)
-                        .frame(width: 26, height: 26)
-                        .background((kind.accentColor ?? tint).opacity(0.12), in: Circle())
-                    
-                    Text(kind.title)
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    
-                    Spacer()
-                }
-                
-                PlannerFormattedTextView(text: cleanText, kind: kind, tint: tint)
-            }
-            .padding(14)
-            .background(EvaluationDesign.surfaceSoft)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(EvaluationDesign.border, lineWidth: 1)
-            )
-            .padding(.bottom, 10)
-        }
-    }
-}
-
 struct PlannerFormattedTextView: View {
     let text: String
     let kind: PlannerSectionKind
@@ -1417,83 +1377,6 @@ enum FormattedTextBlock {
 
 
 // MARK: - Activity Timer
-
-/// Cuenta atrás de una actividad (para usar en pista). El estado vive en la vista: se reinicia al
-/// cambiar de actividad porque el contenedor le asigna `.id(activityKey)`.
-struct PlannerSessionActivityTimer: View {
-    let minutes: Int
-    let tint: Color
-
-    @State private var endDate: Date?
-    @State private var pausedRemaining: TimeInterval?
-
-    private var total: TimeInterval { TimeInterval(max(minutes, 1) * 60) }
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let remaining = remainingSeconds(at: context.date)
-            let finished = endDate != nil && remaining <= 0
-            HStack(spacing: 10) {
-                Button {
-                    toggle(now: context.date)
-                } label: {
-                    Label(
-                        Self.format(remaining),
-                        systemImage: endDate != nil && !finished ? "pause.fill" : "play.fill"
-                    )
-                    .font(.system(.body, design: .monospaced).weight(.bold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background((finished ? Color.red : tint).opacity(0.14), in: Capsule())
-                    .foregroundStyle(finished ? Color.red : tint)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(finished ? "Tiempo agotado" : "Temporizador de la actividad")
-
-                if endDate != nil || pausedRemaining != nil {
-                    Button {
-                        endDate = nil
-                        pausedRemaining = nil
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.caption.weight(.bold))
-                            .padding(8)
-                            .background(Color.secondary.opacity(0.12), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Reiniciar temporizador")
-                }
-            }
-        }
-    }
-
-    private func remainingSeconds(at date: Date) -> TimeInterval {
-        if let endDate { return max(endDate.timeIntervalSince(date), 0) }
-        return pausedRemaining ?? total
-    }
-
-    private func toggle(now: Date) {
-        if let endDate {
-            let remaining = max(endDate.timeIntervalSince(now), 0)
-            if remaining <= 0 {
-                self.endDate = nil
-                pausedRemaining = nil
-            } else {
-                pausedRemaining = remaining
-                self.endDate = nil
-            }
-        } else {
-            endDate = now.addingTimeInterval(pausedRemaining ?? total)
-            pausedRemaining = nil
-        }
-    }
-
-    private static func format(_ seconds: TimeInterval) -> String {
-        let value = Int(seconds.rounded(.up))
-        return String(format: "%d:%02d", value / 60, value % 60)
-    }
-}
-
 
 // MARK: - Enlarged Visual
 

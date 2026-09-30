@@ -86,6 +86,7 @@ struct DashboardView: View {
     @State private var inspectorSelection: DashboardInspectorSelection? = nil
     @State private var isInspectorPresented = false
     @State private var isQuickEvaluationPresented = false
+    @State private var isObservationPresented = false
     @State private var classTrends: KmpBridge.AITrendsSnapshot? = nil
     @State private var isLoadingClassTrends = false
     @State private var classTrendsLoadFailed = false
@@ -150,6 +151,13 @@ struct DashboardView: View {
                 initialClassId: dashboardActionClassId,
                 mode: mode
             )
+            #if os(iOS)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            #endif
+        }
+        .sheet(isPresented: $isObservationPresented) {
+            DashboardObservationSheet(bridge: bridge, initialClassId: dashboardActionClassId)
             #if os(iOS)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -691,7 +699,7 @@ struct DashboardView: View {
         case .evaluate:
             onOpenModule(.rubrics, classId, nil)
         case .observation:
-            Task { await performObservation() }
+            performObservation()
         case .quickEvaluation:
             performQuickEvaluation()
         case .openPlanner, .openJournal:
@@ -1405,13 +1413,13 @@ struct DashboardView: View {
             }
             HStack(spacing: 12) {
                 Button("Pasar lista") {
-                    Task { await performPassList() }
+                    performPassList()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 
                 Button("Nueva observación") {
-                    Task { await performObservation() }
+                    performObservation()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
@@ -1670,10 +1678,10 @@ struct DashboardView: View {
                 Task { await applyFiltersAndReload() }
             },
             onPassList: {
-                Task { await performPassList() }
+                performPassList()
             },
             onObservation: {
-                Task { await performObservation() }
+                performObservation()
             },
             onQuickEvaluation: {
                 isQuickEvaluationPresented = true
@@ -1716,24 +1724,15 @@ struct DashboardView: View {
         }
     }
 
-    private func performPassList() async {
-        guard let classId = dashboardActionClassId else { return }
-        await bridge.performQuickAction(
-            type: .passList,
-            mode: mode,
-            classId: classId,
-            attendanceStatus: "presente"
-        )
+    /// "Pasar lista" solo abre Asistencia: el dashboard no marca a nadie por su cuenta.
+    private func performPassList() {
+        let classId = dashboardStore.dashboardSnapshot?.currentContext?.classId?.int64Value ?? dashboardActionClassId
+        onOpenModule(.attendance, classId, nil)
     }
 
-    private func performObservation() async {
-        guard let classId = dashboardActionClassId else { return }
-        await bridge.performQuickAction(
-            type: .registerObservation,
-            mode: mode,
-            classId: classId,
-            note: "Observación registrada desde dashboard"
-        )
+    /// "Nueva observación" abre un formulario; no crea nada hasta que se guarda con texto.
+    private func performObservation() {
+        isObservationPresented = true
     }
 
     private func performQuickEvaluation() {
@@ -1861,7 +1860,7 @@ struct DashboardView: View {
     private func handleProactiveAction(_ action: DashboardProactiveAction, snapshot: DashboardSnapshot) {
         switch action {
         case .passList:
-            Task { await performPassList() }
+            performPassList()
         case .quickEvaluation, .evaluatePending:
             performQuickEvaluation()
         case .openInspector:
@@ -2212,5 +2211,118 @@ struct ScaleButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.92 : 1.0)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
             .appInteractiveHighlight()
+    }
+}
+
+
+// MARK: - Formulario de nueva observación
+
+private struct DashboardObservationSheet: View {
+    @ObservedObject var bridge: KmpBridge
+    let initialClassId: Int64?
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedClassId: Int64?
+    @State private var selectedStudentId: Int64?
+    @State private var text = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var didSave = false
+
+    private var trimmedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSave: Bool {
+        selectedClassId != nil && selectedStudentId != nil && !trimmedText.isEmpty && !isSaving && !didSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Clase", selection: $selectedClassId) {
+                        Text("Seleccionar").tag(Int64?.none)
+                        ForEach(bridge.classes, id: \.id) { schoolClass in
+                            Text("\(schoolClass.name) · \(schoolClass.course)º").tag(Optional(schoolClass.id))
+                        }
+                    }
+                    Picker("Alumno", selection: $selectedStudentId) {
+                        Text("Seleccionar").tag(Int64?.none)
+                        ForEach(bridge.studentsInClass, id: \.id) { student in
+                            Text(student.fullName).tag(Optional(student.id))
+                        }
+                    }
+                }
+                Section("Observación") {
+                    TextField("Escribe qué has observado", text: $text, axis: .vertical)
+                        .font(.body)
+                        .lineLimit(4...8)
+                        .frame(minHeight: 88, alignment: .topLeading)
+                }
+                if didSave {
+                    Label("Observación guardada", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.green)
+                }
+                if let errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.red)
+                }
+            }
+            .navigationTitle("Nueva observación")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") { Task { await save() } }
+                        .frame(minWidth: 44, minHeight: 44)
+                        .disabled(!canSave)
+                }
+            }
+        }
+        .onAppear {
+            selectedClassId = initialClassId ?? bridge.classes.first?.id
+            loadStudents()
+        }
+        .appOnChange(of: selectedClassId) { _ in
+            selectedStudentId = nil
+            loadStudents()
+        }
+    }
+
+    private func loadStudents() {
+        Task { @MainActor in
+            guard let selectedClassId else { return }
+            await bridge.selectStudentsClass(classId: selectedClassId)
+        }
+    }
+
+    @MainActor
+    private func save() async {
+        guard let classId = selectedClassId, let studentId = selectedStudentId, !trimmedText.isEmpty else { return }
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+        do {
+            _ = try await bridge.createIncident(
+                classId: classId,
+                studentId: studentId,
+                title: "Observación",
+                detail: trimmedText
+            )
+            didSave = true
+            bridge.status = "Observación guardada desde el dashboard"
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            dismiss()
+        } catch {
+            errorMessage = "No se pudo guardar: \(error.localizedDescription)"
+        }
     }
 }

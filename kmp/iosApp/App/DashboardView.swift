@@ -26,6 +26,7 @@ struct DashboardView: View {
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     @AppStorage("dashboard_mode_preference") private var modeRawValue: String = DashboardModePreference.auto.rawValue
+    @AppStorage("teacher.enabledSubjectProfiles.v1") private var enabledSubjectProfilesRaw = TeacherSubjectProfile.general.rawValue
 
     // Presentación (todo local: filtrar o plegar no llama a KMP).
     @State private var presentationCache = DashboardPresentationCache()
@@ -111,7 +112,7 @@ struct DashboardView: View {
                 DashboardInspectorContent(
                     snapshot: dashboardStore.dashboardSnapshot,
                     selection: inspectorSelection,
-                    onOpenModule: onOpenModule,
+                    onOpenModule: openModuleResolved,
                     onNewObservation: performObservation,
                     onClose: closeInspector
                 )
@@ -455,10 +456,28 @@ struct DashboardView: View {
     private func performAttentionAction(_ item: DashboardAttentionItem) {
         switch item.action.route {
         case .module(let module, let classId, let studentId):
-            onOpenModule(module, classId, studentId)
+            openModuleResolved(module, classId, studentId)
         case .inspector:
             select(item.inspector)
         }
+    }
+
+    /// Los módulos de Educación Física solo existen si el perfil EF está
+    /// activo: el shell (`normalizedModule`) reencamina los demás al Dashboard,
+    /// y el botón parecía no hacer nada. Sin perfil EF se abre el destino
+    /// equivalente del módulo general, y sin clase se usa la activa.
+    private func openModuleResolved(_ module: AppWorkspaceModule, _ classId: Int64?, _ studentId: Int64?) {
+        var target = module
+        if module.requiresPhysicalEducationProfile,
+           !TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw).contains(.physicalEducation) {
+            switch module {
+            case .peRubrics: target = .rubrics
+            case .peIncidents: target = .students
+            case .peMaterial: target = .planner
+            default: target = .notebook
+            }
+        }
+        onOpenModule(target, classId ?? dashboardActionClassId, studentId)
     }
 
     private func select(_ selection: DashboardInspectorSelection) {

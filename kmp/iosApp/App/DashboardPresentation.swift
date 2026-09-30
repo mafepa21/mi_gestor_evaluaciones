@@ -295,6 +295,14 @@ struct DashboardPresentation {
 
     // MARK: Cola de atención
 
+    /// Destino de la acción de cada tipo de fila:
+    /// - alerta/pendiente con rúbrica pendiente -> "Evaluar": Rúbricas (clase y alumno).
+    /// - alerta con alumno -> "Ver ficha": Alumnado; con solo clase -> "Abrir cuaderno".
+    /// - EF `prueba_rubrica_activa` -> "Revisar": Rúbricas EF (o Rúbricas general sin perfil EF).
+    /// - EF `incidencias_fisicas` -> Incidencias EF; `exentos_adaptacion` -> Alumnado;
+    ///   `material_hoy` -> Material EF (sin perfil EF: Alumnado / Planner).
+    /// - Sin destino conocido -> "Ver detalle": abre el inspector. Ninguna acción es un no-op.
+    ///
     /// Unifica alertas de riesgo, pendientes y Educación Física en una sola
     /// lista ordenada por urgencia (riesgo, alerta, pendiente) y, dentro de
     /// cada una, por prioridad. Los "recordatorios" de la agenda se omiten a

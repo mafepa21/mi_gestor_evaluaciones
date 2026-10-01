@@ -159,6 +159,13 @@ class LocalSyncServer(
     private val stateListener: ((CommandCenterSnapshot) -> Unit)? = null,
     private val container: KmpContainer? = null,
     secureStoreServiceName: String = DEFAULT_KEYCHAIN_SERVICE,
+    /**
+     * Contraseña de la app del Mac que lanza este helper. La crea la app en cada
+     * arranque y la entrega por la entrada estándar del proceso, que ningún otro
+     * programa puede leer. Solo vale desde loopback; los iPads siguen usando la
+     * contraseña del enlace.
+     */
+    private val localClientToken: String? = null,
 ) {
     companion object {
         const val DEFAULT_KEYCHAIN_SERVICE = "com.migestor.sync.desktop"
@@ -870,7 +877,10 @@ class LocalSyncServer(
             ?.removePrefix("Bearer ")
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
-        val authorized = token != null && token == activeToken
+        val isLocalClient = localClientToken != null &&
+            token == localClientToken &&
+            ex.remoteAddress?.address?.isLoopbackAddress == true
+        val authorized = token != null && (token == activeToken || isLocalClient)
         if (!authorized) {
             ex.respond(401, """{"error":"unauthorized"}""")
         }

@@ -34,6 +34,10 @@ final class SyncEventListener: @unchecked Sendable {
         let underlying: Error
     }
 
+    /// El helper rechazó la contraseña. Reintentar enseguida no lo arregla: se
+    /// espera el paso más largo del backoff en vez de llamar cada segundo.
+    private struct UnauthorizedError: Error {}
+
     func start(
         host: String,
         token: String,
@@ -83,6 +87,10 @@ final class SyncEventListener: @unchecked Sendable {
                 backoffIndex = 0
             } catch is CancellationError {
                 return
+            } catch is UnauthorizedError {
+                print("[Sync:error] listener sin autorización (\(host)); se reintenta más tarde")
+                backoffIndex = backoffSteps.count - 1
+                try? await Task.sleep(nanoseconds: backoffSteps[backoffIndex])
             } catch is OpenedStreamError {
                 // Stream was open but then dropped mid-flight. Reconnect fast.
                 backoffIndex = 0
@@ -134,6 +142,9 @@ final class SyncEventListener: @unchecked Sendable {
         var didOpenStream = false
         do {
             let (bytes, response) = try await session.bytes(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
+                throw UnauthorizedError()
+            }
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 throw URLError(.badServerResponse)
             }

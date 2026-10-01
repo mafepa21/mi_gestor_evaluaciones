@@ -4063,6 +4063,11 @@ extension KmpBridge {
         pendingLocalSseChanges.removeAll()
         syncNeedsAnotherPass = false
         syncEventListener.stop()
+        guard let localToken = MacCommandCenterCoordinator.helperLocalToken else {
+            print("[Sync:error] helper ready sin contraseña local; no se inicia el listener")
+            return
+        }
+        syncToken = localToken
         pairedSyncHost = normalizedHost
         startSyncEventListenerIfPaired()
         startAutoSyncLoop()

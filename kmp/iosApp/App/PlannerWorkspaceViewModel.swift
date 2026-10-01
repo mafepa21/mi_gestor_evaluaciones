@@ -241,7 +241,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         let info = Bundle.main.infoDictionary
         let version = "\(info?["CFBundleShortVersionString"] as? String ?? "")-\(info?["CFBundleVersion"] as? String ?? "")"
         let groupIds = groups.map(\.id).sorted().map(String.init).joined(separator: ",")
-        let syncKey = "\(version)|\(groupIds)"
+        // "v2": corrige la comparación de días (UTC vs local) que duplicaba exámenes;
+        // fuerza una pasada más para que la deduplicación borre las copias.
+        let syncKey = "v2|\(version)|\(groupIds)"
         let defaultsKey = "planner.exams1Bach.lastSyncKey"
         guard UserDefaults.standard.string(forKey: defaultsKey) != syncKey else { return }
         do {

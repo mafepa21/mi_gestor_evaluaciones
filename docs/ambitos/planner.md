@@ -25,3 +25,6 @@
 - `PlannerWorkspaceViewModel.bind` marca `isLoaded` tras horario + semana; previsión, exámenes 1º Bach, planes de SA y mes llegan después. Una vista que dependa de esos datos no debe asumir que existen cuando `isLoaded` es `true`.
 - La sincronización de exámenes de 1º Bach se guarda en `UserDefaults` (`planner.exams1Bach.lastSyncKey`, versión + ids de grupo); para forzarla, borrar esa clave.
 - Los PRAGMA que devuelven fila (`mmap_size`) fallan con `driver.execute`: usar `executeQuery` y llamar a `cursor.next()`.
+- Un repositorio KMP sin `withContext(Dispatchers.Default)` corre la consulta en el hilo principal cuando lo llama Swift: la UI se congela. Comprobarlo antes de culpar a SwiftUI.
+- SyncLAN en Mac: la app habla con su helper con `MacCommandCenterCoordinator.helperLocalToken` (stdin, solo loopback). No volver a una contraseña fija.
+

@@ -1170,6 +1170,10 @@ final class LearningSituationDocumentImportTests: XCTestCase {
             ("SA 5 - Primeros Auxilios y RCP (1 BAC)", 3),
             ("SA 6 - Ultimate Frisbee (1 BAC)", 8),
             ("SA 7 - Acrosport y Evento Sostenible (1 BAC)", 8),
+            ("SA 2b - Challenge Yourself (1 BAC)", 8),
+            ("SA 3 - Building Health", 10),
+            ("SA 4 - Pilota Valenciana (1 BAC)", 6),
+            ("00 - Evaluación Inicial (1 BAC)", 4),
         ]
         for item in cases {
             let url = URL(fileURLWithPath: "\(root)/\(item.folder)/02_SESIONES/sesiones_secuenciadas.docx")

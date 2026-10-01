@@ -99,13 +99,21 @@ internal fun createAppleDriver(
 }
 
 private fun configureAppleSqlite(driver: SqlDriver) {
-    try {
-        driver.execute(null, "PRAGMA synchronous = NORMAL", 0)
-        driver.execute(null, "PRAGMA cache_size = -64000", 0)
-        driver.execute(null, "PRAGMA mmap_size = 268435456", 0)
-        driver.execute(null, "PRAGMA temp_store = MEMORY", 0)
-    } catch (e: Throwable) {
-        println("[AppleDriver] Warning applying performance pragmas: ${e.message}")
+    // Algunos PRAGMA de asignación devuelven una fila (mmap_size, por ejemplo) y
+    // sqliter rechaza ejecutarlos con `execute`. Con `executeQuery` funcionan todos,
+    // devuelvan fila o no. Cada uno va por separado para que un fallo no salte el resto.
+    listOf(
+        "PRAGMA synchronous = NORMAL",
+        "PRAGMA cache_size = -64000",
+        "PRAGMA mmap_size = 268435456",
+        "PRAGMA temp_store = MEMORY",
+    ).forEach { pragma ->
+        try {
+            // `next()` hace el step: sin él el PRAGMA no llega a ejecutarse.
+            driver.executeQuery(null, pragma, { cursor -> cursor.next(); QueryResult.Unit }, 0)
+        } catch (e: Throwable) {
+            println("[AppleDriver] Warning applying '$pragma': ${e.message}")
+        }
     }
 }
 

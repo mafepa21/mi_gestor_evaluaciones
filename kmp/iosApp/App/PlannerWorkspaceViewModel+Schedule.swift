@@ -239,14 +239,19 @@ extension PlannerWorkspaceViewModel {
         }
     }
 
-    func reloadScheduleConfiguration() async {
+    func reloadForecast() async {
+        guard let bridge else { return }
+        await scheduleStore.reloadForecast(bridge: bridge)
+        forecastRows = scheduleStore.forecastRows
+    }
+
+    func reloadScheduleConfiguration(includeForecast: Bool = true) async {
         guard let bridge else { return }
         scheduleFormGroupId = await scheduleStore.reload(bridge: bridge, groups: groups, scheduleFormGroupId: scheduleFormGroupId)
         teacherSchedule = scheduleStore.teacherSchedule
         teacherScheduleSlots = scheduleStore.teacherScheduleSlots
         weeklySlots = scheduleStore.weeklySlots
         evaluationPeriods = scheduleStore.evaluationPeriods
-        forecastRows = scheduleStore.forecastRows
         scheduleError = scheduleStore.scheduleError
         if let schedule = teacherSchedule {
             scheduleName = schedule.name
@@ -258,6 +263,9 @@ extension PlannerWorkspaceViewModel {
                     .compactMap { Int(String($0).trimmingCharacters(in: .whitespacesAndNewlines)) }
             )
             rebuildVisiblePlannerStructure()
+        }
+        if includeForecast {
+            await reloadForecast()
         }
     }
 

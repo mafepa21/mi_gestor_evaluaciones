@@ -677,16 +677,22 @@ final class PlannerScheduleStore: ObservableObject {
             if !slotsFailed && !periodsFailed {
                 scheduleError = ""
             }
-            do {
-                let loadedForecast = try await bridge.plannerForecast(scheduleId: schedule.id, classId: nil)
-                forecastRows = PlannerReloadPolicy.value(previous: forecastRows, next: loadedForecast, failed: false)
-            } catch {
-                forecastRows = PlannerReloadPolicy.value(previous: forecastRows, next: nil, failed: true)
-            }
             return scheduleFormGroupId ?? groups.first?.id
         } catch {
             scheduleError = error.localizedDescription
             return scheduleFormGroupId
+        }
+    }
+
+    /// La previsión recorre todo el curso y es la carga más lenta del horario.
+    /// Va aparte para que el grid semanal no espere por ella.
+    func reloadForecast(bridge: KmpBridge) async {
+        guard let schedule = teacherSchedule else { return }
+        do {
+            let loadedForecast = try await bridge.plannerForecast(scheduleId: schedule.id, classId: nil)
+            forecastRows = PlannerReloadPolicy.value(previous: forecastRows, next: loadedForecast, failed: false)
+        } catch {
+            forecastRows = PlannerReloadPolicy.value(previous: forecastRows, next: nil, failed: true)
         }
     }
 }

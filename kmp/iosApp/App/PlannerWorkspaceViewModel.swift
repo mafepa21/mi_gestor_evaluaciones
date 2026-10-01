@@ -13,6 +13,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     @Published var isLoaded = false
+    private var isBinding = false
     @Published var activeSection: PlannerWorkspaceSection = .week
     @Published var density: PlannerDensity = .standard
     @Published var groups: [SchoolClass] = []
@@ -169,18 +170,28 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
     }
 
+    /// Primera carga en dos fases: primero lo que pinta la semana (grupos, horario,
+    /// sesiones) y se marca `isLoaded`; después, sin bloquear el grid, lo que solo
+    /// enriquece (previsión del curso, exámenes de 1º Bach, planes de SA, mes).
     func bind(bridge: KmpBridge) async {
-        guard !isLoaded else { return }
+        guard !isLoaded, !isBinding else { return }
+        isBinding = true
+        defer { isBinding = false }
         self.bridge = bridge
         let current = IsoWeekHelper.shared.current()
         let currentIsoFallback = PlannerCalendar.currentIsoYearWeek
         week = Int(truncating: current.first ?? KotlinInt(value: Int32(currentIsoFallback.week)))
         year = Int(truncating: current.second ?? KotlinInt(value: Int32(currentIsoFallback.year)))
         timeSlots = bridge.plannerTimeSlots()
-        await reloadPlannerBootstrap()
-        await reloadScheduleOnly()
-        await reloadSessionsOnly(keepSelection: false)
+        await reloadPlannerGroups()
+        await reloadScheduleConfiguration(includeForecast: false)
+        await reloadWeekSessions(keepSelection: false)
         isLoaded = true
+
+        await reloadForecast()
+        await syncExamsIfNeeded()
+        await reloadSessionPlans()
+        await reloadMonthData()
     }
 
     func reloadAll(keepSelection: Bool = true) async {
@@ -211,15 +222,41 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     private func reloadPlannerBootstrap() async {
+        await reloadPlannerGroups()
+        await syncExamsIfNeeded()
+        await reloadSessionPlans()
+    }
+
+    private func reloadPlannerGroups() async {
         guard let bridge else { return }
         scheduleFormGroupId = await calendarStore.reloadBootstrap(bridge: bridge, scheduleFormGroupId: scheduleFormGroupId)
         groups = calendarStore.groups
         classColorHexById = calendarStore.classColorHexById
+    }
+
+    /// La sincronización lee todo el calendario y borra o crea eventos. Antes corría
+    /// en cada apertura; ahora solo cuando cambia la versión de la app o los grupos.
+    private func syncExamsIfNeeded() async {
+        guard let bridge else { return }
+        let info = Bundle.main.infoDictionary
+        let version = "\(info?["CFBundleShortVersionString"] as? String ?? "")-\(info?["CFBundleVersion"] as? String ?? "")"
+        let groupIds = groups.map(\.id).sorted().map(String.init).joined(separator: ",")
+        let syncKey = "\(version)|\(groupIds)"
+        let defaultsKey = "planner.exams1Bach.lastSyncKey"
+        guard UserDefaults.standard.string(forKey: defaultsKey) != syncKey else { return }
         do {
             _ = try await SchoolCalendarPreset2026_2027.sync1BachExams(bridge: bridge, groups: groups)
+            UserDefaults.standard.set(syncKey, forKey: defaultsKey)
+            // Puede haber creado o borrado exámenes: refrescar los hitos de la semana.
+            await reloadHolidays()
+            rebuildWeekRenderModel()
         } catch {
             bulkSummary = "No se pudieron sincronizar los exámenes de 1º Bachillerato."
         }
+    }
+
+    private func reloadSessionPlans() async {
+        guard let bridge else { return }
         do {
             let plans = try await bridge.learningSituationSessionPlansAll()
             sessionPlansById = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
@@ -241,6 +278,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
         sessions = sessionStore.sessions
         rebuildVisiblePlannerStructure()
+        // Pintar la semana ya; diarios y festivos la completan después.
+        rebuildWeekRenderModel()
         await reloadJournalSummaries()
         await reloadHolidays()
         rebuildWeekRenderModel()

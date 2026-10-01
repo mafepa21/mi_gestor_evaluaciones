@@ -2842,6 +2842,37 @@ struct LearningSituationSessionSequenceDocumentImportService {
             ))
         }
 
+        // Los diagramas del formato semanal se asocian al bloque (largo o corto) de la semana en
+        // cuyo rango de párrafos aparecen; el renderer los muestra junto al documento de la sesión.
+        if let anchors = try? wordDocumentImageAnchors(from: data), !anchors.isEmpty {
+            let ordinals = narrativeParagraphOrdinals(in: blocks)
+            var boundaries: [(ordinal: Int, week: Int, kind: WeekBlockKind)] = []
+            for (position, header) in weekHeaders.enumerated() {
+                let end = position + 1 < weekHeaders.count ? weekHeaders[position + 1].blockIndex : blocks.count
+                for index in (header.blockIndex + 1)..<end {
+                    guard case .paragraph(let text) = blocks[index],
+                          let heading = weekBlockHeading(text),
+                          let ordinal = ordinals[index] else { continue }
+                    boundaries.append((ordinal, header.number, heading.kind))
+                }
+            }
+            boundaries.sort { $0.ordinal < $1.ordinal }
+            for anchor in anchors {
+                guard let paragraphIndex = anchor.paragraphIndex,
+                      let owner = boundaries.last(where: { $0.ordinal <= paragraphIndex }) else { continue }
+                let role: LearningSituationWeeklyBlockRole = owner.kind == .long ? .long : .short
+                guard let planIndex = plans.firstIndex(where: { $0.weekKey == "week-\(owner.week)" && $0.blockRole == role }) else { continue }
+                plans[planIndex].visuals.append(LearningSituationSessionVisualDraft(
+                    sourceRelationshipID: anchor.relationshipID,
+                    title: anchor.title,
+                    altText: anchor.description,
+                    anchorText: anchor.contextText,
+                    unitKey: nil,
+                    sourceParagraphIndex: anchor.paragraphIndex
+                ))
+            }
+        }
+
         let activityIDPattern = try! NSRegularExpression(pattern: #"^W[0-9]{2}-[LS]-[0-9]{2}$"#)
         for plan in plans {
             let expectedBlock = plan.blockRole == .short ? "S" : "L"

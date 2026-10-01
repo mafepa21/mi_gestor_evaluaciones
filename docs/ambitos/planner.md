@@ -27,4 +27,5 @@
 - Los PRAGMA que devuelven fila (`mmap_size`) fallan con `driver.execute`: usar `executeQuery` y llamar a `cursor.next()`.
 - Un repositorio KMP sin `withContext(Dispatchers.Default)` corre la consulta en el hilo principal cuando lo llama Swift: la UI se congela. Comprobarlo antes de culpar a SwiftUI.
 - SyncLAN en Mac: la app habla con su helper con `MacCommandCenterCoordinator.helperLocalToken` (stdin, solo loopback). No volver a una contraseña fija.
+- Fechas de eventos: se guardan a las 00:00 locales. Nunca compararlas con `AppDateTimeSupport.isoDateString` (formatea en UTC); usar el calendario local.
 

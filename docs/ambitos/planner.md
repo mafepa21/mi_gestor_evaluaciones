@@ -21,3 +21,7 @@
 - "Ver más" detecta el recorte midiendo el texto completo oculto frente al limitado a 4 líneas; si se cambia la fuente de uno, cambiar la del otro.
 - `PlannerSessionMaterialChipsView`, `PlannerSessionZoneCardsView` y `PlannerFormattedTextView` quedaron sin usos en el visor (candidatos a limpiar en otro ticket); `PlannerSessionCLILBanner` se conserva porque lo usa `PlannerFormattedTextView`.
 - `xcodebuild` puede reescribir `*.xcscheme`: restaurar antes de commitear.
+- `AppleBridgeBootstrap.current()` abre un driver completo y lo deja abierto: para leer la ruta usar `AppleBridgeBootstrap.databasePath`, nunca `current().databasePath`.
+- `PlannerWorkspaceViewModel.bind` marca `isLoaded` tras horario + semana; previsión, exámenes 1º Bach, planes de SA y mes llegan después. Una vista que dependa de esos datos no debe asumir que existen cuando `isLoaded` es `true`.
+- La sincronización de exámenes de 1º Bach se guarda en `UserDefaults` (`planner.exams1Bach.lastSyncKey`, versión + ids de grupo); para forzarla, borrar esa clave.
+- Los PRAGMA que devuelven fila (`mmap_size`) fallan con `driver.execute`: usar `executeQuery` y llamar a `cursor.next()`.

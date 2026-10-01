@@ -11,6 +11,17 @@ El formato sigue una variante practica de Keep a Changelog:
 - `Docs`: documentacion relevante.
 - `Verification`: builds, tests, auditorias o evidencias.
 
+### Fixed
+
+- **Apertura fluida del Planner en macOS/iOS**:
+  - El grid semanal ya no enseña «Aún no has configurado tu horario» mientras carga: hasta la primera carga se ve un esqueleto con la forma del grid.
+  - `bind` carga primero grupos, horario y sesiones de la semana y pinta; después, sin bloquear, la previsión del curso, los exámenes de 1º Bach, los planes de SA y el mes.
+  - La previsión (`plannerForecast`) sale de `PlannerScheduleStore.reload` a `reloadForecast`.
+  - La sincronización de exámenes de 1º Bach (lee todo el calendario y borra/crea eventos) solo corre si cambian la versión de la app o los grupos.
+  - Al arrancar, la base de datos se abría 4 veces (`AppleBridgeBootstrap.current()` en KmpBridge, MacAppSessionController, AppleBackupService y AppleDatabaseRescueService). Ahora una: `AppleBridgeBootstrap.databasePath`/`platformName` dan la ruta sin abrir un driver.
+  - `configureAppleSqlite`: los PRAGMA se aplican con `executeQuery` (antes `mmap_size` y `temp_store` fallaban con «Queries can be performed using SQLiteDatabase query...»).
+  - Verificación: `scripts/verify_apple_builds.sh` (macOS y simulador iOS) OK; `MiGestorPlannerTests` (macOS) 231 tests, 4 omitidos: el primer intento dio 1 fallo no identificado y 3 repeticiones posteriores salieron en verde (posible test inestable). No se hizo QA manual al abrir la app ni se midió el tiempo de carga.
+
 ### Changed
 
 - **Visor de sesiones del Planner: modo repaso rápido**:

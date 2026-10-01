@@ -27,7 +27,8 @@ final class MacAppSessionController: ObservableObject {
     }
 
     let bridge = KmpBridge()
-    let bootstrap = AppleBridgeBootstrap.current()
+    /// Reutiliza el arranque del bridge: llamar a `current()` aquí abría otra base de datos.
+    var bootstrap: AppleBridgeBootstrap { bridge.appleBootstrap }
     let commandCenter = MacCommandCenterCoordinator()
     let backupStore: MacBackupStore
 

@@ -41,7 +41,7 @@ final class AppleDatabaseRescueService: ObservableObject {
 
     private init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
-        let dbPath = AppleBridgeBootstrap.current().databasePath
+        let dbPath = AppleBridgeBootstrap.databasePath
         self.databaseURL = URL(fileURLWithPath: dbPath)
         self.markerURL = URL(fileURLWithPath: dbPath + ".rescue_marker")
         checkForPendingRescue()

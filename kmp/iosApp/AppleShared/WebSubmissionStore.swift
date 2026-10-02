@@ -233,6 +233,8 @@ struct WebPublishResult {
     let folderPath: String
     let links: [WebPublishedLink]
     let linksText: String
+    /// Los enlaces llevan el manifiesto dentro (`&m=…`): no hay que subir el fichero.
+    var isSelfContained: Bool = false
 }
 
 enum WebSubmissionTaskStatus: String, CaseIterable, Hashable {

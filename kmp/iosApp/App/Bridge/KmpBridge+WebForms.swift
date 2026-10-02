@@ -498,7 +498,8 @@ extension KmpBridge {
             links: publicado.links.map {
                 WebPublishedLink(studentId: $0.studentId, studentName: $0.studentName, url: $0.url)
             },
-            linksText: WebSubmissionPublisher.linksText(for: publicado, title: detalle.template_.title)
+            linksText: WebSubmissionPublisher.linksText(for: publicado, title: detalle.template_.title),
+            isSelfContained: publicado.isSelfContained
         )
     }
 

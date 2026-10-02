@@ -1,6 +1,7 @@
 package com.migestor.desktop.sync
 
 import com.migestor.shared.sync.SyncChange
+import java.io.ByteArrayInputStream
 import java.net.InetAddress
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -8,6 +9,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class LocalSyncServerTest {
@@ -101,5 +103,75 @@ class LocalSyncServerTest {
         )
 
         assertEquals(ethernet, selected)
+    }
+
+    @Test
+    fun pairingPinExpiresAndRotatesAtItsDeadline() {
+        var now = 1_000L
+        var nextPin = 111_111
+        val pin = ExpiringPairingPin(
+            ttlMs = 10_000L,
+            clock = { now },
+            generator = { (nextPin++).toString() },
+        )
+
+        assertEquals("111111", pin.current().pin)
+        now = 10_999L
+        assertEquals(false, pin.current().rotated)
+        now = 11_000L
+
+        val rotated = pin.current()
+        assertTrue(rotated.rotated)
+        assertEquals("111112", rotated.pin)
+        assertEquals(21_000L, rotated.expiresAtEpochMs)
+    }
+
+    @Test
+    fun pairingAttemptsAreTemporarilyBlockedPerOriginAndRecover() {
+        var now = 1_000L
+        val limiter = PairingAttemptLimiter(
+            maxFailures = 3,
+            failureWindowMs = 10_000L,
+            lockoutMs = 20_000L,
+            clock = { now },
+        )
+
+        repeat(3) { limiter.recordFailure("192.168.1.30") }
+
+        assertEquals(false, limiter.isAllowed("192.168.1.30"))
+        assertTrue(limiter.isAllowed("192.168.1.31"))
+        now = 21_000L
+        assertTrue(limiter.isAllowed("192.168.1.30"))
+    }
+
+    @Test
+    fun successfulPairingClearsPreviousFailures() {
+        val limiter = PairingAttemptLimiter(maxFailures = 2)
+        limiter.recordFailure("192.168.1.30")
+        limiter.recordSuccess("192.168.1.30")
+        limiter.recordFailure("192.168.1.30")
+
+        assertTrue(limiter.isAllowed("192.168.1.30"))
+    }
+
+    @Test
+    fun pairingLimiterCapsTrackedOrigins() {
+        val limiter = PairingAttemptLimiter(maxFailures = 1, maxTrackedOrigins = 1)
+        limiter.recordFailure("192.168.1.30")
+        assertEquals(false, limiter.isAllowed("192.168.1.30"))
+
+        limiter.recordFailure("192.168.1.31")
+
+        assertTrue(limiter.isAllowed("192.168.1.30"))
+        assertEquals(false, limiter.isAllowed("192.168.1.31"))
+    }
+
+    @Test
+    fun boundedReaderRejectsChunkedBodiesBeyondTheLimit() {
+        val body = ByteArrayInputStream(ByteArray(33) { 1 })
+
+        assertFailsWith<RequestBodyTooLargeException> {
+            body.readBytesLimited(maxBytes = 32)
+        }
     }
 }

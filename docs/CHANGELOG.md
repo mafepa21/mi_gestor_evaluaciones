@@ -13,6 +13,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Entregas web: enlace autocontenido, sin subir el manifiesto al repo de la web**:
+  - `WebSubmissionPublisher.swift`: cada enlace personal lleva el manifiesto firmado comprimido (`&m=`, JSON compacto + deflate raw + base64url). Tope de 6000 caracteres: si algún enlace lo supera, ninguno lleva `m` y se vuelve al flujo de subir `public/manifiestos/<id>.json`.
+  - `WebSubmissionPublishSheet.swift`: con enlace autocontenido desaparece el paso «Sube el manifiesto a la web»; las URLs se muestran en una línea con truncado al medio. `WebPublishResult.isSelfContained` nuevo (por defecto `false`).
+  - Web `entregas-alumnado` (rama `codex/enlace-autocontenido`): `src/enlace.mjs` decodifica `m` con `DecompressionStream("deflate-raw")` y topes de tamaño; `m` roto avisa «This form is not trustworthy» sin caer al fichero; enlaces sin `m` siguen cargando el fichero. Debe desplegarse antes de repartir enlaces nuevos.
+  - Sin migración: el contrato del manifiesto y el importador no cambian.
+  - Verificación: web `npm test` 82/0 y `npm run validar` OK; `scripts/interop_entregas_web/verificar.sh` con `ENTREGAS_WEB_REPO` 88/0, incluida la prueba cruzada Swift → web; `scripts/verify_apple_builds.sh` macOS e iOS Simulator OK; en navegador (Vite local) un enlace generado por Swift abre el formulario sin pedir ningún manifiesto y un `m` alterado muestra el aviso. No probado: Safari del iPad real ni enlaces largos en Gmail/Outlook del centro.
+
+### Changed
+
 - **Visor de sesiones del Planner: modo repaso rápido**:
   - Una sola pantalla con un solo scroll (columna de 820 pt, igual en hoja e inspector). Se quitan Anterior/Siguiente, las pestañas Actividad/Anexos y las tarjetas Organización, Profesorado y Temporización.
   - Arriba: Objetivo, Montaje (viñetas cortas) y Atención. Debajo: guion por bloques con minutos, hora acumulada desde 00:00 (sin contar el descanso), tipo, título, descripción y consigna CLIL pegada al paso; diagrama ampliable en el paso principal; descanso y Recogida como filas.

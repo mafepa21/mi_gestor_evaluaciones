@@ -142,19 +142,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
-<<<<<<< HEAD
 - **Optimización integral de la pantalla de Asistencia docente**:
   - `AttendanceWorkspaceView.swift`: Eliminada la cabecera duplicada y las 4 tarjetas de métricas fijas que ocupaban más del 50% de la pantalla. Incorporada la sub-barra compacta `attendanceMetricsSubbar` con píldoras de filtro («Todos» / «Excepciones») y botón rápido «Marcar todos (P)». Erradicado el antipatrón de colapso de filas en `DisclosureGroup`: la lista de alumnos es ahora 100% continua, alfabética y estable. Inspector adaptativo por `horizontalSizeClass` (sheet modal en iPhone con detents .medium/.large, panel lateral derecho en iPad/Mac) desacoplado del pase rápido para evitar aperturas no deseadas. Toggle directo de lesión del alumno (`toggleStudentInjury`).
   - `MacAttendanceView.swift`: Paridad total en macOS. Eliminadas las 3 tarjetas de estadísticas fijas en Modo Día, sustituidas por `attendanceMetricsSubbar`. Eliminado `DisclosureGroup` colapsable (`presentSummaryDisclosure`) para mantener la lista continua y alfabética. Conexión de `AttendanceCompactRow` (52pt) y conservación plena de los atajos de teclado nativos (`.onKeyPress` para flechas y estados 'p', 'a', 'r', etc.) con avance de foco automático.
   - `MacAttendanceDayRow.swift`: Simplificado para delegar directamente en `AttendanceCompactRow`, preservando compatibilidad.
   - `IPadWorkspaceShell.swift`: Simplificado `AttendanceRowCard` para delegar en el nuevo `AttendanceCompactRow`.
   - `AttendanceShared.swift`: Añadidos `primaryOptions`, `secondaryOptions` y `accessibleTextColor(for:)`.
-=======
 - **Cuaderno: celdas del grid sin `AnyView`**: `rowCell` (`NotebookModuleGridCells.swift`) pasa a `@ViewBuilder` y delega en `columnRowCell` y `collapsedCategoryRowCell`, con tipos concretos que SwiftUI puede comparar. El fondo de cada celda deja de ser un `Rectangle` hermano en un `ZStack` y pasa a `.background`, una capa menos por celda. Se elimina `NotebookDynamicCellsRow.swift`, que no usaba ninguna pantalla.
 - **Cuaderno: cambiar de pestaña no anima el grid entero**: `NotebookTabButton` ya no envuelve `onSelect` en `withAnimation`. Como `bridge.selectedNotebookTabId` cambia en el acto, la animación arrastraba la reconstrucción de todas las celdas visibles. El deslizamiento de la pastilla se conserva con `.animation(_:value: activeTabId)` limitado al subárbol de `NotebookTabStrip`.
 - **Cuaderno: redimensionar una columna ya no guarda en cada movimiento**: `NotebookResizableHeader` separa `onWidthChange` (solo layout, sin animación) de `onWidthCommit` (al soltar). Antes cada píxel de arrastre llamaba a `bridge.saveColumn` y recargaba el cuaderno. La revisión de anchos entra en la firma de las filas (`gridStructuralInvalidationKey`) para que celdas y cabecera sigan alineadas durante el arrastre.
 - **Cuaderno: índice por columna en cada fila del grid**: `NotebookTableRow.lookup` (`NotebookModuleTypes.swift`) construye una sola vez por fila diccionarios de celdas y notas por columna y por evaluación. Las lecturas por celda visible de `NotebookModuleDisplayFormatting.swift`, `NotebookModuleGridCells.swift` y `NotebookEditableTableCell.swift` pasan de recorrer `persistedCells`/`persistedGrades` a una consulta directa, con la misma regla de "primera coincidencia".
->>>>>>> origin/develop
 - **Rediseño visual y adaptativo del Dashboard docente (Organic Precision v2.2)**:
   - `MacDashboardView.swift`: Unificación completa del Dashboard nativo de macOS con paridad de experiencia: cabecera con saludo horario dinámico y fecha localizada en español, selector segmented reactivo de modos (`Auto`, `Clase`, `Despacho`), Modo Clase centrado (`DashboardClassroomView` con ancho acotado a 680pt) y Modo Despacho reestructurado con franja compacta (`DashboardCompactHeroStrip`), KPIs compartidos a ancho completo y grid responsivo en 3 columnas analíticas (Agenda & Grupos, Radar IA & LOMLOE, Pendientes & Riesgo & Sistema) con fallback balanceado a 2 columnas. Eliminación de estructuras redundantes obsoletas (`DashboardHeroNowCard` y `DashboardQuickActionButton`).
   - `DashboardClassroomView.swift`: Nueva vista cockpit ultra-enfocada para el aula con tarjeta central dominante, tipografía grande (36pt rounded), tiempo transcurrido en tiempo real con `DashboardTimeProgressBar`, dos botones táctiles prominentes de 56pt (*Pasar lista* y *Nueva observación*) y barra inferior contextual con área táctil accesible.
@@ -554,6 +551,11 @@ El formato sigue una variante practica de Keep a Changelog:
 - Las imágenes narrativas se asocian por posición de párrafo además de por título/alt text, por lo que los DOCX que no incluyen `U##` en los metadatos de Word no mezclan apoyos visuales entre unidades.
 - Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
 - AppIcon nativo de Apple integrado mediante `AppIcon.icon` de Icon Composer para el target KMP de iPadOS y macOS, con rendiciones `Default` y `Dark` en una única fuente compartida.
+- Exportaciones Apple portables `.migestorbackupx` cifradas y autenticadas con
+  contraseña: formato versionado, PBKDF2-HMAC-SHA256, salt y nonces aleatorios,
+  AES-256-GCM por bloques y límites de tamaño. iOS/iPadOS y macOS ofrecen una acción
+  principal de exportación con confirmación de contraseña, no la guardan y pueden
+  importar tanto el formato nuevo como directorios `.migestorbackup` anteriores.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación directa de manifiestos JSON `mi_gestor.physical-tests-import` desde una Situación de Aprendizaje: valida pruebas personalizadas, escalas, batería y asignación, y crea sus columnas de marca en el Cuaderno de forma idempotente.
 - Captura contextual de pruebas físicas en el Cuaderno: las marcas de tiempo abren cronómetro y entrada manual, y las marcas de distancia o repeticiones usan teclado numérico.
@@ -638,6 +640,16 @@ El formato sigue una variante practica de Keep a Changelog:
 - Activación inicial iPad-first: al completar los cinco pasos de configuración,
   el onboarding ofrece "Abrir Hoy" y navega al cockpit operativo en iOS/iPadOS y
   macOS; bienvenida y checklist usan detents nativos y un drag indicator en iOS.
+- SyncLAN endurece el emparejamiento local: PIN aleatorio con caducidad de 10 minutos
+  y rotación tras vincular/desvincular, máximo de cinco fallos por origen en una
+  ventana de 60 segundos, bloqueo temporal, contador acotado y respuestas/logs que
+  no exponen PIN, token, dispositivo ni dirección remota. Los cuerpos quedan
+  limitados a 16 KiB en handshake, 2 MiB en cambios y 25 MiB en documentos.
+- Las copias Apple conservan el formato `.migestorbackup`, pero su verificación exige
+  ahora checksum principal coherente, cabecera SQLite, `PRAGMA integrity_check` y
+  `PRAGMA foreign_key_check`. La restauración materializa primero una instantánea
+  SQLite autocontenida y prepara base, evidencias y situaciones antes de instalarlas
+  con rollback inverso si falla cualquier paso.
 - Evaluación de rúbricas e instrumentos: la rúbrica individual amplía su área
   de trabajo para mostrar sus cuatro niveles; los selectores numéricos aceptan
   pulsaciones en toda su superficie y la primera columna de la evaluación masiva
@@ -682,6 +694,11 @@ El formato sigue una variante practica de Keep a Changelog:
 - Situaciones de aprendizaje: se añaden lecturas bulk para enlaces de grupo, versiones de secuencia
   y planes de sesión, eliminando el patrón N+1 usado por Situaciones, Cuaderno y Planificador sin
   cambiar el esquema ni requerir migración.
+- La cadena canónica SQLDelight v34→v41 queda cubierta sin ejecutar
+  `RescueMigrations`: el test compara tablas, columnas, índices y claves foráneas de
+  una base actualizada con una base recién creada. No se añade una migración porque
+  no existe un gap reproducible en el camino soportado; el rescate se conserva como
+  fallback para instalaciones históricas con drift.
 - Se añadió la migración 41 con la marca `archived` de `web_form_instances` y operaciones
   SQLDelight transaccionales por lote. No se crean tablas nuevas ni se sincronizan las
   tablas privadas `web_*`.
@@ -727,6 +744,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - ADR `ADR-2026-08-21-session-plan-v2-quick-view.md`: contrato versionado para QUICK VIEW, compatibilidad legacy y persistencia sin migración SQLDelight.
 - ADR `ADR-2026-08-15-bulk-learning-situation-reads.md`: decisión de centralizar las lecturas
   relacionadas con Situaciones en consultas bulk y resolver sus relaciones en memoria en la capa Apple.
+- ADRs de endurecimiento del pairing SyncLAN y de restauración transaccional Apple;
+  el cifrado autenticado de exportaciones se mantiene como trabajo futuro explícito
+  para no romper copias existentes ni improvisar una UX de contraseña.
 - Auditoría y propuesta de rediseño de los instrumentos de evaluación del Cuaderno:
   shell común `Evaluation Workspace`, Liquid Glass reservado al chrome y superficies
   sólidas para el contenido evaluable. Incluye rúbrica individual, evaluación masiva,
@@ -838,6 +858,20 @@ El formato sigue una variante practica de Keep a Changelog:
   snapshot UI del Cuaderno en estado normal sin botón de reintento permanente.
 - `git diff --check`: correcto.
 
+- `./scripts/verify_apple_builds.sh` (2026-08-09, compatibilidad de
+  `MacStudentsView`): XcodeGen correcto; macOS Native e iOS Simulator compilados
+  correctamente.
+- `./scripts/verify_apple_builds.sh` (2026-08-09): XcodeGen correcto; macOS Native
+  e iOS Simulator compilados correctamente.
+- `./gradlew :shared:desktopTest :data:desktopTest`: `BUILD SUCCESSFUL`.
+- `./gradlew :data:desktopTest --tests com.migestor.desktop.sync.LocalSyncServerTest`:
+  `BUILD SUCCESSFUL`.
+- `./gradlew :data:desktopTest --tests com.migestor.data.migration.UpgradePathRegressionTest`:
+  `BUILD SUCCESSFUL`.
+- `xcodebuild ... -only-testing:MiGestorPlannerTests/AppleBackupIntegrityTests test`:
+  4 tests, 0 fallos (`TEST SUCCEEDED`).
+- `xcodebuild -quiet ... -scheme MiGestorKMPiOS ... build` tras el ajuste final de
+  rutas: código de salida 0; solo warnings preexistentes en `KmpBridge.swift`.
 - `./scripts/verify_apple_builds.sh` (2026-08-04): XcodeGen correcto; macOS Native e
   iOS Simulator compilados correctamente.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorPlannerTests
@@ -909,6 +943,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- `MacStudentsView` separa en helpers tipados la lista de alumnado visible y el manejo
+  del cambio de selección observados por `appOnChange`, evitando que Xcode 26.6 agote
+  el type-checker sin cambiar la selección ni los efectos asociados.
 - Planificador, vista Secuencia/Gantt: la ventana móvil de 13 semanas deja de estar
   anclada permanentemente a la semana actual; incorpora navegación explícita a la
   ventana anterior y siguiente, con etiquetas de semanas visibles y continuidad

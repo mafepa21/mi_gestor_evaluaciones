@@ -5,6 +5,7 @@ struct MacBackupInspectorView: View {
     @ObservedObject var store: MacBackupStore
     @State private var restoreCandidate: MacBackupRecord?
     @State private var showRestoreConfirmation = false
+    @State private var backupToExport: AppleBackupDescriptor?
 
     var body: some View {
         ScrollView {
@@ -65,7 +66,7 @@ struct MacBackupInspectorView: View {
                         .buttonStyle(.bordered)
 
                         Button {
-                            store.exportSelectedBackup()
+                            backupToExport = backup.descriptor
                         } label: {
                             Label("Exportar backup", systemImage: "square.and.arrow.up")
                                 .frame(maxWidth: .infinity)
@@ -83,6 +84,15 @@ struct MacBackupInspectorView: View {
             .padding(MacAppStyle.pagePadding)
         }
         .background(MacAppStyle.pageBackground)
+        .sheet(item: $backupToExport) { backup in
+            EncryptedBackupExportSheet(
+                backup: backup,
+                onExport: { destinationURL, password in
+                    try await store.exportEncryptedBackup(backup, to: destinationURL, password: password)
+                },
+                onFinished: { await store.loadBackups() }
+            )
+        }
         .confirmationDialog(
             "Restaurar backup",
             isPresented: $showRestoreConfirmation,

@@ -135,6 +135,10 @@ class PlannerRepositorySqlDelight(
         }
     }
 
+    override suspend fun getSession(id: Long): PlanningSession? = withContext(Dispatchers.Default) {
+        db.plannerQueries.selectSessionById(id).executeAsOneOrNull()?.let(::mapToDomain)
+    }
+
     override suspend fun listAllSessions(): List<PlanningSession> = withContext(Dispatchers.Default) {
         db.plannerQueries.selectAllSessions()
             .executeAsList()
@@ -143,28 +147,8 @@ class PlannerRepositorySqlDelight(
 
     override suspend fun upsertSession(session: PlanningSession): Long = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
-        val date = sessionDate(session).toString()
         db.transactionWithResult {
-            db.plannerQueries.upsertSession(
-                id = if (session.id == 0L) null else session.id,
-                date = date,
-                group_id = session.groupId,
-                period = session.period.toLong(),
-                unit_id = if (session.teachingUnitId == 0L) null else session.teachingUnitId,
-                objectives = session.objectives,
-                activities = session.activities,
-                evaluation = session.evaluation,
-                linked_assessment_ids_csv = session.linkedAssessmentIdsCsv,
-                teacher_schedule_slot_id = session.teacherScheduleSlotId,
-                start_time = session.startTime,
-                end_time = session.endTime,
-                status = session.status.name,
-                learning_situation_session_plan_id = session.learningSituationSessionPlanId,
-                updated_at_epoch_ms = now,
-                device_id = null,
-                sync_version = 0L
-            )
-            if (session.id == 0L) db.plannerQueries.lastInsertedId().executeAsOne() else session.id
+            persistSession(session, now)
         }
     }
 
@@ -173,27 +157,7 @@ class PlannerRepositorySqlDelight(
         val ids = mutableListOf<Long>()
         db.transaction {
             sessions.forEach { session ->
-                val now = Clock.System.now().toEpochMilliseconds()
-                db.plannerQueries.upsertSession(
-                    id = if (session.id == 0L) null else session.id,
-                    date = sessionDate(session).toString(),
-                    group_id = session.groupId,
-                    period = session.period.toLong(),
-                    unit_id = if (session.teachingUnitId == 0L) null else session.teachingUnitId,
-                    objectives = session.objectives,
-                    activities = session.activities,
-                    evaluation = session.evaluation,
-                    linked_assessment_ids_csv = session.linkedAssessmentIdsCsv,
-                    teacher_schedule_slot_id = session.teacherScheduleSlotId,
-                    start_time = session.startTime,
-                    end_time = session.endTime,
-                    status = session.status.name,
-                    learning_situation_session_plan_id = session.learningSituationSessionPlanId,
-                    updated_at_epoch_ms = now,
-                    device_id = null,
-                    sync_version = 0L
-                )
-                ids += if (session.id == 0L) db.plannerQueries.lastInsertedId().executeAsOne() else session.id
+                ids += persistSession(session, Clock.System.now().toEpochMilliseconds())
             }
         }
         ids
@@ -430,6 +394,7 @@ class PlannerRepositorySqlDelight(
         val previous = mutableListOf<SessionPlacement>()
         val next = mutableListOf<SessionPlacement>()
         val completed = mutableListOf<Long>()
+        val cancelled = mutableListOf<Long>()
         val candidates = sessions
             .filter { it.groupId == source.groupId && it.id != source.id }
             .toMutableList()
@@ -440,7 +405,11 @@ class PlannerRepositorySqlDelight(
         while (true) {
             previous += movedSession.toPlacement()
             next += resolvedPlacement(movedSession, destinationDate, destinationPeriod)
-            if (movedSession.status == SessionStatus.COMPLETED) completed += movedSession.id
+            when (movedSession.status) {
+                SessionStatus.COMPLETED -> completed += movedSession.id
+                SessionStatus.CANCELLED -> cancelled += movedSession.id
+                else -> Unit
+            }
 
             val occupied = candidates.firstOrNull {
                 sessionDate(it) == destinationDate && it.period == destinationPeriod
@@ -452,11 +421,21 @@ class PlannerRepositorySqlDelight(
             destinationPeriod = nextDestination.second
         }
 
+        val crossesWeek = next.any { it.weekNumber != source.weekNumber || it.year != source.year }
+        if (!request.forceTerminalSessions && (completed.isNotEmpty() || cancelled.isNotEmpty())) {
+            return SessionCascadeMovePreview(
+                completedSessionIds = completed,
+                cancelledSessionIds = cancelled,
+                crossesWeekBoundary = crossesWeek,
+            )
+        }
+
         return SessionCascadeMovePreview(
             previousPlacements = previous,
             nextPlacements = next,
             completedSessionIds = completed,
-            crossesWeekBoundary = next.any { it.weekNumber != source.weekNumber || it.year != source.year },
+            cancelledSessionIds = cancelled,
+            crossesWeekBoundary = crossesWeek,
         )
     }
 
@@ -490,12 +469,7 @@ class PlannerRepositorySqlDelight(
             .executeAsList()
             .getOrNull(period - 1)
         val fallback = DEFAULT_TIME_SLOTS.firstOrNull { it.period == period }
-        val week = IsoWeekHelper.isoWeekOf(date)
-        val isoYear = when {
-            date.monthNumber == 12 && week == 1 -> date.year + 1
-            date.monthNumber == 1 && week >= 52 -> date.year - 1
-            else -> date.year
-        }
+        val (week, isoYear) = IsoWeekHelper.of(date)
         return SessionPlacement(
             sessionId = session.id,
             weekNumber = week,
@@ -580,8 +554,8 @@ class PlannerRepositorySqlDelight(
                 groupId = destinationGroupId,
                 dayOfWeek = destinationDate.dayOfWeek.isoDayNumber,
                 period = destinationPeriod,
-                weekNumber = IsoWeekHelper.isoWeekOf(destinationDate),
-                year = destinationDate.year
+                weekNumber = IsoWeekHelper.of(destinationDate).first,
+                year = IsoWeekHelper.of(destinationDate).second
             )
             relocations += SessionRelocationItem(source = sourceSession, destination = destination)
         }
@@ -590,13 +564,67 @@ class PlannerRepositorySqlDelight(
     }
 
     private fun insertPlannerSession(session: PlanningSession): Long {
-        val now = Clock.System.now().toEpochMilliseconds()
-        db.plannerQueries.upsertSession(
-            id = if (session.id == 0L) null else session.id,
-            date = sessionDate(session).toString(),
+        return persistSession(session, Clock.System.now().toEpochMilliseconds())
+    }
+
+    /**
+     * Con id, actualiza solo esa fila. Si aún no existe, la inserta con ese id.
+     * Sin id, inserta por hueco (fecha, grupo, periodo) y, si ya hay una, actualiza esa.
+     */
+    private fun persistSession(session: PlanningSession, now: Long): Long {
+        val date = sessionDate(session).toString()
+        val unitId = if (session.teachingUnitId == 0L) null else session.teachingUnitId
+        val period = session.period.toLong()
+        if (session.id != 0L) {
+            val exists = db.plannerQueries.selectSessionById(session.id).executeAsOneOrNull() != null
+            if (exists) {
+                db.plannerQueries.updateSessionById(
+                    date = date,
+                    group_id = session.groupId,
+                    period = period,
+                    unit_id = unitId,
+                    objectives = session.objectives,
+                    activities = session.activities,
+                    evaluation = session.evaluation,
+                    linked_assessment_ids_csv = session.linkedAssessmentIdsCsv,
+                    teacher_schedule_slot_id = session.teacherScheduleSlotId,
+                    start_time = session.startTime,
+                    end_time = session.endTime,
+                    learning_situation_session_plan_id = session.learningSituationSessionPlanId,
+                    status = session.status.name,
+                    updated_at_epoch_ms = now,
+                    device_id = null,
+                    sync_version = 0L,
+                    id = session.id,
+                )
+            } else {
+                db.plannerQueries.insertSessionWithId(
+                    id = session.id,
+                    date = date,
+                    group_id = session.groupId,
+                    period = period,
+                    unit_id = unitId,
+                    objectives = session.objectives,
+                    activities = session.activities,
+                    evaluation = session.evaluation,
+                    linked_assessment_ids_csv = session.linkedAssessmentIdsCsv,
+                    teacher_schedule_slot_id = session.teacherScheduleSlotId,
+                    start_time = session.startTime,
+                    end_time = session.endTime,
+                    status = session.status.name,
+                    learning_situation_session_plan_id = session.learningSituationSessionPlanId,
+                    updated_at_epoch_ms = now,
+                    device_id = null,
+                    sync_version = 0L,
+                )
+            }
+            return session.id
+        }
+        db.plannerQueries.insertSessionBySlot(
+            date = date,
             group_id = session.groupId,
-            period = session.period.toLong(),
-            unit_id = if (session.teachingUnitId == 0L) null else session.teachingUnitId,
+            period = period,
+            unit_id = unitId,
             objectives = session.objectives,
             activities = session.activities,
             evaluation = session.evaluation,
@@ -608,9 +636,39 @@ class PlannerRepositorySqlDelight(
             learning_situation_session_plan_id = session.learningSituationSessionPlanId,
             updated_at_epoch_ms = now,
             device_id = null,
-            sync_version = 0L
+            sync_version = 0L,
         )
-        return if (session.id == 0L) db.plannerQueries.lastInsertedId().executeAsOne() else session.id
+        return db.plannerQueries.selectSessionIdBySlot(
+            date = date,
+            group_id = session.groupId,
+            period = period,
+        ).executeAsOne()
+    }
+
+    private fun mapToDomain(row: com.migestor.data.db.SelectSessionById): PlanningSession {
+        val date = LocalDate.parse(row.date)
+        val iso = IsoWeekHelper.of(date)
+        return PlanningSession(
+            id = row.id,
+            teachingUnitId = row.unit_id ?: 0,
+            teachingUnitName = row.unit_name ?: "",
+            teachingUnitColor = row.unit_color ?: "#4A90D9",
+            groupId = row.group_id,
+            groupName = row.group_name,
+            dayOfWeek = date.dayOfWeek.isoDayNumber,
+            period = row.period.toInt(),
+            weekNumber = iso.first,
+            year = iso.second,
+            objectives = row.objectives ?: "",
+            activities = row.activities ?: "",
+            evaluation = row.evaluation ?: "",
+            linkedAssessmentIdsCsv = row.linked_assessment_ids_csv,
+            teacherScheduleSlotId = row.teacher_schedule_slot_id,
+            startTime = row.start_time,
+            endTime = row.end_time,
+            learningSituationSessionPlanId = row.learning_situation_session_plan_id,
+            status = try { SessionStatus.valueOf(row.status ?: "PLANNED") } catch (e: Exception) { SessionStatus.PLANNED }
+        )
     }
 
     private fun mapToDomain(row: com.migestor.data.db.SelectSessionsForWeek): PlanningSession {
@@ -624,8 +682,8 @@ class PlannerRepositorySqlDelight(
             groupName = row.group_name,
             dayOfWeek = date.dayOfWeek.isoDayNumber,
             period = row.period.toInt(),
-            weekNumber = IsoWeekHelper.isoWeekOf(date),
-            year = date.year,
+            weekNumber = IsoWeekHelper.of(date).first,
+            year = IsoWeekHelper.of(date).second,
             objectives = row.objectives ?: "",
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",
@@ -649,8 +707,8 @@ class PlannerRepositorySqlDelight(
             groupName = row.group_name,
             dayOfWeek = date.dayOfWeek.isoDayNumber,
             period = row.period.toInt(),
-            weekNumber = IsoWeekHelper.isoWeekOf(date),
-            year = date.year,
+            weekNumber = IsoWeekHelper.of(date).first,
+            year = IsoWeekHelper.of(date).second,
             objectives = row.objectives ?: "",
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",
@@ -674,8 +732,8 @@ class PlannerRepositorySqlDelight(
             groupName = row.group_name,
             dayOfWeek = date.dayOfWeek.isoDayNumber,
             period = row.period.toInt(),
-            weekNumber = IsoWeekHelper.isoWeekOf(date),
-            year = date.year,
+            weekNumber = IsoWeekHelper.of(date).first,
+            year = IsoWeekHelper.of(date).second,
             objectives = row.objectives ?: "",
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",
@@ -699,8 +757,8 @@ class PlannerRepositorySqlDelight(
             groupName = row.group_name,
             dayOfWeek = date.dayOfWeek.isoDayNumber,
             period = row.period.toInt(),
-            weekNumber = IsoWeekHelper.isoWeekOf(date),
-            year = date.year,
+            weekNumber = IsoWeekHelper.of(date).first,
+            year = IsoWeekHelper.of(date).second,
             objectives = row.objectives ?: "",
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",

@@ -9,10 +9,120 @@ import MiGestorKit
 
 enum AttendanceBoardMode: String, CaseIterable, Identifiable {
     case day = "Día"
+    case matrix = "Matriz"
     case history = "Historial"
     case courses = "Cursos"
 
     var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .day: return "person.crop.circle.badge.checkmark"
+        case .matrix: return "tablecells"
+        case .history: return "clock.arrow.circlepath"
+        case .courses: return "square.grid.2x2"
+        }
+    }
+}
+
+enum AttendanceMatrixRange: String, CaseIterable, Identifiable {
+    case month = "Mes actual"
+    case quarter1 = "1er Trimestre"
+    case quarter2 = "2º Trimestre"
+    case quarter3 = "3er Trimestre"
+    case fullYear = "Todo el curso"
+
+    var id: String { rawValue }
+
+    func dateRange(relativeTo date: Date = Date()) -> (start: Date, end: Date) {
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: date)
+        let month = calendar.component(.month, from: date)
+        let schoolStartYear = month >= 8 ? year : year - 1
+
+        switch self {
+        case .month:
+            let start = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) ?? date
+            let end = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: start) ?? date
+            return (calendar.startOfDay(for: start), calendar.date(bySettingHour: 23, minute: 59, second: 59, of: end) ?? end)
+
+        case .quarter1:
+            let startComp = DateComponents(year: schoolStartYear, month: 9, day: 1)
+            let endComp = DateComponents(year: schoolStartYear, month: 12, day: 22, hour: 23, minute: 59, second: 59)
+            return (calendar.date(from: startComp) ?? date, calendar.date(from: endComp) ?? date)
+
+        case .quarter2:
+            let startComp = DateComponents(year: schoolStartYear + 1, month: 1, day: 7)
+            let endComp = DateComponents(year: schoolStartYear + 1, month: 3, day: 31, hour: 23, minute: 59, second: 59)
+            return (calendar.date(from: startComp) ?? date, calendar.date(from: endComp) ?? date)
+
+        case .quarter3:
+            let startComp = DateComponents(year: schoolStartYear + 1, month: 4, day: 1)
+            let endComp = DateComponents(year: schoolStartYear + 1, month: 6, day: 30, hour: 23, minute: 59, second: 59)
+            return (calendar.date(from: startComp) ?? date, calendar.date(from: endComp) ?? date)
+
+        case .fullYear:
+            let startComp = DateComponents(year: schoolStartYear, month: 9, day: 1)
+            let endComp = DateComponents(year: schoolStartYear + 1, month: 6, day: 30, hour: 23, minute: 59, second: 59)
+            return (calendar.date(from: startComp) ?? date, calendar.date(from: endComp) ?? date)
+        }
+    }
+}
+
+struct AttendanceMatrixStudentStats: Identifiable {
+    let student: Student
+    var id: Int64 { student.id }
+    let presentCount: Int
+    let absentCount: Int
+    let lateCount: Int
+    let justifiedCount: Int
+    let noMaterialCount: Int
+    let exemptCount: Int
+    let totalSessions: Int
+
+    var attendanceRate: Int {
+        guard totalSessions > 0 else { return 100 }
+        let attended = presentCount + lateCount + exemptCount
+        return min(100, max(0, Int(round(Double(attended) / Double(totalSessions) * 100.0))))
+    }
+
+    var attendanceRateColor: Color {
+        if attendanceRate >= 90 { return AppleDesignSystem.success }
+        if attendanceRate >= 80 { return AppleDesignSystem.warning }
+        return AppleDesignSystem.danger
+    }
+}
+
+extension Student {
+    var initials: String {
+        let first = firstName.prefix(1)
+        let last = lastName.prefix(1)
+        let combined = "\(first)\(last)".trimmingCharacters(in: .whitespacesAndNewlines)
+        return combined.isEmpty ? "—" : combined.uppercased()
+    }
+
+    static func mock(
+        id: Int64,
+        firstName: String,
+        lastName: String,
+        isInjured: Bool = false
+    ) -> Student {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let now = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        let trace = AuditTrace(authorUserId: nil, createdAt: now, updatedAt: now, associatedGroupId: nil, deviceId: nil, syncVersion: 0)
+        return Student(
+            id: id,
+            firstName: firstName,
+            lastName: lastName,
+            email: nil,
+            photoPath: nil,
+            isInjured: isInjured,
+            sex: .unspecified,
+            sexSource: .unknown,
+            birthDate: nil,
+            trace: trace
+        )
+    }
 }
 
 struct AttendanceStatusOption: Identifiable, Hashable {
@@ -26,7 +136,28 @@ struct AttendanceStatusOption: Identifiable, Hashable {
         .init(id: "AUSENTE", label: "Ausente", shortLabel: "A", color: AppleDesignSystem.danger),
         .init(id: "TARDE", label: "Retraso", shortLabel: "R", color: AppleDesignSystem.warning),
         .init(id: "JUSTIFICADO", label: "Justificada", shortLabel: "J", color: .gray),
-        .init(id: "SIN_MATERIAL", label: "Sin material", shortLabel: "M", color: .brown),
+        .init(id: "SIN_MATERIAL", label: "Sin material", shortLabel: "M", color: .purple),
+        .init(id: "EXENTO", label: "Exento", shortLabel: "E", color: .indigo)
+    ]
+
+    var accessibleTextColor: Color {
+        switch id {
+        case "PRESENTE", "TARDE":
+            return Color.black // WCAG AAA high contrast (9.4:1 y 8.5:1)
+        default:
+            return Color.white
+        }
+    }
+
+    static let primaryOptions: [AttendanceStatusOption] = [
+        .init(id: "PRESENTE", label: "Presente", shortLabel: "P", color: AppleDesignSystem.success),
+        .init(id: "AUSENTE", label: "Ausente", shortLabel: "A", color: AppleDesignSystem.danger),
+        .init(id: "TARDE", label: "Retraso", shortLabel: "R", color: AppleDesignSystem.warning),
+        .init(id: "SIN_MATERIAL", label: "Sin material", shortLabel: "M", color: .purple)
+    ]
+
+    static let secondaryOptions: [AttendanceStatusOption] = [
+        .init(id: "JUSTIFICADO", label: "Justificada", shortLabel: "J", color: .gray),
         .init(id: "EXENTO", label: "Exento", shortLabel: "E", color: .indigo)
     ]
 
@@ -64,7 +195,33 @@ struct AttendanceHistorySelection: Identifiable {
     }
 }
 
+/// Búsqueda y tamaño de la sábana de asistencia (matriz).
+/// La UI usa filas lazy para no montar todas las celdas de golpe.
+enum AttendanceMatrixSearch {
+    static func nameMatches(_ fullName: String, query: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        return fullName.localizedCaseInsensitiveContains(trimmed)
+    }
+
+    static func filteredFullNames(_ names: [String], query: String) -> [String] {
+        names.filter { nameMatches($0, query: query) }
+    }
+
+    /// Celdas alumno×fecha si las filas se construyen todas a la vez.
+    static func eagerCellCount(studentCount: Int, dateCount: Int) -> Int {
+        max(0, studentCount) * max(0, dateCount)
+    }
+}
+
 enum AttendanceLogic {
+    static let reloadFailureMessage = "No se pudo cargar la asistencia. Se mantienen las marcas que ya ves."
+    static let sideReloadFailureMessage = "No se pudo cargar el resto del pase. Se mantiene lo que ya ves."
+
+    static func listAfterFailedReload<T>(_ loaded: [T]?, previous: [T]) -> [T] {
+        loaded ?? previous
+    }
+
     static func isPresentStatus(_ status: String?) -> Bool {
         status?.uppercased().contains("PRESENT") == true
     }

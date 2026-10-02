@@ -151,13 +151,14 @@ extension PlannerWorkspaceViewModel {
             }
             .map { session in
                 let summary = summary(for: session.id)
+                let glance = sessionGlance(for: session)
                 let sections = previewSections(
                     teachingUnitName: session.teachingUnitName,
                     objective: session.objectives,
                     activity: session.activities,
                     evaluation: session.evaluation
                 )
-                let preview = sections.first?.value ?? preferredPreviewText(
+                let preview = glance.objective ?? glance.activity ?? sections.first?.value ?? preferredPreviewText(
                     objective: session.objectives,
                     activity: session.activities,
                     evaluation: session.evaluation
@@ -171,8 +172,9 @@ extension PlannerWorkspaceViewModel {
                     classColorHex: classColorHex(for: session.groupId),
                     dayOfWeek: Int(session.dayOfWeek),
                     period: Int(session.period),
-                    title: session.teachingUnitName,
+                    title: glance.sessionTitle,
                     preview: preview,
+                    sessionGlance: glance,
                     sectionPreviews: sections,
                     sessionId: session.id,
                     sessionStatus: session.status,
@@ -183,6 +185,8 @@ extension PlannerWorkspaceViewModel {
             }
 
         let existingClassIds = Set(sessionEntries.map(\.classId))
+        let dayMilestonesForDay = dayMilestones[day] ?? []
+
         let scheduledEntries = teacherScheduleSlots
             .filter { slot in
                 guard Int(slot.dayOfWeek) == day else { return false }
@@ -195,8 +199,38 @@ extension PlannerWorkspaceViewModel {
                 let rhsName = groups.first(where: { $0.id == rhs.schoolClassId })?.name ?? ""
                 return lhsName < rhsName
             }
-            .map { slot in
-                PlannerWeekCellEntry(
+            .map { slot -> PlannerWeekCellEntry in
+                let blockingMilestone = dayMilestonesForDay.first { m in
+                    m.isBlocking && (m.classId == nil || m.classId == slot.schoolClassId)
+                }
+
+                if let blocking = blockingMilestone {
+                    let groupName = groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)"
+                    return PlannerWeekCellEntry(
+                        id: "blocked-\(slot.id)",
+                        kind: .blockedSlot,
+                        classId: slot.schoolClassId,
+                        className: groupName,
+                        classColorHex: classColorHex(for: slot.schoolClassId),
+                        dayOfWeek: Int(slot.dayOfWeek),
+                        period: period,
+                        title: blocking.title,
+                        preview: blocking.subtitle ?? "Horas de EF bloqueadas por exámenes",
+                        sessionGlance: nil,
+                        sectionPreviews: [
+                            PlannerSectionPreview(title: "Curso", value: groupName),
+                            PlannerSectionPreview(title: "Motivo", value: blocking.title),
+                            PlannerSectionPreview(title: "Estado", value: "Bloqueado (No lectivo)")
+                        ],
+                        sessionId: nil,
+                        sessionStatus: nil,
+                        journalStatus: nil,
+                        scheduledSlotId: slot.id,
+                        isCompleted: false
+                    )
+                }
+
+                return PlannerWeekCellEntry(
                     id: "slot-\(slot.id)",
                     kind: .scheduledSlot,
                     classId: slot.schoolClassId,
@@ -206,6 +240,7 @@ extension PlannerWorkspaceViewModel {
                     period: period,
                     title: slot.unitLabel?.nilIfBlank ?? slot.subjectLabel.nilIfBlank ?? "Franja preparada",
                     preview: slot.subjectLabel.nilIfBlank ?? "Pendiente de concretar",
+                    sessionGlance: nil,
                     sectionPreviews: [
                         PlannerSectionPreview(title: "Curso", value: groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)"),
                         PlannerSectionPreview(title: "Bloque", value: slot.unitLabel?.nilIfBlank ?? slot.subjectLabel.nilIfBlank ?? "Pendiente")
@@ -217,6 +252,7 @@ extension PlannerWorkspaceViewModel {
                     isCompleted: false
                 )
             }
+
 
         return sessionEntries + scheduledEntries
     }
@@ -257,13 +293,48 @@ extension PlannerWorkspaceViewModel {
     func reloadHolidays() async {
         guard let bridge else { return }
         do {
-            let events = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
+            let allEvents = try await bridge.plannerAllCalendarEvents()
             let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(week), year: Int32(year))
             var holidays: Set<Int> = []
-            
+            var milestonesByDay: [Int: [PlannerDayMilestone]] = [:]
+
             let calendar = Calendar.current
-            
+            let groupsById = Dictionary(groups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+
+            let weekEvents: [CalendarEvent]
+            if let firstDay = days.first, let lastDay = days.last {
+                var startComponents = DateComponents()
+                startComponents.year = Int(firstDay.year)
+                startComponents.month = Int(firstDay.monthNumber)
+                startComponents.day = Int(firstDay.dayOfMonth)
+                startComponents.hour = 0
+                startComponents.minute = 0
+                startComponents.second = 0
+                var endComponents = DateComponents()
+                endComponents.year = Int(lastDay.year)
+                endComponents.month = Int(lastDay.monthNumber)
+                endComponents.day = Int(lastDay.dayOfMonth)
+                endComponents.hour = 23
+                endComponents.minute = 59
+                endComponents.second = 59
+                if let weekStart = calendar.date(from: startComponents),
+                   let weekEnd = calendar.date(from: endComponents) {
+                    weekEvents = PlannerCalendarRange.overlapping(
+                        events: allEvents,
+                        rangeStartMs: Int64(weekStart.timeIntervalSince1970 * 1000),
+                        rangeEndMs: Int64(weekEnd.timeIntervalSince1970 * 1000)
+                    )
+                } else {
+                    weekEvents = allEvents
+                }
+            } else {
+                weekEvents = allEvents
+            }
+
             for (index, dayDate) in days.enumerated() {
+                let dayOfWeek = index + 1
+                let dateIso = String(format: "%04d-%02d-%02d", dayDate.year, dayDate.monthNumber, dayDate.dayOfMonth)
+
                 var components = DateComponents()
                 components.year = Int(dayDate.year)
                 components.month = Int(dayDate.monthNumber)
@@ -271,29 +342,131 @@ extension PlannerWorkspaceViewModel {
                 components.hour = 0
                 components.minute = 0
                 components.second = 0
-                
+
                 guard let startOfDay = calendar.date(from: components) else { continue }
                 let startMs = Int64(startOfDay.timeIntervalSince1970 * 1000)
-                
+
                 components.hour = 23
                 components.minute = 59
                 components.second = 59
                 guard let endOfDay = calendar.date(from: components) else { continue }
                 let endMs = Int64(endOfDay.timeIntervalSince1970 * 1000)
-                
-                for event in events {
+
+                var dayList: [PlannerDayMilestone] = []
+
+                for event in weekEvents {
                     let eventStartMs = event.startAt.toEpochMilliseconds()
-                    if eventStartMs >= startMs && eventStartMs <= endMs {
-                        holidays.insert(index + 1)
-                        break
+                    let eventEndMs = event.endAt.toEpochMilliseconds()
+                    let overlaps = PlannerCalendarRange.overlaps(
+                        eventStartMs: eventStartMs,
+                        eventEndMs: eventEndMs,
+                        rangeStartMs: startMs,
+                        rangeEndMs: endMs
+                    )
+                    guard overlaps else { continue }
+
+                    let titleLower = event.title.lowercased()
+                    let descLower = (event.description_ ?? "").lowercased()
+                    let haystack = "\(titleLower) \(descLower)"
+
+                    let category: PlannerMilestoneCategory
+                    if haystack.contains("examen") || haystack.contains("parcial") || haystack.contains("global") {
+                        category = .exam
+                    } else if event.classId != nil || haystack.contains("viaje") || haystack.contains("salida") || haystack.contains("toledo") || haystack.contains("pirineos") || haystack.contains("agullent") {
+                        category = .trip
+                    } else if haystack.contains("reunión") || haystack.contains("notas") || haystack.contains("graduación") || haystack.contains("claustro") || haystack.contains("educamos") {
+                        category = .milestone
+                    } else {
+                        category = .holiday
+                    }
+
+                    let isBlocking = haystack.contains("no lectivo") ||
+                        haystack.contains("festivo") ||
+                        haystack.contains("vacaciones") ||
+                        haystack.contains("puente") ||
+                        haystack.contains("examen") ||
+                        haystack.contains("parcial") ||
+                        haystack.contains("global")
+
+
+                    let className = event.classId.flatMap { groupsById[$0.int64Value] }
+
+                    let milestone = PlannerDayMilestone(
+                        id: "evt-\(event.id)-\(dayOfWeek)",
+                        title: event.title,
+                        subtitle: event.description_,
+                        category: category,
+                        dayOfWeek: dayOfWeek,
+                        dateIso: dateIso,
+                        classId: event.classId?.int64Value,
+                        className: className,
+                        isBlocking: isBlocking
+                    )
+                    dayList.append(milestone)
+
+                    // Si el evento bloquea (para todos o para el grupo seleccionado):
+                    if isBlocking {
+                        if let selectedGroupId {
+                            if event.classId == nil || event.classId?.int64Value == selectedGroupId {
+                                holidays.insert(dayOfWeek)
+                            }
+                        } else {
+                            if event.classId == nil {
+                                holidays.insert(dayOfWeek)
+                            }
+                        }
                     }
                 }
+
+                // Añadir hitos de periodos de evaluación si coinciden exactamente hoy
+                for period in evaluationPeriods {
+                    if period.startDateIso == dateIso {
+                        dayList.append(PlannerDayMilestone(
+                            id: "eval-start-\(period.id)-\(dayOfWeek)",
+                            title: "Inicio \(period.name)",
+                            subtitle: "Arranca el periodo lectivo de \(period.name)",
+                            category: .evaluation,
+                            dayOfWeek: dayOfWeek,
+                            dateIso: dateIso,
+                            classId: nil,
+                            className: nil,
+                            isBlocking: false
+                        ))
+                    }
+                    if period.endDateIso == dateIso {
+                        dayList.append(PlannerDayMilestone(
+                            id: "eval-end-\(period.id)-\(dayOfWeek)",
+                            title: "Cierre \(period.name)",
+                            subtitle: "Fin del periodo de evaluación de \(period.name)",
+                            category: .evaluation,
+                            dayOfWeek: dayOfWeek,
+                            dateIso: dateIso,
+                            classId: nil,
+                            className: nil,
+                            isBlocking: false
+                        ))
+                    }
+                }
+
+                if !dayList.isEmpty {
+                    milestonesByDay[dayOfWeek] = dayList
+                }
             }
+
+            self.dayMilestones = milestonesByDay
             self.holidayDays = holidays
             rebuildWeekRenderModel()
         } catch {
-            print("Error al cargar festivos: \(error)")
+            bulkSummary = "No se pudieron cargar los festivos. Se mantienen los que ya ves."
         }
+    }
+
+
+    func dayDateIso(for day: Int) -> String? {
+        let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(week), year: Int32(year))
+        guard day >= 1 && day <= days.count else { return nil }
+        let d = days[day - 1]
+        return String(format: "%04d-%02d-%02d", d.year, d.monthNumber, d.dayOfMonth)
     }
 
     func toggleHoliday(for day: Int) async {
@@ -302,7 +475,13 @@ extension PlannerWorkspaceViewModel {
         guard day >= 1 && day <= days.count else { return }
         let targetDate = days[day - 1]
         
-        let events = (try? await bridge.plannerNonTeachingCalendarEvents(classId: nil)) ?? []
+        let allEvents: [CalendarEvent]
+        do {
+            allEvents = try await bridge.plannerAllCalendarEvents()
+        } catch {
+            bulkSummary = PlannerCalendarLoad.holidayReadFailure
+            return
+        }
         let calendar = Calendar.current
         
         var components = DateComponents()
@@ -322,34 +501,39 @@ extension PlannerWorkspaceViewModel {
         guard let endOfDay = calendar.date(from: components) else { return }
         let endEpochMs = Int64(endOfDay.timeIntervalSince1970 * 1000)
         
-        let existingEvent = events.first { event in
+        let blockingEvents = allEvents.filter { event in
             let eventStartMs = event.startAt.toEpochMilliseconds()
-            return eventStartMs >= startEpochMs && eventStartMs <= endEpochMs
+            let eventEndMs = event.endAt.toEpochMilliseconds()
+            let overlaps = max(eventStartMs, startEpochMs) <= min(eventEndMs, endEpochMs)
+            guard overlaps else { return false }
+            let haystack = "\(event.title) \(event.description_ ?? "")".lowercased()
+            return haystack.contains("festivo") ||
+                   haystack.contains("no lectivo") ||
+                   haystack.contains("vacaciones") ||
+                   haystack.contains("puente") ||
+                   haystack.contains("holiday")
         }
         
         do {
-            if let event = existingEvent {
-                _ = try await bridge.plannerSaveCalendarEvent(
-                    id: event.id,
-                    classId: nil,
-                    title: "Lectivo",
-                    description: "Clase ordinaria",
-                    startEpochMs: event.startAt.toEpochMilliseconds(),
-                    endEpochMs: event.endAt.toEpochMilliseconds()
-                )
+            if !blockingEvents.isEmpty {
+                for event in blockingEvents {
+                    try await bridge.plannerDeleteCalendarEvent(id: event.id)
+                }
             } else {
                 _ = try await bridge.plannerSaveCalendarEvent(
                     id: nil,
                     classId: nil,
-                    title: "Festivo",
-                    description: "Día no lectivo",
+                    title: "Día no lectivo",
+                    description: "Festivo / no lectivo",
                     startEpochMs: startEpochMs,
                     endEpochMs: endEpochMs
                 )
             }
-            await reloadWeekSessions()
+            await reloadHolidays()
+            rebuildVisiblePlannerStructure()
+            rebuildWeekRenderModel()
         } catch {
-            print("Error al alternar festivo: \(error)")
+            bulkSummary = PlannerCalendarLoad.holidaySaveFailure
         }
     }
 

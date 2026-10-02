@@ -488,68 +488,194 @@ private func dashboardNowActions(
     context: DashboardSessionContext,
     onAction: @escaping (DashboardNowAction) -> Void
 ) -> some View {
-    // Con el grupo delante solo caben las tres acciones que se usan de verdad.
-    // Fuera de clase, la tarjeta ofrece preparar en vez de ejecutar.
-    let actions: [DashboardNowAction] = context.status == .active
-        ? [.passList, .observation, .evaluate]
-        : [.openPlanner, .openNotebook]
+    // La tarjeta Ahora debe responder una sola pregunta: "¿qué hago ahora?".
+    // El resto de acciones siguen disponibles, pero no compiten con la acción
+    // que corresponde al estado de la franja lectiva.
+    let primaryAction: DashboardNowAction = context.status == .active
+        ? .passList
+        : .openNotebook
+    let secondaryActions: [DashboardNowAction] = context.status == .active
+        ? [.observation, .evaluate, .openNotebook]
+        : [.openPlanner]
 
-    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-        ForEach(actions) { action in
-            Button {
-                onAction(action)
-            } label: {
-                Label(action.title, systemImage: action.systemImage)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .frame(maxWidth: .infinity, minHeight: 44)
+    VStack(alignment: .leading, spacing: 8) {
+        Text(dashboardNowPrimaryHint(for: context))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+        Button {
+            onAction(primaryAction)
+        } label: {
+            HStack(spacing: 12) {
+                Label(
+                    dashboardNowPrimaryTitle(for: primaryAction, context: context),
+                    systemImage: primaryAction.systemImage
+                )
+                .font(.headline)
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "arrow.right")
+                    .font(.subheadline.weight(.bold))
             }
-            .buttonStyle(.bordered)
-            .tint(action == .evaluate ? EvaluationDesign.accent : nil)
-            .disabled(context.classId == nil)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
         }
-        if let sessionId = context.sessionId, context.status == .active {
-            Button {
-                onAction(.openJournal)
-            } label: {
-                Label(DashboardNowAction.openJournal.title, systemImage: DashboardNowAction.openJournal.systemImage)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .frame(maxWidth: .infinity, minHeight: 44)
+        .buttonStyle(.borderedProminent)
+        .tint(EvaluationDesign.accent)
+        .disabled(context.classId == nil)
+        .accessibilityHint(dashboardNowPrimaryHint(for: context))
+
+        Menu {
+            ForEach(secondaryActions) { action in
+                Button {
+                    onAction(action)
+                } label: {
+                    Label(action.title, systemImage: action.systemImage)
+                }
+                .disabled(context.classId == nil)
             }
-            .buttonStyle(.bordered)
-            .accessibilityLabel("Abrir diario de la sesión \(sessionId)")
+
+            if let sessionId = context.sessionId, context.status == .active {
+                Divider()
+                Button {
+                    onAction(.openJournal)
+                } label: {
+                    Label(
+                        DashboardNowAction.openJournal.title,
+                        systemImage: DashboardNowAction.openJournal.systemImage
+                    )
+                }
+                .accessibilityLabel("Abrir diario de la sesión \(sessionId)")
+            }
+        } label: {
+            Label("Más acciones", systemImage: "ellipsis.circle")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 40)
         }
+        .buttonStyle(.bordered)
+    }
+}
+
+private func dashboardNowPrimaryTitle(
+    for action: DashboardNowAction,
+    context: DashboardSessionContext
+) -> String {
+    if action == .openNotebook && context.status != .active {
+        return "Preparar cuaderno"
+    }
+    return action.title
+}
+
+private func dashboardNowPrimaryHint(for context: DashboardSessionContext) -> String {
+    switch context.status {
+    case .active:
+        return "Empieza por registrar la asistencia del grupo."
+    case .nextToday:
+        return "Deja preparado el grupo para la próxima clase de hoy."
+    case .nextOtherDay:
+        return "Deja preparado el grupo para la próxima clase."
+    default:
+        return "Elige la siguiente acción para continuar."
     }
 }
 
 // MARK: - KPI row
 
+struct DashboardKpiItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let value: String
+    let icon: String
+    let tint: Color
+    let isNumeric: Bool
+}
+
 @ViewBuilder
-func dashboardKpiRow(snapshot: DashboardSnapshot, colorScheme: ColorScheme) -> some View {
-    HStack(spacing: 12) {
-        dashboardKpiCard(title: "Hoy", value: "\(snapshot.todayCount)", isNumeric: true, colorScheme: colorScheme)
-        dashboardKpiCard(title: "Alertas", value: "\(snapshot.alertsCount)", isNumeric: true, colorScheme: colorScheme)
-        dashboardKpiCard(title: "Pendientes", value: "\(snapshot.pendingCount)", isNumeric: true, colorScheme: colorScheme)
-        dashboardKpiCard(title: "Próxima sesión", value: snapshot.nextSessionLabel, isNumeric: false, colorScheme: colorScheme)
+func dashboardKpiRow(snapshot: DashboardSnapshot, colorScheme: ColorScheme, isCompact: Bool = false) -> some View {
+    let cards = [
+        DashboardKpiItem(
+            title: "Sesiones hoy",
+            value: "\(snapshot.todayCount)",
+            icon: "calendar",
+            tint: EvaluationDesign.accent,
+            isNumeric: true
+        ),
+        DashboardKpiItem(
+            title: "Alertas",
+            value: "\(snapshot.alertsCount)",
+            icon: "exclamationmark.triangle.fill",
+            tint: snapshot.alertsCount > 0 ? IOSAppStyle.warning : .secondary,
+            isNumeric: true
+        ),
+        DashboardKpiItem(
+            title: "Pendientes",
+            value: "\(snapshot.pendingCount)",
+            icon: "checklist",
+            tint: snapshot.pendingCount > 0 ? EvaluationDesign.accent : .secondary,
+            isNumeric: true
+        ),
+        DashboardKpiItem(
+            title: "Próxima sesión",
+            value: snapshot.nextSessionLabel.isEmpty ? "Sin horario" : snapshot.nextSessionLabel,
+            icon: "clock.fill",
+            tint: .secondary,
+            isNumeric: false
+        )
+    ]
+
+    if isCompact {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            ForEach(cards) { card in
+                dashboardEnhancedKpiCard(card: card, colorScheme: colorScheme)
+            }
+        }
+    } else {
+        HStack(spacing: 12) {
+            ForEach(cards) { card in
+                dashboardEnhancedKpiCard(card: card, colorScheme: colorScheme)
+            }
+        }
     }
 }
 
 @ViewBuilder
-private func dashboardKpiCard(title: String, value: String, isNumeric: Bool, colorScheme: ColorScheme) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
-        Text(title).font(.footnote).foregroundStyle(.secondary)
-        if isNumeric {
-            Text(value)
-                .font(.system(.title, design: .rounded).weight(.bold))
+private func dashboardEnhancedKpiCard(card: DashboardKpiItem, colorScheme: ColorScheme) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+        HStack(spacing: 8) {
+            Image(systemName: card.icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(card.tint)
+            Text(card.title)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+
+        if card.isNumeric {
+            Text(card.value)
+                .font(.system(size: 24, weight: .black, design: .rounded))
                 .monospacedDigit()
+                .foregroundStyle(card.value != "0" && card.tint != .secondary ? card.tint : .primary)
                 .lineLimit(1)
         } else {
-            Text(value).font(.headline).lineLimit(2)
+            Text(card.value)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
         }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(12)
+    .padding(16)
     .background(appCardBackground(for: colorScheme))
     .cornerRadius(12)
+    .overlay(
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), lineWidth: 1)
+    )
+    .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("\(card.title): \(card.value)")
 }
 
 // MARK: - Resumen por grupo

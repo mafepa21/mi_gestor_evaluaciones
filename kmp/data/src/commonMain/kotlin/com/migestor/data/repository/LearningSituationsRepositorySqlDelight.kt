@@ -138,19 +138,13 @@ class LearningSituationsRepositorySqlDelight(
     override suspend fun listSessionSequenceVersions(learningSituationId: Long): List<LearningSituationSessionSequenceVersion> =
         withContext(Dispatchers.Default) {
             db.appDatabaseQueries.selectLearningSituationSequenceVersions(learningSituationId).executeAsList().map { row ->
-                LearningSituationSessionSequenceVersion(
-                    id = row.id,
-                    learningSituationId = row.learning_situation_id,
-                    versionNumber = row.version_number.toInt(),
-                    originalFileName = row.original_file_name,
-                    sha256 = row.sha256,
-                    localPath = row.local_path,
-                    sizeBytes = row.size_bytes,
-                    payloadJson = row.payload_json,
-                    warningsJson = row.warnings_json,
-                    trace = trace(row.created_at_epoch_ms, row.updated_at_epoch_ms, row.device_id, row.sync_version),
-                )
+                toSequenceVersion(row)
             }
+        }
+
+    override suspend fun listAllSessionSequenceVersions(): List<LearningSituationSessionSequenceVersion> =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.selectAllLearningSituationSequenceVersions().executeAsList().map(::toSequenceVersion)
         }
 
     override suspend fun saveSessionPlan(plan: LearningSituationSessionPlan): Long = withContext(Dispatchers.Default) {
@@ -183,6 +177,10 @@ class LearningSituationsRepositorySqlDelight(
         db.appDatabaseQueries.selectLearningSituationSessionPlans(sequenceVersionId).executeAsList().map(::toSessionPlan)
     }
 
+    override suspend fun listAllSessionPlans(): List<LearningSituationSessionPlan> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllLearningSituationSessionPlans().executeAsList().map(::toSessionPlan)
+    }
+
     override suspend fun getSessionPlan(id: Long): LearningSituationSessionPlan? = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.selectLearningSituationSessionPlanById(id).executeAsOneOrNull()?.let(::toSessionPlan)
     }
@@ -206,12 +204,12 @@ class LearningSituationsRepositorySqlDelight(
 
     override suspend fun listClassLinks(learningSituationId: Long): List<LearningSituationClassLink> = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.selectLearningSituationClassLinks(learningSituationId).executeAsList().map { row ->
-            LearningSituationClassLink(
-                learningSituationId = row.learning_situation_id,
-                classId = row.class_id,
-                trace = trace(row.created_at_epoch_ms, row.updated_at_epoch_ms, row.device_id, row.sync_version),
-            )
+            toClassLink(row)
         }
+    }
+
+    override suspend fun listAllClassLinks(): List<LearningSituationClassLink> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllLearningSituationClassLinks().executeAsList().map(::toClassLink)
     }
 
     override suspend fun saveLinkedResource(resource: LearningSituationLinkedResource): Long = withContext(Dispatchers.Default) {
@@ -310,6 +308,27 @@ class LearningSituationsRepositorySqlDelight(
             material = row.material,
             developmentJson = row.development_json,
             adaptationsJson = row.adaptations_json,
+            trace = trace(row.created_at_epoch_ms, row.updated_at_epoch_ms, row.device_id, row.sync_version),
+        )
+
+    private fun toSequenceVersion(row: com.migestor.data.db.Learning_situation_sequence_versions): LearningSituationSessionSequenceVersion =
+        LearningSituationSessionSequenceVersion(
+            id = row.id,
+            learningSituationId = row.learning_situation_id,
+            versionNumber = row.version_number.toInt(),
+            originalFileName = row.original_file_name,
+            sha256 = row.sha256,
+            localPath = row.local_path,
+            sizeBytes = row.size_bytes,
+            payloadJson = row.payload_json,
+            warningsJson = row.warnings_json,
+            trace = trace(row.created_at_epoch_ms, row.updated_at_epoch_ms, row.device_id, row.sync_version),
+        )
+
+    private fun toClassLink(row: com.migestor.data.db.Learning_situation_classes): LearningSituationClassLink =
+        LearningSituationClassLink(
+            learningSituationId = row.learning_situation_id,
+            classId = row.class_id,
             trace = trace(row.created_at_epoch_ms, row.updated_at_epoch_ms, row.device_id, row.sync_version),
         )
 

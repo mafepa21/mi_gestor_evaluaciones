@@ -14,12 +14,16 @@ import com.migestor.shared.domain.SessionJournalMediaType
 import com.migestor.shared.domain.SessionJournalStatus
 import com.migestor.shared.domain.SessionJournalSummary
 import com.migestor.shared.repository.SessionJournalRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class SessionJournalRepositorySqlDelight(
     private val db: AppDatabase,
 ) : SessionJournalRepository {
 
-    override suspend fun getOrCreateJournal(session: PlanningSession): SessionJournalAggregate {
+    override suspend fun getOrCreateJournal(session: PlanningSession): SessionJournalAggregate = withContext(Dispatchers.Default) { getOrCreateJournalBlocking(session) }
+
+    private suspend fun getOrCreateJournalBlocking(session: PlanningSession): SessionJournalAggregate {
         getJournalForSession(session.id)?.let { return it }
         val journal = SessionJournal(
             planningSessionId = session.id,
@@ -37,7 +41,9 @@ class SessionJournalRepositorySqlDelight(
             ?: aggregate.copy(journal = aggregate.journal.copy(id = savedId))
     }
 
-    override suspend fun getJournalForSession(planningSessionId: Long): SessionJournalAggregate? {
+    override suspend fun getJournalForSession(planningSessionId: Long): SessionJournalAggregate? = withContext(Dispatchers.Default) { getJournalForSessionBlocking(planningSessionId) }
+
+    private suspend fun getJournalForSessionBlocking(planningSessionId: Long): SessionJournalAggregate? {
         val row = db.plannerQueries.selectJournalBySession(planningSessionId).executeAsOneOrNull() ?: return null
         val journal = row.toDomain()
         return SessionJournalAggregate(
@@ -83,7 +89,9 @@ class SessionJournalRepositorySqlDelight(
         )
     }
 
-    override suspend fun listSummariesForSessions(planningSessionIds: List<Long>): List<SessionJournalSummary> {
+    override suspend fun listSummariesForSessions(planningSessionIds: List<Long>): List<SessionJournalSummary> = withContext(Dispatchers.Default) { listSummariesForSessionsBlocking(planningSessionIds) }
+
+    private suspend fun listSummariesForSessionsBlocking(planningSessionIds: List<Long>): List<SessionJournalSummary> {
         if (planningSessionIds.isEmpty()) return emptyList()
         return db.plannerQueries.selectJournalSummariesBySessions(planningSessionIds)
             .executeAsList()
@@ -102,7 +110,13 @@ class SessionJournalRepositorySqlDelight(
             }
     }
 
-    override suspend fun saveJournalAggregate(aggregate: SessionJournalAggregate): Long {
+    override suspend fun sessionIdsWithMaterial(): Set<Long> = withContext(Dispatchers.Default) {
+        db.plannerQueries.selectSessionIdsWithMaterial().executeAsList().toSet()
+    }
+
+    override suspend fun saveJournalAggregate(aggregate: SessionJournalAggregate): Long = withContext(Dispatchers.Default) { saveJournalAggregateBlocking(aggregate) }
+
+    private suspend fun saveJournalAggregateBlocking(aggregate: SessionJournalAggregate): Long {
         return db.transactionWithResult {
             val journal = aggregate.journal
             db.plannerQueries.upsertJournal(
@@ -193,7 +207,9 @@ class SessionJournalRepositorySqlDelight(
         }
     }
 
-    override suspend fun deleteJournalForSession(planningSessionId: Long) {
+    override suspend fun deleteJournalForSession(planningSessionId: Long) = withContext(Dispatchers.Default) { deleteJournalForSessionBlocking(planningSessionId) }
+
+    private suspend fun deleteJournalForSessionBlocking(planningSessionId: Long) {
         db.plannerQueries.deleteJournalBySession(planningSessionId)
     }
 

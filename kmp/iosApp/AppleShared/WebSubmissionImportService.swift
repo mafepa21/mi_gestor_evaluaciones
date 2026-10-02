@@ -69,6 +69,8 @@ struct WebFormManifest: Codable {
     let expiresAt: String
     /// Correo al que el alumnado manda su entrega. Solo lo usa la web.
     let deliveryEmail: String?
+    /// Modo del formulario: "self" o "peer"
+    let mode: String?
 }
 
 struct WebSubmissionEnvelope: Codable {
@@ -92,10 +94,16 @@ struct WebAnswer: Codable {
     let text: String?
 }
 
+struct WebTargetPayload: Codable {
+    let targetAlias: String
+    let answers: [WebAnswer]
+}
+
 struct WebSubmissionPayload: Codable {
     let schemaVersion: Int
     let formInstanceId: String
-    let answers: [WebAnswer]
+    let answers: [WebAnswer]?
+    let targets: [WebTargetPayload]?
 }
 
 // MARK: - Errores
@@ -121,7 +129,7 @@ enum WebSubmissionImportError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unsupportedSchemaVersion(let v):
-            return "La entrega usa la versión \(v) del formato y esta app entiende la 1."
+            return "La entrega usa la versión \(v) del formato y esta app entiende las versiones 1 y 2."
         case .notJSON(let detalle):
             return "El fichero no es una entrega legible: \(detalle)"
         case .manifestNotSigned:
@@ -401,6 +409,40 @@ struct WebSubmissionDraft: Identifiable {
     let requiredTotal: Int
     let requiredAnswered: Int
     let missingRequiredTitles: [String]
+    let targetAlias: String?
+    let isPeerEvaluation: Bool
+
+    init(
+        submissionId: String,
+        formInstanceId: String,
+        alias: String,
+        studentId: Int64?,
+        studentName: String?,
+        classId: Int64,
+        columnId: String,
+        clientSubmittedAt: String,
+        answers: [WebResolvedAnswer],
+        requiredTotal: Int,
+        requiredAnswered: Int,
+        missingRequiredTitles: [String],
+        targetAlias: String? = nil,
+        isPeerEvaluation: Bool = false
+    ) {
+        self.submissionId = submissionId
+        self.formInstanceId = formInstanceId
+        self.alias = alias
+        self.studentId = studentId
+        self.studentName = studentName
+        self.classId = classId
+        self.columnId = columnId
+        self.clientSubmittedAt = clientSubmittedAt
+        self.answers = answers
+        self.requiredTotal = requiredTotal
+        self.requiredAnswered = requiredAnswered
+        self.missingRequiredTitles = missingRequiredTitles
+        self.targetAlias = targetAlias
+        self.isPeerEvaluation = isPeerEvaluation
+    }
 
     /// Si no se ha podido resolver a quién pertenece, el docente tiene que
     /// asignarlo a mano antes de importar.
@@ -437,6 +479,8 @@ protocol WebSubmissionContextResolver {
     func formInstance(formInstanceId: String) -> WebFormInstanceContext?
     /// alias -> alumno, dentro de ese formulario.
     func studentId(formInstanceId: String, alias: String) -> Int64?
+    /// Coevaluación: (evaluatorAlias, targetAlias) -> targetStudentId
+    func peerTargetStudentId(formInstanceId: String, evaluatorAlias: String, targetAlias: String) -> Int64?
     /// Nombre para mostrar en la previsualización.
     func studentName(studentId: Int64) -> String?
     /// `webItemId` -> `notebook_instrument_items.id`.
@@ -454,6 +498,25 @@ struct WebFormInstanceContext {
     let privateKeyRef: String
     let revoked: Bool
     let expiresAtEpochMs: Int64
+    let mode: String
+
+    init(
+        formInstanceId: String,
+        classId: Int64,
+        columnId: String,
+        privateKeyRef: String,
+        revoked: Bool,
+        expiresAtEpochMs: Int64,
+        mode: String = "self"
+    ) {
+        self.formInstanceId = formInstanceId
+        self.classId = classId
+        self.columnId = columnId
+        self.privateKeyRef = privateKeyRef
+        self.revoked = revoked
+        self.expiresAtEpochMs = expiresAtEpochMs
+        self.mode = mode
+    }
 }
 
 // MARK: - Servicio
@@ -464,6 +527,7 @@ struct WebSubmissionImportService {
     var now: () -> Date = { Date() }
 
     static let supportedSchemaVersion = 1
+    static let supportedSchemaVersions: Set<Int> = [1, 2]
 
     /// Examina varios ficheros `.mgsub` y devuelve qué se puede importar.
     /// No escribe nada.
@@ -492,23 +556,37 @@ struct WebSubmissionImportService {
                 if let rawManifest = manifestJSONByFormInstanceId[envelope.formInstanceId] {
                     try WebSubmissionCrypto.verifyManifestSignature(rawManifestJSON: rawManifest)
                 }
-                let borrador = try examine(data: fichero.data, manifest: manifest)
+                let borradores = try examineAll(data: fichero.data, manifest: manifest)
 
-                if resultado.drafts.contains(where: { $0.submissionId == borrador.submissionId }) {
-                    throw WebSubmissionImportError.duplicatedSubmission(borrador.submissionId)
+                for borrador in borradores {
+                    if resultado.drafts.contains(where: { $0.submissionId == borrador.submissionId }) {
+                        throw WebSubmissionImportError.duplicatedSubmission(borrador.submissionId)
+                    }
+
+                    // Comprobación de duplicados:
+                    // En autoevaluación, no se permiten dos entregas para el mismo alumno.
+                    // En coevaluación, se permiten varias evaluaciones de distintos evaluadores para el mismo alumno evaluado,
+                    // pero no dos entregas del mismo evaluador para el mismo alumno evaluado.
+                    if let alumno = borrador.studentId {
+                        if borrador.isPeerEvaluation {
+                            if resultado.drafts.contains(where: {
+                                $0.formInstanceId == borrador.formInstanceId &&
+                                $0.studentId == alumno &&
+                                $0.alias == borrador.alias
+                            }) {
+                                throw WebSubmissionImportError.duplicatedStudent(borrador.alias)
+                            }
+                        } else {
+                            if resultado.drafts.contains(where: {
+                                $0.formInstanceId == borrador.formInstanceId && $0.studentId == alumno
+                            }) {
+                                throw WebSubmissionImportError.duplicatedStudent(borrador.alias)
+                            }
+                        }
+                    }
+
+                    resultado.drafts.append(borrador)
                 }
-
-                // Nunca se sobreescribe silenciosamente la misma celda si dos
-                // ficheros representan al mismo alumno y formulario. Se conserva
-                // el primero y el segundo queda visible como rechazo explicable.
-                if let alumno = borrador.studentId,
-                   resultado.drafts.contains(where: {
-                       $0.formInstanceId == borrador.formInstanceId && $0.studentId == alumno
-                   }) {
-                    throw WebSubmissionImportError.duplicatedStudent(borrador.alias)
-                }
-
-                resultado.drafts.append(borrador)
             } catch let yaEsta as YaImportada {
                 resultado.alreadyImported.append(
                     WebSubmissionAlreadyImported(
@@ -545,9 +623,17 @@ struct WebSubmissionImportService {
 
     /// Examina UNA entrega. Lanza con el motivo si no se puede importar.
     func examine(data: Data, manifest: WebFormManifest) throws -> WebSubmissionDraft {
+        guard let primero = try examineAll(data: data, manifest: manifest).first else {
+            throw WebSubmissionImportError.noAnswers
+        }
+        return primero
+    }
+
+    /// Examina UNA entrega completa (que en coevaluación puede contener evaluaciones para múltiples compañeros).
+    func examineAll(data: Data, manifest: WebFormManifest) throws -> [WebSubmissionDraft] {
         let envelope = try decodeEnvelope(from: data)
 
-        guard envelope.schemaVersion == Self.supportedSchemaVersion else {
+        guard Self.supportedSchemaVersions.contains(envelope.schemaVersion) else {
             throw WebSubmissionImportError.unsupportedSchemaVersion(envelope.schemaVersion)
         }
 
@@ -576,13 +662,86 @@ struct WebSubmissionImportService {
 
         let carga = try WebSubmissionCrypto.decrypt(envelope: envelope, recipientPrivateKeyRaw: privada)
 
-        guard carga.schemaVersion == Self.supportedSchemaVersion else {
+        guard Self.supportedSchemaVersions.contains(carga.schemaVersion) else {
             throw WebSubmissionImportError.unsupportedSchemaVersion(carga.schemaVersion)
         }
         guard carga.formInstanceId == envelope.formInstanceId else {
             throw WebSubmissionImportError.payloadFormMismatch
         }
-        guard !carga.answers.isEmpty else {
+
+        if let targets = carga.targets, !targets.isEmpty {
+            // Coevaluación con targets
+            var borradores: [WebSubmissionDraft] = []
+            for target in targets {
+                let evaluacion = try resolveAnswers(
+                    answers: target.answers,
+                    manifest: manifest,
+                    formInstanceId: envelope.formInstanceId
+                )
+                let targetStudentId = resolver.peerTargetStudentId(
+                    formInstanceId: envelope.formInstanceId,
+                    evaluatorAlias: envelope.participantAlias,
+                    targetAlias: target.targetAlias
+                )
+                borradores.append(
+                    WebSubmissionDraft(
+                        submissionId: "\(envelope.submissionId)#\(target.targetAlias)",
+                        formInstanceId: envelope.formInstanceId,
+                        alias: envelope.participantAlias,
+                        studentId: targetStudentId,
+                        studentName: targetStudentId.flatMap { resolver.studentName(studentId: $0) },
+                        classId: contexto.classId,
+                        columnId: contexto.columnId,
+                        clientSubmittedAt: envelope.clientSubmittedAt,
+                        answers: evaluacion.resueltas,
+                        requiredTotal: evaluacion.obligatoriosTotal,
+                        requiredAnswered: evaluacion.obligatoriosRespondidos,
+                        missingRequiredTitles: evaluacion.sinResponderTitulos,
+                        targetAlias: target.targetAlias,
+                        isPeerEvaluation: true
+                    )
+                )
+            }
+            return borradores
+        } else if let answers = carga.answers, !answers.isEmpty {
+            // Autoevaluación
+            let evaluacion = try resolveAnswers(
+                answers: answers,
+                manifest: manifest,
+                formInstanceId: envelope.formInstanceId
+            )
+            let studentId = resolver.studentId(
+                formInstanceId: envelope.formInstanceId,
+                alias: envelope.participantAlias
+            )
+            let borrador = WebSubmissionDraft(
+                submissionId: envelope.submissionId,
+                formInstanceId: envelope.formInstanceId,
+                alias: envelope.participantAlias,
+                studentId: studentId,
+                studentName: studentId.flatMap { resolver.studentName(studentId: $0) },
+                classId: contexto.classId,
+                columnId: contexto.columnId,
+                clientSubmittedAt: envelope.clientSubmittedAt,
+                answers: evaluacion.resueltas,
+                requiredTotal: evaluacion.obligatoriosTotal,
+                requiredAnswered: evaluacion.obligatoriosRespondidos,
+                missingRequiredTitles: evaluacion.sinResponderTitulos,
+                targetAlias: nil,
+                isPeerEvaluation: false
+            )
+            return [borrador]
+        } else {
+            throw WebSubmissionImportError.noAnswers
+        }
+    }
+
+    private func resolveAnswers(
+        answers: [WebAnswer],
+        manifest: WebFormManifest,
+        formInstanceId: String
+    ) throws -> (resueltas: [WebResolvedAnswer], obligatoriosTotal: Int, obligatoriosRespondidos: Int, sinResponderTitulos: [String]) {
+        guard !answers.isEmpty else {
             throw WebSubmissionImportError.noAnswers
         }
 
@@ -593,7 +752,7 @@ struct WebSubmissionImportService {
 
         var resueltas: [WebResolvedAnswer] = []
         var vistos = Set<String>()
-        for respuesta in carga.answers {
+        for respuesta in answers {
             guard !vistos.contains(respuesta.webItemId) else {
                 throw WebSubmissionImportError.duplicatedItem(respuesta.webItemId)
             }
@@ -609,7 +768,7 @@ struct WebSubmissionImportService {
                 )
             }
             guard let itemId = resolver.itemId(
-                formInstanceId: envelope.formInstanceId,
+                formInstanceId: formInstanceId,
                 webItemId: respuesta.webItemId
             ) else {
                 throw WebSubmissionImportError.unknownItem(respuesta.webItemId)
@@ -628,30 +787,14 @@ struct WebSubmissionImportService {
             )
         }
 
-        // El alias sin resolver NO tumba la entrega: se marca para que el docente
-        // la asigne a mano en la previsualización. Tirar una entrega buena porque
-        // falta una fila de la tabla de alias sería perder trabajo del alumnado.
-        let studentId = resolver.studentId(
-            formInstanceId: envelope.formInstanceId,
-            alias: envelope.participantAlias
-        )
-
         let obligatorios = manifest.items.filter { $0.required }
         let sinResponder = obligatorios.filter { !vistos.contains($0.webItemId) }
 
-        return WebSubmissionDraft(
-            submissionId: envelope.submissionId,
-            formInstanceId: envelope.formInstanceId,
-            alias: envelope.participantAlias,
-            studentId: studentId,
-            studentName: studentId.flatMap { resolver.studentName(studentId: $0) },
-            classId: contexto.classId,
-            columnId: contexto.columnId,
-            clientSubmittedAt: envelope.clientSubmittedAt,
-            answers: resueltas,
-            requiredTotal: obligatorios.count,
-            requiredAnswered: obligatorios.count - sinResponder.count,
-            missingRequiredTitles: sinResponder.map(\.title)
+        return (
+            resueltas: resueltas,
+            obligatoriosTotal: obligatorios.count,
+            obligatoriosRespondidos: obligatorios.count - sinResponder.count,
+            sinResponderTitulos: sinResponder.map(\.title)
         )
     }
 

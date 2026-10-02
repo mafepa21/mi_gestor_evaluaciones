@@ -72,14 +72,18 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
     case earlyWarning
     case physicalProgressAnalysis
     case weeklyStudentEmail
+    case rubricDraft
+    case duaAdaptation
+    case plannerSequence
+    case metacognitionPrompts
 
     var id: String { rawValue }
 
     var agent: EducationalIntelligenceAgent {
         switch self {
-        case .studentInsight, .averageExplanation:
+        case .studentInsight, .averageExplanation, .rubricDraft, .plannerSequence, .metacognitionPrompts:
             return .evaluator
-        case .tutorMeetingSummary, .earlyWarning, .weeklyStudentEmail:
+        case .tutorMeetingSummary, .earlyWarning, .weeklyStudentEmail, .duaAdaptation:
             return .tutor
         case .physicalProgressAnalysis:
             return .physicalEducation
@@ -100,6 +104,14 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
             return "Análisis EF"
         case .weeklyStudentEmail:
             return "Correo semanal"
+        case .rubricDraft:
+            return "Rúbrica LOMLOE"
+        case .duaAdaptation:
+            return "Pautas DUA"
+        case .plannerSequence:
+            return "Secuencia didáctica"
+        case .metacognitionPrompts:
+            return "Metacognición y coevaluación"
         }
     }
 
@@ -117,6 +129,14 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
             return "Resume progreso físico desde snapshots existentes."
         case .weeklyStudentEmail:
             return "Redacta borrador de correo semanal de seguimiento evaluativo."
+        case .rubricDraft:
+            return "Genera matriz analítica con descriptores graduados por nivel."
+        case .duaAdaptation:
+            return "Propone adaptaciones y diversificación formativa según necesidades."
+        case .plannerSequence:
+            return "Estructura fases y actividades para el módulo de planificación."
+        case .metacognitionPrompts:
+            return "Formula preguntas de autorreflexión y evaluación formativa entre iguales."
         }
     }
 }
@@ -125,6 +145,10 @@ enum EducationalIntelligenceAgentInput {
     case student(StudentInsightEvidence)
     case average(NotebookAverageExplanation, StudentInsightEvidence)
     case physical(PhysicalProgressEvidence)
+    case rubric(RubricDraftInput)
+    case dua(DUAAdaptationInput)
+    case planner(PlannerSequenceInput)
+    case metacognition(MetacognitionPromptsInput)
 }
 
 enum EducationalIntelligenceAgentError: LocalizedError {
@@ -155,6 +179,10 @@ enum AppleAIRequest {
     case physicalProgressAnalysis(PhysicalProgressEvidence)
     case formulaSuggestion(String, String, [NotebookColumnDefinition])
     case weeklyStudentEmail(StudentInsightEvidence, String?, WeeklyEmailAudienceMode, String)
+    case rubricDraft(RubricDraftInput)
+    case duaAdaptation(DUAAdaptationInput)
+    case plannerSequence(PlannerSequenceInput)
+    case metacognitionPrompts(MetacognitionPromptsInput)
 }
 
 enum AppleAIResult {
@@ -171,6 +199,10 @@ enum AppleAIResult {
     case physicalProgressAnalysis(PhysicalProgressAnalysis)
     case formulaSuggestion(String)
     case weeklyStudentEmail(WeeklyStudentEmailDraft)
+    case rubricDraft(AIRubricDraft)
+    case duaAdaptation(DUAAdaptationDraft)
+    case plannerSequence(PlannerSequenceDraft)
+    case metacognitionPrompts(MetacognitionPromptsDraft)
 }
 
 struct AppleAIGeneration {
@@ -186,6 +218,7 @@ final class AppleAIOrchestrator {
     private let studentInsights = AppleFoundationStudentInsightService()
     private let formulas = AppleFoundationFormulaService()
     private let studentEmails = AppleFoundationStudentEmailService()
+    private let pedagogical = AppleFoundationPedagogicalService()
 
     func availability() -> AppleAIAvailability {
         let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: true)
@@ -223,6 +256,7 @@ final class AppleAIOrchestrator {
         case .studentInsight:
             studentInsights.prewarm()
             studentEmails.prewarm()
+            pedagogical.prewarm()
         }
     }
 
@@ -254,6 +288,14 @@ final class AppleAIOrchestrator {
             return .formulaSuggestion(try await formulas.generateFormula(request: prompt, currentFormula: currentFormula, availableColumns: columns))
         case let .weeklyStudentEmail(evidence, recipientEmail, audienceMode, weekRange):
             return .weeklyStudentEmail(await studentEmails.generateWeeklyEmailDraft(from: evidence, recipientEmail: recipientEmail, audienceMode: audienceMode, weekRangeDescription: weekRange))
+        case let .rubricDraft(input):
+            return .rubricDraft(try await pedagogical.generateRubricDraft(from: input))
+        case let .duaAdaptation(input):
+            return .duaAdaptation(try await pedagogical.generateDUAAdaptation(from: input))
+        case let .plannerSequence(input):
+            return .plannerSequence(try await pedagogical.generatePlannerSequence(from: input))
+        case let .metacognitionPrompts(input):
+            return .metacognitionPrompts(try await pedagogical.generateMetacognitionPrompts(from: input))
         }
     }
 
@@ -264,10 +306,18 @@ final class AppleAIOrchestrator {
         switch (agent, input) {
         case (.tutor, .student(let evidence)):
             return try await generate(.tutorMeetingSummary(evidence))
+        case (.tutor, .dua(let input)):
+            return try await generate(.duaAdaptation(input))
         case (.evaluator, .student(let evidence)):
             return try await generate(.studentInsight(evidence))
         case (.evaluator, .average(let explanation, let evidence)):
             return try await generate(.averageExplanation(explanation, evidence))
+        case (.evaluator, .rubric(let input)):
+            return try await generate(.rubricDraft(input))
+        case (.evaluator, .planner(let input)):
+            return try await generate(.plannerSequence(input))
+        case (.evaluator, .metacognition(let input)):
+            return try await generate(.metacognitionPrompts(input))
         case (.physicalEducation, .physical(let evidence)):
             return try await generate(.physicalProgressAnalysis(evidence))
         default:
@@ -290,6 +340,14 @@ final class AppleAIOrchestrator {
             return try await generate(.earlyWarning(evidence))
         case (.physicalProgressAnalysis, .physical(let evidence)):
             return try await generate(.physicalProgressAnalysis(evidence))
+        case (.rubricDraft, .rubric(let input)):
+            return try await generate(.rubricDraft(input))
+        case (.duaAdaptation, .dua(let input)):
+            return try await generate(.duaAdaptation(input))
+        case (.plannerSequence, .planner(let input)):
+            return try await generate(.plannerSequence(input))
+        case (.metacognitionPrompts, .metacognition(let input)):
+            return try await generate(.metacognitionPrompts(input))
         default:
             throw EducationalIntelligenceAgentError.unsupportedCapability(capability)
         }
@@ -387,6 +445,14 @@ final class AppleAIOrchestrator {
             return false
         case .weeklyStudentEmail(let draft):
             return !draft.isAIGenerated
+        case .rubricDraft(let draft):
+            return draft.appearsToBeRulesFallback
+        case .duaAdaptation(let draft):
+            return draft.appearsToBeRulesFallback
+        case .plannerSequence(let draft):
+            return draft.appearsToBeRulesFallback
+        case .metacognitionPrompts(let draft):
+            return draft.appearsToBeRulesFallback
         }
     }
 }

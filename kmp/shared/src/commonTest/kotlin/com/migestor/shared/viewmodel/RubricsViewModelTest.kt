@@ -444,6 +444,7 @@ private class RubricsTestFakeNotebookRepository(
     override suspend fun listWorkGroupMembers(classId: Long, tabId: String?): List<NotebookWorkGroupMember> = emptyList()
     override suspend fun assignStudentsToWorkGroup(classId: Long, tabId: String, groupId: Long, studentIds: List<Long>) = Unit
     override suspend fun clearStudentsFromWorkGroup(classId: Long, tabId: String, studentIds: List<Long>) = Unit
+    override suspend fun replaceWorkGroups(classId: Long, tabId: String, groups: List<NotebookWorkGroupBatchItem>, clearExisting: Boolean) = Unit
     override suspend fun saveCell(
         classId: Long,
         studentId: Long,

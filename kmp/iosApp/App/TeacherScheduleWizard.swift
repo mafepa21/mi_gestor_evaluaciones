@@ -155,6 +155,21 @@ struct TeacherScheduleWizard: View {
         .sheet(item: $activeExtra) { extra in
             extraSheet(extra)
         }
+        .sheet(isPresented: $vm.isCalendarPresetPresented) {
+            if let schedule = vm.teacherSchedule {
+                SchoolCalendarPresetSheet(
+                    bridge: bridge,
+                    scheduleId: schedule.id,
+                    groups: vm.groups,
+                    onApplied: { result in
+                        Task { await vm.onCalendarPresetApplied(result) }
+                    },
+                    onDismiss: {
+                        vm.isCalendarPresetPresented = false
+                    }
+                )
+            }
+        }
         .alert(
             "Eliminar franja",
             isPresented: Binding(
@@ -318,6 +333,7 @@ struct TeacherScheduleWizard: View {
     private var courseStep: some View {
         VStack(alignment: .leading, spacing: 20) {
             courseHeroCard
+            schoolCalendarPresetCard
             courseFineTuneCard
 
             if vm.groups.count > 1 {
@@ -395,6 +411,49 @@ struct TeacherScheduleWizard: View {
                 }
             }
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var schoolCalendarPresetCard: some View {
+        PremiumCard.glass {
+            HStack(alignment: .center, spacing: 16) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(EvaluationDesign.accent.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(EvaluationDesign.accent)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text("Calendario oficial 2026–2027")
+                            .font(.callout.weight(.bold))
+                        Text("Claustro")
+                            .font(.system(size: 10, weight: .bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(EvaluationDesign.accent.opacity(0.12), in: Capsule(style: .continuous))
+                            .foregroundStyle(EvaluationDesign.accent)
+                    }
+                    Text("Carga evaluaciones, salidas de curso (Toledo, Pirineos, Agullent) e hitos oficiales.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 12)
+
+                Button {
+                    vm.isCalendarPresetPresented = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                        Text("Ver y aplicar")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            }
         }
     }
 
@@ -1042,9 +1101,21 @@ struct TeacherScheduleWizard: View {
             }
 
             if vm.evaluationPeriods.isEmpty {
-                Text("Aún no hay periodos evaluativos.")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Aún no hay periodos evaluativos.")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Button {
+                        activeExtra = nil
+                        vm.isCalendarPresetPresented = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkles")
+                            Text("Cargar evaluaciones oficiales 2026–2027")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
             } else {
                 ForEach(vm.evaluationPeriods.sorted(by: { ($0.sortOrder, $0.startDateIso) < ($1.sortOrder, $1.startDateIso) }), id: \.id) { period in
                     VStack(alignment: .leading, spacing: 8) {
@@ -1201,9 +1272,21 @@ struct TeacherScheduleWizard: View {
     private var nonTeachingContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             if vm.nonTeachingEvents.isEmpty {
-                Text("No hay eventos no lectivos detectados.")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("No hay eventos no lectivos detectados.")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Button {
+                        activeExtra = nil
+                        vm.isCalendarPresetPresented = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkles")
+                            Text("Cargar festivos y salidas 2026–2027")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
             } else {
                 ForEach(vm.nonTeachingEvents, id: \.id) { event in
                     HStack(alignment: .firstTextBaseline, spacing: 12) {

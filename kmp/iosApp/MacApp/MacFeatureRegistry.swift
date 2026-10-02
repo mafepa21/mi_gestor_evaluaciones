@@ -19,6 +19,7 @@ struct MacFeatureDescriptor: Identifiable, Hashable {
         case webSubmissions
         case meetings
         case students
+        case evaluationHub
         case rubrics
         case physicalTests
         case sync
@@ -51,6 +52,7 @@ enum MacFeatureRegistry {
         .init(feature: .webSubmissions, title: "Entregas web", subtitle: "Publicar formularios y recoger respuestas", systemImage: "paperplane.circle.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .meetings, title: "Reuniones", subtitle: "Actas de centro y acuerdos", systemImage: "person.3.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .students, title: "Alumnado", subtitle: "Directorio y seguimiento rápido", systemImage: "person.3.sequence.fill", source: .parityIOS, enabledInV1: true),
+        .init(feature: .evaluationHub, title: "Evaluación", subtitle: "Instrumentos y calendario", systemImage: "chart.bar.doc.horizontal", source: .parityIOS, enabledInV1: true),
         .init(feature: .rubrics, title: "Rúbricas", subtitle: "Banco de evaluación y edición", systemImage: "checklist.checked", source: .parityIOS, enabledInV1: true),
         .init(feature: .physicalTests, title: "Mediciones y baremos", subtitle: "Progreso, marcas e históricos", systemImage: "stopwatch.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .sync, title: "Sync LAN", subtitle: "Emparejado, pull y observabilidad", systemImage: "arrow.triangle.2.circlepath.circle.fill", source: .inheritedDesktop, enabledInV1: true),
@@ -83,7 +85,7 @@ enum MacFeatureSection: String, CaseIterable, Identifiable {
             // `Entregas web` va aquí y no en Planificación porque lo que hace es
             // meter evidencias en el Cuaderno, igual que Asistencia o Mediciones.
             // Publica el formulario, pero el trabajo es recoger para evaluar.
-            return [.notebook, .attendance, .rubrics, .physicalTests, .webSubmissions]
+            return [.evaluationHub, .notebook, .attendance, .rubrics, .physicalTests, .webSubmissions]
         case .planificacion:
             return [.planner, .diary, .situations, .meetings, .students]
         case .sistema:

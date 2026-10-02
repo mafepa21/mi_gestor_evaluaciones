@@ -79,7 +79,9 @@ struct NotebookInspectorPanel: View {
             trends: nil
         )
 
-        return NotebookStudentInspector(
+        return VStack(spacing: 0) {
+            studentStepBar(for: item)
+            NotebookStudentInspector(
             bridge: bridge,
             classId: currentClassId,
             studentId: item.student.id,
@@ -168,6 +170,55 @@ struct NotebookInspectorPanel: View {
             },
             auditEvents: auditEvents
         )
+        }
+    }
+
+    private func studentStepBar(for item: NotebookTableRow) -> some View {
+        let index = rows.firstIndex(where: { $0.student.id == item.student.id }) ?? 0
+        return HStack(spacing: 8) {
+            Button {
+                shiftInspectorStudent(by: -1, from: item)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .disabled(index == 0)
+            .accessibilityLabel("Alumno anterior")
+
+            Spacer(minLength: 0)
+
+            Text("\(index + 1) de \(rows.count)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+            Spacer(minLength: 0)
+
+            Button {
+                shiftInspectorStudent(by: 1, from: item)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .disabled(index >= rows.count - 1)
+            .accessibilityLabel("Alumno siguiente")
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .animation(.easeInOut(duration: 0.2), value: item.student.id)
+    }
+
+    private func shiftInspectorStudent(by delta: Int, from item: NotebookTableRow) {
+        guard let selection = inspectorSelection,
+              let index = rows.firstIndex(where: { $0.student.id == item.student.id }) else { return }
+        let nextIndex = min(max(index + delta, 0), rows.count - 1)
+        guard nextIndex != index else { return }
+        let next = rows[nextIndex]
+        inspectorSelection = NotebookInspectorSelection(studentId: next.student.id, columnId: selection.columnId)
     }
 
     private func averageValueText(for item: NotebookTableRow) -> String {

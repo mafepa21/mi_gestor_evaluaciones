@@ -13,6 +13,7 @@ struct MacRootView: View {
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
+    @ObservedObject private var notebookEditMenu = NotebookEditMenuState.shared
     @StateObject private var notebookStore = NotebookBridgeStore()
     @StateObject private var dashboardStore = DashboardBridgeStore()
     @StateObject private var studentsBridgeStore = StudentsBridgeStore()
@@ -23,6 +24,7 @@ struct MacRootView: View {
     @StateObject private var studentSelection = StudentSelectionStore()
     @SceneStorage("mac.root.columnVisibility") private var storedColumnVisibility = MacRootColumnVisibilityValue.all
     @SceneStorage("mac.root.inspectorVisible") private var storedInspectorVisible = true
+    @AppStorage("diagnostics.quarantine.acknowledged") private var acknowledgedQuarantineId = ""
     @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var isAttendanceFilterPopoverPresented = false
@@ -34,12 +36,21 @@ struct MacRootView: View {
     @StateObject private var plannerDiaryLayoutState = WorkspaceLayoutState()
     @State private var studentsReloadToken = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var windowWidth: CGFloat = 0
     @State private var isInspectorVisible = true
     @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
+    @State private var isEvaluationCreationPresented = false
     @State private var banner: MacRootBanner?
     @State private var selectedPlannerSessionId: Int64? = nil
     @State private var bannerDismissTask: Task<Void, Never>?
     @State private var didRequestCommandCenterStart = false
+
+    private var pendingQuarantinedDatabase: AppleQuarantinedDatabase? {
+        guard rescueService.pendingRescue == nil else { return nil }
+        return backupService.quarantinedDatabases.first {
+            $0.looksRecoverable && $0.id != acknowledgedQuarantineId
+        }
+    }
 
     init(session: MacAppSessionController) {
         self.session = session
@@ -82,11 +93,19 @@ struct MacRootView: View {
         .appOnChange(of: session.bootstrapState) { state in
             // Sólo con la shell lista tiene sentido preguntar si la base está
             // vacía; antes lo parecería siempre.
-            guard state == .ready else { return }
+            // Si hay un rescate pendiente, el aviso de recuperación es la única
+            // superficie primaria: no debemos superponerle el onboarding de una
+            // base vacía de fallback.
+            guard state == .ready, rescueService.pendingRescue == nil else { return }
             Task { await OnboardingStore.shared.bootstrap(bridge: session.bridge) }
         }
         .task {
             rescueService.checkForPendingRescue()
+            // La app macOS nativa entra por MacApplicationRootView y no pasa por
+            // AppleAppRootView, que es quien escaneaba las cuarentenas. Sin este
+            // escaneo, una base apartada cuyo marcador ya se había descartado
+            // seguía pareciendo una base vacía sin explicación.
+            backupService.scanQuarantinedDatabases()
             notebookStore.bind(to: session.bridge)
             dashboardStore.bind(to: session.bridge)
             studentsBridgeStore.bind(to: session.bridge)
@@ -126,6 +145,25 @@ struct MacRootView: View {
         } message: { marker in
             Text(marker.displayMessage)
         }
+        .alert(
+            "Se encontraron datos apartados",
+            isPresented: .constant(pendingQuarantinedDatabase != nil),
+            presenting: pendingQuarantinedDatabase
+        ) { item in
+            Button("Entendido") {
+                acknowledgedQuarantineId = item.id
+            }
+            Button("Mostrar en Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+                acknowledgedQuarantineId = item.id
+            }
+        } message: { item in
+            let counts = item.summary.map {
+                "\($0.classCount) clases y \($0.studentCount) alumnos"
+            } ?? "contenido no legible"
+            let date = item.quarantinedAt.formatted(date: .abbreviated, time: .shortened)
+            Text("El \(date) la aplicación no pudo abrir su base de datos y arrancó con una vacía. La anterior no se ha borrado: contiene \(counts) y ocupa \(item.sizeText).\n\nEstá en:\n\(item.url.path)\n\nPuedes recuperarla desde Ajustes › Copias de seguridad.")
+        }
     }
 
     private func startCommandCenterAfterInitialLayout() async {
@@ -156,6 +194,13 @@ struct MacRootView: View {
             .toolbar {
                 macToolbar
             }
+            .sheet(isPresented: $isEvaluationCreationPresented) {
+                CreateEvaluationSheet(
+                    defaultClassId: studentSelection.selectedClassId,
+                    onDismiss: { isEvaluationCreationPresented = false }
+                )
+                .environmentObject(session.bridge)
+            }
     }
 
     // Esta vista se trocea en subexpresiones a propósito: como una sola cadena
@@ -182,7 +227,7 @@ struct MacRootView: View {
         // duplicaba la reserva de ancho con una segunda instancia de NotebookMacLayout, y al
         // navegar fuera de Cuaderno ambas instancias se destruían a la vez en plena animación,
         // provocando el mismo bucle de constraints de AppKit que crasheaba la app.
-        if !usesShellInspector(selectedFeature) {
+        if !usesShellInspector(selectedFeature) || !shouldRenderShellInspector {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
                 .transition(uiFeatureFlags.contentSwitchTransition)
@@ -211,6 +256,18 @@ struct MacRootView: View {
         }
     }
 
+    /// El inspector del shell solo se materializa cuando la ventana puede
+    /// conservar una columna de trabajo utilizable junto a la sidebar global.
+    /// La preferencia del usuario permanece en `isInspectorVisible`; este
+    /// umbral solo evita que un layout estrecho recorte el contenido.
+    private var shouldRenderShellInspector: Bool {
+        guard isInspectorVisible else { return false }
+        if columnVisibility == .detailOnly {
+            return true
+        }
+        return windowWidth >= 1_200
+    }
+
     @ViewBuilder
     private var bannerOverlay: some View {
         if let banner {
@@ -231,6 +288,12 @@ struct MacRootView: View {
         .scrollEdgeEffectStyle(.soft, for: .top)
         .overlay(alignment: .topTrailing) { bannerOverlay }
         .animation(uiFeatureFlags.interactionAnimation, value: banner?.id)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { newWidth in
+            guard abs(windowWidth - newWidth) > 1 else { return }
+            windowWidth = newWidth
+        }
     }
 
     private var navigationSplitContent: some View {
@@ -357,6 +420,7 @@ struct MacRootView: View {
             }
         }
         .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
         .navigationTitle("MiGestor")
         .navigationSubtitle(session.bridge.statsText)
     }
@@ -452,6 +516,7 @@ struct MacRootView: View {
             NotebookMacLayout(
                 bridge: session.bridge,
                 notebookStore: notebookStore,
+                dashboardStore: dashboardStore,
                 layoutState: layoutState,
                 toolbarActions: notebookToolbarActions,
                 inspectorState: notebookInspectorState,
@@ -481,6 +546,13 @@ struct MacRootView: View {
                 presentation: .content,
                 reloadToken: studentsReloadToken
             )
+        case .evaluationHub:
+            EvaluationHubView(
+                selectedClassId: studentSelection.selectedClassBinding,
+                onOpenModule: open(module:classId:studentId:),
+                onCreateEvaluation: { isEvaluationCreationPresented = true }
+            )
+            .environmentObject(session.bridge)
         case .rubrics:
             MacRubricsView(bridge: session.bridge)
         case .physicalTests:
@@ -583,7 +655,11 @@ struct MacRootView: View {
             if let plannerSession = plannerInspectorSession {
                 PlannerSessionDetailSheet(
                     session: plannerSession,
-                    onOpenDiary: { plannerToolbarActions?.onOpenDiary(plannerSession) },
+                    onOpenDiary: {
+                        plannerToolbarActions?.onOpenDiary(plannerSession)
+                        pendingPlannerDiarySession = plannerSession
+                        plannerInspectorSession = nil
+                    },
                     onEdit: { plannerToolbarActions?.onEditSession(plannerSession) },
                     onDelete: { plannerToolbarActions?.onDeleteSession(plannerSession) },
                     presentation: .inspector,
@@ -621,6 +697,18 @@ struct MacRootView: View {
                     tint: MacAppStyle.warningTint
                 )
             }
+        }
+
+        ToolbarItem(id: "notebook.quickKeypad", placement: .primaryAction) {
+            Button {
+                notebookToolbarActions.toggleQuickKeypad()
+            } label: {
+                Label(
+                    notebookToolbarActions.isQuickKeypadPresented ? "Ocultar teclado rápido" : "Teclado rápido",
+                    systemImage: notebookToolbarActions.isQuickKeypadPresented ? "keyboard.fill" : "keyboard"
+                )
+            }
+            .help("Teclado táctil de calificación rápida")
         }
 
         ToolbarItem(id: "notebook.addColumn", placement: .primaryAction) {
@@ -698,10 +786,18 @@ struct MacRootView: View {
                 }
             }
 
+            if notebookToolbarActions.exportSMAction != nil {
+                Button {
+                    notebookToolbarActions.exportSM()
+                } label: {
+                    Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                }
+            }
+
             Button {
                 notebookToolbarActions.undo()
             } label: {
-                Label("Deshacer", systemImage: "arrow.uturn.backward")
+                Label(notebookEditMenu.undoTitle, systemImage: "arrow.uturn.backward")
             }
             .disabled(!notebookToolbarActions.canUndo)
             .keyboardShortcut("z", modifiers: .command)
@@ -718,7 +814,7 @@ struct MacRootView: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Label("Grid", systemImage: "tablecells").tag("grid")
+                Label(NotebookSurfaceMode.grid.title, systemImage: "tablecells").tag("grid")
                 Label("Plano", systemImage: "rectangle.3.group").tag("seatingPlan")
             }
 
@@ -728,6 +824,15 @@ struct MacRootView: View {
                 Label(
                     notebookToolbarActions.isAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
                     systemImage: notebookToolbarActions.isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle"
+                )
+            }
+
+            Button {
+                notebookToolbarActions.toggleQuickKeypad()
+            } label: {
+                Label(
+                    notebookToolbarActions.isQuickKeypadPresented ? "Ocultar teclado rápido" : "Teclado rápido",
+                    systemImage: notebookToolbarActions.isQuickKeypadPresented ? "keyboard.fill" : "keyboard"
                 )
             }
 
@@ -803,14 +908,16 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder
     private var macDefaultWorkspaceToolbar: some ToolbarContent {
-        ToolbarItemGroup {
+        ToolbarItem(placement: .secondaryAction) {
             Button {
                 Task { await session.bridge.pullMissingSyncChanges() }
             } label: {
                 Label("Sync", systemImage: "arrow.triangle.2.circlepath")
             }
             .help("Sincronizar con desktop")
+        }
 
+        ToolbarItemGroup {
             if selectedFeature == .dashboard, let dashboardToolbarActions {
                 Button {
                     dashboardToolbarActions.passList()
@@ -819,15 +926,20 @@ struct MacRootView: View {
                 }
                 .disabled(!dashboardToolbarActions.canRunActions)
                 .keyboardShortcut("l", modifiers: [.command])
+                .buttonStyle(.borderedProminent)
                 .help("Pasar lista para la clase activa")
 
-                Button {
-                    dashboardToolbarActions.observation()
+                Menu {
+                    Button {
+                        dashboardToolbarActions.observation()
+                    } label: {
+                        Label("Observación", systemImage: "note.text.badge.plus")
+                    }
+                    .disabled(!dashboardToolbarActions.canRunActions)
                 } label: {
-                    Label("Observación", systemImage: "note.text.badge.plus")
+                    Label("Más", systemImage: "ellipsis.circle")
                 }
-                .disabled(!dashboardToolbarActions.canRunActions)
-                .help("Registrar una observación rápida")
+                .help("Más acciones de Hoy")
             }
 
             if selectedFeature == .attendance, let attendanceToolbarActions {
@@ -837,7 +949,7 @@ struct MacRootView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
+                .frame(maxWidth: 320)
 
                 Menu {
                     Button("Todos los cursos") {
@@ -908,22 +1020,36 @@ struct MacRootView: View {
                 .disabled(!attendanceToolbarActions.canMarkAllPresent)
                 .help("Marcar como presentes los alumnos filtrados")
 
-                Button {
-                    attendanceToolbarActions.repeatPattern()
-                } label: {
-                    Label("Repetir patrón", systemImage: "repeat")
-                }
-                .disabled(!attendanceToolbarActions.canRepeatPattern)
-                .help("Repetir el último patrón de asistencia")
-
-                if attendanceToolbarActions.canCloseSelection {
+                Menu {
                     Button {
-                        attendanceToolbarActions.clearSelection()
+                        attendanceToolbarActions.repeatPattern()
                     } label: {
-                        Label("Cerrar ficha", systemImage: "sidebar.right")
+                        Label("Repetir patrón", systemImage: "repeat")
                     }
-                    .help("Cerrar el inspector del alumno")
+                    .disabled(!attendanceToolbarActions.canRepeatPattern)
+
+                    if attendanceToolbarActions.canCloseSelection {
+                        Button {
+                            attendanceToolbarActions.clearSelection()
+                        } label: {
+                            Label("Cerrar ficha", systemImage: "sidebar.right")
+                        }
+                    }
+                } label: {
+                    Label("Más", systemImage: "ellipsis.circle")
                 }
+                .help("Más acciones de asistencia")
+            }
+
+            if selectedFeature == .evaluationHub {
+                Button {
+                    isEvaluationCreationPresented = true
+                } label: {
+                    Label("Nueva evaluación", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut("n", modifiers: .command)
+                .help("Crear una evaluación para la clase activa (⌘N)")
             }
 
             if selectedFeature == .physicalTests {
@@ -953,50 +1079,69 @@ struct MacRootView: View {
             }
 
             if selectedFeature == .planner, let plannerToolbarActions {
+                // Toolbar fija: los mismos controles, en el mismo orden y con el
+                // mismo ancho en todas las secciones. Lo que no aplica se
+                // deshabilita en vez de desaparecer, para que nada se mueva.
                 let plannerSection = plannerToolbarActions.activeSection.wrappedValue
+                let usesSearch = plannerSection == .week || plannerSection == .day
+                let usesNavigation = plannerSection != .sequence
+                let navUnit = plannerSection == .day ? "Día" : (plannerSection == .month ? "Mes" : "Semana")
+                let navPrevious: () -> Void = {
+                    switch plannerSection {
+                    case .day: plannerToolbarActions.onPreviousDay()
+                    case .month: plannerToolbarActions.onPreviousMonth()
+                    default: plannerToolbarActions.onPreviousWeek()
+                    }
+                }
+                let navToday: () -> Void = {
+                    switch plannerSection {
+                    case .day: plannerToolbarActions.onTodayDay()
+                    case .month: plannerToolbarActions.onTodayMonth()
+                    default: plannerToolbarActions.onToday()
+                    }
+                }
+                let navNext: () -> Void = {
+                    switch plannerSection {
+                    case .day: plannerToolbarActions.onNextDay()
+                    case .month: plannerToolbarActions.onNextMonth()
+                    default: plannerToolbarActions.onNextWeek()
+                    }
+                }
 
-                Picker("Sección", selection: plannerToolbarActions.activeSection) {
+                Picker("Sección", selection: Binding(
+                    get: { plannerToolbarActions.activeSection.wrappedValue },
+                    set: { section in
+                        withAnimation(uiFeatureFlags.interactionAnimation) {
+                            plannerToolbarActions.activeSection.wrappedValue = section
+                        }
+                    }
+                )) {
                     ForEach(PlannerWorkspaceSection.allCases) { section in
                         Label(section.rawValue, systemImage: section.systemImage).tag(section)
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
-                .help("Cambiar de sección del planificador (⌘⌥1–4)")
+                .frame(maxWidth: 480)
+                .help("Cambiar de sección del planificador (⌘⌥1–6)")
 
-                if plannerSection == .day {
-                    Button(action: plannerToolbarActions.onPreviousDay) {
-                        Label("Día anterior", systemImage: "chevron.left")
-                    }
-                    .keyboardShortcut(.leftArrow, modifiers: .command)
-                    .help("Día anterior (⌘←)")
-
-                    Button("Hoy", action: plannerToolbarActions.onTodayDay)
-                        .keyboardShortcut("t", modifiers: .command)
-                        .help("Ir a hoy (⌘T)")
-
-                    Button(action: plannerToolbarActions.onNextDay) {
-                        Label("Día siguiente", systemImage: "chevron.right")
-                    }
-                    .keyboardShortcut(.rightArrow, modifiers: .command)
-                    .help("Día siguiente (⌘→)")
-                } else if plannerSection == .week || plannerSection == .summary {
-                    Button(action: plannerToolbarActions.onPreviousWeek) {
-                        Label("Semana anterior", systemImage: "chevron.left")
-                    }
-                    .keyboardShortcut(.leftArrow, modifiers: .command)
-                    .help("Semana anterior (⌘←)")
-
-                    Button("Hoy", action: plannerToolbarActions.onToday)
-                        .keyboardShortcut("t", modifiers: .command)
-                        .help("Ir a la semana actual (⌘T)")
-
-                    Button(action: plannerToolbarActions.onNextWeek) {
-                        Label("Semana siguiente", systemImage: "chevron.right")
-                    }
-                    .keyboardShortcut(.rightArrow, modifiers: .command)
-                    .help("Semana siguiente (⌘→)")
+                Button(action: navPrevious) {
+                    Label("\(navUnit) anterior", systemImage: "chevron.left")
                 }
+                .keyboardShortcut(.leftArrow, modifiers: .command)
+                .disabled(!usesNavigation)
+                .help("\(navUnit) anterior (⌘←)")
+
+                Button("Hoy", action: navToday)
+                    .keyboardShortcut("t", modifiers: .command)
+                    .disabled(!usesNavigation)
+                    .help("Ir a hoy (⌘T)")
+
+                Button(action: navNext) {
+                    Label("\(navUnit) siguiente", systemImage: "chevron.right")
+                }
+                .keyboardShortcut(.rightArrow, modifiers: .command)
+                .disabled(!usesNavigation)
+                .help("\(navUnit) siguiente (⌘→)")
 
                 Picker("Grupo", selection: plannerToolbarActions.selectedGroupId) {
                     Text("Todos").tag(Optional<Int64>.none)
@@ -1004,50 +1149,34 @@ struct MacRootView: View {
                         Text(group.name).tag(Optional(group.id))
                     }
                 }
-                .frame(maxWidth: 160)
+                .frame(width: 160)
                 .help("Filtrar por grupo")
 
-                if plannerSection == .week || plannerSection == .day {
-                    TextField("Buscar sesión, unidad, objetivo…", text: plannerToolbarActions.searchText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
-                }
+                TextField("Buscar sesión, unidad, objetivo…", text: plannerToolbarActions.searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 220)
+                    .disabled(!usesSearch)
+                    .opacity(usesSearch ? 1 : 0.45)
+                    .help(usesSearch ? "Buscar en las sesiones" : "La búsqueda solo está en Semana y Día")
 
-                if plannerSection == .sequence {
-                    Picker("Densidad", selection: plannerToolbarActions.density) {
-                        ForEach(PlannerDensity.allCases) { density in
-                            Text(density.rawValue).tag(density)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .help("Cambiar la densidad del Gantt")
-                }
-
-                if plannerSection == .summary {
-                    ShareLink(item: plannerToolbarActions.shareText) {
-                        Label("Compartir", systemImage: "square.and.arrow.up")
-                    }
-                    .help("Compartir el resumen de la semana actual")
-                }
-
-                if plannerSection == .week, plannerToolbarActions.isSelectionModeActive {
-                    Button(action: plannerToolbarActions.onCopyToNextWeek) {
-                        Label("Copiar", systemImage: "doc.on.doc")
-                    }
-                    .disabled(!plannerToolbarActions.canCopySelection)
-
-                    Button(action: plannerToolbarActions.onMoveOneDay) {
-                        Label("Mover +1 día", systemImage: "arrow.right")
-                    }
-                    .disabled(!plannerToolbarActions.canCopySelection)
-
-                    Button(action: plannerToolbarActions.onToggleSelectionMode) {
-                        Label("Salir de selección", systemImage: "checklist.checked")
-                    }
-                } else if plannerSection == .week {
-                    Menu {
-                        Button(action: plannerToolbarActions.onToggleSelectionMode) {
-                            Label("Seleccionar sesiones", systemImage: "checklist")
+                Menu {
+                    if plannerSection == .week {
+                        if plannerToolbarActions.isSelectionModeActive {
+                            Button(action: plannerToolbarActions.onCopyToNextWeek) {
+                                Label("Copiar a la semana siguiente", systemImage: "doc.on.doc")
+                            }
+                            .disabled(!plannerToolbarActions.canCopySelection)
+                            Button(action: plannerToolbarActions.onMoveOneDay) {
+                                Label("Mover +1 día", systemImage: "arrow.right")
+                            }
+                            .disabled(!plannerToolbarActions.canCopySelection)
+                            Button(action: plannerToolbarActions.onToggleSelectionMode) {
+                                Label("Salir de selección", systemImage: "checklist.checked")
+                            }
+                        } else {
+                            Button(action: plannerToolbarActions.onToggleSelectionMode) {
+                                Label("Seleccionar sesiones", systemImage: "checklist")
+                            }
                         }
                         if plannerToolbarActions.canUndoCascadeMove {
                             Button(action: plannerToolbarActions.onUndoCascadeMove) {
@@ -1060,19 +1189,34 @@ struct MacRootView: View {
                                 Label("Limpiar semana sin franjas", systemImage: "trash")
                             }
                         }
-                    } label: {
-                        Label("Más", systemImage: "ellipsis.circle")
+                        Divider()
                     }
-                    .help("Selección y operaciones de la semana")
+                    Button(action: plannerToolbarActions.onShowCalendarMilestones) {
+                        Label("Hitos y salidas del curso…", systemImage: "calendar.badge.clock")
+                    }
+                    if plannerSection == .sequence {
+                        Picker("Densidad del Gantt", selection: plannerToolbarActions.density) {
+                            ForEach(PlannerDensity.allCases) { density in
+                                Text(density.rawValue).tag(density)
+                            }
+                        }
+                    }
+                    if plannerSection == .summary {
+                        ShareLink(item: plannerToolbarActions.shareText) {
+                            Label("Compartir resumen de la semana", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                } label: {
+                    Label("Más", systemImage: "ellipsis.circle")
                 }
+                .help("Acciones de la sección actual")
 
-                if plannerSection == .week || plannerSection == .day {
-                    Button(action: plannerToolbarActions.onNewSession) {
-                        Label("Nueva sesión", systemImage: "plus")
-                    }
-                    .keyboardShortcut("n", modifiers: [.command, .shift])
-                    .help("Nueva sesión (⌘⇧N)")
+                Button(action: plannerToolbarActions.onNewSession) {
+                    Label("Nueva sesión", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(!usesSearch)
+                .help("Nueva sesión (⌘⇧N)")
             }
 
             Button {
@@ -1109,6 +1253,7 @@ struct MacRootView: View {
         case .webSubmissions: return .mint
         case .meetings: return .brown
         case .students: return .blue
+        case .evaluationHub: return .orange
         case .rubrics: return .teal
         case .physicalTests: return .orange
         case .sync: return .green
@@ -1366,7 +1511,9 @@ struct MacRootView: View {
         if selectedFeature != .planner {
             selectFeature(.planner)
         }
-        plannerToolbarActions?.activeSection.wrappedValue = section
+        withAnimation(uiFeatureFlags.interactionAnimation) {
+            plannerToolbarActions?.activeSection.wrappedValue = section
+        }
     }
 
     private func performSave() {
@@ -1443,6 +1590,8 @@ struct MacRootView: View {
             selectFeature(.situations)
         case .diary:
             selectFeature(.diary)
+        case .evaluationHub:
+            selectFeature(.evaluationHub)
         default:
             showBanner(
                 "\(module.title) todavía no está disponible en la shell Mac.",

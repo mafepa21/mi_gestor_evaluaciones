@@ -14,6 +14,8 @@ struct NotebookFormulaEditorSheet: View {
     let onCancel: () -> Void
     let onSave: () -> Void
 
+    @State private var isAIHelpExpanded = false
+
     private var validation: NotebookFormulaEditorValidationResult {
         NotebookFormulaEditorValidator.validate(
             formula: formula,
@@ -81,34 +83,39 @@ struct NotebookFormulaEditorSheet: View {
 
                 Divider()
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Ayuda con Apple Intelligence")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                        .tracking(0.3)
+                DisclosureGroup(
+                    isExpanded: $isAIHelpExpanded,
+                    content: {
+                        VStack(alignment: .leading, spacing: 10) {
+                            TextField("Ej: media del examen y la rúbrica, o corrige esta fórmula", text: $aiPrompt, axis: .vertical)
+                                .textFieldStyle(.roundedBorder)
+                                .lineLimit(2...4)
 
-                    TextField("Ej: media del examen y la rúbrica, o corrige esta fórmula", text: $aiPrompt, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(2...4)
+                            HStack {
+                                Button {
+                                    onGenerateAI()
+                                } label: {
+                                    Label(isAIGenerating ? "Pensando..." : "Generar / corregir fórmula", systemImage: "apple.intelligence")
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(isAIGenerating || aiPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                    HStack {
-                        Button {
-                            onGenerateAI()
-                        } label: {
-                            Label(isAIGenerating ? "Pensando..." : "Generar / corregir fórmula", systemImage: "apple.intelligence")
+                                if let aiMessage {
+                                    Text(aiMessage)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                            }
                         }
-                        .buttonStyle(.bordered)
-                        .disabled(isAIGenerating || aiPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                        if let aiMessage {
-                            Text(aiMessage)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                        }
+                        .padding(.top, 6)
+                    },
+                    label: {
+                        Label("Ayuda asistida de fórmula (experimental)", systemImage: "sparkles")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
-                }
+                )
             }
             .padding(22)
         }

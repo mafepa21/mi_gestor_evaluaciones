@@ -256,11 +256,11 @@ class NotebookRepositorySqlDelight(
             class_id = classId,
             student_id = draft.studentId,
             column_id = draft.columnId,
-            evaluation_id = draft.evaluationId,
+            evaluation_id = draft.evaluationId ?: existing?.evaluation_id,
             value_ = numericValue,
-            evidence = null,
-            evidence_path = null,
-            rubric_selections = null,
+            evidence = existing?.evidence,
+            evidence_path = existing?.evidence_path,
+            rubric_selections = existing?.rubric_selections,
             created_at_epoch_ms = now,
             updated_at_epoch_ms = now,
             device_id = null,
@@ -425,6 +425,15 @@ class NotebookRepositorySqlDelight(
         studentIds: List<Long>,
     ) {
         notebookConfigRepository.clearStudentsFromWorkGroup(classId, tabId, studentIds)
+    }
+
+    override suspend fun replaceWorkGroups(
+        classId: Long,
+        tabId: String,
+        groups: List<NotebookWorkGroupBatchItem>,
+        clearExisting: Boolean,
+    ) {
+        notebookConfigRepository.replaceWorkGroups(classId, tabId, groups, clearExisting)
     }
 
     override suspend fun deleteColumn(columnId: String) {

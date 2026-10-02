@@ -25,8 +25,24 @@ enum NotebookGridStyle {
     static let gridLineStrong = Color.primary.opacity(0.14)
 
     /// Franja de fila par (zebra), plana. Es la única técnica de separación
-    /// de filas junto con `gridLine`; no se combina con bordes por celda.
-    static let zebra = Color.primary.opacity(0.025)
+    /// de filas junto con `gridLine`. Se pinta UNA sola vez, en el fondo de la
+    /// fila (`notebookRowView`); las celdas no vuelven a pintarla (doble zebra).
+    static let zebra = Color.primary.opacity(0.035)
+
+    /// Chip de peso de la cabecera: neutro; el color de la columna vive solo
+    /// en la barra de 3pt inferior.
+    static let chipFill = Color.primary.opacity(0.07)
+    static let chipText = Color.primary.opacity(0.72)
+
+    /// Estado vacío (barra/círculo hueco de una celda sin dato).
+    static let stateEmpty = Color.primary.opacity(0.22)
+
+    /// Escala de espaciado (múltiplos de 4/8).
+    enum Space {
+        static let xs: CGFloat = 4
+        static let s: CGFloat = 8
+        static let m: CGFloat = 16
+    }
 
     // MARK: - Tipografía de datos
 
@@ -100,15 +116,14 @@ enum NotebookGridStyle {
     /// <5 suspenso · 5–6,9 aprobado · ≥7 notable+. Mismo corte de "aprobado" que
     /// ya usa el resto de la app (ver `averageState`); no es un umbral nuevo.
     static let gradeLow = appAdaptiveBrandColor(light: (0.86, 0.20, 0.18), dark: (1.0, 0.38, 0.36))
+    /// Rojo oscuro para el TEXTO de notas <5 (#d70015 en claro): el `gradeLow`
+    /// claro no llega a contraste AA sobre fondo blanco.
+    static let gradeLowText = appAdaptiveBrandColor(light: (0.843, 0.0, 0.082), dark: (1.0, 0.27, 0.23))
     static let gradeMid = appAdaptiveBrandColor(light: (0.79, 0.53, 0.0), dark: (0.94, 0.67, 0.19))
     static let gradeHigh = appAdaptiveBrandColor(light: (0.12, 0.60, 0.32), dark: (0.28, 0.80, 0.50))
 
-    /// Clave de `@AppStorage` compartida por varias vistas (`NotebookModuleView`,
-    /// `NotebookStatefulEditableTableCell`): color semántico de nota + heat de
-    /// celda, con un único ajuste on/off desde el menú de acciones del cuaderno.
-    /// Cada vista declara su propio `@AppStorage` con esta misma clave en vez de
-    /// enhebrar un booleano por los inits — patrón estándar de SwiftUI para un
-    /// ajuste que cruza muchos tipos de celda sin acoplarlos entre sí.
+    /// Clave de `@AppStorage`. Apagado por defecto. Si se enciende, colorea
+    /// solo la Media, no cada nota del grid.
     static let semanticGradeColorDefaultsKey = "notebook.semanticGradeColorEnabled"
 
     // MARK: - Identidad de alumno (rediseño radical del grid)
@@ -142,6 +157,15 @@ enum NotebookGradeBand {
             self = .mid
         } else {
             self = .high
+        }
+    }
+
+    /// Nombre del nivel, para `.help` y accesibilidad (no depender solo del color).
+    var levelName: String {
+        switch self {
+        case .low: return "Insuficiente"
+        case .mid: return "Aprobado"
+        case .high: return "Notable o superior"
         }
     }
 

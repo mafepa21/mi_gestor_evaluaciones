@@ -8,10 +8,13 @@ import com.migestor.shared.usecase.*
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 import kotlin.native.ObjCName
 
-enum class NotebookViewModelSaveState { Saved, Unsaved, Saving }
+enum class NotebookViewModelSaveState { Saved, Unsaved, Saving, Failed }
+
+private const val WORK_GROUP_RELOAD_DEBOUNCE_MS = 300L
 
 class NotebookViewModel(
     private val notebookRepository: NotebookRepository,
@@ -41,13 +44,15 @@ class NotebookViewModel(
 
     private val _isDirty = MutableStateFlow(false)
     val isDirty: StateFlow<Boolean> = _isDirty.asStateFlow()
+    private val _hasSaveError = MutableStateFlow(false)
     private val _pendingInlineSaves = MutableStateFlow(0)
     private val _pendingInlineCellSaves = MutableStateFlow<Set<Pair<Long, String>>>(emptySet())
     private var lastInlineSaveCompletedAtEpochMs: Long = 0L
 
-    val saveState: StateFlow<NotebookViewModelSaveState> = combine(_isDirty, _isSyncing) { dirty, syncing ->
+    val saveState: StateFlow<NotebookViewModelSaveState> = combine(_isDirty, _isSyncing, _hasSaveError) { dirty, syncing, hasSaveError ->
         when {
             syncing -> NotebookViewModelSaveState.Saving
+            hasSaveError -> NotebookViewModelSaveState.Failed
             dirty -> NotebookViewModelSaveState.Unsaved
             else -> NotebookViewModelSaveState.Saved
         }
@@ -58,8 +63,14 @@ class NotebookViewModel(
     fun setSyncing(syncing: Boolean) { _isSyncing.value = syncing }
 
     private fun beginInlineSave() {
+        _hasSaveError.value = false
         _pendingInlineSaves.update { it + 1 }
         setSyncing(true)
+    }
+
+    private fun markSaveFailed() {
+        _hasSaveError.value = true
+        markDirty()
     }
 
     private fun markCellAsSaving(studentId: Long, columnId: String) {
@@ -143,6 +154,8 @@ class NotebookViewModel(
     // un valor de un guardado anterior. Cada carga captura su generación antes del primer
     // `suspend` y descarta su resultado si una carga más reciente ya se lanzó mientras esperaba.
     private var loadGeneration: Long = 0
+    private val workGroupWriteMutex = kotlinx.coroutines.sync.Mutex()
+    private var workGroupReloadJob: Job? = null
 
     private fun loadInitialData() {
         // Placeholder for initial data loading if needed
@@ -771,8 +784,9 @@ class NotebookViewModel(
                 internalSaveGrade(studentId, column, value)
             } catch (e: Exception) {
                 println("Error saving column grade: ${e.message}")
+                markSaveFailed()
             } finally {
-                if (markCellAsSaved(studentId, column.id) == 0) {
+                if (markCellAsSaved(studentId, column.id) == 0 && !_hasSaveError.value) {
                     markClean()
                 }
             }
@@ -784,7 +798,7 @@ class NotebookViewModel(
         when (column.type) {
             NotebookColumnType.NUMERIC -> {
                 val raw = value.trim()
-                val numericValue = raw.replace(",", ".").toDoubleOrNull()
+                val numericValue = parseNotebookNumericValue(column, raw)
                 if (raw.isNotEmpty() && numericValue == null) return
                 notebookRepository.saveGrade(
                     classId = classId,
@@ -850,6 +864,7 @@ class NotebookViewModel(
                 markClean()
             } catch (e: Exception) {
                 println("Error saving queued column grades: ${e.message}")
+                markSaveFailed()
             } finally {
                 endInlineSave()
             }
@@ -861,6 +876,7 @@ class NotebookViewModel(
         val classId = activeClassId ?: return false
         val currentState = _state.value as? NotebookUiState.Data ?: return false
 
+        _hasSaveError.value = false
         setSyncing(true)
         return try {
             currentState.sheet.rows.forEach { row ->
@@ -872,7 +888,7 @@ class NotebookViewModel(
                             val draft = currentState.numericDrafts[key]
                             if (draft != null) {
                                 val raw = draft.trim()
-                                val numericValue = raw.replace(",", ".").toDoubleOrNull()
+                                val numericValue = parseNotebookNumericValue(column, raw)
                                 // Mismo guard que internalSaveGrade: un draft no vacio que no
                                 // parsea (p. ej. "7,,5") no debe guardarse como null, pisando
                                 // la nota ya existente en BD con un valor vacio.
@@ -950,6 +966,8 @@ class NotebookViewModel(
             NotebookRefreshBus.emitRefresh()
             true
         } catch (e: Exception) {
+            println("Error saving notebook: ${e.message}")
+            markSaveFailed()
             false
         } finally {
             setSyncing(false)
@@ -983,12 +1001,12 @@ class NotebookViewModel(
         updateDataState { currentState ->
             val updatedRows = currentState.sheet.rows.map { row ->
                 if (row.student.id == studentId) {
+                    val column = currentState.sheet.columns.firstOrNull { it.id == columnId }
                     val updatedCells = row.cells.map { cell ->
-                        if (cell.evaluationId != null && columnId == "eval_${cell.evaluationId}") {
-                            cell.copy(value = valStr.toDoubleOrNull())
+                        if (cell.evaluationId != null && (columnId == "eval_${cell.evaluationId}" || column?.evaluationId == cell.evaluationId)) {
+                            cell.copy(value = parseNotebookNumericValue(column?.inputKind, valStr))
                         } else cell
                     }
-                    val column = currentState.sheet.columns.firstOrNull { it.id == columnId }
                     row.copy(
                         cells = updatedCells,
                         persistedGrades = row.persistedGrades.upsertLocalGrade(
@@ -999,6 +1017,7 @@ class NotebookViewModel(
                             type = type,
                             value = valStr,
                             rubricSelections = null,
+                            inputKind = column?.inputKind,
                         ),
                         persistedCells = row.persistedCells.upsertLocalCell(
                             classId = currentState.sheet.classId,
@@ -1063,9 +1082,10 @@ class NotebookViewModel(
         type: NotebookColumnType,
         value: String,
         rubricSelections: String?,
+        inputKind: NotebookCellInputKind? = null,
     ): List<Grade> {
         if (type != NotebookColumnType.NUMERIC && type != NotebookColumnType.RUBRIC) return this
-        val numericValue = value.trim().replace(",", ".").toDoubleOrNull()
+        val numericValue = parseNotebookNumericValue(inputKind, value)
         fun Grade.matchesTarget(): Boolean {
             return columnId == targetColumnId || (targetEvaluationId != null && evaluationId == targetEvaluationId)
         }
@@ -1091,6 +1111,34 @@ class NotebookViewModel(
             value = numericValue,
             rubricSelections = rubricSelections,
         )
+    }
+
+    private fun parseNotebookNumericValue(
+        column: NotebookColumnDefinition,
+        value: String,
+    ): Double? = parseNotebookNumericValue(column.inputKind, value)
+
+    private fun parseNotebookNumericValue(
+        inputKind: NotebookCellInputKind?,
+        value: String,
+    ): Double? {
+        val raw = value.trim()
+        if (raw.isEmpty()) return null
+        if (inputKind != NotebookCellInputKind.TIME) {
+            return raw.replace(",", ".").toDoubleOrNull()
+        }
+
+        val normalized = raw.replace('.', ',')
+        val minuteParts = normalized.split(':')
+        if (minuteParts.size == 2) {
+            val minutes = minuteParts[0].replace(',', '.').toDoubleOrNull() ?: return null
+            val secondParts = minuteParts[1].split(',')
+            val seconds = secondParts.firstOrNull()?.toDoubleOrNull() ?: return null
+            val fraction = secondParts.drop(1).firstOrNull()?.let { "0.$it".toDoubleOrNull() } ?: 0.0
+            return (minutes * 60.0 + seconds + fraction).takeIf { it.isFinite() && it >= 0.0 }
+        }
+
+        return raw.replace(',', '.').toDoubleOrNull()
     }
 
     private fun List<PersistedNotebookCell>.upsertLocalCell(
@@ -1407,6 +1455,50 @@ class NotebookViewModel(
         attachmentUris: List<String> = emptyList(),
     ) {
         val classId = activeClassId ?: return
+
+        // Actualización optimista inmediata en memoria para que la UI responda al instante
+        updateDataState { currentState ->
+            val updatedRows = currentState.sheet.rows.map { row ->
+                if (row.student.id == studentId) {
+                    val resolvedIcon = if (iconValue?.isBlank() == true) null else iconValue
+                    val updatedPersistedCells = row.persistedCells.map { cell ->
+                        if (cell.columnId == columnId) {
+                            val currentAnnotation = cell.annotation
+                            val finalIcon = resolvedIcon ?: (if (iconValue != null) null else currentAnnotation?.icon)
+                            val finalNote = note ?: currentAnnotation?.note
+                            val newAnnotation = NotebookCellAnnotation(
+                                note = finalNote,
+                                icon = finalIcon,
+                                colorHex = currentAnnotation?.colorHex,
+                                attachmentUris = if (attachmentUris.isNotEmpty()) attachmentUris else (currentAnnotation?.attachmentUris ?: emptyList())
+                            )
+                            cell.copy(
+                                iconValue = finalIcon,
+                                annotation = newAnnotation
+                            )
+                        } else cell
+                    }
+                    val hasCell = updatedPersistedCells.any { it.columnId == columnId }
+                    val finalCells = if (!hasCell) {
+                        val newAnnotation = NotebookCellAnnotation(
+                            note = note,
+                            icon = resolvedIcon,
+                            attachmentUris = attachmentUris
+                        )
+                        updatedPersistedCells + PersistedNotebookCell(
+                            classId = classId,
+                            studentId = studentId,
+                            columnId = columnId,
+                            iconValue = resolvedIcon,
+                            annotation = newAnnotation
+                        )
+                    } else updatedPersistedCells
+                    row.copy(persistedCells = finalCells)
+                } else row
+            }
+            currentState.copy(sheet = currentState.sheet.copy(rows = updatedRows))
+        }
+
         scope.launch {
             try {
                 notebookRepository.saveCell(
@@ -1417,8 +1509,7 @@ class NotebookViewModel(
                     iconValue = iconValue,
                     attachmentUris = attachmentUris
                 )
-                // No selectClass: la anotación es metadata de celda.
-                // El observer de grades/cells detectará el cambio y actualizará el estado.
+                NotebookRefreshBus.emitRefresh()
             } catch (e: Exception) {
                 println("Error saving notebook cell annotation: ${e.message}")
             }
@@ -1638,11 +1729,23 @@ class NotebookViewModel(
         return firstChild?.id ?: firstRoot?.id ?: tabs.firstOrNull()?.id
     }
 
-    fun saveWorkGroup(name: String, groupId: Long? = null, studentIds: List<Long> = emptyList(), learningSituationId: Long? = null) {
+    fun saveWorkGroup(
+        name: String,
+        groupId: Long? = null,
+        studentIds: List<Long> = emptyList(),
+        learningSituationId: Long? = null,
+        tabId: String? = null,
+    ) {
         val classId = activeClassId ?: return
         val currentState = _state.value as? NotebookUiState.Data ?: return
         scope.launch {
-            val tabId = _selectedTabId.value
+            val existing = currentState.sheet.workGroups.firstOrNull { it.id == groupId }
+            val resolvedTabId = existing?.tabId
+                ?: NotebookWorkGroupPolicy.canonicalTabId(
+                    tabs = currentState.sheet.tabs,
+                    requestedTabId = tabId,
+                    selectedTabId = _selectedTabId.value,
+                )
                 ?: currentState.sheet.tabs.firstOrNull()?.id
                 ?: run {
                     val tabName = "Evaluación"
@@ -1651,12 +1754,11 @@ class NotebookViewModel(
                     notebookRepository.saveTab(classId, newTab)
                     newTabId
                 }
-            val existing = currentState.sheet.workGroups.firstOrNull { it.id == groupId }
-            val nextOrder = currentState.sheet.workGroups.filter { it.tabId == tabId }.maxOfOrNull { it.order }?.plus(1) ?: 0
+            val nextOrder = currentState.sheet.workGroups.filter { it.tabId == resolvedTabId }.maxOfOrNull { it.order }?.plus(1) ?: 0
             val baseName = name.trim().ifBlank { existing?.name ?: "Grupo ${nextOrder + 1}" }
             val uniqueName = buildUniqueWorkGroupName(
                 baseName = baseName,
-                tabId = tabId,
+                tabId = resolvedTabId,
                 workGroups = currentState.sheet.workGroups,
                 excludedGroupId = groupId,
             )
@@ -1665,7 +1767,7 @@ class NotebookViewModel(
                 workGroup = NotebookWorkGroup(
                     id = existing?.id ?: groupId ?: 0L,
                     classId = classId,
-                    tabId = tabId,
+                    tabId = resolvedTabId,
                     name = uniqueName,
                     order = existing?.order ?: nextOrder,
                     learningSituationId = when (learningSituationId) {
@@ -1677,10 +1779,86 @@ class NotebookViewModel(
                 )
             )
             if (studentIds.isNotEmpty()) {
-                notebookRepository.assignStudentsToWorkGroup(classId, tabId, savedId, studentIds)
+                notebookRepository.assignStudentsToWorkGroup(classId, resolvedTabId, savedId, studentIds)
             }
             selectClass(classId, force = true)
         }
+    }
+
+    fun replaceWorkGroups(
+        tabId: String,
+        groups: List<NotebookWorkGroupBatchItem>,
+        clearExisting: Boolean = false,
+    ) {
+        val classId = activeClassId ?: return
+        val currentState = _state.value as? NotebookUiState.Data
+        val resolvedTabId = NotebookWorkGroupPolicy.canonicalTabId(
+            tabs = currentState?.sheet?.tabs.orEmpty(),
+            requestedTabId = tabId,
+            selectedTabId = _selectedTabId.value,
+        ) ?: tabId
+        scope.launch {
+            notebookRepository.replaceWorkGroups(
+                classId = classId,
+                tabId = resolvedTabId,
+                groups = groups,
+                clearExisting = clearExisting,
+            )
+            selectClass(classId, force = true)
+        }
+    }
+
+    fun autoComposeWorkGroups(
+        groupCount: Int,
+        strategy: String,
+        mixSex: Boolean,
+        spreadInjured: Boolean,
+        learningSituationId: Long? = null,
+        tabId: String? = null,
+        clearExisting: Boolean = true,
+    ): List<ComposedWorkGroup> {
+        if (activeClassId == null) return emptyList()
+        val currentState = _state.value as? NotebookUiState.Data ?: return emptyList()
+        val resolvedTabId = NotebookWorkGroupPolicy.canonicalTabId(
+            tabs = currentState.sheet.tabs,
+            requestedTabId = tabId,
+            selectedTabId = _selectedTabId.value,
+        ) ?: currentState.sheet.tabs.firstOrNull()?.id ?: return emptyList()
+        val parsedStrategy = when (strategy) {
+            "homogeneous_grade" -> WorkGroupComposeStrategy.HOMOGENEOUS_GRADE
+            "random_balanced" -> WorkGroupComposeStrategy.RANDOM_BALANCED
+            else -> WorkGroupComposeStrategy.HETEROGENEOUS_GRADE
+        }
+        val inputs = currentState.sheet.rows.map { row ->
+            WorkGroupStudentInput(
+                studentId = row.student.id,
+                average = row.weightedAverage,
+                sex = row.student.sex,
+                isInjured = row.student.isInjured,
+            )
+        }
+        val composed = ComposeWorkGroupsUseCase().compose(
+            students = inputs,
+            options = WorkGroupComposeOptions(
+                groupCount = groupCount,
+                strategy = parsedStrategy,
+                mixSex = mixSex,
+                spreadInjured = spreadInjured,
+            ),
+        )
+        val situationId = learningSituationId?.takeUnless { it == -1L }
+        replaceWorkGroups(
+            tabId = resolvedTabId,
+            groups = composed.map { group ->
+                NotebookWorkGroupBatchItem(
+                    name = group.name,
+                    studentIds = group.studentIds,
+                    learningSituationId = situationId,
+                )
+            },
+            clearExisting = clearExisting,
+        )
+        return composed
     }
 
     fun renameWorkGroup(groupId: Long, name: String) {
@@ -1693,7 +1871,7 @@ class NotebookViewModel(
         val groupId = groupName?.let { name ->
             currentState.sheet.workGroups.firstOrNull { it.tabId == tabId && it.name == name }?.id
         }
-        assignStudentsToWorkGroup(groupId = groupId, studentIds = listOf(studentId))
+        assignStudentsToWorkGroup(groupId = groupId, studentIds = listOf(studentId), tabId = tabId)
     }
 
     fun deleteWorkGroup(groupId: Long) {
@@ -1716,26 +1894,77 @@ class NotebookViewModel(
             .map { it.name.trim().lowercase() }
             .toSet()
 
-        var candidate = baseName.trim()
+        if (!existingNames.contains(baseName.lowercase())) {
+            return baseName
+        }
+
         var suffix = 2
-        while (candidate.lowercase() in existingNames) {
+        var candidate = "$baseName ($suffix)"
+        while (existingNames.contains(candidate.lowercase())) {
+            suffix += 1
             candidate = "$baseName ($suffix)"
-            suffix++
         }
         return candidate
     }
 
-    fun assignStudentsToWorkGroup(groupId: Long?, studentIds: List<Long>) {
+    fun assignStudentsToWorkGroup(groupId: Long?, studentIds: List<Long>, tabId: String? = null) {
         val classId = activeClassId ?: return
         val currentState = _state.value as? NotebookUiState.Data ?: return
-        val tabId = _selectedTabId.value ?: currentState.sheet.tabs.firstOrNull()?.id ?: return
+        val groupTabId = groupId?.let { id -> currentState.sheet.workGroups.firstOrNull { it.id == id }?.tabId }
+        val resolvedTabId = groupTabId
+            ?: NotebookWorkGroupPolicy.canonicalTabId(
+                tabs = currentState.sheet.tabs,
+                requestedTabId = tabId,
+                selectedTabId = _selectedTabId.value,
+            )
+            ?: currentState.sheet.tabs.firstOrNull()?.id
+            ?: return
+        // Estado local inmediato: el tablero no espera a la recarga completa del cuaderno.
+        applyWorkGroupMembershipLocally(resolvedTabId, groupId, studentIds, classId)
         scope.launch {
-            if (groupId == null) {
-                notebookRepository.clearStudentsFromWorkGroup(classId, tabId, studentIds)
-            } else {
-                notebookRepository.assignStudentsToWorkGroup(classId, tabId, groupId, studentIds)
+            // Serializa los guardados para que una ráfaga de arrastres conserve el orden.
+            workGroupWriteMutex.withLock {
+                if (groupId == null) {
+                    notebookRepository.clearStudentsFromWorkGroup(classId, resolvedTabId, studentIds)
+                } else {
+                    notebookRepository.assignStudentsToWorkGroup(classId, resolvedTabId, groupId, studentIds)
+                }
             }
-            selectClass(classId, force = true)
+            scheduleWorkGroupReload(classId)
+        }
+    }
+
+    private fun applyWorkGroupMembershipLocally(
+        tabId: String,
+        groupId: Long?,
+        studentIds: List<Long>,
+        classId: Long,
+    ) {
+        val moved = studentIds.toSet()
+        _state.update { current ->
+            if (current !is NotebookUiState.Data) return@update current
+            val kept = current.sheet.workGroupMembers.filterNot { it.tabId == tabId && it.studentId in moved }
+            val added = if (groupId == null) {
+                emptyList()
+            } else {
+                studentIds.distinct().map {
+                    NotebookWorkGroupMember(classId = classId, tabId = tabId, groupId = groupId, studentId = it)
+                }
+            }
+            val members = kept + added
+            current.copy(
+                sheet = current.sheet.copy(workGroupMembers = members),
+                workGroupMembers = members,
+            )
+        }
+    }
+
+    /** Una sola recarga completa tras una ráfaga de cambios de grupo (cada nuevo cambio reinicia la espera). */
+    private fun scheduleWorkGroupReload(classId: Long) {
+        workGroupReloadJob?.cancel()
+        workGroupReloadJob = scope.launch {
+            delay(WORK_GROUP_RELOAD_DEBOUNCE_MS)
+            if (activeClassId == classId) selectClass(classId, force = true)
         }
     }
 

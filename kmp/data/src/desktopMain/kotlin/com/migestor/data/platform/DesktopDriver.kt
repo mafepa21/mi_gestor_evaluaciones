@@ -90,6 +90,9 @@ private fun resolveDesktopDatabaseFile(
 private fun configureDesktopSqlite(driver: JdbcSqliteDriver) {
     driver.execute(null, "PRAGMA journal_mode = WAL", 0)
     driver.execute(null, "PRAGMA busy_timeout = $SQLITE_BUSY_TIMEOUT_MS", 0)
+    driver.execute(null, "PRAGMA synchronous = NORMAL", 0)
+    driver.execute(null, "PRAGMA cache_size = -64000", 0)
+    driver.execute(null, "PRAGMA temp_store = MEMORY", 0)
 }
 
 private var desktopDbLockChannel: FileChannel? = null

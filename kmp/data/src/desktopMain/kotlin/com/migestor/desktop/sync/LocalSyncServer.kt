@@ -1,6 +1,11 @@
 package com.migestor.desktop.sync
 
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.migestor.data.db.AppDatabase
+import com.migestor.data.di.KmpContainer
 import com.migestor.data.platform.getAppDataPath
+import com.migestor.data.sync.SyncDatasetFingerprint
 import com.migestor.shared.sync.SyncAck
 import com.migestor.shared.sync.SyncChange
 import com.migestor.shared.sync.SyncCoordinator
@@ -54,7 +59,6 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
-import java.util.prefs.Preferences
 import javax.jmdns.JmDNS
 import javax.jmdns.ServiceInfo
 import javax.net.ssl.KeyManagerFactory
@@ -269,10 +273,25 @@ class LocalSyncServer(
     private val port: Int = 8765,
     private val syncCoordinator: SyncCoordinator = SyncCoordinator(InMemorySyncAdapter()),
     private val stateListener: ((CommandCenterSnapshot) -> Unit)? = null,
+    private val container: KmpContainer? = null,
+    secureStoreServiceName: String = DEFAULT_KEYCHAIN_SERVICE,
+    /**
+     * Contraseña de la app del Mac que lanza este helper. La crea la app en cada
+     * arranque y la entrega por la entrada estándar del proceso, que ningún otro
+     * programa puede leer. Solo vale desde loopback; los iPads siguen usando la
+     * contraseña del enlace.
+     */
+    private val localClientToken: String? = null,
 ) {
+    companion object {
+        const val DEFAULT_KEYCHAIN_SERVICE = "com.migestor.sync.desktop"
+    }
+
     private val learningSituationDocumentsDirectory = File(getAppDataPath("learning-situations")).apply { mkdirs() }
     private val json = Json { ignoreUnknownKeys = true }
     private val sseConnections = java.util.concurrent.CopyOnWriteArrayList<HttpExchange>()
+    @Volatile
+    private var lastAdoptionStatus: String = "idle"
     private var server: HttpsServer? = null
     private var jmDns: JmDNS? = null
     private var serviceInfo: ServiceInfo? = null
@@ -283,7 +302,7 @@ class LocalSyncServer(
     @Volatile
     private var advertisedLanAddress: InetAddress? = null
 
-    private val secureStore = DesktopSecureStore(serviceName = "com.migestor.sync.desktop")
+    private val secureStore = DesktopSecureStore(serviceName = secureStoreServiceName)
     private val tlsIdentity = DesktopTlsIdentity(secureStore)
     private val pairingPinState = ExpiringPairingPin()
     private val pairingAttemptLimiter = PairingAttemptLimiter()
@@ -389,17 +408,29 @@ class LocalSyncServer(
             }
 
             if (!pairedDeviceId.isNullOrBlank() && pairedDeviceId != deviceId) {
-                println("❌ Handshake LAN rechazado: el servidor ya está vinculado.")
-                ex.respond(409, """{"error":"already_paired"}""")
-                return@createContext
+                // develop: un PIN válido re-empareja y sustituye el vínculo anterior
+                // (test rePairingWithValidPinReplacesDeviceWithout409).
+                println("⚠️ Re-emparejando servidor: Reemplazando vínculo previo '$pairedDeviceId' por '$deviceId' mediante PIN válido.")
+                activeToken = null
             }
 
-            val token = activeToken ?: UUID.randomUUID().toString().also { newToken ->
-                activeToken = newToken
-                secureStore.put("paired-token", newToken)
+            val previousToken = activeToken
+            val previousDeviceId = pairedDeviceId
+            val token = activeToken ?: UUID.randomUUID().toString()
+            try {
+                if (activeToken == null) {
+                    secureStore.put("paired-token", token)
+                    activeToken = token
+                }
+                secureStore.put("paired-device-id", deviceId)
+                pairedDeviceId = deviceId
+            } catch (_: IllegalStateException) {
+                activeToken = previousToken
+                pairedDeviceId = previousDeviceId
+                ex.respond(500, """{"error":"keychain_unavailable"}""")
+                return@createContext
             }
-            pairedDeviceId = deviceId
-            secureStore.put("paired-device-id", deviceId)
+            // main: límite de intentos por origen y PIN de un solo uso.
             pairingAttemptLimiter.recordSuccess(origin)
             pairingPinState.rotate()
 
@@ -514,6 +545,7 @@ class LocalSyncServer(
                 ex.respond(405, """{"error":"method_not_allowed"}""")
                 return@createContext
             }
+            if (!isAuthorized(ex)) return@createContext
             if (!isLoopbackSyncRequest(ex.remoteAddress?.address)) {
                 ex.respond(403, """{"error":"loopback_only"}""")
                 return@createContext
@@ -571,9 +603,162 @@ class LocalSyncServer(
                 ex.respond(405, """{"error":"method_not_allowed"}""")
                 return@createContext
             }
-            if (!isAuthorized(ex)) return@createContext
+            val isLoopback = isLoopbackSyncRequest(ex.remoteAddress?.address)
+            if (!isLoopback && !isAuthorized(ex)) {
+                ex.respond(401, """{"error":"unauthorized"}""")
+                return@createContext
+            }
             revokePairingInternal()
             ex.respond(200, """{"ok":true}""")
+        }
+
+        https.createContext("/sync/fingerprint") { ex ->
+            if (ex.requestMethod != "GET") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isAuthorized(ex)) return@createContext
+
+            val c = container
+            if (c == null) {
+                ex.respond(503, """{"error":"database_not_available"}""")
+                return@createContext
+            }
+            val fp = kotlinx.coroutines.runBlocking {
+                SyncDatasetFingerprint.compute(c)
+            }
+            ex.respond(200, fp.toJson())
+        }
+
+        https.createContext("/sync/snapshot/db") { ex ->
+            if (!isAuthorized(ex)) return@createContext
+            when (ex.requestMethod) {
+                "GET" -> {
+                    val c = container
+                    if (c == null) {
+                        ex.respond(503, """{"error":"database_not_available"}""")
+                        return@createContext
+                    }
+                    val tempFile = File.createTempFile("snapshot_export_", ".db")
+                    try {
+                        val exported = c.exportConsistentDatabaseCopy(tempFile.absolutePath)
+                        if (!exported || !tempFile.exists() || tempFile.length() == 0L) {
+                            ex.respond(500, """{"error":"export_failed"}""")
+                            return@createContext
+                        }
+                        val fp = kotlinx.coroutines.runBlocking {
+                            SyncDatasetFingerprint.compute(c)
+                        }
+                        ex.responseHeaders.add("X-Schema-Version", AppDatabase.Schema.version.toString())
+                        ex.responseHeaders.add("X-Dataset-Digest", fp.digest)
+                        ex.respondBinary(200, tempFile.readBytes(), "application/x-sqlite3")
+                    } catch (t: Throwable) {
+                        ex.respond(500, """{"error":"export_failed","detail":"${t.message ?: "unknown"}"}""")
+                    } finally {
+                        tempFile.delete()
+                    }
+                }
+                "POST" -> {
+                    val clientSchemaVersion = ex.requestHeaders.getFirst("X-Schema-Version")?.toLongOrNull()
+                    if (clientSchemaVersion == null || clientSchemaVersion != AppDatabase.Schema.version) {
+                        ex.respond(409, """{"error":"schema_mismatch","expected":${AppDatabase.Schema.version}}""")
+                        return@createContext
+                    }
+
+                    val maxDbSizeBytes = 512L * 1024L * 1024L
+                    val bytes = runCatching {
+                        ex.requestBody.use { input ->
+                            val buffer = java.io.ByteArrayOutputStream()
+                            val chunk = ByteArray(8192)
+                            var total = 0L
+                            var read: Int
+                            while (input.read(chunk).also { read = it } != -1) {
+                                total += read
+                                if (total > maxDbSizeBytes) {
+                                    return@use null
+                                }
+                                buffer.write(chunk, 0, read)
+                            }
+                            buffer.toByteArray()
+                        }
+                    }.getOrNull()
+
+                    if (bytes == null) {
+                        ex.respond(413, """{"error":"payload_too_large"}""")
+                        return@createContext
+                    }
+
+                    val sqliteHeader = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
+                    if (bytes.size < 16 || !bytes.sliceArray(0 until 16).contentEquals(sqliteHeader)) {
+                        ex.respond(422, """{"error":"invalid_sqlite_database"}""")
+                        return@createContext
+                    }
+
+                    val stagingFile = File(getAppDataPath("pending_adopt.db"))
+                    stagingFile.writeBytes(bytes)
+
+                    val isValid = runCatching {
+                        val testDriver = JdbcSqliteDriver("jdbc:sqlite:${stagingFile.absolutePath}")
+                        val version = testDriver.executeQuery(
+                            null,
+                            "PRAGMA user_version",
+                            { cursor ->
+                                val ver = if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L
+                                QueryResult.Value(ver)
+                            },
+                            0
+                        ).value
+                        testDriver.close()
+                        version == AppDatabase.Schema.version
+                    }.getOrDefault(false)
+
+                    if (!isValid) {
+                        stagingFile.delete()
+                        ex.respond(422, """{"error":"invalid_database_version"}""")
+                        return@createContext
+                    }
+
+                    val clientDigest = ex.requestHeaders.getFirst("X-Dataset-Digest") ?: ""
+                    val sourceDeviceId = pairedDeviceId ?: "unknown"
+                    val stagedAt = System.currentTimeMillis()
+                    val markerJson = buildJsonObject {
+                        put("sourceDeviceId", JsonPrimitive(sourceDeviceId))
+                        put("schemaVersion", JsonPrimitive(AppDatabase.Schema.version))
+                        put("digest", JsonPrimitive(clientDigest))
+                        put("stagedAtEpochMs", JsonPrimitive(stagedAt))
+                    }.toString()
+                    File(getAppDataPath("pending_adopt.json")).writeText(markerJson)
+                    lastAdoptionStatus = "staged"
+                    println("[command-center] State: adopt_staged|source=$sourceDeviceId|digest=$clientDigest")
+                    ex.respond(200, """{"staged":true}""")
+                }
+                else -> ex.respond(405, """{"error":"method_not_allowed"}""")
+            }
+        }
+
+        https.createContext("/sync/snapshot/status") { ex ->
+            if (ex.requestMethod != "GET") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isAuthorized(ex)) return@createContext
+
+            val pendingFile = File(getAppDataPath("pending_adopt.json"))
+            val lastFile = File(getAppDataPath("last_adoption.json"))
+            val currentStatus = when {
+                pendingFile.exists() -> "staged"
+                lastFile.exists() -> {
+                    runCatching {
+                        val content = lastFile.readText()
+                        val obj = json.parseToJsonElement(content).jsonObject
+                        obj["status"]?.jsonPrimitive?.contentOrNull ?: "idle"
+                    }.getOrDefault("idle")
+                }
+                else -> lastAdoptionStatus
+            }
+            ex.respond(200, buildJsonObject {
+                put("status", JsonPrimitive(currentStatus))
+            }.toString())
         }
 
         https.start()
@@ -816,12 +1001,17 @@ class LocalSyncServer(
     }
 
     private fun isAuthorized(ex: HttpExchange): Boolean {
-        if (ex.remoteAddress.address.isLoopbackAddress) {
-            return true
-        }
-        val auth = ex.requestHeaders.getFirst("Authorization")
-        val token = auth?.removePrefix("Bearer ")?.trim()
-        val authorized = token != null && token == activeToken
+        // El propio Mac no es de confianza: cualquier programa local podría leer
+        // o escribir el cuaderno. La contraseña del enlace se exige en todas las
+        // rutas de datos, también en loopback (incluido /sync/local-changes).
+        val token = ex.requestHeaders.getFirst("Authorization")
+            ?.removePrefix("Bearer ")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        val isLocalClient = localClientToken != null &&
+            token == localClientToken &&
+            ex.remoteAddress?.address?.isLoopbackAddress == true
+        val authorized = token != null && (token == activeToken || isLocalClient)
         if (!authorized) {
             ex.respond(401, """{"error":"unauthorized"}""")
         }
@@ -1084,27 +1274,46 @@ private class DesktopTlsIdentity(
     }
 }
 
+internal object DesktopKeychainCommand {
+    fun addArgs(account: String, serviceName: String, value: String): List<String> {
+        val hexValue = value.toByteArray(Charsets.UTF_8).joinToString("") { "%02x".format(it) }
+        return listOf(
+            "security", "add-generic-password",
+            "-a", account,
+            "-s", serviceName,
+            "-U",
+            "-X", hexValue,
+        )
+    }
+}
+
 private class DesktopSecureStore(
     private val serviceName: String,
 ) {
-    private val prefs = Preferences.userRoot().node("com.migestor.sync.desktop.fallback")
+    private val isMemoryOnly = serviceName.contains("test", ignoreCase = true) || serviceName == "in-memory"
+    private val memoryStore = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     fun get(key: String): String? {
-        return readFromMacKeychain(key) ?: prefs.get(key, null)
+        if (isMemoryOnly) return memoryStore[key]
+        return readFromMacKeychain(key)
     }
 
     fun put(key: String, value: String) {
+        if (isMemoryOnly) {
+            memoryStore[key] = value
+            return
+        }
         if (!writeToMacKeychain(key, value)) {
-            prefs.put(key, value)
-            prefs.flushSafely()
+            error("No se pudo guardar el secreto en el llavero.")
         }
     }
 
     fun delete(key: String) {
-        if (!deleteFromMacKeychain(key)) {
-            prefs.remove(key)
-            prefs.flushSafely()
+        if (isMemoryOnly) {
+            memoryStore.remove(key)
+            return
         }
+        deleteFromMacKeychain(key)
     }
 
     private fun readFromMacKeychain(account: String): String? {
@@ -1125,13 +1334,7 @@ private class DesktopSecureStore(
     private fun writeToMacKeychain(account: String, value: String): Boolean {
         if (!isMac()) return false
         return runCatching {
-            val process = ProcessBuilder(
-                "security", "add-generic-password",
-                "-a", account,
-                "-s", serviceName,
-                "-w", value,
-                "-U"
-            ).start()
+            val process = ProcessBuilder(DesktopKeychainCommand.addArgs(account, serviceName, value)).start()
             process.waitFor() == 0
         }.getOrDefault(false)
     }
@@ -1150,10 +1353,6 @@ private class DesktopSecureStore(
 
     private fun isMac(): Boolean =
         System.getProperty("os.name")?.lowercase()?.contains("mac") == true
-}
-
-private fun Preferences.flushSafely() {
-    runCatching { flush() }
 }
 
 data class SyncServerStatus(

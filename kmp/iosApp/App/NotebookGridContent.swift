@@ -3,6 +3,7 @@ import MiGestorKit
 
 struct NotebookGridContent<
     EmptyContent: View,
+    FilterEmptyContent: View,
     SeatingContent: View,
     TopAccessory: View,
     DividerHandle: View,
@@ -10,6 +11,7 @@ struct NotebookGridContent<
     RowContent: View
 >: View {
     let rows: [NotebookTableRow]
+    let hasSourceRows: Bool
     let surfaceMode: NotebookSurfaceMode
     let fixedColumnWidth: CGFloat
     let trailingFixedColumnWidth: CGFloat
@@ -20,10 +22,14 @@ struct NotebookGridContent<
     let structuralInvalidationKey: String
     let rowReloadRevisions: [Int64: Int]
     let transientCellIds: Set<String>
+    /// Resumen barato del contexto que afecta al pintado de una fila (rango, zebra, resaltados, riesgo, lesión...).
+    let rowContextDigest: (Int, NotebookTableRow) -> Int
+    let scrollProxy: NotebookGridScrollProxy?
     let fixedSegments: [NotebookDisplaySegment]
     let trailingFixedSegments: [NotebookDisplaySegment]
     let scrollableSegments: [NotebookDisplaySegment]
     let emptyContent: () -> EmptyContent
+    let filterEmptyContent: () -> FilterEmptyContent
     let seatingContent: ([NotebookTableRow]) -> SeatingContent
     let topAccessory: () -> TopAccessory
     let dividerHandle: () -> DividerHandle
@@ -46,20 +52,28 @@ struct NotebookGridContent<
             ],
             rowReloadRevisions: rowReloadRevisions,
             transientCellIds: transientCellIds,
+            rowContextDigest: rowContextDigest,
             structuralInvalidationKey: structuralInvalidationKey
         )
 
         NotebookGridContainer(
             rows: rows,
+            hasSourceRows: hasSourceRows,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedColumnWidth,
             trailingFixedColumnWidth: trailingFixedColumnWidth,
             isFixedColumnResizing: isFixedColumnResizing,
             topAccessoryHeight: topAccessoryHeight,
             headerHeight: headerHeight,
-            rowHeight: rowHeight
+            rowHeight: rowHeight,
+            groupHeaderInfo: { row in
+                (isFirst: row.isFirstInGroup, groupName: row.groupName, count: row.groupMemberCount)
+            },
+            scrollProxy: scrollProxy
         ) {
             emptyContent()
+        } filterEmptyContent: {
+            filterEmptyContent()
         } seatingContent: { rows in
             seatingContent(rows)
         } topAccessory: {
@@ -73,17 +87,17 @@ struct NotebookGridContent<
         } scrollHeader: {
             header(scrollableSegments)
         } fixedRow: { index, item in
-            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(studentId: item.student.id, segmentKey: fixedSegmentKey)) {
+            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(index: index, item: item, segmentKey: fixedSegmentKey)) {
                 rowContent(index, item, fixedSegments)
             }
             .equatable()
         } trailingFixedRow: { index, item in
-            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(studentId: item.student.id, segmentKey: trailingFixedSegmentKey)) {
+            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(index: index, item: item, segmentKey: trailingFixedSegmentKey)) {
                 rowContent(index, item, trailingFixedSegments)
             }
             .equatable()
         } scrollRow: { index, item in
-            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(studentId: item.student.id, segmentKey: scrollableSegmentKey)) {
+            NotebookEquatableGridRow(signature: rowFingerprintProvider.signature(index: index, item: item, segmentKey: scrollableSegmentKey)) {
                 rowContent(index, item, scrollableSegments)
             }
             .equatable()
@@ -121,54 +135,60 @@ private struct NotebookRowFingerprintPane {
     }
 }
 
-private struct NotebookRowFingerprintProvider {
+private final class NotebookRowFingerprintProvider {
     private struct Key: Hashable {
         let studentId: Int64
         let segmentKey: String
     }
 
-    private let signatures: [Key: String]
+    private let rowsByStudentId: [Int64: NotebookTableRow]
+    private let panesBySegmentKey: [String: NotebookRowFingerprintPane]
+    private let rowReloadRevisions: [Int64: Int]
+    private let transientDigestByStudentId: [Int64: String]
+    private let rowContextDigest: (Int, NotebookTableRow) -> Int
+    private let structuralInvalidationKey: String
+    private var signatures: [Key: String] = [:]
 
     init(
         rows: [NotebookTableRow],
         panes: [NotebookRowFingerprintPane],
         rowReloadRevisions: [Int64: Int],
         transientCellIds: Set<String>,
+        rowContextDigest: @escaping (Int, NotebookTableRow) -> Int,
         structuralInvalidationKey: String
     ) {
-        var signatures: [Key: String] = [:]
-        signatures.reserveCapacity(rows.count * panes.count)
-
-        let transientDigestByStudentId = Self.transientDigestByStudentId(transientCellIds)
-
-        for item in rows {
-            let studentId = item.student.id
-            let rowReloadRevision = rowReloadRevisions[studentId, default: 0]
-            let transientRowDigest = transientDigestByStudentId[studentId] ?? ""
-            let average = item.row.weightedAverage.map { "\($0.doubleValue)" } ?? "nil"
-            let cellDigestByColumnId = Self.cellDigestByColumnId(item.row.persistedCells)
-            let gradeDigestByColumnId = Self.gradeDigestByColumnId(item.row.persistedGrades)
-
-            for pane in panes {
-                signatures[Key(studentId: studentId, segmentKey: pane.segmentKey)] = Self.signature(
-                    studentId: studentId,
-                    average: average,
-                    segmentKey: pane.segmentKey,
-                    visibleColumnIds: pane.visibleColumnIds,
-                    transientRowDigest: transientRowDigest,
-                    cellDigestByColumnId: cellDigestByColumnId,
-                    gradeDigestByColumnId: gradeDigestByColumnId,
-                    rowReloadRevision: rowReloadRevision,
-                    structuralInvalidationKey: structuralInvalidationKey
-                )
-            }
-        }
-
-        self.signatures = signatures
+        self.rowContextDigest = rowContextDigest
+        self.rowsByStudentId = Dictionary(rows.map { ($0.student.id, $0) }, uniquingKeysWith: { first, _ in first })
+        self.panesBySegmentKey = Dictionary(panes.map { ($0.segmentKey, $0) }, uniquingKeysWith: { first, _ in first })
+        self.rowReloadRevisions = rowReloadRevisions
+        self.transientDigestByStudentId = Self.transientDigestByStudentId(transientCellIds)
+        self.structuralInvalidationKey = structuralInvalidationKey
     }
 
-    func signature(studentId: Int64, segmentKey: String) -> String {
-        signatures[Key(studentId: studentId, segmentKey: segmentKey)] ?? "\(studentId)¬\(segmentKey)"
+    func signature(index: Int, item: NotebookTableRow, segmentKey: String) -> String {
+        let studentId = item.student.id
+        let key = Key(studentId: studentId, segmentKey: segmentKey)
+        if let cached = signatures[key] {
+            return cached
+        }
+        guard let item = rowsByStudentId[studentId], let pane = panesBySegmentKey[segmentKey] else {
+            return "\(studentId)¬\(segmentKey)"
+        }
+        let visibleIds = Set(pane.visibleColumnIds)
+        let value = Self.signature(
+            studentId: studentId,
+            average: item.row.weightedAverage.map { "\($0.doubleValue)" } ?? "nil",
+            segmentKey: segmentKey,
+            visibleColumnIds: pane.visibleColumnIds,
+            transientRowDigest: transientDigestByStudentId[studentId] ?? "",
+            cellDigestByColumnId: Self.cellDigestByColumnId(item.row.persistedCells, visibleIds: visibleIds),
+            gradeDigestByColumnId: Self.gradeDigestByColumnId(item.row.persistedGrades, visibleIds: visibleIds),
+            rowReloadRevision: rowReloadRevisions[studentId, default: 0],
+            rowContext: rowContextDigest(index, item),
+            structuralInvalidationKey: structuralInvalidationKey
+        )
+        signatures[key] = value
+        return value
     }
 
     private static func signature(
@@ -180,6 +200,7 @@ private struct NotebookRowFingerprintProvider {
         cellDigestByColumnId: [String: String],
         gradeDigestByColumnId: [String: String],
         rowReloadRevision: Int,
+        rowContext: Int,
         structuralInvalidationKey: String
     ) -> String {
         guard !visibleColumnIds.isEmpty else {
@@ -189,6 +210,7 @@ private struct NotebookRowFingerprintProvider {
                 segmentKey,
                 transientRowDigest,
                 "\(rowReloadRevision)",
+                "\(rowContext)",
                 structuralInvalidationKey
             ].joined(separator: "¬")
         }
@@ -207,6 +229,7 @@ private struct NotebookRowFingerprintProvider {
             visibleCellDigest,
             visibleGradeDigest,
             "\(rowReloadRevision)",
+            "\(rowContext)",
             structuralInvalidationKey
         ].joined(separator: "¬")
     }
@@ -223,25 +246,29 @@ private struct NotebookRowFingerprintProvider {
         return grouped.mapValues { $0.sorted().joined(separator: "|") }
     }
 
-    private static func cellDigestByColumnId(_ cells: [PersistedNotebookCell]) -> [String: String] {
+    private static func cellDigestByColumnId(_ cells: [PersistedNotebookCell], visibleIds: Set<String>) -> [String: String] {
         var digests: [String: String] = [:]
-        digests.reserveCapacity(cells.count)
-        for cell in cells {
+        digests.reserveCapacity(min(cells.count, visibleIds.count))
+        for cell in cells where visibleIds.contains(cell.columnId) {
             digests[cell.columnId] = [
                 cell.columnId,
                 cell.textValue ?? "",
                 cell.displayValue ?? "",
                 cell.iconValue ?? "",
+                cell.annotation?.icon ?? "",
+                cell.annotation?.note ?? "",
+                "\(cell.annotation?.attachmentUris.count ?? 0)",
+                cell.ordinalValue ?? "",
                 cell.boolValue?.boolValue == true ? "1" : "0"
             ].joined(separator: ":")
         }
         return digests
     }
 
-    private static func gradeDigestByColumnId(_ grades: [Grade]) -> [String: String] {
+    private static func gradeDigestByColumnId(_ grades: [Grade], visibleIds: Set<String>) -> [String: String] {
         var digests: [String: String] = [:]
-        digests.reserveCapacity(grades.count)
-        for grade in grades {
+        digests.reserveCapacity(min(grades.count, visibleIds.count))
+        for grade in grades where visibleIds.contains(grade.columnId) {
             digests[grade.columnId] = [
                 grade.columnId,
                 grade.value.map { "\($0.doubleValue)" } ?? "",

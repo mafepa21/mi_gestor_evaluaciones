@@ -16,50 +16,55 @@ private enum NotebookCellKeyboardKind {
     case text
 }
 
-private enum NotebookCellSaveFeedback: Equatable {
-    case idle
-    case saving
-    case saved
-}
-
 struct NotebookCellDisplaySnapshot: Equatable {
     let numericText: String
     let text: String
     let checkValue: Bool
     let calculatedText: String
     let rubricText: String
+    let stampIcon: String?
+    let hasNote: Bool
+    let attachmentCount: Int
 
     init(
         numericText: String = "",
         text: String = "",
         checkValue: Bool = false,
         calculatedText: String = "",
-        rubricText: String = ""
+        rubricText: String = "",
+        stampIcon: String? = nil,
+        hasNote: Bool = false,
+        attachmentCount: Int = 0
     ) {
         self.numericText = numericText
         self.text = text
         self.checkValue = checkValue
         self.calculatedText = calculatedText
         self.rubricText = rubricText
+        self.stampIcon = stampIcon
+        self.hasNote = hasNote
+        self.attachmentCount = attachmentCount
     }
-
 }
 
 struct NotebookCellActions {
     let flushPendingColumnGradeSave: @MainActor (_ studentId: Int64, _ columnId: String) -> Void
     let saveColumnGrade: @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void
     let saveColumnGradeDebounced: @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void
-    let saveAttendance: @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Void
+    let resolvePhysicalScore: (@MainActor (_ student: Student, _ classId: Int64, _ columnId: String, _ rawValue: Double) async -> Double?)?
+    let saveAttendance: @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Bool
 
     init(
         flushPendingColumnGradeSave: @escaping @MainActor (_ studentId: Int64, _ columnId: String) -> Void,
         saveColumnGrade: @escaping @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void,
         saveColumnGradeDebounced: @escaping @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void,
-        saveAttendance: @escaping @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Void
+        resolvePhysicalScore: (@MainActor (_ student: Student, _ classId: Int64, _ columnId: String, _ rawValue: Double) async -> Double?)? = nil,
+        saveAttendance: @escaping @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Bool
     ) {
         self.flushPendingColumnGradeSave = flushPendingColumnGradeSave
         self.saveColumnGrade = saveColumnGrade
         self.saveColumnGradeDebounced = saveColumnGradeDebounced
+        self.resolvePhysicalScore = resolvePhysicalScore
         self.saveAttendance = saveAttendance
     }
 }
@@ -76,6 +81,8 @@ struct NotebookEditableTableCell: View {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -104,6 +111,15 @@ struct NotebookEditableTableCell: View {
     private var accessibilityCellValue: String {
         if column.type == .check {
             return displaySnapshot.checkValue ? "Marcado" : "Sin marcar"
+        }
+        if column.inputKind.isStructuredInstrument {
+            let raw = displaySnapshot.text.isEmpty
+                ? (item.lookup.cellsByColumnId[column.id]?.displayValue ?? item.lookup.cellsByColumnId[column.id]?.textValue ?? "")
+                : displaySnapshot.text
+            return NotebookStructuredValueLabel.accessibilityValue(for: raw)
+        }
+        if column.type == .rubric {
+            return NotebookRubricValueLabel.accessibilityValue(for: displaySnapshot.rubricText)
         }
         let value = [
             displaySnapshot.numericText,
@@ -138,6 +154,7 @@ struct NotebookEditableTableCell: View {
                 hasColumnColor: hasColumnColor,
                 formulaDisplay: formulaDisplay,
                 isSelected: isSelected,
+                reloadToken: reloadToken,
                 onSelect: onSelect,
                 onOpenStructuredInstrument: onOpenStructuredInstrument
             )
@@ -154,6 +171,7 @@ struct NotebookEditableTableCell: View {
                 categoryTint: categoryTint,
                 hasColumnColor: hasColumnColor,
                 focusedCellId: focusedCellId,
+                isFocused: isFocused,
                 activeChoiceCellId: $activeChoiceCellId,
                 navigationDirection: navigationDirection,
                 formulaDisplay: formulaDisplay,
@@ -186,6 +204,7 @@ struct NotebookEditableTableCell: View {
                     categoryTint: categoryTint,
                     hasColumnColor: hasColumnColor,
                     focusedCellId: focusedCellId,
+                    isFocused: isFocused,
                     activeChoiceCellId: $activeChoiceCellId,
                     navigationDirection: navigationDirection,
                     formulaDisplay: formulaDisplay,
@@ -216,6 +235,7 @@ struct NotebookEditableTableCell: View {
                     categoryTint: categoryTint,
                     hasColumnColor: hasColumnColor,
                     focusedCellId: focusedCellId,
+                    isFocused: isFocused,
                     activeChoiceCellId: $activeChoiceCellId,
                     navigationDirection: navigationDirection,
                     formulaDisplay: formulaDisplay,
@@ -245,6 +265,7 @@ struct NotebookEditableTableCell: View {
                     hasColumnColor: hasColumnColor,
                     formulaDisplay: formulaDisplay,
                     isSelected: isSelected,
+                    reloadToken: reloadToken,
                     onSelect: onSelect,
                     onOpenRubricIndividual: onOpenRubricIndividual,
                     onOpenRubricBulk: onOpenRubricBulk
@@ -261,6 +282,7 @@ struct NotebookEditableTableCell: View {
                     hasColumnColor: hasColumnColor,
                     formulaDisplay: formulaDisplay,
                     isSelected: isSelected,
+                    reloadToken: reloadToken,
                     onSelect: onSelect,
                     onOpenFormula: onOpenFormula
                 )
@@ -277,6 +299,7 @@ struct NotebookEditableTableCell: View {
                     categoryTint: categoryTint,
                     hasColumnColor: hasColumnColor,
                     focusedCellId: focusedCellId,
+                    isFocused: isFocused,
                     activeChoiceCellId: $activeChoiceCellId,
                     navigationDirection: navigationDirection,
                     formulaDisplay: formulaDisplay,
@@ -311,6 +334,8 @@ private struct NotebookNumericCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -333,9 +358,11 @@ private struct NotebookNumericCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -351,6 +378,8 @@ private struct NotebookTextCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -373,9 +402,11 @@ private struct NotebookTextCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -391,6 +422,8 @@ private struct NotebookCheckCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -413,9 +446,11 @@ private struct NotebookCheckCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.reloadToken == rhs.reloadToken
     }
 }
@@ -431,6 +466,8 @@ private struct NotebookAttendanceCell: View, Equatable {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -453,9 +490,11 @@ private struct NotebookAttendanceCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.isFocused == rhs.isFocused &&
+            lhs.navigationDirection == rhs.navigationDirection &&
             lhs.isAttendanceQuickMode == rhs.isAttendanceQuickMode &&
             lhs.reloadToken == rhs.reloadToken
     }
@@ -474,6 +513,7 @@ extension NotebookNumericCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -507,6 +547,7 @@ extension NotebookTextCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -540,6 +581,7 @@ extension NotebookCheckCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -573,6 +615,7 @@ extension NotebookAttendanceCell {
             categoryTint: categoryTint,
             hasColumnColor: hasColumnColor,
             focusedCellId: focusedCellId,
+            isFocused: isFocused,
             activeChoiceCellId: $activeChoiceCellId,
             navigationDirection: navigationDirection,
             formulaDisplay: formulaDisplay,
@@ -605,6 +648,8 @@ private struct NotebookStatefulEditableTableCell: View {
     let categoryTint: Color?
     let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
+    /// Calculado en el padre: evita que cada celda lea el FocusState y se invalide con cada cambio de foco.
+    let isFocused: Bool
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
@@ -622,36 +667,8 @@ private struct NotebookStatefulEditableTableCell: View {
     let onCellSaved: () -> Void
     let onAttendanceSaved: () -> Void
 
-    /// Ajuste transversal (color semántico + heat de nota), con toggle propio en
-    /// el menú de acciones del cuaderno. Se lee aquí vía `@AppStorage` con la
-    /// misma clave que `NotebookModuleView` en vez de enhebrarla por el init:
-    /// patrón estándar de SwiftUI para un ajuste que cruza muchos tipos de celda.
-    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) private var semanticGradeColorEnabled = true
-
     private var persistedCell: PersistedNotebookCell? {
-        item.row.persistedCells.first(where: { $0.columnId == column.id })
-    }
-
-    /// Banda de la nota (baja/media/alta) para colorear el número y, en modo
-    /// heat, el fondo de la celda. `nil` si el toggle está apagado, la columna
-    /// no es una nota 0–10 (p. ej. tiempo/distancia/repeticiones de pruebas
-    /// físicas: un "6,5" ahí es un dato bruto, no una nota) o el valor no se
-    /// puede interpretar como número.
-    private var gradeBand: NotebookGradeBand? {
-        guard semanticGradeColorEnabled, column.type == .numeric else { return nil }
-        switch column.scaleKind {
-        case .time, .distance, .repetitions:
-            return nil
-        case .fourLevel, .percentage:
-            // Escalas 1–4 (observación) y 0–100 (%): un "4" o un "45" no son notas
-            // sobre 10; colorearlos por banda 0–10 pinta el máximo de 1–4 en rojo y
-            // un 45% suspenso en verde.
-            return nil
-        default:
-            break
-        }
-        guard let score = NotebookFormulaDisplay.parseNumber(numericDraft) else { return nil }
-        return NotebookGradeBand(scoreOutOfTen: score)
+        item.lookup.cellsByColumnId[column.id]
     }
 
     @State private var numericDraft = ""
@@ -661,17 +678,37 @@ private struct NotebookStatefulEditableTableCell: View {
     @State private var originalTextDraft = ""
     @State private var originalCheckDraft = false
     @State private var pendingCheckDraft: Bool?
+    @State private var pendingNumericDraft: String?
+    @State private var pendingTextDraft: String?
     @State private var numericDragStartValue: Double?
     @State private var numericDragLastWholeValue: Int?
     @State private var isNumericDragging = false
     @State private var showTextPopover = false
     @State private var isNumericKeyboardPresented = false
+    @AppStorage("notebook.isQuickKeypadPresented") private var isQuickKeypadPresented = false
     @State private var hasLoadedDrafts = false
-    @State private var saveFeedback: NotebookCellSaveFeedback = .idle
-    @State private var saveFeedbackTask: Task<Void, Never>?
+    @State private var physicalScore: Double?
+    @State private var isResolvingPhysicalScore = false
+    @State private var physicalScoreRequestID = UUID()
+    @State private var physicalScoreTask: Task<Void, Never>?
+    /// Clave alumno+columna+valor de la última resolución terminada o en curso (caché por celda).
+    @State private var physicalScoreKey: String?
+    @State private var lastExternalReloadTime: Date = .distantPast
 
     private var cellId: String {
         "\(item.student.id)|\(column.id)"
+    }
+
+    @State private var noticeToken = UUID()
+
+    /// Se re-registra al cambiar los datos de la celda para que los cierres no queden con valores viejos.
+    private func registerNoticeHandlers() {
+        NotebookCellNoticeRouter.shared.register(
+            token: noticeToken,
+            cellId: cellId,
+            onBackground: { saveFocusedDraftIfNeeded(requireFocusReleased: false) },
+            onKeyboardEdit: { applyKeyboardEditNotice($0) }
+        )
     }
 
     var body: some View {
@@ -681,47 +718,38 @@ private struct NotebookStatefulEditableTableCell: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                         .stroke(editableCellBorder, lineWidth: editableCellBorderWidth)
+                .animation(isSelected ? .easeOut(duration: 0.15) : nil, value: isSelected)
                 )
-                .shadow(
-                    color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,
-                    radius: isSelected ? 4 : 0,
-                    x: 0,
-                    y: isSelected ? 1.5 : 0
-                )
+                .notebookCellSelectionShadow(isSelected)
                 .padding(2)
 
             content
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
-            if let persistedCell, hasContextualSignal(in: persistedCell) {
+            let hasSignal = (persistedCell != nil && hasContextualSignal(in: persistedCell!)) ||
+                displaySnapshot.hasNote ||
+                (displaySnapshot.stampIcon != nil && !displaySnapshot.stampIcon!.isEmpty) ||
+                displaySnapshot.attachmentCount > 0
+
+            if hasSignal {
                 VStack {
                     HStack {
                         Spacer()
-                        HStack(spacing: 4) {
-                            if let icon = persistedCell.annotation?.icon ?? persistedCell.iconValue, !icon.isEmpty {
-                                Text(icon)
-                            }
-                            let attachmentCount = persistedCell.annotation?.attachmentUris.count ?? 0
-                            if attachmentCount > 0 {
-                                Text("\(attachmentCount)")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(tint.opacity(0.14))
+                        NotebookCellStampBadge(
+                            iconValue: displaySnapshot.stampIcon ?? persistedCell?.annotation?.icon ?? persistedCell?.iconValue,
+                            note: displaySnapshot.hasNote ? (persistedCell?.annotation?.note ?? " ") : persistedCell?.annotation?.note,
+                            attachmentCount: max(displaySnapshot.attachmentCount, persistedCell?.annotation?.attachmentUris.count ?? 0),
+                            fallbackTint: tint,
+                            studentName: item.student.fullName
                         )
                     }
                     Spacer()
                 }
-                .padding(6)
+                .padding(4)
             }
 
             cellStateOverlay
-            saveFeedbackDot
 
             if isNumericDragging {
                 Text("Desliza para ajustar")
@@ -733,23 +761,69 @@ private struct NotebookStatefulEditableTableCell: View {
                     .transition(.opacity)
             }
         }
-        .frame(width: width, height: 52)
+        .frame(width: width) // la altura la fija la fila (notebookGridRowHeight)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
-        .onAppear(perform: loadDrafts)
+        .onAppear {
+            registerNoticeHandlers()
+            loadDrafts()
+            if NotebookKeyboardEditBuffer.isCapturing(cellId) {
+                numericDraft = NotebookKeyboardEditBuffer.text
+            }
+            refreshPhysicalScore()
+        }
         .onDisappear {
-            saveFeedbackTask?.cancel()
             saveFocusedDraftIfNeeded(requireFocusReleased: false)
+            NotebookCellNoticeRouter.shared.unregister(token: noticeToken)
+            // La celda sale de la ventana virtualizada: no se deja una resolución colgada.
+            if isResolvingPhysicalScore {
+                physicalScoreTask?.cancel()
+                physicalScoreTask = nil
+                physicalScoreKey = nil
+                isResolvingPhysicalScore = false
+            }
         }
         .appOnChange(of: reloadToken) { _ in
+            registerNoticeHandlers()
+            lastExternalReloadTime = Date()
+            loadDraftsUnlessEditing()
+            refreshPhysicalScore()
+        }
+        .appOnChange(of: displaySnapshot) { _ in
+            registerNoticeHandlers()
             loadDraftsUnlessEditing()
         }
-        .appOnChange(of: focusedCellId.wrappedValue) { newValue in
-            if newValue == cellId {
+        .appOnChange(of: isFocused) { newValue in
+            if newValue {
                 onSelect()
             } else {
                 saveFocusedDraftIfNeeded()
             }
+        }
+        .appOnChange(of: cellId) { _ in registerNoticeHandlers() }
+        .appOnChange(of: textDraft) { newText in
+            guard focusedCellId.wrappedValue == cellId else { return }
+            if originalTextDraft != newText {
+                pendingTextDraft = newText
+                actions.saveColumnGradeDebounced(item.student.id, column, newText)
+            }
+        }
+        .appOnChange(of: numericDraft) { newNumeric in
+            guard focusedCellId.wrappedValue == cellId else { return }
+            #if os(macOS)
+            // En el Mac la nota se guarda al confirmar (flecha, Return o salir).
+            // Así Esc puede devolver el valor de antes de escribir.
+            _ = newNumeric
+            return
+            #else
+            let trimmed = newNumeric.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || (!trimmed.hasSuffix(",") && !trimmed.hasSuffix(".") && Double(trimmed.replacingOccurrences(of: ",", with: ".")) != nil) {
+                if originalNumericDraft != trimmed {
+                    pendingNumericDraft = trimmed
+                    actions.saveColumnGradeDebounced(item.student.id, column, trimmed)
+                }
+            }
+            #endif
         }
     }
 
@@ -771,11 +845,6 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         if hasPendingDraft {
             return NotebookStyle.warningTint.opacity(0.10)
-        }
-        if let gradeBand {
-            // Modo heat (parte del mismo toggle que el color del número): tinte de
-            // fondo suave por banda, para leer la clase entera como mapa de calor.
-            return gradeBand.softFill
         }
         return .clear
     }
@@ -833,8 +902,6 @@ private struct NotebookStatefulEditableTableCell: View {
         if column.isLocked { return NotebookGridStyle.gridLineStrong }
         if isSelected { return NotebookGridStyle.cellSelectionRing }
         if formulaDisplay?.isError == true { return NotebookGridStyle.stateError }
-        if saveFeedback == .saving { return NotebookGridStyle.statePending }
-        if saveFeedback == .saved { return NotebookStyle.successTint }
         if hasPendingDraft { return NotebookGridStyle.statePending }
         if !column.countsTowardAverage { return NotebookGridStyle.gridLineStrong }
         return nil
@@ -844,40 +911,9 @@ private struct NotebookStatefulEditableTableCell: View {
         if column.isLocked { return "Celda bloqueada" }
         if isSelected { return "Celda activa" }
         if formulaDisplay?.isError == true { return "Error en la fórmula" }
-        if saveFeedback == .saving { return "Guardando" }
-        if saveFeedback == .saved { return "Guardado" }
         if hasPendingDraft { return "Pendiente de guardar" }
         if !column.countsTowardAverage { return "No cuenta para la media" }
         return ""
-    }
-
-    /// Punto discreto de 6pt en la esquina inferior izquierda: única señal del
-    /// ciclo de guardado transitorio (ámbar mientras guarda, verde con un rebote
-    /// al confirmar). Esquina propia, distinta de la anotación (superior derecha)
-    /// y de los badges persistentes (inferior derecha), para no competir con ellos.
-    @ViewBuilder
-    private var saveFeedbackDot: some View {
-        if saveFeedback == .saving || saveFeedback == .saved {
-            VStack {
-                Spacer()
-                HStack {
-                    Group {
-                        if #available(iOS 18.0, macOS 14.0, *) {
-                            Image(systemName: "circle.fill")
-                                .symbolEffect(.bounce, value: saveFeedback == .saved)
-                        } else {
-                            Image(systemName: "circle.fill")
-                        }
-                    }
-                    .font(.system(size: 6))
-                    .foregroundStyle(saveFeedback == .saving ? NotebookGridStyle.statePending : NotebookStyle.successTint)
-                    .accessibilityHidden(true)
-
-                    Spacer()
-                }
-            }
-            .padding(6)
-        }
     }
 
     private var hasPendingDraft: Bool {
@@ -910,21 +946,34 @@ private struct NotebookStatefulEditableTableCell: View {
             switch column.type {
             case .numeric:
                 #if os(macOS)
-                numericMacField
+                if isPhysicalMeasurementColumn {
+                    physicalMeasurementButton
+                } else {
+                    numericMacField
+                }
                 #else
                 if keyboardKind != .text {
                     Button {
                         onSelect()
                         focusedCellId.wrappedValue = nil
                         activeChoiceCellId = nil
-                        isNumericKeyboardPresented = true
+                        if !isQuickKeypadPresented {
+                            isNumericKeyboardPresented = true
+                        }
                     } label: {
                         HStack(spacing: 6) {
                             Text(numericDraft.isEmpty ? "—" : numericDraft)
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
                                 .monospacedDigit()
-                                .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : (gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary)))
+                                .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                                 .lineLimit(1)
+                            if let physicalScore {
+                                Text("· \(IosFormatting.decimal(physicalScore))")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundStyle(tint)
+                                    .lineLimit(1)
+                            }
                             Image(systemName: "arrow.up.and.down")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(.secondary)
@@ -1006,16 +1055,11 @@ private struct NotebookStatefulEditableTableCell: View {
                     }
                 }
             case .rubric:
-                let rubricText = displayRubricText()
                 Button {
                     onSelect()
                     onOpenRubricIndividual()
                 } label: {
-                    Text(rubricText)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .contentShape(Rectangle())
+                    NotebookRubricValueLabel(rubricText: displaySnapshot.rubricText)
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -1033,7 +1077,7 @@ private struct NotebookStatefulEditableTableCell: View {
                     if isNotebookIndividualSummaryColumn(column) {
                         Text(textDraft.isEmpty ? "Síntesis pendiente" : textDraft)
                             .font(.system(size: 13))
-                            .foregroundStyle(textDraft.isEmpty ? .tertiary : .primary)
+                            .foregroundStyle(textDraft.isEmpty ? .secondary : .primary)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -1108,29 +1152,99 @@ private struct NotebookStatefulEditableTableCell: View {
     #if os(macOS)
     private var numericMacField: some View {
         HStack(spacing: 6) {
-            TextField("", text: $numericDraft)
-                .textFieldStyle(.plain)
-                .multilineTextAlignment(.trailing)
-                .font(NotebookGridStyle.cellFont)
-                .foregroundStyle(gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
-                .focused(focusedCellId, equals: cellId)
-                .onSubmit { saveNumericAndNavigate(navigationDirection) }
-                .onKeyPress(.upArrow) { saveNumericAndNavigate(.up); return .handled }
-                .onKeyPress(.downArrow) { saveNumericAndNavigate(.down); return .handled }
-                .onKeyPress(keys: [.tab]) { press in
-                    saveNumericAndNavigate(press.modifiers.contains(.shift) ? .left : .right)
-                    return .handled
-                }
-                .simultaneousGesture(numericDragGesture)
-
-            Image(systemName: "arrow.up.and.down")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
-                .help("Arrastra para ajustar en décimas")
-                .accessibilityLabel("Arrastra para ajustar en décimas")
+            if isFocused {
+                TextField("", text: $numericDraft)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .font(NotebookGridStyle.cellFont)
+                    .foregroundStyle(AnyShapeStyle(.primary))
+                    .focused(focusedCellId, equals: cellId)
+                    .onAppear {
+                        focusedCellId.wrappedValue = cellId
+                    }
+                    .onKeyPress(.escape) {
+                        cancelNumericEdit()
+                        return .handled
+                    }
+                    .onKeyPress(.return) {
+                        commitNumericAndMove(navigationDirection)
+                        return .handled
+                    }
+                    .onKeyPress(.upArrow) { commitNumericAndMove(.up); return .handled }
+                    .onKeyPress(.downArrow) { commitNumericAndMove(.down); return .handled }
+                    .onKeyPress(.leftArrow) { commitNumericAndMove(.left); return .handled }
+                    .onKeyPress(.rightArrow) { commitNumericAndMove(.right); return .handled }
+                    .onKeyPress(keys: [.tab]) { press in
+                        commitNumericAndMove(press.modifiers.contains(.shift) ? .left : .right)
+                        return .handled
+                    }
+            } else {
+                Text(numericDraft.isEmpty ? "—" : numericDraft)
+                    .font(NotebookGridStyle.cellFont)
+                    .monospacedDigit()
+                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
         }
     }
+
+    private func cancelNumericEdit() {
+        numericDraft = originalNumericDraft
+        pendingNumericDraft = nil
+        focusedCellId.wrappedValue = nil
+        onSelect()
+    }
     #endif
+
+    private func commitNumericAndMove(_ direction: NotebookNavigationDirection) {
+        trimIncompleteDecimalDraft()
+        saveNumeric(selectsCell: false, immediate: true)
+        NotebookKeyboardSession.requestMoveWithoutEditing()
+        onNavigate(direction)
+    }
+
+    private func trimIncompleteDecimalDraft() {
+        let trimmed = numericDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count > 1, trimmed.hasSuffix(",") || trimmed.hasSuffix(".") {
+            numericDraft = String(trimmed.dropLast())
+        }
+    }
+
+    private var physicalMeasurementButton: some View {
+        Button {
+            onSelect()
+            focusedCellId.wrappedValue = nil
+            activeChoiceCellId = nil
+            isNumericKeyboardPresented = true
+        } label: {
+            HStack(spacing: 6) {
+                Text(numericDraft.isEmpty ? "—" : numericDraft)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                    .lineLimit(1)
+                if let physicalScore {
+                    Text("· \(IosFormatting.decimal(physicalScore))")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(tint)
+                        .lineLimit(1)
+                }
+                Image(systemName: keyboardKind == .time ? "stopwatch" : "keyboard")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 30)
+        }
+        .buttonStyle(.plain)
+        #if !os(macOS)
+        .simultaneousGesture(numericDragGesture)
+        #endif
+        .popover(isPresented: $isNumericKeyboardPresented, arrowEdge: .bottom) {
+            cellKeyboardPopover
+        }
+    }
 
     private var isAttendanceColumn: Bool {
         column.type == .attendance || column.categoryKind == .attendance
@@ -1138,6 +1252,11 @@ private struct NotebookStatefulEditableTableCell: View {
 
     private var isStructuredInstrument: Bool {
         column.inputKind.isStructuredInstrument
+    }
+
+    private var isPhysicalMeasurementColumn: Bool {
+        column.instrumentKind == .physicalTest &&
+            [.time, .distance, .repetitions].contains(column.inputKind)
     }
 
     private var isEmptySummaryCell: Bool {
@@ -1170,51 +1289,79 @@ private struct NotebookStatefulEditableTableCell: View {
 
     @ViewBuilder
     private var cellKeyboardPopover: some View {
-        switch keyboardKind {
-        case .numeric010:
-            NotebookNumericCellKeyboard(
-                value: $numericDraft,
-                tint: tint,
-                onSave: { saveNumeric() },
-                onNavigate: { direction in
-                    saveNumericAndNavigate(direction)
-                    isNumericKeyboardPresented = false
-                }
-            )
-        case .time:
-            NotebookTimeCellKeyboard(
-                value: $numericDraft,
-                tint: tint,
-                onSave: { saveNumeric() },
-                onNavigate: { direction in
-                    saveNumericAndNavigate(direction)
-                    isNumericKeyboardPresented = false
-                }
-            )
-        case .distance:
-            NotebookDistanceCellKeyboard(
-                value: $numericDraft,
-                tint: tint,
-                unitLabel: column.unitOrSituation ?? "m",
-                onSave: { saveNumeric() },
-                onNavigate: { direction in
-                    saveNumericAndNavigate(direction)
-                    isNumericKeyboardPresented = false
-                }
-            )
-        case .repetitions:
-            NotebookRepetitionCellKeyboard(
-                value: $numericDraft,
-                tint: tint,
-                onSave: { saveNumeric() },
-                onNavigate: { direction in
-                    saveNumericAndNavigate(direction)
-                    isNumericKeyboardPresented = false
-                }
-            )
-        default:
-            EmptyView()
+        VStack(spacing: 8) {
+            if isPhysicalMeasurementColumn {
+                physicalScoreSummary
+            }
+
+            switch keyboardKind {
+            case .numeric010:
+                NotebookNumericCellKeyboard(
+                    value: $numericDraft,
+                    tint: tint,
+                    onSave: { saveNumeric() },
+                    onNavigate: { direction in
+                        saveNumericAndNavigate(direction)
+                        isNumericKeyboardPresented = false
+                    }
+                )
+            case .time:
+                NotebookTimeCellKeyboard(
+                    value: $numericDraft,
+                    tint: tint,
+                    onSave: { saveNumeric() },
+                    onNavigate: { direction in
+                        saveNumericAndNavigate(direction)
+                        isNumericKeyboardPresented = false
+                    }
+                )
+            case .distance:
+                NotebookDistanceCellKeyboard(
+                    value: $numericDraft,
+                    tint: tint,
+                    unitLabel: column.unitOrSituation ?? "m",
+                    onSave: { saveNumeric() },
+                    onNavigate: { direction in
+                        saveNumericAndNavigate(direction)
+                        isNumericKeyboardPresented = false
+                    }
+                )
+            case .repetitions:
+                NotebookRepetitionCellKeyboard(
+                    value: $numericDraft,
+                    tint: tint,
+                    onSave: { saveNumeric() },
+                    onNavigate: { direction in
+                        saveNumericAndNavigate(direction)
+                        isNumericKeyboardPresented = false
+                    }
+                )
+            default:
+                EmptyView()
+            }
         }
+    }
+
+    @ViewBuilder
+    private var physicalScoreSummary: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "chart.bar.fill")
+                .font(.caption.weight(.bold))
+            if let physicalScore {
+                Text("Nota de referencia: \(IosFormatting.decimal(physicalScore)) / 10")
+                    .font(.caption.weight(.semibold))
+            } else if isResolvingPhysicalScore {
+                Text("Calculando baremo…")
+                    .font(.caption.weight(.semibold))
+            } else if !numericDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("Sin baremo aplicable")
+                    .font(.caption.weight(.semibold))
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(physicalScore == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(tint))
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
     }
 
     private var checkButton: some View {
@@ -1238,23 +1385,19 @@ private struct NotebookStatefulEditableTableCell: View {
             onSelect()
             onOpenStructuredInstrument()
         } label: {
-            HStack(spacing: 6) {
-                Text(structuredDisplayText)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(structuredDisplayText == "Pendiente" ? .tertiary : .primary)
-                    .lineLimit(1)
-                Image(systemName: "checklist")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+            NotebookStructuredValueLabel(text: structuredDisplayText)
         }
         .buttonStyle(.plain)
         .help("Abrir instrumento")
     }
 
     private var structuredDisplayText: String {
+        if column.type == .numeric {
+            let num = numericDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !num.isEmpty { return num }
+            let snapshotNum = displaySnapshot.numericText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !snapshotNum.isEmpty { return snapshotNum }
+        }
         let value = (persistedCell?.displayValue ?? persistedCell?.textValue ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? "Pendiente" : value
@@ -1422,6 +1565,53 @@ private struct NotebookStatefulEditableTableCell: View {
         Double(raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
     }
 
+    private func physicalRawValue() -> Double? {
+        if column.inputKind == .time {
+            let normalized = numericDraft.replacingOccurrences(of: ".", with: ",")
+            let minuteParts = normalized.split(separator: ":", omittingEmptySubsequences: false)
+            if minuteParts.count == 2 {
+                let minutes = Double(minuteParts[0]) ?? 0
+                let secondParts = minuteParts[1].split(separator: ",", omittingEmptySubsequences: false)
+                let seconds = Double(secondParts.first ?? "0") ?? 0
+                let fractionText = String(secondParts.dropFirst().first ?? "0")
+                let fraction = Double("0.\(fractionText)") ?? 0
+                return max(0, minutes * 60 + seconds + fraction)
+            }
+        }
+        return parseEditableNumber(numericDraft)
+    }
+
+    private func refreshPhysicalScore() {
+        guard isPhysicalMeasurementColumn,
+              let classId,
+              let resolver = actions.resolvePhysicalScore,
+              let rawValue = physicalRawValue()
+        else {
+            physicalScoreTask?.cancel()
+            physicalScoreTask = nil
+            physicalScoreKey = nil
+            physicalScore = nil
+            isResolvingPhysicalScore = false
+            return
+        }
+
+        // Caché por alumno + columna + valor: si no cambió nada, no se vuelve a resolver.
+        let key = "\(classId)|\(item.student.id)|\(column.id)|\(rawValue)|\(reloadToken)"
+        if physicalScoreKey == key { return }
+        physicalScoreKey = key
+        physicalScoreTask?.cancel()
+
+        let requestID = UUID()
+        physicalScoreRequestID = requestID
+        isResolvingPhysicalScore = true
+        physicalScoreTask = Task { @MainActor in
+            let resolved = await resolver(item.student, classId, column.id, rawValue)
+            guard !Task.isCancelled, physicalScoreRequestID == requestID else { return }
+            physicalScore = resolved
+            isResolvingPhysicalScore = false
+        }
+    }
+
     private var ordinalOptions: [String] {
         if !column.ordinalLevels.isEmpty { return column.ordinalLevels }
         switch column.inputKind {
@@ -1466,9 +1656,30 @@ private struct NotebookStatefulEditableTableCell: View {
             }
             originalTextDraft = textDraft
         case .ordinal, .text, .icon:
-            textDraft = cell?.textValue ?? cell?.displayValue ?? ""
+            let resolvedSnapshotText = !displaySnapshot.text.isEmpty ? displaySnapshot.text : (cell?.textValue ?? cell?.displayValue ?? "")
+            if let pendingTextDraft {
+                if resolvedSnapshotText == pendingTextDraft {
+                    self.pendingTextDraft = nil
+                } else {
+                    textDraft = pendingTextDraft
+                    originalTextDraft = pendingTextDraft
+                    hasLoadedDrafts = true
+                    return
+                }
+            }
+            textDraft = resolvedSnapshotText
             originalTextDraft = textDraft
         case .numeric:
+            if let pendingNumericDraft {
+                if displaySnapshot.numericText == pendingNumericDraft {
+                    self.pendingNumericDraft = nil
+                } else {
+                    numericDraft = pendingNumericDraft
+                    originalNumericDraft = pendingNumericDraft
+                    hasLoadedDrafts = true
+                    return
+                }
+            }
             numericDraft = displaySnapshot.numericText
             originalNumericDraft = numericDraft
         default:
@@ -1481,8 +1692,30 @@ private struct NotebookStatefulEditableTableCell: View {
         guard focusedCellId.wrappedValue != cellId,
               activeChoiceCellId != cellId,
               !isNumericKeyboardPresented,
-              !showTextPopover else { return }
+              !showTextPopover,
+              !NotebookKeyboardEditBuffer.isCapturing(cellId) else { return }
         loadDrafts()
+    }
+
+    private func applyKeyboardEditNotice(_ note: Notification) {
+        guard let id = note.userInfo?["cellId"] as? String, id == cellId else { return }
+        guard let command = note.userInfo?["command"] as? String else { return }
+        let text = note.userInfo?["text"] as? String
+        switch command {
+        case "set":
+            numericDraft = text ?? ""
+        case "cancel":
+            numericDraft = originalNumericDraft
+            pendingNumericDraft = nil
+        case "sync":
+            if let text {
+                numericDraft = text
+                originalNumericDraft = text
+                pendingNumericDraft = text
+            }
+        default:
+            break
+        }
     }
 
     private func saveNumeric(selectsCell: Bool = true, immediate: Bool = false) {
@@ -1493,13 +1726,16 @@ private struct NotebookStatefulEditableTableCell: View {
         if originalNumericDraft != numericDraft {
             onPrepareUndo(originalNumericDraft, originalNumericDraft)
             originalNumericDraft = numericDraft
-            if immediate {
+            pendingNumericDraft = numericDraft
+            if immediate || column.inputKind == .time {
                 actions.flushPendingColumnGradeSave(item.student.id, column.id)
                 actions.saveColumnGrade(item.student.id, column, numericDraft)
             } else {
                 actions.saveColumnGradeDebounced(item.student.id, column, numericDraft)
             }
-            markSaveInProgress()
+            if isPhysicalMeasurementColumn {
+                refreshPhysicalScore()
+            }
             onCellSaved()
         }
     }
@@ -1517,13 +1753,13 @@ private struct NotebookStatefulEditableTableCell: View {
         if originalTextDraft != textDraft {
             onPrepareUndo(originalTextDraft, originalTextDraft)
             originalTextDraft = textDraft
+            pendingTextDraft = textDraft
             if immediate {
                 actions.flushPendingColumnGradeSave(item.student.id, column.id)
                 actions.saveColumnGrade(item.student.id, column, textDraft)
             } else {
                 actions.saveColumnGradeDebounced(item.student.id, column, textDraft)
             }
-            markSaveInProgress()
             onCellSaved()
         }
     }
@@ -1545,7 +1781,6 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         AppleInteractionFeedback.play(.selection)
         actions.saveColumnGrade(item.student.id, column, option)
-        markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
     }
@@ -1564,7 +1799,6 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         AppleInteractionFeedback.play(.lightImpact)
         actions.saveColumnGrade(item.student.id, column, nextValue)
-        markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
     }
@@ -1582,7 +1816,6 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         AppleInteractionFeedback.play(.selection)
         actions.saveColumnGrade(item.student.id, column, canonicalStatus)
-        markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
 
@@ -1591,9 +1824,14 @@ private struct NotebookStatefulEditableTableCell: View {
             .map { Date(timeIntervalSince1970: TimeInterval($0.int64Value) / 1000.0) } ?? Date()
 
         Task {
-            await actions.saveAttendance(item.student.id, classId, attendanceDate, canonicalStatus)
+            let saved = await actions.saveAttendance(item.student.id, classId, attendanceDate, canonicalStatus)
             await MainActor.run {
-                onAttendanceSaved()
+                if saved {
+                    onAttendanceSaved()
+                } else {
+                    textDraft = previousValue
+                    originalTextDraft = previousValue
+                }
             }
         }
     }
@@ -1604,28 +1842,31 @@ private struct NotebookStatefulEditableTableCell: View {
     }
 
     private func saveFocusedDraftIfNeeded(requireFocusReleased: Bool = true) {
-        guard hasLoadedDrafts,
-              activeChoiceCellId != cellId,
-              !isNumericKeyboardPresented,
-              !showTextPopover
-        else { return }
-        if requireFocusReleased && focusedCellId.wrappedValue == cellId {
-            return
+        guard hasLoadedDrafts, activeChoiceCellId != cellId else { return }
+        // Al salir de la celda o ir a segundo plano, guardar ya aunque el teclado siga abierto.
+        if requireFocusReleased {
+            guard !isNumericKeyboardPresented,
+                  !showTextPopover,
+                  !NotebookKeyboardEditBuffer.isCapturing(cellId)
+            else { return }
+            guard focusedCellId.wrappedValue != cellId else { return }
         }
 
         switch column.type {
         case .numeric:
-            saveNumeric(selectsCell: false, immediate: true)
+            #if os(macOS)
+            trimIncompleteDecimalDraft()
+            #endif
+            if originalNumericDraft != numericDraft {
+                saveNumeric(selectsCell: false, immediate: true)
+            }
         case .text, .icon:
-            saveText(selectsCell: false, immediate: true)
+            if originalTextDraft != textDraft {
+                saveText(selectsCell: false, immediate: true)
+            }
         default:
             break
         }
-    }
-
-    private func displayRubricText() -> String {
-        let value = displaySnapshot.rubricText
-        return value.isEmpty ? "—" : value
     }
 
     private func hasContextualSignal(in cell: PersistedNotebookCell) -> Bool {
@@ -1646,18 +1887,6 @@ private struct NotebookStatefulEditableTableCell: View {
         #endif
     }
 
-    private func markSaveInProgress() {
-        saveFeedbackTask?.cancel()
-        saveFeedback = .saving
-        saveFeedbackTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            guard !Task.isCancelled else { return }
-            saveFeedback = .saved
-            try? await Task.sleep(nanoseconds: 1_400_000_000)
-            guard !Task.isCancelled else { return }
-            saveFeedback = .idle
-        }
-    }
 }
 
 private struct NotebookFormulaCell: View, Equatable {
@@ -1670,11 +1899,13 @@ private struct NotebookFormulaCell: View, Equatable {
     let hasColumnColor: Bool
     let formulaDisplay: NotebookFormulaCellDisplay?
     let isSelected: Bool
+    let reloadToken: Int
     let onSelect: () -> Void
     let onOpenFormula: () -> Void
 
     var body: some View {
         NotebookReadOnlyCellChrome(
+            displaySnapshot: displaySnapshot,
             item: item,
             column: column,
             width: width,
@@ -1710,9 +1941,10 @@ private struct NotebookFormulaCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
             lhs.isSelected == rhs.isSelected &&
+            lhs.reloadToken == rhs.reloadToken &&
             lhs.formulaDisplay?.text == rhs.formulaDisplay?.text &&
             lhs.formulaDisplay?.isError == rhs.formulaDisplay?.isError
     }
@@ -1728,16 +1960,14 @@ private struct NotebookRubricCell: View, Equatable {
     let hasColumnColor: Bool
     let formulaDisplay: NotebookFormulaCellDisplay?
     let isSelected: Bool
+    let reloadToken: Int
     let onSelect: () -> Void
     let onOpenRubricIndividual: () -> Void
     let onOpenRubricBulk: () -> Void
 
-    private var rubricText: String {
-        displaySnapshot.rubricText.isEmpty ? "—" : displaySnapshot.rubricText
-    }
-
     var body: some View {
         NotebookReadOnlyCellChrome(
+            displaySnapshot: displaySnapshot,
             item: item,
             column: column,
             width: width,
@@ -1752,11 +1982,7 @@ private struct NotebookRubricCell: View, Equatable {
                 onSelect()
                 onOpenRubricIndividual()
             } label: {
-                Text(rubricText)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
+                NotebookRubricValueLabel(rubricText: displaySnapshot.rubricText)
             }
             .buttonStyle(.plain)
             .contextMenu {
@@ -1775,9 +2001,10 @@ private struct NotebookRubricCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
-            lhs.isSelected == rhs.isSelected
+            lhs.isSelected == rhs.isSelected &&
+            lhs.reloadToken == rhs.reloadToken
     }
 }
 
@@ -1791,21 +2018,27 @@ private struct NotebookReadOnlyCell: View, Equatable {
     let hasColumnColor: Bool
     let formulaDisplay: NotebookFormulaCellDisplay?
     let isSelected: Bool
+    let reloadToken: Int
     let onSelect: () -> Void
     let onOpenStructuredInstrument: () -> Void
 
     private var persistedCell: PersistedNotebookCell? {
-        item.row.persistedCells.first(where: { $0.columnId == column.id })
+        item.lookup.cellsByColumnId[column.id]
     }
 
     private var displayText: String {
-        let value = (persistedCell?.displayValue ?? persistedCell?.textValue ?? displaySnapshot.text)
+        let snapshotText = displaySnapshot.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !snapshotText.isEmpty {
+            return snapshotText
+        }
+        let value = (persistedCell?.displayValue ?? persistedCell?.textValue ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? "Pendiente" : value
     }
 
     var body: some View {
         NotebookReadOnlyCellChrome(
+            displaySnapshot: displaySnapshot,
             item: item,
             column: column,
             width: width,
@@ -1820,17 +2053,7 @@ private struct NotebookReadOnlyCell: View, Equatable {
                 onSelect()
                 onOpenStructuredInstrument()
             } label: {
-                HStack(spacing: 6) {
-                    Text(displayText)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(displayText == "Pendiente" ? .tertiary : .primary)
-                        .lineLimit(1)
-                    Image(systemName: "checklist")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
+                NotebookStructuredValueLabel(text: displayText)
             }
             .buttonStyle(.plain)
             .help("Abrir instrumento")
@@ -1840,14 +2063,17 @@ private struct NotebookReadOnlyCell: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
-            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.column.hasSameCellAppearance(as: rhs.column) &&
             lhs.width == rhs.width &&
-            lhs.isSelected == rhs.isSelected
+            lhs.isSelected == rhs.isSelected &&
+            lhs.reloadToken == rhs.reloadToken &&
+            lhs.displayText == rhs.displayText
     }
 }
 
 @MainActor
 private struct NotebookReadOnlyCellChrome<Content: View>: View {
+    let displaySnapshot: NotebookCellDisplaySnapshot?
     let item: NotebookTableRow
     let column: NotebookColumnDefinition
     let width: CGFloat
@@ -1860,6 +2086,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
     let content: Content
 
     init(
+        displaySnapshot: NotebookCellDisplaySnapshot? = nil,
         item: NotebookTableRow,
         column: NotebookColumnDefinition,
         width: CGFloat,
@@ -1871,6 +2098,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
         onSelect: @escaping () -> Void,
         @ViewBuilder content: () -> Content
     ) {
+        self.displaySnapshot = displaySnapshot
         self.item = item
         self.column = column
         self.width = width
@@ -1884,7 +2112,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
     }
 
     private var persistedCell: PersistedNotebookCell? {
-        item.row.persistedCells.first(where: { $0.columnId == column.id })
+        item.lookup.cellsByColumnId[column.id]
     }
 
     var body: some View {
@@ -1895,47 +2123,38 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
                     RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                         .stroke(cellBorder, lineWidth: isSelected ? NotebookGridStyle.cellSelectionRingWidth : 0.6)
                 )
-                .shadow(
-                    color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,
-                    radius: isSelected ? 4 : 0,
-                    x: 0,
-                    y: isSelected ? 1.5 : 0
-                )
+                .notebookCellSelectionShadow(isSelected)
                 .padding(2)
 
             content
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
-            if let persistedCell, hasContextualSignal(in: persistedCell) {
+            let hasSignal = (persistedCell != nil && hasContextualSignal(in: persistedCell!)) ||
+                (displaySnapshot?.hasNote == true) ||
+                (displaySnapshot?.stampIcon != nil && !(displaySnapshot?.stampIcon?.isEmpty ?? true)) ||
+                (displaySnapshot?.attachmentCount ?? 0) > 0
+
+            if hasSignal {
                 VStack {
                     HStack {
                         Spacer()
-                        HStack(spacing: 4) {
-                            if let icon = persistedCell.annotation?.icon ?? persistedCell.iconValue, !icon.isEmpty {
-                                Text(icon)
-                            }
-                            let attachmentCount = persistedCell.annotation?.attachmentUris.count ?? 0
-                            if attachmentCount > 0 {
-                                Text("\(attachmentCount)")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(tint.opacity(0.14))
+                        NotebookCellStampBadge(
+                            iconValue: displaySnapshot?.stampIcon ?? persistedCell?.annotation?.icon ?? persistedCell?.iconValue,
+                            note: displaySnapshot?.hasNote == true ? (persistedCell?.annotation?.note ?? " ") : persistedCell?.annotation?.note,
+                            attachmentCount: max(displaySnapshot?.attachmentCount ?? 0, persistedCell?.annotation?.attachmentUris.count ?? 0),
+                            fallbackTint: tint,
+                            studentName: item.student.fullName
                         )
                     }
                     Spacer()
                 }
-                .padding(6)
+                .padding(4)
             }
 
             cellStateOverlay
         }
-        .frame(width: width, height: 52)
+        .frame(width: width) // la altura la fija la fila (notebookGridRowHeight)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
     }
@@ -2021,34 +2240,236 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
     }
 }
 
-private struct NotebookCellColumnEquatableKey: Equatable {
-    let id: String
-    let type: String
-    let inputKind: String
-    let categoryKind: String
-    let categoryId: String
-    let colorHex: String
-    let isLocked: Bool
-    let countsTowardAverage: Bool
-    let unitOrSituation: String
-    let ordinalLevels: [String]
-    let dateEpochMs: String
+private extension View {
+    /// La sombra de selección solo existe en la celda seleccionada: `.shadow` con color `.clear`
+    /// sigue costando en cada celda visible.
+    @ViewBuilder
+    func notebookCellSelectionShadow(_ isSelected: Bool) -> some View {
+        if isSelected {
+            shadow(color: NotebookGridStyle.cellSelectionShadow, radius: 4, x: 0, y: 1.5)
+        } else {
+            self
+        }
+    }
 }
 
 private extension NotebookColumnDefinition {
-    var cellEquatableKey: NotebookCellColumnEquatableKey {
-        NotebookCellColumnEquatableKey(
-            id: id,
-            type: String(describing: type),
-            inputKind: String(describing: inputKind),
-            categoryKind: String(describing: categoryKind),
-            categoryId: String(describing: categoryId),
-            colorHex: colorHex ?? "",
-            isLocked: isLocked,
-            countsTowardAverage: countsTowardAverage,
-            unitOrSituation: unitOrSituation ?? "",
-            ordinalLevels: ordinalLevels,
-            dateEpochMs: String(describing: dateEpochMs)
-        )
+    /// Comparación directa de los campos que afectan al pintado de la celda: sin `String(describing:)`
+    /// sobre enums Kotlin ni structs intermedios por cada comparación.
+    func hasSameCellAppearance(as other: NotebookColumnDefinition) -> Bool {
+        id == other.id &&
+            type == other.type &&
+            inputKind == other.inputKind &&
+            categoryKind == other.categoryKind &&
+            categoryId == other.categoryId &&
+            colorHex == other.colorHex &&
+            isLocked == other.isLocked &&
+            countsTowardAverage == other.countsTowardAverage &&
+            unitOrSituation == other.unitOrSituation &&
+            ordinalLevels == other.ordinalLevels &&
+            dateEpochMs?.int64Value == other.dateEpochMs?.int64Value
+    }
+}
+
+
+// MARK: - Marcas de celda (rúbrica, instrumentos)
+
+/// Marca de celda vacía. En macOS muestra un "+" tenue al pasar el ratón
+/// (`@State` local, sin animación); en iOS es solo la marca.
+private struct NotebookEmptyCellMark<Mark: View>: View {
+    let helpText: String
+    let mark: Mark
+    #if os(macOS)
+    @State private var isHovering = false
+    #endif
+
+    init(helpText: String, @ViewBuilder mark: () -> Mark) {
+        self.helpText = helpText
+        self.mark = mark()
+    }
+
+    var body: some View {
+        ZStack {
+            #if os(macOS)
+            if isHovering {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            } else {
+                mark
+            }
+            #else
+            mark
+            #endif
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        #if os(macOS)
+        .onHover { isHovering = $0 }
+        #endif
+        .help(helpText)
+    }
+}
+
+/// Número de nota con micro-animación local: transición numérica y rebote
+/// 1.0→1.06→1.0 solo cuando cambia `value` con la celda ya montada (SwiftUI no
+/// dispara `animation(value:)` ni `keyframeAnimator(trigger:)` en el primer
+/// render, así que ni la carga ni el scroll lo animan). Respeta Reduce Motion.
+/// Sin sombras, materiales ni observadores: solo `@Environment` de solo lectura.
+struct NotebookAnimatedGradeText: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    let text: String
+    let value: Double
+    let font: Font
+    let style: AnyShapeStyle
+
+    var body: some View {
+        let label = Text(text)
+            .font(font)
+            .monospacedDigit()
+            .foregroundStyle(style)
+            .lineLimit(1)
+            .contentTransition(.numericText(value: value))
+            .animation(uiFeatureFlags.animation(.snappy(duration: 0.25)), value: value)
+        if uiFeatureFlags.reduceMotion {
+            label
+        } else {
+            label.keyframeAnimator(initialValue: 1.0, trigger: value) { view, scale in
+                view.scaleEffect(scale)
+            } keyframes: { _ in
+                CubicKeyframe(1.06, duration: 0.12)
+                CubicKeyframe(1.0, duration: 0.16)
+            }
+        }
+    }
+}
+
+/// Nota de rúbrica: solo el número, con barra vertical del color del nivel.
+/// El nivel también va en `.help` y en el valor de accesibilidad (no depende
+/// solo del color). Vacía: barra gris, sin "—".
+private struct NotebookRubricValueLabel: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    let rubricText: String
+
+    /// Devuelve el número tal como se muestra ("7,5") y su valor, o nil si no es numérico.
+    static func parse(_ raw: String) -> (text: String, value: Double)? {
+        let parts = raw.components(separatedBy: "/")
+        let head = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Solo se acepta nota sobre 10: sin denominador o con denominador 10.
+        if parts.count > 1 {
+            let denominator = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard parts.count == 2,
+                  let d = Double(denominator.replacingOccurrences(of: ",", with: ".")),
+                  d == 10 else { return nil }
+        }
+        guard let value = Double(head.replacingOccurrences(of: ",", with: ".")),
+              value.isFinite else { return nil }
+        return (head, value)
+    }
+
+    private static func isEmpty(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed == "Sin dato" || trimmed == "—"
+    }
+
+    static func accessibilityValue(for raw: String) -> String {
+        if let parsed = parse(raw) {
+            return "\(parsed.text), nivel \(NotebookGradeBand(scoreOutOfTen: parsed.value).levelName)"
+        }
+        return isEmpty(raw) ? "Pendiente" : raw
+    }
+
+    var body: some View {
+        if let parsed = Self.parse(rubricText) {
+            let band = NotebookGradeBand(scoreOutOfTen: parsed.value)
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(band.color)
+                    .frame(width: 3, height: 16)
+                    .animation(uiFeatureFlags.animation(.snappy(duration: 0.25)), value: parsed.value)
+                NotebookAnimatedGradeText(
+                    text: parsed.text,
+                    value: parsed.value,
+                    font: NotebookGridStyle.cellFont,
+                    style: AnyShapeStyle(.primary)
+                )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .help("Nivel \(band.levelName)")
+        } else if Self.isEmpty(rubricText) {
+            NotebookEmptyCellMark(helpText: "Pendiente") {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(NotebookGridStyle.stateEmpty)
+                    .frame(width: 3, height: 16)
+            }
+        } else {
+            Text(rubricText)
+                .font(NotebookGridStyle.cellFont)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+    }
+}
+
+/// Estado de un instrumento estructurado (observación, checklist): vacío =
+/// círculo hueco, parcial = "n/m" en dígitos monoespaciados, completo = marca verde.
+private struct NotebookStructuredValueLabel: View {
+    let text: String
+
+    private static func progress(_ raw: String) -> (done: Int, total: Int)? {
+        let parts = raw.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              let done = Int(parts[0].trimmingCharacters(in: .whitespaces)),
+              let total = Int(parts[1].trimmingCharacters(in: .whitespaces)),
+              total > 0 else { return nil }
+        return (done, total)
+    }
+
+    private static func isPending(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed == "Pendiente"
+    }
+
+    static func accessibilityValue(for raw: String) -> String {
+        if isPending(raw) { return "Pendiente" }
+        if let p = progress(raw) { return "\(p.done) de \(p.total)" }
+        return raw
+    }
+
+    var body: some View {
+        if Self.isPending(text) {
+            NotebookEmptyCellMark(helpText: "Pendiente") {
+                Circle()
+                    .strokeBorder(NotebookGridStyle.stateEmpty, lineWidth: 1.5)
+                    .frame(width: 6, height: 6)
+            }
+        } else if let p = Self.progress(text) {
+            Group {
+                if p.done >= p.total {
+                    Image(systemName: "checkmark")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(NotebookStyle.successTint)
+                } else {
+                    Text("\(p.done)/\(p.total)")
+                        .font(.footnote.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .help(p.done >= p.total ? "Completo" : "\(p.done) de \(p.total)")
+        } else {
+            Text(text)
+                .font(NotebookGridStyle.cellFont)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
     }
 }

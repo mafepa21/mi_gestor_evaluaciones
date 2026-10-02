@@ -594,6 +594,166 @@ class NotebookViewModelTest {
     }
 
     @Test
+    fun `saveWorkGroup honors explicit tabId`() = runTest {
+        val classId = 1L
+        val tabs = listOf(
+            NotebookTab(id = "TAB_1", title = "Eval 1"),
+            NotebookTab(id = "TAB_2", title = "Eval 2")
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = tabs,
+                columns = emptyList(),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+
+        viewModel.saveWorkGroup(name = "Grupo Tab 2", tabId = "TAB_2", learningSituationId = 42L)
+        advanceUntilIdle()
+
+        val savedGroup = repository.savedWorkGroups.single()
+        assertEquals("Grupo Tab 2", savedGroup.name)
+        assertEquals("TAB_2", savedGroup.tabId)
+        assertEquals(42L, savedGroup.learningSituationId)
+    }
+
+    @Test
+    fun `replaceWorkGroups delegates to repository and preserves learningSituationId`() = runTest {
+        val classId = 1L
+        val tabs = listOf(NotebookTab(id = "TAB_1", title = "Eval 1"))
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = tabs,
+                columns = emptyList(),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+
+        val batch = listOf(
+            com.migestor.shared.repository.NotebookWorkGroupBatchItem(
+                name = "Equipo Alpha",
+                studentIds = listOf(10L, 20L),
+                learningSituationId = 99L
+            ),
+            com.migestor.shared.repository.NotebookWorkGroupBatchItem(
+                name = "Equipo Beta",
+                studentIds = listOf(30L),
+                learningSituationId = 99L
+            )
+        )
+        viewModel.replaceWorkGroups(tabId = "TAB_1", groups = batch, clearExisting = true)
+        advanceUntilIdle()
+
+        assertEquals(2, repository.savedWorkGroups.size)
+        assertEquals("Equipo Alpha", repository.savedWorkGroups[0].name)
+        assertEquals(99L, repository.savedWorkGroups[0].learningSituationId)
+        assertEquals("Equipo Beta", repository.savedWorkGroups[1].name)
+        assertEquals(99L, repository.savedWorkGroups[1].learningSituationId)
+    }
+
+    @Test
+    fun `saveWorkGroup stores groups on the root tab when a child tab is selected`() = runTest {
+        val classId = 1L
+        val tabs = listOf(
+            NotebookTab(id = "ROOT", title = "1ª Evaluación", order = 0),
+            NotebookTab(id = "CHILD", title = "Unidad", order = 0, parentTabId = "ROOT"),
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = tabs,
+                columns = emptyList(),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        viewModel.setSelectedTabId("CHILD")
+
+        viewModel.saveWorkGroup(name = "Equipo A", tabId = "CHILD", learningSituationId = 12L)
+        advanceUntilIdle()
+
+        val saved = repository.savedWorkGroups.single()
+        assertEquals("ROOT", saved.tabId)
+        assertEquals(12L, saved.learningSituationId)
+    }
+
+    @Test
+    fun `assignStudentsToWorkGroup uses the group's own tab even if another tab is selected`() = runTest {
+        val classId = 1L
+        val group = NotebookWorkGroup(
+            id = 9L,
+            classId = classId,
+            tabId = "ROOT",
+            name = "Equipo A",
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = listOf(
+                    NotebookTab(id = "ROOT", title = "1ª Evaluación"),
+                    NotebookTab(id = "CHILD", title = "Unidad", parentTabId = "ROOT"),
+                ),
+                columns = emptyList(),
+                rows = emptyList(),
+                workGroups = listOf(group),
+            )
+        )
+        val viewModel = createViewModel(repository)
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        viewModel.setSelectedTabId("CHILD")
+
+        viewModel.assignStudentsToWorkGroup(groupId = 9L, studentIds = listOf(101L, 102L), tabId = "CHILD")
+        advanceUntilIdle()
+
+        assertEquals(listOf("ROOT" to 9L), repository.assignedWorkGroupCalls.map { it.tabId to it.groupId })
+        assertEquals(listOf(101L, 102L), repository.assignedWorkGroupCalls.single().studentIds)
+    }
+
+    @Test
+    fun `assignStudentsToWorkGroup en rafaga hace una sola recarga y actualiza el estado al instante`() = runTest {
+        val classId = 1L
+        val group = NotebookWorkGroup(id = 9L, classId = classId, tabId = "ROOT", name = "Equipo A")
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = listOf(NotebookTab(id = "ROOT", title = "1ª Evaluación")),
+                columns = emptyList(),
+                rows = emptyList(),
+                workGroups = listOf(group),
+            )
+        )
+        val viewModel = createViewModel(
+            repository,
+            scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+        )
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        val loadsBefore = repository.loadNotebookSnapshotCount
+
+        (101L..110L).forEach { studentId ->
+            viewModel.assignStudentsToWorkGroup(groupId = 9L, studentIds = listOf(studentId), tabId = "ROOT")
+        }
+        val optimistic = (viewModel.state.value as NotebookUiState.Data).workGroupMembers
+        assertEquals(10, optimistic.count { it.groupId == 9L })
+
+        advanceUntilIdle()
+
+        assertEquals(10, repository.assignedWorkGroupCalls.size)
+        assertEquals(1, repository.loadNotebookSnapshotCount - loadsBefore)
+    }
+
+    @Test
     fun `deleteColumn by evaluation id deletes custom column id when found`() = runTest {
         val classId = 1L
         val evaluationId = 123L
@@ -697,6 +857,92 @@ class NotebookViewModelTest {
             assertEquals(8.5, grade.value)
             assertEquals(1, repository.loadNotebookSnapshotCount)
             assertEquals(1, repository.saveGradeCalls.size)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `inline save failure is visible and remains dirty until a later save succeeds`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val column = NotebookColumnDefinition(
+            id = "custom_numeric",
+            title = "Proyecto",
+            type = NotebookColumnType.NUMERIC,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(NotebookRow(student = student, cells = emptyList(), weightedAverage = null)),
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+
+            repository.saveErrorMessage = "Persistencia no disponible"
+            viewModel.saveColumnGrade(student.id, column, "8,5")
+            advanceUntilIdle()
+
+            assertEquals(NotebookViewModelSaveState.Failed, viewModel.notebookSaveState.value.state)
+            assertTrue(viewModel.notebookSaveState.value.isDirty)
+            assertFalse(viewModel.notebookSaveState.value.isSaving)
+            assertFalse(viewModel.notebookSaveState.value.isSaved)
+
+            repository.saveErrorMessage = null
+            viewModel.saveColumnGrade(student.id, column, "9")
+            advanceUntilIdle()
+
+            assertEquals(NotebookViewModelSaveState.Saved, viewModel.notebookSaveState.value.state)
+            assertFalse(viewModel.notebookSaveState.value.isDirty)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `retrying full notebook save after failure clears the error and dirty state`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val column = NotebookColumnDefinition(
+            id = "custom_numeric",
+            title = "Proyecto",
+            type = NotebookColumnType.NUMERIC,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(NotebookRow(student = student, cells = emptyList(), weightedAverage = null)),
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+            viewModel.updateDraft(student.id, column.id, NotebookColumnType.NUMERIC, "8,5")
+
+            repository.saveErrorMessage = "Persistencia no disponible"
+            assertFalse(viewModel.saveCurrentNotebook())
+            advanceUntilIdle()
+            assertEquals(NotebookViewModelSaveState.Failed, viewModel.notebookSaveState.value.state)
+            assertTrue(viewModel.notebookSaveState.value.isDirty)
+
+            repository.saveErrorMessage = null
+            assertTrue(viewModel.saveCurrentNotebook())
+            advanceUntilIdle()
+
+            assertEquals(NotebookViewModelSaveState.Saved, viewModel.notebookSaveState.value.state)
+            assertFalse(viewModel.notebookSaveState.value.isDirty)
+            assertEquals(1, repository.saveGradeCalls.size)
+            assertEquals(8.5, repository.saveGradeCalls.single().value)
         } finally {
             scope.cancel()
         }
@@ -1040,6 +1286,7 @@ private class FakeNotebookRepository(
     val savedCellCalls = mutableListOf<SaveCellCall>()
     val savedTabs = mutableListOf<NotebookTab>()
     var loadNotebookSnapshotCount = 0
+    var saveErrorMessage: String? = null
 
     val deletedColumnIds = mutableListOf<String>()
     val deletedEvaluationIds = mutableListOf<Long>()
@@ -1063,6 +1310,7 @@ private class FakeNotebookRepository(
     override suspend fun removeStudent(classId: Long, studentId: Long) = Unit
     override suspend fun listStudentsInClass(classId: Long): List<Student> = emptyList()
     override suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?): Long {
+        saveErrorMessage?.let { throw IllegalStateException(it) }
         saveGradeCalls += SaveGradeCall(classId, studentId, columnId, evaluationId, value)
         gradeChanges.value = listOf(Grade(id = 1L, classId = classId, studentId = studentId, columnId = columnId, evaluationId = evaluationId, value = value))
         return 1
@@ -1119,8 +1367,33 @@ private class FakeNotebookRepository(
     }
     override suspend fun deleteWorkGroup(groupId: Long) = Unit
     override suspend fun listWorkGroupMembers(classId: Long, tabId: String?): List<com.migestor.shared.domain.NotebookWorkGroupMember> = emptyList()
-    override suspend fun assignStudentsToWorkGroup(classId: Long, tabId: String, groupId: Long, studentIds: List<Long>) = Unit
+    data class AssignedWorkGroupCall(val tabId: String, val groupId: Long, val studentIds: List<Long>)
+    val assignedWorkGroupCalls = mutableListOf<AssignedWorkGroupCall>()
+
+    override suspend fun assignStudentsToWorkGroup(classId: Long, tabId: String, groupId: Long, studentIds: List<Long>) {
+        assignedWorkGroupCalls += AssignedWorkGroupCall(tabId, groupId, studentIds)
+    }
     override suspend fun clearStudentsFromWorkGroup(classId: Long, tabId: String, studentIds: List<Long>) = Unit
+    override suspend fun replaceWorkGroups(
+        classId: Long,
+        tabId: String,
+        groups: List<com.migestor.shared.repository.NotebookWorkGroupBatchItem>,
+        clearExisting: Boolean,
+    ) {
+        if (clearExisting) {
+            savedWorkGroups.removeAll { it.classId == classId && it.tabId == tabId }
+        }
+        groups.forEachIndexed { index, group ->
+            savedWorkGroups += com.migestor.shared.domain.NotebookWorkGroup(
+                id = (savedWorkGroups.size + 1).toLong(),
+                classId = classId,
+                tabId = tabId,
+                name = group.name,
+                order = index,
+                learningSituationId = group.learningSituationId,
+            )
+        }
+    }
     override suspend fun saveCell(
         classId: Long,
         studentId: Long,
@@ -1135,6 +1408,7 @@ private class FakeNotebookRepository(
         authorUserId: Long?,
         associatedGroupId: Long?,
     ) {
+        saveErrorMessage?.let { throw IllegalStateException(it) }
         savedCellCalls += SaveCellCall(
             classId = classId,
             studentId = studentId,

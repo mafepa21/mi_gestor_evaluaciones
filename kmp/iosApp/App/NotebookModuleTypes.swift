@@ -63,8 +63,66 @@ struct NotebookTableRow: Identifiable {
     let student: Student
     let row: NotebookRow
     let groupName: String
+    var isFirstInGroup: Bool = false
+    var groupMemberCount: Int = 0
+    private let lookupBox = NotebookRowLookupBox()
 
     var id: Int64 { student.id }
+
+    /// Índices por columna de `row`, construidos una vez por fila y compartidos
+    /// entre copias del struct. `row` es inmutable, así que nunca quedan obsoletos.
+    var lookup: NotebookRowLookup { lookupBox.lookup(for: row) }
+}
+
+struct NotebookRowLookup {
+    let cellsByColumnId: [String: PersistedNotebookCell]
+    let gradesByColumnId: [String: Grade]
+    let gradesByEvaluationId: [Int64: Grade]
+    let cellsByEvaluationId: [Int64: NotebookCell]
+
+    /// Conserva la primera coincidencia de cada clave, igual que `first(where:)`.
+    init(row: NotebookRow) {
+        var cellsByColumnId: [String: PersistedNotebookCell] = [:]
+        cellsByColumnId.reserveCapacity(row.persistedCells.count)
+        for cell in row.persistedCells where cellsByColumnId[cell.columnId] == nil {
+            cellsByColumnId[cell.columnId] = cell
+        }
+
+        var gradesByColumnId: [String: Grade] = [:]
+        var gradesByEvaluationId: [Int64: Grade] = [:]
+        gradesByColumnId.reserveCapacity(row.persistedGrades.count)
+        for grade in row.persistedGrades {
+            if gradesByColumnId[grade.columnId] == nil {
+                gradesByColumnId[grade.columnId] = grade
+            }
+            if let evaluationId = grade.evaluationId?.int64Value,
+               gradesByEvaluationId[evaluationId] == nil {
+                gradesByEvaluationId[evaluationId] = grade
+            }
+        }
+
+        var cellsByEvaluationId: [Int64: NotebookCell] = [:]
+        cellsByEvaluationId.reserveCapacity(row.cells.count)
+        for cell in row.cells where cellsByEvaluationId[cell.evaluationId] == nil {
+            cellsByEvaluationId[cell.evaluationId] = cell
+        }
+
+        self.cellsByColumnId = cellsByColumnId
+        self.gradesByColumnId = gradesByColumnId
+        self.gradesByEvaluationId = gradesByEvaluationId
+        self.cellsByEvaluationId = cellsByEvaluationId
+    }
+}
+
+private final class NotebookRowLookupBox {
+    private var cached: NotebookRowLookup?
+
+    func lookup(for row: NotebookRow) -> NotebookRowLookup {
+        if let cached { return cached }
+        let built = NotebookRowLookup(row: row)
+        cached = built
+        return built
+    }
 }
 
 enum NotebookDeletionKind {
@@ -203,6 +261,11 @@ enum NotebookSurfaceMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum NotebookMenuCopy {
+    static let allStudents = "Grupo completo"
+    static let clearSituationFilter = "Sin filtrar"
+}
+
 struct NotebookSeatPosition: Codable {
     var x: Double
     var y: Double
@@ -220,11 +283,15 @@ struct NotebookAddColumnContext: Identifiable {
 enum NotebookToastStyle: Equatable {
     case success
     case warning
+    case info
+    case neutral
 
     var tint: Color {
         switch self {
         case .success: return NotebookStyle.successTint
         case .warning: return NotebookStyle.warningTint
+        case .info: return Color.accentColor
+        case .neutral: return Color.secondary
         }
     }
 }
@@ -285,6 +352,31 @@ struct NotebookSummarySheetRequest: Identifiable {
     var id: String { targetColumnId ?? "summary" }
 }
 
+struct NotebookColumnStatisticsRequest: Identifiable {
+    let column: NotebookColumnDefinition
+
+    var id: String { column.id }
+}
+
+struct NotebookCellStampRequest: Identifiable {
+    let studentId: Int64
+    let studentName: String
+    let column: NotebookColumnDefinition
+    let currentIcon: String?
+    let currentNote: String?
+    let currentValueText: String?
+
+    var id: String { "\(studentId)|\(column.id)" }
+}
+
+struct StudentProfile360Request: Identifiable {
+    let studentId: Int64
+    let studentName: String
+    let classId: Int64?
+
+    var id: String { "\(studentId)|\(classId ?? 0)" }
+}
+
 enum NotebookNavigationDirection: String, CaseIterable, Identifiable {
     case up
     case down
@@ -323,9 +415,34 @@ struct NotebookFormulaCellDisplay {
     let isError: Bool
 }
 
-struct NotebookCellUndoEntry {
+struct NotebookCellRange: Equatable {
+    let columnId: String
+    let anchorStudentId: Int64
+    let endStudentId: Int64
+}
+
+/// Estado vigente de filas y segmentos navegables. Es una referencia para que los closures de las
+/// celdas (que SwiftUI puede reutilizar sin reconstruir) lean siempre el estado actual.
+final class NotebookGridNavigationContext {
+    private(set) var rows: [NotebookTableRow] = []
+    private(set) var segments: [NotebookDisplaySegment] = []
+    /// Tinte por categoría precalculado una vez por render (evita `first(where:)` por celda).
+    private(set) var categoryTintById: [String: Color] = [:]
+
+    func update(rows: [NotebookTableRow], segments: [NotebookDisplaySegment], categoryTintById: [String: Color]) {
+        self.rows = rows
+        self.segments = segments
+        self.categoryTintById = categoryTintById
+    }
+}
+
+struct NotebookCellUndoChange {
     let studentId: Int64
     let column: NotebookColumnDefinition
     let previousValue: String
     let previousDisplayLabel: String?
+}
+
+struct NotebookCellUndoEntry {
+    let changes: [NotebookCellUndoChange]
 }

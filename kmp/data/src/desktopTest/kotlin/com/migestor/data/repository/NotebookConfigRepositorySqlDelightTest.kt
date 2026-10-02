@@ -168,6 +168,74 @@ class NotebookConfigRepositorySqlDelightTest {
         assertEquals(setOf(firstId, secondId), groups.map { it.id }.toSet())
     }
 
+    @Test
+    fun `replaceWorkGroups persists members in the same transaction`() = runTest {
+        val db = createDatabase()
+        val classesRepository = ClassesRepositorySqlDelight(db)
+        val studentsRepository: com.migestor.shared.repository.StudentsRepository = StudentsRepositorySqlDelight(db)
+        val notebookConfigRepository = NotebookConfigRepositorySqlDelight(db)
+        val classId = classesRepository.saveClass(name = "1 BAC B", course = 1, description = null)
+
+        notebookConfigRepository.saveTab(
+            classId,
+            NotebookTab(id = "ROOT", title = "1ª Evaluación", order = 0),
+        )
+        val firstStudentId = studentsRepository.saveStudent(firstName = "Ana", lastName = "Lopez")
+        val secondStudentId = studentsRepository.saveStudent(firstName = "Luis", lastName = "Perez")
+        classesRepository.addStudentToClass(classId, firstStudentId)
+        classesRepository.addStudentToClass(classId, secondStudentId)
+
+        notebookConfigRepository.replaceWorkGroups(
+            classId = classId,
+            tabId = "ROOT",
+            groups = listOf(
+                com.migestor.shared.repository.NotebookWorkGroupBatchItem(
+                    name = "Equipo A",
+                    studentIds = listOf(firstStudentId, secondStudentId),
+                    learningSituationId = 44L,
+                )
+            ),
+            clearExisting = true,
+        )
+
+        val groups = notebookConfigRepository.listWorkGroups(classId, "ROOT")
+        val members = notebookConfigRepository.listWorkGroupMembers(classId, "ROOT")
+        assertEquals(1, groups.size)
+        assertEquals("Equipo A", groups.single().name)
+        assertEquals(44L, groups.single().learningSituationId)
+        assertEquals(setOf(firstStudentId, secondStudentId), members.map { it.studentId }.toSet())
+        assertEquals(groups.single().id, members.first().groupId)
+    }
+
+    @Test
+    fun `assignStudentsToWorkGroup replaces membership even if it lived on another tab`() = runTest {
+        val db = createDatabase()
+        val classesRepository = ClassesRepositorySqlDelight(db)
+        val studentsRepository: com.migestor.shared.repository.StudentsRepository = StudentsRepositorySqlDelight(db)
+        val notebookConfigRepository = NotebookConfigRepositorySqlDelight(db)
+        val classId = classesRepository.saveClass(name = "1 BAC A", course = 1, description = null)
+        notebookConfigRepository.saveTab(classId, NotebookTab(id = "ROOT", title = "Eval", order = 0))
+        notebookConfigRepository.saveTab(classId, NotebookTab(id = "CHILD", title = "Unidad", order = 0, parentTabId = "ROOT"))
+        val studentId = studentsRepository.saveStudent(firstName = "Nora", lastName = "Gil")
+        classesRepository.addStudentToClass(classId, studentId)
+        val firstGroup = notebookConfigRepository.saveWorkGroup(
+            classId,
+            NotebookWorkGroup(id = 0L, classId = classId, tabId = "ROOT", name = "A"),
+        )
+        val secondGroup = notebookConfigRepository.saveWorkGroup(
+            classId,
+            NotebookWorkGroup(id = 0L, classId = classId, tabId = "ROOT", name = "B"),
+        )
+
+        notebookConfigRepository.assignStudentsToWorkGroup(classId, "CHILD", firstGroup, listOf(studentId))
+        notebookConfigRepository.assignStudentsToWorkGroup(classId, "ROOT", secondGroup, listOf(studentId))
+
+        val members = notebookConfigRepository.listWorkGroupMembers(classId)
+        assertEquals(1, members.size)
+        assertEquals(secondGroup, members.single().groupId)
+        assertEquals("ROOT", members.single().tabId)
+    }
+
     private fun createDatabase(): AppDatabase {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AppDatabase.Schema.create(driver)

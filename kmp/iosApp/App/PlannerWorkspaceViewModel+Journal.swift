@@ -126,9 +126,10 @@ extension PlannerWorkspaceViewModel {
                     replaceJournalDraft(refreshedDraft)
                 }
             }
-            let refreshedSummaries = (try? await bridge.plannerJournalSummaries(sessionIds: sessions.map(\.id))) ?? []
-            journalSummaryBySessionId = Dictionary(uniqueKeysWithValues: refreshedSummaries.map { ($0.planningSessionId, $0) })
-            journalStore.journalSummaryBySessionId = journalSummaryBySessionId
+            if let refreshedSummaries = try? await bridge.plannerJournalSummaries(sessionIds: sessions.map(\.id)) {
+                journalSummaryBySessionId = Dictionary(uniqueKeysWithValues: refreshedSummaries.map { ($0.planningSessionId, $0) })
+                journalStore.journalSummaryBySessionId = journalSummaryBySessionId
+            }
             journalSaveState = .saved(Date())
             journalStore.journalSaveState = journalSaveState
         } catch {
@@ -141,17 +142,23 @@ extension PlannerWorkspaceViewModel {
         guard let bridge, let session = selectedSession else { return }
         let title = journalDraft.incidentsText.nilIfBlank ?? "Incidencia de sesión"
         let detail = "Grupo \(session.groupName) · \(journalDraft.actualText.nilIfBlank ?? session.activities)"
-        if let link = try? await bridge.plannerRegisterJournalIncident(session: session, title: title, detail: detail) {
-            journalDraft.links.append(
-                PlannerJournalDraftLink(
-                    type: link.type,
-                    targetId: link.targetId,
-                    label: link.label
-                )
+        let link: SessionJournalLink
+        do {
+            link = try await bridge.plannerRegisterJournalIncident(session: session, title: title, detail: detail)
+        } catch {
+            journalSaveState = .failed("No se pudo registrar la incidencia.")
+            journalStore.journalSaveState = journalSaveState
+            return
+        }
+        journalDraft.links.append(
+            PlannerJournalDraftLink(
+                type: link.type,
+                targetId: link.targetId,
+                label: link.label
             )
-            if !journalDraft.incidentTags.contains("Incidencia") {
-                journalDraft.incidentTags.append("Incidencia")
-            }
+        )
+        if !journalDraft.incidentTags.contains("Incidencia") {
+            journalDraft.incidentTags.append("Incidencia")
         }
     }
 

@@ -25,10 +25,10 @@ struct NotebookModuleView: View {
     }
     #else
     var notebookGridRowHeight: CGFloat {
-        isCompactViewActive ? 40 : (isCompact ? 56 : 52)
+        isCompactViewActive ? 44 : (isCompact ? 56 : 52)
     }
     #endif
-    let notebookGridHeaderHeight: CGFloat = 56
+    let notebookGridHeaderHeight: CGFloat = 60
     let notebookGridFolderLaneHeight: CGFloat = 34
 
     @EnvironmentObject var layoutState: WorkspaceLayoutState
@@ -38,6 +38,7 @@ struct NotebookModuleView: View {
     #endif
     let bridge: KmpBridge
     @ObservedObject var notebookStore: NotebookBridgeStore
+    @ObservedObject var dashboardStore: DashboardBridgeStore
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -48,11 +49,13 @@ struct NotebookModuleView: View {
     let macPresentation: NotebookMacPresentation
     @State var addColumnContext: NotebookAddColumnContext? = nil
     @State var searchText = ""
+    @State var debouncedGridSearchText = ""
     @State var isSearchPresented = false
     @State var selectedGroupId: Int64? = nil
     @State var selectedColumnId: String? = nil
     @State var viewPreset: NotebookViewPreset = .all
     @State var surfaceMode: NotebookSurfaceMode = .grid
+    @State var notebookSignalsClassId: Int64?
     @State var todayAttendanceByStudentId: [Int64: String] = [:]
     @State var incidentCountByStudentId: [Int64: Int] = [:]
     @State var activeSupportMeasureStudentIds: Set<Int64> = []
@@ -69,10 +72,13 @@ struct NotebookModuleView: View {
     var groupByWorkGroup: Bool {
         groupByWorkGroupMode != "none"
     }
+    var currentClassId: Int64? {
+        (bridge.notebookState as? NotebookUiStateData)?.sheet.classId
+    }
     /// Color semántico de nota + heat de celda (rediseño radical del grid).
     /// Toggle propio en el menú de acciones; `NotebookStatefulEditableTableCell`
     /// lee la misma clave con su propio `@AppStorage` (ver `NotebookGridStyle`).
-    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) var semanticGradeColorEnabled = true
+    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) var semanticGradeColorEnabled = false
     @State var categoryDraft = ""
     @State var editingCategoryId: String? = nil
     @State var isNotebookTabAlertPresented = false
@@ -94,6 +100,8 @@ struct NotebookModuleView: View {
     @State var isFillColumnDialogPresented = false
     @State var pendingCopyTabStructureSource: NotebookTab? = nil
     @State var undoStack: [NotebookCellUndoEntry] = []
+    @State var redoStack: [NotebookCellUndoEntry] = []
+    @State var selectedCellRange: NotebookCellRange? = nil
     @State var structuralGridRevision = 0
     @State var rowReloadRevisions: [Int64: Int] = [:]
     @State var highlightedCategoryId: String? = nil
@@ -104,13 +112,24 @@ struct NotebookModuleView: View {
     @State var pendingRubricCurrentStudentId: Int64? = nil
     @State var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
+    @State var columnStatisticsRequest: NotebookColumnStatisticsRequest? = nil
+    @State var cellStampRequest: NotebookCellStampRequest? = nil
+    @State var studentProfile360Request: StudentProfile360Request? = nil
     @State var isAverageConfigurationPresented = false
+    @State private var averageSheetSeed = UUID()
+    @State var isEducamosSMExportPresented = false
     @State var averageExplanationRow: NotebookTableRow? = nil
     @State var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
     @State var auditObservationTask: Task<Void, Never>? = nil
     @State var toolbarSyncTask: Task<Void, Never>? = nil
     @State var lastToolbarStateKey: String? = nil
     @State var riskLevelCache: [Int64: RiskLevel] = [:]
+    /// Referencia al estado vigente para la navegación con teclado: las celdas no capturan arrays viejos.
+    @State var gridNavigationContext = NotebookGridNavigationContext()
+    @State var gridScrollProxy = NotebookGridScrollProxy()
+    @State var signalsRefreshTask: Task<Void, Never>?
+    @State var learningSituationsTask: Task<Void, Never>?
+    @State var navigationFocusWorkItem: DispatchWorkItem?
     @State var riskComputationKey: String?
     @State var isPrecomputingRiskLevels = false
     @AppStorage("notebook.fixedZoneWidth") var fixedZoneWidthStored = 240.0
@@ -128,7 +147,13 @@ struct NotebookModuleView: View {
     @State private var contextualAIOrchestrator = AppleAIOrchestrator()
     @StateObject private var formulaAIServiceStore = AppleFoundationFormulaServiceStore()
     @AppStorage("notebook.navigationDirection") var navigationDirectionRaw = NotebookNavigationDirection.down.rawValue
+    @AppStorage("notebook.isQuickKeypadPresented") var isQuickKeypadPresented = false
+    @AppStorage("notebook.keypad.advanceMode") var keypadAdvanceModeRaw = NotebookKeypadAdvanceMode.immediate.rawValue
+    @AppStorage("notebook.keypad.direction") var keypadDirectionRaw = NotebookKeypadDirection.down.rawValue
+    @State var keypadAdvanceTask: Task<Void, Never>? = nil
     @FocusState var focusedCellId: String?
+    @FocusState var notebookGridKeyboardFocused: Bool
+    @State var keyboardCaptureCellId: String? = nil
 
     var formulaAIService: AppleFoundationFormulaService {
         formulaAIServiceStore.service
@@ -141,6 +166,7 @@ struct NotebookModuleView: View {
     init(
         bridge: KmpBridge,
         notebookStore: NotebookBridgeStore,
+        dashboardStore: DashboardBridgeStore,
         selectedClassId: Binding<Int64?>,
         selectedStudentId: Binding<Int64?>,
         onOpenModule: @escaping (AppWorkspaceModule, Int64?, Int64?) -> Void,
@@ -151,6 +177,7 @@ struct NotebookModuleView: View {
     ) {
         self.bridge = bridge
         self.notebookStore = notebookStore
+        self.dashboardStore = dashboardStore
         self._selectedClassId = selectedClassId
         self._selectedStudentId = selectedStudentId
         self.onOpenModule = onOpenModule
@@ -235,8 +262,13 @@ struct NotebookModuleView: View {
         focusedCellId = nil
         focusMode = .normal
         searchText = ""
+        debouncedGridSearchText = ""
 
         undoStack = []
+        redoStack = []
+        selectedCellRange = nil
+        refreshNotebookEditMenu()
+        notebookSignalsClassId = nil
         todayAttendanceByStudentId = [:]
         incidentCountByStudentId = [:]
         localInjuryStatuses = [:]
@@ -255,6 +287,17 @@ struct NotebookModuleView: View {
 
         rowReloadRevisions = [:]
         structuralGridRevision += 1
+    }
+
+    /// En iPad regular `IOSRootView` ya pone el selector de clase en la barra y no
+    /// es personalizable; en Mac se mantiene porque el usuario puede quitar el
+    /// selector de la barra personalizable de `MacRootView`.
+    var showsClassSectionInTitleMenu: Bool {
+        #if os(iOS)
+        toolbarMode != .macShellOwned
+        #else
+        true
+        #endif
     }
 
     var isMacInspectorOnly: Bool {
@@ -345,6 +388,13 @@ struct NotebookModuleView: View {
                         isAttendanceQuickMode: isAttendanceQuickMode,
                         showsAdvancedActions: focusMode == .normal,
                         selectionContext: toolbarSelectionContext(data: data),
+                        activeFilterCount: (groupByWorkGroupMode == "none" ? 0 : 1) + (selectedGroupId == nil ? 0 : 1),
+                        isQuickKeypadPresented: isQuickKeypadPresented,
+                        onToggleQuickKeypad: {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                                isQuickKeypadPresented.toggle()
+                            }
+                        },
                         onAddColumn: {
                             addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
                         },
@@ -422,7 +472,7 @@ struct NotebookModuleView: View {
                         }
                     )
                 }
-                if !tabs.isEmpty && focusMode == .normal {
+                if !tabs.isEmpty && focusMode == .normal && !isCompact {
                     NotebookTabStrip(
                         tabs: tabs,
                         activeTabId: activeNotebookTabId(data: data),
@@ -453,14 +503,21 @@ struct NotebookModuleView: View {
                     .shadow(color: NotebookGridStyle.gridSurfaceShadow, radius: 14, x: 0, y: 6)
                     .padding(.horizontal, 16)
                     .padding(.top, 2)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, isQuickKeypadPresented ? 8 : 16)
+
+                if isQuickKeypadPresented {
+                    quickKeypadDock(data: data, rows: rows)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 10)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if shouldUseSideInspector && macPresentation == .full && isInspectorPresented {
                 Divider().opacity(0.16)
                 inspectorPanel(data: data, rows: rows)
-                    .frame(width: 360)
+                    .frame(width: 320)
                     .background(.ultraThinMaterial)
             }
         }
@@ -478,11 +535,16 @@ struct NotebookModuleView: View {
             if let classId = Int64(newValue) {
                 loadClassLearningSituations(classId: classId)
             }
-            Task { await refreshNotebookSignals() }
+            scheduleNotebookSignalsRefresh()
         }
         .appOnChange(of: toolbarStateKey(data: data)) { _ in
             if !isMacInspectorOnly {
                 scheduleToolbarStateSync(data: data)
+            }
+        }
+        .appOnChange(of: selectedGroupId) { _ in
+            if NotebookColumnGradeSave.shouldPersistNow(.groupOrClassChange) {
+                bridge.flushAnyPendingColumnGradeSave()
             }
         }
     }
@@ -498,8 +560,18 @@ struct NotebookModuleView: View {
         let trailingPaddingCompensation = NotebookStyle.outerPadding * 2
         let shouldShowFolderLane = renderModel.hasGroupedHeaders
 
+        let _ = gridNavigationContext.update(
+            rows: rows,
+            segments: renderModel.scrollableSegments,
+            categoryTintById: Dictionary(
+                data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        )
+
         NotebookGridContent(
             rows: rows,
+            hasSourceRows: !data.sheet.rows.isEmpty,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedZoneWidth,
             trailingFixedColumnWidth: renderModel.trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + trailingPaddingCompensation,
@@ -510,15 +582,34 @@ struct NotebookModuleView: View {
             structuralInvalidationKey: gridStructuralInvalidationKey(data: data),
             rowReloadRevisions: rowReloadRevisions,
             transientCellIds: transientGridCellIds,
+            rowContextDigest: notebookRowContextDigest(rows: rows),
+            scrollProxy: gridScrollProxy,
             fixedSegments: renderModel.fixedSegments,
             trailingFixedSegments: renderModel.trailingFixedSegments,
             scrollableSegments: renderModel.scrollableSegments
         ) {
             IOSEmptyState(
-                title: "Sin alumnos visibles",
-                subtitle: "Ajusta la búsqueda o el filtro de grupo para ver filas del cuaderno.",
-                systemImage: "person.3.sequence"
+                title: "Sin alumnado",
+                subtitle: "Añade alumnado desde Alumnado para ver el cuaderno.",
+                systemImage: "person.3"
             )
+        } filterEmptyContent: {
+            VStack(spacing: 16) {
+                Text("Ningún alumno coincide con el filtro.")
+                    .font(IOSAppStyle.cardTitle)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+                Text("Ajusta la búsqueda o el filtro de grupo.")
+                    .font(IOSAppStyle.bodyText)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 280)
+                Button("Limpiar") {
+                    clearNotebookRowFilters()
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } seatingContent: { rows in
             NotebookSeatingPlanView(
                 rows: rows,
@@ -559,7 +650,8 @@ struct NotebookModuleView: View {
                     persistSeatPositions()
                 },
                 onOpenStudent: { studentId in
-                    openInspectorForStudent(studentId, data: data)
+                    let studentName = rows.first(where: { $0.student.id == studentId }).map { "\($0.student.firstName) \($0.student.lastName)" } ?? "Alumno"
+                    openStudentProfile360(studentId: studentId, studentName: studentName, data: data)
                 },
                 onMarkPresent: { studentId in
                     Task { await markAttendance(for: studentId, status: NotebookAttendanceStatus.present) }
@@ -631,7 +723,7 @@ struct NotebookModuleView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .frame(height: notebookGridHeaderHeight, alignment: .topLeading)
-        .background(.thinMaterial)
+        .background(appSecondarySystemBackgroundColor())
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(NotebookGridStyle.gridLineStrong)
@@ -668,18 +760,43 @@ struct NotebookModuleView: View {
     var maxFixedZoneWidth: CGFloat { 700 }
  
     func loadClassLearningSituations(classId: Int64) {
-        Task {
+        learningSituationsTask?.cancel()
+        learningSituationsTask = Task {
             do {
                 let situations = try await bridge.learningSituations()
-                var filtered: [LearningSituation] = []
+                let links = (try? await bridge.learningSituationClassLinksAll()) ?? []
+                let directLinkedIds = Set(
+                    links.lazy
+                        .filter { $0.classId == classId }
+                        .map(\.learningSituationId)
+                )
+
+                let targetClass = bridge.classes.first(where: { $0.id == classId })
+                let className = targetClass?.name ?? ""
+                let classCourse = targetClass != nil ? Int(targetClass!.course) : (NotebookLearningSituationMatcher.extractCourseNumber(from: className) ?? 1)
+
+                var linked: [LearningSituation] = []
+                var other: [LearningSituation] = []
+
                 for sit in situations {
-                    let links = try await bridge.learningSituationClassLinks(id: sit.id)
-                    if links.contains(where: { $0.classId == classId }) {
-                        filtered.append(sit)
+                    let hasDirectLink = directLinkedIds.contains(sit.id)
+                    let matches = NotebookLearningSituationMatcher.isSituation(sit, matchingClassName: className, course: classCourse)
+                    guard hasDirectLink || matches else { continue }
+                    if hasDirectLink {
+                        linked.append(sit)
+                    } else {
+                        other.append(sit)
                     }
                 }
-                let finalFiltered = filtered
+
+                linked.sort { $0.title.localizedCompare($1.title) == .orderedAscending }
+                other.sort { $0.title.localizedCompare($1.title) == .orderedAscending }
+                let finalFiltered = linked + other
+
                 await MainActor.run {
+                    // Si el usuario cambió de clase mientras cargaba, no se pisa el estado nuevo.
+                    let currentId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value
+                    guard !Task.isCancelled, currentId == nil || currentId == classId else { return }
                     self.classSituations = finalFiltered
                 }
             } catch {
@@ -706,7 +823,7 @@ struct NotebookModuleView: View {
             Button {
                 surfaceMode = .grid
             } label: {
-                Label("Grid", systemImage: surfaceMode == .grid ? "checkmark" : "tablecells")
+                Label(NotebookSurfaceMode.grid.title, systemImage: surfaceMode == .grid ? "checkmark" : "tablecells")
             }
 
             Button {
@@ -718,7 +835,7 @@ struct NotebookModuleView: View {
         }
 
         Toggle(isOn: $semanticGradeColorEnabled) {
-            Label("Colorear notas por banda", systemImage: "paintpalette")
+            Label("Colorear la media", systemImage: "paintpalette")
         }
 
         Menu("Pestañas") {
@@ -785,6 +902,12 @@ struct NotebookModuleView: View {
         ShareLink(item: exportText(data: data)) {
             Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
         }
+
+        Button {
+            isEducamosSMExportPresented = true
+        } label: {
+            Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+        }
     }
 
     @ViewBuilder
@@ -794,9 +917,38 @@ struct NotebookModuleView: View {
             Button("Sin filtros disponibles") {}
                 .disabled(true)
         } else {
+            Menu {
+                Button {
+                    groupByWorkGroupMode = "none"
+                } label: {
+                    Label("Orden alfabético", systemImage: groupByWorkGroupMode == "none" ? "checkmark" : "textformat.abc")
+                }
+                Button {
+                    groupByWorkGroupMode = "general"
+                } label: {
+                    Label("Ordenar por grupos de trabajo", systemImage: groupByWorkGroupMode == "general" ? "checkmark" : "person.2.fill")
+                }
+                if !classSituations.isEmpty {
+                    Divider()
+                    ForEach(classSituations, id: \.id) { situation in
+                        Button {
+                            let targetMode = "situation_\(situation.id)"
+                            groupByWorkGroupMode = groupByWorkGroupMode == targetMode ? "none" : targetMode
+                        } label: {
+                            Label(
+                                "Grupos: \(situation.title)",
+                                systemImage: groupByWorkGroupMode == "situation_\(situation.id)" ? "checkmark" : "folder"
+                            )
+                        }
+                    }
+                }
+            } label: {
+                Label("Organizar por grupos", systemImage: groupByWorkGroup ? "person.2.fill" : "person.2")
+            }
+
             if !groups.isEmpty {
                 Menu {
-                    Button("Grupo completo") {
+                    Button(NotebookMenuCopy.allStudents) {
                         selectedGroupId = nil
                     }
                     ForEach(groups, id: \.id) { group in
@@ -816,7 +968,7 @@ struct NotebookModuleView: View {
 
             if !classSituations.isEmpty {
                 Menu {
-                    Button("Sin filtrar") {
+                    Button(NotebookMenuCopy.clearSituationFilter) {
                         groupByWorkGroupMode = "none"
                     }
                     ForEach(classSituations, id: \.id) { situation in
@@ -885,7 +1037,7 @@ struct NotebookModuleView: View {
             }
 
             Button {
-                showToast("Selecciona un rango para rellenar varias celdas", style: .warning)
+                requestFillColumnFromSelectedCell(data: data)
             } label: {
                 Label("Rellenar", systemImage: "arrow.down.to.line")
             }
@@ -902,6 +1054,13 @@ struct NotebookModuleView: View {
                 Label("Comentario", systemImage: "text.bubble")
             }
         case .column:
+            Button {
+                showSelectedColumnStatistics(data: data)
+            } label: {
+                Label("Estadísticas", systemImage: "chart.bar.xaxis")
+            }
+            .help("Ver estadísticas y distribución de calificaciones de la columna")
+
             Button {
                 editSelectedColumn(data: data)
             } label: {
@@ -959,6 +1118,18 @@ struct NotebookModuleView: View {
 
     func copySelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data) else { return }
+        let rows = filteredRows(data: data)
+        if let range = selectedCellRange,
+           range.columnId == selected.column.id,
+           let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
+           let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }),
+           abs(end - start) > 0 {
+            let slice = rows[min(start, end)...max(start, end)]
+            let text = slice.map { displayValue(for: $0, column: selected.column) }.joined(separator: "\n")
+            setClipboardText(text)
+            showToast("Rango copiado")
+            return
+        }
         setClipboardText(displayValue(for: selected.row, column: selected.column))
         showToast("Celda copiada")
     }
@@ -986,31 +1157,31 @@ struct NotebookModuleView: View {
             return
         }
 
-        // Pegado de varias filas (p. ej. una columna copiada de una hoja de cálculo):
-        // se aplica desde la celda seleccionada hacia abajo, fila a fila.
         let rows = filteredRows(data: data)
         guard let startIndex = rows.firstIndex(where: { $0.student.id == selected.selection.studentId }) else { return }
         let targetRows = rows[startIndex...]
 
-        var pastedCount = 0
+        var changes: [NotebookCellUndoChange] = []
         for (row, value) in zip(targetRows, pastedValues) {
             let previousValue = displayValue(for: row, column: selected.column)
             guard previousValue != value else { continue }
-            recordCellUndo(
-                studentId: row.student.id,
-                column: selected.column,
-                previousValue: previousValue,
-                previousDisplayLabel: nil
+            changes.append(
+                NotebookCellUndoChange(
+                    studentId: row.student.id,
+                    column: selected.column,
+                    previousValue: previousValue,
+                    previousDisplayLabel: nil
+                )
             )
             bridge.saveColumnGrade(studentId: row.student.id, column: selected.column, value: value)
             reloadNotebookRow(row.student.id)
-            pastedCount += 1
         }
+        recordCellUndoBatch(changes)
         let skippedCount = max(0, pastedValues.count - targetRows.count)
         if skippedCount > 0 {
-            showToast("Pegadas \(pastedCount) celdas (\(skippedCount) valores no cupieron en las filas visibles)", style: .warning)
+            showToast("Pegadas \(changes.count) celdas (\(skippedCount) valores no cupieron en las filas visibles)", style: .warning)
         } else {
-            showToast(pastedCount > 0 ? "Pegadas \(pastedCount) celdas" : "Sin cambios: los valores ya coincidían")
+            showToast(changes.isEmpty ? "Sin cambios: los valores ya coincidían" : "Pegadas \(changes.count) celdas")
         }
     }
 
@@ -1078,6 +1249,11 @@ struct NotebookModuleView: View {
             weight: column.countsTowardAverage ? 0 : max(column.weight, 1)
         )
         showToast(column.countsTowardAverage ? "Columna excluida de la media" : "Columna incluida en la media")
+    }
+
+    func showSelectedColumnStatistics(data: NotebookUiStateData) {
+        guard let column = selectedNotebookColumn(data: data) else { return }
+        columnStatisticsRequest = NotebookColumnStatisticsRequest(column: column)
     }
 
     func isToolbarEditableCellColumn(_ column: NotebookColumnDefinition) -> Bool {
@@ -1271,6 +1447,20 @@ struct NotebookModuleView: View {
                         showToast(message, style: style)
                     }
                 }
+                .sheet(item: $columnStatisticsRequest) { request in
+                    NotebookColumnStatisticsSheet(
+                        column: request.column,
+                        rows: data.sheet.rows,
+                        bridge: bridge,
+                        classTitle: activeClassLabel
+                    )
+                }
+                .sheet(item: $cellStampRequest) { request in
+                    cellStampSheet(request: request, data: data)
+                }
+                .sheet(item: $studentProfile360Request) { request in
+                    studentProfile360Sheet(request: request, data: data)
+                }
                 .sheet(isPresented: $isAverageConfigurationPresented) {
                     NotebookAverageEditorSheet(
                         classTitle: activeClassLabel,
@@ -1279,11 +1469,23 @@ struct NotebookModuleView: View {
                     ) { updates in
                         saveAverageConfiguration(updates)
                     }
+                    .id(averageSheetSeed)
                     #if os(macOS)
                     .frame(width: 560, height: 640)
                     #else
                     .presentationDetents([.large])
                     #endif
+                }
+                .appOnChange(of: isAverageConfigurationPresented) { isOpen in
+                    if isOpen { averageSheetSeed = UUID() }
+                }
+                .sheet(isPresented: $isEducamosSMExportPresented) {
+                    EducamosSMExportSheet(data: data, bridge: bridge)
+                        #if os(macOS)
+                        .frame(width: 560, height: 640)
+                        #else
+                        .presentationDetents([.large])
+                        #endif
                 }
                 .sheet(item: $formulaEditRequest) { request in
                     formulaEditorSheet(request: request, data: data)
@@ -1306,12 +1508,19 @@ struct NotebookModuleView: View {
                     .presentationDetents([.large])
                     #endif
                 }
-                .sheet(isPresented: $isGroupManagementPresented) {
+                .sheet(isPresented: $isGroupManagementPresented, onDismiss: {
+                    bridge.refreshCurrentNotebook()
+                    if let classId = currentClassId {
+                        loadClassLearningSituations(classId: classId)
+                    }
+                }) {
                     NotebookGroupManagementSheet(bridge: bridge) { message, style in
                         showToast(message, style: style)
                     }
                     #if os(macOS)
-                    .frame(minWidth: 550, minHeight: 480)
+                    .frame(minWidth: 1100, minHeight: 760)
+                    #else
+                    .presentationDetents([.large])
                     #endif
                 }
                 .appFullScreenCover(isPresented: Binding(
@@ -1357,13 +1566,19 @@ struct NotebookModuleView: View {
                     #endif
                 }
                 .navigationTitle("Cuaderno")
-                .notebookKeyboardNavigation {
-                    navigateFromFocused(direction: navigationDirection, data: data)
+                .notebookKeyboardNavigation(isActive: $notebookGridKeyboardFocused) { command in
+                    handleNotebookGridKey(command, data: data)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .appleAppNotebookUndoRequested)) { _ in
+                    undoLastCellChange()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .appleAppNotebookRedoRequested)) { _ in
+                    redoLastCellChange()
                 }
                 .onAppear {
                     scheduleActiveNotebookTabSync(data: data)
                     scheduleToolbarStateSync(data: data)
-                    Task { await refreshNotebookSignals() }
+                    scheduleNotebookSignalsRefresh()
                 }
                 .appOnChange(of: layoutState.notebookHiddenColumnsRequestID) { requestID in
                     guard requestID != nil else { return }
@@ -1485,6 +1700,12 @@ struct NotebookModuleView: View {
                                     Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
                                 }
 
+                                Button {
+                                    isEducamosSMExportPresented = true
+                                } label: {
+                                    Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                                }
+
                                 // 9. Configuración de media
                                 Button {
                                     isAverageConfigurationPresented = true
@@ -1498,7 +1719,7 @@ struct NotebookModuleView: View {
                                     Menu {
                                         if !groups.isEmpty {
                                             Menu {
-                                                Button("Grupo completo") {
+                                                Button(NotebookMenuCopy.allStudents) {
                                                     selectedGroupId = nil
                                                 }
                                                 ForEach(groups, id: \.id) { gp in
@@ -1520,7 +1741,7 @@ struct NotebookModuleView: View {
 
                                         if !classSituations.isEmpty {
                                             Menu {
-                                                Button("Sin filtrar (Ver todas)") {
+                                                Button(NotebookMenuCopy.clearSituationFilter) {
                                                     groupByWorkGroupMode = "none"
                                                 }
                                                 ForEach(classSituations, id: \.id) { situation in
@@ -1554,6 +1775,12 @@ struct NotebookModuleView: View {
                             HStack(spacing: 8) {
                                 // Estado de guardado
                                 HStack(spacing: 4) {
+                                    NotebookSavePulse(
+                                        isDirty: notebookStore.notebookSplitSaveState.isDirty,
+                                        isSaving: notebookStore.notebookSplitSaveState.isSaving,
+                                        isFailed: notebookStore.notebookSplitSaveState.state == .failed,
+                                        isSaved: notebookStore.notebookSplitSaveState.isSaved
+                                    )
                                     if #available(iOS 18.0, macOS 14.0, *) {
                                         Image(systemName: saveBadge.icon)
                                             .symbolEffect(.rotate, isActive: notebookStore.notebookSplitSaveState.isSaving)
@@ -1564,17 +1791,35 @@ struct NotebookModuleView: View {
                                 }
                                 .foregroundStyle(saveBadge.color)
 
+                                if bridge.status.hasPrefix("No se pudo guardar la asistencia") {
+                                    Text(bridge.status)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.red)
+                                        .lineLimit(2)
+                                }
+
+                                if notebookStore.notebookSplitSaveState.state == .failed {
+                                    Button {
+                                        bridge.saveNotebook()
+                                    } label: {
+                                        Label("Reintentar", systemImage: "arrow.clockwise")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                    .accessibilityHint("Vuelve a intentar guardar los cambios pendientes")
+                                }
+
                                 Text("•")
                                     .foregroundStyle(.secondary)
 
-                                // Sincronización
-                                if notebookStore.syncPendingChanges > 0 {
-                                    Text("\(notebookStore.syncPendingChanges) pnd.")
-                                        .foregroundStyle(Color.orange)
-                                } else {
-                                    Text("Sincronizado")
-                                        .foregroundStyle(.secondary)
+                                // Sincronización LAN: no confundir ausencia de host con estado al día.
+                                HStack(spacing: 4) {
+                                    Image(systemName: notebookSyncStatusState.systemImage)
+                                    Text(notebookSyncStatusText)
                                 }
+                                .foregroundStyle(notebookSyncStatusState.tint)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(notebookSyncStatusState.accessibilityLabel)
 
                                 Text("•")
                                     .foregroundStyle(.secondary)
@@ -1589,15 +1834,17 @@ struct NotebookModuleView: View {
                 }
                 .toolbarTitleMenu {
                     if toolbarMode == .shellOwned || toolbarMode == .macWindowOwned || toolbarMode == .macShellOwned || toolbarMode == .inlineCompact {
-                        Section("Clase") {
-                            ForEach(sortedClasses, id: \.id) { schoolClass in
-                                Button {
-                                    selectNotebookClass(schoolClass.id)
-                                } label: {
-                                    HStack {
-                                        Text(classLabel(for: schoolClass))
-                                        if selectedClassId == schoolClass.id {
-                                            Image(systemName: "checkmark")
+                        if showsClassSectionInTitleMenu {
+                            Section("Clase") {
+                                ForEach(sortedClasses, id: \.id) { schoolClass in
+                                    Button {
+                                        selectNotebookClass(schoolClass.id)
+                                    } label: {
+                                        HStack {
+                                            Text(classLabel(for: schoolClass))
+                                            if selectedClassId == schoolClass.id {
+                                                Image(systemName: "checkmark")
+                                            }
                                         }
                                     }
                                 }
@@ -1635,7 +1882,7 @@ struct NotebookModuleView: View {
                                     selectedGroupId = nil
                                 } label: {
                                     HStack {
-                                        Text("Grupo completo")
+                                        Text(NotebookMenuCopy.allStudents)
                                         if selectedGroupId == nil {
                                             Image(systemName: "checkmark")
                                         }
@@ -1662,7 +1909,7 @@ struct NotebookModuleView: View {
                                     groupByWorkGroupMode = "none"
                                 } label: {
                                     HStack {
-                                        Text("Sin filtrar (Ver todas)")
+                                        Text(NotebookMenuCopy.clearSituationFilter)
                                         if groupByWorkGroupMode == "none" {
                                             Image(systemName: "checkmark")
                                         }
@@ -1711,6 +1958,11 @@ struct NotebookModuleView: View {
                 .toolbarRole(.editor)
                 .notebookPresentedSearchable(if: toolbarMode == .inlineCompact, text: $searchText, isPresented: $isSearchPresented, prompt: "Buscar alumno")
                 .avoidHidingContentDuringSearch()
+                .task(id: searchText) {
+                    try? await Task.sleep(nanoseconds: NotebookGridSearch.debounceNanoseconds)
+                    guard !Task.isCancelled else { return }
+                    debouncedGridSearchText = searchText
+                }
         }
     }
 
@@ -1815,6 +2067,198 @@ struct NotebookModuleView: View {
         }
     }
 
+    @ViewBuilder
+    func cellStampSheet(request: NotebookCellStampRequest, data: NotebookUiStateData) -> some View {
+        let rows = filteredRows(data: data)
+        let currentIndex = rows.firstIndex(where: { $0.student.id == request.studentId })
+        let studentIndex = currentIndex.map { $0 + 1 }
+        let totalStudents = rows.count
+        let canAdvance = currentIndex != nil && currentIndex! + 1 < rows.count
+        let student = rows.first(where: { $0.student.id == request.studentId })?.student
+        let studentInitials = student.map { initials(for: $0) } ?? "—"
+        let category = data.sheet.columnCategories.first(where: { $0.id == request.column.categoryId })
+        let categoryColor = category.map { tint(for: $0) }
+
+        NotebookCellStampPickerPopover(
+            studentName: request.studentName,
+            studentInitials: studentInitials,
+            studentIndex: studentIndex,
+            totalStudents: totalStudents,
+            columnTitle: request.column.title,
+            columnSystemIcon: columnSystemIcon(for: request.column),
+            categoryTint: categoryColor,
+            currentValueText: request.currentValueText,
+            initialIcon: request.currentIcon,
+            initialNote: request.currentNote,
+            canAdvance: canAdvance,
+            onSave: { icon, note in
+                let currentItem = rows.first(where: { $0.student.id == request.studentId })
+                let persistedCell = currentItem?.row.persistedCells.first(where: { $0.columnId == request.column.id })
+                let currentAttachments = persistedCell?.annotation?.attachmentUris ?? []
+                bridge.saveNotebookCellAnnotation(
+                    studentId: request.studentId,
+                    columnId: request.column.id,
+                    note: note ?? "",
+                    iconValue: icon,
+                    attachmentUris: currentAttachments
+                )
+                reloadNotebookRow(request.studentId)
+                if let icon, let item = NotebookCellStampCatalog.item(for: icon) {
+                    showToast("Sello \(item.title) guardado", style: .success)
+                } else if icon == nil {
+                    showToast("Sello eliminado", style: .neutral)
+                } else {
+                    showToast("Anotación guardada", style: .success)
+                }
+            },
+            onSaveAndAdvance: { icon, note in
+                let currentItem = rows.first(where: { $0.student.id == request.studentId })
+                let persistedCell = currentItem?.row.persistedCells.first(where: { $0.columnId == request.column.id })
+                let currentAttachments = persistedCell?.annotation?.attachmentUris ?? []
+                bridge.saveNotebookCellAnnotation(
+                    studentId: request.studentId,
+                    columnId: request.column.id,
+                    note: note ?? "",
+                    iconValue: icon,
+                    attachmentUris: currentAttachments
+                )
+                reloadNotebookRow(request.studentId)
+
+                if let currentIndex, currentIndex + 1 < rows.count {
+                    let nextRow = rows[currentIndex + 1]
+                    let nextPersistedCell = nextRow.row.persistedCells.first(where: { $0.columnId == request.column.id })
+                    let nextIcon = nextPersistedCell?.annotation?.icon ?? nextPersistedCell?.iconValue
+                    let nextNote = nextPersistedCell?.annotation?.note
+                    let nextValue = displayValue(for: nextRow, column: request.column)
+                    cellStampRequest = NotebookCellStampRequest(
+                        studentId: nextRow.student.id,
+                        studentName: nextRow.student.fullName,
+                        column: request.column,
+                        currentIcon: nextIcon,
+                        currentNote: nextNote,
+                        currentValueText: nextValue.isEmpty ? nil : nextValue
+                    )
+                    showToast("Sello guardado · Siguiente: \(nextRow.student.fullName)", style: .info)
+                } else {
+                    cellStampRequest = nil
+                    showToast("¡Último alumno de la clase sellado!", style: .success)
+                }
+            },
+            onClose: {
+                cellStampRequest = nil
+            }
+        )
+        .id(request.id)
+    }
+
+    func openCellStampPicker(for item: NotebookTableRow, column: NotebookColumnDefinition) {
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let icon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
+        let note = persistedCell?.annotation?.note
+        let currentValue = displayValue(for: item, column: column)
+        cellStampRequest = NotebookCellStampRequest(
+            studentId: item.student.id,
+            studentName: item.student.fullName,
+            column: column,
+            currentIcon: icon,
+            currentNote: note,
+            currentValueText: currentValue.isEmpty ? nil : currentValue
+        )
+    }
+
+    func openCellStampPickerForSelection(data: NotebookUiStateData, rows: [NotebookTableRow]) {
+        guard let selected = selectedNotebookCell(data: data) else { return }
+        openCellStampPicker(for: selected.row, column: selected.column)
+    }
+
+    func applyQuickStamp(_ stamp: NotebookStampItem, for item: NotebookTableRow, column: NotebookColumnDefinition) {
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let note = persistedCell?.annotation?.note ?? ""
+        let attachmentUris = persistedCell?.annotation?.attachmentUris ?? []
+        bridge.saveNotebookCellAnnotation(
+            studentId: item.student.id,
+            columnId: column.id,
+            note: note,
+            iconValue: stamp.symbol,
+            attachmentUris: attachmentUris
+        )
+        reloadNotebookRow(item.student.id)
+        showToast("Sello \(stamp.title) aplicado", style: .success)
+    }
+
+    func removeStamp(for item: NotebookTableRow, column: NotebookColumnDefinition) {
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let note = persistedCell?.annotation?.note ?? ""
+        let attachmentUris = persistedCell?.annotation?.attachmentUris ?? []
+        bridge.saveNotebookCellAnnotation(
+            studentId: item.student.id,
+            columnId: column.id,
+            note: note,
+            iconValue: nil,
+            attachmentUris: attachmentUris
+        )
+        reloadNotebookRow(item.student.id)
+        showToast("Sello eliminado", style: .neutral)
+    }
+
+    func hasStampOrIcon(item: NotebookTableRow, column: NotebookColumnDefinition) -> Bool {
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let icon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue
+        return icon != nil && !(icon?.isEmpty ?? true)
+    }
+
+    @ViewBuilder
+    func studentProfile360Sheet(request: StudentProfile360Request, data: NotebookUiStateData) -> some View {
+        let rows = filteredRows(data: data)
+        let allStudents = resolveStudentsForProfile(rows: rows)
+        let studentRow = rows.first(where: { $0.student.id == request.studentId })
+        let classAverage = calculateNotebookClassAverage(from: rows)
+
+        StudentProfile360Sheet(
+            studentId: request.studentId,
+            classId: request.classId ?? data.sheet.classId,
+            allStudents: allStudents,
+            notebookColumns: data.sheet.columns,
+            studentRow: studentRow,
+            classAverageScore: classAverage,
+            bridge: bridge,
+            onNavigateToStudent: { nextStudentId in
+                let nextName = allStudents.first(where: { $0.id == nextStudentId }).map { "\($0.firstName) \($0.lastName)" } ?? "Alumno"
+                studentProfile360Request = StudentProfile360Request(
+                    studentId: nextStudentId,
+                    studentName: nextName,
+                    classId: request.classId
+                )
+            },
+            onClose: {
+                studentProfile360Request = nil
+            }
+        )
+        .id(request.studentId)
+    }
+
+    func openStudentProfile360(studentId: Int64, studentName: String, data: NotebookUiStateData) {
+        studentProfile360Request = StudentProfile360Request(
+            studentId: studentId,
+            studentName: studentName,
+            classId: data.sheet.classId
+        )
+    }
+
+    func resolveStudentsForProfile(rows: [NotebookTableRow]) -> [Student] {
+        let rowStudents = rows.map(\.student)
+        if !rowStudents.isEmpty {
+            return rowStudents
+        }
+        return bridge.studentsInClass.isEmpty ? bridge.allStudents : bridge.studentsInClass
+    }
+
+    func calculateNotebookClassAverage(from rows: [NotebookTableRow]) -> Double? {
+        let averages = rows.compactMap { $0.row.weightedAverage?.doubleValue }
+        guard !averages.isEmpty else { return nil }
+        return averages.reduce(0.0, +) / Double(averages.count)
+    }
+
     func formulaReferenceColumns(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> [NotebookColumnDefinition] {
         visibleNotebookSourceColumns(data: data)
             .filter { $0.id != column.id }
@@ -1840,6 +2284,7 @@ struct NotebookModuleView: View {
         [
             "\(isAttendanceQuickMode)",
             "\(structuralGridRevision)",
+            "widths:\(gridLayoutModel.columnWidthsRevision)",
             "columns:\(data.sheet.columns.count)",
             "rows:\(data.sheet.rows.count)"
         ].joined(separator: "¬")

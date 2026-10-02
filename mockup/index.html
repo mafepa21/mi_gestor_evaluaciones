@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maqueta Viva — Rediseño Asistencia Relámpago (Mi Gestor Evaluaciones)</title>
+  <style>
+    /* ==========================================================================
+       1. TOKENS DE DISEÑO APPLE HIG & ORGANIC PRECISION v2.2
+       ========================================================================== */
+    :root {
+      --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+      --bg-body: #f1f5f9;
+      --bg-sidebar: #ffffff;
+      --bg-canvas: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-surface-elevated: #ffffff;
+      --bg-subtle: #f1f5f9;
+      --text-primary: #0f172a;
+      --text-secondary: #64748b;
+      --text-muted: #94a3b8;
+      --border-subtle: #e2e8f0;
+      --border-medium: #cbd5e1;
+      
+      /* Semántica Apple */
+      --primary: #007aff;
+      --primary-hover: #0062cc;
+      --primary-subtle: #e0f2fe;
+      
+      --status-p: #34c759;
+      --status-p-bg: rgba(52, 199, 89, 0.12);
+      --status-p-border: rgba(52, 199, 89, 0.35);
+
+      --status-a: #ff3b30;
+      --status-a-bg: rgba(255, 59, 48, 0.12);
+      --status-a-border: rgba(255, 59, 48, 0.35);
+
+      --status-r: #ff9500;
+      --status-r-bg: rgba(255, 149, 0, 0.12);
+      --status-r-border: rgba(255, 149, 0, 0.35);
+
+      --status-m: #af52de;
+      --status-m-bg: rgba(175, 82, 222, 0.12);
+      --status-m-border: rgba(175, 82, 222, 0.35);
+
+      --status-j: #8e8e93;
+      --status-j-bg: rgba(142, 142, 147, 0.12);
+
+      --injury-color: #ff9500;
+      --injury-bg: rgba(255, 149, 0, 0.15);
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.08);
+      --sidebar-width: 330px;
+    }
+
+    [data-theme="dark"] {
+      --bg-body: #0b0f19;
+      --bg-sidebar: #111827;
+      --bg-canvas: #0f172a;
+      --bg-surface: #1e293b;
+      --bg-surface-elevated: #334155;
+      --bg-subtle: #1e293b;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --border-subtle: #334155;
+      --border-medium: #475569;
+      
+      --status-p: #30d158;
+      --status-p-bg: rgba(48, 209, 88, 0.2);
+      --status-a: #ff453a;
+      --status-a-bg: rgba(255, 69, 58, 0.2);
+      --status-r: #ff9f0a;
+      --status-r-bg: rgba(255, 159, 10, 0.2);
+      --status-m: #bf5af2;
+      --status-m-bg: rgba(191, 90, 242, 0.2);
+      
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+      --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.4);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg-body);
+      color: var(--text-primary);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      font-size: 14px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ==========================================================================
+       2. PANEL LATERAL (SIDEBAR GUÍA Y AUDITORÍA)
+       ========================================================================== */
+    .sidebar {
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      z-index: 20;
+    }
+
+    .sidebar-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .app-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--primary);
+      background: var(--primary-subtle);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 6px;
+    }
+
+    .app-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
+    }
+
+    .app-subtitle {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .controls-panel {
+      padding: 12px 20px;
+      background: var(--bg-canvas);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .control-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-group {
+      display: flex;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .btn-toggle {
+      border: none;
+      background: none;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all 0.15s ease;
+      font-weight: 500;
+    }
+
+    .btn-toggle.active {
+      background: var(--primary);
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .scenes-nav {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .flow-group {
+      margin-bottom: 18px;
+    }
+
+    .flow-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 8px;
+      padding-left: 6px;
+    }
+
+    .scene-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .scene-btn {
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: transparent;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      color: var(--text-primary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.15s;
+      font-weight: 500;
+    }
+
+    .scene-btn:hover {
+      background: var(--bg-canvas);
+    }
+
+    .scene-btn.active {
+      background: var(--primary-subtle);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .scene-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .scene-btn.active .scene-badge {
+      background: var(--primary);
+      color: white;
+    }
+
+    .scene-notes-panel {
+      padding: 14px 18px;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-subtle);
+      max-height: 180px;
+      overflow-y: auto;
+    }
+
+    .notes-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .notes-body {
+      font-size: 12px;
+      color: var(--text-primary);
+      line-height: 1.5;
+    }
+
+    /* ==========================================================================
+       3. LIENZO DE APLICACIÓN (VIEWPORT)
+       ========================================================================== */
+    .canvas-container {
+      flex: 1;
+      height: 100%;
+      background: var(--bg-canvas);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-y: auto;
+      padding: 24px;
+      transition: padding 0.2s ease;
+    }
+
+    .app-viewport {
+      width: 100%;
+      max-width: 1000px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      min-height: 680px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      transition: max-width 0.3s ease;
+      overflow: hidden;
+    }
+
+    /* Microinteracciones info badge */
+    .info-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--primary-subtle);
+      color: var(--primary);
+      font-size: 10px;
+      font-weight: 700;
+      cursor: help;
+      position: relative;
+      user-select: none;
+      vertical-align: middle;
+      margin-left: 4px;
+    }
+
+    .info-tag:hover::after {
+      content: attr(data-info);
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #0f172a;
+      color: #ffffff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      width: 250px;
+      z-index: 100;
+      box-shadow: var(--shadow-md);
+      pointer-events: none;
+    }
+
+    /* ==========================================================================
+       4. COMPONENTES DEL REDISEÑO DE ASISTENCIA
+       ========================================================================== */
+
+    /* Shell Header Unificada (reemplaza las 2 cabeceras) */
+    .unified-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      gap: 12px;
+    }
+
+    .group-date-cluster {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .group-selector-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      padding: 6px 12px;
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      cursor: pointer;
+    }
+
+    .date-navigator {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      padding: 3px 6px;
+      border-radius: var(--radius-md);
+    }
+
+    .nav-arrow-btn {
+      border: none;
+      background: transparent;
+      padding: 3px 7px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .nav-arrow-btn:hover { background: var(--border-subtle); }
+
+    .date-label {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 0 4px;
+      color: var(--text-primary);
+    }
+
+    .mode-switcher {
+      display: flex;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 2px;
+    }
+
+    .mode-tab {
+      border: none;
+      background: transparent;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .mode-tab.active {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Sub-barra de Métricas Mínimas (36pt) */
+    .status-summary-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 20px;
+      background: var(--bg-canvas);
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .metrics-pills {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-secondary);
+    }
+
+    .metric-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      margin-right: 4px;
+    }
+
+    .metric-pill-btn {
+      border: none;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      padding: 2px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .metric-pill-btn.active {
+      background: var(--border-medium);
+      color: var(--text-primary);
+    }
+
+    .mark-all-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--status-p-bg);
+      border: 1px solid var(--status-p-border);
+      color: var(--status-p);
+      padding: 5px 12px;
+      border-radius: var(--radius-full);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .mark-all-btn:hover {
+      background: rgba(52, 199, 89, 0.22);
+      transform: scale(1.02);
+    }
+
+    /* Lista Alfabética Continua (Filas Compactas 48pt) */
+    .roster-container {
+      flex: 1;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .student-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 20px;
+      height: 52px;
+      border-bottom: 1px solid var(--border-subtle);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+
+    .student-row:hover {
+      background: rgba(0, 122, 255, 0.03);
+    }
+
+    .student-row.selected {
+      background: rgba(0, 122, 255, 0.07);
+    }
+
+    .student-identity {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 260px;
+    }
+
+    .row-index {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      width: 18px;
+      text-align: right;
+    }
+
+    .student-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--bg-subtle);
+      border: 2px solid transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      transition: all 0.2s ease;
+    }
+
+    .student-avatar.present {
+      border-color: var(--status-p);
+      color: var(--status-p);
+      background: var(--status-p-bg);
+    }
+    .student-avatar.absent {
+      border-color: var(--status-a);
+      color: var(--status-a);
+      background: var(--status-a-bg);
+    }
+    .student-avatar.late {
+      border-color: var(--status-r);
+      color: var(--status-r);
+      background: var(--status-r-bg);
+    }
+    .student-avatar.nomaterial {
+      border-color: var(--status-m);
+      color: var(--status-m);
+      background: var(--status-m-bg);
+    }
+
+    .student-names {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .student-full-name {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .student-meta-badges {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .injury-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: var(--injury-bg);
+      color: var(--injury-color);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+
+    /* Selector de Estado Inline Segmented (P | A | R | M) */
+    .status-segmented-control {
+      display: flex;
+      align-items: center;
+      background: var(--bg-subtle);
+      padding: 2px;
+      border-radius: var(--radius-md);
+      gap: 2px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .status-key-btn {
+      width: 34px;
+      height: 30px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .status-key-btn:hover {
+      background: rgba(0, 0, 0, 0.05);
+      color: var(--text-primary);
+    }
+
+    /* Estados Activos */
+    .status-key-btn.active.p {
+      background: var(--status-p);
+      color: white;
+      box-shadow: 0 1px 3px rgba(52, 199, 89, 0.4);
+    }
+    .status-key-btn.active.a {
+      background: var(--status-a);
+      color: white;
+      box-shadow: 0 1px 3px rgba(255, 59, 48, 0.4);
+    }
+    .status-key-btn.active.r {
+      background: var(--status-r);
+      color: white;
+      box-shadow: 0 1px 3px rgba(255, 149, 0, 0.4);
+    }
+    .status-key-btn.active.m {
+      background: var(--status-m);
+      color: white;
+      box-shadow: 0 1px 3px rgba(175, 82, 222, 0.4);
+    }
+
+    /* Acciones Secundarias (···) */
+    .row-more-btn {
+      border: none;
+      background: transparent;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      color: var(--text-secondary);
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .row-more-btn:hover {
+      background: var(--border-subtle);
+    }
+
+    /* ==========================================================================
+       5. INSPECTOR LATERAL NATIVO (APPLE HIG PROGRESSIVE DISCLOSURE)
+       ========================================================================== */
+    .workspace-split {
+      display: flex;
+      flex: 1;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .inspector-pane {
+      width: 320px;
+      min-width: 320px;
+      border-left: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
+      padding: 20px;
+      gap: 18px;
+    }
+
+    .inspector-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .inspector-name {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .inspector-group-tag {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .close-inspector-btn {
+      border: none;
+      background: var(--bg-subtle);
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+    }
+
+    .inspector-card {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .inspector-card-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+    }
+
+    .note-textarea {
+      width: 100%;
+      height: 60px;
+      padding: 8px;
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-family: inherit;
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      resize: none;
+    }
+
+    /* Mini-calendario de historial reciente */
+    .mini-history-dots {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-top: 4px;
+    }
+    .history-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+    }
+
+    /* ==========================================================================
+       6. SÁBANA UNIFICADA (MATRIZ INTERACTIVA)
+       ========================================================================== */
+    .matrix-table-wrapper {
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .matrix-table {
+      border-collapse: collapse;
+      font-size: 12px;
+      width: 100%;
+    }
+
+    .matrix-table th, .matrix-table td {
+      border: 1px solid var(--border-subtle);
+      padding: 6px 8px;
+      text-align: center;
+    }
+
+    .matrix-table th {
+      background: var(--bg-subtle);
+      font-weight: 600;
+      font-size: 11px;
+    }
+
+    .matrix-student-col {
+      text-align: left !important;
+      font-weight: 600;
+      min-width: 180px;
+    }
+
+    .matrix-cell-badge {
+      display: inline-block;
+      width: 22px;
+      height: 22px;
+      line-height: 22px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    /* Skeleton Loading */
+    .skeleton {
+      background: linear-gradient(90deg, var(--border-subtle) 25%, var(--bg-canvas) 50%, var(--border-subtle) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-loading 1.4s infinite;
+      border-radius: var(--radius-sm);
+    }
+    @keyframes skeleton-loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Empty & Error States */
+    .state-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 60px 20px;
+      margin: 40px auto;
+      max-width: 420px;
+    }
+
+    .state-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
+
+    .state-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .state-desc {
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .btn-primary { background: var(--primary); color: #ffffff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary { background: var(--bg-surface); border-color: var(--border-medium); color: var(--text-primary); }
+
+  </style>
+</head>
+<body>
+
+  <!-- ========================================================================
+       PANEL LATERAL: AUDITORÍA HIG & GUÍA DE ESCENAS
+       ======================================================================== -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span class="app-badge">Living Mockup · SwiftUI Target</span>
+      <h1 class="app-title">Asistencia Relámpago</h1>
+      <p class="app-subtitle">Rediseño minimalista Apple HIG & EF</p>
+    </div>
+
+    <!-- Controles de Dispositivo y Tema -->
+    <div class="controls-panel">
+      <div class="control-row">
+        <span class="control-label">Apariencia</span>
+        <div class="btn-group">
+          <button class="btn-toggle active" onclick="setTheme('light', this)">Claro</button>
+          <button class="btn-toggle" onclick="setTheme('dark', this)">Oscuro</button>
+        </div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Dispositivo</span>
+        <div class="btn-group">
+          <button class="btn-toggle active" onclick="setViewport('1000px', this)">iPad</button>
+          <button class="btn-toggle" onclick="setViewport('390px', this)">iPhone</button>
+          <button class="btn-toggle" onclick="setViewport('100%', this)">Mac</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Índice de Escenas -->
+    <nav class="scenes-nav">
+      <div class="flow-group">
+        <div class="flow-title">1. Flujo Diario (Pase Relámpago)</div>
+        <ul class="scene-list">
+          <li>
+            <button class="scene-btn active" onclick="renderScene('dia-normal', this)">
+              <span>1.1 Pase Diario (Normal)</span>
+              <span class="scene-badge">Data</span>
+            </button>
+          </li>
+          <li>
+            <button class="scene-btn" onclick="renderScene('dia-excepciones', this)">
+              <span>1.2 Filtro de Excepciones</span>
+              <span class="scene-badge">Filtro</span>
+            </button>
+          </li>
+          <li>
+            <button class="scene-btn" onclick="renderScene('inspector', this)">
+              <span>1.3 Inspector Lateral Alumno</span>
+              <span class="scene-badge">Inspector</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="flow-group">
+        <div class="flow-title">2. Histórico y Análisis</div>
+        <ul class="scene-list">
+          <li>
+            <button class="scene-btn" onclick="renderScene('sabana', this)">
+              <span>2.1 Sábana / Matriz Mensual</span>
+              <span class="scene-badge">Grid</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="flow-group">
+        <div class="flow-title">3. Estados de Sistema</div>
+        <ul class="scene-list">
+          <li>
+            <button class="scene-btn" onclick="renderScene('cargando', this)">
+              <span>3.1 Cargando (Shimmer)</span>
+              <span class="scene-badge">Loading</span>
+            </button>
+          </li>
+          <li>
+            <button class="scene-btn" onclick="renderScene('vacio', this)">
+              <span>3.2 Grupo sin Alumnos</span>
+              <span class="scene-badge">Empty</span>
+            </button>
+          </li>
+          <li>
+            <button class="scene-btn" onclick="renderScene('error', this)">
+              <span>3.3 Fallo al Guardar (Gate)</span>
+              <span class="scene-badge">Error</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- Notas de Decisiones UX -->
+    <div class="scene-notes-panel">
+      <div class="notes-title">Decisiones y Microinteracciones</div>
+      <p class="notes-body" id="scene-notes">
+        Cargando notas...
+      </p>
+    </div>
+  </aside>
+
+  <!-- ========================================================================
+       LIENZO DE APLICACIÓN
+       ======================================================================== -->
+  <main class="canvas-container">
+    <div class="app-viewport" id="viewport">
+      <!-- El contenido se inyecta dinámicamente -->
+    </div>
+  </main>
+
+  <!-- ========================================================================
+       LÓGICA JAVASCRIPT PURA
+       ======================================================================== -->
+  <script>
+    // Datos simulados de aula real (1º ESO A)
+    const mockStudents = [
+      { id: 1, name: "Álvarez García, Alejandro", status: "P", injury: false, note: "" },
+      { id: 2, name: "Benítez Moreno, Carmen", status: "P", injury: false, note: "" },
+      { id: 3, name: "Cano Delgado, David", status: "R", injury: false, note: "+5 min (autobús)" },
+      { id: 4, name: "Díaz Navarro, Hugo", status: "A", injury: false, note: "Falta sin avisar" },
+      { id: 5, name: "Esteban Fuentes, Lucía", status: "P", injury: true, note: "Esguince tobillo grado 1" },
+      { id: 6, name: "Fernández Vega, Mateo", status: "M", injury: false, note: "Sin calzado deportivo" },
+      { id: 7, name: "García López, Sofía", status: "P", injury: false, note: "" },
+      { id: 8, name: "Herrera Ruiz, Daniel", status: "P", injury: false, note: "" },
+      { id: 9, name: "Jiménez Soler, Paula", status: "P", injury: false, note: "" },
+      { id: 10, name: "López Morales, Álvaro", status: "A", injury: false, note: "Justificada médica" },
+      { id: 11, name: "Martín Blanco, Valeria", status: "P", injury: false, note: "" },
+      { id: 12, name: "Navarro Castro, Leo", status: "P", injury: false, note: "" }
+    ];
+
+    let currentSelectedStudentId = 3; // David Cano
+    let currentFilter = "TODOS";
+    let currentSceneId = "dia-normal";
+
+    const scenes = {
+      "dia-normal": {
+        notes: "Cabecera unificada sin duplicidad. Fila compacta de 52pt que permite ver de 12 a 16 alumnos de un vistazo. Al pulsar P/A/R/M el cambio es instantáneo, con vibración háptica y sin que la fila desaparezca ni salte de orden alfabético.",
+        render: () => renderDayWorkspace(false)
+      },
+      "dia-excepciones": {
+        notes: "El docente pulsa el filtro rápido 'Excepciones (4)'. La lista se acota instantáneamente a los que requieren atención (2 ausencias, 1 retraso, 1 sin material), facilitando el seguimiento rápido antes de salir a pista.",
+        render: () => {
+          currentFilter = "EXCEPCIONES";
+          return renderDayWorkspace(false);
+        }
+      },
+      "inspector": {
+        notes: "Inspector lateral nativo que se abre solo si el docente pulsa el alumno o el botón (···). Muestra el contexto relevante para EF: evolución de la lesión, mini-calendario de asistencia de los últimos 30 días y campo de nota rápida.",
+        render: () => renderDayWorkspace(true)
+      },
+      "sabana": {
+        notes: "Matriz interactiva unificada que combina el histórico del mes con edición rápida de celdas. Elimina la necesidad de tener dos pestañas redundantes ('Matriz' e 'Historial').",
+        render: () => renderMatrixWorkspace()
+      },
+      "cargando": {
+        notes: "Estado de carga inicial con Skeleton loaders fluidos que mantienen fijos los anchos de columna y las filas de 52pt para garantizar cero Cumulative Layout Shift (CLS = 0).",
+        render: () => `
+          <div class="unified-topbar">
+            <div class="group-date-cluster">
+              <div class="skeleton" style="width: 110px; height: 32px;"></div>
+              <div class="skeleton" style="width: 140px; height: 32px;"></div>
+            </div>
+            <div class="skeleton" style="width: 180px; height: 32px;"></div>
+          </div>
+          <div class="status-summary-bar">
+            <div class="skeleton" style="width: 220px; height: 18px;"></div>
+            <div class="skeleton" style="width: 130px; height: 26px; border-radius: 999px;"></div>
+          </div>
+          <div class="roster-container" style="padding: 12px 20px; display: flex; flex-direction: column; gap: 8px;">
+            ${Array(8).fill(0).map(() => `
+              <div class="skeleton" style="width: 100%; height: 50px; border-radius: 8px;"></div>
+            `).join('')}
+          </div>
+        `
+      },
+      "vacio": {
+        notes: "Estado vacío amable y contextual cuando un grupo aún no tiene alumnos matriculados o una búsqueda por nombre no arroja coincidencias.",
+        render: () => `
+          <div class="unified-topbar">
+            <div class="group-date-cluster">
+              <div class="group-selector-btn">2º Bachillerato B ▾</div>
+              <div class="date-navigator"><span class="date-label">Hoy, 28 Sep</span></div>
+            </div>
+          </div>
+          <div class="state-box">
+            <div class="state-icon">👥</div>
+            <div class="state-title">Sin alumnado en este grupo</div>
+            <p class="state-desc">No se han encontrado alumnos asignados a 2º Bachillerato B o no coinciden con el filtro de búsqueda.</p>
+            <button class="btn btn-primary" onclick="alert('Importar alumnado desde Séneca / CSV')">+ Importar o Añadir Alumnos</button>
+          </div>
+        `
+      },
+      "error": {
+        notes: "Manejo de error de guardado (Save Gate): el estado modificado no se finge guardado si falla la persistencia. Se muestra un banner accesible en español con botón de reintento.",
+        render: () => `
+          <div class="unified-topbar">
+            <div class="group-date-cluster">
+              <div class="group-selector-btn">1º ESO A ▾</div>
+              <div class="date-navigator"><span class="date-label">Hoy, 28 Sep</span></div>
+            </div>
+          </div>
+          <div style="background: var(--status-a-bg); border-bottom: 1px solid var(--status-a-border); color: var(--status-a); padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>⚠️</span>
+              <span>No se pudo guardar la asistencia de Hugo Díaz Navarro. Pulsa para reintentar.</span>
+            </div>
+            <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="renderScene('dia-normal')">Reintentar</button>
+          </div>
+          ${renderDayWorkspace(false, true)}
+        `
+      }
+    };
+
+    function renderDayWorkspace(showInspector = false, isError = false) {
+      const filtered = mockStudents.filter(s => {
+        if (currentFilter === "EXCEPCIONES") {
+          return s.status !== "P" || s.injury;
+        }
+        return true;
+      });
+
+      const pCount = mockStudents.filter(s => s.status === "P").length;
+      const aCount = mockStudents.filter(s => s.status === "A").length;
+      const rCount = mockStudents.filter(s => s.status === "R").length;
+      const mCount = mockStudents.filter(s => s.status === "M").length;
+      const pendingCount = mockStudents.filter(s => !s.status).length;
+      const injuryCount = mockStudents.filter(s => s.injury).length;
+
+      const selectedStudent = mockStudents.find(s => s.id === currentSelectedStudentId);
+
+      return `
+        <!-- Topbar Unificada -->
+        <header class="unified-topbar">
+          <div class="group-date-cluster">
+            <button class="group-selector-btn" title="Cambiar grupo">
+              1º ESO A ▾
+              <span class="info-tag" data-info="Selector rápido de curso. Conserva la fecha activa al conmutar.">(i)</span>
+            </button>
+            <div class="date-navigator">
+              <button class="nav-arrow-btn">‹</button>
+              <span class="date-label">Hoy, 28 Sep</span>
+              <button class="nav-arrow-btn">›</button>
+            </div>
+          </div>
+
+          <div class="mode-switcher">
+            <button class="mode-tab active" onclick="renderScene('dia-normal')">Pase Diario</button>
+            <button class="mode-tab" onclick="renderScene('sabana')">Sábana (Matriz)</button>
+          </div>
+        </header>
+
+        <!-- Sub-barra Mínima de Estado -->
+        <div class="status-summary-bar">
+          <div class="metrics-pills">
+            <button class="metric-pill-btn ${currentFilter === 'TODOS' ? 'active' : ''}" onclick="toggleFilter('TODOS')">
+              Todos (${mockStudents.length})
+            </button>
+            <span>·</span>
+            <button class="metric-pill-btn ${currentFilter === 'EXCEPCIONES' ? 'active' : ''}" onclick="toggleFilter('EXCEPCIONES')">
+              <span class="metric-dot" style="background: var(--status-p)"></span>${pCount} P
+              <span class="metric-dot" style="background: var(--status-a); margin-left: 6px;"></span>${aCount} A
+              <span class="metric-dot" style="background: var(--status-r); margin-left: 6px;"></span>${rCount} R
+              <span class="metric-dot" style="background: var(--status-m); margin-left: 6px;"></span>${mCount} M
+              ${injuryCount > 0 ? `<span class="metric-dot" style="background: var(--injury-color); margin-left: 6px;"></span>${injuryCount} Lesión` : ''}
+              ${pendingCount > 0 ? `<span class="metric-dot" style="background: var(--text-muted); margin-left: 6px;"></span>${pendingCount} Pendiente` : ''}
+              <span class="info-tag" data-info="Toca para filtrar solo las incidencias o volver a todos.">(i)</span>
+            </button>
+          </div>
+
+          <button class="mark-all-btn" onclick="markAllPresent()">
+            ✓ Marcar Todos Presentes
+            <span class="info-tag" data-info="Acción primaria de alta velocidad: establece P en todos y permite cambiar solo las 2-3 ausencias en segundos.">(i)</span>
+          </button>
+        </div>
+
+        <!-- Contenedor Principal (Con o sin Inspector) -->
+        <div class="workspace-split">
+          
+          <!-- Lista Alfabética Continua -->
+          <div class="roster-container">
+            ${filtered.map((student, idx) => {
+              const initials = student.name.split(', ')[1][0] + student.name.split(', ')[0][0];
+              const isSelected = showInspector && student.id === currentSelectedStudentId;
+              let avatarClass = "";
+              if (student.status === "P") avatarClass = "present";
+              if (student.status === "A") avatarClass = "absent";
+              if (student.status === "R") avatarClass = "late";
+              if (student.status === "M") avatarClass = "nomaterial";
+
+              return `
+                <div class="student-row ${isSelected ? 'selected' : ''}" onclick="selectStudent(${student.id})">
+                  <div class="student-identity">
+                    <span class="row-index">${idx + 1}</span>
+                    <div class="student-avatar ${avatarClass}">
+                      ${initials}
+                    </div>
+                    <div class="student-names">
+                      <span class="student-full-name">${student.name}</span>
+                      <div class="student-meta-badges">
+                        ${student.injury ? `<span class="injury-badge">🩹 Lesión activa</span>` : ''}
+                        ${student.note ? `<span>💬 ${student.note}</span>` : ''}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Segmented Control de Alta Velocidad -->
+                  <div class="status-segmented-control" onclick="event.stopPropagation()">
+                    <button class="status-key-btn ${student.status === 'P' ? 'active p' : ''}" title="Presente (Tecla P)" onclick="setStatus(${student.id}, 'P')">P</button>
+                    <button class="status-key-btn ${student.status === 'A' ? 'active a' : ''}" title="Ausente (Tecla A)" onclick="setStatus(${student.id}, 'A')">A</button>
+                    <button class="status-key-btn ${student.status === 'R' ? 'active r' : ''}" title="Retraso (Tecla R)" onclick="setStatus(${student.id}, 'R')">R</button>
+                    <button class="status-key-btn ${student.status === 'M' ? 'active m' : ''}" title="Sin ropa deportiva / material (Tecla M)" onclick="setStatus(${student.id}, 'M')">M</button>
+                  </div>
+
+                  <!-- Botón Ficha / Más opciones -->
+                  <button class="row-more-btn" title="Ver ficha en inspector" onclick="openInspectorFor(${student.id}, event)">
+                    ···
+                  </button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          <!-- Inspector Lateral Apple HIG -->
+          ${showInspector && selectedStudent ? `
+            <aside class="inspector-pane">
+              <div class="inspector-header">
+                <div>
+                  <div class="inspector-name">${selectedStudent.name}</div>
+                  <div class="inspector-group-tag">1º ESO A · Nº ${selectedStudent.id}</div>
+                </div>
+                <button class="close-inspector-btn" onclick="renderScene('dia-normal')" title="Cerrar inspector">✕</button>
+              </div>
+
+              <!-- Estado de Hoy -->
+              <div class="inspector-card">
+                <span class="inspector-card-title">Estado de Asistencia Hoy</span>
+                <div style="display: flex; gap: 8px; margin-top: 4px;">
+                  <button class="btn btn-secondary" style="flex: 1; font-size: 12px; font-weight: 700;">
+                    ${getStatusLabel(selectedStudent.status)}
+                  </button>
+                  ${selectedStudent.status ? `
+                    <button class="btn btn-secondary" style="font-size: 11px; color: var(--text-secondary); font-weight: 600;" title="Desmarcar y dejar sin pasar" onclick="setStatus(${selectedStudent.id}, '')">
+                      ↺ Desmarcar
+                    </button>
+                  ` : ''}
+                </div>
+                <div style="margin-top: 8px;">
+                  <label style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">Nota de la sesión</label>
+                  <textarea class="note-textarea" placeholder="Escribe observación rápida...">${selectedStudent.note}</textarea>
+                </div>
+              </div>
+
+              <!-- Contexto Educación Física -->
+              <div class="inspector-card">
+                <span class="inspector-card-title">Ficha de Educación Física</span>
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px;">
+                  <span>Lesión motriz activa</span>
+                  <input type="checkbox" ${selectedStudent.injury ? 'checked' : ''} onchange="toggleInjury(${selectedStudent.id})">
+                </div>
+                ${selectedStudent.injury ? `
+                  <p style="font-size: 11px; color: var(--injury-color); margin-top: 4px;">
+                    Requiere práctica adaptada o tarea teórica en grada.
+                  </p>
+                ` : `
+                  <span style="font-size: 11px; color: var(--text-secondary);">Apto para práctica deportiva completa.</span>
+                `}
+              </div>
+
+              <!-- Histórico Últimas Sesiones -->
+              <div class="inspector-card">
+                <span class="inspector-card-title">Últimas 5 Sesiones</span>
+                <div class="mini-history-dots">
+                  <div class="history-dot" style="background: var(--status-p-bg); color: var(--status-p);">P</div>
+                  <div class="history-dot" style="background: var(--status-p-bg); color: var(--status-p);">P</div>
+                  <div class="history-dot" style="background: var(--status-r-bg); color: var(--status-r);">R</div>
+                  <div class="history-dot" style="background: var(--status-p-bg); color: var(--status-p);">P</div>
+                  <div class="history-dot" style="background: var(--status-a-bg); color: var(--status-a);">A</div>
+                </div>
+                <span style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">92% asistencia este mes</span>
+              </div>
+
+              <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px;">
+                <button class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: 12px;">Abrir Diario de Clase</button>
+                <button class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: 12px;">Abrir Cuaderno</button>
+              </div>
+            </aside>
+          ` : ''}
+
+        </div>
+      `;
+    }
+
+    function renderMatrixWorkspace() {
+      const dates = ["12/09", "15/09", "19/09", "22/09", "26/09", "28/09"];
+      return `
+        <header class="unified-topbar">
+          <div class="group-date-cluster">
+            <button class="group-selector-btn">1º ESO A ▾</button>
+            <div class="btn-group">
+              <button class="btn-toggle active">Mes Actual</button>
+              <button class="btn-toggle">1er Trimestre</button>
+            </div>
+          </div>
+          <div class="mode-switcher">
+            <button class="mode-tab" onclick="renderScene('dia-normal')">Pase Diario</button>
+            <button class="mode-tab active">Sábana (Matriz)</button>
+          </div>
+        </header>
+
+        <div class="status-summary-bar">
+          <span style="color: var(--text-secondary);">6 sesiones registradas · Media del grupo: 94%</span>
+          <button class="btn btn-secondary" style="padding: 3px 8px; font-size: 11px;" onclick="alert('Exportar sábana a PDF / Excel')">Exportar Sábana</button>
+        </div>
+
+        <div class="matrix-table-wrapper">
+          <table class="matrix-table">
+            <thead>
+              <tr>
+                <th class="matrix-student-col">Alumno</th>
+                ${dates.map(d => `<th>${d}</th>`).join('')}
+                <th>% Asist.</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${mockStudents.map(s => `
+                <tr>
+                  <td class="matrix-student-col">${s.name}</td>
+                  ${dates.map((_, i) => {
+                    const status = i === 5 ? s.status : (i === 2 && s.id === 4 ? "A" : "P");
+                    let color = "var(--status-p)";
+                    let bg = "var(--status-p-bg)";
+                    if (status === "A") { color = "var(--status-a)"; bg = "var(--status-a-bg)"; }
+                    if (status === "R") { color = "var(--status-r)"; bg = "var(--status-r-bg)"; }
+                    if (status === "M") { color = "var(--status-m)"; bg = "var(--status-m-bg)"; }
+                    return `
+                      <td>
+                        <span class="matrix-cell-badge" style="color:${color}; background:${bg};">${status}</span>
+                      </td>
+                    `;
+                  }).join('')}
+                  <td style="font-weight: 700; color: ${s.status === 'A' ? 'var(--status-r)' : 'var(--status-p)'}">
+                    ${s.id === 4 ? '83%' : '96%'}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function getStatusLabel(code) {
+      if (code === "P") return "Presente";
+      if (code === "A") return "Ausente";
+      if (code === "R") return "Retraso";
+      if (code === "M") return "Sin material";
+      return "Sin pasar";
+    }
+
+    function setStatus(studentId, newStatus) {
+      const student = mockStudents.find(s => s.id === studentId);
+      if (student) {
+        // Toggle: si ya tenía este estado y se vuelve a pulsar, o si se pide '', se desmarca
+        if (student.status === newStatus || newStatus === '') {
+          student.status = "";
+        } else {
+          student.status = newStatus;
+        }
+        // Re-render sin parpadeos conservando la vista activa
+        if (currentSceneId === "inspector") {
+          renderScene('inspector');
+        } else {
+          document.getElementById('viewport').innerHTML = scenes["dia-normal"].render();
+        }
+      }
+    }
+
+    function markAllPresent() {
+      mockStudents.forEach(s => s.status = "P");
+      document.getElementById('viewport').innerHTML = scenes["dia-normal"].render();
+    }
+
+    function toggleFilter(filter) {
+      currentFilter = filter;
+      document.getElementById('viewport').innerHTML = scenes["dia-normal"].render();
+    }
+
+    function selectStudent(studentId) {
+      currentSelectedStudentId = studentId;
+    }
+
+    function openInspectorFor(studentId, event) {
+      event.stopPropagation();
+      currentSelectedStudentId = studentId;
+      renderScene('inspector');
+    }
+
+    function toggleInjury(studentId) {
+      const student = mockStudents.find(s => s.id === studentId);
+      if (student) {
+        student.injury = !student.injury;
+        renderScene('inspector');
+      }
+    }
+
+    function renderScene(sceneKey, btnElement) {
+      currentSceneId = sceneKey;
+      const scene = scenes[sceneKey];
+      if (!scene) return;
+      document.getElementById('viewport').innerHTML = scene.render();
+      document.getElementById('scene-notes').innerText = scene.notes;
+
+      document.querySelectorAll('.scene-btn').forEach(btn => btn.classList.remove('active'));
+      if (btnElement) {
+        btnElement.classList.add('active');
+      }
+    }
+
+    function setTheme(theme, btnElement) {
+      document.documentElement.setAttribute('data-theme', theme);
+      btnElement.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btnElement.classList.add('active');
+    }
+
+    function setViewport(width, btnElement) {
+      document.getElementById('viewport').style.maxWidth = width;
+      btnElement.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btnElement.classList.add('active');
+    }
+
+    // Inicializar
+    renderScene('dia-normal');
+  </script>
+</body>
+</html>

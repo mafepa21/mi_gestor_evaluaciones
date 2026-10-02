@@ -1,6 +1,7 @@
 package com.migestor.desktop
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -70,9 +72,14 @@ import com.migestor.desktop.ui.system.LocalUiFeatureFlags
 import com.migestor.desktop.ui.system.ToolbarSearchResult
 import com.migestor.desktop.ui.system.rememberUiFeatureFlags
 import com.migestor.desktop.ui.settings.AppSettings
+import com.migestor.desktop.ui.settings.AppThemeMode
 import com.migestor.desktop.ui.settings.SettingsScreen
 import com.migestor.desktop.ui.settings.rememberAppSettingsState
 import com.migestor.shared.sync.SyncCoordinator
+import com.migestor.shared.util.IsoWeekHelper
+import kotlinx.datetime.Clock
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -121,6 +128,7 @@ fun main() = application {
         mutableStateOf<DesktopInitState>(DesktopInitState.Loading("Abriendo base de datos local…"))
     }
     var syncServer by remember { mutableStateOf<LocalSyncServer?>(null) }
+    var syncStartError by remember { mutableStateOf<String?>(null) }
     var syncRefreshTick by remember { mutableStateOf(0L) }
     val syncStatus = syncServer?.status?.collectAsState()?.value
 
@@ -153,6 +161,9 @@ fun main() = application {
                     }
                 }.onFailure { error ->
                     error.printStackTrace()
+                    withContext(Dispatchers.Main) {
+                        syncStartError = error.message ?: "No se pudo abrir el enlace entre aparatos."
+                    }
                 }
             }
         }.onFailure { error ->
@@ -167,6 +178,11 @@ fun main() = application {
     val appLayoutViewModel = remember {
         AppLayoutViewModel(initialExpanded = !appSettingsState.value.startWithCollapsedSidebar)
     }
+    val windowIconResource = when (appSettingsState.value.themeMode) {
+        AppThemeMode.Light -> "icon-window-light.png"
+        AppThemeMode.DarkPremium -> "icon-window-dark.png"
+        AppThemeMode.System -> if (isSystemInDarkTheme()) "icon-window-dark.png" else "icon-window-light.png"
+    }
 
     Window(
         onCloseRequest = {
@@ -175,6 +191,7 @@ fun main() = application {
             exitApplication()
         },
         title = "MiGestor KMP Desktop",
+        icon = painterResource(windowIconResource),
         onKeyEvent = { event ->
             if (event.isMetaPressed && event.key == Key.Backslash && event.type == KeyEventType.KeyDown) {
                 appLayoutViewModel.toggleSidebar()
@@ -197,6 +214,7 @@ fun main() = application {
                             syncPin = syncStatus?.pin,
                             syncServerId = syncStatus?.serverId,
                             syncIsPaired = syncStatus?.isPaired ?: false,
+                            syncStartError = syncStartError,
                             syncRefreshTick = syncRefreshTick,
                             onRevokeSyncPairing = {
                                 syncServer?.revokePairing()
@@ -257,6 +275,7 @@ private fun DesktopApp(
     syncPin: String?,
     syncServerId: String?,
     syncIsPaired: Boolean,
+    syncStartError: String?,
     syncRefreshTick: Long,
     onRevokeSyncPairing: () -> Unit,
 ) {
@@ -455,6 +474,7 @@ private fun DesktopApp(
                                 syncPin = syncPin,
                                 syncServerId = syncServerId,
                                 syncIsPaired = syncIsPaired,
+                                syncStartError = syncStartError,
                                 onRevokeSyncPairing = onRevokeSyncPairing,
                             )
                             AppTab.Cursos -> CoursesTab(container, onStatus = { status = it })
@@ -892,10 +912,13 @@ private data class DiaryDesktopSnapshot(
 private fun DiaryTab(container: KmpContainer, onStatus: (String) -> Unit) {
     var sessions by remember { mutableStateOf(emptyList<DiaryDesktopSnapshot>()) }
     var selectedSessionId by remember { mutableStateOf<Long?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         runCatching {
-            val allSessions = container.plannerRepository.listAllSessions()
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+            val (from, to) = IsoWeekHelper.schoolYearBounds(today)
+            val allSessions = container.plannerRepository.listSessionsInRange(groupId = null, fromDate = from, toDate = to)
             val summaries = container.sessionJournalRepository
                 .listSummariesForSessions(allSessions.map { it.id })
                 .associateBy { it.planningSessionId }
@@ -914,10 +937,14 @@ private fun DiaryTab(container: KmpContainer, onStatus: (String) -> Unit) {
                     .thenByDescending { it.session.period }
             )
         }.onSuccess {
+            loadError = null
             sessions = it
             selectedSessionId = selectedSessionId ?: it.firstOrNull()?.session?.id
             onStatus("Diario cargado")
-        }.onFailure { onStatus(it.message ?: "Error cargando diario") }
+        }.onFailure {
+            loadError = it.message ?: "No se pudo cargar el diario."
+            onStatus(loadError!!)
+        }
     }
 
     val selected = sessions.firstOrNull { it.session.id == selectedSessionId } ?: sessions.firstOrNull()
@@ -926,7 +953,7 @@ private fun DiaryTab(container: KmpContainer, onStatus: (String) -> Unit) {
         leftTitle = "Sesiones",
         left = {
             if (sessions.isEmpty()) {
-                EmptyWorkspaceState("No hay sesiones en el diario todavía.")
+                EmptyWorkspaceState(loadError ?: "No hay sesiones en el diario todavía.")
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(sessions) { snapshot ->
@@ -1176,7 +1203,10 @@ private fun PEHubTab(container: KmpContainer, onStatus: (String) -> Unit) {
     LaunchedEffect(Unit) {
         runCatching {
             val classes = container.classesRepository.listClasses()
-            val sessions = container.plannerRepository.listAllSessions()
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+            val (from, to) = IsoWeekHelper.schoolYearBounds(today)
+            val sessions = container.plannerRepository.listSessionsInRange(groupId = null, fromDate = from, toDate = to)
+            val materialIds = container.sessionJournalRepository.sessionIdsWithMaterial()
             val incidents = classes.flatMap { schoolClass ->
                 container.incidentsRepository.listIncidents(schoolClass.id)
             }
@@ -1186,16 +1216,8 @@ private fun PEHubTab(container: KmpContainer, onStatus: (String) -> Unit) {
                     "fis" in label || "resistencia" in label || "velocidad" in label || "test" in label
                 }
             }
-            val materialSessions = sessions.count { session ->
-                container.sessionJournalRepository.getJournalForSession(session.id)?.journal?.let { journal ->
-                    journal.materialToPrepareText.isNotBlank() || journal.materialUsedText.isNotBlank()
-                } ?: false
-            }
-            val sessionsWithMaterial = sessions.filter { session ->
-                container.sessionJournalRepository.getJournalForSession(session.id)?.journal?.let { journal ->
-                    journal.materialToPrepareText.isNotBlank() || journal.materialUsedText.isNotBlank()
-                } ?: false
-            }
+            val sessionsWithMaterial = sessions.filter { it.id in materialIds }
+            val materialSessions = sessionsWithMaterial.size
             PEHubSnapshot(
                 sessions = sessions,
                 incidents = incidents,

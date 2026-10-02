@@ -65,7 +65,11 @@ extension PlannerWorkspaceViewModel {
         }
         
         do {
-            let allSessions = try await bridge.plannerListAllSessions()
+            let allSessions = try await bridge.plannerListSessions(
+                fromIso: scheduleStartDate,
+                toIso: scheduleEndDate,
+                classId: requestedGroupId
+            )
             try Task.checkCancellation()
             let filteredSessions = allSessions.filter { session in
                 requestedGroupId.map { session.groupId == $0 } ?? true
@@ -73,25 +77,34 @@ extension PlannerWorkspaceViewModel {
 
             let situations = try await bridge.learningSituations()
             try Task.checkCancellation()
+            let allClassLinks = try await bridge.learningSituationClassLinksAll()
+            try Task.checkCancellation()
+            let allSequenceVersions = try await bridge.learningSituationSessionSequenceVersionsAll()
+            try Task.checkCancellation()
+            let allSessionPlans = try await bridge.learningSituationSessionPlansAll()
+            try Task.checkCancellation()
+
             let groupNames = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
             let allowedGroupIds = Set(groupNames.keys.filter { classId in
                 requestedGroupId.map { classId == $0 } ?? true
             })
+            let linksBySituationId = Dictionary(grouping: allClassLinks, by: \.learningSituationId)
+            let versionsBySituationId = Dictionary(grouping: allSequenceVersions, by: \.learningSituationId)
+            let plansByVersionId = Dictionary(grouping: allSessionPlans, by: \.sequenceVersionId)
+            let plansById = Dictionary(uniqueKeysWithValues: allSessionPlans.map { ($0.id, $0) })
 
             var catalog: [PlannerSequenceCatalogEntry] = []
             for situation in situations {
                 try Task.checkCancellation()
-                let links = try await bridge.learningSituationClassLinks(id: situation.id)
+                let links = (linksBySituationId[situation.id] ?? [])
                     .filter { allowedGroupIds.contains($0.classId) }
                 guard !links.isEmpty else { continue }
 
-                let versions = try await bridge.learningSituationSessionSequenceVersions(
-                    learningSituationId: situation.id
-                )
+                let versions = versionsBySituationId[situation.id] ?? []
                 guard let latestVersion = versions.max(by: { $0.versionNumber < $1.versionNumber }) else {
                     continue
                 }
-                let plans = try await bridge.learningSituationSessionPlans(sequenceVersionId: latestVersion.id)
+                let plans = (plansByVersionId[latestVersion.id] ?? [])
                     .sorted { $0.sessionNumber < $1.sessionNumber }
                 guard !plans.isEmpty else { continue }
                 let equivalentVersionIds = PlannerSequenceVersionProjection.equivalentVersionIds(
@@ -115,7 +128,7 @@ extension PlannerWorkspaceViewModel {
             var planBySessionId: [Int64: LearningSituationSessionPlan] = [:]
             for session in filteredSessions {
                 if let planId = session.learningSituationSessionPlanId?.int64Value {
-                    planBySessionId[session.id] = try await bridge.learningSituationSessionPlan(id: planId)
+                    planBySessionId[session.id] = plansById[planId]
                 }
             }
 

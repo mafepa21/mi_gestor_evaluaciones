@@ -41,16 +41,25 @@ struct OnboardingHostModifier: ViewModifier {
                 },
                 onSkip: { store.dismiss() }
             )
+#if os(iOS)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+#endif
 
         case .checklist:
             OnboardingChecklistView(
                 store: store,
                 onAction: handleAction(_:_:),
-                onClose: { store.dismiss() }
+                onClose: { store.dismiss() },
+                onFinish: finishOnboarding
             )
             // La lista también se abre desde Ajustes mucho después del primer
             // arranque: se recalcula el progreso al aparecer.
             .task { await store.refresh(bridge: bridge) }
+#if os(iOS)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+#endif
 
         case .scheduleWizard(let startOnSlots, let autoPresentImporter):
             TeacherScheduleWizard(
@@ -93,6 +102,25 @@ struct OnboardingHostModifier: ViewModifier {
         }
     }
 
+    /// Cerrar el recorrido no debe dejar al docente en el mismo estado de
+    /// configuración: Hoy es la primera superficie operativa y el destino
+    /// común de iPad, iPhone y macOS.
+    private func finishOnboarding() {
+        dismissAndOpenModule(.dashboard)
+    }
+
+    /// La checklist se presenta como una `sheet`. Navegar al mismo tiempo que
+    /// se desmonta deja a SwiftUI con dos transiciones compitiendo: en iPad
+    /// puede conservar la hoja visible o aplicar el cambio de módulo al árbol
+    /// que todavía está detrás de ella. Cerramos la ruta y dejamos terminar la
+    /// animación antes de entregar la navegación al shell.
+    private func dismissAndOpenModule(_ module: AppWorkspaceModule) {
+        store.dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            onOpenModule(module)
+        }
+    }
+
     private func handleAction(_ step: OnboardingStep, _ kind: OnboardingActionKind) {
         switch step {
         case .course:
@@ -107,15 +135,13 @@ struct OnboardingHostModifier: ViewModifier {
         case .groups:
             // Los grupos no se crean aquí: salen del horario. "Ver mis grupos"
             // lleva a la pantalla que los administra, ahora dentro de Ajustes.
-            store.route = nil
-            onOpenModule(.courses)
+            dismissAndOpenModule(.courses)
 
         case .students:
             replaceRoute(with: .students(startWithImport: kind == .importDocument))
 
         case .learningSituations:
-            store.route = nil
-            onOpenModule(.situations)
+            dismissAndOpenModule(.situations)
         }
     }
 }

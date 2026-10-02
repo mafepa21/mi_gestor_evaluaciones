@@ -10,8 +10,15 @@ struct NotebookGroupManagementSheet: View {
     @State private var editGroupTarget: NotebookWorkGroup? = nil
     @State private var showingEditSheet = false
 
+    @State private var showingFileImporter = false
+    @State private var showingGeneratorSheet = false
+    @State private var importPreview: NotebookWorkGroupImportPreview? = nil
+    @State private var importErrorMessage: String? = nil
+
     @State private var loadingSituations = false
     @State private var classSituations: [LearningSituation] = []
+    @State private var boardMode = true
+    @StateObject private var boardDraft = WorkGroupBoardDraft()
 
     private var data: NotebookUiStateData? {
         bridge.notebookState as? NotebookUiStateData
@@ -19,79 +26,69 @@ struct NotebookGroupManagementSheet: View {
 
     private var activeTabId: String? {
         guard let data = data else { return nil }
-        let tabs = data.sheet.tabs.filter { $0.parentTabId == nil }
-        let source = tabs.isEmpty ? data.sheet.tabs : tabs
-        let orderedTabs = source.sorted {
-            if $0.order != $1.order { return $0.order < $1.order }
-            return $0.id < $1.id
-        }
-        if let selected = bridge.selectedNotebookTabId,
-           orderedTabs.contains(where: { $0.id == selected }) {
-            return selected
-        }
-        return orderedTabs.first?.id
+        return NotebookWorkGroupPolicy.canonicalTabId(
+            tabs: data.sheet.tabs,
+            requestedTabId: bridge.selectedNotebookTabId,
+            selectedTabId: bridge.selectedNotebookTabId
+        )
     }
 
     private var currentGroups: [NotebookWorkGroup] {
         guard let data = data else { return [] }
-        let tabId = activeTabId
-        return data.sheet.workGroups
-            .filter { tabId == nil || $0.tabId == tabId }
-            .sorted { $0.order < $1.order }
+        return NotebookWorkGroupPolicy.groupsForManagement(
+            groups: data.sheet.workGroups,
+            tabs: data.sheet.tabs,
+            selectedTabId: bridge.selectedNotebookTabId
+        )
     }
 
-    private func courseLabel(for schoolClass: SchoolClass) -> String {
-        let lowercasedName = schoolClass.name.lowercased()
-        if lowercasedName.contains("bach") {
-            return "\(schoolClass.course)º Bachillerato"
-        }
-        if lowercasedName.contains("eso") || (1...4).contains(schoolClass.course) {
-            return "\(schoolClass.course)º ESO"
-        }
-        return "\(schoolClass.course)º"
+    private func extractCourseNumber(from text: String) -> Int? {
+        NotebookLearningSituationMatcher.extractCourseNumber(from: text)
     }
 
-    private func cleanLabel(_ label: String) -> String {
-        let lower = label.lowercased()
-        let charactersToKeep = "0123456789abcdefghijklmnopqrstuvwxyz"
-        let filtered = lower.filter { charactersToKeep.contains($0) }
-        return filtered
-            .replacingOccurrences(of: "bachillerato", with: "bach")
-            .replacingOccurrences(of: "de", with: "")
-    }
-
-    private func isSituation(_ situation: LearningSituation, matchingClass schoolClass: SchoolClass) -> Bool {
-        let classLabel = courseLabel(for: schoolClass)
-        let sitLabel = situation.courseLabel
-        
-        let cleanClass = cleanLabel(classLabel)
-        let cleanSit = cleanLabel(sitLabel)
-        
-        return cleanClass == cleanSit
+    private func isSituation(_ situation: LearningSituation, matchingClassName rawClassName: String, course: Int) -> Bool {
+        NotebookLearningSituationMatcher.isSituation(situation, matchingClassName: rawClassName, course: course)
     }
 
     private func loadClassLearningSituations() {
         guard let classId = data?.sheet.classId else { return }
-        guard let schoolClass = bridge.classes.first(where: { $0.id == classId }) else { return }
         loadingSituations = true
         Task {
+            // Resolver información de la clase desde el bridge
+            let targetClass = bridge.classes.first(where: { $0.id == classId })
+            let className = targetClass?.name ?? ""
+            let classCourse = targetClass != nil ? Int(targetClass!.course) : (extractCourseNumber(from: className) ?? 1)
+
             do {
                 let situations = try await bridge.learningSituations()
+                let allLinks = (try? await bridge.learningSituationClassLinksAll()) ?? []
+                let directLinkedIds = Set(
+                    allLinks.lazy
+                        .filter { $0.classId == classId }
+                        .map(\.learningSituationId)
+                )
+
                 var linked: [LearningSituation] = []
                 var other: [LearningSituation] = []
+
                 for sit in situations {
-                    guard isSituation(sit, matchingClass: schoolClass) else { continue }
-                    
-                    let links = try await bridge.learningSituationClassLinks(id: sit.id)
-                    if links.contains(where: { $0.classId == classId }) {
+                    let hasDirectLink = directLinkedIds.contains(sit.id)
+                    let matches = isSituation(sit, matchingClassName: className, course: classCourse)
+
+                    // Estricto: debe pertenecer a la clase (bien por link directo o por coincidir en curso)
+                    guard hasDirectLink || matches else { continue }
+
+                    if hasDirectLink {
                         linked.append(sit)
                     } else {
                         other.append(sit)
                     }
                 }
+
                 linked.sort { $0.title.localizedCompare($1.title) == .orderedAscending }
                 other.sort { $0.title.localizedCompare($1.title) == .orderedAscending }
                 let finalFiltered = linked + other
+
                 await MainActor.run {
                     self.classSituations = finalFiltered
                     self.loadingSituations = false
@@ -106,130 +103,111 @@ struct NotebookGroupManagementSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if currentGroups.isEmpty {
-                    Section {
-                        VStack(spacing: 16) {
-                            Image(systemName: "person.2.slash")
-                                .font(.system(size: 44))
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 24)
-
-                            Text("Sin grupos de trabajo")
-                                .font(.headline)
-
-                            Text("Crea grupos para organizar tu alumnado y agruparlos en el cuaderno.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 32)
-                                .padding(.bottom, 24)
+            Group {
+                if boardMode {
+                    NotebookGroupBoardView(
+                        bridge: bridge,
+                        draft: boardDraft,
+                        groups: currentGroups,
+                        classSituations: classSituations,
+                        onToast: onToast,
+                        onCreateGroup: {
+                            editGroupTarget = nil
+                            showingEditSheet = true
+                        },
+                        onImportExcel: {
+                            showingFileImporter = true
+                        },
+                        onGenerateCooperative: {
+                            showingGeneratorSheet = true
                         }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    }
+                    )
                 } else {
-                    Section("Grupos actuales") {
-                        ForEach(currentGroups, id: \.id) { group in
-                            NavigationLink {
-                                GroupMembersView(bridge: bridge, group: group)
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(group.name)
-                                            .font(.headline)
-                                        HStack(spacing: 6) {
-                                            Text("\(memberCount(group.id)) alumnos")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                            
-                                            if let sitId = group.learningSituationId?.int64Value,
-                                               let situation = classSituations.first(where: { $0.id == sitId }) {
-                                                Text("•")
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
-                                                Text(situation.title)
-                                                    .font(.caption)
-                                                    .foregroundStyle(NotebookStyle.primaryTint)
-                                                    .lineLimit(1)
-                                            }
-                                        }
-                                    }
-                                    Spacer()
-                                }
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    bridge.deleteNotebookWorkGroup(groupId: group.id)
-                                    onToast("Grupo eliminado", .warning)
-                                } label: {
-                                    Label("Eliminar", systemImage: "trash")
-                                }
-
-                                Button {
-                                    editGroupTarget = group
-                                    showingEditSheet = true
-                                } label: {
-                                    Label("Editar", systemImage: "pencil")
-                                }
-                                .tint(NotebookStyle.primaryTint)
-                            }
-                        }
-                    }
-                }
-
-                Section {
-                    Button {
-                        editGroupTarget = nil
-                        showingEditSheet = true
-                    } label: {
-                        Label("Nuevo grupo de trabajo", systemImage: "person.2.badge.plus")
-                    }
+                    groupsList
                 }
             }
-            #if os(iOS)
-            .listStyle(.insetGrouped)
-            #else
-            .listStyle(.inset)
-            #endif
             .navigationTitle("Grupos de trabajo")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker("Vista", selection: $boardMode) {
+                        Text("Lista").tag(false)
+                        Text("Tablero").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 220)
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Listo") {
                         dismiss()
                     }
                 }
             }
+            .fileImporter(
+                isPresented: $showingFileImporter,
+                allowedContentTypes: [.xlsx, .commaSeparatedText, .tabSeparatedText],
+                allowsMultipleSelection: false
+            ) { result in
+                handleFileImport(result)
+            }
+            .sheet(isPresented: $showingGeneratorSheet) {
+                CooperativeGroupGeneratorSheet(bridge: bridge) { generatedGroups in
+                    applyImportedGroups(generatedGroups, clearExisting: false, learningSituationId: nil)
+                    onToast("Equipos cooperativos aplicados al cuaderno", .success)
+                }
+            }
+            .sheet(item: $importPreview) { preview in
+                NotebookGroupImportPreviewSheet(
+                    preview: preview,
+                    existingGroupNames: currentGroups.map(\.name),
+                    classSituations: classSituations
+                ) { confirmedGroups, clearExisting, situationId in
+                    applyImportedGroups(confirmedGroups, clearExisting: clearExisting, learningSituationId: situationId)
+                }
+            }
+            .alert("No se pudo importar", isPresented: Binding(
+                get: { importErrorMessage != nil },
+                set: { if !$0 { importErrorMessage = nil } }
+            )) {
+                Button("Aceptar", role: .cancel) {}
+            } message: {
+                Text(importErrorMessage ?? "")
+            }
             .sheet(isPresented: $showingEditSheet) {
                 NotebookGroupEditSheet(
                     bridge: bridge,
                     group: editGroupTarget,
-                    classSituations: classSituations
+                    classSituations: classSituations,
+                    isLoadingSituations: loadingSituations
                 ) { name, situationId in
                     let classId = data?.sheet.classId
                     Task {
+                        var linkFailed = false
                         if let situationId = situationId, let classId = classId {
                             do {
                                 try await bridge.addLearningSituationClassLink(situationId: situationId, classId: classId)
                             } catch {
-                                // ignore
+                                linkFailed = true
                             }
                         }
                         await MainActor.run {
+                            let tabId = activeTabId ?? ""
                             if let target = editGroupTarget {
-                                bridge.updateNotebookWorkGroup(groupId: target.id, name: name, learningSituationId: situationId)
-                                onToast("Grupo actualizado", .success)
+                                boardDraft.updateGroup(id: target.id, name: name, learningSituationId: linkFailed ? nil : situationId)
+                                bridge.updateNotebookWorkGroup(groupId: target.id, name: name, learningSituationId: linkFailed ? nil : situationId, tabId: tabId)
+                                onToast(linkFailed ? "Grupo actualizado, pero no se pudo vincular la situación" : "Grupo actualizado", linkFailed ? .warning : .success)
                             } else {
-                                bridge.saveNotebookWorkGroup(name: name, learningSituationId: situationId)
-                                onToast("Grupo creado", .success)
+                                boardDraft.addTemporaryGroup(name: name, tabId: tabId, learningSituationId: linkFailed ? nil : situationId)
+                                bridge.saveNotebookWorkGroup(name: name, learningSituationId: linkFailed ? nil : situationId, tabId: tabId)
+                                onToast(linkFailed ? "Grupo creado, pero no se pudo vincular la situación" : "Grupo creado", linkFailed ? .warning : .success)
                             }
                         }
                     }
                 }
                 #if os(macOS)
-                .frame(width: 420, height: 280)
+                .frame(minWidth: 480, minHeight: 360)
                 #endif
             }
             .onAppear {
@@ -238,12 +216,213 @@ struct NotebookGroupManagementSheet: View {
         }
     }
 
-    private func memberCount(_ groupId: Int64) -> Int {
-        guard let data = data else { return 0 }
-        let tabId = activeTabId
-        return data.sheet.workGroupMembers
-            .filter { $0.groupId == groupId && (tabId == nil || $0.tabId == tabId) }
-            .count
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        do {
+            guard let url = try result.get().first else { return }
+            let rows = try AppleSpreadsheetReader.readRows(from: url)
+            guard let data = data else {
+                throw NotebookWorkGroupImportError.emptySpreadsheet
+            }
+            let classStudents = data.sheet.rows.map(\.student)
+            let service = NotebookWorkGroupImportService()
+            let preview = try service.preview(
+                rows: rows,
+                sourceName: url.lastPathComponent,
+                classStudents: classStudents
+            )
+            self.importPreview = preview
+        } catch {
+            self.importErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyImportedGroups(
+        _ groups: [ImportedNotebookGroup],
+        clearExisting: Bool,
+        learningSituationId: Int64? = nil
+    ) {
+        guard let data = data else { return }
+        let classId = data.sheet.classId
+        let resolvedTabId = activeTabId ?? data.sheet.tabs.first?.id ?? ""
+
+        Task {
+            if let situationId = learningSituationId {
+                do {
+                    try await bridge.addLearningSituationClassLink(situationId: situationId, classId: classId)
+                } catch {
+                    await MainActor.run {
+                        importErrorMessage = "No se pudo enlazar la situación de aprendizaje. Los grupos no se han aplicado."
+                    }
+                    return
+                }
+            }
+
+            let batchGroups: [(name: String, studentIds: [Int64], learningSituationId: Int64?)] = groups.map { group in
+                let matchedStudentIds = group.members.compactMap(\.matchedStudentId)
+                return (name: group.name, studentIds: matchedStudentIds, learningSituationId: learningSituationId)
+            }
+
+            await MainActor.run {
+                boardDraft.applyImported(
+                    batchGroups.map { ($0.name, $0.studentIds) },
+                    tabId: resolvedTabId,
+                    learningSituationId: learningSituationId
+                )
+                boardMode = true
+            }
+
+            do {
+                try await bridge.importNotebookWorkGroups(
+                    classId: classId,
+                    tabId: resolvedTabId,
+                    groups: batchGroups,
+                    clearExisting: clearExisting
+                )
+                await MainActor.run {
+                    onToast("\(groups.count) grupos importados con éxito", .success)
+                }
+            } catch {
+                await MainActor.run {
+                    onToast("Error al importar grupos", .warning)
+                }
+            }
+        }
+    }
+
+    /// Recuento y resumen de alumnado por grupo, calculado una vez por pintado.
+    private func memberSummaries() -> [Int64: (count: Int, text: String)] {
+        guard let data else { return [:] }
+        let studentsById = Dictionary(data.sheet.rows.map { ($0.student.id, $0.student) }, uniquingKeysWith: { first, _ in first })
+        var idsByGroup: [Int64: [Int64]] = [:]
+        for member in data.sheet.workGroupMembers {
+            idsByGroup[member.groupId, default: []].append(member.studentId)
+        }
+        var result: [Int64: (count: Int, text: String)] = [:]
+        for (groupId, ids) in idsByGroup {
+            let students = ids.compactMap { studentsById[$0] }.sorted {
+                "\($0.lastName) \($0.firstName)".localizedStandardCompare("\($1.lastName) \($1.firstName)") == .orderedAscending
+            }
+            let names = students.prefix(4).map { "\($0.lastName), \($0.firstName)" }
+            let text = names.isEmpty
+                ? "Sin alumnado"
+                : names.joined(separator: " · ") + (students.count > names.count ? "…" : "")
+            result[groupId] = (ids.count, text)
+        }
+        return result
+    }
+
+    @ViewBuilder
+    private var groupsList: some View {
+        let summaries = memberSummaries()
+        let situationsById = Dictionary(classSituations.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return List {
+            if currentGroups.isEmpty {
+                Section {
+                    VStack(spacing: 16) {
+                        Image(systemName: "person.2.slash")
+                            .font(.system(size: 44))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 24)
+
+                        Text("Sin grupos de trabajo")
+                            .font(.headline)
+
+                        Text("Crea grupos para organizar tu alumnado y agruparlos en el cuaderno.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                            .padding(.bottom, 24)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
+            } else {
+                Section("Grupos actuales") {
+                    ForEach(currentGroups, id: \.id) { group in
+                        NavigationLink {
+                            GroupMembersView(bridge: bridge, group: group)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(group.name)
+                                        .font(.headline)
+                                    Text(summaries[group.id]?.text ?? "Sin alumnado")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                    HStack(spacing: 6) {
+                                        Text("\(summaries[group.id]?.count ?? 0) alumnos")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+
+                                        if let sitId = group.learningSituationId?.int64Value,
+                                           let situation = situationsById[sitId] {
+                                            Text("•")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                            Text(situation.title)
+                                                .font(.caption)
+                                                .foregroundStyle(NotebookStyle.primaryTint)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                }
+                                Spacer()
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                boardDraft.removeGroup(id: group.id)
+                                bridge.deleteNotebookWorkGroup(groupId: group.id)
+                                onToast("Grupo eliminado", .warning)
+                            } label: {
+                                Label("Eliminar", systemImage: "trash")
+                            }
+
+                            Button {
+                                editGroupTarget = group
+                                showingEditSheet = true
+                            } label: {
+                                Label("Editar", systemImage: "pencil")
+                            }
+                            .tint(NotebookStyle.primaryTint)
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Button {
+                    editGroupTarget = nil
+                    showingEditSheet = true
+                } label: {
+                    Label("Nuevo grupo de trabajo", systemImage: "person.2.badge.plus")
+                }
+
+                Button {
+                    showingGeneratorSheet = true
+                } label: {
+                    Label("Generar equipos cooperativos (IA)", systemImage: "sparkles")
+                }
+
+                Button {
+                    showingFileImporter = true
+                } label: {
+                    Label("Importar grupos desde Excel", systemImage: "arrow.down.doc")
+                }
+
+                Button {
+                    boardMode = true
+                } label: {
+                    Label("Organizar en tablero", systemImage: "rectangle.split.3x1")
+                }
+            }
+        }
+        #if os(iOS)
+        .listStyle(.insetGrouped)
+        #else
+        .listStyle(.inset)
+        #endif
     }
 }
 
@@ -251,6 +430,7 @@ struct NotebookGroupEditSheet: View {
     let bridge: KmpBridge
     let group: NotebookWorkGroup?
     let classSituations: [LearningSituation]
+    var isLoadingSituations: Bool = false
     let onSave: (String, Int64?) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -265,9 +445,16 @@ struct NotebookGroupEditSheet: View {
                 }
 
                 Section(header: Text("Situación de aprendizaje"), footer: Text("Asociar el grupo a una situación de aprendizaje permite organizarlo por proyectos. Puedes crear y vincular situaciones desde la pestaña 'Situaciones' del menú principal.")) {
-                    if classSituations.isEmpty {
+                    if isLoadingSituations {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Buscando situaciones del curso...")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if classSituations.isEmpty {
                         Picker("Situación asociada", selection: $selectedSituationId) {
-                            Text("No hay situaciones creadas")
+                            Text("No hay situaciones para este curso")
                                 .tag(nil as Int64?)
                         }
                         .disabled(true)
@@ -324,21 +511,6 @@ private struct GroupMembersView: View {
         bridge.notebookState as? NotebookUiStateData
     }
 
-    private var activeTabId: String? {
-        guard let data = data else { return nil }
-        let tabs = data.sheet.tabs.filter { $0.parentTabId == nil }
-        let source = tabs.isEmpty ? data.sheet.tabs : tabs
-        let orderedTabs = source.sorted {
-            if $0.order != $1.order { return $0.order < $1.order }
-            return $0.id < $1.id
-        }
-        if let selected = bridge.selectedNotebookTabId,
-           orderedTabs.contains(where: { $0.id == selected }) {
-            return selected
-        }
-        return orderedTabs.first?.id
-    }
-
     private var sortedStudents: [Student] {
         guard let data = data else { return [] }
         return data.sheet.rows.map(\.student).sorted {
@@ -357,7 +529,14 @@ private struct GroupMembersView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        let members = data?.sheet.workGroupMembers ?? []
+        let currentIds = Set(members.filter { $0.groupId == group.id }.map(\.studentId))
+        let groupNames = Dictionary((data?.sheet.workGroups ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        var otherByStudent: [Int64: String] = [:]
+        for member in members where member.groupId != group.id && otherByStudent[member.studentId] == nil {
+            otherByStudent[member.studentId] = groupNames[member.groupId]
+        }
+        return VStack(spacing: 0) {
             SearchBar(text: $searchText, placeholder: "Buscar alumno...")
                 .padding()
                 .background(IOSAppStyle.pageBackground)
@@ -365,8 +544,8 @@ private struct GroupMembersView: View {
             List {
                 Section {
                     ForEach(filteredStudents, id: \.id) { student in
-                        let isMember = isStudentInCurrentGroup(student.id)
-                        let otherGroupName = studentOtherGroupName(student.id)
+                        let isMember = currentIds.contains(student.id)
+                        let otherGroupName = otherByStudent[student.id]
 
                         Button {
                             toggleStudentMembership(student.id, isMember: isMember)
@@ -413,29 +592,11 @@ private struct GroupMembersView: View {
         .navigationTitle(group.name)
     }
 
-    private func isStudentInCurrentGroup(_ studentId: Int64) -> Bool {
-        guard let data = data else { return false }
-        let tabId = activeTabId
-        return data.sheet.workGroupMembers.contains {
-            $0.studentId == studentId && $0.groupId == group.id && (tabId == nil || $0.tabId == tabId)
-        }
-    }
-
-    private func studentOtherGroupName(_ studentId: Int64) -> String? {
-        guard let data = data else { return nil }
-        let tabId = activeTabId
-        guard let member = data.sheet.workGroupMembers.first(where: {
-            $0.studentId == studentId && $0.groupId != group.id && (tabId == nil || $0.tabId == tabId)
-        }) else { return nil }
-
-        return data.sheet.workGroups.first(where: { $0.id == member.groupId })?.name
-    }
-
     private func toggleStudentMembership(_ studentId: Int64, isMember: Bool) {
         if isMember {
-            bridge.assignStudentsToNotebookGroup(groupId: nil, studentIds: [studentId])
+            bridge.assignStudentsToNotebookGroup(groupId: nil, studentIds: [studentId], tabId: group.tabId)
         } else {
-            bridge.assignStudentsToNotebookGroup(groupId: group.id, studentIds: [studentId])
+            bridge.assignStudentsToNotebookGroup(groupId: group.id, studentIds: [studentId], tabId: group.tabId)
         }
     }
 }
@@ -464,5 +625,70 @@ private struct SearchBar: View {
         .padding(8)
         .background(IOSAppStyle.cardBackground)
         .cornerRadius(10)
+    }
+}
+
+enum NotebookLearningSituationMatcher {
+    static func extractCourseNumber(from text: String) -> Int? {
+        let regex = try? NSRegularExpression(pattern: "\\b([1-6])(?:º|ª|o|a)?\\b", options: .caseInsensitive)
+        let range = NSRange(text.startIndex..., in: text)
+        if let match = regex?.firstMatch(in: text, options: [], range: range),
+           let digitRange = Range(match.range(at: 1), in: text),
+           let num = Int(text[digitRange]) {
+            return num
+        }
+        return nil
+    }
+
+    static func isSituation(_ situation: LearningSituation, matchingClassName rawClassName: String, course: Int) -> Bool {
+        let sitCourseLabel = situation.courseLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sitStageLabel = situation.stageLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sitCombined = "\(sitCourseLabel) \(sitStageLabel)".lowercased()
+        let className = rawClassName.lowercased()
+
+        // 1. Número de curso (1, 2, 3, 4, etc.)
+        let expectedCourse: Int = course > 0 ? course : (extractCourseNumber(from: className) ?? 0)
+        let sitCourseNumber = extractCourseNumber(from: sitCourseLabel) ?? extractCourseNumber(from: sitCombined)
+
+        if expectedCourse > 0, let sitNum = sitCourseNumber {
+            if sitNum != expectedCourse {
+                return false
+            }
+        }
+
+        // 2. Etapa educativa (por palabras completas: "Primero A" no es Primaria)
+        let isClassBach = hasStage(className, .bachillerato)
+        let isClassEso = hasStage(className, .eso)
+        let isClassPrimaria = hasStage(className, .primaria)
+
+        let isSitBach = hasStage(sitCombined, .bachillerato)
+        let isSitEso = hasStage(sitCombined, .eso)
+        let isSitPrimaria = hasStage(sitCombined, .primaria)
+
+        if isClassBach {
+            return isSitBach || (!isSitEso && !isSitPrimaria)
+        } else if isClassEso {
+            return isSitEso || (!isSitBach && !isSitPrimaria)
+        } else if isClassPrimaria {
+            return isSitPrimaria
+        }
+
+        // 3. Fallback a etiqueta de curso si no se identificó etapa especial
+        let sitLabel = sitCourseLabel.lowercased().filter { $0.isLetter || $0.isNumber }
+        let classLabel = className.filter { $0.isLetter || $0.isNumber }
+        return !sitLabel.isEmpty && (classLabel.contains(sitLabel) || sitLabel.contains(classLabel))
+    }
+
+    private enum Stage { case bachillerato, eso, primaria }
+
+    private static func hasStage(_ text: String, _ stage: Stage) -> Bool {
+        let tokens = text.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
+        return tokens.contains { token in
+            switch stage {
+            case .bachillerato: return token.hasPrefix("bach") || ["bac", "bto", "bat"].contains(token)
+            case .eso: return token == "eso" || token.hasPrefix("secundaria")
+            case .primaria: return token.hasPrefix("primaria") || ["prim", "pri"].contains(token)
+            }
+        }
     }
 }

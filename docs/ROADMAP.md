@@ -23,17 +23,25 @@ Estado: casi cerrada.
 Prioridad: alta.
 
 - Cuaderno: carga rapida, grid estable, columnas ocultas seguras, medias explicables y categorias claras.
+  Avance Fase 1 (2026-09-23): el filtro vacío conserva cabeceras; el hover de Mac ya no invalida los 3 paneles; el cursor de resize no se queda pegado; el drag numérico queda solo en iOS.
+  Avance: pintar el grid lee la nota de la fila ya cargada (`persistedCells` / `persistedGrades`) y no llama a `cellText`, `numericGradeText` ni `cellAnnotation` por celda. El puente queda para guardar.
   Avance: el grid SwiftUI reduce coste de scroll y actualizacion con filas lazy, fingerprints precomputados por panel y celdas desacopladas del bridge global mediante snapshots/actions.
+  Avance P0: la carga de Situaciones de aprendizaje del Cuaderno usa una lectura bulk de enlaces de grupo y evita una consulta por situación.
   Avance: Media explicable con desglose de columnas incluidas, pendientes, exclusiones y aportaciones ponderadas ya integrada en KMP y SwiftUI.
   Avance: pruebas físicas separan dato bruto (`Marca`/`Nivel`) y nota baremada (`Nota`) para evitar contaminar la Media.
   Avance: inspector convertido en ficha rápida del alumno con Media, pendientes, observaciones, rúbricas y acciones.
   Avance: inspector incorpora Inteligencia Educativa local estructurada para resumir fortalezas, riesgos, recomendaciones y lectura docente de la media sin recalcular los datos KMP.
+  Avance: en macOS, una columna de notas se rellena con el teclado: flechas para moverse, número para sustituir la nota, Esc para recuperar el valor anterior. El teclado táctil del iPad no cambia.
+  Avance: Mayús+clic marca un rango en una columna. Pegar varias líneas o rellenar ese rango se deshace de una sola vez.
+  Avance: las notas sueltas ya no se pintan de rojo, ámbar o verde. El color de banda, si se enciende, queda solo en la Media.
 - Rubricas: evaluacion fiable, integracion con cuaderno e informes.
   Pendiente: los quizzes no se autocorrigen. `QuizQuestionDraft` importa pregunta y opciones pero no la respuesta correcta, y `saveResponses` solo deriva nota para la rejilla de observacion 1-4 y la checklist proporcional. Faltan clave de respuestas, contrato de autoria en el DOCX, puntuacion por pregunta, versionado de la clave y derivacion local verificable. Detalle en `docs/importacion_documentos_sa.md`.
 - Asistencia: flujo diario rapido y consistente.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
   Avance: registro y seguimiento de medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, CV) en la ficha de alumno de iOS/iPadOS y macOS, con badge en el Cuaderno y aviso determinista de revision anual, sin IA generativa ni contenido clinico persistido. Verificado con builds reales macOS e iOS Simulator (BUILD SUCCEEDED en ambos).
 - Planificacion: sesiones, situaciones de aprendizaje y continuidad docente.
+  Avance: la secuenciación de sesiones usa un contrato semanal `LONG BLOCK`/`SHORT BLOCK` con actividades CLIL estructuradas, preview ejecutable y asignación automática a franjas consecutivas o simples según la duración real del grupo.
+  Avance P0: Situaciones, Secuencia y Planificador cargan enlaces, versiones y planes mediante lecturas bulk; el enriquecimiento resuelve las relaciones en memoria y evita consultas N+1.
   Avance: Planificación inicia su rediseño iPad/macOS con cuatro secciones claras (Semana, Día, Secuencia, Resumen), tab bar flotante en iOS/iPadOS y macOS sin inspector lateral invasivo.
   Avance: Semana de Planificación en iOS/iPadOS usa miniatura semafórica de 200pt con detalle contextual por sesión, franja o día, reduciendo densidad visual sin tocar lógica KMP.
   Avance: Secuencia de Planificación adopta un Gantt horizontal por trimestre con situaciones, grupos colapsables y navegación directa a sesiones planificadas.
@@ -49,6 +57,9 @@ Prioridad: alta.
   Avance: Dashboard macOS "Hoy" prioriza la clase actual o próxima, pendiente principal y acción recomendada antes que los paneles secundarios.
   Avance: Dashboard iOS/iPadOS y macOS fusionan Radar y cockpit diario en una unica entrada "Hoy"; se retira Radar del menu visible y el flujo queda centrado en acciones, sesiones, pendientes, riesgo y agenda.
   Avance: el estado sin horario de "Hoy" en macOS muestra una explicación breve y accesos directos de trabajo diario para que la pantalla no parezca vacía.
+  Avance: la tarjeta compartida "Ahora" fija una única acción primaria contextual (pasar lista en clase o preparar el Cuaderno para la próxima sesión) y agrupa el resto de acciones para reducir carga cognitiva en iPadOS y macOS.
+- Evaluación: el estado vacío del iPad abre el flujo real de creación y macOS ofrece la misma entrada
+  desde la barra lateral y `⌘N`, con contexto de grupo compartido.
 
 ## Fase 2 - Apple premium
 
@@ -56,8 +67,17 @@ Prioridad: alta.
 
 - iPad: shell de trabajo clara, inspector no invasivo y acciones principales visibles.
   Avance: `Cursos` queda como acceso visible de primer nivel en iOS/iPadOS para gestionar curso escolar activo, grupos e historico.
+  Avance P1: el sidebar del shell iPad se alinea conceptualmente con macOS en cuatro grupos (Hoy, Evaluación, Planificación y Sistema), con contexto de clase compacto y una sola acción primaria visible por pantalla.
+  Avance P1 QA: la misma jerarquía queda aplicada en `IOSRootView`, que es el punto de entrada efectivo
+  del iPad; se validó en iPad Pro 11-inch con navegación a Evaluación y acción contextual "Nueva evaluación".
 - macOS: paridad progresiva con convenciones desktop reales.
   Avance: la barra lateral de macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) para una experiencia de escritorio real.
+  Avance P1: Sync pasa a acción secundaria y las toolbars de Hoy/Asistencia concentran una acción prominente, agrupando las operaciones auxiliares bajo "Más".
+  Avance P1 QA: la sidebar macOS fija 220/248/320 pt (mínimo/ideal/máximo), evitando el estado comprimido de 144 pt; se validaron en runtime la navegación, el overflow "Más" y el foco de teclado básico.
+  Avance P1 QA ampliado: se validaron `⌘N`, `⌘⌥1–4`, la superficie AX de Ajustes → Apariencia,
+  los temas claro/oscuro con restauración a sistema, VoiceOver real y el tile lateral nativo con
+  recuperación mediante Window → Fill. El drag libre del borde queda limitado por el driver, no por
+  una regresión observada del shell.
   Avance: `Cursos` aparece en la barra lateral macOS y abre la misma gestion de curso escolar activo que iOS/iPadOS.
   Avance: Informes, Backups y Sync LAN pueden abrirse como ventanas auxiliares nativas para trabajar en paralelo con el Cuaderno.
   Avance: la toolbar del Cuaderno macOS queda centrada en acciones diarias y `⌘F` enfoca la búsqueda sin cambiar de módulo inesperadamente.
@@ -75,6 +95,7 @@ Prioridad: alta.
   Avance: `AppleAIOrchestrator` completa el router tipado con catálogo de capacidades, trazabilidad y consumo desde Cuaderno/EF sobre servicios estructurados ya implementados.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.
+  Avance P1: foco, IA y recargas dejan de competir con la acción principal en la toolbar iPad y pasan a divulgación progresiva; el Dashboard concentra el peso visual en "Acción principal".
   Avance: Gestión de datos en Ajustes rediseñada con menús colapsables por áreas (Estructura Escolar, Cuaderno, Planificación e Instrumentos) y borrado granular en lote/swipe de Cursos, Asignaturas, Cuadernos por curso, Pestañas, Columnas, Sesiones planificadas del Planner, Situaciones de Aprendizaje y Rúbricas.
 
 
@@ -98,6 +119,7 @@ Prioridad: media-alta.
   compatibilidad de lectura con `.migestorbackup` y valida el paquete antes de
   incorporarlo al historial. La contraseña no se almacena y no es recuperable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
+  Avance: el sync incremental de sesiones lleva instrumentos, franja y diario. Las sesiones nuevas del escritorio se guardan en la misma tabla que el iPad. Decisión en `kmp/docs/architecture/ADR-2026-09-24-sync-sesiones-diario-franja.md`.
   Avance: el pairing SyncLAN conserva HTTPS, pinning y token, y añade PIN de un solo
   uso con caducidad, limitación temporal por origen, logs sin secretos y límites de
   carga. El PIN solo circula por la pantalla/QR y por el canal local helper→UI.
@@ -113,6 +135,13 @@ Prioridad: media-alta.
 Prioridad: futura, con base documental inicial creada.
 
 - Onboarding y datos de ejemplo.
+  Avance: la activación inicial ya ofrece bienvenida, checklist retomable y una
+  salida directa a Hoy al terminar; el host espera ahora al cierre de la sheet
+  antes de navegar entre módulos para evitar carreras de transición en iPadOS.
+  QA interactivo en iPhone confirma que
+  "Seguir luego" cierra la sheet y que, al relanzar con la base vacía, la
+  checklist reaparece sin repetir la bienvenida; queda pendiente validar los
+  caminos de datos demo, importación, "Abrir Hoy" y reentrada desde Ajustes.
 - Posicionamiento multi-asignatura: core docente como producto principal y EF como vertical opcional.
 - Guia de uso para docentes.
 - Release notes publicables.

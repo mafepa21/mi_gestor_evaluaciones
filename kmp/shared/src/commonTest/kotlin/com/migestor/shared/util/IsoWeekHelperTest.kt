@@ -28,4 +28,25 @@ class IsoWeekHelperTest {
         val days = IsoWeekHelper.daysOf(week, year)
         assertEquals(LocalDate(2024, 12, 30), days.first())
     }
+
+    @Test
+    fun `school year runs from september through june`() {
+        assertEquals(
+            LocalDate(2026, 9, 1) to LocalDate(2027, 6, 30),
+            IsoWeekHelper.schoolYearBounds(LocalDate(2026, 9, 25)),
+        )
+        assertEquals(
+            LocalDate(2025, 9, 1) to LocalDate(2026, 6, 30),
+            IsoWeekHelper.schoolYearBounds(LocalDate(2026, 1, 15)),
+        )
+    }
+
+    @Test
+    fun `2026 has 53 iso weeks and navigation does not skip the last one`() {
+        assertEquals(53, IsoWeekHelper.weeksIn(2026))
+        assertEquals(52, IsoWeekHelper.weeksIn(2025))
+        assertEquals(1 to 2027, IsoWeekHelper.shiftWeek(53, 2026, 1))
+        assertEquals(53 to 2026, IsoWeekHelper.shiftWeek(1, 2027, -1))
+        assertEquals(1 to 2026, IsoWeekHelper.shiftWeek(52, 2025, 1))
+    }
 }

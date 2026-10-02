@@ -1072,7 +1072,7 @@ FROM grades
 WHERE student_id = ? AND class_id = ?;
 
 selectGradeByStudentClassAndColumn:
-SELECT value, updated_at_epoch_ms, device_id
+SELECT value, evaluation_id, evidence, evidence_path, rubric_selections, updated_at_epoch_ms, device_id
 FROM grades
 WHERE class_id = ? AND student_id = ? AND column_id = ?
 LIMIT 1;
@@ -1657,6 +1657,9 @@ INSERT OR REPLACE INTO calendar_events(
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+deleteEvent:
+DELETE FROM calendar_events WHERE id = ?;
+
 selectAllConfigTemplates:
 SELECT id, center_id, owner_user_id, name, kind, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 FROM configuration_templates
@@ -1752,6 +1755,11 @@ FROM learning_situation_sequence_versions
 WHERE learning_situation_id = ?
 ORDER BY version_number DESC;
 
+selectAllLearningSituationSequenceVersions:
+SELECT id, learning_situation_id, version_number, original_file_name, sha256, local_path, size_bytes, payload_json, warnings_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_sequence_versions
+ORDER BY learning_situation_id, version_number DESC;
+
 upsertLearningSituationSessionPlan:
 INSERT OR REPLACE INTO learning_situation_session_plans(
     id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
@@ -1763,6 +1771,11 @@ SELECT id, learning_situation_id, sequence_version_id, session_number, source_la
 FROM learning_situation_session_plans
 WHERE sequence_version_id = ?
 ORDER BY session_number;
+
+selectAllLearningSituationSessionPlans:
+SELECT id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_session_plans
+ORDER BY sequence_version_id, session_number;
 
 selectLearningSituationSessionPlanById:
 SELECT id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
@@ -1783,6 +1796,11 @@ SELECT learning_situation_id, class_id, created_at_epoch_ms, updated_at_epoch_ms
 FROM learning_situation_classes
 WHERE learning_situation_id = ?
 ORDER BY class_id;
+
+selectAllLearningSituationClassLinks:
+SELECT learning_situation_id, class_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_classes
+ORDER BY learning_situation_id, class_id;
 
 upsertLearningSituationLink:
 INSERT INTO learning_situation_links(
@@ -2106,6 +2124,8 @@ CREATE TABLE IF NOT EXISTS physical_test_scales (
     sex TEXT,
     battery_id TEXT,
     direction TEXT NOT NULL,
+    scoring_mode TEXT NOT NULL DEFAULT 'STEP',
+    score_round_to REAL,
     created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id TEXT,
@@ -2400,6 +2420,9 @@ INSERT INTO notebook_work_groups(
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
+selectLatestWorkGroupId:
+SELECT MAX(id) AS id FROM notebook_work_groups WHERE class_id = ? AND tab_id = ?;
+
 updateWorkGroup:
 UPDATE notebook_work_groups
 SET class_id = ?,
@@ -2436,6 +2459,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 deleteWorkGroupMember:
 DELETE FROM notebook_work_group_members
 WHERE class_id = ? AND tab_id = ? AND student_id = ?;
+
+deleteWorkGroupMemberByStudent:
+DELETE FROM notebook_work_group_members
+WHERE class_id = ? AND student_id = ?;
 
 upsertColumn:
 INSERT OR REPLACE INTO notebook_columns(
@@ -2533,7 +2560,7 @@ WHERE class_id = ?
 ORDER BY date_epoch_ms DESC, id;
 
 selectPhysicalScalesForTest:
-SELECT id, test_id, name, course, age_from, age_to, sex, battery_id, direction, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+SELECT id, test_id, name, course, age_from, age_to, sex, battery_id, direction, scoring_mode, score_round_to, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 FROM physical_test_scales
 WHERE test_id = ?
 ORDER BY battery_id IS NULL, course IS NULL, age_from IS NULL, name;
@@ -2546,9 +2573,9 @@ ORDER BY sort_order, min_value;
 
 upsertPhysicalScale:
 INSERT OR REPLACE INTO physical_test_scales(
-    id, test_id, name, course, age_from, age_to, sex, battery_id, direction, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+    id, test_id, name, course, age_from, age_to, sex, battery_id, direction, scoring_mode, score_round_to, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deletePhysicalScaleRanges:
 DELETE FROM physical_test_scale_ranges
@@ -2706,6 +2733,10 @@ SELECT deleted_at_epoch_ms, device_id
 FROM sync_tombstones
 WHERE entity = ? AND entity_id = ?;
 
+selectAllSyncTombstones:
+SELECT entity, entity_id, deleted_at_epoch_ms, device_id
+FROM sync_tombstones;
+
 upsertSyncTombstone:
 INSERT INTO sync_tombstones(entity, entity_id, deleted_at_epoch_ms, device_id)
 VALUES (?, ?, ?, ?)
@@ -2740,6 +2771,8 @@ CREATE TABLE IF NOT EXISTS web_form_instances (
     -- El manifiesto firmado tal cual se publico. El importador lo necesita para
     -- validar tipos y para los titulos de la previsualizacion. Ver 40.sqm.
     manifest_json TEXT NOT NULL DEFAULT '',
+    -- Modo del formulario: 'self' para autoevaluación o 'peer' para coevaluación (43.sqm).
+    mode TEXT NOT NULL DEFAULT 'self',
     created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
@@ -2747,6 +2780,24 @@ CREATE TABLE IF NOT EXISTS web_form_instances (
 );
 CREATE INDEX IF NOT EXISTS idx_web_form_instances_class ON web_form_instances(class_id);
 CREATE INDEX IF NOT EXISTS idx_web_form_instances_column ON web_form_instances(column_id);
+
+-- Correspondencia de coevaluación (43.sqm):
+-- (form_instance_id, evaluator_alias, target_alias) -> target_student_id.
+-- No viaja por Sync LAN para salvaguardar la privacidad.
+CREATE TABLE IF NOT EXISTS web_peer_targets (
+    form_instance_id TEXT NOT NULL,
+    evaluator_alias TEXT NOT NULL,
+    target_alias TEXT NOT NULL,
+    target_student_id INTEGER NOT NULL,
+    target_display_name TEXT NOT NULL DEFAULT '',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (form_instance_id, evaluator_alias, target_alias),
+    FOREIGN KEY (form_instance_id) REFERENCES web_form_instances(form_instance_id) ON DELETE CASCADE,
+    FOREIGN KEY (target_student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_web_peer_targets_form ON web_peer_targets(form_instance_id);
+CREATE INDEX IF NOT EXISTS idx_web_peer_targets_evaluator ON web_peer_targets(form_instance_id, evaluator_alias);
+CREATE INDEX IF NOT EXISTS idx_web_peer_targets_student ON web_peer_targets(target_student_id);
 
 CREATE TABLE IF NOT EXISTS web_participant_aliases (
     form_instance_id TEXT NOT NULL,
@@ -2789,7 +2840,7 @@ selectWebFormInstance:
 SELECT form_instance_id, class_id, column_id, template_id, title, recipient_public_key,
        private_key_ref, publisher_public_key, expires_at_epoch_ms, revoked,
        archived,
-       manifest_json, created_at_epoch_ms, updated_at_epoch_ms
+       manifest_json, mode, created_at_epoch_ms, updated_at_epoch_ms
 FROM web_form_instances
 WHERE form_instance_id = ?;
 
@@ -2797,7 +2848,7 @@ selectWebFormInstancesByClass:
 SELECT form_instance_id, class_id, column_id, template_id, title, recipient_public_key,
        private_key_ref, publisher_public_key, expires_at_epoch_ms, revoked,
        archived,
-       manifest_json, created_at_epoch_ms, updated_at_epoch_ms
+       manifest_json, mode, created_at_epoch_ms, updated_at_epoch_ms
 FROM web_form_instances
 WHERE class_id = ?
 ORDER BY created_at_epoch_ms DESC;
@@ -2806,15 +2857,15 @@ selectAllWebFormInstances:
 SELECT form_instance_id, class_id, column_id, template_id, title, recipient_public_key,
        private_key_ref, publisher_public_key, expires_at_epoch_ms, revoked,
        archived,
-       manifest_json, created_at_epoch_ms, updated_at_epoch_ms
+       manifest_json, mode, created_at_epoch_ms, updated_at_epoch_ms
 FROM web_form_instances
 ORDER BY created_at_epoch_ms DESC;
 
 upsertWebFormInstance:
 INSERT OR REPLACE INTO web_form_instances(form_instance_id, class_id, column_id, template_id,
     title, recipient_public_key, private_key_ref, publisher_public_key,
-    expires_at_epoch_ms, revoked, archived, manifest_json, created_at_epoch_ms, updated_at_epoch_ms)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    expires_at_epoch_ms, revoked, archived, manifest_json, mode, created_at_epoch_ms, updated_at_epoch_ms)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 revokeWebFormInstance:
 UPDATE web_form_instances SET revoked = 1, updated_at_epoch_ms = ? WHERE form_instance_id = ?;
@@ -2827,6 +2878,27 @@ UPDATE web_form_instances SET archived = 0, updated_at_epoch_ms = ? WHERE form_i
 
 deleteWebFormInstance:
 DELETE FROM web_form_instances WHERE form_instance_id = ?;
+
+selectWebPeerTargetsForForm:
+SELECT evaluator_alias, target_alias, target_student_id, target_display_name, created_at_epoch_ms
+FROM web_peer_targets
+WHERE form_instance_id = ?
+ORDER BY evaluator_alias, created_at_epoch_ms;
+
+selectWebPeerTargetsForEvaluator:
+SELECT target_alias, target_student_id, target_display_name, created_at_epoch_ms
+FROM web_peer_targets
+WHERE form_instance_id = ? AND evaluator_alias = ?
+ORDER BY created_at_epoch_ms;
+
+selectWebPeerTargetStudentId:
+SELECT target_student_id
+FROM web_peer_targets
+WHERE form_instance_id = ? AND evaluator_alias = ? AND target_alias = ?;
+
+upsertWebPeerTarget:
+INSERT OR REPLACE INTO web_peer_targets(form_instance_id, evaluator_alias, target_alias, target_student_id, target_display_name, created_at_epoch_ms)
+VALUES (?, ?, ?, ?, ?, ?);
 
 selectWebStudentIdForAlias:
 SELECT student_id FROM web_participant_aliases

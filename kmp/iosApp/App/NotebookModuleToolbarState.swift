@@ -1,6 +1,12 @@
 import SwiftUI
 import MiGestorKit
 
+enum NotebookSaveBadge {
+    static func showsFailure(splitFailed: Bool, inlineFailed: Bool) -> Bool {
+        splitFailed || inlineFailed
+    }
+}
+
 extension NotebookModuleView {
     var currentClass: SchoolClass? {
         bridge.classes.first(where: { $0.id == bridge.notebookViewModel.currentClassId?.int64Value ?? 0 })
@@ -15,7 +21,12 @@ extension NotebookModuleView {
     }
 
     var saveBadge: (text: String, icon: String, color: Color) {
-        if bridge.notebookSplitSaveState.isSaved {
+        if NotebookSaveBadge.showsFailure(
+            splitFailed: bridge.notebookSplitSaveState.state == .failed,
+            inlineFailed: notebookStore.notebookSaveState == .failed
+        ) {
+            return ("Error al guardar", "exclamationmark.triangle.fill", .red)
+        } else if bridge.notebookSplitSaveState.isSaved {
             return ("Guardado", "checkmark.circle.fill", .secondary)
         } else if bridge.notebookSplitSaveState.isSaving {
             return ("Guardando…", "arrow.triangle.2.circlepath", .secondary)
@@ -23,6 +34,27 @@ extension NotebookModuleView {
             return ("Sin guardar", "circle.dotted", Color.orange)
         }
         return ("Estado pendiente", "circle", .secondary)
+    }
+
+    var notebookSyncStatusState: SyncStatusBadgeState {
+        resolvedSyncStatusBadgeState(
+            syncStatusMessage: dashboardStore.syncStatusMessage,
+            syncPendingChanges: dashboardStore.syncPendingChanges,
+            pairedSyncHost: dashboardStore.pairedSyncHost
+        )
+    }
+
+    var notebookSyncStatusText: String {
+        switch notebookSyncStatusState {
+        case .inactivo:
+            return "Sync inactiva"
+        case .pendiente(let count):
+            return "\(count) pnd."
+        case .error:
+            return "Sync con error"
+        case .sincronizado:
+            return "Sincronizado"
+        }
     }
 
     var sortedClasses: [SchoolClass] {
@@ -159,6 +191,16 @@ extension NotebookModuleView {
         scheduleToolbarStateSyncIfLoaded()
     }
 
+    func clearNotebookRowFilters() {
+        searchText = ""
+        if NotebookColumnGradeSave.shouldPersistNow(.groupOrClassChange) {
+            bridge.flushAnyPendingColumnGradeSave()
+        }
+        selectedGroupId = nil
+        layoutState.setNotebookSearchText("")
+        layoutState.setNotebookGroupFilter(nil)
+    }
+
     func selectNotebookClass(_ classId: Int64) {
         guard bridge.notebookViewModel.currentClassId?.int64Value != classId else { return }
         selectedGroupId = nil
@@ -231,12 +273,13 @@ extension NotebookModuleView {
                 requestMarkAllVisibleStudentsPresent(data: data)
             },
             onRefresh: {
-                Task {
-                    await refreshNotebookSignals()
-                }
+                scheduleNotebookSignalsRefresh()
             },
             onGenerateSummary: {
                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
+            },
+            onExportSM: {
+                isEducamosSMExportPresented = true
             }
         )
 
@@ -246,6 +289,7 @@ extension NotebookModuleView {
             canToggleInspector: inspectorAvailable,
             isAttendanceQuickMode: isAttendanceQuickMode,
             isInspectorPresented: isInspectorPresented,
+            isQuickKeypadPresented: isQuickKeypadPresented,
             addColumnAvailable: true,
             organizationMenuAvailable: true,
             groupManagementAvailable: true,
@@ -258,6 +302,11 @@ extension NotebookModuleView {
                 if isAttendanceQuickMode {
                     activeChoiceCellId = nil
                     focusedCellId = nil
+                }
+            },
+            onToggleQuickKeypad: {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                    isQuickKeypadPresented.toggle()
                 }
             },
             onUndo: {
@@ -288,7 +337,10 @@ extension NotebookModuleView {
                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
             },
             onRefresh: {
-                Task { await refreshNotebookSignals() }
+                scheduleNotebookSignalsRefresh()
+            },
+            onExportSM: {
+                isEducamosSMExportPresented = true
             }
         )
     }
@@ -326,7 +378,7 @@ extension NotebookModuleView {
         let groupKey = selectedGroupId ?? -1
         let inspectorKey = inspectorSelection?.id ?? "none"
         let tabKey = bridge.selectedNotebookTabId ?? "all"
-        return "\(classKey)|\(tabKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)|\(searchText)"
+        return "\(classKey)|\(tabKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(isQuickKeypadPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)"
     }
 
     var notebookRiskRefreshKey: String {

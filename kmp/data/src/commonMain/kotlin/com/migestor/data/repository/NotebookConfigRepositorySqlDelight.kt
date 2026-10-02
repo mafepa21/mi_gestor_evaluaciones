@@ -20,6 +20,8 @@ import com.migestor.shared.domain.NotebookWorkGroupMember
 import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.NotebookEmptyCellPolicy
 import com.migestor.shared.repository.NotebookConfigRepository
+import com.migestor.shared.repository.NotebookWorkGroupBatchItem
+import com.migestor.shared.usecase.NotebookWorkGroupPolicy
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -610,11 +612,16 @@ class NotebookConfigRepositorySqlDelight(
                     device_id = workGroup.trace.deviceId,
                     sync_version = workGroup.trace.syncVersion,
                 )
-                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+                insertedWorkGroupId(classId, workGroup.tabId)
             }
         }
         NotebookRefreshBus.emitRefresh()
         savedId
+    }
+
+    private fun insertedWorkGroupId(classId: Long, tabId: String): Long {
+        return db.appDatabaseQueries.selectLatestWorkGroupId(classId, tabId).executeAsOne().id
+            ?: error("No se pudo obtener el identificador del grupo de trabajo")
     }
 
     private suspend fun resolveUniqueWorkGroupName(
@@ -695,17 +702,19 @@ class NotebookConfigRepositorySqlDelight(
         studentIds: List<Long>,
     ) = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
-        studentIds.forEach { studentId ->
-            db.appDatabaseQueries.deleteWorkGroupMember(classId, tabId, studentId)
-            db.appDatabaseQueries.upsertWorkGroupMember(
-                class_id = classId,
-                tab_id = tabId,
-                group_id = groupId,
-                student_id = studentId,
-                updated_at_epoch_ms = now,
-                device_id = null,
-                sync_version = 0
-            )
+        db.transaction {
+            studentIds.forEach { studentId ->
+                db.appDatabaseQueries.deleteWorkGroupMemberByStudent(classId, studentId)
+                db.appDatabaseQueries.upsertWorkGroupMember(
+                    class_id = classId,
+                    tab_id = tabId,
+                    group_id = groupId,
+                    student_id = studentId,
+                    updated_at_epoch_ms = now,
+                    device_id = null,
+                    sync_version = 0
+                )
+            }
         }
         NotebookRefreshBus.emitRefresh()
     }
@@ -716,7 +725,55 @@ class NotebookConfigRepositorySqlDelight(
         studentIds: List<Long>,
     ) = withContext(Dispatchers.Default) {
         studentIds.forEach { studentId ->
-            db.appDatabaseQueries.deleteWorkGroupMember(classId, tabId, studentId)
+            db.appDatabaseQueries.deleteWorkGroupMemberByStudent(classId, studentId)
+        }
+        NotebookRefreshBus.emitRefresh()
+    }
+
+    override suspend fun replaceWorkGroups(
+        classId: Long,
+        tabId: String,
+        groups: List<NotebookWorkGroupBatchItem>,
+        clearExisting: Boolean,
+    ) = withContext(Dispatchers.Default) {
+        val tabs = listTabs(classId)
+        val familyIds = NotebookWorkGroupPolicy.tabFamilyIds(tabs, tabId)
+        db.transaction {
+            if (clearExisting) {
+                val existing = db.appDatabaseQueries.selectWorkGroupsByClass(classId).executeAsList()
+                existing.filter { familyIds.isEmpty() || it.tab_id in familyIds }.forEach { row ->
+                    db.appDatabaseQueries.deleteWorkGroup(row.id)
+                }
+            }
+            val now = Clock.System.now().toEpochMilliseconds()
+            var order = 0L
+            groups.forEach { group ->
+                val trimmedName = group.name.trim().ifBlank { "Grupo ${order + 1}" }
+                db.appDatabaseQueries.insertWorkGroup(
+                    class_id = classId,
+                    tab_id = tabId,
+                    name = trimmedName,
+                    sort_order = order,
+                    learning_situation_id = group.learningSituationId,
+                    updated_at_epoch_ms = now,
+                    device_id = null,
+                    sync_version = 0,
+                )
+                val groupId = insertedWorkGroupId(classId, tabId)
+                group.studentIds.forEach { studentId ->
+                    db.appDatabaseQueries.deleteWorkGroupMemberByStudent(classId, studentId)
+                    db.appDatabaseQueries.upsertWorkGroupMember(
+                        class_id = classId,
+                        tab_id = tabId,
+                        group_id = groupId,
+                        student_id = studentId,
+                        updated_at_epoch_ms = now,
+                        device_id = null,
+                        sync_version = 0,
+                    )
+                }
+                order++
+            }
         }
         NotebookRefreshBus.emitRefresh()
     }

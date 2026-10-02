@@ -153,6 +153,7 @@ struct MacPhysicalTestsView: View {
     @State private var selectedTestId: Int64?
     @State private var selectedTemplateId: String? = PhysicalTestTemplate.defaults.first?.id
     @State private var definitions: [MiGestorKit.PhysicalTestDefinition] = []
+    @State private var loadedPhysicalClassId: Int64?
     @State private var batteries: [MiGestorKit.PhysicalTestBattery] = []
     @State private var assignments: [MiGestorKit.PhysicalTestAssignment] = []
     @State private var notebookLinks: [MiGestorKit.PhysicalTestNotebookLink] = []
@@ -211,6 +212,17 @@ struct MacPhysicalTestsView: View {
     private var selectedScaleBattery: MiGestorKit.PhysicalTestBattery? {
         guard let selectedScaleAssignment else { return nil }
         return batteries.first(where: { $0.id == selectedScaleAssignment.batteryId })
+    }
+
+    private var persistedScalesForSelectedBattery: [MiGestorKit.PhysicalTestScale] {
+        let batteryId = selectedScaleBattery?.id
+        return physicalScalesByTestId.values
+            .flatMap { $0 }
+            .filter { $0.batteryId == batteryId }
+    }
+
+    private var physicalScaleTestNames: [String: String] {
+        Dictionary(definitions.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
     }
 
     private var selectedScaleTestRow: MacPhysicalScaleTestRow? {
@@ -765,23 +777,39 @@ struct MacPhysicalTestsView: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 420)
             } else {
-                HStack(alignment: .top, spacing: 0) {
-                    scaleTestsPanel
-                        .frame(width: 270)
-                        .frame(maxHeight: .infinity)
+                VStack(spacing: 16) {
+                    if !persistedScalesForSelectedBattery.isEmpty {
+                        PhysicalScaleCatalogView(
+                            scales: persistedScalesForSelectedBattery,
+                            testNames: physicalScaleTestNames,
+                            onSelect: { persisted in
+                                selectedScaleTestId = persisted.testId
+                                scale = scaleDraft(from: persisted)
+                                bridge.status = "Baremo seleccionado: \(persisted.name)."
+                            }
+                        )
+                        .frame(maxHeight: 300)
+                    }
 
-                    Divider()
+                    HStack(alignment: .top, spacing: 0) {
+                        scaleTestsPanel
+                            .frame(width: 270)
+                            .frame(maxHeight: .infinity)
 
-                    PhysicalTestScaleEditor(
-                        scale: $scale,
-                        context: scaleEditorContext,
-                        canSave: canSaveScale,
-                        onSave: { draft in
-                            Task { await saveScale(draft) }
-                        }
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacAppStyle.pageBackground)
+                        Divider()
+
+                        PhysicalTestScaleEditor(
+                            scale: $scale,
+                            context: scaleEditorContext,
+                            canSave: canSaveScale,
+                            onSave: { draft in
+                                Task { await saveScale(draft) }
+                            }
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(MacAppStyle.pageBackground)
+                    }
+                    .frame(maxHeight: .infinity)
                 }
                 .background(MacAppStyle.cardBackground)
                 .overlay(
@@ -1142,30 +1170,55 @@ struct MacPhysicalTestsView: View {
             selectedAssignmentNotebookTabId = nil
             selectedScaleAssignmentId = nil
             selectedScaleTestId = nil
+            loadedPhysicalClassId = nil
             physicalScalesByTestId = [:]
             inspectorState.selectedTest = nil
             configureToolbar()
             return
         }
+        let requestedClassId = selectedClassId
+        let sameClass = loadedPhysicalClassId == requestedClassId
         await refreshAssignmentNotebookTabs()
-        definitions = (try? await bridge.listPhysicalDefinitions()) ?? []
-        batteries = (try? await bridge.listPhysicalBatteries()) ?? []
-        assignments = (try? await bridge.listPhysicalAssignmentsForClass(classId: selectedClassId)) ?? []
+        let loadedDefinitions = try? await bridge.listPhysicalDefinitions()
+        let loadedBatteries = try? await bridge.listPhysicalBatteries()
+        let loadedAssignments = try? await bridge.listPhysicalAssignmentsForClass(classId: selectedClassId)
+        if loadedDefinitions == nil || loadedBatteries == nil || loadedAssignments == nil {
+            bridge.status = PhysicalTestsReload.failure
+        }
+        definitions = ProfileReloadKeep.list(loaded: loadedDefinitions, previous: definitions, samePerson: sameClass)
+        batteries = ProfileReloadKeep.list(loaded: loadedBatteries, previous: batteries, samePerson: true)
+        assignments = ProfileReloadKeep.list(loaded: loadedAssignments, previous: assignments, samePerson: sameClass)
         syncScaleSelection()
         await loadScalesForSelectedBattery()
-        notebookLinks = []
-        physicalResults = []
-        for assignment in assignments {
-            let links = (try? await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id)) ?? []
-            notebookLinks.append(contentsOf: links)
-            let results = (try? await bridge.listPhysicalResultsForAssignment(assignmentId: assignment.id)) ?? []
-            physicalResults.append(contentsOf: results)
+        if let loadedAssignments {
+            var loadedLinks: [MiGestorKit.PhysicalTestNotebookLink] = []
+            var loadedResults: [MiGestorKit.PhysicalTestResult] = []
+            var detailFailed = false
+            for assignment in loadedAssignments {
+                do {
+                    loadedLinks.append(contentsOf: try await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id))
+                    loadedResults.append(contentsOf: try await bridge.listPhysicalResultsForAssignment(assignmentId: assignment.id))
+                } catch {
+                    detailFailed = true
+                    bridge.status = PhysicalTestsReload.failure
+                    break
+                }
+            }
+            if !detailFailed {
+                notebookLinks = loadedLinks
+                physicalResults = loadedResults
+            }
+        }
+        if loadedDefinitions != nil || loadedAssignments != nil {
+            loadedPhysicalClassId = requestedClassId
         }
         if selectedBatteryId == nil || !batteries.contains(where: { $0.id == selectedBatteryId }) {
             selectedBatteryId = batteries.first?.id
         }
         syncAssignmentCourseFromClass()
-        tests = (try? await bridge.loadPhysicalTests(classId: selectedClassId)) ?? []
+        let loadedTests = try? await bridge.loadPhysicalTests(classId: selectedClassId)
+        if loadedTests == nil { bridge.status = PhysicalTestsReload.failure }
+        tests = ProfileReloadKeep.list(loaded: loadedTests, previous: tests, samePerson: sameClass)
         if selectedTestId == nil || !tests.contains(where: { $0.evaluation.id == selectedTestId }) {
             selectedTestId = tests.first?.evaluation.id
         }
@@ -1287,6 +1340,8 @@ struct MacPhysicalTestsView: View {
             sex: persisted.sex ?? "",
             batteryId: persisted.batteryId ?? "",
             direction: persisted.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
+            scoringMode: persisted.scoringMode == .linear ? .linear : .step,
+            scoreRoundTo: persisted.scoreRoundTo?.doubleValue,
             ranges: persisted.ranges.sorted { $0.sortOrder < $1.sortOrder }.map { range in
                 PhysicalTestScaleRange(
                     minValue: range.minValue?.doubleValue,
@@ -1342,6 +1397,8 @@ struct MacPhysicalTestsView: View {
             batteryId: battery.id,
             direction: draft.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
             ranges: ranges,
+            scoringMode: draft.scoringMode == .linear ? .linear : .step,
+            scoreRoundTo: draft.scoreRoundTo.map { KotlinDouble(value: $0) },
             trace: auditTrace()
         )
         do {
@@ -1356,10 +1413,17 @@ struct MacPhysicalTestsView: View {
 
     private func createBattery(createTests: Bool = true) {
         Task {
+            var savedDefinitions = 0
+            var failedDefinitions = 0
             if createTests {
                 for template in PhysicalTestTemplate.defaults where batteryTemplateIds.contains(template.id) {
-                    try? await bridge.savePhysicalDefinition(physicalDefinition(from: template))
-                    await createTest(from: template)
+                    do {
+                        try await bridge.savePhysicalDefinition(physicalDefinition(from: template))
+                        await createTest(from: template)
+                        savedDefinitions += 1
+                    } catch {
+                        failedDefinitions += 1
+                    }
                 }
             }
             do {
@@ -1378,9 +1442,12 @@ struct MacPhysicalTestsView: View {
                 await reload()
             } catch {
                 bridge.status = "No se pudo guardar la batería física: \(error.localizedDescription)"
+                return
             }
             section = .assignments
-            bridge.status = "Batería creada. Asígnala a una clase para crear columnas."
+            bridge.status = failedDefinitions == 0
+                ? "Batería creada. Asígnala a una clase para crear columnas."
+                : "Guardadas \(savedDefinitions) / fallidas \(failedDefinitions). Revisa la batería antes de asignarla."
         }
     }
 

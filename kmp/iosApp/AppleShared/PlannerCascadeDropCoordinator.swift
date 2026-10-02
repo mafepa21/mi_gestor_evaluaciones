@@ -1,6 +1,12 @@
 import SwiftUI
 import MiGestorKit
 
+enum CascadeUndoCopy {
+    static func failure(_ detail: String) -> String {
+        "No se pudo deshacer el movimiento. \(detail)"
+    }
+}
+
 struct PlannerInlineBanner: View {
     let message: String
 
@@ -42,15 +48,15 @@ final class PlannerCascadeDropCoordinator: ObservableObject {
             do {
                 let preview = try await vm.previewCascadeMove(sessionId: sessionId, day: day, period: period)
                 guard !preview.isNoOp else { return }
-                if !preview.completedSessionIds.isEmpty {
+                if !preview.completedSessionIds.isEmpty || !preview.cancelledSessionIds.isEmpty {
                     pendingConfirmation = PendingDrop(
                         sessionId: sessionId,
                         day: day,
                         period: period,
-                        completedCount: preview.completedSessionIds.count
+                        completedCount: preview.completedSessionIds.count + preview.cancelledSessionIds.count
                     )
                 } else {
-                    await commit(sessionId: sessionId, day: day, period: period, vm: vm)
+                    await commit(sessionId: sessionId, day: day, period: period, forceTerminalSessions: false, vm: vm)
                 }
             } catch {
                 transientMessage = "No se puede mover la sesión: \(error.localizedDescription)"
@@ -63,7 +69,7 @@ final class PlannerCascadeDropCoordinator: ObservableObject {
         guard let pending = pendingConfirmation else { return }
         pendingConfirmation = nil
         Task {
-            await commit(sessionId: pending.sessionId, day: pending.day, period: pending.period, vm: vm)
+            await commit(sessionId: pending.sessionId, day: pending.day, period: pending.period, forceTerminalSessions: true, vm: vm)
         }
     }
 
@@ -79,15 +85,20 @@ final class PlannerCascadeDropCoordinator: ObservableObject {
                 transientMessage = "Movimiento deshecho."
                 AppleInteractionFeedback.play(.success)
             } catch {
-                transientMessage = "No se pudo deshacer: \(error.localizedDescription)"
+                transientMessage = CascadeUndoCopy.failure(error.localizedDescription)
                 AppleInteractionFeedback.play(.error)
             }
         }
     }
 
-    private func commit(sessionId: Int64, day: Int, period: Int, vm: PlannerWorkspaceViewModel) async {
+    private func commit(sessionId: Int64, day: Int, period: Int, forceTerminalSessions: Bool, vm: PlannerWorkspaceViewModel) async {
         do {
-            let result = try await vm.commitCascadeMove(sessionId: sessionId, day: day, period: period)
+            let result = try await vm.commitCascadeMove(
+                sessionId: sessionId,
+                day: day,
+                period: period,
+                forceTerminalSessions: forceTerminalSessions
+            )
             let suffix = result.crossesWeekBoundary ? " Se ha continuado en la semana siguiente." : ""
             transientMessage = "Sesión movida; \(result.movedCount) sesión(es) recolocadas.\(suffix)"
             AppleInteractionFeedback.play(.success)

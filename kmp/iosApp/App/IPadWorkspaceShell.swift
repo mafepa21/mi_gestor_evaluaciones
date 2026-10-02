@@ -50,6 +50,7 @@ final class WorkspaceLayoutState: ObservableObject {
     var notebookMarkAllPresentAction: (() -> Void)?
     var notebookRefreshAction: (() -> Void)?
     var notebookGenerateSummaryAction: (() -> Void)?
+    var notebookExportSMAction: (() -> Void)?
 
     var dashboardInspectorAction: (() -> Void)?
     var dashboardRefreshAction: (() -> Void)?
@@ -102,7 +103,8 @@ final class WorkspaceLayoutState: ObservableObject {
         onToggleAttendanceQuickMode: (() -> Void)? = nil,
         onMarkAllPresent: (() -> Void)? = nil,
         onRefresh: (() -> Void)? = nil,
-        onGenerateSummary: (() -> Void)? = nil
+        onGenerateSummary: (() -> Void)? = nil,
+        onExportSM: (() -> Void)? = nil
     ) {
         publishDeferred {
             self.notebookInspectorAvailable = inspectorAvailable
@@ -130,6 +132,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookMarkAllPresentAction = onMarkAllPresent
             self.notebookRefreshAction = onRefresh
             self.notebookGenerateSummaryAction = onGenerateSummary
+            self.notebookExportSMAction = onExportSM
         }
     }
 
@@ -189,6 +192,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookMarkAllPresentAction = nil
             self.notebookRefreshAction = nil
             self.notebookGenerateSummaryAction = nil
+            self.notebookExportSMAction = nil
         }
     }
 
@@ -218,6 +222,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func notebookGenerateSummary() {
         notebookGenerateSummaryAction?()
+    }
+
+    func notebookExportSM() {
+        notebookExportSMAction?()
     }
 
     func setNotebookSearchText(_ value: String) {
@@ -730,6 +738,7 @@ struct AppWorkspaceShell: View {
     @State var classroomCaptureText = ""
     @State var isSavingClassroomCapture = false
     @State private var isClassPickerPresented = false
+    @State private var isWorkspaceClassPickerPresented = false
     @State private var isSearchPresented = false
 
     var activeNotebookClassLabel: String {
@@ -1149,46 +1158,69 @@ struct AppWorkspaceShell: View {
             focusToggleButton
         } else {
             HStack(spacing: 12) {
-                focusToggleButton
-
-                if shouldShowGlobalContextualAIButton {
+                if hasPrimaryWorkspaceAction {
                     Button {
-                        presentContextualAI()
+                        triggerPrimaryAction()
                     } label: {
-                        if isLoadingContextualAI {
-                            ProgressView()
-                                .controlSize(.small)
-                                .frame(minWidth: 24)
-                        } else {
-                            Label("IA", systemImage: "apple.intelligence")
-                        }
+                        Label(primaryActionLabel, systemImage: "plus")
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(isLoadingContextualAI)
+                    .buttonStyle(.borderedProminent)
                 }
 
-                Menu {
-                    Button("Recargar dashboard") { Task { await bridge.refreshDashboard(mode: .office) } }
-                    Button("Recargar alumnado") { Task { try? await bridge.refreshStudentsDirectory() } }
-                    Button("Recargar rúbricas") {
-                        Task {
-                            try? await bridge.refreshRubrics()
-                            try? await bridge.refreshRubricClassLinks()
-                        }
-                    }
-                } label: {
-                    Label("Recargar", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    triggerPrimaryAction()
-                } label: {
-                    Label(primaryActionLabel, systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
+                workspaceSecondaryActionsMenu
             }
         }
+    }
+
+    private var workspaceSecondaryActionsMenu: some View {
+        Menu {
+            Button {
+                layoutState.toggleFocusMode()
+            } label: {
+                Label(
+                    layoutState.isFocusModeEnabled ? "Salir del modo foco" : "Modo foco",
+                    systemImage: "arrow.up.left.and.arrow.down.right"
+                )
+            }
+
+            if shouldShowGlobalContextualAIButton {
+                Button {
+                    presentContextualAI()
+                } label: {
+                    Label(
+                        isLoadingContextualAI ? "Preparando IA…" : "Inteligencia educativa",
+                        systemImage: "apple.intelligence"
+                    )
+                }
+                .disabled(isLoadingContextualAI)
+            }
+
+            Divider()
+
+            Button {
+                Task { await bridge.refreshDashboard(mode: .office) }
+            } label: {
+                Label("Recargar datos", systemImage: "arrow.clockwise")
+            }
+
+            Button {
+                Task { try? await bridge.refreshStudentsDirectory() }
+            } label: {
+                Label("Recargar alumnado", systemImage: "person.2")
+            }
+
+            Button {
+                Task {
+                    try? await bridge.refreshRubrics()
+                    try? await bridge.refreshRubricClassLinks()
+                }
+            } label: {
+                Label("Recargar rúbricas", systemImage: "checklist")
+            }
+        } label: {
+            Label("Más", systemImage: "ellipsis.circle")
+        }
+        .buttonStyle(.bordered)
     }
 
     var dailyContextToolbarRow: some View {
@@ -1207,29 +1239,39 @@ struct AppWorkspaceShell: View {
     }
 
     var workspaceClassMenu: some View {
-        Menu {
-            Button("Sin clase activa") {
-                updateGlobalClassContext(nil)
-            }
-            ForEach(bridge.classes, id: \.id) { schoolClass in
-                Button {
-                    updateGlobalClassContext(schoolClass.id)
-                } label: {
-                    HStack {
-                        Text(schoolClass.name)
-                        if selectedClassId == schoolClass.id {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
+        Button {
+            isWorkspaceClassPickerPresented = true
         } label: {
             Label(activeClassLabel, systemImage: "rectangle.3.group")
                 .lineLimit(1)
-                .frame(minWidth: 220, alignment: .leading)
+                .frame(minWidth: 180, maxWidth: 240, alignment: .leading)
         }
         .buttonStyle(.bordered)
         .disabled(bridge.classes.isEmpty)
+        .popover(isPresented: $isWorkspaceClassPickerPresented, arrowEdge: .top) {
+            NotebookClassPickerPopover(
+                classes: bridge.classes,
+                selectedClassId: selectedClassId,
+                bridge: bridge,
+                onSelectClass: { updateGlobalClassContext($0) },
+                onSelectShortcut: { classId, shortcut in
+                    updateGlobalClassContext(classId)
+                    switch shortcut {
+                    case .notebook:
+                        activeModule = .notebook
+                        layoutState.notebookSurfaceMode = "grid"
+                    case .seatingPlan:
+                        activeModule = .notebook
+                        layoutState.notebookSurfaceMode = "seatingPlan"
+                    case .attendance:
+                        activeModule = .attendance
+                    case .students:
+                        activeModule = .students
+                    }
+                },
+                onClose: { isWorkspaceClassPickerPresented = false }
+            )
+        }
         .accessibilityLabel("Cambiar clase activa")
     }
 
@@ -1285,7 +1327,7 @@ struct AppWorkspaceShell: View {
                 attendanceActionsMenu
                 Spacer(minLength: 8)
                 attendanceDatePicker
-                attendanceModePicker(width: 250)
+                attendanceModePicker(width: 320)
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -1297,7 +1339,7 @@ struct AppWorkspaceShell: View {
                     attendanceDatePicker
                 }
                 HStack(spacing: 12) {
-                    attendanceModePicker(width: 280)
+                    attendanceModePicker(width: 320)
                 }
             }
         }
@@ -1386,9 +1428,9 @@ struct AppWorkspaceShell: View {
                 set: { layoutState.setAttendanceBoardMode($0) }
             )
         ) {
-            Text("Cursos").tag("Cursos")
-            Text("Día").tag("Día")
-            Text("Historial").tag("Historial")
+            ForEach(AttendanceBoardMode.allCases) { mode in
+                Text(mode.rawValue).tag(mode.rawValue)
+            }
         }
         .pickerStyle(.segmented)
         // minWidth prevents AppKit from compressing below its intrinsic minimum,
@@ -1479,30 +1521,33 @@ struct AppWorkspaceShell: View {
 
     var dashboardToolbarActions: some View {
         HStack(spacing: 12) {
-            if layoutState.isDashboardInspectorPresented {
+            Menu {
                 Button {
                     layoutState.toggleDashboardInspector()
                 } label: {
-                    Label("Inspector", systemImage: "sidebar.right")
+                    Label(
+                        layoutState.isDashboardInspectorPresented ? "Ocultar inspector" : "Mostrar inspector",
+                        systemImage: "sidebar.right"
+                    )
                 }
-                .buttonStyle(.borderedProminent)
                 .disabled(!layoutState.dashboardInspectorAvailable)
-            } else {
+
                 Button {
-                    layoutState.toggleDashboardInspector()
+                    layoutState.toggleFocusMode()
                 } label: {
-                    Label("Inspector", systemImage: "sidebar.right")
+                    Label(
+                        layoutState.isFocusModeEnabled ? "Salir del modo foco" : "Modo foco",
+                        systemImage: "arrow.up.left.and.arrow.down.right"
+                    )
                 }
-                .buttonStyle(.bordered)
-                .disabled(!layoutState.dashboardInspectorAvailable)
-            }
 
-            focusToggleButton
-
-            Button {
-                layoutState.refreshDashboard()
+                Button {
+                    layoutState.refreshDashboard()
+                } label: {
+                    Label("Recargar", systemImage: "arrow.clockwise")
+                }
             } label: {
-                Label("Recargar", systemImage: "arrow.clockwise")
+                Label("Más", systemImage: "ellipsis.circle")
             }
             .buttonStyle(.bordered)
 
@@ -1517,7 +1562,7 @@ struct AppWorkspaceShell: View {
                     layoutState.dashboardQuickEvaluation()
                 }
             } label: {
-                Label("Acciones", systemImage: "bolt.fill")
+                Label("Acción principal", systemImage: "bolt.fill")
             }
             .buttonStyle(.borderedProminent)
             .disabled(!layoutState.dashboardActionsAvailable)
@@ -1593,7 +1638,7 @@ struct AppWorkspaceShell: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Text("Grid").tag("grid")
+                Text(NotebookSurfaceMode.grid.title).tag("grid")
                 Text("Plano").tag("seatingPlan")
             }
             .pickerStyle(.segmented)
@@ -1672,7 +1717,23 @@ struct AppWorkspaceShell: View {
             NotebookClassPickerPopover(
                 classes: bridge.classes,
                 selectedClassId: selectedClassId,
+                bridge: bridge,
                 onSelectClass: { updateGlobalClassContext($0) },
+                onSelectShortcut: { classId, shortcut in
+                    updateGlobalClassContext(classId)
+                    switch shortcut {
+                    case .notebook:
+                        activeModule = .notebook
+                        layoutState.notebookSurfaceMode = "grid"
+                    case .seatingPlan:
+                        activeModule = .notebook
+                        layoutState.notebookSurfaceMode = "seatingPlan"
+                    case .attendance:
+                        activeModule = .attendance
+                    case .students:
+                        activeModule = .students
+                    }
+                },
                 onClose: { isClassPickerPresented = false }
             )
         }
@@ -1722,10 +1783,18 @@ struct AppWorkspaceShell: View {
                 }
             }
 
+            if layoutState.notebookExportSMAction != nil {
+                Button {
+                    layoutState.notebookExportSM()
+                } label: {
+                    Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                }
+            }
+
             Button {
                 layoutState.notebookUndo()
             } label: {
-                Label("Deshacer", systemImage: "arrow.uturn.backward")
+                Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
             }
             .disabled(!layoutState.notebookCanUndo)
 
@@ -1741,7 +1810,7 @@ struct AppWorkspaceShell: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Label("Grid", systemImage: "tablecells").tag("grid")
+                Label(NotebookSurfaceMode.grid.title, systemImage: "tablecells").tag("grid")
                 Label("Plano", systemImage: "rectangle.3.group").tag("seatingPlan")
             }
 
@@ -1851,7 +1920,7 @@ struct AppWorkspaceShell: View {
                 Button {
                     layoutState.notebookUndo()
                 } label: {
-                    Label("Deshacer", systemImage: "arrow.uturn.backward")
+                    Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
                 }
                 .disabled(!layoutState.notebookCanUndo)
 
@@ -1868,6 +1937,14 @@ struct AppWorkspaceShell: View {
                     layoutState.notebookGenerateSummary()
                 } label: {
                     Label("Generar síntesis", systemImage: "apple.intelligence")
+                }
+
+                if layoutState.notebookExportSMAction != nil {
+                    Button {
+                        layoutState.notebookExportSM()
+                    } label: {
+                        Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                    }
                 }
 
                 Button {
@@ -1980,149 +2057,20 @@ struct EFPlaceholderModuleView: View {
 }
 
 struct AttendanceRowCard: View {
-    @Environment(\.colorScheme) var colorScheme
     let row: AttendanceEntryRow
     let isInjured: Bool
     let onPickStatus: (AttendanceStatusOption) -> Void
     let onSelect: () -> Void
     let isSaving: Bool
 
-    var primaryOptions: [AttendanceStatusOption] {
-        AttendanceStatusOption.all.filter { ["PRESENTE", "AUSENTE", "TARDE"].contains($0.id) }
-    }
-
-    var secondaryOptions: [AttendanceStatusOption] {
-        AttendanceStatusOption.all.filter { !["PRESENTE", "AUSENTE", "TARDE"].contains($0.id) }
-    }
-
-    var selectedOption: AttendanceStatusOption? {
-        AttendanceStatusOption.all.first(where: { $0.id == row.record?.status })
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("\(row.student.firstName) \(row.student.lastName)")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                    HStack(spacing: 8) {
-                        Text((selectedOption?.label ?? "Sin registro").uppercased())
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                        if isSaving {
-                            ProgressView()
-                                .controlSize(.mini)
-                        }
-                        if isInjured {
-                            Label("LESIÓN", systemImage: "cross.case.fill")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.orange)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.orange.opacity(0.14), in: Capsule())
-                        }
-                    }
-                }
-                Spacer()
-                Button("Ficha") { onSelect() }
-                    .buttonStyle(.bordered)
-            }
-
-            HStack(spacing: 12) {
-                ForEach(primaryOptions) { option in
-                    attendanceStatusButton(option)
-                }
-
-                Menu {
-                    ForEach(secondaryOptions) { option in
-                        Button(option.label) {
-                            if row.record?.status != option.id {
-                                onPickStatus(option)
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.body.weight(.semibold))
-                        Text(secondaryLabel)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                        if let selectedOption,
-                           secondaryOptions.contains(where: { $0.id == selectedOption.id }) {
-                            Circle()
-                                .fill(selectedOption.color)
-                                .frame(width: 10, height: 10)
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 14)
-                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-                    .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .appInteractiveHighlight()
-            }
-        }
-        .padding(24)
-        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+        AttendanceCompactRow(
+            row: row,
+            isSelected: false,
+            isSaving: isSaving,
+            onPickStatus: onPickStatus,
+            onSelect: onSelect
         )
-        .listRowInsets(EdgeInsets(top: 12, leading: 24, bottom: 12, trailing: 24))
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-    }
-
-    var secondaryLabel: String {
-        guard let selectedOption,
-              secondaryOptions.contains(where: { $0.id == selectedOption.id }) else {
-            return "Más estados"
-        }
-        return selectedOption.label
-    }
-
-    func attendanceStatusButton(_ option: AttendanceStatusOption) -> some View {
-        Button {
-            if row.record?.status != option.id {
-                onPickStatus(option)
-            }
-        } label: {
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(option.color)
-                    .frame(width: 10, height: 10)
-                Text(option.label)
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                if row.record?.status == option.id {
-                    Image(systemName: "checkmark")
-                        .font(.body.weight(.bold))
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-            .background(
-                option.color.opacity(row.record?.status == option.id ? 0.18 : 0.08),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(option.color.opacity(row.record?.status == option.id ? 0.42 : 0.14), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .appInteractiveHighlight()
-        .accessibilityAddTraits(row.record?.status == option.id ? .isSelected : [])
-        .opacity(isSaving && row.record?.status != option.id ? 0.84 : 1)
     }
 }
 
@@ -2706,6 +2654,7 @@ struct EditPESessionOperationalSheet: View {
     @State var stationObservations = ""
     @State var physicalIncidents = ""
     @State var journalStatus: SessionJournalStatus = .draft
+    @State var saveError: String?
 
     var body: some View {
         WorkspaceCreateSheetScaffold(
@@ -2716,6 +2665,12 @@ struct EditPESessionOperationalSheet: View {
             onCancel: { dismiss() },
             onSave: save
         ) {
+            if let saveError {
+                Text(saveError)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             PremiumCard.section(title: "Espacio y material", systemImage: "sportscourt") {
                 VStack(alignment: .leading, spacing: 16) {
                     WorkspaceCreateTextField(title: "Espacio previsto", placeholder: "Pabellón", text: $scheduledSpace)
@@ -2756,23 +2711,30 @@ struct EditPESessionOperationalSheet: View {
         }
     }
 
+    static let saveFailureMessage = "No se pudo guardar la operativa de la sesión. Los datos siguen en esta pantalla."
+
     private func save() {
         Task {
-            try? await bridge.savePESessionOperationalData(
-                sessionId: snapshot.id,
-                scheduledSpace: scheduledSpace,
-                usedSpace: usedSpace,
-                materialToPrepare: materialToPrepare,
-                materialUsed: materialUsed,
-                injuries: injuries,
-                unequippedStudents: unequipped,
-                intensityScore: intensity,
-                stationObservations: stationObservations,
-                physicalIncidents: physicalIncidents,
-                journalStatus: journalStatus
-            )
-            onDismiss()
-            dismiss()
+            do {
+                try await bridge.savePESessionOperationalData(
+                    sessionId: snapshot.id,
+                    scheduledSpace: scheduledSpace,
+                    usedSpace: usedSpace,
+                    materialToPrepare: materialToPrepare,
+                    materialUsed: materialUsed,
+                    injuries: injuries,
+                    unequippedStudents: unequipped,
+                    intensityScore: intensity,
+                    stationObservations: stationObservations,
+                    physicalIncidents: physicalIncidents,
+                    journalStatus: journalStatus
+                )
+                saveError = nil
+                onDismiss()
+                dismiss()
+            } catch {
+                saveError = Self.saveFailureMessage
+            }
         }
     }
 }

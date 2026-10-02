@@ -4,6 +4,10 @@ import MiGestorKit
 import AppKit
 #endif
 
+enum SelectiveWipeCopy {
+    static let backupBlocked = "No se pudo crear la copia previa. No se ha borrado nada."
+}
+
 struct SelectiveWipeSheet: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
@@ -361,7 +365,14 @@ struct SelectiveWipeSheet: View {
 
             // 2. Si se solicitó backup previo automático, crearlo antes de borrar
             if createEmergencyBackup {
-                let _ = try? await backupService.createBackup(note: "Copia previa a borrado selectivo")
+                do {
+                    _ = try await backupService.createBackup(note: "Copia previa a borrado selectivo")
+                } catch {
+                    backupService.needsRestart = false
+                    isProcessing = false
+                    statusFeedback = SelectiveWipeCopy.backupBlocked
+                    return
+                }
             }
 
             // 3. Ejecutar vaciado SQL por categorías

@@ -21,14 +21,15 @@ extension PlannerWorkspaceViewModel {
         )
     }
 
-    func commitCascadeMove(sessionId: Int64, day: Int, period: Int) async throws -> SessionCascadeMoveResult {
+    func commitCascadeMove(sessionId: Int64, day: Int, period: Int, forceTerminalSessions: Bool = false) async throws -> SessionCascadeMoveResult {
         guard let bridge else { throw PlannerCascadeMoveError.bridgeUnavailable }
         let result = try await bridge.plannerCommitCascadeMove(
             sourceSessionId: sessionId,
             targetWeekNumber: week,
             targetYear: year,
             targetDayOfWeek: day,
-            targetPeriod: period
+            targetPeriod: period,
+            forceTerminalSessions: forceTerminalSessions
         )
         lastCascadeMove = result
         await reloadSessionsOnly()

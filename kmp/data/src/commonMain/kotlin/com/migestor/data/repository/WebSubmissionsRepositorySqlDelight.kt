@@ -75,6 +75,7 @@ class WebSubmissionsRepositorySqlDelight(
                 revoked = if (instance.revoked) 1L else 0L,
                 archived = if (instance.archived) 1L else 0L,
                 manifest_json = instance.manifestJson,
+                mode = instance.mode,
                 created_at_epoch_ms = instance.createdAtEpochMs,
                 updated_at_epoch_ms = instance.updatedAtEpochMs,
             )
@@ -172,6 +173,53 @@ class WebSubmissionsRepositorySqlDelight(
             }
         }
 
+    override suspend fun listPeerTargets(formInstanceId: String): List<com.migestor.shared.repository.WebPeerTargetEntry> =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.selectWebPeerTargetsForForm(formInstanceId).executeAsList().map { fila ->
+                com.migestor.shared.repository.WebPeerTargetEntry(
+                    evaluatorAlias = fila.evaluator_alias,
+                    targetAlias = fila.target_alias,
+                    targetStudentId = fila.target_student_id,
+                    targetDisplayName = fila.target_display_name,
+                    createdAtEpochMs = fila.created_at_epoch_ms,
+                )
+            }
+        }
+
+    override suspend fun listPeerTargetsForEvaluator(
+        formInstanceId: String,
+        evaluatorAlias: String,
+    ): List<com.migestor.shared.repository.WebPeerTargetEntry> =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.selectWebPeerTargetsForEvaluator(formInstanceId, evaluatorAlias).executeAsList().map { fila ->
+                com.migestor.shared.repository.WebPeerTargetEntry(
+                    evaluatorAlias = evaluatorAlias,
+                    targetAlias = fila.target_alias,
+                    targetStudentId = fila.target_student_id,
+                    targetDisplayName = fila.target_display_name,
+                    createdAtEpochMs = fila.created_at_epoch_ms,
+                )
+            }
+        }
+
+    override suspend fun savePeerTargets(
+        formInstanceId: String,
+        entries: List<com.migestor.shared.repository.WebPeerTargetEntry>,
+    ) = withContext(Dispatchers.Default) {
+        db.transaction {
+            entries.forEach { entrada ->
+                db.appDatabaseQueries.upsertWebPeerTarget(
+                    form_instance_id = formInstanceId,
+                    evaluator_alias = entrada.evaluatorAlias,
+                    target_alias = entrada.targetAlias,
+                    target_student_id = entrada.targetStudentId,
+                    target_display_name = entrada.targetDisplayName,
+                    created_at_epoch_ms = entrada.createdAtEpochMs,
+                )
+            }
+        }
+    }
+
     override suspend fun getLedgerEntry(submissionId: String): WebLedgerEntry? =
         withContext(Dispatchers.Default) {
             db.appDatabaseQueries.selectWebSubmissionLedgerEntry(submissionId)
@@ -215,6 +263,7 @@ class WebSubmissionsRepositorySqlDelight(
             revoked = fila.revoked != 0L,
             archived = fila.archived != 0L,
             manifestJson = fila.manifest_json,
+            mode = fila.mode,
             createdAtEpochMs = fila.created_at_epoch_ms,
             updatedAtEpochMs = fila.updated_at_epoch_ms,
         )

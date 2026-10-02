@@ -6,6 +6,18 @@ enum AppleAppCommandDestination: String {
     case planner
 }
 
+@MainActor
+final class NotebookEditMenuState: ObservableObject {
+    static let shared = NotebookEditMenuState()
+
+    @Published var undoTitle = "Deshacer"
+    @Published var redoTitle = "Rehacer"
+    @Published var canUndo = false
+    @Published var canRedo = false
+
+    private init() {}
+}
+
 enum AppleAppCommand {
     static func post(_ name: Notification.Name, object: Any? = nil) {
         NotificationCenter.default.post(name: name, object: object)
@@ -13,7 +25,23 @@ enum AppleAppCommand {
 }
 
 struct AppleAppCommands: Commands {
+    @ObservedObject private var notebookEditMenu = NotebookEditMenuState.shared
+
     var body: some Commands {
+        CommandGroup(replacing: .undoRedo) {
+            Button(notebookEditMenu.undoTitle) {
+                AppleAppCommand.post(.appleAppNotebookUndoRequested)
+            }
+            .keyboardShortcut("z", modifiers: .command)
+            .disabled(!notebookEditMenu.canUndo)
+
+            Button(notebookEditMenu.redoTitle) {
+                AppleAppCommand.post(.appleAppNotebookRedoRequested)
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .disabled(!notebookEditMenu.canRedo)
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("Añadir columna") {
                 AppleAppCommand.post(.appleAppAddNotebookColumnRequested)
@@ -72,34 +100,47 @@ struct AppleAppCommands: Commands {
             .keyboardShortcut("3", modifiers: .command)
         }
 
-        // ⌘⌥1–4 en vez de ⌘1–4: el menú "Navegación" ya reserva ⌘1–3 para saltar
+        // ⌘⌥1–6 en vez de ⌘1–4: el menú "Navegación" ya reserva ⌘1–3 para saltar
         // entre Cuaderno/Asistencia/Planner a nivel de app, así que las secciones
         // internas del planificador usan una combinación distinta para no chocar.
+        // El orden sigue la barra: Mes, Semana, Día, Secuencia, Evaluación, Resumen.
         CommandMenu("Planificador") {
+            Button("Mes") {
+                AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.month.rawValue)
+            }
+            .keyboardShortcut("1", modifiers: [.command, .option])
+
             Button("Semana") {
                 AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.week.rawValue)
             }
-            .keyboardShortcut("1", modifiers: [.command, .option])
+            .keyboardShortcut("2", modifiers: [.command, .option])
 
             Button("Día") {
                 AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.day.rawValue)
             }
-            .keyboardShortcut("2", modifiers: [.command, .option])
+            .keyboardShortcut("3", modifiers: [.command, .option])
 
             Button("Secuencia") {
                 AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.sequence.rawValue)
             }
-            .keyboardShortcut("3", modifiers: [.command, .option])
+            .keyboardShortcut("4", modifiers: [.command, .option])
+
+            Button("Evaluación") {
+                AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.term.rawValue)
+            }
+            .keyboardShortcut("5", modifiers: [.command, .option])
 
             Button("Resumen") {
                 AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.summary.rawValue)
             }
-            .keyboardShortcut("4", modifiers: [.command, .option])
+            .keyboardShortcut("6", modifiers: [.command, .option])
         }
     }
 }
 
 extension Notification.Name {
+    static let appleAppNotebookUndoRequested = Notification.Name("appleAppNotebookUndoRequested")
+    static let appleAppNotebookRedoRequested = Notification.Name("appleAppNotebookRedoRequested")
     static let appleAppAddNotebookColumnRequested = Notification.Name("appleAppAddNotebookColumnRequested")
     static let appleAppSearchRequested = Notification.Name("appleAppSearchRequested")
     static let appleAppSaveOrSyncRequested = Notification.Name("appleAppSaveOrSyncRequested")

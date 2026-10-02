@@ -24,6 +24,7 @@
 // trae. Esto verifica lo mismo sin tocar el sistema de compilación.
 
 import Foundation
+import CryptoKit
 
 // MARK: - Andamio de comprobaciones
 
@@ -192,11 +193,13 @@ do {
     print("  ok    CryptoKit descifra el sobre que cifró el navegador")
 
     comprobar("el formInstanceId de dentro coincide", carga.formInstanceId == fixture.envelope.formInstanceId)
-    comprobar("llegan las cinco respuestas", carga.answers.count == fixture.expectedPayload.answers.count)
+    let answersCarga = carga.answers ?? []
+    let answersEsperadas = fixture.expectedPayload.answers ?? []
+    comprobar("llegan las cinco respuestas", answersCarga.count == answersEsperadas.count)
 
-    let porId = Dictionary(carga.answers.map { ($0.webItemId, $0) }, uniquingKeysWith: { a, _ in a })
+    let porId = Dictionary(answersCarga.map { ($0.webItemId, $0) }, uniquingKeysWith: { a, _ in a })
     let esperadas = Dictionary(
-        fixture.expectedPayload.answers.map { ($0.webItemId, $0) },
+        answersEsperadas.map { ($0.webItemId, $0) },
         uniquingKeysWith: { a, _ in a }
     )
 
@@ -356,6 +359,9 @@ final class ResolutorDePrueba: WebSubmissionContextResolver {
     }
     func studentId(formInstanceId: String, alias: String) -> Int64? {
         alias == aliasConocido ? 42 : nil
+    }
+    func peerTargetStudentId(formInstanceId: String, evaluatorAlias: String, targetAlias: String) -> Int64? {
+        nil
     }
     func studentName(studentId: Int64) -> String? { studentId == 42 ? "Ana Ferrer" : nil }
     func itemId(formInstanceId: String, webItemId: String) -> String? { "item-\(webItemId)" }
@@ -525,6 +531,172 @@ do {
 let destinoPublicado = URL(fileURLWithPath: "/tmp/manifiesto-publicado-por-swift.json")
 try Data(publicado.manifestJSON.utf8).write(to: destinoPublicado)
 print("  ->    escrito \(destinoPublicado.path) para el validador de la PWA")
+
+// MARK: - Coevaluación
+
+print("\nCoevaluación")
+
+// 1. Publicación con grupos de coevaluación
+let peerTargetsPrueba = [
+    WebSubmissionPublisher.PeerTargetToPublish(
+        evaluatorStudentId: 42,
+        targetStudentId: 43,
+        targetName: "Bruno Gil"
+    ),
+    WebSubmissionPublisher.PeerTargetToPublish(
+        evaluatorStudentId: 43,
+        targetStudentId: 42,
+        targetName: "Ana Ferrer"
+    ),
+]
+
+let publicadoPeer = try WebSubmissionPublisher.publish(
+    title: "Coevaluación Prueba",
+    subtitle: "Rúbrica",
+    locale: "es",
+    sections: [],
+    items: publicado.itemMap.map { mapEntry in
+        WebSubmissionPublisher.ItemToPublish(
+            itemId: mapEntry.itemId,
+            title: "Item \(mapEntry.itemId)",
+            type: mapEntry.itemType,
+            required: true,
+            options: mapEntry.itemType == .choice ? ["Opción A", "Opción B"] : [],
+            helpText: nil,
+            scaleLabels: nil,
+            sectionId: nil
+        )
+    },
+    students: [
+        WebSubmissionPublisher.StudentToPublish(id: 42, name: "Ana Ferrer"),
+        WebSubmissionPublisher.StudentToPublish(id: 43, name: "Bruno Gil"),
+        WebSubmissionPublisher.StudentToPublish(id: 44, name: "Carmen Ruiz"), // Sin grupo -> autoevaluación normal
+    ],
+    baseURL: "https://entregas-alumnado.vercel.app",
+    deliveryEmail: "docente@centro.es",
+    expiresAtEpochMs: 4_000_000_000_000,
+    mode: "peer",
+    peerTargets: peerTargetsPrueba
+)
+
+comprobar("modo del formulario publicado es peer", publicadoPeer.mode == "peer")
+comprobar("schemaVersion del manifiesto peer es 2", publicadoPeer.manifestJSON.contains("\"schemaVersion\" : 2") || publicadoPeer.manifestJSON.contains("\"schemaVersion\":2"))
+comprobar("manifiesto peer declara mode peer", publicadoPeer.manifestJSON.contains("\"mode\" : \"peer\"") || publicadoPeer.manifestJSON.contains("\"mode\":\"peer\""))
+
+let linkAna = publicadoPeer.links.first(where: { $0.studentId == 42 })
+let linkCarmen = publicadoPeer.links.first(where: { $0.studentId == 44 })
+
+comprobar("el alumno con grupo lleva parámetro &t= en el enlace", linkAna?.url.contains("&t=") == true)
+comprobar("el alumno sin grupo NO lleva parámetro &t= en el enlace", linkCarmen?.url.contains("&t=") == false)
+
+// Comprobar que en el fragmento &t= viene la lista de targets con nombre completo
+if let urlAna = linkAna?.url, let tRange = urlAna.range(of: "&t=") {
+    let tB64 = String(urlAna[tRange.upperBound...])
+    if let data = Data(base64URLEncoded: tB64),
+       let json = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] {
+        comprobar("el target contiene el nombre completo del compañero", json.first?["n"] == "Bruno Gil")
+        comprobar("el target contiene un targetAlias aleatorio de 22 chars", json.first?["a"]?.count == 22)
+    } else {
+        comprobar("el parámetro &t= es base64url decodificable", false)
+    }
+}
+
+// 2. Examen de entrega v2 con targets
+final class ResolutorPeer: WebSubmissionContextResolver {
+    let context: WebFormInstanceContext
+    let privateKey: Data
+    var peerTargetsMap: [String: Int64] = [:]
+
+    init(context: WebFormInstanceContext, privateKey: Data) {
+        self.context = context
+        self.privateKey = privateKey
+    }
+
+    func formInstance(formInstanceId: String) -> WebFormInstanceContext? { context }
+    func studentId(formInstanceId: String, alias: String) -> Int64? { 42 }
+    func peerTargetStudentId(formInstanceId: String, evaluatorAlias: String, targetAlias: String) -> Int64? {
+        peerTargetsMap["\(evaluatorAlias)|\(targetAlias)"]
+    }
+    func studentName(studentId: Int64) -> String? {
+        studentId == 42 ? "Ana Ferrer" : (studentId == 43 ? "Bruno Gil" : "Carmen Ruiz")
+    }
+    func itemId(formInstanceId: String, webItemId: String) -> String? { "item-\(webItemId)" }
+    func alreadyImportedAtEpochMs(submissionId: String) -> Int64? { nil }
+    func recipientPrivateKey(privateKeyRef: String) -> Data? { privateKey }
+}
+
+let targetAnaABruno = publicadoPeer.peerTargets.first(where: { $0.targetStudentId == 43 })!
+let targetAliasBruno = targetAnaABruno.targetAlias
+let evaluatorAliasAna = targetAnaABruno.evaluatorAlias
+
+let resolutorPeer = ResolutorPeer(
+    context: WebFormInstanceContext(
+        formInstanceId: publicadoPeer.formInstanceId,
+        classId: 7,
+        columnId: "col-1",
+        privateKeyRef: "ref",
+        revoked: false,
+        expiresAtEpochMs: 4_000_000_000_000,
+        mode: "peer"
+    ),
+    privateKey: publicadoPeer.recipientPrivateKey
+)
+resolutorPeer.peerTargetsMap["\(evaluatorAliasAna)|\(targetAliasBruno)"] = 43
+
+let cargaUtilV2: [String: Any] = [
+    "schemaVersion": 2,
+    "formInstanceId": publicadoPeer.formInstanceId,
+    "targets": [
+        [
+            "targetAlias": targetAliasBruno,
+            "answers": [
+                ["webItemId": publicadoPeer.itemMap.first(where: { $0.itemType == .check })!.webItemId, "bool": true]
+            ]
+        ]
+    ]
+]
+
+let payloadV2Data = try JSONSerialization.data(withJSONObject: cargaUtilV2)
+let ephemeralPriv = Curve25519.KeyAgreement.PrivateKey()
+let recipientPubRaw = Data(base64URLEncoded: String(publicadoPeer.recipientPublicKey.dropFirst(WebSubmissionCrypto.prefijoX25519.count)))!
+let recipientPub = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: recipientPubRaw)
+let sharedSecret = try ephemeralPriv.sharedSecretFromKeyAgreement(with: recipientPub)
+let symmKey = sharedSecret.hkdfDerivedSymmetricKey(using: SHA256.self, salt: Data(), sharedInfo: Data(WebSubmissionCrypto.hkdfInfo.utf8), outputByteCount: 32)
+let nonce = ChaChaPoly.Nonce()
+let envelopePeerObj = WebSubmissionEnvelope(
+    schemaVersion: 2,
+    submissionId: "sub-peer-1",
+    formInstanceId: publicadoPeer.formInstanceId,
+    participantAlias: evaluatorAliasAna,
+    encryptedPayload: "",
+    ephemeralPublicKey: "",
+    nonce: "",
+    clientSubmittedAt: "2026-09-16T12:00:00Z"
+)
+let aad = WebSubmissionCrypto.additionalData(for: envelopePeerObj)
+let sealedBox = try ChaChaPoly.seal(payloadV2Data, using: symmKey, nonce: nonce, authenticating: aad)
+let encryptedPayloadB64 = (sealedBox.ciphertext + sealedBox.tag).base64URLEncodedString
+
+let envelopePeer: [String: Any] = [
+    "schemaVersion": 2,
+    "submissionId": "sub-peer-1",
+    "formInstanceId": publicadoPeer.formInstanceId,
+    "participantAlias": evaluatorAliasAna,
+    "encryptedPayload": encryptedPayloadB64,
+    "ephemeralPublicKey": ephemeralPriv.publicKey.rawRepresentation.base64URLEncodedString,
+    "nonce": Data(nonce).base64URLEncodedString,
+    "clientSubmittedAt": "2026-09-16T12:00:00Z"
+]
+let envelopePeerData = try JSONSerialization.data(withJSONObject: envelopePeer)
+
+let manifestPeerDecoded = try JSONDecoder().decode(WebFormManifest.self, from: Data(publicadoPeer.manifestJSON.utf8))
+let importServicePeer = WebSubmissionImportService(resolver: resolutorPeer)
+let previewPeer = importServicePeer.preview(files: [(name: "entrega-peer.mgsub", data: envelopePeerData)], manifest: manifestPeerDecoded)
+
+comprobar("previsualización de coevaluación genera 1 borrador para el compañero evaluado", previewPeer.drafts.count == 1)
+comprobar("el borrador está atribuido al alumno evaluado (Bruno Gil)", previewPeer.drafts.first?.studentId == 43)
+comprobar("el borrador está marcado como coevaluación", previewPeer.drafts.first?.isPeerEvaluation == true)
+comprobar("el submissionId del borrador incluye el targetAlias", previewPeer.drafts.first?.submissionId == "sub-peer-1#\(targetAliasBruno)")
 
 // MARK: - Resultado
 

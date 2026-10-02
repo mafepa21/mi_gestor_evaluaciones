@@ -15,6 +15,7 @@ struct SupportMeasureGroupOverviewSheet: View {
     @State private var activeMeasuresByStudent: [Int64: [SupportMeasureRow]] = [:]
     @State private var isLoading = true
     @State private var showAllStudents = false
+    @State private var failedStudentIds: Set<Int64> = []
 
     private var studentsWithMeasures: [Student] {
         roster
@@ -24,7 +25,14 @@ struct SupportMeasureGroupOverviewSheet: View {
 
     private var studentsWithoutMeasures: [Student] {
         roster
-            .filter { activeMeasuresByStudent[$0.id]?.isEmpty ?? true }
+            .filter { student in
+                let rows = activeMeasuresByStudent[student.id]
+                return SupportGroupOverviewReload.includeInWithoutList(
+                    loadFailed: failedStudentIds.contains(student.id),
+                    hadPrevious: rows != nil,
+                    isEmpty: rows?.isEmpty ?? true
+                )
+            }
             .sorted { $0.fullName < $1.fullName }
     }
 
@@ -67,7 +75,9 @@ struct SupportMeasureGroupOverviewSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Medidas de apoyo del grupo")
                     .font(.title2.weight(.bold))
-                Text(className.isEmpty ? "Alumnado con medidas Nivel III/IV activas." : "\(className) · alumnado con medidas Nivel III/IV activas.")
+                Text(failedStudentIds.isEmpty
+                     ? (className.isEmpty ? "Alumnado con medidas Nivel III/IV activas." : "\(className) · alumnado con medidas Nivel III/IV activas.")
+                     : SupportGroupOverviewReload.failure)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -202,20 +212,37 @@ struct SupportMeasureGroupOverviewSheet: View {
         // Lanza una consulta por alumno en paralelo en vez de esperarlas en serie: con un
         // grupo de 30 alumnos, esto son 30 round-trips secuenciales al bridge si se hace uno
         // a uno.
-        let entries: [(Int64, [SupportMeasureRow])] = await withTaskGroup(of: (Int64, [SupportMeasureRow]).self) { group in
+        let entries: [(Int64, [SupportMeasureRow], Bool)] = await withTaskGroup(of: (Int64, [SupportMeasureRow], Bool).self) { group in
             for student in roster {
                 group.addTask {
-                    let snapshots = (try? await bridge.supportMeasures(for: student.id)) ?? []
-                    return (student.id, snapshots.map(\.asRow).filter(\.isActive))
+                    do {
+                        let snapshots = try await bridge.supportMeasures(for: student.id)
+                        return (student.id, snapshots.map(\.asRow).filter(\.isActive), false)
+                    } catch {
+                        return (student.id, [], true)
+                    }
                 }
             }
-            var collected: [(Int64, [SupportMeasureRow])] = []
+            var collected: [(Int64, [SupportMeasureRow], Bool)] = []
             for await entry in group {
                 collected.append(entry)
             }
             return collected
         }
-        activeMeasuresByStudent = Dictionary(uniqueKeysWithValues: entries)
+        var next = activeMeasuresByStudent
+        var failed: Set<Int64> = []
+        for entry in entries {
+            if entry.2 {
+                failed.insert(entry.0)
+            } else {
+                next[entry.0] = entry.1
+            }
+        }
+        activeMeasuresByStudent = next
+        failedStudentIds = failed
+        if !failed.isEmpty {
+            bridge.status = SupportGroupOverviewReload.failure
+        }
         isLoading = false
     }
 }

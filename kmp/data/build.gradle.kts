@@ -34,6 +34,7 @@ kotlin {
                 implementation("app.cash.sqldelight:coroutines-extensions:2.0.2")
                 api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
                 api("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
+                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
             }
         }
         val androidMain by getting {

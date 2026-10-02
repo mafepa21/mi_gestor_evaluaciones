@@ -101,6 +101,42 @@ struct WebSubmissionSnapshot {
     let importedAtBySubmissionId: [String: Int64]
     /// Alumnado del grupo, para asignar a mano.
     let roster: [WebRosterEntry]
+    /// Modo del formulario: "self" o "peer"
+    let mode: String
+    /// (evaluatorAlias, targetAlias) -> targetStudentId para coevaluación
+    let peerTargetStudentIdByEvaluatorTarget: [String: Int64]
+
+    init(
+        formInstanceId: String,
+        classId: Int64,
+        columnId: String,
+        privateKeyRef: String,
+        revoked: Bool,
+        expiresAtEpochMs: Int64,
+        title: String,
+        studentIdByAlias: [String: Int64],
+        itemIdByWebItemId: [String: String],
+        studentNames: [Int64: String],
+        importedAtBySubmissionId: [String: Int64],
+        roster: [WebRosterEntry],
+        mode: String = "self",
+        peerTargetStudentIdByEvaluatorTarget: [String: Int64] = [:]
+    ) {
+        self.formInstanceId = formInstanceId
+        self.classId = classId
+        self.columnId = columnId
+        self.privateKeyRef = privateKeyRef
+        self.revoked = revoked
+        self.expiresAtEpochMs = expiresAtEpochMs
+        self.title = title
+        self.studentIdByAlias = studentIdByAlias
+        self.itemIdByWebItemId = itemIdByWebItemId
+        self.studentNames = studentNames
+        self.importedAtBySubmissionId = importedAtBySubmissionId
+        self.roster = roster
+        self.mode = mode
+        self.peerTargetStudentIdByEvaluatorTarget = peerTargetStudentIdByEvaluatorTarget
+    }
 }
 
 /// Resolutor síncrono sobre un snapshot ya cargado.
@@ -127,12 +163,18 @@ struct WebSubmissionSnapshotResolver: WebSubmissionContextResolver {
             columnId: snapshot.columnId,
             privateKeyRef: snapshot.privateKeyRef,
             revoked: snapshot.revoked,
-            expiresAtEpochMs: snapshot.expiresAtEpochMs
+            expiresAtEpochMs: snapshot.expiresAtEpochMs,
+            mode: snapshot.mode
         )
     }
 
     func studentId(formInstanceId: String, alias: String) -> Int64? {
         snapshot(for: formInstanceId)?.studentIdByAlias[alias]
+    }
+
+    func peerTargetStudentId(formInstanceId: String, evaluatorAlias: String, targetAlias: String) -> Int64? {
+        let clave = "\(evaluatorAlias)|\(targetAlias)"
+        return snapshot(for: formInstanceId)?.peerTargetStudentIdByEvaluatorTarget[clave]
     }
 
     func studentName(studentId: Int64) -> String? {
@@ -221,6 +263,35 @@ struct WebSubmissionTaskInfo: Identifiable, Hashable {
     let expiresAtEpochMs: Int64
     let importedCount: Int
     let lastImportedAtEpochMs: Int64?
+    let mode: String
+
+    init(
+        formInstanceId: String,
+        classId: Int64,
+        groupName: String,
+        title: String,
+        columnTitle: String,
+        status: WebSubmissionTaskStatus,
+        isArchived: Bool,
+        expiresAtEpochMs: Int64,
+        importedCount: Int,
+        lastImportedAtEpochMs: Int64?,
+        mode: String = "self"
+    ) {
+        self.formInstanceId = formInstanceId
+        self.classId = classId
+        self.groupName = groupName
+        self.title = title
+        self.columnTitle = columnTitle
+        self.status = status
+        self.isArchived = isArchived
+        self.expiresAtEpochMs = expiresAtEpochMs
+        self.importedCount = importedCount
+        self.lastImportedAtEpochMs = lastImportedAtEpochMs
+        self.mode = mode
+    }
+
+    var isPeerEvaluation: Bool { mode == "peer" }
 
     var statusLabel: String { status.label }
     var displayTitle: String {

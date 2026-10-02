@@ -99,10 +99,11 @@ enum AppleSpreadsheetReader {
     }
 
     private static func readXLSX(_ url: URL) throws -> [[String]] {
-        guard let firstSheet = try readAllXLSXSheetsInternal(url).first else {
+        let sheets = try readAllXLSXSheetsInternal(url)
+        guard let sheet = sheets.first(where: { !$0.rows.isEmpty }) ?? sheets.first else {
             throw AppleSpreadsheetReaderError.emptyWorkbook
         }
-        return firstSheet.rows
+        return sheet.rows
     }
 
     /// Lee todas las hojas de un `.xlsx`, sin normalizar filas vacías (a diferencia de

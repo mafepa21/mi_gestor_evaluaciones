@@ -418,6 +418,7 @@ struct AddColumnSheet: View {
     @State private var rubricSearchText = ""
     @State private var expandedRubricSectionIds: Set<String> = []
     @State private var compactColumnStep: CompactColumnStep = .type
+    @State private var showColumnDetails = false
     @State private var isSavingColumn = false
     @State private var saveErrorMessage: String? = nil
     @AppStorage("teacher.enabledSubjectProfiles.v1")
@@ -459,7 +460,6 @@ struct AddColumnSheet: View {
 
     private enum CompactColumnStep: Int, CaseIterable, Identifiable {
         case type
-        case configuration
         case identity
 
         var id: Int { rawValue }
@@ -467,8 +467,7 @@ struct AddColumnSheet: View {
         var title: String {
             switch self {
             case .type: return "Tipo"
-            case .configuration: return "Configuración"
-            case .identity: return "Nombre y peso"
+            case .identity: return "Nombre"
             }
         }
     }
@@ -496,7 +495,6 @@ struct AddColumnSheet: View {
                 footerActions
                     .padding(.horizontal, 16)
                     .padding(.vertical, 16)
-                    .background(.ultraThinMaterial)
             }
             .background(sheetBackground)
             .onAppear {
@@ -509,6 +507,7 @@ struct AddColumnSheet: View {
                 refreshSummaryAvailability()
                 syncRubricNameIfNeeded()
                 syncRubricSectionExpansion()
+                showColumnDetails = columnDetailsStartOpen
                 #if os(iOS)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     isNameFocused = true
@@ -524,6 +523,7 @@ struct AddColumnSheet: View {
                 if categoryPlacementMode == .existing, selectedCategoryId == nil {
                     selectedCategoryId = suggestedCategoryId
                 }
+                showColumnDetails = columnDetailsStartOpen
             }
             .appOnChange(of: rubricSearchText) { _ in
                 syncRubricSectionExpansion()
@@ -599,9 +599,9 @@ struct AddColumnSheet: View {
                 .frame(width: min(360, availableWidth * 0.34), alignment: .topLeading)
 
                 VStack(alignment: .leading, spacing: 24) {
-                    NotebookSectionLabel(text: "02 · Configuración")
+                    NotebookSectionLabel(text: "02 · Nombre")
                     columnIdentitySection
-                    configurationSection
+                    columnDetailsDisclosure
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -613,12 +613,10 @@ struct AddColumnSheet: View {
                 switch compactColumnStep {
                 case .type:
                     blueprintSection
-                case .configuration:
-                    configurationSection
                 case .identity:
                     VStack(alignment: .leading, spacing: 24) {
                         columnIdentitySection
-                        configurationSummary
+                        columnDetailsDisclosure
                     }
                 }
             }
@@ -708,7 +706,7 @@ struct AddColumnSheet: View {
                         tint: color(for: blueprint.categoryKind)
                     ) {
                         selectedBlueprintId = blueprint.id
-                        compactColumnStep = .configuration
+                        compactColumnStep = .identity
                     }
                 }
             }
@@ -797,6 +795,22 @@ struct AddColumnSheet: View {
         )
     }
 
+    private var columnDetailsStartOpen: Bool {
+        selectedBlueprint?.type == .rubric
+            || selectedBlueprint?.type == .calculated
+            || selectedBlueprint?.isIndividualSummary == true
+    }
+
+    private var columnDetailsDisclosure: some View {
+        DisclosureGroup(isExpanded: $showColumnDetails) {
+            configurationSection
+                .padding(.top, 8)
+        } label: {
+            Text("Ajustes")
+                .font(.subheadline.weight(.semibold))
+        }
+    }
+
     private var configurationSection: some View {
         NotebookSurface {
             VStack(alignment: .leading, spacing: 16) {
@@ -855,29 +869,6 @@ struct AddColumnSheet: View {
                 Toggle("Columna bloqueada", isOn: $isLocked)
                 Toggle("Guardar como plantilla", isOn: $isTemplate)
 
-            }
-        }
-    }
-
-    private var configurationSummary: some View {
-        NotebookSurface(fill: NotebookStyle.surfaceMuted, padding: 16) {
-            HStack(spacing: 12) {
-                Image(systemName: selectedBlueprint?.icon ?? "square.dashed")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(tintForSelectedBlueprint)
-                    .frame(width: 36, height: 36)
-                    .background(tintForSelectedBlueprint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(selectedBlueprint?.title ?? "Nueva columna")
-                        .font(.subheadline.weight(.bold))
-                    Text("Revisa el nombre, la categoría y el peso antes de crearla.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
             }
         }
     }
@@ -1189,16 +1180,11 @@ struct AddColumnSheet: View {
         .keyboardShortcut(.defaultAction)
         .disabled(!canSave || isSavingColumn)
         #else
-        if compactColumnStep != .identity {
+        if compactColumnStep == .type {
             Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                    compactColumnStep = compactColumnStep == .type ? .configuration : .identity
-                }
+                compactColumnStep = .identity
             } label: {
-                Label(
-                    compactColumnStep == .type ? "Siguiente" : "Nombre y peso",
-                    systemImage: "chevron.right"
-                )
+                Label("Nombre", systemImage: "chevron.right")
             }
             .notebookSheetProminentButtonStyle()
             .disabled(selectedBlueprint == nil)

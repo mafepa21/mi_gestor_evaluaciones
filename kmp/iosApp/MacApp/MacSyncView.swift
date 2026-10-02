@@ -6,17 +6,33 @@ struct MacSyncView: View {
     @ObservedObject var commandCenter: MacCommandCenterCoordinator
     @State private var diagnosticFeedback: String?
     @State private var showsAdvancedDiagnostics = false
+    @State private var showingAdoptionSheet = false
+    @State private var showingStagedAdoptionAlert = false
 
     private var connectionSummary: SyncConnectionSummary {
         SyncConnectionSummary(serviceState: commandCenter.serviceState)
     }
 
+    private var isConnected: Bool {
+        if case .connected = connectionSummary { return true }
+        return false
+    }
+
+    /// Mismo criterio que Sync LAN en iPad: el mensaje publicado por el bridge manda.
+    private var syncHeroSnapshot: SyncLanHeroCopy.Snapshot {
+        SyncLanHeroCopy.snapshot(
+            isPaired: isConnected || bridge.pairedSyncHost != nil,
+            pendingChanges: bridge.syncPendingChanges,
+            statusMessage: bridge.syncStatusMessage
+        )
+    }
+
     private var healthSummary: SyncHealthSummary {
         SyncHealthSummary(
             connection: connectionSummary,
-            pendingChanges: bridge.syncPendingChanges,
             lastSyncAt: bridge.syncLastRunAt,
-            conflictCount: syncConflictCount
+            conflictCount: syncConflictCount,
+            syncHero: syncHeroSnapshot
         )
     }
 
@@ -26,11 +42,13 @@ struct MacSyncView: View {
         }
         switch connectionSummary {
         case .connected:
-            if bridge.syncPendingChanges > 0 {
-                return "Pulsa 'Reintentar sync' para forzar la sincronización de los cambios pendientes, o espera a que el iPad inicie la transferencia."
-            } else {
-                return "La sincronización está activa y al día. No se requiere ninguna acción."
+            if syncHeroSnapshot.kind == .error {
+                return "La sync no quedó al día. Revisa el mensaje de fallo y pulsa 'Reintentar sync'."
             }
+            if syncHeroSnapshot.kind == .pending || bridge.syncPendingChanges > 0 {
+                return "Pulsa 'Reintentar sync' para forzar la sincronización de los cambios pendientes, o espera a que el iPad inicie la transferencia."
+            }
+            return "La sincronización está activa y al día. No se requiere ninguna acción."
         case .ready:
             return "Abre la cámara del iPad y escanea el código QR de la derecha, o introduce el PIN manual para enlazar tu dispositivo."
         case .starting:
@@ -47,6 +65,10 @@ struct MacSyncView: View {
     private var activeError: String? {
         if let feedback = diagnosticFeedback, feedback.contains("Error") {
             return feedback
+        }
+        // El fallo de apply/push ya vive en el hero (SyncLanHeroCopy); no duplicar aquí.
+        if syncHeroSnapshot.kind == .error {
+            return nil
         }
         let status = bridge.syncStatusMessage
         if status.contains("Error") || status.contains("failed") {
@@ -70,6 +92,9 @@ struct MacSyncView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
                     pageHeader
+                    if let divergence = bridge.syncDivergence {
+                        SyncDivergenceBanner(divergence: divergence)
+                    }
                     observabilitySection
                     quickActionsSection
                     if let diagnosticFeedback, !diagnosticFeedback.contains("Error") {
@@ -95,6 +120,21 @@ struct MacSyncView: View {
             .frame(width: 400)
         }
         .background(MacAppStyle.pageBackground)
+        .sheet(isPresented: $showingAdoptionSheet) {
+            SyncAdoptionSheet()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .syncAdoptionStagedOnMac)) { _ in
+            showingStagedAdoptionAlert = true
+        }
+        .alert("Datos de iPad recibidos", isPresented: $showingStagedAdoptionAlert) {
+            Button("Reiniciar ahora", role: .destructive) {
+                commandCenter.stop()
+                MacCommandCenterCoordinator.relaunchApp()
+            }
+            Button("Más tarde", role: .cancel) {}
+        } message: {
+            Text("Se ha recibido la base de datos completa del iPad. Para completar la adopción, este Mac debe reiniciar la app. Se creará una copia de seguridad de los datos actuales automáticamente.")
+        }
     }
 
     private var pageHeader: some View {
@@ -221,6 +261,22 @@ struct MacSyncView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(commandCenter.serviceState.pairingPayload == nil)
+
+                Button {
+                    showingAdoptionSheet = true
+                } label: {
+                    Label("Igualar dispositivos", systemImage: "equal.circle")
+                }
+                .buttonStyle(.bordered)
+                .disabled(bridge.pairedSyncHost == nil && !isConnected)
+
+                Button {
+                    unpairDevice()
+                } label: {
+                    Label("Desvincular", systemImage: "link.badge.slash")
+                }
+                .buttonStyle(.bordered)
+                .disabled(commandCenter.serviceState == .stopped || commandCenter.serviceState == .starting)
             }
         }
     }
@@ -351,6 +407,14 @@ struct MacSyncView: View {
                             Label("Copiar diagnóstico", systemImage: "doc.on.doc")
                         }
                         .buttonStyle(.bordered)
+
+                        Button {
+                            unpairDevice()
+                        } label: {
+                            Label("Restablecer enlace", systemImage: "link.badge.slash")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(commandCenter.serviceState == .stopped || commandCenter.serviceState == .starting)
                     }
                     .padding(.vertical, 12)
                 }
@@ -462,6 +526,14 @@ struct MacSyncView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(payload, forType: .string)
         diagnosticFeedback = "Enlace de emparejamiento copiado."
+    }
+
+    private func unpairDevice() {
+        Task {
+            await bridge.unpairLanSync()
+            commandCenter.unpairDevice()
+            diagnosticFeedback = "Vínculo revocado. Nuevo PIN generado para enlazar."
+        }
     }
 
     private var currentDeviceName: String {
@@ -669,7 +741,12 @@ private struct SyncHealthSummary {
     let visualStateLabel: String
     let isAttentionState: Bool
 
-    init(connection: SyncConnectionSummary, pendingChanges: Int, lastSyncAt: Date?, conflictCount: Int) {
+    init(
+        connection: SyncConnectionSummary,
+        lastSyncAt: Date?,
+        conflictCount: Int,
+        syncHero: SyncLanHeroCopy.Snapshot
+    ) {
         if conflictCount > 0 {
             title = "Conflicto de Sincronización"
             detail = "\(conflictCount) conflicto requiere revisión antes de continuar."
@@ -681,18 +758,29 @@ private struct SyncHealthSummary {
 
         switch connection {
         case .connected:
-            if pendingChanges == 0 {
-                title = "Sincronizado"
+            // Misma lectura que iPad: SyncLanHeroCopy sobre bridge.syncStatusMessage.
+            title = syncHero.title
+            switch syncHero.kind {
+            case .error, .cancelled:
+                detail = syncHero.detail
+                tint = MacAppStyle.dangerTint
+                visualStateLabel = "Rojo"
+                isAttentionState = true
+            case .pending, .syncing:
+                detail = syncHero.detail
+                tint = MacAppStyle.warningTint
+                visualStateLabel = "Ámbar"
+                isAttentionState = true
+            case .synced:
                 detail = "0 cambios pendientes · Última sync \(lastSyncAt.map(Self.relativeTime) ?? "sin registro todavía")"
                 tint = MacAppStyle.successTint
                 visualStateLabel = "Verde"
                 isAttentionState = true
-            } else {
-                title = "Cambios pendientes"
-                detail = "\(pendingChanges) cambios esperan confirmación del iPad."
-                tint = MacAppStyle.warningTint
-                visualStateLabel = "Ámbar"
-                isAttentionState = true
+            case .unpaired:
+                detail = syncHero.detail
+                tint = .secondary
+                visualStateLabel = "Gris"
+                isAttentionState = false
             }
         case .ready:
             title = "iPad no conectado"

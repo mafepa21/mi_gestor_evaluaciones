@@ -9,6 +9,16 @@ struct NotebookRenderCacheKey: Hashable {
     let structuralRevision: Int
 }
 
+struct NotebookDataSignatures {
+    let data: NotebookUiStateData
+    let columns: Int
+    let categories: Int
+    let hiddenColumns: Int
+    let rows: Int
+    let groups: Int
+    let members: Int
+}
+
 final class NotebookGridLayoutModel: ObservableObject {
     private enum Metrics {
         static let fixedZoneHorizontalPadding: CGFloat = 32
@@ -20,10 +30,32 @@ final class NotebookGridLayoutModel: ObservableObject {
 
     @Published private(set) var collapsedCategoryIds: Set<String> = []
     @Published private(set) var columnWidths: [String: CGFloat] = [:]
+    /// Las filas del grid son `Equatable` por firma: sin esta revisión en la firma
+    /// no se redibujarían al cambiar un ancho y quedarían descuadradas con la cabecera.
+    private(set) var columnWidthsRevision = 0
 
     private var storageClassKey = "no-class"
     private var renderCache: NotebookGridRenderModel?
+    private var signaturesCache: NotebookDataSignatures?
     private var rowsCache: NotebookVisibleRowsCache?
+
+    /// Firmas de `data` calculadas una sola vez por instancia de estado Kotlin (inmutable).
+    /// Evita recalcular ordenaciones y hashes de todas las filas en cada `body`.
+    func signatures(for data: NotebookUiStateData) -> NotebookDataSignatures {
+        if let cached = signaturesCache, cached.data === data { return cached }
+        let sheet = data.sheet
+        let computed = NotebookDataSignatures(
+            data: data,
+            columns: Self.version(sheet.columns.map { "\($0.id):\($0.order):\($0.visibility):\($0.isPinned):\($0.categoryId ?? ""):\($0.widthDp)" }),
+            categories: Self.version(sheet.columnCategories.map { "\($0.id):\($0.tabId):\($0.order):\($0.isCollapsed)" }),
+            hiddenColumns: Self.version(sheet.columns.map { "\($0.id):\($0.visibility):\($0.isHidden):\($0.isArchived)" }),
+            rows: Self.rowsVersion(sheet.rows),
+            groups: Self.version(sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
+            members: Self.version(sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" })
+        )
+        signaturesCache = computed
+        return computed
+    }
 
     func configure(classId: Int64?) {
         let nextKey = classId.map(String.init) ?? "no-class"
@@ -69,8 +101,8 @@ final class NotebookGridLayoutModel: ObservableObject {
             renderCacheKey: renderCacheKey,
             viewPreset: viewPreset.rawValue,
             isCompact: isCompact,
-            columnsVersion: Self.version(data.sheet.columns.map { "\($0.id):\($0.order):\($0.visibility):\($0.isPinned):\($0.categoryId ?? ""):\($0.widthDp)" }),
-            categoriesVersion: Self.version(data.sheet.columnCategories.map { "\($0.id):\($0.tabId):\($0.order):\($0.isCollapsed)" }),
+            columnsVersion: signatures(for: data).columns,
+            categoriesVersion: signatures(for: data).categories,
             collapsedCategoriesVersion: Self.version(Array(collapsedCategoryIds)),
             fixedMode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "none"
         )
@@ -88,8 +120,8 @@ final class NotebookGridLayoutModel: ObservableObject {
             activeTabId: activeTabId,
             viewPreset: viewPreset.rawValue,
             isCompact: isCompact,
-            columnsVersion: Self.version(data.sheet.columns.map { "\($0.id):\($0.order):\($0.visibility):\($0.isPinned):\($0.categoryId ?? ""):\($0.widthDp)" }),
-            categoriesVersion: Self.version(data.sheet.columnCategories.map { "\($0.id):\($0.tabId):\($0.order):\($0.isCollapsed)" }),
+            columnsVersion: signatures(for: data).columns,
+            categoriesVersion: signatures(for: data).categories,
             collapsedCategoriesVersion: Self.version(Array(collapsedCategoryIds)),
             fixedMode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "none"
         )
@@ -146,9 +178,9 @@ final class NotebookGridLayoutModel: ObservableObject {
             selectedGroupId: selectedGroupId,
             hiddenColumnsRevision: renderCacheKey?.hiddenColumnsRevision ?? 0,
             structuralRevision: renderCacheKey?.structuralRevision ?? 0,
-            rowsVersion: Self.version(data.sheet.rows.map { "\($0.student.id):\($0.student.firstName):\($0.student.lastName):\($0.weightedAverage ?? -1)" }),
-            groupsVersion: Self.version(data.sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
-            membersVersion: Self.version(data.sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" })
+            rowsVersion: signatures(for: data).rows,
+            groupsVersion: signatures(for: data).groups,
+            membersVersion: signatures(for: data).members
         )
         if let rowsCache, rowsCache.key == key {
             NotebookGridPerformanceDebug.event("visibleRows hit")
@@ -426,7 +458,9 @@ final class NotebookGridLayoutModel: ObservableObject {
 
     func updateColumnWidth(_ column: NotebookColumnDefinition, width: CGFloat) -> CGFloat {
         let clampedWidth = min(Metrics.maximumColumnWidth, max(Metrics.minimumColumnWidth, width))
+        guard columnWidths[column.id] != clampedWidth else { return clampedWidth }
         columnWidths[column.id] = clampedWidth
+        columnWidthsRevision &+= 1
         return clampedWidth
     }
 
@@ -465,6 +499,40 @@ final class NotebookGridLayoutModel: ObservableObject {
         )
     }
 
+    /// Firma barata de las filas: incluye alumno, media y el contenido de celdas y notas,
+    /// de modo que una edición que no cambia la media también invalide la caché.
+    private static func rowsVersion(_ rows: [NotebookRow]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(rows.count)
+        for row in rows {
+            hasher.combine(row.student.id)
+            hasher.combine(row.student.firstName)
+            hasher.combine(row.student.lastName)
+            hasher.combine(row.weightedAverage?.doubleValue)
+            for cell in row.cells {
+                hasher.combine(cell.evaluationId)
+                hasher.combine(cell.value?.doubleValue)
+            }
+            for cell in row.persistedCells {
+                hasher.combine(cell.columnId)
+                hasher.combine(cell.textValue)
+                hasher.combine(cell.boolValue?.boolValue)
+                hasher.combine(cell.ordinalValue)
+                hasher.combine(cell.displayValue)
+                hasher.combine(cell.iconValue)
+                hasher.combine(cell.annotation?.icon)
+                hasher.combine(cell.annotation?.note)
+                hasher.combine(cell.annotation?.attachmentUris.count ?? 0)
+            }
+            for grade in row.persistedGrades {
+                hasher.combine(grade.columnId)
+                hasher.combine(grade.evaluationId)
+                hasher.combine(grade.value?.doubleValue)
+            }
+        }
+        return hasher.finalize()
+    }
+
     private static func version(_ parts: [String]) -> Int {
         parts.sorted().reduce(17) { partial, part in
             partial &* 31 &+ part.hashValue
@@ -480,35 +548,27 @@ final class NotebookGridLayoutModel: ObservableObject {
     ) -> [NotebookTableRow] {
         let rows: [NotebookTableRow]
         if groupByWorkGroupMode != "none" {
-            let activeGroups: [NotebookWorkGroup]
-
-            if groupByWorkGroupMode == "general" {
-                activeGroups = data.sheet.workGroups.filter {
-                    ($0.tabId == activeTabId || activeTabId == nil) && $0.learningSituationId == nil
-                }
-            } else if groupByWorkGroupMode.hasPrefix("situation_"),
-                      let sitId = Int64(groupByWorkGroupMode.dropFirst(10)) {
-                activeGroups = data.sheet.workGroups.filter {
-                    ($0.tabId == activeTabId || activeTabId == nil) && $0.learningSituationId?.int64Value == sitId
-                }
-            } else {
-                activeGroups = data.sheet.workGroups.filter { $0.tabId == activeTabId || activeTabId == nil }
-            }
-
-            let sortedActiveGroups = activeGroups.sorted {
-                if $0.order != $1.order { return $0.order < $1.order }
-                return $0.id < $1.id
-            }
+            let sortedActiveGroups = NotebookWorkGroupPolicy.activeGroups(
+                groups: data.sheet.workGroups,
+                members: data.sheet.workGroupMembers,
+                tabs: data.sheet.tabs,
+                activeTabId: activeTabId,
+                mode: groupByWorkGroupMode
+            )
 
             var resultRows: [NotebookTableRow] = []
             var groupedStudentIds = Set<Int64>()
 
             for group in sortedActiveGroups {
-                let memberIds = Set(data.sheet.workGroupMembers
-                    .filter { $0.groupId == group.id && ($0.tabId == activeTabId || activeTabId == nil) }
-                    .map(\.studentId))
+                let memberIds = NotebookWorkGroupPolicy.memberIds(
+                    group: group,
+                    members: data.sheet.workGroupMembers
+                )
 
-                let groupRows = data.sheet.rows.filter { memberIds.contains($0.student.id) }
+                // Un alumno en varios grupos solo se añade en el primero (evita ids duplicados en ForEach).
+                let groupRows = data.sheet.rows.filter {
+                    memberIds.contains($0.student.id) && !groupedStudentIds.contains($0.student.id)
+                }
                 for row in groupRows {
                     groupedStudentIds.insert(row.student.id)
                     resultRows.append(NotebookTableRow(student: row.student, row: row, groupName: group.name))
@@ -523,13 +583,16 @@ final class NotebookGridLayoutModel: ObservableObject {
             }
             rows = resultRows + sortedUngrouped.map { NotebookTableRow(student: $0.student, row: $0, groupName: "Sin grupo") }
         } else {
+            var firstGroupIdByStudentId: [Int64: Int64] = [:]
+            for member in data.sheet.workGroupMembers where firstGroupIdByStudentId[member.studentId] == nil {
+                firstGroupIdByStudentId[member.studentId] = member.groupId
+            }
+            var groupNameById: [Int64: String] = [:]
+            for group in data.sheet.workGroups where groupNameById[group.id] == nil {
+                groupNameById[group.id] = group.name
+            }
             rows = data.sheet.rows.map { row in
-                let memberGroupId = data.sheet.workGroupMembers.first(where: {
-                    $0.studentId == row.student.id && ($0.tabId == activeTabId || activeTabId == nil)
-                })?.groupId
-                let groupName = memberGroupId.flatMap { groupId in
-                    data.sheet.workGroups.first(where: { $0.id == groupId })?.name
-                } ?? "Sin grupo"
+                let groupName = firstGroupIdByStudentId[row.student.id].flatMap { groupNameById[$0] } ?? "Sin grupo"
                 return NotebookTableRow(student: row.student, row: row, groupName: groupName)
             }
             .sorted {
@@ -539,17 +602,59 @@ final class NotebookGridLayoutModel: ObservableObject {
             }
         }
 
-        return rows.filter { item in
+        // Los grupos activos se calculan una sola vez, no por fila.
+        let activeGroupsForFilter: [NotebookWorkGroup]? = selectedGroupId == nil ? nil : NotebookWorkGroupPolicy.activeGroups(
+            groups: data.sheet.workGroups,
+            members: data.sheet.workGroupMembers,
+            tabs: data.sheet.tabs,
+            activeTabId: activeTabId,
+            mode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "general"
+        )
+        let filteredRows = rows.filter { item in
             let matchesSearch = searchText.isEmpty || "\(item.student.firstName) \(item.student.lastName)".localizedCaseInsensitiveContains(searchText)
-            let matchesGroup = selectedGroupId == nil || groupId(for: item.student.id, activeTabId: activeTabId, data: data) == selectedGroupId
+            let matchesGroup = activeGroupsForFilter.map {
+                NotebookWorkGroupPolicy.groupIdForStudent(
+                    studentId: item.student.id,
+                    members: data.sheet.workGroupMembers,
+                    activeGroups: $0
+                ) == selectedGroupId
+            } ?? true
             return matchesSearch && matchesGroup
         }
+
+        if groupByWorkGroupMode != "none" {
+            var countsByGroup: [String: Int] = [:]
+            for item in filteredRows {
+                countsByGroup[item.groupName, default: 0] += 1
+            }
+            return filteredRows.enumerated().map { index, item in
+                let isFirst = index == 0 || item.groupName != filteredRows[index - 1].groupName
+                return NotebookTableRow(
+                    student: item.student,
+                    row: item.row,
+                    groupName: item.groupName,
+                    isFirstInGroup: isFirst,
+                    groupMemberCount: countsByGroup[item.groupName] ?? 0
+                )
+            }
+        }
+
+        return filteredRows
     }
 
     private func groupId(for studentId: Int64, activeTabId: String?, data: NotebookUiStateData) -> Int64? {
-        data.sheet.workGroupMembers
-            .first(where: { $0.studentId == studentId && (activeTabId == nil || $0.tabId == activeTabId) })?
-            .groupId
+        let active = NotebookWorkGroupPolicy.activeGroups(
+            groups: data.sheet.workGroups,
+            members: data.sheet.workGroupMembers,
+            tabs: data.sheet.tabs,
+            activeTabId: activeTabId,
+            mode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "general"
+        )
+        return NotebookWorkGroupPolicy.groupIdForStudent(
+            studentId: studentId,
+            members: data.sheet.workGroupMembers,
+            activeGroups: active
+        )
     }
 }
 

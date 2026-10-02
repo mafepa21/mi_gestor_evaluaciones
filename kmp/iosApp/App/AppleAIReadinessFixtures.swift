@@ -86,6 +86,56 @@ enum AppleAIReadinessFixtures {
         isAIGenerated: true
     )
 
+    static let rubricDraft = AIRubricDraft(
+        title: "Rúbrica de Debate y Argumentación",
+        targetCourse: "1º Bachillerato",
+        criteria: [
+            AIRubricCriterionDraft(
+                criterionTitle: "Uso de evidencias",
+                description: "Justifica las tesis con datos y fuentes fiables.",
+                weight: 50.0,
+                levels: [
+                    AIRubricLevelDraft(levelIndex: 1, levelName: "Insuficiente", descriptor: "No aporta evidencias o usa opiniones no contrastadas.", scoreSuggestion: 2.5),
+                    AIRubricLevelDraft(levelIndex: 2, levelName: "Suficiente", descriptor: "Aporta alguna evidencia guiada.", scoreSuggestion: 5.5),
+                    AIRubricLevelDraft(levelIndex: 3, levelName: "Notable", descriptor: "Argumenta con evidencias claras y contrastadas.", scoreSuggestion: 7.5),
+                    AIRubricLevelDraft(levelIndex: 4, levelName: "Sobresaliente", descriptor: "Domina el contraargumento y cita fuentes solventes con rigor.", scoreSuggestion: 9.5)
+                ]
+            )
+        ],
+        teacherTips: ["Explicar los niveles previamente."],
+        confidenceNote: "Fixture de contrato pedagógico."
+    )
+
+    static let duaAdaptation = DUAAdaptationDraft(
+        studentContext: "Atención dispersa · Tarea escrita",
+        representationStrategies: ["Instrucciones fraccionadas y modelado visual."],
+        actionAndExpressionStrategies: ["Permitir esquema gráfico en lugar de redacción extensa."],
+        engagementStrategies: ["Fijar objetivos breves de 10 minutos con refuerzo."],
+        evaluationAlternative: "Evaluar comprensión conceptual mediante rúbrica simplificada.",
+        confidenceNote: "Fixture DUA local."
+    )
+
+    static let plannerSequence = PlannerSequenceDraft(
+        unitTitle: "Expresión corporal y ritmo",
+        sessionNumber: 2,
+        sessionFocus: "Coordinación rítmica en parejas",
+        steps: [
+            PlannerSessionStepDraft(phase: "Activación", estimatedMinutes: 10, activityDescription: "Juegos de eco rítmico.", organizationTips: "Gran grupo.", materialNeeds: ["Música"]),
+            PlannerSessionStepDraft(phase: "Desarrollo", estimatedMinutes: 35, activityDescription: "Coreografía guiada.", organizationTips: "Parejas.", materialNeeds: ["Música"]),
+            PlannerSessionStepDraft(phase: "Cierre", estimatedMinutes: 10, activityDescription: "Ticket de salida.", organizationTips: "Individual.", materialNeeds: ["Cuaderno"])
+        ],
+        evaluationStrategy: "Observación directa con rúbrica formativa.",
+        confidenceNote: "Fixture de secuencia didáctica."
+    )
+
+    static let metacognitionPrompts = MetacognitionPromptsDraft(
+        contextTitle: "Proyecto Cooperativo",
+        selfEvaluationPrompts: ["¿Qué he aportado hoy al equipo?", "¿Qué dificultad he superado?"],
+        peerEvaluationPrompts: ["¿Cómo ha ayudado tu compañero a avanzar?"],
+        exitTicketQuestion: "¿Qué concepto nuevo te llevas de esta sesión?",
+        confidenceNote: "Fixture de metacognición."
+    )
+
     static var contractChecks: [String] {
         var checks: [String] = []
         checks.append(earlyWarning.confidence <= 1 ? "confidence.clamped.ok" : "confidence.clamped.failed")
@@ -93,6 +143,10 @@ enum AppleAIReadinessFixtures {
         checks.append(tutorMeetingSummary.actions.count <= 3 ? "tutor.actions.limit.ok" : "tutor.actions.limit.failed")
         checks.append(physicalProgressAnalysis.alerts.count <= 3 ? "physical.alerts.limit.ok" : "physical.alerts.limit.failed")
         checks.append(!weeklyStudentEmail.subject.isEmpty ? "weeklyEmail.subject.ok" : "weeklyEmail.subject.failed")
+        checks.append(!rubricDraft.criteria.isEmpty ? "rubric.criteria.ok" : "rubric.criteria.failed")
+        checks.append(duaAdaptation.representationStrategies.count <= 3 ? "dua.strategies.limit.ok" : "dua.strategies.limit.failed")
+        checks.append(plannerSequence.steps.count == 3 ? "planner.steps.ok" : "planner.steps.failed")
+        checks.append(!metacognitionPrompts.exitTicketQuestion.isEmpty ? "metacognition.exitTicket.ok" : "metacognition.exitTicket.failed")
         return checks
     }
 }

@@ -26,6 +26,7 @@ struct WeeklyStudentEmailWorkspaceView: View {
     @State private var activeDraftStudent: Student? = nil
     
     @State private var emailEditorStudent: Student? = nil
+    @State private var emailSaveError: String?
     @State private var tempEditingEmail: String = ""
 
     private let emailService = AppleFoundationStudentEmailService()
@@ -328,6 +329,11 @@ struct WeeklyStudentEmailWorkspaceView: View {
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
                         #endif
+                    if let emailSaveError {
+                        Text(emailSaveError)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.red)
+                    }
                 }
             }
             .navigationTitle("Añadir Correo")
@@ -341,15 +347,20 @@ struct WeeklyStudentEmailWorkspaceView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Guardar") {
                         Task {
-                            try? await bridge.updateMacStudent(
-                                student: student,
-                                firstName: student.firstName,
-                                lastName: student.lastName,
-                                email: tempEditingEmail,
-                                isInjured: student.isInjured
-                            )
-                            emailEditorStudent = nil
-                            await loadData()
+                            do {
+                                try await bridge.updateMacStudent(
+                                    student: student,
+                                    firstName: student.firstName,
+                                    lastName: student.lastName,
+                                    email: tempEditingEmail,
+                                    isInjured: student.isInjured
+                                )
+                                emailSaveError = nil
+                                emailEditorStudent = nil
+                                await loadData()
+                            } catch {
+                                emailSaveError = "No se pudo guardar el correo. Sigue en esta pantalla."
+                            }
                         }
                     }
                     .disabled(tempEditingEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

@@ -107,10 +107,8 @@ struct BackupStatusHero: View {
         }
         .sheet(isPresented: $showingCreateDialog) {
             CreateBackupSheet(isPresented: $showingCreateDialog, note: $backupNote) {
-                Task {
-                    let finalNote = backupNote.trimmingCharacters(in: .whitespacesAndNewlines)
-                    _ = try? await service.createBackup(note: finalNote.isEmpty ? nil : finalNote)
-                }
+                let finalNote = backupNote.trimmingCharacters(in: .whitespacesAndNewlines)
+                _ = try await service.createBackup(note: finalNote.isEmpty ? nil : finalNote)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: service.operationState)
@@ -128,13 +126,19 @@ extension Date {
 }
 
 // MARK: - CreateBackupSheet
+enum CreateBackupCopy {
+    static let failure = "No se pudo crear la copia. Sigue en esta pantalla."
+}
+
 struct CreateBackupSheet: View {
     @Binding var isPresented: Bool
     @Binding var note: String
-    var onConfirm: () -> Void
+    var onConfirm: () async throws -> Void
     
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isTextFieldFocused: Bool
+    @State private var isSaving = false
+    @State private var errorMessage: String?
     
     var body: some View {
         #if os(macOS)
@@ -149,13 +153,14 @@ struct CreateBackupSheet: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancelar") { isPresented = false }
+                            .disabled(isSaving)
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Crear") {
-                            onConfirm()
-                            isPresented = false
+                        Button(isSaving ? "Creando…" : "Crear") {
+                            confirm()
                         }
                         .fontWeight(.bold)
+                        .disabled(isSaving)
                     }
                 }
         }
@@ -175,6 +180,12 @@ struct CreateBackupSheet: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+            }
+
             TextField("Ej. Antes de importar alumnos de 3º A", text: $note)
                 .textFieldStyle(.roundedBorder)
                 .font(IOSAppStyle.bodyText)
@@ -196,15 +207,31 @@ struct CreateBackupSheet: View {
             HStack {
                 Spacer()
                 Button("Cancelar") { isPresented = false }
-                Button("Crear") {
-                    onConfirm()
-                    isPresented = false
+                    .disabled(isSaving)
+                Button(isSaving ? "Creando…" : "Crear") {
+                    confirm()
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(isSaving)
             }
             #endif
         }
         .padding()
         .background(IOSAppStyle.pageBackground)
+    }
+
+    private func confirm() {
+        guard !isSaving else { return }
+        isSaving = true
+        Task {
+            do {
+                try await onConfirm()
+                errorMessage = nil
+                isPresented = false
+            } catch {
+                errorMessage = CreateBackupCopy.failure
+            }
+            isSaving = false
+        }
     }
 }

@@ -54,26 +54,36 @@ struct NotebookStudentInspector: View {
     @State private var educationalInsightError: String? = nil
     @State private var educationalInsightOrchestrator = AppleAIOrchestrator()
     @State private var showWeeklyEmailSheet = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 inspectorHeader
                 averageSection
-                educationalInsightSection
                 pendingColumnsSection
                 observationsSection
-                rubricSection
-                quickActions
-                detailsSection
-                trendsSection
-                aiSection
-                evidenceEditor
-                auditHistorySection
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 16) {
+                        educationalInsightSection
+                        rubricSection
+                        quickActions
+                        detailsSection
+                        trendsSection
+                        aiSection
+                        evidenceEditor
+                        auditHistorySection
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Text("Más del alumno")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .animation(.easeInOut(duration: 0.2), value: studentId)
             }
             .padding(24)
         }
-        .background(EvaluationBackdrop())
+        .background(appPageBackground(for: colorScheme))
         .task(id: studentId) {
             await loadTrends()
             await refreshEducationalInsight()
@@ -86,55 +96,54 @@ struct NotebookStudentInspector: View {
     }
 
     private var inspectorHeader: some View {
-        NotebookSurface(cornerRadius: 16, fill: NotebookStyle.surface, padding: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "sidebar.right")
-                        .font(.headline)
-                        .foregroundStyle(NotebookStyle.primaryTint)
-                        .frame(width: 36, height: 36)
-                        .background(NotebookStyle.primaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "sidebar.right")
+                    .font(.headline)
+                    .foregroundStyle(NotebookStyle.primaryTint)
+                    .frame(width: 36, height: 36)
+                    .background(NotebookStyle.primaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(studentName)
-                            .font(.title3.weight(.semibold))
-                            .lineLimit(2)
-                        Text(columnTitle)
-                            .font(.subheadline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(studentName)
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(2)
+                    Text(columnTitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+
+                if let onClose = onClose {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
                     }
-
-                    Spacer(minLength: 8)
-
-                    if let onClose = onClose {
-                        Button(action: onClose) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(-4)
-                        .accessibilityLabel("Cerrar inspector")
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    NotebookPill(label: valueText.isEmpty ? "Sin valor" : valueText, systemImage: "number", active: true, tint: NotebookStyle.primaryTint, compact: true)
-                    NotebookPill(label: "Peso \(weightText)", systemImage: "scalemass", active: false, tint: NotebookStyle.primaryTint, compact: true)
-                }
-
-                if let groupComparison {
-                    HStack(spacing: 6) {
-                        Image(systemName: groupComparison.systemImage)
-                            .font(.caption.weight(.bold))
-                        Text(groupComparison.label)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    }
-                    .foregroundStyle(groupComparison.tint)
+                    .buttonStyle(.plain)
+                    .padding(-4)
+                    .accessibilityLabel("Cerrar inspector")
                 }
             }
+
+            HStack(spacing: 8) {
+                NotebookPill(label: valueText.isEmpty ? "Sin valor" : valueText, systemImage: "number", active: true, tint: NotebookStyle.primaryTint, compact: true)
+                NotebookPill(label: "Peso \(weightText)", systemImage: "scalemass", active: false, tint: NotebookStyle.primaryTint, compact: true)
+            }
+
+            if let groupComparison {
+                HStack(spacing: 6) {
+                    Image(systemName: groupComparison.systemImage)
+                        .font(.caption.weight(.bold))
+                    Text(groupComparison.label)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(groupComparison.tint)
+            }
         }
+        .notebookInspectorCard()
     }
 
     private var averageSection: some View {
@@ -151,6 +160,8 @@ struct NotebookStudentInspector: View {
                 tutorMeetingSummary: tutorMeetingSummary,
                 earlyWarning: earlyWarning,
                 metadata: educationalInsightMetadata,
+                studentId: studentId,
+                classId: classId ?? 0,
                 isLoading: isLoadingEducationalInsight,
                 errorMessage: educationalInsightError,
                 onRefresh: {
@@ -635,7 +646,25 @@ struct NotebookStudentInspector: View {
     }
 
     private func refreshEducationalInsight() async {
-        let evidence = studentInsightEvidence.withTrends(trends)
+        let avgVal = studentInsightEvidence.averageScore ?? 6.0
+        let delta = trends?.averageGradeDelta ?? 0.0
+        let attRate = trends?.attendanceRate ?? 95.0
+        let pendingCount = pendingColumns.count
+        let totalCount = max(pendingColumns.count + (studentInsightEvidence.averageExplanation?.includedColumns.count ?? 1), 1)
+        let pendingRatio = Double(pendingCount) / Double(totalCount)
+
+        let vector = StudentFeatureVector(
+            averageGrade: avgVal,
+            gradeDelta: delta,
+            attendanceRate: attRate,
+            evaluableDayAbsenceRatio: attRate < 88.0 ? 0.35 : 0.05,
+            pendingTaskRatio: pendingRatio,
+            rubricVariance: rubricSummaries.isEmpty ? 0.6 : 1.5,
+            incidentCount: Double(studentInsightEvidence.incidentCount)
+        )
+        let mlSignal = CoreMLPatternDetectionService.shared.predict(vector: vector)
+        let evidence = studentInsightEvidence.withTrends(trends).withMLPattern(mlSignal)
+
         isLoadingEducationalInsight = true
         educationalInsightError = nil
         defer { isLoadingEducationalInsight = false }
@@ -652,19 +681,9 @@ struct NotebookStudentInspector: View {
                 educationalInsight = draft
             }
 
-            if let explanation = averageExplanation {
-                let averageGeneration = try await educationalInsightOrchestrator.generateWithTrace(
-                    capability: .averageExplanation,
-                    input: .average(explanation, evidence),
-                    dataSource: "Inspector del Cuaderno",
-                    includedEvidence: evidence.evidenceLines
-                )
-                if case .averageExplanation(let draft) = averageGeneration.result {
-                    averageInsight = draft
-                }
-            } else {
-                averageInsight = nil
-            }
+            // La sección 'Media explicada' ya renderiza visualmente el desglose de pesos y columnas
+            // mediante NotebookAverageCompactSummaryView, por lo que evitamos la llamada redundante a Foundation Models.
+            averageInsight = nil
 
             let tutorGeneration = try await educationalInsightOrchestrator.generateWithTrace(
                 capability: .tutorMeetingSummary,
@@ -874,6 +893,8 @@ private struct NotebookEducationalInsightView: View {
     let tutorMeetingSummary: TutorMeetingSummaryDraft?
     let earlyWarning: EarlyWarning?
     let metadata: AppleAIGenerationMetadata?
+    let studentId: Int64
+    let classId: Int64
     let isLoading: Bool
     let errorMessage: String?
     let onRefresh: () -> Void
@@ -920,6 +941,10 @@ private struct NotebookEducationalInsightView: View {
             }
 
             if let insight {
+                if let mlSignal = insight.mlPatternSignal, mlSignal.isActionableRisk {
+                    NotebookMLPatternCard(signal: mlSignal, studentId: studentId, classId: classId)
+                }
+
                 if let earlyWarning {
                     NotebookEarlyWarningView(warning: earlyWarning)
                 }
@@ -1174,14 +1199,207 @@ private struct NotebookInspectorSection<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        NotebookSurface(cornerRadius: 16, fill: NotebookStyle.surface, padding: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                Label(title, systemImage: systemImage)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .foregroundStyle(.primary)
 
-                content()
-            }
+            content()
         }
+        .notebookInspectorCard()
     }
 }
+
+private extension View {
+    /// Misma tarjeta que `WorkspaceMetricCard` del inspector de Asistencia.
+    func notebookInspectorCard() -> some View {
+        frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct NotebookMLPatternCard: View {
+    let signal: EducationalPatternSignal
+    let studentId: Int64
+    let classId: Int64
+
+    @ObservedObject private var calibration = PedagogicalMLCalibrationService.shared
+
+    private var record: MLCalibrationRecord? {
+        calibration.record(for: studentId, classId: classId, patternType: signal.patternType)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: signal.patternType.systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.purple)
+                    .frame(width: 24, height: 24)
+                    .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(signal.patternType.badgeTitle)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.primary)
+                        Text("Core ML")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.purple)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.purple.opacity(0.12), in: Capsule())
+                    }
+                    Text(String(format: "Confianza matemática: %.0f%%", signal.confidence * 100))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+
+                if let record, record.status != .active {
+                    Text(record.reason?.shortBadge ?? record.status.title)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                }
+            }
+
+            Text(signal.summary)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !signal.keyFactors.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(signal.keyFactors, id: \.self) { factor in
+                        HStack(alignment: .top, spacing: 6) {
+                            Circle()
+                                .fill(Color.purple.opacity(0.8))
+                                .frame(width: 4, height: 4)
+                                .padding(.top, 5)
+                            Text(factor)
+                                .font(.caption2)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            }
+
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "hand.tap.fill")
+                    .font(.caption2)
+                    .foregroundStyle(Color.purple)
+                    .padding(.top, 2)
+                Text(signal.suggestedPreventiveAction)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            .padding(.top, 4)
+
+            Divider()
+
+            HStack {
+                if let record, record.status != .active {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                        Text("Alerta atendida / justificada")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button("Reactivar") {
+                        calibration.reactivateSignal(studentId: studentId, classId: classId, patternType: signal.patternType)
+                    }
+                    .font(.caption2.weight(.bold))
+                    .buttonStyle(.borderless)
+                } else {
+                    Menu {
+                        Section("Resolución docente") {
+                            Button {
+                                calibration.setStatus(
+                                    studentId: studentId,
+                                    classId: classId,
+                                    patternType: signal.patternType,
+                                    status: .addressed,
+                                    reason: .trackingStarted,
+                                    note: "Seguimiento iniciado en tutoría"
+                                )
+                            } label: {
+                                Label("Marcar como atendida (En seguimiento)", systemImage: "checkmark.circle")
+                            }
+
+                            Button {
+                                calibration.setStatus(
+                                    studentId: studentId,
+                                    classId: classId,
+                                    patternType: signal.patternType,
+                                    status: .dismissed,
+                                    reason: .personalCircumstance,
+                                    note: "Circunstancia personal o médica justificada"
+                                )
+                            } label: {
+                                Label("Descartar: Justificado / Médico", systemImage: "cross.case")
+                            }
+
+                            Button {
+                                calibration.setStatus(
+                                    studentId: studentId,
+                                    classId: classId,
+                                    patternType: signal.patternType,
+                                    status: .dismissed,
+                                    reason: .falsePositive,
+                                    note: "Evolución real adecuada (Falso positivo)"
+                                )
+                            } label: {
+                                Label("Descartar: Falso positivo", systemImage: "hand.thumbsup")
+                            }
+
+                            Button {
+                                calibration.setStatus(
+                                    studentId: studentId,
+                                    classId: classId,
+                                    patternType: signal.patternType,
+                                    status: .dismissed,
+                                    reason: .pedagogicalAgreement,
+                                    note: "Acuerdo de trabajo alcanzado"
+                                )
+                            } label: {
+                                Label("Descartar: Acuerdo de trabajo", systemImage: "person.badge.shield.checkmark")
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "slider.horizontal.2.square")
+                                .font(.caption2)
+                            Text("Resolver / Descartar...")
+                                .font(.caption2.weight(.bold))
+                        }
+                        .foregroundStyle(Color.purple)
+                    }
+                    .buttonStyle(.borderless)
+
+                    Spacer()
+                }
+            }
+            .padding(.top, 2)
+        }
+        .padding(12)
+        .background(
+            Color.purple.opacity(0.04)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.purple.opacity(0.18), lineWidth: 1)
+                )
+        )
+        .cornerRadius(12)
+    }
+}
+

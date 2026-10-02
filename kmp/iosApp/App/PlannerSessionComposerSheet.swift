@@ -7,6 +7,7 @@ struct PlannerSessionComposerSheet: View {
 
     @State private var showingSaveTemplateDialog = false
     @State private var newTemplateTitle = ""
+    @State private var showingAIAssistant = false
 
     var body: some View {
         #if os(macOS)
@@ -158,8 +159,17 @@ struct PlannerSessionComposerSheet: View {
                                 .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
 
-                        // FEAT-2: Barra de Plantillas
-                        HStack {
+                        // FEAT-2: Barra de Plantillas y Asistente IA
+                        HStack(spacing: 12) {
+                            Button {
+                                showingAIAssistant = true
+                            } label: {
+                                Label("Asistente didáctico IA", systemImage: "sparkles")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Color.purple)
+                            }
+                            .buttonStyle(.borderless)
+
                             if !vm.sessionTemplates.isEmpty {
                                 Menu {
                                     ForEach(vm.sessionTemplates, id: \.id) { template in
@@ -255,13 +265,31 @@ struct PlannerSessionComposerSheet: View {
             TextField("Nombre de la plantilla", text: $newTemplateTitle)
             Button("Guardar") {
                 Task {
-                    _ = await vm.saveCurrentDraftAsTemplate(title: newTemplateTitle)
-                    newTemplateTitle = ""
+                    if await vm.saveCurrentDraftAsTemplate(title: newTemplateTitle) {
+                        newTemplateTitle = ""
+                    }
                 }
             }
             Button("Cancelar", role: .cancel) { newTemplateTitle = "" }
         } message: {
             Text("Introduce un nombre para reutilizar este contenido en futuras sesiones.")
+        }
+        .sheet(isPresented: $showingAIAssistant) {
+            PlannerSessionAIAssistantSheet(
+                initialTopic: vm.composerDraft.unitTitle.isEmpty ? "Sesión de Educación Física" : vm.composerDraft.unitTitle,
+                onApply: { objectives, activities in
+                    if vm.composerDraft.objectives.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        vm.composerDraft.objectives = objectives
+                    } else {
+                        vm.composerDraft.objectives += "\n\n" + objectives
+                    }
+                    if vm.composerDraft.activities.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        vm.composerDraft.activities = activities
+                    } else {
+                        vm.composerDraft.activities += "\n\n" + activities
+                    }
+                }
+            )
         }
     }
 

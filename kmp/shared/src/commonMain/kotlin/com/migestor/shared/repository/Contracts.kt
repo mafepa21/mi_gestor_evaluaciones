@@ -487,6 +487,13 @@ interface NotebookRepository {
         studentIds: List<Long>,
     )
     @Throws(Throwable::class)
+    suspend fun replaceWorkGroups(
+        classId: Long,
+        tabId: String,
+        groups: List<NotebookWorkGroupBatchItem>,
+        clearExisting: Boolean = false,
+    )
+    @Throws(Throwable::class)
     suspend fun saveCell(
         classId: Long,
         studentId: Long,
@@ -585,6 +592,8 @@ interface PlannerRepository {
     @Throws(Throwable::class)
     suspend fun listAllSessions(): List<PlanningSession> = emptyList()
     @Throws(Throwable::class)
+    suspend fun getSession(id: Long): PlanningSession? = null
+    @Throws(Throwable::class)
     suspend fun listSessionsInRange(groupId: Long? = null, fromDate: LocalDate, toDate: LocalDate): List<PlanningSession> = emptyList()
     @Throws(Throwable::class)
     suspend fun upsertSession(session: PlanningSession): Long
@@ -644,6 +653,8 @@ interface SessionJournalRepository {
     suspend fun getJournalForSession(planningSessionId: Long): SessionJournalAggregate?
     @Throws(Throwable::class)
     suspend fun listSummariesForSessions(planningSessionIds: List<Long>): List<SessionJournalSummary>
+    @Throws(Throwable::class)
+    suspend fun sessionIdsWithMaterial(): Set<Long> = emptySet()
     @Throws(Throwable::class)
     suspend fun saveJournalAggregate(aggregate: SessionJournalAggregate): Long
     @Throws(Throwable::class)
@@ -931,6 +942,8 @@ interface CalendarRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): Long
+    @Throws(Throwable::class)
+    suspend fun deleteEvent(id: Long)
 }
 
 interface ConfigurationTemplateRepository {
@@ -991,15 +1004,21 @@ interface LearningSituationsRepository {
     @Throws(Throwable::class)
     suspend fun listSessionSequenceVersions(learningSituationId: Long): List<LearningSituationSessionSequenceVersion>
     @Throws(Throwable::class)
+    suspend fun listAllSessionSequenceVersions(): List<LearningSituationSessionSequenceVersion>
+    @Throws(Throwable::class)
     suspend fun saveSessionPlan(plan: LearningSituationSessionPlan): Long
     @Throws(Throwable::class)
     suspend fun listSessionPlans(sequenceVersionId: Long): List<LearningSituationSessionPlan>
+    @Throws(Throwable::class)
+    suspend fun listAllSessionPlans(): List<LearningSituationSessionPlan>
     @Throws(Throwable::class)
     suspend fun getSessionPlan(id: Long): LearningSituationSessionPlan?
     @Throws(Throwable::class)
     suspend fun replaceClassLinks(learningSituationId: Long, classIds: List<Long>)
     @Throws(Throwable::class)
     suspend fun listClassLinks(learningSituationId: Long): List<LearningSituationClassLink>
+    @Throws(Throwable::class)
+    suspend fun listAllClassLinks(): List<LearningSituationClassLink>
     @Throws(Throwable::class)
     suspend fun saveLinkedResource(resource: LearningSituationLinkedResource): Long
     @Throws(Throwable::class)

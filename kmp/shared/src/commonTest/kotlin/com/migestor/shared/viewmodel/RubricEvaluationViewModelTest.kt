@@ -264,6 +264,7 @@ open class FakeRubricEvalNotebookRepository : NotebookRepository {
     override suspend fun listWorkGroupMembers(classId: Long, tabId: String?): List<NotebookWorkGroupMember> = emptyList()
     override suspend fun assignStudentsToWorkGroup(classId: Long, tabId: String, groupId: Long, studentIds: List<Long>) = Unit
     override suspend fun clearStudentsFromWorkGroup(classId: Long, tabId: String, studentIds: List<Long>) = Unit
+    override suspend fun replaceWorkGroups(classId: Long, tabId: String, groups: List<NotebookWorkGroupBatchItem>, clearExisting: Boolean) = Unit
     override suspend fun saveCell(classId: Long, studentId: Long, columnId: String, textValue: String?, boolValue: Boolean?, iconValue: String?, ordinalValue: String?, note: String?, colorHex: String?, attachmentUris: List<String>, authorUserId: Long?, associatedGroupId: Long?) = Unit
     override suspend fun getTabNamesForClass(classId: Long): List<String> = emptyList()
     override suspend fun createTab(classId: Long, tabName: String): String = ""

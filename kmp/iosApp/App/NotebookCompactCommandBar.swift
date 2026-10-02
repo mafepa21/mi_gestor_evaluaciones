@@ -12,6 +12,9 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
     let isAttendanceQuickMode: Bool
     let showsAdvancedActions: Bool
     let selectionContext: NotebookToolbarSelectionContext
+    var activeFilterCount: Int = 0
+    var isQuickKeypadPresented: Bool = false
+    var onToggleQuickKeypad: (() -> Void)? = nil
     let onAddColumn: () -> Void
     let onSearch: () -> Void
     let onCopySelection: () -> Void
@@ -69,25 +72,42 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
     }
 
     private var compactBody: some View {
-        HStack(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    contextualActions
+        NotebookCommandGlassContainer {
+            HStack(spacing: 8) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        contextualActions
+                    }
+                    .padding(.vertical, 1)
                 }
-                .padding(.vertical, 1)
+                secondaryMenu
             }
-            secondaryMenu
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.75), value: selectionContext)
     }
 
     private var regularBody: some View {
-        HStack(spacing: 10) {
+        NotebookCommandGlassContainer {
+            regularActions
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: selectionContext)
+    }
+
+    private var regularActions: some View {
+        HStack(spacing: 8) {
             Spacer(minLength: 0)
 
             contextualActions
 
             if showsAdvancedActions {
+                if let onToggleQuickKeypad {
+                    iconButton(
+                        systemImage: isQuickKeypadPresented ? "keyboard.fill" : "keyboard",
+                        label: isQuickKeypadPresented ? "Ocultar teclado rápido" : "Teclado rápido",
+                        action: onToggleQuickKeypad,
+                        isActive: isQuickKeypadPresented
+                    )
+                }
                 iconButton(systemImage: "person.2", label: "Gestionar grupos", action: onOpenGroupManagement)
                 iconButton(systemImage: "rectangle.3.group", label: "Organizar columnas", action: onOpenOrganization)
                 iconButton(
@@ -100,7 +120,6 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
 
             secondaryMenu
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: selectionContext)
     }
 
     @ViewBuilder
@@ -112,16 +131,30 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
             Menu {
                 filters()
             } label: {
-                commandLabel(systemImage: "line.3.horizontal.decrease.circle", label: "Filtros")
+                commandLabel(
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    label: "Filtros",
+                    badgeCount: activeFilterCount
+                )
             }
-            .buttonStyle(NotebookScaleButtonStyle())
+            .menuStyle(.button)
+            .instrumentEvaluationGlassButton()
             .accessibilityLabel("Filtros del cuaderno")
+            .accessibilityValue(activeFilterCount > 0 ? "\(activeFilterCount) activos" : "")
         case .cells:
             textButton(systemImage: "doc.on.doc", label: "Copiar", action: onCopySelection)
             textButton(systemImage: "clipboard", label: "Pegar", action: onPasteSelection)
             textButton(systemImage: "arrow.down.to.line", label: "Rellenar", action: onFillSelection)
             textButton(systemImage: "eraser", label: "Borrar", action: onClearSelection)
             textButton(systemImage: "text.bubble", label: "Comentario", action: onCommentSelection)
+            if let onToggleQuickKeypad {
+                iconButton(
+                    systemImage: isQuickKeypadPresented ? "keyboard.fill" : "keyboard",
+                    label: isQuickKeypadPresented ? "Ocultar teclado rápido" : "Teclado rápido",
+                    action: onToggleQuickKeypad,
+                    isActive: isQuickKeypadPresented
+                )
+            }
             iconButton(
                 systemImage: isVoiceDictationActive ? "mic.fill" : "mic",
                 label: isVoiceDictationActive ? "Escuchando… toca para parar" : "Dictar nota por voz",
@@ -140,13 +173,15 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
     private var secondaryMenu: some View {
         Menu {
             Button(action: onUndo) {
-                Label("Deshacer último cambio", systemImage: "arrow.uturn.backward")
+                Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
             }
             .disabled(!canUndo)
 
             if showsAdvancedActions {
-                Button(action: onOpenGroupManagement) {
-                    Label("Gestionar grupos", systemImage: "person.2")
+                if isCompact {
+                    Button(action: onOpenGroupManagement) {
+                        Label("Gestionar grupos", systemImage: "person.2")
+                    }
                 }
                 Button(action: onToggleAttendanceQuickMode) {
                     Label(
@@ -157,6 +192,14 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
             }
 
             if isCompact {
+                if let onToggleQuickKeypad {
+                    Button(action: onToggleQuickKeypad) {
+                        Label(
+                            isQuickKeypadPresented ? "Ocultar teclado rápido" : "Teclado rápido",
+                            systemImage: isQuickKeypadPresented ? "keyboard.fill" : "keyboard"
+                        )
+                    }
+                }
                 Button(action: onOpenOrganization) {
                     Label("Organizar columnas", systemImage: "rectangle.3.group")
                 }
@@ -170,13 +213,11 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
 
             secondaryActions()
         } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.body.weight(.medium))
-                .frame(width: 34, height: 34)
-                .background(Color.secondary.opacity(0.08), in: Circle())
-                .foregroundStyle(.secondary)
+            Image(systemName: "ellipsis")
+                .font(.body.weight(.semibold))
         }
-        .buttonStyle(NotebookScaleButtonStyle())
+        .menuStyle(.button)
+        .instrumentEvaluationGlassButton()
         .accessibilityLabel("Más acciones del cuaderno")
     }
 
@@ -184,20 +225,14 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
         systemImage: String,
         label: String,
         action: @escaping () -> Void,
-        isProminent: Bool = false,
         isActive: Bool = false
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.body.weight(isProminent ? .bold : .medium))
-                .frame(width: 34, height: 34)
-                .background(
-                    (isProminent ? IOSAppStyle.info : (isActive ? NotebookStyle.primaryTint : Color.secondary)).opacity(isProminent ? 1 : 0.10),
-                    in: Circle()
-                )
-                .foregroundStyle(isProminent ? .white : (isActive ? NotebookStyle.primaryTint : .secondary))
+                .font(.body.weight(.medium))
+                .foregroundStyle(isActive ? NotebookStyle.primaryTint : .secondary)
         }
-        .buttonStyle(NotebookScaleButtonStyle())
+        .instrumentEvaluationGlassButton()
         .help(label)
         .accessibilityLabel(label)
     }
@@ -209,33 +244,87 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
         isProminent: Bool = false
     ) -> some View {
         Button(action: action) {
-            commandLabel(systemImage: systemImage, label: label, isProminent: isProminent)
+            commandLabel(systemImage: systemImage, label: label)
         }
-        .buttonStyle(NotebookScaleButtonStyle())
+        .instrumentEvaluationGlassButton(isProminent: isProminent)
         .help(label)
         .accessibilityLabel(label)
     }
 
-    private func commandLabel(systemImage: String, label: String, isProminent: Bool = false) -> some View {
+    private func commandLabel(systemImage: String, label: String, badgeCount: Int = 0) -> some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
                 .font(.system(size: 13, weight: .bold))
             Text(label)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .lineLimit(1)
+            if badgeCount > 0 {
+                Text("\(badgeCount)")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .frame(minWidth: 16, minHeight: 16)
+                    .padding(.horizontal, 4)
+                    .background(NotebookStyle.primaryTint, in: Capsule(style: .continuous))
+                    .accessibilityHidden(true)
+            }
         }
-        .foregroundStyle(isProminent ? .white : .primary)
-        .frame(height: 34)
-        .padding(.horizontal, 12)
-        .background(
-            Capsule(style: .continuous)
-                .fill(isProminent ? IOSAppStyle.info : Color.secondary.opacity(0.08))
-        )
+    }
+}
+
+/// Agrupa los botones de cristal de la barra para que se fundan entre sí
+/// (iOS 26); en versiones anteriores no aporta nada y se omite.
+private struct NotebookCommandGlassContainer<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            GlassEffectContainer(spacing: 8) {
+                content
+            }
+        } else {
+            content
+        }
+    }
+}
+
+struct NotebookSavePulse: View {
+    let isDirty: Bool
+    let isSaving: Bool
+    let isFailed: Bool
+    let isSaved: Bool
+    @State private var flashGreen = false
+
+    private var showsAmber: Bool { isDirty || isSaving }
+
+    var body: some View {
+        Circle()
+            .fill(dotColor)
+            .frame(width: 8, height: 8)
+            .animation(.easeInOut(duration: 0.2), value: flashGreen)
+            .animation(.easeInOut(duration: 0.2), value: showsAmber)
+            .animation(.easeInOut(duration: 0.2), value: isFailed)
+            .appOnChange(of: isDirty) { dirty in
+                guard !dirty, !isFailed, isSaved else { return }
+                flashGreen = true
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    flashGreen = false
+                }
+            }
+            .accessibilityHidden(true)
+    }
+
+    private var dotColor: Color {
+        if isFailed { return .red }
+        if showsAmber { return .orange }
+        if flashGreen { return .green }
+        return Color.secondary.opacity(0.35)
     }
 }
 
 // MARK: - NotebookScaleButtonStyle
-private struct NotebookScaleButtonStyle: ButtonStyle {
+struct NotebookScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)

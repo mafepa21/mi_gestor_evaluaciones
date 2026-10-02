@@ -16,8 +16,10 @@ struct RubricsWorkspaceView: View {
     @State var selectedRubricId: Int64?
     @State var usageSummary: KmpBridge.RubricUsageSnapshot?
     @State var teachingUnits: [TeachingUnit] = []
+    @State var loadedTeachingUnitsClassId: Int64?
     @State var expandedGroupKeys: Set<String> = []
     @State var expandedCriterionIds: Set<Int64> = []
+    @State var showingTemplateCatalog: Bool = false
 
     var availableFilters: [String] {
         ["Todas", "Vinculadas", "Sin vincular", "Con evaluaciones activas", "Sin uso"]
@@ -135,10 +137,17 @@ struct RubricsWorkspaceView: View {
                     }
 
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 16) {
+                        HStack(spacing: 12) {
                             rubricFilterControls
 
                             Spacer()
+
+                            Button {
+                                showingTemplateCatalog = true
+                            } label: {
+                                Label("Catálogo", systemImage: "square.grid.2x2")
+                            }
+                            .buttonStyle(.bordered)
 
                             Button {
                                 onOpenBuilder()
@@ -151,12 +160,21 @@ struct RubricsWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             rubricFilterControls
 
-                            Button {
-                                onOpenBuilder()
-                            } label: {
-                                Label("Nueva rúbrica", systemImage: "plus")
+                            HStack(spacing: 12) {
+                                Button {
+                                    showingTemplateCatalog = true
+                                } label: {
+                                    Label("Catálogo", systemImage: "square.grid.2x2")
+                                }
+                                .buttonStyle(.bordered)
+
+                                Button {
+                                    onOpenBuilder()
+                                } label: {
+                                    Label("Nueva rúbrica", systemImage: "plus")
+                                }
+                                .buttonStyle(.borderedProminent)
                             }
-                            .buttonStyle(.borderedProminent)
                         }
                     }
                 }
@@ -293,6 +311,12 @@ struct RubricsWorkspaceView: View {
                                 onOpenBuilder()
                             }
                             .buttonStyle(.borderedProminent)
+
+                            Button("Catálogo de plantillas") {
+                                showingTemplateCatalog = true
+                            }
+                            .buttonStyle(.bordered)
+
                             Button("Ver uso evaluativo") {
                                 onOpenModule(.evaluationHub, selectedClassId, nil)
                             }
@@ -345,6 +369,24 @@ struct RubricsWorkspaceView: View {
         }
         .appOnChange(of: selectedRubricId) { _ in
             Task { await reloadUsageSummary() }
+        }
+        .sheet(isPresented: $showingTemplateCatalog) {
+            RubricTemplateCatalogSheet(targetClassId: selectedClassId) { importedId in
+                selectedRubricId = importedId
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { bridge.rubricsUiState?.assignDialogState != nil },
+                set: { visible in
+                    if !visible {
+                        bridge.dismissAssignRubricDialog()
+                    }
+                }
+            )
+        ) {
+            AssignRubricToTabView()
+                .environmentObject(bridge)
         }
     }
 
@@ -537,7 +579,17 @@ struct RubricsWorkspaceView: View {
 
     @MainActor
     func reloadTeachingUnits() async {
-        teachingUnits = (try? await bridge.plannerTeachingUnits(for: selectedClassId)) ?? []
+        let requestedId = selectedClassId
+        let sameClass = loadedTeachingUnitsClassId == requestedId
+        let loaded = try? await bridge.plannerTeachingUnits(for: requestedId)
+        guard selectedClassId == requestedId else { return }
+        if loaded == nil {
+            bridge.status = TeachingUnitReload.failureMessage
+        }
+        teachingUnits = ProfileReloadKeep.list(loaded: loaded, previous: teachingUnits, samePerson: sameClass)
+        if loaded != nil {
+            loadedTeachingUnitsClassId = requestedId
+        }
     }
 
     @MainActor
@@ -668,6 +720,7 @@ struct ReportsWorkspaceView: View {
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
 
+    @State var loadedEvaluationsClassId: Int64?
     @State var activeSurface: WorkspaceSurface = .reports
     @State var preview: KmpBridge.ReportPreviewPayload?
     @State var reportContext: KmpBridge.ReportGenerationContext?
@@ -1421,7 +1474,21 @@ struct ReportsWorkspaceView: View {
         guard let selectedClassId else { return }
         refreshAvailability()
         bridge.selectClass(id: selectedClassId)
-        bridge.evaluationsInClass = (try? await bridge.evaluations(for: selectedClassId)) ?? []
+        let requestedId = selectedClassId
+        let sameClass = loadedEvaluationsClassId == requestedId
+        let loaded = try? await bridge.evaluations(for: requestedId)
+        guard self.selectedClassId == requestedId else { return }
+        if loaded == nil {
+            bridge.status = EvaluationHubView.reloadFailureMessage
+        }
+        bridge.evaluationsInClass = ProfileReloadKeep.list(
+            loaded: loaded,
+            previous: bridge.evaluationsInClass,
+            samePerson: sameClass
+        )
+        if loaded != nil {
+            loadedEvaluationsClassId = requestedId
+        }
         await bridge.selectStudentsClass(classId: selectedClassId)
         await reloadPreview()
         await reloadAnalyticsDashboards()

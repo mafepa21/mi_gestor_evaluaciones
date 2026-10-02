@@ -98,15 +98,29 @@ extension NotebookModuleView {
         data: NotebookUiStateData
     ) -> NotebookFormulaCellDisplay? {
         guard column.type == .calculated else { return nil }
+        let studentId = item.student.id
+        let numericByColumnId = persistedNumericTextByColumnId(for: item)
+        let gradeDrafts = bridge.optimisticGradeDrafts
         return NotebookFormulaDisplay.display(
             formula: column.formula,
             item: item,
             data: data,
-            numericText: { studentId, columnId in
-                bridge.numericGradeText(studentId: studentId, columnId: columnId)
+            numericText: { sourceStudentId, columnId in
+                guard sourceStudentId == studentId else { return "" }
+                if !gradeDrafts.isEmpty,
+                   let draft = gradeDrafts["\(sourceStudentId)|\(columnId)"] {
+                    return draft
+                }
+                return numericByColumnId[columnId] ?? ""
             },
-            rubricText: { studentId, column in
-                bridge.rubricGradeText(studentId: studentId, column: column)
+            rubricText: { sourceStudentId, sourceColumn in
+                guard sourceStudentId == studentId else { return "" }
+                return persistedRubricRawText(
+                    for: item,
+                    column: sourceColumn,
+                    gradeDrafts: gradeDrafts,
+                    numericByColumnId: numericByColumnId
+                )
             }
         )
     }
@@ -145,10 +159,11 @@ extension NotebookModuleView {
 
     func columnAverageText(for column: NotebookColumnDefinition, rows: [NotebookTableRow]) -> String? {
         guard column.type == .numeric || column.type == .rubric else { return nil }
+        let gradeDrafts = bridge.optimisticGradeDrafts
         let values = rows.compactMap { item -> Double? in
             let raw = column.type == .rubric
-                ? bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
-                : bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+                ? notebookGradeOnTen(persistedRubricRawText(for: item, column: column, gradeDrafts: gradeDrafts))
+                : persistedRawNumericText(for: item, columnId: column.id, gradeDrafts: gradeDrafts)
             return NotebookFormulaDisplay.parseNumber(raw)
         }
         guard !values.isEmpty else { return nil }
@@ -262,9 +277,12 @@ extension NotebookModuleView {
         item.row.averageExplanation?.pendingCells.count ?? 0
     }
 
-    /// La Media como "héroe" del rediseño radical del grid: nota grande
-    /// coloreada por banda (mismo toggle `semanticGradeColorEnabled` que las
-    /// celdas), medidor de completitud y estado — no un badge menudo con icono.
+    /// Media: anillo de progreso (columnas evaluadas / evaluables, el mismo
+    /// recuento de pendientes que ya calcula la app) + número protagonista.
+    /// Nada de naranja por pendientes: el color del número solo sigue a la nota
+    /// (rojo oscuro accesible por debajo de 5; bandas completas si el menú
+    /// "color semántico" está activo). Sin `GeometryReader`: el anillo es un
+    /// `Circle().trim` de tamaño fijo.
     func averageBadge(for item: NotebookTableRow) -> some View {
         let state = averageState(for: item)
         let pendingCount = averagePendingCount(for: item)
@@ -272,70 +290,62 @@ extension NotebookModuleView {
         let completedFraction: Double = totalCount > 0
             ? Double(totalCount - pendingCount) / Double(totalCount)
             : (state == .complete ? 1 : 0)
+        let average = item.row.weightedAverage?.doubleValue
+        let band = average.map { NotebookGradeBand(scoreOutOfTen: $0) }
 
-        let band: NotebookGradeBand? = {
-            guard semanticGradeColorEnabled, let average = item.row.weightedAverage?.doubleValue else { return nil }
-            return NotebookGradeBand(scoreOutOfTen: average)
+        let numberColor: Color = {
+            guard let band else { return .primary }
+            if band == .low { return NotebookGridStyle.gradeLowText }
+            return semanticGradeColorEnabled ? band.color : .primary
         }()
 
-        let tint: Color = {
-            if let band { return band.color }
-            switch state {
-            case .complete: return NotebookStyle.successTint
-            case .pending: return NotebookStyle.warningTint
-            case .insufficient: return .secondary
-            }
-        }()
+        let averageDescription = average == nil ? "sin datos" : averageText(for: item)
+        let pendingDescription = pendingCount == 0
+            ? ""
+            : (pendingCount == 1 ? ", 1 columna pendiente" : ", \(pendingCount) columnas pendientes")
 
-        let statusText: String = {
-            switch state {
-            case .complete: return "Completa"
-            case .pending: return pendingCount == 1 ? "1 pendiente" : "\(pendingCount) pendientes"
-            case .insufficient: return "Sin datos"
-            }
-        }()
-
-        // Sin fill/borde propio: la columna Media ya se distingue como panel fijo
-        // con fondo sólido (`NotebookDataGrid.fixedColumnBackground`); el valor se
-        // destaca por tipografía y tinte semántico, no por otra caja encima.
-        //
-        // El número es el dato más importante de la columna: debe dominar sobre
-        // el medidor y el estado, no competir con ellos. El `ProgressView` nativo
-        // reservaba una altura variable por plataforma que, sumada al resto,
-        // desbordaba la altura de fila (`notebookGridRowHeight`, 50pt en macOS) y
-        // se veía como texto solapado con la fila de abajo; el medidor pasa a una
-        // cápsula propia de 3pt de alto, exacta, para que las tres líneas quepan
-        // siempre dentro de la fila.
-        return VStack(alignment: .leading, spacing: 3) {
-            Text(averageText(for: item))
-                .font(.system(size: 19, weight: .heavy, design: .rounded))
-                .foregroundStyle(state == .insufficient ? .secondary : tint)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-
-            Capsule()
-                .fill(NotebookGridStyle.gridLineStrong)
-                .frame(maxWidth: .infinity)
-                .frame(height: 3)
-                .overlay(alignment: .leading) {
-                    GeometryReader { proxy in
-                        Capsule()
-                            .fill(tint)
-                            .frame(width: max(3, proxy.size.width * completedFraction))
-                    }
+        return HStack(spacing: NotebookGridStyle.Space.s) {
+            if average != nil {
+                ZStack {
+                    Circle()
+                        .stroke(NotebookGridStyle.gridLine, lineWidth: 3)
+                    Circle()
+                        .trim(from: 0, to: max(0.02, min(1, completedFraction)))
+                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(uiFeatureFlags.animation(.snappy(duration: 0.3)), value: completedFraction)
                 }
+                .frame(width: 22, height: 22)
+            }
 
-            Text(statusText)
-                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(tint)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            VStack(alignment: .leading, spacing: 0) {
+                if average != nil {
+                    NotebookAnimatedGradeText(
+                        text: averageText(for: item),
+                        value: average ?? 0,
+                        font: .system(size: 17, weight: .bold, design: .rounded),
+                        style: AnyShapeStyle(numberColor)
+                    )
+                    if pendingCount > 0 {
+                        Text("\(pendingCount) pend.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text("Sin datos")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, NotebookGridStyle.Space.s)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .clipped()
         .help(averageHelpText(for: state))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Media, \(averageDescription)\(pendingDescription)")
     }
 
     func averageHelpText(for state: AverageCellState) -> String {
@@ -376,19 +386,193 @@ extension NotebookModuleView {
     }
 
     func uncachedDisplayValue(for item: NotebookTableRow, column: NotebookColumnDefinition) -> String {
+        let gradeDrafts = bridge.optimisticGradeDrafts
         if column.inputKind.isStructuredInstrument {
-            return bridge.structuredCellDisplayText(studentId: item.student.id, columnId: column.id)
+            if column.type == .numeric {
+                let grade = persistedNumericDisplay(for: item, column: column, gradeDrafts: gradeDrafts)
+                if !grade.isEmpty {
+                    return grade
+                }
+            }
+            return persistedStructuredText(for: item, column: column)
         }
         switch column.type {
         case .numeric, .calculated:
-            return bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+            return persistedNumericDisplay(for: item, column: column, gradeDrafts: gradeDrafts)
         case .rubric:
-            return bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
+            return notebookGradeOnTen(persistedRubricRawText(for: item, column: column, gradeDrafts: gradeDrafts))
         case .check:
-            return bridge.cellCheck(studentId: item.student.id, columnId: column.id) ? "Sí" : ""
+            return persistedCheckValue(for: item, columnId: column.id) ? "Sí" : ""
         default:
-            return bridge.cellText(studentId: item.student.id, columnId: column.id)
+            return persistedCellText(for: item, column: column)
         }
+    }
+
+    func persistedNumericTextByColumnId(for item: NotebookTableRow) -> [String: String] {
+        var numericByColumnId: [String: String] = [:]
+        numericByColumnId.reserveCapacity(item.row.persistedGrades.count + item.row.cells.count)
+        for grade in item.row.persistedGrades {
+            guard let value = grade.value else { continue }
+            let formatted = IosFormatting.decimal(from: value.doubleValue)
+            numericByColumnId[grade.columnId] = formatted
+            if let evalId = grade.evaluationId?.int64Value {
+                numericByColumnId["eval_\(evalId)"] = formatted
+            }
+        }
+        for cell in item.row.cells {
+            guard let value = cell.value else { continue }
+            let key = "eval_\(cell.evaluationId)"
+            if numericByColumnId[key] == nil {
+                numericByColumnId[key] = IosFormatting.decimal(from: value.doubleValue)
+            }
+        }
+        return numericByColumnId
+    }
+
+    func persistedRawNumericText(
+        for item: NotebookTableRow,
+        columnId: String,
+        gradeDrafts: [String: String]? = nil
+    ) -> String {
+        let drafts = gradeDrafts ?? bridge.optimisticGradeDrafts
+        if !drafts.isEmpty, let draft = drafts["\(item.student.id)|\(columnId)"] {
+            return draft
+        }
+        let lookup = item.lookup
+        if let grade = lookup.gradesByColumnId[columnId]?.value {
+            return IosFormatting.decimal(from: grade.doubleValue)
+        }
+        guard columnId.hasPrefix("eval_"),
+              let evalId = Int64(columnId.dropFirst(5)) else { return "" }
+        if columnId == "eval_\(evalId)",
+           let grade = lookup.gradesByEvaluationId[evalId]?.value {
+            return IosFormatting.decimal(from: grade.doubleValue)
+        }
+        guard let cellValue = lookup.cellsByEvaluationId[evalId]?.value else {
+            return ""
+        }
+        return IosFormatting.decimal(from: cellValue.doubleValue)
+    }
+
+    func persistedRubricRawText(
+        for item: NotebookTableRow,
+        column: NotebookColumnDefinition,
+        gradeDrafts: [String: String]? = nil,
+        numericByColumnId: [String: String]? = nil
+    ) -> String {
+        let drafts = gradeDrafts ?? bridge.optimisticGradeDrafts
+        if !drafts.isEmpty, let draft = drafts["\(item.student.id)|\(column.id)"], !draft.isEmpty {
+            return draft
+        }
+        if let evaluationId = column.evaluationId?.int64Value,
+           !drafts.isEmpty,
+           let draft = drafts["\(item.student.id)|eval_\(evaluationId)"],
+           !draft.isEmpty {
+            return draft
+        }
+        if let numericByColumnId {
+            if let direct = numericByColumnId[column.id], !direct.isEmpty {
+                return direct
+            }
+            if let evaluationId = column.evaluationId?.int64Value,
+               let byEval = numericByColumnId["eval_\(evaluationId)"],
+               !byEval.isEmpty {
+                return byEval
+            }
+            return ""
+        }
+        let lookup = item.lookup
+        if let grade = lookup.gradesByColumnId[column.id]?.value {
+            return IosFormatting.decimal(from: grade.doubleValue)
+        }
+        if let evaluationId = column.evaluationId?.int64Value,
+           let grade = lookup.gradesByEvaluationId[evaluationId]?.value {
+            return IosFormatting.decimal(from: grade.doubleValue)
+        }
+        if let evaluationId = column.evaluationId?.int64Value,
+           let cellValue = lookup.cellsByEvaluationId[evaluationId]?.value {
+            return IosFormatting.decimal(from: cellValue.doubleValue)
+        }
+        return ""
+    }
+
+    func persistedNumericDisplay(
+        for item: NotebookTableRow,
+        column: NotebookColumnDefinition,
+        gradeDrafts: [String: String]? = nil
+    ) -> String {
+        let raw = persistedRawNumericText(for: item, columnId: column.id, gradeDrafts: gradeDrafts)
+        guard column.inputKind == .time else { return raw }
+        return notebookTimeText(from: raw)
+    }
+
+    func persistedStructuredText(for item: NotebookTableRow, column: NotebookColumnDefinition) -> String {
+        if let override = optimisticTextOverride(studentId: item.student.id, columnId: column.id) {
+            return override
+        }
+        let cell = item.lookup.cellsByColumnId[column.id]
+        if let display = cell?.displayValue, !display.isEmpty {
+            return notebookSanitizePersistedCellText(display, columnType: column.type)
+        }
+        return persistedCellText(for: item, column: column, skipOptimistic: true)
+    }
+
+    func persistedCellText(
+        for item: NotebookTableRow,
+        column: NotebookColumnDefinition,
+        skipOptimistic: Bool = false
+    ) -> String {
+        if !skipOptimistic, let override = optimisticTextOverride(studentId: item.student.id, columnId: column.id) {
+            return override
+        }
+        let cell = item.lookup.cellsByColumnId[column.id]
+        if column.type == .icon {
+            return cell?.iconValue ?? ""
+        }
+        if let text = cell?.textValue, !text.isEmpty {
+            return notebookSanitizePersistedCellText(text, columnType: column.type)
+        }
+        if let ordinal = cell?.ordinalValue, !ordinal.isEmpty {
+            return ordinal
+        }
+        return ""
+    }
+
+    func persistedCheckValue(for item: NotebookTableRow, columnId: String) -> Bool {
+        if let override = optimisticTextOverride(studentId: item.student.id, columnId: columnId) {
+            if let value = Bool(override) {
+                return value
+            }
+            if override == "1" { return true }
+            if override == "0" { return false }
+        }
+        return item.lookup.cellsByColumnId[columnId]?.boolValue?.boolValue ?? false
+    }
+
+    func persistedAnnotation(
+        for item: NotebookTableRow,
+        columnId: String
+    ) -> (note: String?, icon: String?, attachmentCount: Int) {
+        let cell = item.lookup.cellsByColumnId[columnId]
+        let annotations = bridge.optimisticAnnotations
+        if !annotations.isEmpty, let optimistic = annotations["\(item.student.id)|\(columnId)"] {
+            return (
+                note: optimistic.note,
+                icon: optimistic.icon,
+                attachmentCount: optimistic.attachmentUris.count
+            )
+        }
+        return (
+            note: cell?.annotation?.note,
+            icon: cell?.annotation?.icon ?? cell?.iconValue,
+            attachmentCount: cell?.annotation?.attachmentUris.count ?? 0
+        )
+    }
+
+    private func optimisticTextOverride(studentId: Int64, columnId: String) -> String? {
+        let drafts = bridge.optimisticTextDrafts
+        guard !drafts.isEmpty else { return nil }
+        return drafts["\(studentId)|\(columnId)"]
     }
 
     func evidenceLabel(for persistedCell: PersistedNotebookCell?) -> String {
@@ -405,4 +589,39 @@ extension NotebookModuleView {
         return date.formatted(date: .abbreviated, time: .omitted)
     }
 
+}
+
+func notebookGradeOnTen(_ rawValue: String) -> String {
+    let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return "" }
+    let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
+    guard let numeric = Double(normalized) else { return trimmed }
+    return IosFormatting.scoreOutOfTen(from: numeric)
+}
+
+func notebookTimeText(from raw: String) -> String {
+    guard let seconds = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")) else {
+        return raw
+    }
+    let centiseconds = max(0, Int((seconds * 100.0).rounded()))
+    let minutes = centiseconds / 6000
+    let remainingSeconds = (centiseconds / 100) % 60
+    let fraction = centiseconds % 100
+    return String(format: "%02d:%02d,%02d", minutes, remainingSeconds, fraction)
+}
+
+func notebookSanitizePersistedCellText(_ text: String, columnType: NotebookColumnType?) -> String {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard columnType != .icon else { return trimmed }
+    if NotebookCellStampCatalog.item(for: trimmed) != nil || trimmed.hasSuffix(".fill") {
+        return ""
+    }
+    for stamp in NotebookCellStampCatalog.allStamps {
+        if trimmed.contains(stamp.symbol) {
+            return trimmed
+                .replacingOccurrences(of: stamp.symbol, with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+    return trimmed
 }

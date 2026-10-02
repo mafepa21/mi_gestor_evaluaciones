@@ -58,6 +58,8 @@ import kotlinx.datetime.Clock
 import com.migestor.data.repository.NotebookConfigRepositorySqlDelight
 import com.migestor.shared.repository.*
 import com.migestor.shared.usecase.*
+import com.migestor.shared.sync.SyncStoreAdapter
+import com.migestor.data.sync.SqlDelightSyncAdapter
 
 class KmpContainer(val driver: SqlDriver) {
     val database = AppDatabase(driver)
@@ -100,6 +102,7 @@ class KmpContainer(val driver: SqlDriver) {
     val plannedSessionRepository: PlannedSessionRepository = PlannedSessionRepositorySqlDelight(database)
     val learningSituationsRepository: LearningSituationsRepository = LearningSituationsRepositorySqlDelight(database)
     val syncTombstoneRepository = SyncTombstoneRepositorySqlDelight(database)
+    val syncStoreAdapter: SyncStoreAdapter by lazy { SqlDelightSyncAdapter(this) }
     val aiTrendsRepository: AITrendsRepository = AITrendsRepositorySqlDelight(database)
     val teacherScheduleRepository: TeacherScheduleRepository = TeacherScheduleRepositorySqlDelight(
         db = database,
@@ -140,7 +143,7 @@ class KmpContainer(val driver: SqlDriver) {
     val listStudentSupportMeasures = ListStudentSupportMeasuresUseCase(studentSupportMeasureRepository)
     val listActiveSupportMeasureStudentIds = ListActiveSupportMeasureStudentIdsUseCase(studentSupportMeasureRepository)
     val saveWeeklyTemplate = SaveWeeklyTemplateUseCase(weeklyTemplateRepository)
-    val generateSessionsFromUD = GenerateSessionsFromUDUseCase(weeklyTemplateRepository, plannedSessionRepository)
+    val generateSessionsFromUD = GenerateSessionsFromUDUseCase(weeklyTemplateRepository, plannerRepository)
     val deleteStudent = DeleteStudentUseCase(studentsRepository, classesRepository)
     val getNotebook = GetNotebookUseCase(
         classesRepository = classesRepository,
@@ -192,6 +195,23 @@ class KmpContainer(val driver: SqlDriver) {
     @Throws(Throwable::class)
     fun wipeSelectiveData(categories: Set<com.migestor.data.platform.WipeCategory>) {
         com.migestor.data.platform.wipeSelectiveUserData(driver, database, categories)
+    }
+
+    @Throws(Throwable::class)
+    fun exportConsistentDatabaseCopy(targetPath: String): Boolean {
+        return try {
+            val escapedPath = targetPath.replace("'", "''")
+            driver.execute(null, "VACUUM INTO '$escapedPath'", 0)
+            true
+        } catch (e: Throwable) {
+            println("[KmpContainer] Error al exportar copia SQLite consistente: ${e.message}")
+            false
+        }
+    }
+
+    @Throws(Throwable::class)
+    suspend fun computeDatasetFingerprint(): com.migestor.data.sync.SyncDatasetFingerprint {
+        return com.migestor.data.sync.SyncDatasetFingerprint.compute(this)
     }
 
     suspend fun seedDemoDataIfEmpty() {

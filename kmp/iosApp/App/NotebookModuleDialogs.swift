@@ -329,7 +329,7 @@ extension NotebookModuleView {
                 }
                 .task(id: notebookSupportRefreshKey) {
                     restoreSeatPositions()
-                    await refreshNotebookSignals()
+                    scheduleNotebookSignalsRefresh()
                 }
         }
     }
@@ -345,7 +345,10 @@ extension NotebookModuleView {
             .appOnChange(of: selectedClassId) { newValue in
                 Task { @MainActor in
                     undoStack.removeAll()
-                    guard let newValue else { return }
+                    redoStack.removeAll()
+                    selectedCellRange = nil
+                    refreshNotebookEditMenu()
+                    guard let newValue, selectedClassId == newValue else { return }
                     guard bridge.notebookViewModel.currentClassId?.int64Value != newValue else { return }
                     selectNotebookClass(newValue)
                 }
@@ -353,12 +356,17 @@ extension NotebookModuleView {
             .appOnChange(of: bridge.selectedNotebookTabId) { _ in
                 Task { @MainActor in
                     undoStack.removeAll()
+                    redoStack.removeAll()
+                    selectedCellRange = nil
+                    refreshNotebookEditMenu()
                     restoreSeatPositions()
                     await refreshNotebookSignals()
                 }
             }
             .appOnChange(of: inspectorSelection) { newValue in
                 Task { @MainActor in
+                    // El Task es diferido: si la selección ya cambió, esta notificación está obsoleta.
+                    guard inspectorSelection == newValue else { return }
                     syncInspectorDraft()
                     startSelectionAuditObservationIfNeeded(for: newValue)
 
@@ -372,6 +380,7 @@ extension NotebookModuleView {
             }
             .appOnChange(of: isInspectorPresented) { presented in
                 Task { @MainActor in
+                    guard isInspectorPresented == presented else { return }
                     if presented {
                         focusMode = .reviewing
                         startSelectionAuditObservationIfNeeded(for: inspectorSelection)

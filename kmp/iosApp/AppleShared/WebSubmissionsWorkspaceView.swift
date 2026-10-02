@@ -78,15 +78,19 @@ struct WebSubmissionsWorkspaceView: View {
                 baseURL: $baseURL,
                 deliveryEmail: $deliveryEmail,
                 isPublishing: publishing,
-                onPublish: { columnId, url, correo, caducidad in
+                onPublish: { columnId, url, correo, caducidad, modo in
                     Task {
                         await publish(
                             columnId: columnId,
                             baseURL: url,
                             deliveryEmail: correo,
-                            expiresAt: caducidad
+                            expiresAt: caducidad,
+                            mode: modo
                         )
                     }
+                },
+                onDetectPeerGroups: { columnId in
+                    await bridge.detectPeerGroupsForColumn(classId: creationClassId ?? 0, columnId: columnId)
                 },
                 result: publishResult
             )
@@ -572,7 +576,8 @@ struct WebSubmissionsWorkspaceView: View {
         columnId: String,
         baseURL url: String,
         deliveryEmail correo: String,
-        expiresAt: Date
+        expiresAt: Date,
+        mode: String = "self"
     ) async {
         guard let classId = creationClassId else { return }
         publishing = true
@@ -583,7 +588,8 @@ struct WebSubmissionsWorkspaceView: View {
                 columnId: columnId,
                 baseURL: url,
                 deliveryEmail: cleanEmail(correo),
-                expiresAt: expiresAt
+                expiresAt: expiresAt,
+                mode: mode
             )
             await reload()
             await reloadCreationInstruments()

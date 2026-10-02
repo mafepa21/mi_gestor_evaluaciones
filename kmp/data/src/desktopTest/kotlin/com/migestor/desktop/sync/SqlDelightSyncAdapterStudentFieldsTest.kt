@@ -126,4 +126,41 @@ class SqlDelightSyncAdapterStudentFieldsTest {
         assertEquals(1, ack.applied)
         assertEquals(0, ack.ignored)
     }
+
+    @Test
+    fun `un apellido mas reciente no borra correo lesion ni fecha de nacimiento`() = runTest {
+        val container = newContainer()
+        val adapter = SqlDelightSyncAdapter(container, localDeviceId = "mac")
+        val studentId = container.studentsRepository.saveStudent(
+            firstName = "Ana",
+            lastName = "López",
+            email = "ana@centro.edu",
+            isInjured = true,
+            sex = StudentSex.FEMALE,
+            sexSource = StudentSexSource.MANUAL,
+            birthDate = LocalDate(2012, 3, 15),
+            updatedAtEpochMs = 100L,
+            deviceId = "mac",
+        )
+
+        adapter.applyIncomingChangesLww(
+            listOf(
+                SyncChange(
+                    entity = "student",
+                    id = studentId.toString(),
+                    updatedAtEpochMs = 300L,
+                    deviceId = "ios",
+                    payload = studentPayload(studentId, lastName = "López García"),
+                )
+            )
+        )
+
+        val kept = container.studentsRepository.getStudent(studentId)
+        assertEquals("López García", kept?.lastName)
+        assertEquals("ana@centro.edu", kept?.email)
+        assertEquals(true, kept?.isInjured)
+        assertEquals(StudentSex.FEMALE, kept?.sex)
+        assertEquals(StudentSexSource.MANUAL, kept?.sexSource)
+        assertEquals(LocalDate(2012, 3, 15), kept?.birthDate)
+    }
 }

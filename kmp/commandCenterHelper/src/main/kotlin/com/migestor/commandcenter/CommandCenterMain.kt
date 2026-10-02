@@ -19,10 +19,22 @@ fun main(args: Array<String>) {
         )
         val container = KmpContainer(driver)
         val adapter = SqlDelightSyncAdapter(container)
+        // La app del Mac escribe su contraseña local en la primera línea de stdin.
+        val localClientToken = if (options.localTokenFromStdin) {
+            readlnOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+        } else {
+            null
+        }
         val server = LocalSyncServer(
             syncCoordinator = SyncCoordinator(adapter),
             stateListener = ::emitSnapshotState,
+            container = container,
+            localClientToken = localClientToken,
         )
+        if (options.resetPairing) {
+            println("[command-center] Resetting pairing on launch as requested by --reset-pairing")
+            server.revokePairing()
+        }
         server.start()
 
         Runtime.getRuntime().addShutdownHook(
@@ -71,16 +83,26 @@ private fun emitSnapshotState(snapshot: CommandCenterSnapshot) {
 private data class CommandCenterOptions(
     val databasePath: String?,
     val databaseName: String,
+    val resetPairing: Boolean,
+    val localTokenFromStdin: Boolean,
 ) {
     companion object {
         fun parse(args: Array<String>): CommandCenterOptions {
             var dbPath: String? = null
+            var resetPairing = false
+            var localTokenFromStdin = false
             var index = 0
             while (index < args.size) {
                 when (args[index]) {
                     "--db-path" -> {
                         dbPath = args.getOrNull(index + 1)
                         index += 1
+                    }
+                    "--reset-pairing" -> {
+                        resetPairing = true
+                    }
+                    "--local-token-stdin" -> {
+                        localTokenFromStdin = true
                     }
                 }
                 index += 1
@@ -95,6 +117,8 @@ private data class CommandCenterOptions(
             return CommandCenterOptions(
                 databasePath = normalizedDbPath,
                 databaseName = databaseName,
+                resetPairing = resetPairing,
+                localTokenFromStdin = localTokenFromStdin,
             )
         }
     }

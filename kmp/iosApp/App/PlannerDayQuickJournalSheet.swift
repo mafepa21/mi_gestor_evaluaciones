@@ -1,6 +1,20 @@
 import SwiftUI
 import MiGestorKit
 
+/// Regla de la nota rápida del diario: solo limpia y marca «guardada» si el bridge confirma éxito.
+enum SessionJournalQuickNoteSaveGate {
+    static let saveFailureMessage =
+        "No se pudo guardar la nota del diario. El texto sigue en esta pantalla."
+
+    static func shouldClearDraft(succeeded: Bool) -> Bool { succeeded }
+
+    static func failureMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return saveFailureMessage }
+        return "\(saveFailureMessage) \(trimmed)"
+    }
+}
+
 /// Cierre rápido del diario de todas las sesiones de un día en una sola pantalla:
 /// pensado para velocidad (marcar impartida, nota corta), no para redacción extensa.
 /// La edición completa del diario sigue viviendo en `PlannerJournalDetailPane`.
@@ -12,6 +26,7 @@ struct PlannerDayQuickJournalSheet: View {
 
     @State private var noteText: [Int64: String] = [:]
     @State private var savedNoteSessionIds: Set<Int64> = []
+    @State private var noteErrorBySessionId: [Int64: String] = [:]
 
     var body: some View {
         NavigationStack {
@@ -30,9 +45,13 @@ struct PlannerDayQuickJournalSheet: View {
                                 session: session,
                                 noteText: Binding(
                                     get: { noteText[session.id, default: ""] },
-                                    set: { noteText[session.id] = $0 }
+                                    set: {
+                                        noteText[session.id] = $0
+                                        noteErrorBySessionId[session.id] = nil
+                                    }
                                 ),
                                 isNoteSaved: savedNoteSessionIds.contains(session.id),
+                                noteError: noteErrorBySessionId[session.id],
                                 onToggleImpartida: {
                                     let nextStatus: SessionStatus = session.status == .completed ? .planned : .completed
                                     Task { await vm.setSessionStatus(session, status: nextStatus) }
@@ -40,9 +59,22 @@ struct PlannerDayQuickJournalSheet: View {
                                 onSaveNote: {
                                     let text = noteText[session.id, default: ""]
                                     Task {
-                                        await vm.quickAddObservation(to: session, text: text)
-                                        noteText[session.id] = ""
-                                        savedNoteSessionIds.insert(session.id)
+                                        let succeeded = await vm.quickAddObservation(to: session, text: text)
+                                        if SessionJournalQuickNoteSaveGate.shouldClearDraft(succeeded: succeeded) {
+                                            noteText[session.id] = ""
+                                            noteErrorBySessionId[session.id] = nil
+                                            savedNoteSessionIds.insert(session.id)
+                                        } else {
+                                            savedNoteSessionIds.remove(session.id)
+                                            let detail: String
+                                            if case .failed(let message) = vm.journalSaveState {
+                                                detail = message
+                                            } else {
+                                                detail = ""
+                                            }
+                                            noteErrorBySessionId[session.id] =
+                                                SessionJournalQuickNoteSaveGate.failureMessage(detail: detail)
+                                        }
                                     }
                                 },
                                 onOpenFull: { onOpenSession(session) }
@@ -76,6 +108,7 @@ private struct PlannerDayQuickJournalRow: View {
     let session: PlanningSession
     @Binding var noteText: String
     let isNoteSaved: Bool
+    let noteError: String?
     let onToggleImpartida: () -> Void
     let onSaveNote: () -> Void
     let onOpenFull: () -> Void
@@ -137,7 +170,11 @@ private struct PlannerDayQuickJournalRow: View {
                     .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
-            if isNoteSaved {
+            if let noteError {
+                Label(noteError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.red)
+            } else if isNoteSaved {
                 Label("Nota guardada", systemImage: "checkmark.seal.fill")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(EvaluationDesign.success)

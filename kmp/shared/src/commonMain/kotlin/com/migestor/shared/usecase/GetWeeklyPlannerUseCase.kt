@@ -10,11 +10,14 @@ class GetWeeklyPlannerUseCase(private val repo: PlannerRepository) {
     operator fun invoke(
         weekNumber: Int,
         year: Int
-    ): Flow<Map<Pair<Int, Int>, PlanningSession>> =
+    ): Flow<Map<Triple<Long, Int, Int>, PlanningSession>> =
         repo.observeSessions(weekNumber, year)
-            .map { list: List<PlanningSession> ->
-                list.associateBy { session: PlanningSession ->
-                    session.dayOfWeek to session.period
-                }
+            .map { list: List<PlanningSession> -> indexBySlot(list) }
+
+    companion object {
+        fun indexBySlot(sessions: List<PlanningSession>): Map<Triple<Long, Int, Int>, PlanningSession> =
+            sessions.associateBy { session ->
+                Triple(session.groupId, session.dayOfWeek, session.period)
             }
+    }
 }

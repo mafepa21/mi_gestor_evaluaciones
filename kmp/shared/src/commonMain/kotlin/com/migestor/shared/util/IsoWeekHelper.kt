@@ -47,4 +47,37 @@ object IsoWeekHelper {
         val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
         return of(now)
     }
+
+    fun schoolYearBounds(today: LocalDate): Pair<LocalDate, LocalDate> {
+        val startYear = if (today.monthNumber >= 9) today.year else today.year - 1
+        return LocalDate(startYear, 9, 1) to LocalDate(startYear + 1, 6, 30)
+    }
+
+    /** El 28 de diciembre siempre cae en la última semana ISO de ese año. */
+    fun weeksIn(isoYear: Int): Int = isoWeekOf(LocalDate(isoYear, 12, 28))
+
+    fun shiftWeek(week: Int, year: Int, delta: Int): Pair<Int, Int> {
+        var currentWeek = week
+        var currentYear = year
+        var steps = delta
+        while (steps > 0) {
+            if (currentWeek >= weeksIn(currentYear)) {
+                currentWeek = 1
+                currentYear += 1
+            } else {
+                currentWeek += 1
+            }
+            steps -= 1
+        }
+        while (steps < 0) {
+            if (currentWeek <= 1) {
+                currentYear -= 1
+                currentWeek = weeksIn(currentYear)
+            } else {
+                currentWeek -= 1
+            }
+            steps += 1
+        }
+        return currentWeek to currentYear
+    }
 }

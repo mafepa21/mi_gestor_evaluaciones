@@ -13,11 +13,13 @@ struct MacRubricsView: View {
     @State private var expandedGroupKeys: Set<String> = []
     @State private var expandedCriterionIds: Set<Int64> = []
     @State private var teachingUnits: [TeachingUnit] = []
+    @State private var loadedTeachingUnitsClassId: Int64?
     @State private var usageSummary: KmpBridge.RubricUsageSnapshot?
     @State private var usageLoading = false
     @State private var bulkOptions: [KmpBridge.RubricUsageSnapshot.EvaluationUsage] = []
     @State private var bulkLaunchInFlight = false
     @State private var showingBuilder = false
+    @State private var showingTemplateCatalog = false
     @State private var showingRubricFileImporter = false
     @State private var rubricImportPreview: AppleRubricImportPreview?
     @State private var rubricImportError: String?
@@ -100,6 +102,9 @@ struct MacRubricsView: View {
                     showingBuilder = true
                 },
                 secondaryActions: [
+                    MacPremiumHeaderAction(title: "Catálogo", systemImage: "books.vertical") {
+                        showingTemplateCatalog = true
+                    },
                     MacPremiumHeaderAction(title: "Importar rúbrica", systemImage: "square.and.arrow.down") {
                         showingRubricFileImporter = true
                     }
@@ -295,6 +300,10 @@ struct MacRubricsView: View {
             RubricBulkEvaluationSheet(bridge: bridge)
                 .environmentObject(bridge)
                 .frame(minWidth: 900, idealWidth: 1180, minHeight: 600, idealHeight: 760)
+        }
+        .sheet(isPresented: $showingTemplateCatalog) {
+            RubricTemplateCatalogSheet(targetClassId: selectedFilterClassId)
+                .environmentObject(bridge)
         }
     }
 
@@ -703,7 +712,17 @@ struct MacRubricsView: View {
 
     @MainActor
     private func reloadTeachingUnits() async {
-        teachingUnits = (try? await bridge.plannerTeachingUnits(for: selectedFilterClassId)) ?? []
+        let requestedId = selectedFilterClassId
+        let sameClass = loadedTeachingUnitsClassId == requestedId
+        let loaded = try? await bridge.plannerTeachingUnits(for: requestedId)
+        guard selectedFilterClassId == requestedId else { return }
+        if loaded == nil {
+            bridge.status = TeachingUnitReload.failureMessage
+        }
+        teachingUnits = ProfileReloadKeep.list(loaded: loaded, previous: teachingUnits, samePerson: sameClass)
+        if loaded != nil {
+            loadedTeachingUnitsClassId = requestedId
+        }
     }
 
     @MainActor

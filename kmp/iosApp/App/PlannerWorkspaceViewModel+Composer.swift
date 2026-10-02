@@ -85,35 +85,24 @@ extension PlannerWorkspaceViewModel {
                 learningSituationSessionPlanId: composerDraft.learningSituationSessionPlanId,
                 selectedInstruments: selectedInstruments
             )
-            composerContextError = ""
-            composerSaveState = .saved(Date())
-            showingComposer = false
             updateSessionFromComposerSave(result: result, groupId: groupId, groupName: groupName, slotMetadata: slotMetadata)
 
-            // Recurrencia: guardar en semanas consecutivas si repeatWeeksCount > 1
+            var created = 1
+            var failed = 0
             if composerDraft.repeatWeeksCount > 1 && composerDraft.sessionId == 0 {
                 let repeatCount = composerDraft.repeatWeeksCount
                 let draft = composerDraft
-                let startWeek = week
-                let startYear = year
-                Task { [weak self] in
-                    guard self != nil else { return }
-                    for weekOffset in 1..<repeatCount {
-                        var targetWeek = startWeek + weekOffset
-                        var targetYear = startYear
-                        let maxIsoWeeks = Self.isoWeeks(in: targetYear)
-                        if targetWeek > maxIsoWeeks {
-                            targetWeek -= maxIsoWeeks
-                            targetYear += 1
-                        }
-                        _ = try? await bridge.plannerSaveSessionWithLinks(
+                for weekOffset in 1..<repeatCount {
+                    let target = Self.repeatTarget(startWeek: week, startYear: year, offset: weekOffset)
+                    do {
+                        _ = try await bridge.plannerSaveSessionWithLinks(
                             id: 0,
                             groupId: groupId,
                             groupName: groupName,
                             dayOfWeek: draft.dayOfWeek,
                             period: draft.period,
-                            weekNumber: targetWeek,
-                            year: targetYear,
+                            weekNumber: target.week,
+                            year: target.year,
                             teachingUnitId: result.teachingUnitId,
                             newTeachingUnitName: draft.unitTitle,
                             objectives: draft.objectives,
@@ -124,10 +113,22 @@ extension PlannerWorkspaceViewModel {
                             learningSituationSessionPlanId: draft.learningSituationSessionPlanId,
                             selectedInstruments: selectedInstruments
                         )
+                        created += 1
+                    } catch {
+                        failed += 1
                     }
                 }
             }
 
+            let summary = Self.repeatSaveSummary(created: created, failed: failed)
+            if failed > 0 {
+                composerContextError = summary
+                composerSaveState = .failed(summary)
+                return false
+            }
+            composerContextError = ""
+            composerSaveState = .saved(Date())
+            showingComposer = false
             return true
         } catch {
             composerContextError = "No se pudo guardar la sesión: \(error.localizedDescription)"
@@ -184,17 +185,24 @@ extension PlannerWorkspaceViewModel {
                 activities: composerDraft.activities,
                 evaluation: ""
             )
+            composerContextError = ""
             await loadSessionTemplates()
             return true
         } catch {
+            composerContextError = Self.templateSaveFailureMessage
             return false
         }
     }
 
     func deleteSessionTemplate(_ template: PlannerSessionTemplate) async {
         guard let bridge else { return }
-        _ = try? await bridge.plannerDeleteSessionTemplate(id: template.id)
-        await loadSessionTemplates()
+        do {
+            _ = try await bridge.plannerDeleteSessionTemplate(id: template.id)
+            composerContextError = ""
+            await loadSessionTemplates()
+        } catch {
+            composerContextError = "No se pudo borrar la plantilla. Sigue en la lista."
+        }
     }
 
     private func updateSessionFromComposerSave(
@@ -280,5 +288,30 @@ extension PlannerWorkspaceViewModel {
             scheduleSlot?.endTime ?? visibleSlot?.endTime
         )
     }
+
+    nonisolated static func repeatTarget(startWeek: Int, startYear: Int, offset: Int) -> (week: Int, year: Int) {
+        var week = startWeek
+        var year = startYear
+        var remaining = offset
+        while remaining > 0 {
+            if week >= isoWeeks(in: year) {
+                week = 1
+                year += 1
+            } else {
+                week += 1
+            }
+            remaining -= 1
+        }
+        return (week, year)
+    }
+
+    nonisolated static func repeatSaveSummary(created: Int, failed: Int) -> String {
+        "Creadas \(created) / fallidas \(failed)"
+    }
+
+    /// Aviso cuando falla guardar el borrador como plantilla desde el composer.
+    /// La hoja de sesión permanece abierta; no se finge que la plantilla quedó guardada.
+    nonisolated static let templateSaveFailureMessage =
+        "No se pudo guardar la plantilla. Sigue en esta pantalla."
 
 }

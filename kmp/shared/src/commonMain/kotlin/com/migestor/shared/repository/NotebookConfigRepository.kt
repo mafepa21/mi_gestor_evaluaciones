@@ -47,5 +47,17 @@ interface NotebookConfigRepository {
         studentIds: List<Long>,
     )
     suspend fun duplicateConfigToClass(sourceClassId: Long, targetClassId: Long)
+    suspend fun replaceWorkGroups(
+        classId: Long,
+        tabId: String,
+        groups: List<NotebookWorkGroupBatchItem>,
+        clearExisting: Boolean = false,
+    )
     suspend fun getNotebookConfig(classId: Long): NotebookConfig
 }
+
+data class NotebookWorkGroupBatchItem(
+    val name: String,
+    val studentIds: List<Long> = emptyList(),
+    val learningSituationId: Long? = null,
+)

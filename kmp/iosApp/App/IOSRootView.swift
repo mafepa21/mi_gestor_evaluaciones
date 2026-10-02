@@ -60,7 +60,7 @@ struct IOSRootView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
         } detail: {
             VStack(spacing: 0) {
-                if activeModule != .notebook && !(activeModule == .attendance && horizontalSizeClass == .regular) {
+                if activeModule != .notebook && activeModule != .planner && !(activeModule == .attendance && horizontalSizeClass == .regular) {
                     IOSGlobalContextRow(
                         activeModule: activeModule,
                         layoutState: layoutState,
@@ -95,6 +95,7 @@ struct IOSRootView: View {
                         layoutState: layoutState,
                         selectionStore: selectionStore,
                         onSync: { Task { await bridge.pullMissingSyncChanges() } },
+                        onCreateEvaluation: { activeSheet = .create(.evaluation) },
                         onToggleInspector: toggleInspector
                     )
                 }
@@ -426,7 +427,7 @@ struct IOSRootView: View {
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Text("Grid").tag("grid")
+                Text(NotebookSurfaceMode.grid.title).tag("grid")
                 Text("Plano").tag("seatingPlan")
             }
             .pickerStyle(.segmented)
@@ -439,6 +440,7 @@ struct IOSRootView: View {
             } label: {
                 Label("Nueva columna", systemImage: "plus")
             }
+            .instrumentEvaluationGlassButton(isProminent: true)
             .disabled(!layoutState.notebookAddColumnAvailable)
         }
 
@@ -458,7 +460,8 @@ struct IOSRootView: View {
                 } label: {
                     Label("Ocultar inspector", systemImage: "sidebar.right")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
+                .tint(NotebookStyle.primaryTint)
                 .disabled(!layoutState.notebookInspectorAvailable)
             } else {
                 Button {
@@ -467,6 +470,7 @@ struct IOSRootView: View {
                     Label("Mostrar inspector", systemImage: "sidebar.right")
                 }
                 .buttonStyle(.bordered)
+                .tint(.secondary)
                 .disabled(!layoutState.notebookInspectorAvailable)
             }
         }
@@ -514,10 +518,18 @@ struct IOSRootView: View {
                     }
                 }
 
+                if layoutState.notebookExportSMAction != nil {
+                    Button {
+                        layoutState.notebookExportSM()
+                    } label: {
+                        Label("Exportar a Educamos SM", systemImage: "doc.badge.arrow.up")
+                    }
+                }
+
                 Button {
                     layoutState.notebookUndo()
                 } label: {
-                    Label("Deshacer", systemImage: "arrow.uturn.backward")
+                    Label(NotebookEditMenuState.shared.undoTitle, systemImage: "arrow.uturn.backward")
                 }
                 .disabled(!layoutState.notebookCanUndo)
 
@@ -567,7 +579,7 @@ struct IOSRootView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 240)
+            .frame(width: 290)
         }
 
         if bridge.syncPendingChanges > 0 {
@@ -899,31 +911,29 @@ struct IOSWorkspaceSidebar: View {
         let enabledProfiles = TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw)
 
         List {
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("MiGestor")
-                        .font(.system(size: 26, weight: .black, design: .rounded))
-                    Text("App docente iPad-first")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 8)
-            }
-
-            Section("Uso diario") {
-                ForEach(IOSFeatureRegistry.daily) { feature in
-                    sidebarRow(for: feature)
-                }
-            }
-
-            Section("Más herramientas") {
-                ForEach(IOSFeatureRegistry.secondary(enabledProfiles: enabledProfiles)) { feature in
-                    sidebarRow(for: feature)
+            ForEach(IOSWorkspaceSidebarSection.allCases) { section in
+                let features = features(for: section, enabledProfiles: enabledProfiles)
+                if !features.isEmpty {
+                    Section(section.rawValue) {
+                        ForEach(features) { feature in
+                            sidebarRow(for: feature)
+                        }
+                    }
                 }
             }
         }
         .listStyle(.sidebar)
-        .navigationTitle("Workspace")
+        .navigationTitle("MiGestor")
+    }
+
+    private func features(
+        for section: IOSWorkspaceSidebarSection,
+        enabledProfiles: Set<TeacherSubjectProfile>
+    ) -> [IOSFeatureDescriptor] {
+        let available = IOSFeatureRegistry.all(enabledProfiles: enabledProfiles)
+        return section.modules.compactMap { module in
+            available.first { $0.module == module }
+        }
     }
 
     @ViewBuilder
@@ -954,6 +964,28 @@ struct IOSWorkspaceSidebar: View {
                 ? AnyView(Color.accentColor.opacity(0.1).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous)))
                 : AnyView(Color.clear)
         )
+    }
+}
+
+private enum IOSWorkspaceSidebarSection: String, CaseIterable, Identifiable {
+    case today = "Hoy"
+    case evaluation = "Evaluación"
+    case planning = "Planificación"
+    case system = "Sistema"
+
+    var id: String { rawValue }
+
+    var modules: [AppWorkspaceModule] {
+        switch self {
+        case .today:
+            return [.dashboard]
+        case .evaluation:
+            return [.notebook, .attendance, .evaluationHub, .rubrics, .webSubmissions, .peTests, .peRubrics]
+        case .planning:
+            return [.planner, .diary, .situations, .meetings, .students, .peSessions]
+        case .system:
+            return [.reports, .library, .peIncidents, .peMaterial, .peTournaments, .settings, .backups]
+        }
     }
 }
 
@@ -1041,6 +1073,7 @@ struct IOSWorkspaceContent: View {
             NotebookModuleView(
                 bridge: bridge,
                 notebookStore: notebookStore,
+                dashboardStore: dashboardStore,
                 selectedClassId: $selectionStore.selectedClassId,
                 selectedStudentId: $selectionStore.selectedStudentId,
                 onOpenModule: onOpenModule,
@@ -1079,7 +1112,8 @@ struct IOSWorkspaceContent: View {
         case .evaluationHub:
             EvaluationHubView(
                 selectedClassId: $selectionStore.selectedClassId,
-                onOpenModule: onOpenModule
+                onOpenModule: onOpenModule,
+                onCreateEvaluation: { activeSheet = .create(.evaluation) }
             )
             .environmentObject(bridge)
         case .meetings:
@@ -1190,11 +1224,12 @@ struct IOSContextualToolbar: ToolbarContent {
     @ObservedObject var layoutState: WorkspaceLayoutState
     @ObservedObject var selectionStore: IOSSelectionStore
     let onSync: () -> Void
+    let onCreateEvaluation: () -> Void
     let onToggleInspector: () -> Void
 
     var body: some ToolbarContent {
-        // Sync — always present on the trailing side
-        ToolbarItem(placement: .topBarTrailing) {
+        // Sync is available from the overflow so the primary action remains obvious.
+        ToolbarItem(placement: .secondaryAction) {
             Button(action: onSync) {
                 Label("Sincronizar", systemImage: "arrow.triangle.2.circlepath")
             }
@@ -1207,15 +1242,20 @@ struct IOSContextualToolbar: ToolbarContent {
                 Button { layoutState.dashboardPassList() } label: {
                     Label("Pasar lista", systemImage: "checkmark.circle")
                 }
+                .buttonStyle(.borderedProminent)
                 .disabled(!layoutState.dashboardActionsAvailable)
                 .help("Pasar lista para la clase activa")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { layoutState.dashboardObservation() } label: {
-                    Label("Observación", systemImage: "note.text.badge.plus")
+                Menu {
+                    Button { layoutState.dashboardObservation() } label: {
+                        Label("Observación", systemImage: "note.text.badge.plus")
+                    }
+                    .disabled(!layoutState.dashboardActionsAvailable)
+                } label: {
+                    Label("Más", systemImage: "ellipsis.circle")
                 }
-                .disabled(!layoutState.dashboardActionsAvailable)
-                .help("Registrar una observación rápida")
+                .help("Más acciones del día")
             }
         }
 
@@ -1225,27 +1265,39 @@ struct IOSContextualToolbar: ToolbarContent {
                 Button { layoutState.attendanceMarkAllPresent() } label: {
                     Label("Todos presentes", systemImage: "checkmark.circle.fill")
                 }
+                .buttonStyle(.borderedProminent)
                 .help("Marcar como presentes todos los alumnos filtrados")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { layoutState.attendanceRepeatPattern() } label: {
-                    Label("Repetir patrón", systemImage: "repeat")
-                }
-                .help("Repetir el último patrón de asistencia")
-            }
-            if layoutState.attendanceHasSelection {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { layoutState.attendanceClearSelection() } label: {
-                        Label("Cerrar ficha", systemImage: "xmark.circle")
+                Menu {
+                    Button { layoutState.attendanceRepeatPattern() } label: {
+                        Label("Repetir patrón", systemImage: "repeat")
                     }
-                    .help("Cerrar la ficha del alumno seleccionado")
+                    if layoutState.attendanceHasSelection {
+                        Button { layoutState.attendanceClearSelection() } label: {
+                            Label("Cerrar ficha", systemImage: "xmark.circle")
+                        }
+                    }
+                } label: {
+                    Label("Más", systemImage: "ellipsis.circle")
                 }
+                .help("Más acciones de asistencia")
+            }
+        }
+
+        if activeModule == .evaluationHub {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: onCreateEvaluation) {
+                    Label("Nueva evaluación", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .help("Crear una evaluación para la clase activa")
             }
         }
 
         // Inspector toggle — for modules that support it
         if activeModule.supportsInspector {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .secondaryAction) {
                 Button(action: onToggleInspector) {
                     Label("Inspector", systemImage: "sidebar.right")
                 }

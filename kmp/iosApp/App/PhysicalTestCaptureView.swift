@@ -12,6 +12,7 @@ struct PhysicalTestCaptureView: View {
     let age: Int?
     let rawColumnId: String?
     let scoreColumnId: String?
+    let recordScore: Bool
     let attemptsCount: Int
     let direction: PhysicalTestScaleDirection
     let resultMode: PhysicalTestResultMode
@@ -44,12 +45,11 @@ struct PhysicalTestCaptureView: View {
     }
 
     private var scorePreview: Double? {
+        // Diagnostic assignments keep the score column disabled, but the
+        // imported scale is still useful feedback while the teacher captures
+        // the raw result. The score is only persisted when recordScore is true.
         guard let finalValue, let resolvedScale else { return nil }
-        return resolvedScale.ranges.first { range in
-            let minOk = range.minValue.map { finalValue >= $0.doubleValue } ?? true
-            let maxOk = range.maxValue.map { finalValue <= $0.doubleValue } ?? true
-            return minOk && maxOk
-        }?.score
+        return resolvedScale.scoreFor(rawValue: finalValue)?.doubleValue
     }
 
     var body: some View {
@@ -89,13 +89,25 @@ struct PhysicalTestCaptureView: View {
 
                         HStack(spacing: 12) {
                             CaptureMetric(title: "Resultado", value: finalValue.map { PhysicalTestsFormatting.decimal($0) } ?? "-")
-                            CaptureMetric(title: "Nota baremada", value: scorePreview.map { PhysicalTestsFormatting.decimal($0) } ?? "-")
+                            CaptureMetric(
+                                title: recordScore ? "Nota baremada" : "Nota de referencia",
+                                value: scorePreview.map { PhysicalTestsFormatting.decimal($0) } ?? "-"
+                            )
                             CaptureMetric(title: "Alumno", value: "\(selectedIndex + 1)/\(test.results.count)")
                         }
 
                         Text(scaleWarning ?? "Si no hay baremo aplicable, se guardará solo la marca bruta.")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
+
+                        if let resolvedScale {
+                            Label(
+                                "Baremo aplicado: \(resolvedScale.name) · \(scaleSexLabel(resolvedScale.sex))",
+                                systemImage: "person.crop.circle.badge.checkmark"
+                            )
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.blue)
+                        }
 
                         Spacer(minLength: 0)
                     }
@@ -220,13 +232,7 @@ struct PhysicalTestCaptureView: View {
                     batteryId: batteryId
                 )
             }
-            let score = rawValue.flatMap { value in
-                resolvedScale?.ranges.first(where: { range in
-                    let minOk = range.minValue.map { value >= $0.doubleValue } ?? true
-                    let maxOk = range.maxValue.map { value <= $0.doubleValue } ?? true
-                    return minOk && maxOk
-                })?.score
-            }
+            let score = recordScore ? rawValue.flatMap { resolvedScale?.scoreFor(rawValue: $0)?.doubleValue } : nil
             let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
             let resultId = "pe_result_\(assignmentId)_\(testDefinitionId)_\(currentResult.student.id)"
             let result = MiGestorKit.PhysicalTestResult(
@@ -238,6 +244,9 @@ struct PhysicalTestCaptureView: View {
                 rawValue: rawValue.map { KotlinDouble(value: $0) },
                 rawText: normalizedAttempts.filter { !$0.isEmpty }.joined(separator: " · "),
                 score: score.map { KotlinDouble(value: $0) },
+                // Even in diagnostic mode, keep the selected reference scale for
+                // audit. The score remains nil and the raw column stays outside
+                // the average.
                 scaleId: resolvedScale?.id,
                 observedAtEpochMs: nowMs,
                 rawColumnId: rawColumnId,
@@ -291,6 +300,14 @@ struct PhysicalTestCaptureView: View {
         case .male: return "MALE"
         case .female: return "FEMALE"
         default: return nil
+        }
+    }
+
+    private func scaleSexLabel(_ sex: String?) -> String {
+        switch sex?.uppercased() {
+        case "MALE", "M", "H", "HOMBRE", "MASCULINO": return "baremo masculino"
+        case "FEMALE", "F", "MUJER", "FEMENINO": return "baremo femenino"
+        default: return "baremo neutro"
         }
     }
 

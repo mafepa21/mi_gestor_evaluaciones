@@ -100,6 +100,14 @@ private enum PhysicalCompletionFilter: String, CaseIterable, Identifiable {
     case completed = "Completado"
 
     var id: String { rawValue }
+
+    var historyFilter: PhysicalTestsHistoryList.CompletionFilter {
+        switch self {
+        case .all: return .all
+        case .pending: return .pending
+        case .completed: return .completed
+        }
+    }
 }
 
 struct PhysicalBatteryQuickTemplate: Identifiable {
@@ -170,6 +178,8 @@ struct PhysicalTestsWorkspaceView: View {
     @State private var pendingDeleteTest: KmpBridge.PhysicalTestSnapshot?
     @State private var editingTest: KmpBridge.PhysicalTestSnapshot?
     @State private var definitions: [MiGestorKit.PhysicalTestDefinition] = []
+    @State private var loadedPhysicalClassId: Int64?
+    @State private var physicalScalesByTestId: [String: [MiGestorKit.PhysicalTestScale]] = [:]
     @State private var batteries: [MiGestorKit.PhysicalTestBattery] = []
     @State private var batteryName = "Condición física inicial"
     @State private var batteryDate = Date()
@@ -207,22 +217,27 @@ struct PhysicalTestsWorkspaceView: View {
         selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id }) }
     }
 
+    private var persistedPhysicalScales: [MiGestorKit.PhysicalTestScale] {
+        physicalScalesByTestId.values.flatMap { $0 }
+    }
+
+    private var physicalScaleTestNames: [String: String] {
+        Dictionary(definitions.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
+
     private var selectedTest: KmpBridge.PhysicalTestSnapshot? {
         filteredTests.first(where: { $0.evaluation.id == selectedTestId })
     }
 
     private var filteredTests: [KmpBridge.PhysicalTestSnapshot] {
         tests.filter { test in
-            let definitionId = testDefinitionId(for: test)
-            if let selectedFilterTestId, definitionId != selectedFilterTestId { return false }
-            switch completionFilter {
-            case .all:
-                return true
-            case .pending:
-                return test.recordedCount < test.results.count
-            case .completed:
-                return test.recordedCount >= test.results.count && test.results.count > 0
-            }
+            PhysicalTestsHistoryList.matches(
+                definitionId: testDefinitionId(for: test),
+                recordedCount: test.recordedCount,
+                resultCount: test.results.count,
+                definitionFilter: selectedFilterTestId,
+                completion: completionFilter.historyFilter
+            )
         }
     }
 
@@ -392,6 +407,7 @@ struct PhysicalTestsWorkspaceView: View {
                         age: activeAssignment.ageFrom?.intValue,
                         rawColumnId: activeNotebookLink?.rawColumnId,
                         scoreColumnId: activeNotebookLink?.scoreColumnId,
+                        recordScore: activeAssignment.scoreColumnMode,
                         attemptsCount: attemptsCount(for: testDefinitionId(for: selectedTest)),
                         direction: direction(for: testDefinitionId(for: selectedTest)),
                         resultMode: resultMode(for: testDefinitionId(for: selectedTest)),
@@ -880,7 +896,7 @@ struct PhysicalTestsWorkspaceView: View {
 
     private var historyView: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14) {
                 if tests.isEmpty {
                     PhysicalEmptyState(
                         title: "Sin histórico",
@@ -923,12 +939,26 @@ struct PhysicalTestsWorkspaceView: View {
     }
 
     private var scalesView: some View {
-        NavigationStack {
-            PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext) { draft in
-                Task { await saveScale(draft) }
+        VStack(spacing: 16) {
+            if !persistedPhysicalScales.isEmpty {
+                PhysicalScaleCatalogView(
+                    scales: persistedPhysicalScales,
+                    testNames: physicalScaleTestNames,
+                    onSelect: { persisted in
+                        scale = scaleDraft(from: persisted)
+                        bridge.status = "Baremo seleccionado: \(persisted.name)."
+                    }
+                )
+                .frame(maxHeight: 320)
             }
+
+            NavigationStack {
+                PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext) { draft in
+                    Task { await saveScale(draft) }
+                }
                 .navigationTitle("Baremos")
                 .onAppear { resetScaleDraftForActiveTest() }
+            }
         }
     }
 
@@ -1059,24 +1089,46 @@ struct PhysicalTestsWorkspaceView: View {
             tests = []
             selectedTestId = nil
             selectedStudentId = nil
+            physicalScalesByTestId = [:]
             assignments = []
             notebookLinks = []
             assignmentNotebookTabs = []
             selectedAssignmentNotebookTabId = nil
+            loadedPhysicalClassId = nil
             loadPhase = .lists
             return
         }
+        let requestedClassId = selectedClassId
+        let sameClass = loadedPhysicalClassId == requestedClassId
         await refreshAssignmentNotebookTabs()
         guard generation == reloadGeneration else { return }
-        let loadedDefinitions = (try? await bridge.listPhysicalDefinitions()) ?? []
+        let loadedDefinitions = try? await bridge.listPhysicalDefinitions()
         guard generation == reloadGeneration else { return }
-        definitions = loadedDefinitions
-        let loadedBatteries = (try? await bridge.listPhysicalBatteries()) ?? []
+        if let loadedDefinitions {
+            definitions = loadedDefinitions
+        } else if !sameClass {
+            definitions = []
+        } else {
+            bridge.status = PhysicalTestsReload.failure
+        }
+        var loadedScales = sameClass ? physicalScalesByTestId : [:]
+        for definition in definitions {
+            if let scales = try? await bridge.listPhysicalScalesForTest(testId: definition.id) {
+                loadedScales[definition.id] = scales
+            } else {
+                bridge.status = PhysicalTestsReload.failure
+            }
+            guard generation == reloadGeneration else { return }
+        }
+        physicalScalesByTestId = loadedScales
+        let loadedBatteries = try? await bridge.listPhysicalBatteries()
         guard generation == reloadGeneration else { return }
-        batteries = loadedBatteries
-        let loadedTests = (try? await bridge.loadPhysicalTests(classId: selectedClassId)) ?? []
+        batteries = ProfileReloadKeep.list(loaded: loadedBatteries, previous: batteries, samePerson: sameClass || loadedBatteries != nil)
+        if loadedBatteries == nil { bridge.status = PhysicalTestsReload.failure }
+        let loadedTests = try? await bridge.loadPhysicalTests(classId: selectedClassId)
         guard generation == reloadGeneration else { return }
-        tests = loadedTests
+        if loadedTests == nil { bridge.status = PhysicalTestsReload.failure }
+        tests = ProfileReloadKeep.list(loaded: loadedTests, previous: tests, samePerson: sameClass)
         if selectedBatteryId == nil || !batteries.contains(where: { $0.id == selectedBatteryId }) {
             selectedBatteryId = batteries.first?.id
         }
@@ -1087,16 +1139,35 @@ struct PhysicalTestsWorkspaceView: View {
             selectedStudentId = selectedTest?.results.first?.student.id
         }
         loadPhase = .metrics
-        let loadedAssignments = (try? await bridge.listPhysicalAssignmentsForClass(classId: selectedClassId)) ?? []
+        let loadedAssignments = try? await bridge.listPhysicalAssignmentsForClass(classId: selectedClassId)
         guard generation == reloadGeneration else { return }
-        var loadedNotebookLinks: [MiGestorKit.PhysicalTestNotebookLink] = []
-        for assignment in loadedAssignments {
-            let links = (try? await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id)) ?? []
-            guard generation == reloadGeneration else { return }
-            loadedNotebookLinks.append(contentsOf: links)
+        if let loadedAssignments {
+            assignments = loadedAssignments
+            var loadedNotebookLinks: [MiGestorKit.PhysicalTestNotebookLink] = []
+            var linksFailed = false
+            for assignment in loadedAssignments {
+                do {
+                    let links = try await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id)
+                    loadedNotebookLinks.append(contentsOf: links)
+                } catch {
+                    linksFailed = true
+                    bridge.status = PhysicalTestsReload.failure
+                    break
+                }
+                guard generation == reloadGeneration else { return }
+            }
+            if !linksFailed {
+                notebookLinks = loadedNotebookLinks
+            }
+        } else if sameClass {
+            bridge.status = PhysicalTestsReload.failure
+        } else {
+            assignments = []
+            notebookLinks = []
         }
-        assignments = loadedAssignments
-        notebookLinks = loadedNotebookLinks
+        if loadedDefinitions != nil || loadedTests != nil || loadedAssignments != nil {
+            loadedPhysicalClassId = requestedClassId
+        }
         syncSelectedClassDefaults()
         resetScaleDraftForActiveTest()
         loadPhase = .lists
@@ -1229,9 +1300,16 @@ struct PhysicalTestsWorkspaceView: View {
 
     private func createBattery(_ battery: PhysicalTestBattery) {
         Task {
+            var savedDefinitions = 0
+            var failedDefinitions = 0
             for template in PhysicalTestTemplate.defaults where battery.templateIds.contains(template.id) {
-                try? await bridge.savePhysicalDefinition(physicalDefinition(from: template))
-                await createTest(from: template)
+                do {
+                    try await bridge.savePhysicalDefinition(physicalDefinition(from: template))
+                    await createTest(from: template)
+                    savedDefinitions += 1
+                } catch {
+                    failedDefinitions += 1
+                }
             }
             do {
                 let persisted = MiGestorKit.PhysicalTestBattery(
@@ -1248,10 +1326,14 @@ struct PhysicalTestsWorkspaceView: View {
                 selectedBatteryId = persisted.id
             } catch {
                 bridge.status = "No se pudo guardar la batería física: \(error.localizedDescription)"
+                await reload()
+                return
             }
             await reload()
             selectedTab = .assignments
-            bridge.status = "Batería creada. Asígnala a una clase para crear columnas."
+            bridge.status = failedDefinitions == 0
+                ? "Batería creada. Asígnala a una clase para crear columnas."
+                : "Guardadas \(savedDefinitions) / fallidas \(failedDefinitions). Revisa la batería antes de asignarla."
         }
     }
 
@@ -1338,6 +1420,8 @@ struct PhysicalTestsWorkspaceView: View {
             batteryId: batteryId,
             direction: draft.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
             ranges: ranges,
+            scoringMode: draft.scoringMode == .linear ? .linear : .step,
+            scoreRoundTo: draft.scoreRoundTo.map { KotlinDouble(value: $0) },
             trace: auditTrace()
         )
         do {
@@ -1399,6 +1483,8 @@ struct PhysicalTestsWorkspaceView: View {
             sex: persisted.sex ?? "",
             batteryId: persisted.batteryId ?? "",
             direction: persisted.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
+            scoringMode: persisted.scoringMode == .linear ? .linear : .step,
+            scoreRoundTo: persisted.scoreRoundTo?.doubleValue,
             ranges: persisted.ranges.map {
                 PhysicalTestScaleRange(
                     minValue: $0.minValue?.doubleValue,

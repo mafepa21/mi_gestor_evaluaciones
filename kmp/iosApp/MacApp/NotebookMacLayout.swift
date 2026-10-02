@@ -4,6 +4,7 @@ import MiGestorKit
 struct NotebookMacLayout: View {
     let bridge: KmpBridge
     @ObservedObject var notebookStore: NotebookBridgeStore
+    @ObservedObject var dashboardStore: DashboardBridgeStore
     @ObservedObject var layoutState: WorkspaceLayoutState
     @ObservedObject var toolbarActions: NotebookMacToolbarActions
     @ObservedObject var inspectorState: NotebookMacInspectorState
@@ -21,6 +22,7 @@ struct NotebookMacLayout: View {
     init(
         bridge: KmpBridge,
         notebookStore: NotebookBridgeStore,
+        dashboardStore: DashboardBridgeStore,
         layoutState: WorkspaceLayoutState,
         toolbarActions: NotebookMacToolbarActions,
         inspectorState: NotebookMacInspectorState,
@@ -32,6 +34,7 @@ struct NotebookMacLayout: View {
     ) {
         self.bridge = bridge
         self.notebookStore = notebookStore
+        self.dashboardStore = dashboardStore
         self.layoutState = layoutState
         self.toolbarActions = toolbarActions
         self.inspectorState = inspectorState
@@ -80,6 +83,7 @@ struct NotebookMacLayout: View {
         NotebookModuleView(
             bridge: bridge,
             notebookStore: notebookStore,
+            dashboardStore: dashboardStore,
             selectedClassId: $selectedClassId,
             selectedStudentId: $selectedStudentId,
             onOpenModule: onOpenModule,

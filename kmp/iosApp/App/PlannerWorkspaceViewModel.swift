@@ -13,6 +13,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     @Published var isLoaded = false
+    private var isBinding = false
     @Published var activeSection: PlannerWorkspaceSection = .week
     @Published var density: PlannerDensity = .standard
     @Published var groups: [SchoolClass] = []
@@ -20,6 +21,11 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var classColorHexById: [Int64: String] = [:]
     @Published var sessions: [PlanningSession] = []
     @Published var filteredSessions: [PlanningSession] = []
+    @Published var monthViewDate: Date = Date()
+    @Published var monthSessions: [PlanningSession] = []
+    @Published var monthLoadError: String?
+    @Published var monthMilestones: [PlannerDayMilestone] = []
+    @Published var sessionPlansById: [Int64: LearningSituationSessionPlan] = [:]
     @Published var sequenceGroupsEnriched: [PlannerSequenceGroup] = []
     @Published var isLoadingSequences = false
     @Published var sequenceLoadErrorMessage: String?
@@ -35,6 +41,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var evaluationPeriods: [PlannerEvaluationPeriod] = []
     @Published var forecastRows: [PlannerSessionForecast] = []
     @Published var searchText = ""
+    private var searchDebounceTask: Task<Void, Never>?
     @Published var selectionMode = false
     @Published var selectedSessionIds: Set<Int64> = []
     @Published var showingComposer = false
@@ -67,6 +74,15 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var isGeneratingScheduleSessions = false
     @Published var lastCascadeMove: SessionCascadeMoveResult?
 
+    // MARK: - Term Session Board
+    @Published var selectedTermPeriodId: Int64?
+    @Published var simulatedSituationId: Int64?
+    @Published var termBoardSlots: [TermClassSlot] = []
+    @Published var termCapacityMetrics: TermCapacityMetrics?
+    @Published var isTermBoardLoading = false
+    @Published var termBoardErrorMessage: String?
+    @Published var isApplyingSimulation = false
+
     weak var bridge: KmpBridge?
     var autosaveTask: Task<Void, Never>?
     var isHydratingDraft = false
@@ -92,10 +108,18 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         get { weekBoard.holidayDays }
         set { weekBoard.holidayDays = newValue }
     }
+    var dayMilestones: [Int: [PlannerDayMilestone]] {
+        get { weekBoard.dayMilestones }
+        set { weekBoard.dayMilestones = newValue }
+    }
+    var weekMilestones: [PlannerDayMilestone] {
+        weekBoard.weekMilestones
+    }
     var weekRenderModel: PlannerWeekRenderModel {
         get { weekBoard.weekRenderModel }
         set { weekBoard.weekRenderModel = newValue }
     }
+
 
     init() {
         weekBoard.objectWillChange
@@ -146,18 +170,28 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
     }
 
+    /// Primera carga en dos fases: primero lo que pinta la semana (grupos, horario,
+    /// sesiones) y se marca `isLoaded`; después, sin bloquear el grid, lo que solo
+    /// enriquece (previsión del curso, exámenes de 1º Bach, planes de SA, mes).
     func bind(bridge: KmpBridge) async {
-        guard !isLoaded else { return }
+        guard !isLoaded, !isBinding else { return }
+        isBinding = true
+        defer { isBinding = false }
         self.bridge = bridge
         let current = IsoWeekHelper.shared.current()
         let currentIsoFallback = PlannerCalendar.currentIsoYearWeek
         week = Int(truncating: current.first ?? KotlinInt(value: Int32(currentIsoFallback.week)))
         year = Int(truncating: current.second ?? KotlinInt(value: Int32(currentIsoFallback.year)))
         timeSlots = bridge.plannerTimeSlots()
-        await reloadPlannerBootstrap()
-        await reloadScheduleOnly()
-        await reloadSessionsOnly(keepSelection: false)
+        await reloadPlannerGroups()
+        await reloadScheduleConfiguration(includeForecast: false)
+        await reloadWeekSessions(keepSelection: false)
         isLoaded = true
+
+        await reloadForecast()
+        await syncExamsIfNeeded()
+        await reloadSessionPlans()
+        await reloadMonthData()
     }
 
     func reloadAll(keepSelection: Bool = true) async {
@@ -167,7 +201,11 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     func reloadSessionsOnly(keepSelection: Bool = true) async {
+        if teacherSchedule == nil {
+            await reloadScheduleOnly()
+        }
         await reloadWeekSessions(keepSelection: keepSelection)
+        await reloadMonthData()
     }
 
     func reloadScheduleOnly() async {
@@ -184,17 +222,66 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     private func reloadPlannerBootstrap() async {
+        await reloadPlannerGroups()
+        await syncExamsIfNeeded()
+        await reloadSessionPlans()
+    }
+
+    private func reloadPlannerGroups() async {
         guard let bridge else { return }
         scheduleFormGroupId = await calendarStore.reloadBootstrap(bridge: bridge, scheduleFormGroupId: scheduleFormGroupId)
         groups = calendarStore.groups
         classColorHexById = calendarStore.classColorHexById
     }
 
+    /// La sincronización lee todo el calendario y borra o crea eventos. Antes corría
+    /// en cada apertura; ahora solo cuando cambia la versión de la app o los grupos.
+    private func syncExamsIfNeeded() async {
+        guard let bridge else { return }
+        let info = Bundle.main.infoDictionary
+        let version = "\(info?["CFBundleShortVersionString"] as? String ?? "")-\(info?["CFBundleVersion"] as? String ?? "")"
+        let groupIds = groups.map(\.id).sorted().map(String.init).joined(separator: ",")
+        // "v2": corrige la comparación de días (UTC vs local) que duplicaba exámenes;
+        // fuerza una pasada más para que la deduplicación borre las copias.
+        let syncKey = "v2|\(version)|\(groupIds)"
+        let defaultsKey = "planner.exams1Bach.lastSyncKey"
+        guard UserDefaults.standard.string(forKey: defaultsKey) != syncKey else { return }
+        do {
+            _ = try await SchoolCalendarPreset2026_2027.sync1BachExams(bridge: bridge, groups: groups)
+            UserDefaults.standard.set(syncKey, forKey: defaultsKey)
+            // Puede haber creado o borrado exámenes: refrescar los hitos de la semana.
+            await reloadHolidays()
+            rebuildWeekRenderModel()
+        } catch {
+            bulkSummary = "No se pudieron sincronizar los exámenes de 1º Bachillerato."
+        }
+    }
+
+    private func reloadSessionPlans() async {
+        guard let bridge else { return }
+        do {
+            let plans = try await bridge.learningSituationSessionPlansAll()
+            sessionPlansById = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
+        } catch {
+            // Los metadatos enriquecidos son opcionales: la sesión sigue siendo
+            // utilizable con los campos estructurados del PlanningSession.
+            sessionPlansById = [:]
+        }
+    }
+
+
     func reloadWeekSessions(keepSelection: Bool = true) async {
         guard let bridge else { return }
-        await sessionStore.reload(bridge: bridge, week: week, year: year)
+        do {
+            try await sessionStore.reload(bridge: bridge, week: week, year: year)
+        } catch {
+            bulkSummary = "No se pudo cargar la semana. Se mantienen las sesiones que ya ves."
+            return
+        }
         sessions = sessionStore.sessions
         rebuildVisiblePlannerStructure()
+        // Pintar la semana ya; diarios y festivos la completan después.
+        rebuildWeekRenderModel()
         await reloadJournalSummaries()
         await reloadHolidays()
         rebuildWeekRenderModel()
@@ -215,13 +302,25 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func reloadJournalSummaries() async {
         guard let bridge else { return }
-        await journalStore.reloadSummaries(bridge: bridge, sessionIds: sessions.map(\.id))
+        let loadedJournals = await journalStore.reloadSummaries(bridge: bridge, sessionIds: sessions.map(\.id))
         journalSummaryBySessionId = journalStore.journalSummaryBySessionId
+        if !loadedJournals {
+            bulkSummary = "No se pudieron cargar los diarios de la semana. Se mantienen los que ya ves."
+        }
         rebuildWeekRenderModel()
     }
 
     private func reloadSelectedJournal() async {
         await loadJournalForSelectedSession()
+    }
+
+    func scheduleSearch() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            applySearch()
+        }
     }
 
     func applySearch() {

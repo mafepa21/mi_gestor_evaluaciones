@@ -1,10 +1,26 @@
 import SwiftUI
 import MiGestorKit
 
+/// Regla de cierre tras asignar una rúbrica: solo cierra si el bridge confirma éxito.
+enum AssignRubricSaveGate {
+    static let saveFailureMessage =
+        "No se pudo asignar la rúbrica al cuaderno. Los datos siguen en esta pantalla."
+
+    static func shouldDismiss(succeeded: Bool) -> Bool { succeeded }
+
+    static func failureMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return saveFailureMessage }
+        return "\(saveFailureMessage) \(trimmed)"
+    }
+}
+
 struct AssignRubricToTabView: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @State private var saveError: String?
+    @State private var isSaving = false
 
     private var dialog: AssignRubricDialogState? {
         bridge.rubricsUiState?.assignDialogState
@@ -226,38 +242,69 @@ struct AssignRubricToTabView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(canAssign ? "Listo para guardar" : "Completa los datos para continuar")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(canAssign ? .green : .secondary)
-
-                Text(footerHint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            if let saveError {
+                Text(saveError)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Spacer()
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(canAssign ? "Listo para guardar" : "Completa los datos para continuar")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(canAssign ? .green : .secondary)
 
-            Button("Cerrar") {
-                closeSheet()
-            }
-            .buttonStyle(.bordered)
-            .keyboardShortcut(.cancelAction)
+                    Text(footerHint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
-            Button {
-                bridge.confirmAssignRubric()
-                dismiss()
-            } label: {
-                Label("Guardar asignación", systemImage: "checkmark.circle.fill")
+                Spacer()
+
+                Button("Cerrar") {
+                    closeSheet()
+                }
+                .buttonStyle(.bordered)
+                .keyboardShortcut(.cancelAction)
+                .disabled(isSaving)
+
+                Button {
+                    Task { await saveAssignment() }
+                } label: {
+                    if isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(minWidth: 140)
+                    } else {
+                        Label("Guardar asignación", systemImage: "checkmark.circle.fill")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canAssign || isSaving)
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
-            .disabled(!canAssign)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
         .background(footerBackground)
+    }
+
+    @MainActor
+    private func saveAssignment() async {
+        saveError = nil
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await bridge.confirmAssignRubricAwaitingSuccess()
+            if AssignRubricSaveGate.shouldDismiss(succeeded: true) {
+                dismiss()
+            }
+        } catch {
+            AppleInteractionFeedback.play(.error)
+            saveError = AssignRubricSaveGate.failureMessage(detail: error.localizedDescription)
+        }
     }
 
     private var canAssign: Bool {

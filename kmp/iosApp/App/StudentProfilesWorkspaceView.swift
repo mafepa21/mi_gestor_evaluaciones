@@ -1,9 +1,19 @@
 import SwiftUI
 import MiGestorKit
 
+enum StudentListSearch {
+    static let debounceNanoseconds: UInt64 = 200_000_000
+
+    /// El campo puede ir por delante. La lista solo filtra con el texto ya asentado.
+    static func queryForList(liveText: String, settledText: String) -> String {
+        settledText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 // MARK: - Filtro de seguimiento
 private enum StudentTrackingFilter: String, CaseIterable {
     case todos = "Todos"
+    case sinCurso = "Sin curso"
     case seguimiento = "Seguimiento"
     case lesionados = "Lesionados"
 }
@@ -32,12 +42,17 @@ struct StudentProfilesWorkspaceView: View {
     }
 
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
     @State private var trackingFilter: StudentTrackingFilter = .todos
     @State private var profile: KmpBridge.StudentProfileSnapshot?
     @State private var isLoadingProfile = false
     @State private var showFollowUpConfirm = false
     @State private var showIncidentsSheet = false
     @State private var updatingStudentIds: Set<Int64> = []
+    @State private var unassignedStudentIds: Set<Int64> = []
+    @State private var assigningStudent: Student?
+    @State private var loadedProfileStudentId: Int64?
     @State private var supportMeasures: [SupportMeasureRow] = []
     @State private var tutoringSessions: [TutoringSessionRow] = []
     @State private var showSupportMeasureSheet = false
@@ -47,22 +62,38 @@ struct StudentProfilesWorkspaceView: View {
     @State private var showBulkImportSheet = false
     @State private var showGroupOverviewSheet = false
     @State private var showWeeklyEmailSheet = false
+    @State private var showSexInferenceSheet = false
+    @State private var showingEmailFileImporter = false
+    @State private var studentEmailImportPreview: AppleStudentEmailImportPreview?
+    @State private var emailImportErrorMessage: String?
     @State private var selectedEmailStudent: Student?
     @State private var pendingDeleteStudent: Student?
     @State private var pendingDeleteSupportMeasure: SupportMeasureRow?
     @State private var editingStudent: Student?
     @State private var editingSupportMeasure: SupportMeasureRow?
+    @State private var isMultiSelectActive = false
+    @State private var selectedStudentIds: Set<Int64> = []
+    @State private var assigningMultipleStudents: [Student]?
+    @State private var pendingDeleteMultipleStudents: [Student]?
 
     // MARK: - Computed
 
     private var filteredStudents: [Student] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = studentsBridgeStore.studentsInClass.isEmpty ? studentsBridgeStore.allStudents : studentsBridgeStore.studentsInClass
+        let query = StudentListSearch.queryForList(liveText: searchText, settledText: debouncedSearchText)
+        let base: [Student] = {
+            if let _ = selectedClassId {
+                return studentsBridgeStore.studentsInClass
+            } else {
+                return studentsBridgeStore.allStudents
+            }
+        }()
 
         let tracked: [Student]
         switch trackingFilter {
         case .todos:
             tracked = base
+        case .sinCurso:
+            tracked = studentsBridgeStore.allStudents.filter { unassignedStudentIds.contains($0.id) }
         case .seguimiento:
             tracked = base.filter { _ in true } // isFollowUp not on Student model — show all for now
         case .lesionados:
@@ -72,6 +103,15 @@ struct StudentProfilesWorkspaceView: View {
         guard !query.isEmpty else { return tracked }
         return tracked.filter {
             "\($0.firstName) \($0.lastName)".localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private func scheduleSearchDebounce() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: StudentListSearch.debounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            debouncedSearchText = searchText
         }
     }
 
@@ -88,6 +128,8 @@ struct StudentProfilesWorkspaceView: View {
                 await reloadProfile()
             }
             .appOnChange(of: selectedClassId) { _ in
+                selectedStudentIds.removeAll()
+                isMultiSelectActive = false
                 Task {
                     await bridge.selectStudentsClass(classId: selectedClassId)
                     if selectedStudentId == nil {
@@ -141,6 +183,29 @@ struct StudentProfilesWorkspaceView: View {
                     .environmentObject(bridge)
                 }
             }
+            .sheet(item: $assigningStudent) { student in
+                AssignStudentToClassSheet(
+                    student: student,
+                    availableClasses: studentsBridgeStore.classes
+                ) { targetClassId in
+                    try await assignStudent(student, toClassId: targetClassId)
+                }
+            }
+            .sheet(
+                isPresented: Binding(
+                    get: { assigningMultipleStudents != nil },
+                    set: { if !$0 { assigningMultipleStudents = nil } }
+                )
+            ) {
+                if let students = assigningMultipleStudents {
+                    AssignStudentToClassSheet(
+                        students: students,
+                        availableClasses: studentsBridgeStore.classes
+                    ) { targetClassId in
+                        try await assignMultipleStudents(students, toClassId: targetClassId)
+                    }
+                }
+            }
             .sheet(
                 isPresented: Binding(
                     get: { editingStudent != nil },
@@ -148,8 +213,16 @@ struct StudentProfilesWorkspaceView: View {
                 )
             ) {
                 if let student = editingStudent {
-                    StudentEditorSheet(student: student) { firstName, lastName, email in
-                        Task { await updateStudent(student, firstName: firstName, lastName: lastName, email: email) }
+                    StudentEditorSheet(student: student) { firstName, lastName, email, isInjured, sex, birthDate in
+                        try await updateStudent(
+                            student,
+                            firstName: firstName,
+                            lastName: lastName,
+                            email: email,
+                            isInjured: isInjured,
+                            sex: sex,
+                            birthDate: birthDate
+                        )
                     }
                 }
             }
@@ -173,7 +246,37 @@ struct StudentProfilesWorkspaceView: View {
                     pendingDeleteStudent = nil
                 }
             } message: { student in
-                Text("\(student.firstName) \(student.lastName) tiene evaluaciones, asistencia y medidas vinculadas. Elige si quieres quitarlo solo de este grupo o eliminarlo por completo.")
+                if selectedClassId != nil {
+                    Text("\(student.firstName) \(student.lastName) tiene evaluaciones, asistencia y medidas vinculadas. Elige si quieres quitarlo solo de este grupo o eliminarlo por completo de la aplicación.")
+                } else {
+                    Text("Se eliminará a \(student.firstName) \(student.lastName) y todos sus datos vinculados de forma definitiva en toda la app.")
+                }
+            }
+            .confirmationDialog(
+                "Eliminar alumnos seleccionados",
+                isPresented: Binding(
+                    get: { pendingDeleteMultipleStudents != nil },
+                    set: { if !$0 { pendingDeleteMultipleStudents = nil } }
+                ),
+                presenting: pendingDeleteMultipleStudents
+            ) { students in
+                if selectedClassId != nil {
+                    Button("Quitar \(students.count) alumnos del grupo", role: .destructive) {
+                        Task { await removeMultipleStudentsFromClass(students) }
+                    }
+                }
+                Button("Eliminar \(students.count) de toda la app", role: .destructive) {
+                    Task { await deleteMultipleStudentsEverywhere(students) }
+                }
+                Button("Cancelar", role: .cancel) {
+                    pendingDeleteMultipleStudents = nil
+                }
+            } message: { students in
+                if selectedClassId != nil {
+                    Text("Se han seleccionado \(students.count) alumnos. Elige si deseas quitarlos solo de este grupo o eliminarlos definitivamente de la aplicación.")
+                } else {
+                    Text("Se eliminarán \(students.count) alumnos y todos sus datos asociados permanentemente de toda la app.")
+                }
             }
             .confirmationDialog(
                 "Eliminar tutoría",
@@ -256,7 +359,25 @@ struct StudentProfilesWorkspaceView: View {
 
             // Filters
             VStack(spacing: 10) {
-                IOSSearchField(text: $searchText, placeholder: "Buscar alumno…")
+                HStack(spacing: 8) {
+                    IOSSearchField(text: $searchText, placeholder: "Buscar alumno…")
+                        .appOnChange(of: searchText) { _ in
+                            scheduleSearchDebounce()
+                        }
+
+                    Button(isMultiSelectActive ? "Listo" : "Seleccionar") {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isMultiSelectActive.toggle()
+                            if !isMultiSelectActive {
+                                selectedStudentIds.removeAll()
+                            }
+                        }
+                    }
+                    .font(IOSAppStyle.captionText.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .tint(isMultiSelectActive ? IOSAppStyle.info : .secondary)
+                    .controlSize(.small)
+                }
 
                 Picker("Filtro", selection: $trackingFilter) {
                     ForEach(StudentTrackingFilter.allCases, id: \.self) { filter in
@@ -269,7 +390,32 @@ struct StudentProfilesWorkspaceView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
 
-            Divider().opacity(0.15)
+            if isMultiSelectActive {
+                HStack(spacing: 12) {
+                    Button(selectedStudentIds.count == filteredStudents.count ? "Deseleccionar todos" : "Todos (\(filteredStudents.count))") {
+                        if selectedStudentIds.count == filteredStudents.count {
+                            selectedStudentIds.removeAll()
+                        } else {
+                            selectedStudentIds = Set(filteredStudents.map(\.id))
+                        }
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(IOSAppStyle.info)
+
+                    Spacer()
+
+                    Text("\(selectedStudentIds.count) seleccionados")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(Color.secondary.opacity(0.08))
+
+                Divider().opacity(0.15)
+            } else {
+                Divider().opacity(0.15)
+            }
 
             // Student list
             if filteredStudents.isEmpty {
@@ -287,14 +433,33 @@ struct StudentProfilesWorkspaceView: View {
                 List(filteredStudents, id: \.id) { student in
                     StudentListRow(
                         student: student,
-                        isSelected: selectedStudentId == student.id
+                        isSelected: selectedStudentId == student.id,
+                        isUnassigned: unassignedStudentIds.contains(student.id),
+                        isMultiSelectActive: isMultiSelectActive,
+                        isChecked: selectedStudentIds.contains(student.id),
+                        onToggleCheck: {
+                            if selectedStudentIds.contains(student.id) {
+                                selectedStudentIds.remove(student.id)
+                            } else {
+                                selectedStudentIds.insert(student.id)
+                            }
+                        }
                     )
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(uiFeatureFlags.interactionAnimation) {
-                            selectedStudentId = student.id
+                        if isMultiSelectActive {
+                            if selectedStudentIds.contains(student.id) {
+                                selectedStudentIds.remove(student.id)
+                            } else {
+                                selectedStudentIds.insert(student.id)
+                            }
+                            AppleInteractionFeedback.play(.selection)
+                        } else {
+                            withAnimation(uiFeatureFlags.interactionAnimation) {
+                                selectedStudentId = student.id
+                            }
+                            AppleInteractionFeedback.play(.selection)
                         }
-                        AppleInteractionFeedback.play(.selection)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button("Eliminar", role: .destructive) {
@@ -317,6 +482,11 @@ struct StudentProfilesWorkspaceView: View {
                             editingStudent = student
                         }
                         .tint(.blue)
+
+                        Button("Asignar curso") {
+                            assigningStudent = student
+                        }
+                        .tint(IOSAppStyle.info)
                     }
                     .contextMenu {
                         Button {
@@ -324,6 +494,12 @@ struct StudentProfilesWorkspaceView: View {
                         } label: {
                             Label("Editar alumno", systemImage: "pencil")
                         }
+                        Button {
+                            assigningStudent = student
+                        } label: {
+                            Label("Asignar a curso...", systemImage: "person.badge.plus")
+                        }
+                        Divider()
                         Button(role: .destructive) {
                             pendingDeleteStudent = student
                         } label: {
@@ -334,8 +510,10 @@ struct StudentProfilesWorkspaceView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                     .listRowBackground(
                         RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous)
-                            .fill(selectedStudentId == student.id
+                            .fill((selectedStudentId == student.id && !isMultiSelectActive)
                                   ? IOSAppStyle.info.opacity(0.10)
+                                  : (selectedStudentIds.contains(student.id) && isMultiSelectActive)
+                                  ? IOSAppStyle.info.opacity(0.08)
                                   : Color.clear)
                             .padding(.horizontal, 4)
                     )
@@ -346,12 +524,43 @@ struct StudentProfilesWorkspaceView: View {
 
             Divider().opacity(0.15)
 
-            // Footer count
-            Text("\(filteredStudents.count) alumno\(filteredStudents.count == 1 ? "" : "s")")
-                .font(IOSAppStyle.captionText)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .center)
+            // Batch action bar or footer count
+            if isMultiSelectActive && !selectedStudentIds.isEmpty {
+                HStack(spacing: 8) {
+                    Button {
+                        let selected = filteredStudents.filter { selectedStudentIds.contains($0.id) }
+                        assigningMultipleStudents = selected
+                    } label: {
+                        Label("Asignar curso", systemImage: "person.badge.plus")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(IOSAppStyle.info)
+                    .controlSize(.small)
+
+                    Spacer()
+
+                    Button(role: .destructive) {
+                        let selected = filteredStudents.filter { selectedStudentIds.contains($0.id) }
+                        pendingDeleteMultipleStudents = selected
+                    } label: {
+                        Label("Eliminar", systemImage: "trash")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(IOSAppStyle.danger)
+                    .controlSize(.small)
+                }
+                .padding(.horizontal, 14)
                 .padding(.vertical, 8)
+                .background(IOSAppStyle.cardBackground)
+            } else {
+                Text("\(filteredStudents.count) alumno\(filteredStudents.count == 1 ? "" : "s")")
+                    .font(IOSAppStyle.captionText)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
+            }
         }
         .background(IOSAppStyle.cardBackground)
     }
@@ -395,11 +604,50 @@ struct StudentProfilesWorkspaceView: View {
                         Image(systemName: "envelope.sparkles")
                     }
                     .help("Generar correos semanales de evaluación")
+
+                    Button {
+                        showSexInferenceSheet = true
+                    } label: {
+                        Image(systemName: "person.2.badge.gearshape")
+                    }
+                    .help("Sugerir sexo por nombre")
                 }
+
+                Button {
+                    showingEmailFileImporter = true
+                } label: {
+                    Image(systemName: "envelope.badge.shield.half.filled")
+                }
+                .help("Importar correos corporativos desde Excel")
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .fileImporter(
+            isPresented: $showingEmailFileImporter,
+            allowedContentTypes: [.xlsx, .commaSeparatedText],
+            allowsMultipleSelection: false
+        ) { result in
+            Task { await handleStudentEmailImportFile(result) }
+        }
+        .sheet(item: $studentEmailImportPreview) { preview in
+            StudentEmailImportSheet(preview: preview)
+                .environmentObject(bridge)
+                .onDisappear {
+                    Task {
+                        try? await bridge.refreshStudentsDirectory()
+                        await reloadProfile()
+                    }
+                }
+        }
+        .alert("No se pudo importar correos", isPresented: Binding(
+            get: { emailImportErrorMessage != nil },
+            set: { if !$0 { emailImportErrorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(emailImportErrorMessage ?? "")
+        }
         .sheet(isPresented: $showBulkImportSheet) {
             if let selectedClassId {
                 SupportMeasureBulkImportSheet(
@@ -421,6 +669,11 @@ struct StudentProfilesWorkspaceView: View {
         .sheet(isPresented: $showWeeklyEmailSheet) {
             WeeklyStudentEmailWorkspaceView(classId: selectedClassId)
                 .environmentObject(bridge)
+        }
+        .sheet(isPresented: $showSexInferenceSheet) {
+            StudentSexInferenceSheet(students: studentsBridgeStore.studentsInClass) { assignments in
+                Task { await applyStudentSexInference(assignments) }
+            }
         }
     }
 
@@ -497,6 +750,39 @@ struct StudentProfilesWorkspaceView: View {
                         filled: false
                     ) { }
                 }
+
+                Divider()
+                    .frame(height: 28)
+                    .padding(.horizontal, 2)
+
+                quickActionChip(
+                    label: "Editar datos",
+                    systemImage: "pencil",
+                    tint: IOSAppStyle.info,
+                    filled: false
+                ) {
+                    editingStudent = profile.student
+                }
+
+                if unassignedStudentIds.contains(profile.student.id) || profile.schoolClass == nil {
+                    quickActionChip(
+                        label: "Asignar curso",
+                        systemImage: "person.badge.plus",
+                        tint: .orange,
+                        filled: true
+                    ) {
+                        assigningStudent = profile.student
+                    }
+                }
+
+                quickActionChip(
+                    label: "Eliminar",
+                    systemImage: "trash",
+                    tint: IOSAppStyle.danger,
+                    filled: false
+                ) {
+                    pendingDeleteStudent = profile.student
+                }
             }
         }
     }
@@ -567,6 +853,30 @@ struct StudentProfilesWorkspaceView: View {
                         )
                     }
                     Spacer()
+                }
+
+                if unassignedStudentIds.contains(profile.student.id) || profile.schoolClass == nil {
+                    PremiumCard.section(title: "Matrícula y curso", systemImage: "graduationcap.fill") {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Alumno sin curso asignado")
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.orange)
+                                Text("Este alumno no pertenece a ningún grupo en el curso activo.")
+                                    .font(IOSAppStyle.captionText)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button {
+                                assigningStudent = profile.student
+                            } label: {
+                                Label("Asignar a curso", systemImage: "person.badge.plus")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(IOSAppStyle.info)
+                        }
+                    }
                 }
 
                 // Metric grid
@@ -907,6 +1217,7 @@ struct StudentProfilesWorkspaceView: View {
 
     @MainActor
     private func reloadProfile() async {
+        unassignedStudentIds = (try? await bridge.unassignedStudentIds()) ?? []
         guard let studentId = selectedStudentId else {
             profile = nil
             supportMeasures = []
@@ -914,9 +1225,24 @@ struct StudentProfilesWorkspaceView: View {
             return
         }
         isLoadingProfile = true
-        profile = try? await bridge.loadStudentProfile(studentId: studentId, classId: selectedClassId)
-        supportMeasures = ((try? await bridge.supportMeasures(for: studentId)) ?? []).map(\.asRow)
-        tutoringSessions = ((try? await bridge.tutoringSessions(for: studentId)) ?? []).map(\.asRow)
+        let requestedId = studentId
+        let samePerson = loadedProfileStudentId == requestedId
+        let loadedProfile = try? await bridge.loadStudentProfile(studentId: requestedId, classId: selectedClassId)
+        let loadedMeasures = try? await bridge.supportMeasures(for: requestedId)
+        let loadedTutoring = try? await bridge.tutoringSessions(for: requestedId)
+        guard selectedStudentId == requestedId else {
+            isLoadingProfile = false
+            return
+        }
+        if loadedProfile == nil || loadedMeasures == nil || loadedTutoring == nil {
+            bridge.status = ProfileReloadKeep.failureMessage
+        }
+        profile = ProfileReloadKeep.snapshot(loaded: loadedProfile, previous: profile, samePerson: samePerson)
+        supportMeasures = ProfileReloadKeep.list(loaded: loadedMeasures?.map(\.asRow), previous: supportMeasures, samePerson: samePerson)
+        tutoringSessions = ProfileReloadKeep.list(loaded: loadedTutoring?.map(\.asRow), previous: tutoringSessions, samePerson: samePerson)
+        if loadedProfile != nil || loadedMeasures != nil || loadedTutoring != nil {
+            loadedProfileStudentId = requestedId
+        }
         isLoadingProfile = false
     }
 
@@ -1029,22 +1355,144 @@ struct StudentProfilesWorkspaceView: View {
     }
 
     @MainActor
-    private func updateStudent(_ student: Student, firstName: String, lastName: String, email: String) async {
-        editingStudent = nil
-        do {
-            try await bridge.updateMacStudent(
-                student: student,
-                firstName: firstName,
-                lastName: lastName,
-                email: email,
-                isInjured: student.isInjured
+    private func assignStudent(_ student: Student, toClassId classId: Int64) async throws {
+        guard !updatingStudentIds.contains(student.id) else {
+            throw NSError(
+                domain: "StudentEnrollment",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Ya se está matriculando este alumno."]
             )
+        }
+        updatingStudentIds.insert(student.id)
+        defer { updatingStudentIds.remove(student.id) }
+
+        try await bridge.assignStudentToClass(studentId: student.id, classId: classId)
+        unassignedStudentIds.remove(student.id)
+        await bridge.selectStudentsClass(classId: selectedClassId)
+        await reloadProfile()
+        let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
+        bridge.status = "\(student.firstName) \(student.lastName) se ha asignado a \(className)."
+        AppleInteractionFeedback.play(.success)
+    }
+
+    @MainActor
+    private func assignMultipleStudents(_ students: [Student], toClassId classId: Int64) async throws {
+        let ids = students.map(\.id)
+        updatingStudentIds.formUnion(ids)
+        defer { ids.forEach { updatingStudentIds.remove($0) } }
+
+        try await bridge.assignStudentsToClass(studentIds: ids, classId: classId)
+        for id in ids { unassignedStudentIds.remove(id) }
+        selectedStudentIds.removeAll()
+        isMultiSelectActive = false
+        await bridge.selectStudentsClass(classId: selectedClassId)
+        await reloadProfile()
+        let className = studentsBridgeStore.classes.first(where: { $0.id == classId })?.name ?? "el curso"
+        bridge.status = "\(students.count) alumnos asignados a \(className)."
+        AppleInteractionFeedback.play(.success)
+    }
+
+    @MainActor
+    private func removeMultipleStudentsFromClass(_ students: [Student]) async {
+        pendingDeleteMultipleStudents = nil
+        guard let classId = selectedClassId else { return }
+        let ids = students.map(\.id)
+        updatingStudentIds.formUnion(ids)
+        defer {
+            ids.forEach { updatingStudentIds.remove($0) }
+            selectedStudentIds.removeAll()
+            isMultiSelectActive = false
+        }
+
+        do {
+            try await bridge.removeStudentsFromClass(studentIds: ids, classId: classId)
+            if let currentSelected = selectedStudentId, ids.contains(currentSelected) {
+                selectedStudentId = studentsBridgeStore.studentsInClass.first(where: { !ids.contains($0.id) })?.id
+            }
             await reloadProfile()
-            bridge.status = "Alumno actualizado."
+            bridge.status = "Se han quitado \(students.count) alumnos del grupo."
             AppleInteractionFeedback.play(.success)
         } catch {
-            bridge.status = "No se pudo actualizar el alumno: \(error.localizedDescription)"
+            bridge.status = "No se pudieron quitar los alumnos: \(error.localizedDescription)"
             AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func deleteMultipleStudentsEverywhere(_ students: [Student]) async {
+        pendingDeleteMultipleStudents = nil
+        let ids = students.map(\.id)
+        updatingStudentIds.formUnion(ids)
+        defer {
+            ids.forEach { updatingStudentIds.remove($0) }
+            selectedStudentIds.removeAll()
+            isMultiSelectActive = false
+        }
+
+        do {
+            try await bridge.deleteStudentsEverywhere(studentIds: ids)
+            if let currentSelected = selectedStudentId, ids.contains(currentSelected) {
+                selectedStudentId = studentsBridgeStore.allStudents.first(where: { !ids.contains($0.id) })?.id
+            }
+            await reloadProfile()
+            bridge.status = "Se han eliminado \(students.count) alumnos de toda la app."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudieron eliminar los alumnos: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func updateStudent(
+        _ student: Student,
+        firstName: String,
+        lastName: String,
+        email: String,
+        isInjured: Bool,
+        sex: StudentSex,
+        birthDate: LocalDate?
+    ) async throws {
+        try await bridge.updateStudentFull(
+            student: student,
+            firstName: firstName,
+            lastName: lastName,
+            email: email,
+            isInjured: isInjured,
+            sex: sex,
+            birthDate: birthDate
+        )
+        await reloadProfile()
+        bridge.status = "Alumno actualizado."
+        AppleInteractionFeedback.play(.success)
+    }
+
+    @MainActor
+    private func applyStudentSexInference(_ assignments: [StudentSexInferenceAssignment]) async {
+        guard !assignments.isEmpty else { return }
+        updatingStudentIds.formUnion(assignments.map(\.student.id))
+        defer { assignments.forEach { updatingStudentIds.remove($0.student.id) } }
+
+        do {
+            try await bridge.applyStudentSexInference(assignments)
+            await bridge.selectStudentsClass(classId: selectedClassId)
+            await reloadProfile()
+            bridge.status = "Se han asignado \(assignments.count) alumnos por nombre. Revisa los casos ambiguos."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo aplicar la sugerencia: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func handleStudentEmailImportFile(_ result: Result<[URL], Error>) async {
+        do {
+            guard let url = try result.get().first else { return }
+            let rows = try AppleSpreadsheetReader.readRows(from: url)
+            studentEmailImportPreview = try await bridge.previewStudentEmailImport(rows: rows)
+        } catch {
+            emailImportErrorMessage = error.localizedDescription
         }
     }
 
@@ -1077,9 +1525,24 @@ struct StudentProfilesWorkspaceView: View {
 private struct StudentListRow: View {
     let student: Student
     let isSelected: Bool
+    var isUnassigned: Bool = false
+    var isMultiSelectActive: Bool = false
+    var isChecked: Bool = false
+    var onToggleCheck: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 11) {
+            if isMultiSelectActive {
+                Button {
+                    onToggleCheck?()
+                } label: {
+                    Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isChecked ? IOSAppStyle.info : Color.secondary.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+            }
+
             // Avatar
             ZStack {
                 Circle()
@@ -1106,12 +1569,22 @@ private struct StudentListRow: View {
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(.tertiary)
                     }
+
+                    if isUnassigned {
+                        Text("Sin curso")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
                 }
             }
 
             Spacer(minLength: 4)
 
-            if isSelected {
+            if isSelected && !isMultiSelectActive {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(IOSAppStyle.info.opacity(0.7))
@@ -1133,22 +1606,70 @@ private struct StudentListRow: View {
     }
 }
 
+// MARK: - StudentEditorSaveGate
+
+/// Regla de cierre tras guardar la ficha: solo cierra si el bridge confirma éxito.
+enum StudentEditorSaveGate {
+    static let saveFailureMessage =
+        "No se pudo guardar los datos del alumno. Los cambios siguen en esta pantalla."
+
+    static func shouldDismiss(succeeded: Bool) -> Bool { succeeded }
+
+    static func failureMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return saveFailureMessage }
+        return "\(saveFailureMessage) \(trimmed)"
+    }
+}
+
 // MARK: - StudentEditorSheet
 
 private struct StudentEditorSheet: View {
     let student: Student
-    let onSave: (String, String, String) -> Void
+    let onSave: (String, String, String, Bool, StudentSex, LocalDate?) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var firstName: String
     @State private var lastName: String
     @State private var email: String
+    @State private var isInjured: Bool
+    @State private var sex: StudentSex
+    @State private var hasBirthDate: Bool
+    @State private var birthDate: Date
+    @State private var errorMessage: String?
+    @State private var isSaving = false
 
-    init(student: Student, onSave: @escaping (String, String, String) -> Void) {
+    init(
+        student: Student,
+        onSave: @escaping (String, String, String, Bool, StudentSex, LocalDate?) async throws -> Void
+    ) {
         self.student = student
         self.onSave = onSave
         _firstName = State(initialValue: student.firstName)
         _lastName = State(initialValue: student.lastName)
         _email = State(initialValue: student.email ?? "")
+        _isInjured = State(initialValue: student.isInjured)
+        _sex = State(initialValue: student.sex)
+        if let bd = student.birthDate {
+            _hasBirthDate = State(initialValue: true)
+            var c = DateComponents()
+            c.year = Int(bd.year)
+            c.month = Int(bd.monthNumber)
+            c.day = Int(bd.dayOfMonth)
+            _birthDate = State(initialValue: Calendar.current.date(from: c) ?? Date())
+        } else {
+            _hasBirthDate = State(initialValue: false)
+            _birthDate = State(initialValue: Date())
+        }
+    }
+
+    private var localBirthDate: LocalDate? {
+        guard hasBirthDate else { return nil }
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: birthDate)
+        return LocalDate(
+            year: Int32(c.year ?? 2010),
+            monthNumber: Int32(c.month ?? 1),
+            dayOfMonth: Int32(c.day ?? 1)
+        )
     }
 
     private var canSave: Bool {
@@ -1168,6 +1689,21 @@ private struct StudentEditorSheet: View {
                         .textInputAutocapitalization(.never)
                         #endif
                 }
+
+                Section("Perfil y condición física") {
+                    Picker("Sexo", selection: $sex) {
+                        Text("Sin especificar").tag(StudentSex.unspecified)
+                        Text("Masculino").tag(StudentSex.male)
+                        Text("Femenino").tag(StudentSex.female)
+                    }
+
+                    Toggle("Incluir fecha de nacimiento", isOn: $hasBirthDate)
+                    if hasBirthDate {
+                        DatePicker("Fecha de nacimiento", selection: $birthDate, displayedComponents: .date)
+                    }
+
+                    Toggle("Lesión activa", isOn: $isInjured)
+                }
             }
             .navigationTitle("Editar alumno")
             #if os(iOS)
@@ -1176,20 +1712,49 @@ private struct StudentEditorSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") { dismiss() }
+                        .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Guardar") {
-                        onSave(
-                            firstName.trimmingCharacters(in: .whitespacesAndNewlines),
-                            lastName.trimmingCharacters(in: .whitespacesAndNewlines),
-                            email.trimmingCharacters(in: .whitespacesAndNewlines)
-                        )
-                        dismiss()
+                        Task { await persistEdits() }
                     }
-                    .disabled(!canSave)
+                    .disabled(!canSave || isSaving)
                 }
             }
+            .alert("No se pudo guardar", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("Aceptar", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "")
+            }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(isSaving)
+    }
+
+    @MainActor
+    private func persistEdits() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await onSave(
+                firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+                email.trimmingCharacters(in: .whitespacesAndNewlines),
+                isInjured,
+                sex,
+                localBirthDate
+            )
+            if StudentEditorSaveGate.shouldDismiss(succeeded: true) {
+                dismiss()
+            }
+        } catch {
+            AppleInteractionFeedback.play(.error)
+            errorMessage = StudentEditorSaveGate.failureMessage(detail: error.localizedDescription)
+        }
     }
 }
+

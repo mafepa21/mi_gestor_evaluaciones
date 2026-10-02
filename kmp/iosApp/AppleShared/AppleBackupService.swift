@@ -24,13 +24,13 @@ public final class AppleBackupService: ObservableObject {
     public let databaseURL: URL
     public let attachmentsURL: URL
     public let learningSituationsURL: URL
-    private let retentionLimit = 10
+    private let retentionLimit = 5
 
     public static let shared = AppleBackupService()
 
     private init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
-        let dbPath = AppleBridgeBootstrap.current().databasePath
+        let dbPath = AppleBridgeBootstrap.databasePath
         self.databaseURL = URL(fileURLWithPath: dbPath)
         
         let appDataURL = self.databaseURL.deletingLastPathComponent()
@@ -215,7 +215,7 @@ public final class AppleBackupService: ObservableObject {
             // 5. Gather App Metadata
             let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
             let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-            let platform = AppleBridgeBootstrap.current().platformName
+            let platform = AppleBridgeBootstrap.platformName
             
             #if os(macOS)
             let deviceName = Host.current().localizedName ?? "Mac"

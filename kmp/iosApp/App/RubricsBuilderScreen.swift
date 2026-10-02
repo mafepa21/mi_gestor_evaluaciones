@@ -7,6 +7,7 @@ struct RubricsBuilderScreen: View {
     @Environment(\.colorScheme) private var colorScheme
     var onSaved: ((Int64) -> Void)? = nil
     @State private var saveFeedback: String? = nil
+    @State private var showingAIGenerator: Bool = false
 
     private var state: RubricUiState? {
         bridge.rubricsUiState
@@ -60,17 +61,31 @@ struct RubricsBuilderScreen: View {
                         }
                         .frame(maxHeight: .infinity)
 
-                        Button {
-                            bridge.addRubricCriterion()
-                        } label: {
-                            Label("Añadir criterio", systemImage: "plus")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Color.accentColor)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 16)
-                                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+                        HStack(spacing: 12) {
+                            Button {
+                                bridge.addRubricCriterion()
+                            } label: {
+                                Label("Añadir criterio", systemImage: "plus")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 16)
+                                    .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                showingAIGenerator = true
+                            } label: {
+                                Label("Crear con IA LOMLOE", systemImage: "sparkles")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.purple)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 16)
+                                    .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
 
                         HStack {
                             if state.isSaving {
@@ -123,11 +138,57 @@ struct RubricsBuilderScreen: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cerrar") { dismiss() }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingAIGenerator = true
+                    } label: {
+                        Label("Crear con IA", systemImage: "sparkles")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingAIGenerator) {
+                AIRubricGeneratorSheet(
+                    initialTopic: state?.rubricName ?? "",
+                    onApply: applyAIDraft
+                )
             }
         }
 #if os(iOS)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 #endif
+    }
+
+    private func applyAIDraft(_ draft: AIRubricDraft) {
+        bridge.updateRubricName(draft.title)
+        if !draft.teacherTips.isEmpty {
+            bridge.updateRubricInstructions(draft.teacherTips.joined(separator: "\n"))
+        }
+        guard let currentState = bridge.rubricsUiState else { return }
+
+        for (index, criterionDraft) in draft.criteria.enumerated() {
+            if index >= currentState.criteria.count {
+                bridge.addRubricCriterion()
+            }
+            let label = criterionDraft.criterionTitle + (criterionDraft.description.isEmpty ? "" : " - " + criterionDraft.description)
+            bridge.updateRubricCriterionDescription(at: index, description: label)
+            bridge.updateRubricCriterionWeight(at: index, weight: criterionDraft.weight)
+
+            if let updatedState = bridge.rubricsUiState {
+                for (levelIdx, levelDraft) in criterionDraft.levels.enumerated() {
+                    if levelIdx < updatedState.levels.count {
+                        let level = updatedState.levels[levelIdx]
+                        bridge.updateRubricLevelDescription(
+                            criterionIndex: index,
+                            levelUid: level.uid,
+                            description: levelDraft.descriptor
+                        )
+                        bridge.updateRubricLevelName(at: levelIdx, name: levelDraft.levelName)
+                        bridge.updateRubricLevelPoints(at: levelIdx, points: Int(levelDraft.scoreSuggestion))
+                    }
+                }
+            }
+        }
+        saveFeedback = "Rúbrica LOMLOE aplicada"
     }
 
     private var rubricNameBinding: Binding<String> {

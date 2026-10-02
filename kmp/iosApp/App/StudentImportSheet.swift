@@ -13,9 +13,10 @@ struct StudentImportSheet: View {
     @State private var isImporting = false
     @State private var errorMessage: String?
 
-    init(preview: AppleStudentImportPreview) {
+    init(preview: AppleStudentImportPreview, initialClassId: Int64? = nil) {
         self.preview = preview
         _selectedRows = State(initialValue: Set(preview.students.filter { $0.duplicateStatus == .new }.map(\.rowNumber)))
+        _selectedClassId = State(initialValue: initialClassId)
     }
 
     var body: some View {
@@ -33,6 +34,17 @@ struct StudentImportSheet: View {
             footer
         }
         .background(appPageBackground(for: colorScheme))
+        .onAppear {
+            if selectedClassId == nil, let detectedClassName = preview.className?.trimmingCharacters(in: .whitespacesAndNewlines), !detectedClassName.isEmpty {
+                if let matchedClass = bridge.classes.first(where: {
+                    $0.name.localizedCaseInsensitiveCompare(detectedClassName) == .orderedSame ||
+                    $0.name.localizedStandardContains(detectedClassName) ||
+                    detectedClassName.localizedStandardContains($0.name)
+                }) {
+                    selectedClassId = matchedClass.id
+                }
+            }
+        }
         .alert("No se pudo importar", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }

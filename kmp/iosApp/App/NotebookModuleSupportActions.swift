@@ -1,6 +1,36 @@
 import SwiftUI
 import PhotosUI
 import MiGestorKit
+#if canImport(AppKit)
+import AppKit
+#endif
+
+enum NotebookSignalsReload {
+    static let failureMessage = "No se pudo actualizar el pase del cuaderno. Se mantiene lo que ya ves."
+
+    static func map<Key: Hashable, Value>(loaded: [Key: Value]?, previous: [Key: Value], sameClass: Bool) -> [Key: Value] {
+        if let loaded { return loaded }
+        return sameClass ? previous : [:]
+    }
+
+    static func ids<T: Hashable>(loaded: Set<T>?, previous: Set<T>, sameClass: Bool) -> Set<T> {
+        if let loaded { return loaded }
+        return sameClass ? previous : []
+    }
+}
+
+/// Si falla crear el seguimiento desde el plano, el aviso debe quedar visible en español
+/// (sin fingir que se guardó la incidencia).
+enum NotebookFollowUpSaveGate {
+    static let saveFailureMessage =
+        "No se pudo crear el seguimiento. Pulsa otra vez para reintentar."
+
+    static func failureMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return saveFailureMessage }
+        return "\(saveFailureMessage) \(trimmed)"
+    }
+}
 
 extension NotebookModuleView {
     func syncInspectorDraft() {
@@ -16,24 +46,55 @@ extension NotebookModuleView {
         inspectorAttachmentUris = persisted?.annotation?.attachmentUris ?? []
     }
 
+    /// Lanza una sola recarga de señales a la vez: cancela la anterior (p. ej. al cambiar de grupo
+    /// coinciden onAppear, onChange y .task) y evita aplicar resultados de una petición vieja.
+    func scheduleNotebookSignalsRefresh() {
+        signalsRefreshTask?.cancel()
+        signalsRefreshTask = Task { await refreshNotebookSignals() }
+    }
+
     func refreshNotebookSignals() async {
         guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
         async let attendanceResult = try? bridge.attendanceRecords(for: classId, on: Date())
         async let incidentsResult = try? bridge.incidents(for: classId)
         async let supportMeasureResult = try? bridge.activeSupportMeasureStudentIds()
 
-        let attendance = await attendanceResult ?? []
-        let incidents = await incidentsResult ?? []
-        let supportMeasureStudentIds = await supportMeasureResult ?? []
+        let attendance = await attendanceResult
+        let incidents = await incidentsResult
+        let supportMeasureStudentIds = await supportMeasureResult
+        let requestedId = classId
+        let sameClass = notebookSignalsClassId == requestedId
 
         await MainActor.run {
-            todayAttendanceByStudentId = Dictionary(
-                attendance.map { ($0.studentId, $0.status) },
-                uniquingKeysWith: { _, latest in latest }
+            guard !Task.isCancelled else { return }
+            guard (selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value) == requestedId else { return }
+            if attendance == nil || incidents == nil || supportMeasureStudentIds == nil {
+                bridge.status = NotebookSignalsReload.failureMessage
+            }
+            let loadedAttendance = attendance.map { records in
+                Dictionary(records.map { ($0.studentId, $0.status) }, uniquingKeysWith: { _, latest in latest })
+            }
+            let loadedIncidents = incidents.map { records in
+                Dictionary(grouping: records.compactMap { $0.studentId?.int64Value }, by: { $0 }).mapValues(\.count)
+            }
+            todayAttendanceByStudentId = NotebookSignalsReload.map(
+                loaded: loadedAttendance,
+                previous: todayAttendanceByStudentId,
+                sameClass: sameClass
             )
-            let counts = Dictionary(grouping: incidents.compactMap { $0.studentId?.int64Value }, by: { $0 }).mapValues(\.count)
-            incidentCountByStudentId = counts
-            activeSupportMeasureStudentIds = supportMeasureStudentIds
+            incidentCountByStudentId = NotebookSignalsReload.map(
+                loaded: loadedIncidents,
+                previous: incidentCountByStudentId,
+                sameClass: sameClass
+            )
+            activeSupportMeasureStudentIds = NotebookSignalsReload.ids(
+                loaded: supportMeasureStudentIds,
+                previous: activeSupportMeasureStudentIds,
+                sameClass: sameClass
+            )
+            if attendance != nil || incidents != nil || supportMeasureStudentIds != nil {
+                notebookSignalsClassId = requestedId
+            }
         }
     }
 
@@ -128,7 +189,9 @@ extension NotebookModuleView {
             showToast("Esta columna se edita desde su acción específica", style: .warning)
             return
         }
-        let otherRowsCount = filteredRows(data: data).filter { $0.student.id != selected.selection.studentId }.count
+        let rows = filteredRows(data: data)
+        let sourceStudentId = selectedCellRange?.anchorStudentId ?? selected.selection.studentId
+        let otherRowsCount = fillTargetRows(rows: rows, columnId: selected.column.id, sourceStudentId: sourceStudentId).count
         guard otherRowsCount > 0 else {
             showToast("No hay más alumnos visibles para rellenar", style: .warning)
             return
@@ -143,57 +206,211 @@ extension NotebookModuleView {
     func fillColumnFromSelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data) else { return }
         let column = selected.column
-        let value = displayValue(for: selected.row, column: column)
-        let targetRows = filteredRows(data: data).filter { $0.student.id != selected.selection.studentId }
+        let rows = filteredRows(data: data)
+        let sourceStudentId = selectedCellRange?.anchorStudentId ?? selected.selection.studentId
+        let sourceRow = rows.first(where: { $0.student.id == sourceStudentId }) ?? selected.row
+        let value = displayValue(for: sourceRow, column: column)
+        let targetRows = fillTargetRows(rows: rows, columnId: column.id, sourceStudentId: sourceStudentId)
         guard !targetRows.isEmpty else { return }
 
-        var filledCount = 0
+        var changes: [NotebookCellUndoChange] = []
         for row in targetRows {
             let previousValue = displayValue(for: row, column: column)
             guard previousValue != value else { continue }
-            recordCellUndo(
-                studentId: row.student.id,
-                column: column,
-                previousValue: previousValue,
-                previousDisplayLabel: nil
+            changes.append(
+                NotebookCellUndoChange(
+                    studentId: row.student.id,
+                    column: column,
+                    previousValue: previousValue,
+                    previousDisplayLabel: nil
+                )
             )
             bridge.saveColumnGrade(studentId: row.student.id, column: column, value: value)
             reloadNotebookRow(row.student.id)
-            filledCount += 1
         }
-        showToast(filledCount > 0 ? "Rellenadas \(filledCount) celdas" : "Todas las celdas ya tenían ese valor")
+        recordCellUndoBatch(changes)
+        showToast(changes.isEmpty ? "Todas las celdas ya tenían ese valor" : "Rellenadas \(changes.count) celdas")
+    }
+
+    func fillTargetRows(rows: [NotebookTableRow], columnId: String, sourceStudentId: Int64) -> [NotebookTableRow] {
+        if let range = selectedCellRange,
+           range.columnId == columnId,
+           let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
+           let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }) {
+            let slice = rows[min(start, end)...max(start, end)]
+            if slice.count > 1 {
+                return slice.filter { $0.student.id != sourceStudentId }
+            }
+        }
+        return rows.filter { $0.student.id != sourceStudentId }
+    }
+
+    func cellIsInsideGradeRange(studentId: Int64, columnId: String, rows: [NotebookTableRow]) -> Bool {
+        guard let range = selectedCellRange, range.columnId == columnId else { return false }
+        guard let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
+              let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }),
+              let index = rows.firstIndex(where: { $0.student.id == studentId }) else {
+            return false
+        }
+        return index >= min(start, end) && index <= max(start, end)
+    }
+
+    /// Resumen barato (un Int) de todo lo que, fuera de los datos de la fila, cambia su pintado:
+    /// rango con shift, resaltados de columna/categoría, dirección de navegación, paridad de zebra
+    /// (cambia al filtrar), nivel de riesgo, medida de apoyo y lesión.
+    func notebookRowContextDigest(rows: [NotebookTableRow]) -> (Int, NotebookTableRow) -> Int {
+        var rangeBounds: (columnId: String, lower: Int, upper: Int)?
+        if let range = selectedCellRange,
+           let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
+           let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }) {
+            rangeBounds = (range.columnId, min(start, end), max(start, end))
+        }
+        var base = Hasher()
+        base.combine(selectedColumnId)
+        base.combine(highlightedColumnId)
+        base.combine(highlightedCategoryId)
+        base.combine(navigationDirectionRaw)
+        let baseDigest = base.finalize()
+        let risks = riskLevelCache
+        let supportIds = activeSupportMeasureStudentIds
+        let injuries = localInjuryStatuses
+        let attendance = todayAttendanceByStudentId
+        return { index, item in
+            let studentId = item.student.id
+            var hasher = Hasher()
+            hasher.combine(baseDigest)
+            hasher.combine(index.isMultiple(of: 2))
+            if let bounds = rangeBounds, index >= bounds.lower, index <= bounds.upper {
+                hasher.combine(bounds.columnId)
+            }
+            hasher.combine(risks[studentId]?.rawValue)
+            hasher.combine(supportIds.contains(studentId))
+            hasher.combine(injuries[studentId] ?? item.student.isInjured)
+            hasher.combine(attendance[studentId])
+            return hasher.finalize()
+        }
+    }
+
+    func notebookShiftClickIsDown() -> Bool {
+        #if os(macOS)
+        NSEvent.modifierFlags.contains(.shift)
+        #else
+        false
+        #endif
     }
 
     func recordCellUndo(studentId: Int64, column: NotebookColumnDefinition, previousValue: String, previousDisplayLabel: String?) {
-        undoStack.append(
-            NotebookCellUndoEntry(
+        recordCellUndoBatch([
+            NotebookCellUndoChange(
                 studentId: studentId,
                 column: column,
                 previousValue: previousValue,
                 previousDisplayLabel: previousDisplayLabel
             )
-        )
+        ])
+    }
+
+    func recordCellUndoBatch(_ changes: [NotebookCellUndoChange]) {
+        guard !changes.isEmpty else { return }
+        undoStack.append(NotebookCellUndoEntry(changes: changes))
+        redoStack.removeAll()
         if undoStack.count > 10 {
             undoStack.removeFirst(undoStack.count - 10)
         }
+        refreshNotebookEditMenu()
     }
 
     func undoLastCellChange() {
-        guard let entry = undoStack.popLast() else {
-            showToast("No hay cambios que deshacer", style: .warning)
+        restoreNotebookHistory(from: &undoStack, into: &redoStack, emptyMessage: "No hay cambios que deshacer", doneWord: "Deshecho")
+    }
+
+    func redoLastCellChange() {
+        restoreNotebookHistory(from: &redoStack, into: &undoStack, emptyMessage: "No hay cambios que rehacer", doneWord: "Rehecho")
+    }
+
+    func restoreNotebookHistory(
+        from source: inout [NotebookCellUndoEntry],
+        into destination: inout [NotebookCellUndoEntry],
+        emptyMessage: String,
+        doneWord: String
+    ) {
+        guard let entry = source.popLast() else {
+            showToast(emptyMessage, style: .warning)
+            refreshNotebookEditMenu()
             return
         }
-        bridge.flushPendingColumnGradeSave(studentId: entry.studentId, columnId: entry.column.id)
-        bridge.saveColumnGrade(studentId: entry.studentId, column: entry.column, value: entry.previousValue)
-        reloadNotebookRow(entry.studentId)
-        AppleInteractionFeedback.play(.success)
-        withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
-            inspectorSelection = NotebookInspectorSelection(studentId: entry.studentId, columnId: entry.column.id)
-            focusedCellId = nil
-            activeChoiceCellId = nil
+        let inverse = entry.changes.map { change -> NotebookCellUndoChange in
+            let current = notebookHistoryDisplayValue(for: change)
+            bridge.flushPendingColumnGradeSave(studentId: change.studentId, columnId: change.column.id)
+            bridge.saveColumnGrade(studentId: change.studentId, column: change.column, value: change.previousValue)
+            reloadNotebookRow(change.studentId)
+            return NotebookCellUndoChange(
+                studentId: change.studentId,
+                column: change.column,
+                previousValue: current,
+                previousDisplayLabel: nil
+            )
         }
-        let label = entry.previousDisplayLabel ?? entry.previousValue
-        showToast(label.isEmpty ? "Cambio deshecho" : "Cambio deshecho: \(label)")
+        destination.append(NotebookCellUndoEntry(changes: inverse))
+        AppleInteractionFeedback.play(.success)
+        if let first = entry.changes.first {
+            withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
+                inspectorSelection = NotebookInspectorSelection(studentId: first.studentId, columnId: first.column.id)
+                focusedCellId = nil
+                activeChoiceCellId = nil
+            }
+        }
+        if entry.changes.count > 1 {
+            showToast("\(doneWord) el lote (\(entry.changes.count) celdas)")
+        } else if let only = entry.changes.first {
+            let label = only.previousDisplayLabel ?? only.previousValue
+            showToast(label.isEmpty ? "\(doneWord)" : "\(doneWord): \(label)")
+        }
+        refreshNotebookEditMenu()
+    }
+
+    func notebookHistoryDisplayValue(for change: NotebookCellUndoChange) -> String {
+        guard let data = bridge.notebookState as? NotebookUiStateData,
+              let row = filteredRows(data: data).first(where: { $0.student.id == change.studentId }) else {
+            return ""
+        }
+        return displayValue(for: row, column: change.column)
+    }
+
+    func refreshNotebookEditMenu() {
+        let menu = NotebookEditMenuState.shared
+        if let entry = undoStack.last {
+            menu.undoTitle = notebookHistoryMenuTitle(prefix: "Deshacer", entry: entry)
+            menu.canUndo = true
+        } else {
+            menu.undoTitle = "Deshacer"
+            menu.canUndo = false
+        }
+        if let entry = redoStack.last {
+            menu.redoTitle = notebookHistoryMenuTitle(prefix: "Rehacer", entry: entry)
+            menu.canRedo = true
+        } else {
+            menu.redoTitle = "Rehacer"
+            menu.canRedo = false
+        }
+    }
+
+    func notebookHistoryMenuTitle(prefix: String, entry: NotebookCellUndoEntry) -> String {
+        if entry.changes.count > 1 {
+            return "\(prefix) \(entry.changes.count) notas"
+        }
+        guard let change = entry.changes.first else { return prefix }
+        let name = notebookStudentFirstName(change.studentId)
+        return name.isEmpty ? "\(prefix) nota" : "\(prefix) nota de \(name)"
+    }
+
+    func notebookStudentFirstName(_ studentId: Int64) -> String {
+        guard let data = bridge.notebookState as? NotebookUiStateData,
+              let student = data.sheet.rows.first(where: { $0.student.id == studentId })?.student else {
+            return ""
+        }
+        let name = student.firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? student.fullName : name
     }
 
     func createFollowUp(for student: Student) async {
@@ -215,6 +432,7 @@ extension NotebookModuleView {
             )
             await refreshNotebookSignals()
         } catch {
+            bridge.status = NotebookFollowUpSaveGate.failureMessage(detail: error.localizedDescription)
         }
     }
 

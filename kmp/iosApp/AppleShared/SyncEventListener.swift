@@ -1,8 +1,22 @@
 import Foundation
 
-final class SyncEventListener {
+final class SyncEventListener: @unchecked Sendable {
     private var eventTask: Task<Void, Never>?
     private var currentConnectionKey: String?
+    private let stateLock = NSLock()
+    private var _isConnected: Bool = false
+
+    var isConnected: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _isConnected
+    }
+
+    private func setConnected(_ value: Bool) {
+        stateLock.lock()
+        _isConnected = value
+        stateLock.unlock()
+    }
 
     /// Backoff sequence (nanoseconds): 250ms → 500ms → 1s → 2s → 5s → 10s → 30s.
     /// Starts fast so reconnects after pairing are quick, then slows to avoid spam.
@@ -19,6 +33,10 @@ final class SyncEventListener {
     private struct OpenedStreamError: Error {
         let underlying: Error
     }
+
+    /// El helper rechazó la contraseña. Reintentar enseguida no lo arregla: se
+    /// espera el paso más largo del backoff en vez de llamar cada segundo.
+    private struct UnauthorizedError: Error {}
 
     func start(
         host: String,
@@ -44,6 +62,7 @@ final class SyncEventListener {
     }
 
     func stop() {
+        setConnected(false)
         eventTask?.cancel()
         eventTask = nil
         currentConnectionKey = nil
@@ -68,6 +87,10 @@ final class SyncEventListener {
                 backoffIndex = 0
             } catch is CancellationError {
                 return
+            } catch is UnauthorizedError {
+                print("[Sync:error] listener sin autorización (\(host)); se reintenta más tarde")
+                backoffIndex = backoffSteps.count - 1
+                try? await Task.sleep(nanoseconds: backoffSteps[backoffIndex])
             } catch is OpenedStreamError {
                 // Stream was open but then dropped mid-flight. Reconnect fast.
                 backoffIndex = 0
@@ -119,10 +142,15 @@ final class SyncEventListener {
         var didOpenStream = false
         do {
             let (bytes, response) = try await session.bytes(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
+                throw UnauthorizedError()
+            }
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 throw URLError(.badServerResponse)
             }
             didOpenStream = true
+            setConnected(true)
+            defer { setConnected(false) }
 
             var frameLines: [String] = []
             for try await line in bytes.lines {
@@ -139,8 +167,10 @@ final class SyncEventListener {
                 }
             }
         } catch is CancellationError {
+            setConnected(false)
             throw CancellationError()
         } catch {
+            setConnected(false)
             if didOpenStream {
                 throw OpenedStreamError(underlying: error)
             }

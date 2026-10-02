@@ -42,12 +42,27 @@ extension PlannerWorkspaceViewModel {
             return PlannerRangeData(range: range, rangeLabel: label, sessions: [], journalSummaryBySessionId: [:], weeks: weeks)
         }
         let weekSet = Set(weeks)
-        let allSessions = (try? await bridge.plannerListAllSessions()) ?? []
-        let matching = allSessions.filter { session in
-            weekSet.contains(PlannerGanttWeek(year: Int(session.year), week: Int(session.weekNumber)))
-                && (groupId == nil || session.groupId == groupId)
+        guard let bounds = Self.isoBounds(for: weeks) else {
+            bulkSummary = "No se pudo cargar el resumen."
+            return PlannerRangeData(range: range, rangeLabel: "No se pudo cargar el resumen", sessions: [], journalSummaryBySessionId: [:], weeks: weeks)
         }
-        let summaries = (try? await bridge.plannerJournalSummaries(sessionIds: matching.map(\.id))) ?? []
+        let matching: [PlanningSession]
+        do {
+            let ranged = try await bridge.plannerListSessions(fromIso: bounds.start, toIso: bounds.end, classId: groupId)
+            matching = ranged.filter { session in
+                weekSet.contains(PlannerGanttWeek(year: Int(session.year), week: Int(session.weekNumber)))
+            }
+        } catch {
+            bulkSummary = "No se pudo cargar el resumen. \(error.localizedDescription)"
+            return PlannerRangeData(range: range, rangeLabel: "No se pudo cargar el resumen", sessions: [], journalSummaryBySessionId: [:], weeks: weeks)
+        }
+        let summaries: [SessionJournalSummary]
+        do {
+            summaries = try await bridge.plannerJournalSummaries(sessionIds: matching.map(\.id))
+        } catch {
+            bulkSummary = "No se pudieron cargar los diarios del resumen."
+            return PlannerRangeData(range: range, rangeLabel: label, sessions: matching, journalSummaryBySessionId: [:], weeks: weeks)
+        }
         let summaryById = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
         return PlannerRangeData(
             range: range,
@@ -72,6 +87,18 @@ extension PlannerWorkspaceViewModel {
             cursor = next
         }
         return weeks
+    }
+
+    static func isoBounds(for weeks: [PlannerGanttWeek]) -> (start: String, end: String)? {
+        let mondays = weeks.compactMap(\.mondayDate).sorted()
+        guard let first = mondays.first, let lastMonday = mondays.last else { return nil }
+        let calendar = Calendar(identifier: .iso8601)
+        let last = calendar.date(byAdding: .day, value: 6, to: lastMonday) ?? lastMonday
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return (formatter.string(from: first), formatter.string(from: last))
     }
 
     private func monthLabel() -> String {

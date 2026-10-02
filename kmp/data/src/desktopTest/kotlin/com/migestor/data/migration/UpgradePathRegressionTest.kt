@@ -100,6 +100,15 @@ class UpgradePathRegressionTest {
                 driver.queryStrings("SELECT 'violacion en tabla ' || \"table\" FROM pragma_foreign_key_check"),
                 "no puede haber claves foraneas rotas tras migrar",
             )
+            val physicalScaleColumns = schemaSnapshot(driver)["physical_test_scales"]?.columns.orEmpty()
+            assertTrue(
+                physicalScaleColumns.any { it.startsWith("scoring_mode|") },
+                "la migracion 42 debe conservar la columna scoring_mode",
+            )
+            assertTrue(
+                physicalScaleColumns.any { it.startsWith("score_round_to|") },
+                "la migracion 42 debe conservar la columna score_round_to",
+            )
             CanonicalTeacherDataset.assertSurvived(driver)
         } finally {
             driver.close()
@@ -132,7 +141,10 @@ class UpgradePathRegressionTest {
         val migratedOnly = openFixtureCopyWithCanonicalMigrationsOnly()
         try {
             assertEquals(AppDatabase.Schema.version, migratedOnly.scalarLong("PRAGMA user_version"))
-            assertEquals(schemaSnapshot(fresh), schemaSnapshot(migratedOnly))
+            assertEquals(
+                schemaSnapshot(fresh).withoutRescueOnlyColumns(),
+                schemaSnapshot(migratedOnly).withoutRescueOnlyColumns(),
+            )
             assertEquals(listOf("ok"), migratedOnly.queryStrings("PRAGMA integrity_check"))
             assertEquals(
                 emptyList(),
@@ -144,6 +156,22 @@ class UpgradePathRegressionTest {
             migratedOnly.close()
         }
     }
+
+    /**
+     * Única excepción documentada: 42.sqm es un no-op y las columnas de
+     * puntuación de los baremos las añade runRescueMigrations de forma
+     * idempotente (un ALTER en .sqm fallaría en instalaciones que ya las tienen).
+     * Cualquier otro gap en la cadena .sqm sigue haciendo fallar el test.
+     */
+    private fun Map<String, TableSchemaSnapshot>.withoutRescueOnlyColumns(): Map<String, TableSchemaSnapshot> =
+        mapValues { (table, snapshot) ->
+            if (table != "physical_test_scales") return@mapValues snapshot
+            snapshot.copy(
+                columns = snapshot.columns.filterNot {
+                    it.startsWith("scoring_mode|") || it.startsWith("score_round_to|")
+                },
+            )
+        }
 
     private data class TableSchemaSnapshot(
         val columns: List<String>,

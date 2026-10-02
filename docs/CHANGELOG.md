@@ -11,6 +11,21 @@ El formato sigue una variante practica de Keep a Changelog:
 - `Docs`: documentacion relevante.
 - `Verification`: builds, tests, auditorias o evidencias.
 
+### Fixed
+
+- **Apertura fluida del Planner en macOS/iOS**:
+  - El grid semanal ya no enseña «Aún no has configurado tu horario» mientras carga: hasta la primera carga se ve un esqueleto con la forma del grid.
+  - `bind` carga primero grupos, horario y sesiones de la semana y pinta; después, sin bloquear, la previsión del curso, los exámenes de 1º Bach, los planes de SA y el mes.
+  - La previsión (`plannerForecast`) sale de `PlannerScheduleStore.reload` a `reloadForecast`.
+  - La sincronización de exámenes de 1º Bach (lee todo el calendario y borra/crea eventos) solo corre si cambian la versión de la app o los grupos.
+  - Al arrancar, la base de datos se abría 4 veces (`AppleBridgeBootstrap.current()` en KmpBridge, MacAppSessionController, AppleBackupService y AppleDatabaseRescueService). Ahora una: `AppleBridgeBootstrap.databasePath`/`platformName` dan la ruta sin abrir un driver.
+  - `configureAppleSqlite`: los PRAGMA se aplican con `executeQuery` (antes `mmap_size` y `temp_store` fallaban con «Queries can be performed using SQLiteDatabase query...»).
+  - `TeacherScheduleRepositorySqlDelight` (horario, franjas, evaluaciones y previsión) y 5 métodos de `SessionJournalRepositorySqlDelight` corrían en el hilo principal: ahora usan `withContext(Dispatchers.Default)`. Era el cuelgue que quedaba tras pintar el grid.
+  - SyncLAN en Mac: la app mandaba la contraseña fija `loopback-token`, que el helper rechaza desde que exige contraseña también en loopback (604399e3). El listener y el auto-sync fallaban con -1011 sin parar. Ahora la app crea una contraseña por arranque y la pasa al helper por stdin (`--local-token-stdin`); el helper la acepta solo desde loopback. Si el helper responde 401/403, el listener espera 30 s antes de reintentar.
+  - Exámenes de 1º Bach duplicados: `SchoolCalendarPreset2026_2027.isSameDay` comparaba en UTC fechas guardadas a las 00:00 locales; nunca encontraba el examen del día y cada ejecución, en cada dispositivo, creaba otra copia que la sincronización repartía. La base del Mac tenía 1720 eventos, unos 1600 copias (hasta 103 por día y grupo), y todas las lecturas del calendario los cargaban enteros. Ahora compara con el rango local del día; la clave de sincronización pasa a `v2|…` para que la deduplicación existente borre las copias una vez (con borrado sincronizado). Test nuevo `testExamAtLocalMidnightMatchesItsOwnDay`.
+  - Verificación (segunda tanda): `./gradlew :data:desktopTest` 159 tests OK (1 nuevo: `macAppLocalTokenIsAcceptedFromLoopbackEvenWithoutPairing`); `:commandCenterHelper:compileKotlin` OK; `verify_apple_builds.sh` OK; `MiGestorPlannerTests` 232 tests, 4 omitidos, 0 fallos. `./gradlew :shared:test` no se pudo ejecutar en el worktree (falta `local.properties` con el SDK de Android); `kmp/shared` no se tocó. Sin prueba manual Mac↔iPad.
+  - Verificación: `scripts/verify_apple_builds.sh` (macOS y simulador iOS) OK; `MiGestorPlannerTests` (macOS) 231 tests, 4 omitidos: el primer intento dio 1 fallo no identificado y 3 repeticiones posteriores salieron en verde (posible test inestable). No se hizo QA manual al abrir la app ni se midió el tiempo de carga.
+
 ### Changed
 
 - **Visor de sesiones del Planner: modo repaso rápido**:

@@ -14,6 +14,8 @@ import com.migestor.shared.repository.CalendarRepository
 import com.migestor.shared.repository.ClassesRepository
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.TeacherScheduleRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.Instant
@@ -32,7 +34,9 @@ class TeacherScheduleRepositorySqlDelight(
     private val classesRepository: ClassesRepository,
 ) : TeacherScheduleRepository {
 
-    override suspend fun getOrCreatePrimarySchedule(): TeacherSchedule {
+    override suspend fun getOrCreatePrimarySchedule(): TeacherSchedule = withContext(Dispatchers.Default) { getOrCreatePrimaryScheduleBlocking() }
+
+    private suspend fun getOrCreatePrimaryScheduleBlocking(): TeacherSchedule {
         return runCatching {
             val teacher = ensureTeacher()
             val academicYear = ensureAcademicYear(centerId = teacher.centerId ?: ensureCenterId())
@@ -81,7 +85,9 @@ class TeacherScheduleRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveSchedule(schedule: TeacherSchedule): Long {
+    override suspend fun saveSchedule(schedule: TeacherSchedule): Long = withContext(Dispatchers.Default) { saveScheduleBlocking(schedule) }
+
+    private suspend fun saveScheduleBlocking(schedule: TeacherSchedule): Long {
         return runCatching {
             val now = Clock.System.now().toEpochMilliseconds()
             db.appDatabaseQueries.upsertTeacherSchedule(
@@ -106,7 +112,9 @@ class TeacherScheduleRepositorySqlDelight(
         }
     }
 
-    override suspend fun listScheduleSlots(scheduleId: Long): List<TeacherScheduleSlot> {
+    override suspend fun listScheduleSlots(scheduleId: Long): List<TeacherScheduleSlot> = withContext(Dispatchers.Default) { listScheduleSlotsBlocking(scheduleId) }
+
+    private suspend fun listScheduleSlotsBlocking(scheduleId: Long): List<TeacherScheduleSlot> {
         return runCatching {
             db.appDatabaseQueries.selectTeacherScheduleSlots(scheduleId).executeAsList().map { row ->
                 TeacherScheduleSlot(
@@ -127,7 +135,9 @@ class TeacherScheduleRepositorySqlDelight(
         }
     }
 
-    override suspend fun getScheduleSlot(slotId: Long): TeacherScheduleSlot? {
+    override suspend fun getScheduleSlot(slotId: Long): TeacherScheduleSlot? = withContext(Dispatchers.Default) { getScheduleSlotBlocking(slotId) }
+
+    private suspend fun getScheduleSlotBlocking(slotId: Long): TeacherScheduleSlot? {
         return runCatching {
             db.appDatabaseQueries.selectTeacherScheduleSlotById(slotId).executeAsOneOrNull()?.let { row ->
                 TeacherScheduleSlot(
@@ -148,7 +158,9 @@ class TeacherScheduleRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveScheduleSlot(slot: TeacherScheduleSlot): Long {
+    override suspend fun saveScheduleSlot(slot: TeacherScheduleSlot): Long = withContext(Dispatchers.Default) { saveScheduleSlotBlocking(slot) }
+
+    private suspend fun saveScheduleSlotBlocking(slot: TeacherScheduleSlot): Long {
         return runCatching {
             db.appDatabaseQueries.upsertTeacherScheduleSlot(
                 id = slot.id.takeIf { it != 0L },
@@ -168,11 +180,15 @@ class TeacherScheduleRepositorySqlDelight(
         }
     }
 
-    override suspend fun deleteScheduleSlot(slotId: Long) {
+    override suspend fun deleteScheduleSlot(slotId: Long) = withContext(Dispatchers.Default) { deleteScheduleSlotBlocking(slotId) }
+
+    private suspend fun deleteScheduleSlotBlocking(slotId: Long) {
         deleteScheduleSlotAndGeneratedPlannerSessions(slotId)
     }
 
-    override suspend fun deleteScheduleSlotAndGeneratedPlannerSessions(slotId: Long) {
+    override suspend fun deleteScheduleSlotAndGeneratedPlannerSessions(slotId: Long) = withContext(Dispatchers.Default) { deleteScheduleSlotAndGeneratedPlannerSessionsBlocking(slotId) }
+
+    private suspend fun deleteScheduleSlotAndGeneratedPlannerSessionsBlocking(slotId: Long) {
         runCatching {
             plannerRepository.deleteFutureSessionsGeneratedFromScheduleSlot(
                 slotId = slotId,
@@ -184,7 +200,9 @@ class TeacherScheduleRepositorySqlDelight(
         }
     }
 
-    override suspend fun listEvaluationPeriods(scheduleId: Long): List<PlannerEvaluationPeriod> {
+    override suspend fun listEvaluationPeriods(scheduleId: Long): List<PlannerEvaluationPeriod> = withContext(Dispatchers.Default) { listEvaluationPeriodsBlocking(scheduleId) }
+
+    private suspend fun listEvaluationPeriodsBlocking(scheduleId: Long): List<PlannerEvaluationPeriod> {
         return runCatching {
             db.appDatabaseQueries.selectPlannerEvaluationPeriods(scheduleId).executeAsList().map { row ->
                 PlannerEvaluationPeriod(
@@ -202,7 +220,9 @@ class TeacherScheduleRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveEvaluationPeriod(period: PlannerEvaluationPeriod): Long {
+    override suspend fun saveEvaluationPeriod(period: PlannerEvaluationPeriod): Long = withContext(Dispatchers.Default) { saveEvaluationPeriodBlocking(period) }
+
+    private suspend fun saveEvaluationPeriodBlocking(period: PlannerEvaluationPeriod): Long {
         return runCatching {
             db.appDatabaseQueries.upsertPlannerEvaluationPeriod(
                 id = period.id.takeIf { it != 0L },
@@ -219,7 +239,9 @@ class TeacherScheduleRepositorySqlDelight(
         }
     }
 
-    override suspend fun deleteEvaluationPeriod(periodId: Long) {
+    override suspend fun deleteEvaluationPeriod(periodId: Long) = withContext(Dispatchers.Default) { deleteEvaluationPeriodBlocking(periodId) }
+
+    private suspend fun deleteEvaluationPeriodBlocking(periodId: Long) {
         runCatching {
             db.appDatabaseQueries.deletePlannerEvaluationPeriod(periodId)
         }.onFailure { throwable ->
@@ -227,7 +249,9 @@ class TeacherScheduleRepositorySqlDelight(
         }
     }
 
-    override suspend fun buildForecasts(scheduleId: Long, classId: Long?): List<PlannerSessionForecast> {
+    override suspend fun buildForecasts(scheduleId: Long, classId: Long?): List<PlannerSessionForecast> = withContext(Dispatchers.Default) { buildForecastsBlocking(scheduleId, classId) }
+
+    private suspend fun buildForecastsBlocking(scheduleId: Long, classId: Long?): List<PlannerSessionForecast> {
         return runCatching {
             val schedule = getOrCreatePrimarySchedule().takeIf { it.id == scheduleId }
                 ?: db.appDatabaseQueries.selectAllTeacherSchedules().executeAsList().firstOrNull { it.id == scheduleId }?.let { row ->

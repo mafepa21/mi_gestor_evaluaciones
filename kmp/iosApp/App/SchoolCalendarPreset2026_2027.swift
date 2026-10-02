@@ -615,7 +615,8 @@ enum SchoolCalendarPreset2026_2027 {
                         (evt.title.localizedCaseInsensitiveContains("parcial") ||
                          evt.title.localizedCaseInsensitiveContains("global") ||
                          evt.title.localizedCaseInsensitiveContains("recup") ||
-                         evt.title.localizedCaseInsensitiveContains("extraordinari"))
+                         evt.title.localizedCaseInsensitiveContains("extraordinari") ||
+                         evt.title.localizedCaseInsensitiveContains("final"))
                     }
 
                     if existingForDay.isEmpty {
@@ -668,9 +669,11 @@ enum SchoolCalendarPreset2026_2027 {
         )
     }
 
-    private static func isSameDay(epochMs: Int64, targetDateIso: String) -> Bool {
-        let date = Date(timeIntervalSince1970: TimeInterval(epochMs) / 1000)
-        let iso = AppDateTimeSupport.isoDateString(from: date)
-        return iso == targetDateIso
+    /// Mismo calendario local que `epochRange`. Antes se formateaba en UTC: un
+    /// examen guardado a las 00:00 locales caía en el día anterior, nunca había
+    /// coincidencia y cada ejecución (en cada dispositivo) creaba otra copia.
+    static func isSameDay(epochMs: Int64, targetDateIso: String) -> Bool {
+        guard let (startMs, endMs) = epochRange(for: targetDateIso) else { return false }
+        return epochMs >= startMs && epochMs <= endMs
     }
 }

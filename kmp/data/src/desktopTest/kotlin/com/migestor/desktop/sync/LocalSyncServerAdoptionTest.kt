@@ -27,6 +27,10 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class LocalSyncServerAdoptionTest {
+    private companion object {
+        const val LOCAL_CLIENT_TOKEN = "mac-app-local-test-token"
+    }
+
 
     private lateinit var tempDbFile: File
     private lateinit var driver: JdbcSqliteDriver
@@ -55,6 +59,7 @@ class LocalSyncServerAdoptionTest {
             port = port,
             container = container,
             secureStoreServiceName = "com.migestor.sync.test",
+            localClientToken = LOCAL_CLIENT_TOKEN,
         )
         server.start()
         server.revokePairing()
@@ -267,6 +272,25 @@ class LocalSyncServerAdoptionTest {
         local.outputStream.use { it.write("[]".toByteArray()) }
         assertEquals(200, local.responseCode)
         local.disconnect()
+    }
+
+    @Test
+    fun macAppLocalTokenIsAcceptedFromLoopbackEvenWithoutPairing() {
+        server.revokePairing()
+
+        val local = openHttpsConnection("/sync/pull", "GET")
+        local.connectTimeout = 5_000
+        local.readTimeout = 5_000
+        local.setRequestProperty("Authorization", "Bearer $LOCAL_CLIENT_TOKEN")
+        assertEquals(200, local.responseCode)
+        local.disconnect()
+
+        val wrong = openHttpsConnection("/sync/pull", "GET")
+        wrong.connectTimeout = 5_000
+        wrong.readTimeout = 5_000
+        wrong.setRequestProperty("Authorization", "Bearer loopback-token")
+        assertEquals(401, wrong.responseCode)
+        wrong.disconnect()
     }
 
     private fun assertUnauthorized(path: String, method: String, body: String? = null) {

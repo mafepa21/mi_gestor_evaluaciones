@@ -128,7 +128,11 @@ extension LearningSituationsWorkspaceView {
         Button {
             if let decoded = draft(for: situation) {
                 importTargetId = situation.id
-                importDraft = decoded
+                importReview = LearningSituationImportReviewPresentation(
+                    mode: .editSheet,
+                    drafts: [decoded],
+                    failures: []
+                )
             }
         } label: {
             Label("Editar ficha", systemImage: "square.and.pencil")

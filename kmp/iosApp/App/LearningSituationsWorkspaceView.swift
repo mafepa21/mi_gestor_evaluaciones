@@ -633,8 +633,8 @@ struct LearningSituationsWorkspaceView: View {
     @State var classIdsBySituation: [Int64: Set<Int64>] = [:]
     @State var isImporterPresented = false
     @State var importTargetId: Int64?
-    @State var importDraft: LearningSituationImportDraft?
-    @State var batchImport: LearningSituationBatchImportPresentation?
+    @State var importReview: LearningSituationImportReviewPresentation?
+    @State var isReadingImport = false
     @State var versions: [LearningSituationVersion] = []
     @State var classLinks: [LearningSituationClassLink] = []
     @State var loadedDetailSituationId: Int64?
@@ -741,21 +741,24 @@ struct LearningSituationsWorkspaceView: View {
                 errorMessage = error.localizedDescription
             }
         }
-        .sheet(item: $importDraft) { draft in
-            LearningSituationImportPreviewSheet(draft: draft, classes: bridge.classes) { accepted in
-                Task { await confirmImport(accepted) }
-            }
-        }
-        .sheet(item: $batchImport) { batch in
-            LearningSituationBatchImportPreviewSheet(
-                drafts: batch.drafts,
-                failures: batch.failures,
-                classes: bridge.classes
-            ) { accepted in
-                Task {
-                    await confirmImportBatch(accepted, initialFailures: batch.failures)
+        .sheet(item: $importReview) { presentation in
+            LearningSituationImportReviewSheet(
+                presentation: presentation,
+                classes: bridge.classes,
+                preselectedClassId: selectedClassId,
+                onConfirm: { accepted in
+                    Task {
+                        if accepted.count == 1, let draft = accepted.first {
+                            await confirmImport(draft)
+                        } else {
+                            await confirmImportBatch(accepted, initialFailures: presentation.failures)
+                        }
+                    }
+                },
+                onChooseOtherDocuments: {
+                    startImport(targetId: importTargetId)
                 }
-            }
+            )
         }
         .sheet(item: $scheduleSituation) { situation in
             LearningSituationScheduleSheet(situation: situation, bridge: bridge, initialClassId: selectedClassId) {
@@ -944,12 +947,42 @@ struct LearningSituationsWorkspaceView: View {
 
     func handleDocumentSelection(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
+        isReadingImport = true
+        Task { @MainActor in
+            // Deja pintar el aviso «Leyendo…» antes de leer los documentos.
+            try? await Task.sleep(for: .milliseconds(60))
+            defer { isReadingImport = false }
+            readDocuments(urls)
+        }
+    }
 
+    @MainActor
+    private func readDocuments(_ urls: [URL]) {
         if urls.count == 1 {
             do {
-                importDraft = try LearningSituationDocumentImportService().preview(from: urls[0])
+                var draft = try LearningSituationDocumentImportService().preview(from: urls[0])
+                // Nueva versión de una situación: conserva sus grupos.
+                if let targetId = importTargetId,
+                   draft.selectedClassIds.isEmpty,
+                   let linked = classIdsBySituation[targetId] {
+                    draft.selectedClassIds = linked
+                }
+                importReview = LearningSituationImportReviewPresentation(
+                    mode: .importDocuments,
+                    drafts: [draft],
+                    failures: []
+                )
             } catch {
-                errorMessage = error.localizedDescription
+                importReview = LearningSituationImportReviewPresentation(
+                    mode: .importDocuments,
+                    drafts: [],
+                    failures: [
+                        LearningSituationDocumentImportFailure(
+                            fileName: urls[0].lastPathComponent,
+                            message: error.localizedDescription
+                        )
+                    ]
+                )
             }
             return
         }
@@ -959,27 +992,18 @@ struct LearningSituationsWorkspaceView: View {
         // mismo registro por accidente.
         importTargetId = nil
         let batch = LearningSituationDocumentImportService().preview(from: urls)
-        guard !batch.drafts.isEmpty else {
-            errorMessage = batchFailureMessage(batch.failures)
-            return
-        }
-        batchImport = LearningSituationBatchImportPresentation(
+        importReview = LearningSituationImportReviewPresentation(
+            mode: .importDocuments,
             drafts: batch.drafts,
             failures: batch.failures
         )
-    }
-
-    func batchFailureMessage(_ failures: [LearningSituationDocumentImportFailure]) -> String {
-        guard !failures.isEmpty else { return "No se ha podido leer ningún documento seleccionado." }
-        let details = failures.map { "• \($0.fileName): \($0.message)" }.joined(separator: "\n")
-        return "No se ha podido leer ningún documento seleccionado:\n\n\(details)"
     }
 
     @MainActor
     func confirmImport(_ draft: LearningSituationImportDraft) async {
         do {
             let savedId = try await bridge.confirmLearningSituationImport(draft: draft, existingSituationId: importTargetId)
-            importDraft = nil
+            importReview = nil
             importTargetId = nil
             selectedSituationId = savedId
             await reload()
@@ -993,7 +1017,7 @@ struct LearningSituationsWorkspaceView: View {
         _ drafts: [LearningSituationImportDraft],
         initialFailures: [LearningSituationDocumentImportFailure]
     ) async {
-        batchImport = nil
+        importReview = nil
         importTargetId = nil
 
         var savedIds: [Int64] = []

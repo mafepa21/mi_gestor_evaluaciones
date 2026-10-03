@@ -11,6 +11,16 @@ extension LearningSituationsWorkspaceView {
             VStack(alignment: .leading, spacing: 8) {
                 LearningSituationSearchField(text: $searchText, prompt: "Buscar situación")
                 filterChips
+                if isReadingImport {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Leyendo el documento…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: minimumTapSize)
+                    .accessibilityElement(children: .combine)
+                }
                 if let listErrorMessage {
                     LearningSituationInlineNotice(
                         kind: .error,

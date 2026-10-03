@@ -2,7 +2,8 @@ import SwiftUI
 import MiGestorKit
 
 // Detalle de la situación: cabecera, una sola acción principal («Programar»), lo que se
-// creó (vínculos) por encima del documento, lectura curricular y documento original.
+// lectura curricular primero, luego «Lo que se creó» (vínculos, desplegable y cerrado) y el
+// documento original.
 extension LearningSituationsWorkspaceView {
     @ViewBuilder
     var detailColumn: some View {
@@ -19,15 +20,6 @@ extension LearningSituationsWorkspaceView {
                         ) {
                             Task { await reloadDetail() }
                         }
-                    }
-                    if isLoadingDetail {
-                        LearningSituationCard(title: "Lo que se creó") {
-                            LearningSituationSkeletonBlock(lines: 2)
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Cargando el contenido de la situación")
-                    } else {
-                        linkedSection
                     }
                     if !situation.challenge.isEmpty {
                         LearningSituationCard(title: "Reto") {
@@ -46,6 +38,15 @@ extension LearningSituationsWorkspaceView {
                         }
                     }
                     curriculumSection(for: situation)
+                    if isLoadingDetail {
+                        LearningSituationCard(title: "Lo que se creó") {
+                            LearningSituationSkeletonBlock(lines: 2)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Cargando el contenido de la situación")
+                    } else {
+                        linkedSection
+                    }
                     if isLoadingDetail {
                         LearningSituationCard(title: "Documento original") {
                             LearningSituationSkeletonBlock(lines: 2)
@@ -171,8 +172,36 @@ extension LearningSituationsWorkspaceView {
 
     // MARK: Lo que se creó
 
+    /// Información de apoyo: va después del contenido curricular y cerrada por defecto.
     private var linkedSection: some View {
-        LearningSituationCard(title: "Lo que se creó") {
+        let key = "creado"
+        return LearningSituationCard(title: nil) {
+            DisclosureGroup(isExpanded: Binding(
+                get: { expandedCurriculumSections.contains(key) },
+                set: { isExpanded in
+                    if isExpanded {
+                        expandedCurriculumSections.insert(key)
+                    } else {
+                        expandedCurriculumSections.remove(key)
+                    }
+                }
+            )) {
+                linkedContent
+                    .padding(.bottom, 8)
+            } label: {
+                Text(resources.isEmpty ? "Lo que se creó" : "Lo que se creó (\(resources.count))")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .accessibilityAddTraits(.isHeader)
+                    .frame(maxWidth: .infinity, minHeight: minimumTapSize, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var linkedContent: some View {
+        Group {
             if resources.isEmpty {
                 Text("Aún no se ha creado nada. Al programar o evaluar aparecerá aquí.")
                     .font(.subheadline)

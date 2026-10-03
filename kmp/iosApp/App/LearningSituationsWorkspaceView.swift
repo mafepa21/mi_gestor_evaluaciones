@@ -756,7 +756,11 @@ struct LearningSituationsWorkspaceView: View {
                     }
                 },
                 onChooseOtherDocuments: {
-                    startImport(targetId: importTargetId)
+                    // Se abre el selector cuando la hoja ya se ha cerrado; si no, iOS lo ignora.
+                    Task {
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        startImport(targetId: importTargetId)
+                    }
                 }
             )
         }
@@ -907,7 +911,8 @@ struct LearningSituationsWorkspaceView: View {
                 .mapValues { Set($0.map(\.classId)) }
             classIdsBySituation = updatedClassIds
             listErrorMessage = nil
-            if selectedSituationId == nil { selectedSituationId = situations.first?.id }
+            // Se elige entre las que la lista enseña (las archivadas van ocultas por defecto).
+            if selectedSituationId == nil { selectedSituationId = filteredSituations.first?.id }
             await reloadDetail()
         } catch {
             // Aviso en línea: se mantiene la lista que ya se ve.

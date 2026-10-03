@@ -25,6 +25,7 @@ struct LearningSituationImportReviewSheet: View {
     let onChooseOtherDocuments: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var drafts: [LearningSituationImportDraft]
+    @State private var isConfirming = false
     @State private var expandedDraftIds: Set<LearningSituationImportDraft.ID>
     @ScaledMetric(relativeTo: .body) private var minimumTapSize: CGFloat = 44
 
@@ -292,13 +293,19 @@ struct LearningSituationImportReviewSheet: View {
 
     private var confirmButton: some View {
         Button(confirmTitle) {
+            // Evita la doble pulsación mientras se guarda; se libera por si la importación falla.
+            isConfirming = true
             onConfirm(drafts)
             if isBatch { dismiss() }
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                isConfirming = false
+            }
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .keyboardShortcut(.defaultAction)
-        .disabled(!canConfirm)
+        .disabled(!canConfirm || isConfirming)
     }
 
     private var footerMessage: String {

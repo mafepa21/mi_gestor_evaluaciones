@@ -206,6 +206,18 @@ extension LearningSituationsWorkspaceView {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .allowsHitTesting(false)
+        } else if situations.isEmpty, listErrorMessage != nil {
+            // Error en la primera carga: no se confunde con «no hay situaciones».
+            ContentUnavailableView {
+                Label("No se pudo cargar", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text("Las situaciones no han llegado. Inténtalo de nuevo.")
+            } actions: {
+                Button("Reintentar") { Task { await reload() } }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if situations.isEmpty {
             ContentUnavailableView {
                 Label("Aún no hay situaciones", systemImage: "doc.badge.plus")

@@ -597,6 +597,26 @@ enum LearningSituationScheduleProjection {
 
 }
 
+/// Petición de borrado: una sola confirmación para una situación o para un lote.
+struct LearningSituationDeleteRequest: Identifiable {
+    let ids: [Int64]
+    let titles: [String]
+
+    var id: String { ids.map(String.init).joined(separator: "-") }
+    var isBatch: Bool { ids.count > 1 }
+
+    var title: String {
+        isBatch ? "¿Eliminar \(ids.count) situaciones?" : "¿Eliminar «\(titles.first ?? "esta situación")»?"
+    }
+
+    var message: String {
+        guard isBatch else { return "Se borrarán sus datos relacionados. No se puede deshacer." }
+        let shown = titles.prefix(3).joined(separator: ", ")
+        let rest = titles.count > 3 ? " y \(titles.count - 3) más" : ""
+        return "\(shown)\(rest). No se puede deshacer."
+    }
+}
+
 struct LearningSituationsWorkspaceView: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.colorScheme) var colorScheme
@@ -609,6 +629,7 @@ struct LearningSituationsWorkspaceView: View {
     @State var subjectFilter = ""
     @State var termFilter = ""
     @State var classFilter: Int64?
+    @State var showsArchived = false
     @State var classIdsBySituation: [Int64: Set<Int64>] = [:]
     @State var isImporterPresented = false
     @State var importTargetId: Int64?
@@ -624,10 +645,28 @@ struct LearningSituationsWorkspaceView: View {
     @State var errorMessage = ""
     @State var isSelectionMode = false
     @State var selectedSituationIds = Set<Int64>()
-    @State var situationToDelete: LearningSituation?
-    @State var showingSingleDeleteAlert = false
-    @State var showingBatchDeleteAlert = false
+    @State var deleteRequest: LearningSituationDeleteRequest?
+    // Estados de carga y errores en línea (no alertas) de la lista y del detalle.
+    @State var isLoadingList = true
+    @State var listErrorMessage: String?
+    @State var isLoadingDetail = false
+    @State var detailErrorMessage: String?
+    // Disposición adaptativa: ancho medido del módulo y pila en ancho compacto.
+    @State var containerWidth: CGFloat = 0
+    @State var isCompactDetailVisible = false
+    @State var expandedCurriculumSections: Set<String> = ["criterios"]
+    @ScaledMetric(relativeTo: .body) var minimumTapSize: CGFloat = 44
 
+    /// Por debajo de este ancho la lista y el detalle se apilan (iPhone, iPad en multitarea).
+    static let compactLayoutThreshold: CGFloat = 640
+
+    var usesCompactLayout: Bool {
+        containerWidth > 0 && containerWidth < Self.compactLayoutThreshold
+    }
+
+    var listColumnWidth: CGFloat {
+        min(360, max(280, containerWidth * 0.34))
+    }
 
     var selectedSituation: LearningSituation? {
         situations.first(where: { $0.id == selectedSituationId })
@@ -647,6 +686,18 @@ struct LearningSituationsWorkspaceView: View {
         Array(Set(situations.map(\.termLabel).filter { !$0.isEmpty })).sorted()
     }
 
+    var archivedCount: Int {
+        situations.filter { $0.status == .archived }.count
+    }
+
+    var hasActiveFilters: Bool {
+        !subjectFilter.isEmpty || !termFilter.isEmpty || classFilter != nil
+    }
+
+    var hasActiveQuery: Bool {
+        hasActiveFilters || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var filteredSituations: [LearningSituation] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return situations.filter { situation in
@@ -657,20 +708,27 @@ struct LearningSituationsWorkspaceView: View {
             let matchesSubject = subjectFilter.isEmpty || situation.subjectLabel == subjectFilter
             let matchesTerm = termFilter.isEmpty || situation.termLabel == termFilter
             let matchesClass = classFilter.map { classIdsBySituation[situation.id, default: []].contains($0) } ?? true
-            return matchesText && matchesSubject && matchesTerm && matchesClass
+            let matchesArchive = showsArchived || situation.status != .archived
+            return matchesText && matchesSubject && matchesTerm && matchesClass && matchesArchive
         }
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            masterColumn
-                .frame(minWidth: 336, idealWidth: 360, maxWidth: 384)
-            Color.clear.frame(width: 8)
-            detailColumn
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        Group {
+            if usesCompactLayout {
+                compactLayout
+            } else {
+                regularLayout
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(appPageBackground(for: colorScheme))
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { newWidth in
+            guard abs(containerWidth - newWidth) > 1 else { return }
+            containerWidth = newWidth
+        }
         .task { await reload() }
         .appOnChange(of: selectedSituationId) { _ in
             Task { await reloadDetail() }
@@ -716,7 +774,11 @@ struct LearningSituationsWorkspaceView: View {
             }
         }
         .sheet(item: $duplicateSituation) { situation in
-            LearningSituationDuplicateSheet(situation: situation, classes: bridge.classes) { classIds in
+            LearningSituationDuplicateSheet(
+                situation: situation,
+                classes: bridge.classes,
+                initialClassIds: duplicateInitialClassIds(for: situation)
+            ) { classIds in
                 Task { await duplicate(situation, classIds: classIds) }
             }
         }
@@ -725,27 +787,92 @@ struct LearningSituationsWorkspaceView: View {
         } message: {
             Text(errorMessage)
         }
-        .alert("Eliminar situación", isPresented: $showingSingleDeleteAlert, presenting: situationToDelete) { situation in
-            Button("Eliminar", role: .destructive) {
-                Task { await performDelete(situationId: situation.id) }
+        .confirmationDialog(
+            deleteRequest?.title ?? "Eliminar",
+            isPresented: Binding(get: { deleteRequest != nil }, set: { if !$0 { deleteRequest = nil } }),
+            titleVisibility: .visible,
+            presenting: deleteRequest
+        ) { request in
+            Button(request.isBatch ? "Eliminar \(request.ids.count)" : "Eliminar", role: .destructive) {
+                Task { await performDelete(request) }
             }
             Button("Cancelar", role: .cancel) {}
-        } message: { situation in
-            Text("¿Estás seguro de que deseas eliminar la situación de aprendizaje \"\(situation.title)\"? Esta acción no se puede deshacer y borrará todos los datos relacionados.")
-        }
-        .alert("Eliminar situaciones", isPresented: $showingBatchDeleteAlert) {
-            Button("Eliminar", role: .destructive) {
-                Task { await performBatchDelete() }
-            }
-            Button("Cancelar", role: .cancel) {}
-        } message: {
-            Text("¿Estás seguro de que deseas eliminar las \(selectedSituationIds.count) situaciones de aprendizaje seleccionadas? Esta acción no se puede deshacer y borrará todos los datos relacionados.")
+        } message: { request in
+            Text(request.message)
         }
     }
 
+    // MARK: - Disposición adaptativa
+
+    /// iPad y Mac: lista y detalle lado a lado. La vista ya vive dentro de la columna de
+    /// detalle del `NavigationSplitView` del shell, así que no se anida otro split view.
+    private var regularLayout: some View {
+        HStack(alignment: .top, spacing: 0) {
+            listColumn
+                .frame(width: listColumnWidth)
+                .frame(maxHeight: .infinity, alignment: .top)
+            Divider()
+            detailColumn
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    /// iPhone o ventana estrecha: pila. La fila abre el detalle y «Situaciones» vuelve.
+    @ViewBuilder
+    private var compactLayout: some View {
+        if isCompactDetailVisible, !isSelectionMode, let situation = selectedSituation {
+            VStack(spacing: 0) {
+                compactDetailBar(for: situation)
+                Divider()
+                detailColumn
+            }
+            .transition(.move(edge: .trailing))
+        } else {
+            listColumn
+                .transition(.move(edge: .leading))
+        }
+    }
+
+    private func compactDetailBar(for situation: LearningSituation) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.snappy) { isCompactDetailVisible = false }
+            } label: {
+                Label("Situaciones", systemImage: "chevron.backward")
+                    .frame(minHeight: minimumTapSize)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut(.cancelAction)
+            .accessibilityLabel("Volver a Situaciones")
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 16)
+        .background(appCardBackground(for: colorScheme))
+    }
+
+    func openSituation(_ situation: LearningSituation) {
+        selectedSituationId = situation.id
+        if usesCompactLayout {
+            withAnimation(.snappy) { isCompactDetailVisible = true }
+        }
+    }
+
+    func duplicateInitialClassIds(for situation: LearningSituation) -> Set<Int64> {
+        if let linked = classIdsBySituation[situation.id], !linked.isEmpty {
+            return linked
+        }
+        return selectedClassId.map { [$0] } ?? []
+    }
+
+    func requestDelete(_ situations: [LearningSituation]) {
+        guard !situations.isEmpty else { return }
+        deleteRequest = LearningSituationDeleteRequest(ids: situations.map(\.id), titles: situations.map(\.title))
+    }
 
     func clearSituationFilters() {
         searchText = ""
+        showsArchived = false
         subjectFilter = ""
         termFilter = ""
         classFilter = nil
@@ -769,30 +896,43 @@ struct LearningSituationsWorkspaceView: View {
 
     @MainActor
     func reload() async {
+        defer { isLoadingList = false }
         do {
             situations = try await bridge.learningSituations()
             let links = try await bridge.learningSituationClassLinksAll()
             let updatedClassIds = Dictionary(grouping: links, by: \.learningSituationId)
                 .mapValues { Set($0.map(\.classId)) }
             classIdsBySituation = updatedClassIds
+            listErrorMessage = nil
             if selectedSituationId == nil { selectedSituationId = situations.first?.id }
             await reloadDetail()
         } catch {
-            errorMessage = error.localizedDescription
+            // Aviso en línea: se mantiene la lista que ya se ve.
+            listErrorMessage = "No se pudo actualizar la lista. Se mantiene lo que ya ves."
         }
     }
 
     @MainActor
     func reloadDetail() async {
         guard let id = selectedSituationId else {
-            versions = []; classLinks = []; resources = []; return
+            versions = []; classLinks = []; resources = []
+            detailErrorMessage = nil
+            isLoadingDetail = false
+            return
         }
         let sameSituation = loadedDetailSituationId == id
+        // Solo se enseña el esqueleto al cambiar de situación; al recargar la misma se
+        // mantiene lo que ya se ve.
+        isLoadingDetail = !sameSituation
+        defer { if selectedSituationId == id { isLoadingDetail = false } }
         let loadedVersions = try? await bridge.learningSituationVersions(id: id)
         let loadedLinks = try? await bridge.learningSituationClassLinks(id: id)
         let loadedResources = try? await bridge.learningSituationResources(id: id)
+        guard selectedSituationId == id else { return }
         if loadedVersions == nil || loadedLinks == nil || loadedResources == nil {
-            errorMessage = SituationDetailReload.failure
+            detailErrorMessage = SituationDetailReload.failure
+        } else {
+            detailErrorMessage = nil
         }
         versions = ProfileReloadKeep.list(loaded: loadedVersions, previous: versions, samePerson: sameSituation)
         classLinks = ProfileReloadKeep.list(loaded: loadedLinks, previous: classLinks, samePerson: sameSituation)
@@ -899,36 +1039,45 @@ struct LearningSituationsWorkspaceView: View {
         }
     }
 
+    /// Borra una situación o un lote tras la confirmación única.
     @MainActor
-    func performDelete(situationId: Int64) async {
+    func performDelete(_ request: LearningSituationDeleteRequest) async {
+        deleteRequest = nil
         do {
-            try await bridge.deleteLearningSituation(id: situationId)
-            if selectedSituationId == situationId {
+            for situationId in request.ids {
+                try await bridge.deleteLearningSituation(id: situationId)
+            }
+            if let selectedId = selectedSituationId, request.ids.contains(selectedId) {
                 selectedSituationId = nil
+                isCompactDetailVisible = false
+            }
+            if request.isBatch || isSelectionMode {
+                selectedSituationIds.subtract(request.ids)
+                isSelectionMode = false
             }
             await reload()
         } catch {
             errorMessage = error.localizedDescription
+            await reload()
         }
     }
 
+    /// Archiva las situaciones elegidas en modo selección.
     @MainActor
-    func performBatchDelete() async {
+    func performBatchArchive() async {
+        let ids = selectedSituationIds
         do {
-            for situationId in selectedSituationIds {
-                try await bridge.deleteLearningSituation(id: situationId)
-            }
-            if let selectedId = selectedSituationId, selectedSituationIds.contains(selectedId) {
-                selectedSituationId = nil
+            for situationId in ids {
+                try await bridge.updateLearningSituationStatus(id: situationId, status: .archived)
             }
             selectedSituationIds.removeAll()
             isSelectionMode = false
             await reload()
         } catch {
             errorMessage = error.localizedDescription
+            await reload()
         }
     }
-
 
     @MainActor
     func updateStatus(_ situation: LearningSituation, to status: LearningSituationStatus) async {
@@ -939,5 +1088,4 @@ struct LearningSituationsWorkspaceView: View {
             errorMessage = error.localizedDescription
         }
     }
-
 }

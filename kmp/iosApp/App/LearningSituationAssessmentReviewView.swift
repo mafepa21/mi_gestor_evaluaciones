@@ -1,21 +1,19 @@
 import SwiftUI
-import UniformTypeIdentifiers
 import MiGestorKit
 
-struct LearningSituationAssessmentImportPreviewSheet: View {
+/// Revisión de los instrumentos leídos de un Word. Se abre con «push» dentro de la hoja
+/// «Evaluar» (vuelve con «Atrás»), no como hoja apilada.
+struct LearningSituationAssessmentReviewView: View {
     let draft: LearningSituationAssessmentImportDraft
-    let cancel: () -> Void
     let confirm: (LearningSituationAssessmentImportDraft) -> Void
     @State private var editableDraft: LearningSituationAssessmentImportDraft
     @State private var selectedInstrumentId: UUID?
 
     init(
         draft: LearningSituationAssessmentImportDraft,
-        cancel: @escaping () -> Void,
         confirm: @escaping (LearningSituationAssessmentImportDraft) -> Void
     ) {
         self.draft = draft
-        self.cancel = cancel
         self.confirm = confirm
         _editableDraft = State(initialValue: draft)
         _selectedInstrumentId = State(initialValue: draft.instruments.first?.id)
@@ -89,8 +87,6 @@ struct LearningSituationAssessmentImportPreviewSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-
             GeometryReader { proxy in
                 ScrollView {
                     reviewContent(isWide: proxy.size.width >= 760)
@@ -102,12 +98,8 @@ struct LearningSituationAssessmentImportPreviewSheet: View {
             footer
         }
         .background(IOSAppStyle.pageBackground)
-        #if os(macOS)
-        .frame(minWidth: 720, minHeight: 620)
-        #else
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        #endif
+        .navigationTitle("Instrumentos del Word")
+        .appInlineNavigationBarTitleDisplayMode()
         .onAppear {
             ensureSelectedInstrument()
         }
@@ -121,45 +113,14 @@ struct LearningSituationAssessmentImportPreviewSheet: View {
         return index
     }
 
-    private var header: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(NotebookStyle.primaryTint)
-                .frame(width: 48, height: 48)
-                .background(NotebookStyle.primaryTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Revisar instrumentos")
-                    .font(.title2.weight(.bold))
-                Text(draft.sourceFileName)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer()
-
-            Button(action: cancel) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .frame(width: 32, height: 32)
-                    .background(.secondary.opacity(0.12), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.cancelAction)
-            .accessibilityLabel("Cerrar revisión de instrumentos")
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 20)
-        .background(.ultraThinMaterial)
-    }
-
     @ViewBuilder
     private func reviewContent(isWide: Bool) -> some View {
         VStack(alignment: .leading, spacing: 24) {
+            LearningSituationInlineNotice(
+                kind: .info,
+                message: "\(draft.sourceFileName) · \(editableDraft.instruments.count) instrumentos encontrados"
+            )
+
             metricsStrip
 
             if isWide {
@@ -317,16 +278,13 @@ struct LearningSituationAssessmentImportPreviewSheet: View {
 
             Spacer()
 
-            Button("Cancelar", action: cancel)
-                .buttonStyle(.bordered)
-                .keyboardShortcut(.cancelAction)
-
             Button {
                 confirm(editableDraft)
             } label: {
-                Label("Usar seleccionados", systemImage: "checkmark")
+                Text("Usar estos instrumentos")
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .keyboardShortcut(.defaultAction)
             .disabled(!canConfirm)
         }
@@ -485,10 +443,10 @@ struct LearningSituationAssessmentImportPreviewSheet: View {
                                     ForEach(Array(criterion.descriptors.enumerated()), id: \.offset) { levelIndex, desc in
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(levelIndex < rubric.levels.count ? rubric.levels[levelIndex].label : "Nivel \(levelIndex + 1)")
-                                                .font(.system(size: 9, weight: .bold))
+                                                .font(.caption2.weight(.bold))
                                                 .foregroundStyle(NotebookStyle.primaryTint)
                                             Text(desc)
-                                                .font(.system(size: 10))
+                                                .font(.caption2)
                                                 .foregroundStyle(.secondary)
                                         }
                                         .frame(width: 120, alignment: .leading)
@@ -514,11 +472,11 @@ struct LearningSituationAssessmentImportPreviewSheet: View {
                                 .font(.caption.weight(.semibold))
                             if !question.options.isEmpty {
                                 Text("Opciones: " + question.options.joined(separator: " / "))
-                                    .font(.system(size: 10))
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
                             } else {
                                 Text("Respuesta abierta / rellenar hueco")
-                                    .font(.system(size: 10).italic())
+                                    .font(.caption2.italic())
                                     .foregroundStyle(.secondary)
                             }
                         }

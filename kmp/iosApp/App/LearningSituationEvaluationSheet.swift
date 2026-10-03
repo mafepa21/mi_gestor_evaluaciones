@@ -2,48 +2,28 @@ import SwiftUI
 import UniformTypeIdentifiers
 import MiGestorKit
 
-struct LearningSituationPhysicalTestsImportSection: View {
-    let isImporting: Bool
-    let draft: PhysicalTestsImportDraft?
-    let importAction: () -> Void
-    let removeAction: () -> Void
+/// Origen de lo que se va a crear en el Cuaderno. Un único selector sustituye a las tres
+/// secciones excluyentes de antes.
+enum LearningSituationEvaluationSource: String, CaseIterable, Identifiable {
+    case situation
+    case wordDocument
+    case physicalTests
 
-    var body: some View {
-        Section("Pruebas físicas") {
-            Button(action: importAction) {
-                if isImporting {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                        Text("Validando manifiesto…")
-                    }
-                } else {
-                    Label("Adjuntar manifiesto JSON", systemImage: "figure.run.circle")
-                }
-            }
-            .disabled(isImporting)
+    var id: String { rawValue }
 
-            if let draft {
-                Label("Manifiesto validado", systemImage: "checkmark.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.green)
-                Text(verbatim: draft.assignmentTemplate.batteryName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(draft.scoreIsDisabled
-                    ? "Diagnóstico: se crearán columnas de marca sin nota, media ni ranking."
-                    : "Se crearán las columnas configuradas en el manifiesto.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button(role: .destructive, action: removeAction) {
-                    Label("Quitar manifiesto", systemImage: "trash")
-                }
-            } else {
-                Text("Importa la batería, las escalas de referencia y las columnas de marca del JSON preparado para esta SA.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+    var title: String {
+        switch self {
+        case .situation: return "De la situación"
+        case .wordDocument: return "Documento Word"
+        case .physicalTests: return "Pruebas físicas"
         }
     }
+}
+
+/// Pantallas que se apilan dentro de la hoja (con «Atrás»), en vez de hojas encima de hojas.
+enum LearningSituationEvaluationRoute: Hashable {
+    case instrumentsReview
+    case physicalTestsReview
 }
 
 struct LearningSituationEvaluationSheet: View {
@@ -52,6 +32,8 @@ struct LearningSituationEvaluationSheet: View {
     let initialClassId: Int64?
     let onSaved: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var source: LearningSituationEvaluationSource = .situation
+    @State private var path: [LearningSituationEvaluationRoute] = []
     @State private var selectedClassIds: Set<Int64> = []
     @State private var linkedClassIds: Set<Int64> = []
     @State private var proposals: [LearningSituationEvaluationDraft] = []
@@ -60,35 +42,43 @@ struct LearningSituationEvaluationSheet: View {
     @State private var showingRubricImporter = false
     @State private var showingRubricBuilder = false
     @State private var instrumentImportDraft: LearningSituationAssessmentImportDraft?
-    @State private var instrumentImportPreview: LearningSituationAssessmentImportDraft?
+    @State private var instrumentReviewDraft: LearningSituationAssessmentImportDraft?
     @State private var showingPhysicalTestsImporter = false
     @State private var physicalTestsImportDraft: PhysicalTestsImportDraft?
-    @State private var physicalTestsImportPreview: PhysicalTestsImportDraft?
+    @State private var physicalTestsReviewDraft: PhysicalTestsImportDraft?
     @State private var targetTabTitle: String = "Evaluación"
     @State private var availableTabTitles: [String] = []
-    @State private var isNewTargetTabAlertPresented = false
+    @State private var isCreatingNewTab = false
     @State private var newTargetTabName = ""
     @State private var isImportingInstrumentDocument = false
     @State private var isImportingPhysicalTests = false
-    @State private var rubricImportPreview: AppleRubricImportPreview?
+    @State private var rubricImportSummaries: [UUID: String] = [:]
+    @State private var isSaving = false
     @State private var errorMessage = ""
+    @ScaledMetric(relativeTo: .body) private var minimumTapSize: CGFloat = 44
 
     private var selectedProposals: [LearningSituationEvaluationDraft] {
         proposals.filter(\.isSelected)
     }
 
+    private var hasTargetTab: Bool {
+        !targetTabTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var canSave: Bool {
-        guard !selectedClassIds.isEmpty else { return false }
-        let hasTargetTab = !targetTabTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if let physicalTestsImportDraft {
+        guard !selectedClassIds.isEmpty, !isSaving else { return false }
+        switch source {
+        case .physicalTests:
+            guard let physicalTestsImportDraft else { return false }
             return !physicalTestsImportDraft.testDefinitions.isEmpty && hasTargetTab
-        }
-        if instrumentImportDraft != nil {
+        case .wordDocument:
+            guard instrumentImportDraft != nil else { return false }
             return !selectedImportedInstruments.isEmpty && hasTargetTab
+        case .situation:
+            return !selectedProposals.isEmpty &&
+                selectedProposals.allSatisfy { $0.rubricId != nil } &&
+                hasTargetTab
         }
-        return !selectedProposals.isEmpty &&
-            selectedProposals.allSatisfy { $0.rubricId != nil } &&
-            hasTargetTab
     }
 
     private var selectedImportedInstruments: [AssessmentInstrumentDraft] {
@@ -99,134 +89,92 @@ struct LearningSituationEvaluationSheet: View {
         selectedImportedInstruments.compactMap(\.weightPercent).reduce(0, +)
     }
 
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Grupos destino (\(selectedClassIds.count) seleccionados)") {
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
-                        Toggle(isOn: Binding(
-                            get: { selectedClassIds.contains(schoolClass.id) },
-                            set: { isSelected in
-                                if isSelected {
-                                    selectedClassIds.insert(schoolClass.id)
-                                } else {
-                                    selectedClassIds.remove(schoolClass.id)
-                                }
-                                Task { await loadTabTitles() }
-                            }
-                        )) {
-                            HStack {
-                                Text(schoolClass.name)
-                                Spacer()
-                                if linkedClassIds.contains(schoolClass.id) {
-                                    Text("Asociado a SA")
-                                        .font(.caption2.weight(.semibold))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(EvaluationDesign.accentSoft, in: Capsule())
-                                        .foregroundStyle(EvaluationDesign.accent)
-                                }
-                            }
-                        }
-                    }
-                }
-                Section("Documento de instrumentos") {
-                    Button {
-                        showingInstrumentImporter = true
-                    } label: {
-                        if isImportingInstrumentDocument {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    #if os(macOS)
-                                    .controlSize(.small)
-                                    #endif
-                                Text("Leyendo documento…")
-                            }
-                        } else {
-                            Label("Adjuntar documento DOCX", systemImage: "doc.badge.plus")
-                        }
-                    }
-                    .disabled(isImportingInstrumentDocument)
-                    if let instrumentImportDraft {
-                        Label("\(instrumentImportDraft.instruments.count) instrumentos detectados en \(instrumentImportDraft.sourceFileName)", systemImage: "checkmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                    }
-                }
-                LearningSituationPhysicalTestsImportSection(
-                    isImporting: isImportingPhysicalTests,
-                    draft: physicalTestsImportDraft,
-                    importAction: { showingPhysicalTestsImporter = true },
-                    removeAction: { physicalTestsImportDraft = nil }
-                )
-                if physicalTestsImportDraft == nil && instrumentImportDraft == nil {
-                    Section("Instrumentos propuestos") {
-                        ForEach($proposals) { $proposal in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Toggle(isOn: $proposal.isSelected) {
-                                    VStack(alignment: .leading) {
-                                        Text(proposal.title)
-                                        Text(proposal.weightPercent.map { "\(Int($0))%" } ?? "Sin ponderacion")
-                                            .font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
+    private var selectedProposalWeightTotal: Double {
+        selectedProposals.compactMap(\.weightPercent).reduce(0, +)
+    }
 
-                                HStack {
-                                    rubricStatus(for: proposal)
-                                    Spacer()
-                                    rubricMenu(for: $proposal)
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
+    /// Solo se avisa si hay pesos y no suman 100 %.
+    private var proposalWeightsAreOff: Bool {
+        selectedProposals.contains { $0.weightPercent != nil } && abs(selectedProposalWeightTotal - 100) >= 0.5
+    }
+
+    private var importedWeightsAreOff: Bool {
+        !selectedImportedInstruments.isEmpty && abs(selectedWeightTotal - 100) >= 0.5
+    }
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            Form {
+                Section {
+                    // Segmentado si cabe; si no (iPhone, letra grande), menú.
+                    ViewThatFits(in: .horizontal) {
+                        sourcePicker
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                        sourcePicker
+                            .pickerStyle(.menu)
                     }
-                } else if physicalTestsImportDraft == nil {
-                    Section("Instrumentos detectados") {
-                        HStack {
-                            Text("\(selectedImportedInstruments.count) seleccionados")
-                            Spacer()
-                            Text("\(Int(selectedWeightTotal.rounded()))% ponderado")
-                                .fontWeight(.semibold)
-                                .foregroundStyle(abs(selectedWeightTotal - 100) < 0.5 ? NotebookStyle.successTint : NotebookStyle.warningTint)
+                } header: {
+                    Text("¿De dónde salen los instrumentos?")
+                }
+
+                groupsSection
+                targetTabSection
+
+                switch source {
+                case .situation:
+                    situationProposalsSection
+                case .wordDocument:
+                    wordDocumentSection
+                case .physicalTests:
+                    physicalTestsSection
+                }
+
+                if !errorMessage.isEmpty {
+                    Section {
+                        LearningSituationInlineNotice(
+                            kind: .error,
+                            message: errorMessage,
+                            actionTitle: "Cerrar aviso"
+                        ) {
+                            errorMessage = ""
                         }
-                        .font(.caption)
-                        importedInstrumentRows
                     }
                 }
-                Section("Pestaña del cuaderno") {
-                    if availableTabTitles.isEmpty {
-                        Label("Se creará la pestaña \"\(targetTabTitle)\" en los \(selectedClassIds.count) grupos.", systemImage: "folder.badge.plus")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Picker("Pestaña destino", selection: $targetTabTitle) {
-                            ForEach(availableTabTitles, id: \.self) { title in
-                                Text(title).tag(title)
-                            }
-                        }
-                        Text("Se añadirán las columnas en la pestaña \"\(targetTabTitle)\" en cada grupo (creándola si aún no existe).")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Button {
-                        newTargetTabName = ""
-                        isNewTargetTabAlertPresented = true
-                    } label: {
-                        Label("Crear pestaña nueva…", systemImage: "folder.badge.plus")
-                    }
-                }
-                Text(statusMessage)
-                    .font(.footnote)
-                    .foregroundStyle(canSave ? .green : .secondary)
             }
-            .navigationTitle("Preparar evaluación")
+            .formStyle(.grouped)
+            .navigationTitle("Evaluar")
+            .appInlineNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Crear en \(selectedClassIds.count) grupo\(selectedClassIds.count == 1 ? "" : "s")") {
-                        Task { await save() }
+            }
+            .safeAreaInset(edge: .bottom) {
+                footer
+            }
+            .navigationDestination(for: LearningSituationEvaluationRoute.self) { route in
+                switch route {
+                case .instrumentsReview:
+                    if let instrumentReviewDraft {
+                        LearningSituationAssessmentReviewView(draft: instrumentReviewDraft) { accepted in
+                            instrumentImportDraft = accepted
+                            source = .wordDocument
+                            path.removeAll()
+                        }
                     }
-                    .disabled(!canSave)
+                case .physicalTestsReview:
+                    if let physicalTestsReviewDraft {
+                        PhysicalTestsImportPreviewSheet(
+                            draft: physicalTestsReviewDraft,
+                            embedsInNavigationStack: false,
+                            confirmTitle: "Añadir pruebas"
+                        ) {
+                            path.removeAll()
+                        } confirm: { accepted in
+                            physicalTestsImportDraft = accepted
+                            source = .physicalTests
+                            path.removeAll()
+                        }
+                    }
                 }
             }
             .fileImporter(
@@ -250,31 +198,7 @@ struct LearningSituationEvaluationSheet: View {
             ) { result in
                 Task { await handleRubricImportFile(result) }
             }
-            .sheet(item: $instrumentImportPreview) { preview in
-                LearningSituationAssessmentImportPreviewSheet(draft: preview) {
-                    instrumentImportPreview = nil
-                } confirm: { accepted in
-                    physicalTestsImportDraft = nil
-                    instrumentImportDraft = accepted
-                    instrumentImportPreview = nil
-                }
-            }
-            .sheet(item: $physicalTestsImportPreview) { preview in
-                PhysicalTestsImportPreviewSheet(draft: preview) {
-                    physicalTestsImportPreview = nil
-                } confirm: { accepted in
-                    instrumentImportDraft = nil
-                    physicalTestsImportDraft = accepted
-                    physicalTestsImportPreview = nil
-                }
-            }
-            .sheet(item: $rubricImportPreview) { preview in
-                LearningSituationRubricImportPreviewSheet(preview: preview) {
-                    rubricImportPreview = nil
-                } confirm: {
-                    Task { await confirmRubricImport(preview) }
-                }
-            }
+            // El editor de rúbricas es otro módulo y en Mac necesita mucho ancho: sigue en hoja.
             .sheet(isPresented: $showingRubricBuilder) {
                 RubricsBuilderScreen(onSaved: { rubricId in
                     attachRubric(rubricId)
@@ -289,17 +213,9 @@ struct LearningSituationEvaluationSheet: View {
                 .presentationDragIndicator(.visible)
 #endif
             }
-            .alert("No se puede crear", isPresented: Binding(get: { !errorMessage.isEmpty }, set: { if !$0 { errorMessage = "" } })) {
-                Button("Cerrar", role: .cancel) {}
-            } message: { Text(errorMessage) }
-            .alert("Nueva pestaña", isPresented: $isNewTargetTabAlertPresented) {
-                TextField("Nombre de la pestaña", text: $newTargetTabName)
-                Button("Cancelar", role: .cancel) {}
-                Button("Crear") { Task { await createInstrumentTargetTab() } }
-            }
         }
 #if os(macOS)
-        .frame(minWidth: 620, minHeight: 560)
+        .frame(minWidth: 620, minHeight: 600)
 #else
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .presentationDetents([.large])
@@ -329,77 +245,187 @@ struct LearningSituationEvaluationSheet: View {
         }
     }
 
-    private var statusMessage: String {
-        if physicalTestsImportDraft != nil {
-            return canSave
-                ? "Se crearán la batería, las referencias, la asignación y las columnas de marca en el Cuaderno."
-                : "Selecciona un grupo y una pestaña válida antes de importar las pruebas físicas."
+    private var sourcePicker: some View {
+        Picker("Origen", selection: $source) {
+            ForEach(LearningSituationEvaluationSource.allCases) { option in
+                Text(option.title).tag(option)
+            }
         }
-        if instrumentImportDraft != nil {
-            return canSave
-                ? "Se crearan evaluaciones, columnas y vinculos para los instrumentos seleccionados."
-                : "Selecciona al menos un instrumento detectado antes de crear."
-        }
-        return canSave
-            ? "Se crearan evaluaciones y columnas de rubrica vinculadas."
-            : "Cada instrumento seleccionado necesita una rubrica antes de crear las columnas."
+        .accessibilityLabel("Origen de la evaluación")
     }
 
-    private var importedInstrumentRows: some View {
-        ForEach(instrumentImportDraft?.instruments ?? [], id: \.id) { instrument in
-            Toggle(isOn: Binding(
-                get: {
-                    instrumentImportDraft?.instruments.first(where: { $0.id == instrument.id })?.isSelected ?? false
-                },
-                set: { newValue in
-                    guard let index = instrumentImportDraft?.instruments.firstIndex(where: { $0.id == instrument.id }) else { return }
-                    instrumentImportDraft?.instruments[index].isSelected = newValue
-                }
-            )) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(instrument.title)
-                            .font(.body.weight(.semibold))
-                        Text(importedInstrumentSubtitle(instrument))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+    // MARK: - Grupos y pestaña
+
+    private var groupsSection: some View {
+        Section {
+            if bridge.classes.isEmpty {
+                Text("No hay grupos creados.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(bridge.classes, id: \.id) { schoolClass in
+                Toggle(isOn: Binding(
+                    get: { selectedClassIds.contains(schoolClass.id) },
+                    set: { isSelected in
+                        if isSelected {
+                            selectedClassIds.insert(schoolClass.id)
+                        } else {
+                            selectedClassIds.remove(schoolClass.id)
+                        }
+                        Task { await loadTabTitles() }
                     }
-                    Spacer(minLength: 8)
-                    if let weight = instrument.weightPercent, weight > 0 {
-                        Text("\(Int(weight.rounded()))%")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(NotebookStyle.primaryTint)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(NotebookStyle.primaryTint.opacity(0.12), in: Capsule())
-                    } else {
-                        Text("Auxiliar")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                )) {
+                    HStack(spacing: 8) {
+                        Text(schoolClass.name)
+                        if linkedClassIds.contains(schoolClass.id) {
+                            Label("Vinculado", systemImage: "link")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(EvaluationDesign.accent)
+                        }
                     }
                 }
             }
-            .padding(.vertical, 8)
+        } header: {
+            Text(selectedClassIds.count == 1 ? "Grupo (1 elegido)" : "Grupos (\(selectedClassIds.count) elegidos)")
         }
+    }
+
+    private var targetTabSection: some View {
+        Section {
+            if availableTabTitles.isEmpty {
+                TextField("Nombre de la nueva pestaña", text: $targetTabTitle)
+                Text("No hay pestañas en estos grupos. Se creará esta.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                Picker("Pestaña", selection: $targetTabTitle) {
+                    ForEach(availableTabTitles, id: \.self) { title in
+                        Text(title).tag(title)
+                    }
+                }
+                if isCreatingNewTab {
+                    HStack(spacing: 8) {
+                        TextField("Nombre de la nueva pestaña", text: $newTargetTabName)
+                            .onSubmit { Task { await createInstrumentTargetTab() } }
+                        Button("Usar") {
+                            Task { await createInstrumentTargetTab() }
+                            isCreatingNewTab = false
+                        }
+                        .disabled(newTargetTabName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Button("Cancelar", role: .cancel) {
+                            isCreatingNewTab = false
+                            newTargetTabName = ""
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .frame(minHeight: minimumTapSize)
+                } else {
+                    Button {
+                        newTargetTabName = ""
+                        isCreatingNewTab = true
+                    } label: {
+                        Label("Nueva pestaña…", systemImage: "plus")
+                    }
+                    .frame(minHeight: minimumTapSize)
+                }
+            }
+        } header: {
+            Text("Pestaña del Cuaderno")
+        } footer: {
+            Text("Las columnas se añaden en «\(targetTabTitle)» en cada grupo (se crea si no existe).")
+        }
+    }
+
+    // MARK: - Origen: la situación
+
+    @ViewBuilder
+    private var situationProposalsSection: some View {
+        Section {
+            if proposals.isEmpty {
+                Text("Esta situación no trae instrumentos. Elige «Documento Word» o «Pruebas físicas».")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            if proposalWeightsAreOff {
+                LearningSituationInlineNotice(
+                    kind: .warning,
+                    message: "Los pesos suman \(Int(selectedProposalWeightTotal.rounded())) %. Revisa las filas marcadas."
+                )
+            }
+            ForEach($proposals) { $proposal in
+                proposalRow($proposal)
+            }
+        } header: {
+            Text("Instrumentos de la situación")
+        }
+    }
+
+    private func proposalRow(_ proposal: Binding<LearningSituationEvaluationDraft>) -> some View {
+        let value = proposal.wrappedValue
+        // Fila afectada: las que no tienen peso; si todas lo tienen, todas las marcadas.
+        let anyMissingWeight = selectedProposals.contains { ($0.weightPercent ?? 0) <= 0 }
+        let flagged = proposalWeightsAreOff && value.isSelected &&
+            (anyMissingWeight ? (value.weightPercent ?? 0) <= 0 : true)
+        return VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: proposal.isSelected) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(value.title)
+                        .font(.body.weight(.semibold))
+                    weightLabel(value.weightPercent, flagged: flagged)
+                }
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    rubricStatus(for: value)
+                    Spacer(minLength: 8)
+                    rubricMenu(for: proposal)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    rubricStatus(for: value)
+                    rubricMenu(for: proposal)
+                }
+            }
+            if let summary = rubricImportSummaries[value.id] {
+                Text(summary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(flagged ? IOSAppStyle.warning.opacity(0.12) : nil)
+    }
+
+    private func weightLabel(_ weight: Double?, flagged: Bool) -> some View {
+        HStack(spacing: 4) {
+            Text(weight.map { "\(Int($0.rounded())) %" } ?? "Sin peso")
+            if flagged {
+                Label("Revisar peso", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(IOSAppStyle.warning)
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
     }
 
     private func rubricStatus(for proposal: LearningSituationEvaluationDraft) -> some View {
         let rubric = proposal.rubricId.flatMap { rubricId in
             bridge.rubrics.first(where: { $0.rubric.id == rubricId })
         }
-        return HStack(spacing: 8) {
-            Image(systemName: rubric == nil ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(rubric == nil ? .orange : .green)
+        return Label {
             VStack(alignment: .leading, spacing: 2) {
-                Text(rubric?.rubric.name ?? "Sin rúbrica asociada")
-                    .font(.caption.weight(.semibold))
+                Text(rubric.map { "Rúbrica lista: \($0.rubric.name)" } ?? "Falta elegir la rúbrica")
+                    .font(.subheadline.weight(.semibold))
                 if let rubric {
                     Text("\(rubric.criteria.count) criterios")
-                        .font(.caption2)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
+        } icon: {
+            Image(systemName: rubric == nil ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(rubric == nil ? IOSAppStyle.warning : EvaluationDesign.success)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private func rubricMenu(for proposal: Binding<LearningSituationEvaluationDraft>) -> some View {
@@ -431,8 +457,11 @@ struct LearningSituationEvaluationSheet: View {
                 Label("Importar desde Excel", systemImage: "square.and.arrow.down")
             }
         } label: {
-            Label("Rúbrica", systemImage: "ellipsis.circle")
+            Text(proposal.wrappedValue.rubricId == nil ? "Elegir rúbrica" : "Cambiar rúbrica")
+                .frame(minHeight: minimumTapSize - 12)
         }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
     }
 
     private var availableRubrics: [RubricDetail] {
@@ -449,6 +478,217 @@ struct LearningSituationEvaluationSheet: View {
             }
             .sorted { $0.rubric.name.localizedCaseInsensitiveCompare($1.rubric.name) == .orderedAscending }
     }
+
+    // MARK: - Origen: documento Word
+
+    @ViewBuilder
+    private var wordDocumentSection: some View {
+        Section {
+            if let instrumentImportDraft {
+                LearningSituationInlineNotice(
+                    kind: .info,
+                    message: "\(instrumentImportDraft.sourceFileName) · \(instrumentImportDraft.instruments.count) instrumentos encontrados"
+                )
+                if importedWeightsAreOff {
+                    LearningSituationInlineNotice(
+                        kind: .warning,
+                        message: "Los pesos suman \(Int(selectedWeightTotal.rounded())) %. Revisa las filas marcadas."
+                    )
+                }
+                importedInstrumentRows
+                Button {
+                    instrumentReviewDraft = instrumentImportDraft
+                    path.append(.instrumentsReview)
+                } label: {
+                    Label("Revisar instrumentos", systemImage: "slider.horizontal.3")
+                }
+                .frame(minHeight: minimumTapSize)
+            }
+            Button {
+                showingInstrumentImporter = true
+            } label: {
+                if isImportingInstrumentDocument {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Leyendo documento…")
+                    }
+                } else {
+                    Label(instrumentImportDraft == nil ? "Elegir documento Word…" : "Cambiar documento…", systemImage: "doc.badge.plus")
+                }
+            }
+            .disabled(isImportingInstrumentDocument)
+            .frame(minHeight: minimumTapSize)
+        } header: {
+            Text("Instrumentos del Word")
+        } footer: {
+            if instrumentImportDraft == nil {
+                Text("Elige el Word con los instrumentos. Podrás revisarlos antes de crear.")
+            }
+        }
+    }
+
+    private var importedInstrumentRows: some View {
+        ForEach(instrumentImportDraft?.instruments ?? [], id: \.id) { instrument in
+            let flagged = importedWeightsAreOff && instrument.isSelected && (instrument.weightPercent ?? 0) > 0
+            Toggle(isOn: Binding(
+                get: {
+                    instrumentImportDraft?.instruments.first(where: { $0.id == instrument.id })?.isSelected ?? false
+                },
+                set: { newValue in
+                    guard let index = instrumentImportDraft?.instruments.firstIndex(where: { $0.id == instrument.id }) else { return }
+                    instrumentImportDraft?.instruments[index].isSelected = newValue
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(instrument.title)
+                        .font(.body.weight(.semibold))
+                    Text(importedInstrumentSubtitle(instrument))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    if let weight = instrument.weightPercent, weight > 0 {
+                        weightLabel(weight, flagged: flagged)
+                    } else {
+                        Text("Auxiliar (no cuenta para la media)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            .listRowBackground(flagged ? IOSAppStyle.warning.opacity(0.12) : nil)
+        }
+    }
+
+    // MARK: - Origen: pruebas físicas
+
+    @ViewBuilder
+    private var physicalTestsSection: some View {
+        Section {
+            if let physicalTestsImportDraft {
+                Label(physicalTestsImportDraft.assignmentTemplate.batteryName, systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(EvaluationDesign.success)
+                Text(physicalTestsImportDraft.testDefinitions.count == 1
+                    ? "1 prueba"
+                    : "\(physicalTestsImportDraft.testDefinitions.count) pruebas")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(physicalTestsImportDraft.scoreIsDisabled
+                    ? "Diagnóstico: se crearán columnas de marca sin nota, media ni ranking."
+                    : "Se crearán las columnas configuradas en el archivo.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button {
+                    physicalTestsReviewDraft = physicalTestsImportDraft
+                    path.append(.physicalTestsReview)
+                } label: {
+                    Label("Revisar pruebas", systemImage: "slider.horizontal.3")
+                }
+                .frame(minHeight: minimumTapSize)
+                Button(role: .destructive) {
+                    self.physicalTestsImportDraft = nil
+                } label: {
+                    Label("Quitar pruebas", systemImage: "trash")
+                }
+                .frame(minHeight: minimumTapSize)
+            }
+            Button {
+                showingPhysicalTestsImporter = true
+            } label: {
+                if isImportingPhysicalTests {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Comprobando el archivo…")
+                    }
+                } else {
+                    Label(physicalTestsImportDraft == nil ? "Elegir archivo de pruebas…" : "Cambiar archivo…", systemImage: "figure.run.circle")
+                }
+            }
+            .disabled(isImportingPhysicalTests)
+            .frame(minHeight: minimumTapSize)
+        } header: {
+            Text("Pruebas físicas")
+        } footer: {
+            if physicalTestsImportDraft == nil {
+                Text("Elige el archivo JSON preparado para esta situación: batería, escalas y columnas de marca.")
+            }
+        }
+    }
+
+    // MARK: - Pie
+
+    private var footer: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                footerStatus
+                Spacer(minLength: 8)
+                createButton
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                footerStatus
+                createButton
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private var footerStatus: some View {
+        Text(statusMessage)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var createButton: some View {
+        Button {
+            Task { await save() }
+        } label: {
+            if isSaving {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Creando…")
+                }
+            } else {
+                Text("Crear en el Cuaderno")
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .keyboardShortcut(.defaultAction)
+        .disabled(!canSave)
+    }
+
+    private var statusMessage: String {
+        if isSaving { return "Creando en \(groupCountLabel)…" }
+        if selectedClassIds.isEmpty { return "Elige al menos un grupo." }
+        if !hasTargetTab { return "Escribe el nombre de la pestaña." }
+        switch source {
+        case .physicalTests:
+            guard physicalTestsImportDraft != nil else { return "Elige el archivo de pruebas físicas." }
+            return canSave
+                ? "Se crearán la batería, las referencias y las columnas de marca en \(groupCountLabel)."
+                : "Revisa las pruebas antes de crear."
+        case .wordDocument:
+            guard instrumentImportDraft != nil else { return "Elige el documento Word." }
+            if !canSave { return "Marca al menos un instrumento." }
+            let weightNote = importedWeightsAreOff ? " · pesos \(Int(selectedWeightTotal.rounded())) %" : ""
+            return "\(selectedImportedInstruments.count) columnas en \(groupCountLabel)\(weightNote)"
+        case .situation:
+            if selectedProposals.isEmpty { return "Marca al menos un instrumento." }
+            if let pending = selectedProposals.first(where: { $0.rubricId == nil }) {
+                return "Falta elegir la rúbrica de «\(pending.title)»."
+            }
+            let weightNote = proposalWeightsAreOff ? " · pesos \(Int(selectedProposalWeightTotal.rounded())) %" : ""
+            return "\(selectedProposals.count) columnas en \(groupCountLabel)\(weightNote)"
+        }
+    }
+
+    private var groupCountLabel: String {
+        selectedClassIds.count == 1 ? "1 grupo" : "\(selectedClassIds.count) grupos"
+    }
+
+    // MARK: - Acciones
 
     private func startRubricBuilder(for proposal: LearningSituationEvaluationDraft) {
         activeProposalId = proposal.id
@@ -485,7 +725,7 @@ struct LearningSituationEvaluationSheet: View {
             // Concurrency con el resto de tareas estructuradas de la app- con un timeout
             // defensivo para que el spinner nunca quede colgado indefinidamente.
             let service = LearningSituationAssessmentInstrumentsImportService()
-            instrumentImportPreview = try await withTimeout(seconds: 20) {
+            instrumentReviewDraft = try await withTimeout(seconds: 20) {
                 try await withCheckedThrowingContinuation { continuation in
                     DispatchQueue.global(qos: .userInitiated).async {
                         do {
@@ -496,6 +736,7 @@ struct LearningSituationEvaluationSheet: View {
                     }
                 }
             }
+            path = [.instrumentsReview]
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -512,9 +753,10 @@ struct LearningSituationEvaluationSheet: View {
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
             let data = try Data(contentsOf: url)
             let service = PhysicalTestsImportService()
-            physicalTestsImportPreview = try await withTimeout(seconds: 20) {
+            physicalTestsReviewDraft = try await withTimeout(seconds: 20) {
                 try service.preview(from: url, data: data)
             }
+            path = [.physicalTestsReview]
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -533,12 +775,22 @@ struct LearningSituationEvaluationSheet: View {
         }
     }
 
+    /// La hoja de cálculo va directa al editor de rúbricas (sin vista previa intermedia).
+    /// Si no tiene niveles o criterios, se avisa en línea y no se abre el editor.
     @MainActor
     private func handleRubricImportFile(_ result: Result<[URL], Error>) async {
         do {
             guard let url = try result.get().first else { return }
             let rows = try AppleSpreadsheetReader.readRows(from: url)
-            rubricImportPreview = makeRubricImportPreview(from: rows)
+            let preview = makeRubricImportPreview(from: rows)
+            guard preview.levelCount > 0, preview.criterionCount > 0 else {
+                errorMessage = (["No se pudo usar la hoja de cálculo."] + preview.warnings).joined(separator: " ")
+                return
+            }
+            if let activeProposalId {
+                rubricImportSummaries[activeProposalId] = "Del Excel: \(preview.levelCount) niveles · \(preview.criterionCount) criterios. Guárdala en el editor para usarla."
+            }
+            await confirmRubricImport(preview)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -551,7 +803,6 @@ struct LearningSituationEvaluationSheet: View {
             if let firstClassId = selectedClassIds.first {
                 bridge.selectRubricClass(firstClassId)
             }
-            rubricImportPreview = nil
             showingRubricBuilder = true
         } catch {
             errorMessage = error.localizedDescription
@@ -563,6 +814,7 @@ struct LearningSituationEvaluationSheet: View {
               let index = proposals.firstIndex(where: { $0.id == activeProposalId }) else { return }
         proposals[index].rubricId = rubricId
         proposals[index].isSelected = true
+        rubricImportSummaries[activeProposalId] = nil
     }
 
     @MainActor
@@ -595,6 +847,7 @@ struct LearningSituationEvaluationSheet: View {
         }
         targetTabTitle = name
         newTargetTabName = ""
+        isCreatingNewTab = false
     }
 
     private func makeRubricImportPreview(from rows: [[String]]) -> AppleRubricImportPreview {
@@ -628,23 +881,29 @@ struct LearningSituationEvaluationSheet: View {
         guard !selectedClassIds.isEmpty else { return }
         let target = targetTabTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedTabName = target.isEmpty ? "Evaluación" : target
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = ""
         do {
             for classId in selectedClassIds {
-                if let physicalTestsImportDraft {
+                switch source {
+                case .physicalTests:
+                    guard let physicalTestsImportDraft else { return }
                     try await bridge.materializeLearningSituationPhysicalTests(
                         situation: situation,
                         classId: classId,
                         draft: physicalTestsImportDraft,
                         targetTabId: resolvedTabName
                     )
-                } else if let instrumentImportDraft {
+                case .wordDocument:
+                    guard let instrumentImportDraft else { return }
                     try await bridge.materializeLearningSituationAssessmentInstruments(
                         situation: situation,
                         classId: classId,
                         draft: instrumentImportDraft,
                         targetTabId: resolvedTabName
                     )
-                } else {
+                case .situation:
                     try await bridge.materializeLearningSituationEvaluations(
                         situation: situation,
                         classId: classId,
@@ -656,7 +915,7 @@ struct LearningSituationEvaluationSheet: View {
             dismiss()
             onSaved()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "No se pudo crear. \(error.localizedDescription)"
         }
     }
 
@@ -665,87 +924,7 @@ struct LearningSituationEvaluationSheet: View {
         var parts = [instrument.kind.label]
         if let criterion = instrument.criterionLabel, !criterion.isEmpty { parts.append(criterion) }
         let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.quizQuestions.count + instrument.observationFields.count
-        if detailCount > 0 { parts.append("\(detailCount) items") }
+        if detailCount > 0 { parts.append("\(detailCount) ítems") }
         return parts.joined(separator: " · ")
-    }
-}
-
-struct LearningSituationRubricImportPreviewSheet: View {
-    let preview: AppleRubricImportPreview
-    let cancel: () -> Void
-    let confirm: () -> Void
-
-    private var canConfirm: Bool {
-        preview.levelCount > 0 && preview.criterionCount > 0
-    }
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 20) {
-                rubricMetrics
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Validación")
-                        .font(.headline)
-                    if preview.warnings.isEmpty {
-                        Label("Estructura lista para revisar en el editor.", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    } else {
-                        ForEach(preview.warnings, id: \.self) { warning in
-                            Label(warning, systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                }
-
-                Spacer()
-            }
-            .padding(24)
-            .navigationTitle("Importar rúbrica")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar", action: cancel)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Abrir en editor", action: confirm)
-                        .disabled(!canConfirm)
-                }
-            }
-        }
-        #if os(macOS)
-        .frame(width: 600, height: 430)
-        #else
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-        #endif
-    }
-
-    private var rubricMetrics: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) {
-                previewMetric(title: "Niveles", value: "\(preview.levelCount)", icon: "slider.horizontal.below.square")
-                previewMetric(title: "Criterios", value: "\(preview.criterionCount)", icon: "list.bullet.rectangle")
-                previewMetric(title: "Advertencias", value: "\(preview.warnings.count)", icon: "exclamationmark.triangle")
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 144), spacing: 16)], alignment: .leading, spacing: 16) {
-                previewMetric(title: "Niveles", value: "\(preview.levelCount)", icon: "slider.horizontal.below.square")
-                previewMetric(title: "Criterios", value: "\(preview.criterionCount)", icon: "list.bullet.rectangle")
-                previewMetric(title: "Advertencias", value: "\(preview.warnings.count)", icon: "exclamationmark.triangle")
-            }
-        }
-    }
-
-    private func previewMetric(title: String, value: String, icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title2.weight(.bold))
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

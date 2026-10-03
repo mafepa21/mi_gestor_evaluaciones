@@ -11,6 +11,19 @@ El formato sigue una variante practica de Keep a Changelog:
 - `Docs`: documentacion relevante.
 - `Verification`: builds, tests, auditorias o evidencias.
 
+### Changed
+
+- **Situaciones de Aprendizaje: rediseño de usabilidad y UI (solo presentación)**:
+  - `LearningSituationsWorkspaceView.swift` baja de 3144 a unas 600 líneas; las piezas pasan a 7 archivos nuevos (`LearningSituationsListColumn`, `LearningSituationDetailView`, `LearningSituationsComponents`, `LearningSituationImportReviewSheet`, `LearningSituationDuplicateSheet`, `LearningSituationEvaluationSheet`, `LearningSituationAssessmentReviewView`). La proyección de horarios no se toca.
+  - Lista y detalle: dos columnas en iPad/Mac y pila en ancho estrecho; búsqueda propia, chips de filtro visibles con «Limpiar», estado de carga separado del vacío, selección múltiple con Archivar y Eliminar, un solo cuadro de confirmación de borrado, error de recarga en línea.
+  - Detalle: una sola acción principal («Programar»); «Lo que se creó» pasa tras el contenido curricular, plegado por defecto y con contador; se quitan estadísticas y hash.
+  - Importar: una sola hoja «Revisar importación» para 1 o varios Word, con el grupo del módulo preseleccionado y «Asignar a todas»; sirve también para «Editar ficha».
+  - Evaluar: selector único de origen; las vistas previas pasan de hojas apiladas a pantallas con «Atrás»; la vista previa de rúbrica Excel se elimina y abre directo el editor; «Nueva pestaña» en línea; pesos ≠ 100 % marcados en su fila.
+  - Programar: un solo cierre, controles que se reparten en líneas, `DatePicker` nativos, «Inicio común» solo cambia fechas con «Aplicar a todos», secuencia Word visible, avisos en línea.
+  - Desviaciones del ticket: sin `NavigationSplitView` propio ni `.searchable` (el shell ya los tiene); errores de guardar, borrar e importar siguen en alerta; los pesos ≠ 100 % avisan pero no bloquean; la pantalla «sin periodos» no tiene botón «Abrir Planner».
+  - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK tras cada paso; `LearningSituationDocumentImportTests`, `PlannerTermBoardTests` y `PlannerGanttProjectionTests`: 70 tests, 4 omitidos, 2 fallos preexistentes (`testMislataCurricularFilesImportSuccessfully`, iguales antes de tocar nada). No se hizo QA visual completo (capturas en iPhone, iPad, Mac estrecho y letra XXL) ni se probó con datos reales de importación.
+  - Docs: ámbito `docs/ambitos/situaciones-aprendizaje.md`, mapa de flujos y maqueta viva en `docs/planes/`.
+
 ### Fixed
 
 - **Apertura fluida del Planner en macOS/iOS**:

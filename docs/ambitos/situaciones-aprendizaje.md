@@ -11,7 +11,8 @@ Rutas relativas a `kmp/iosApp/`. Snapshot del 2026-10-03 (solo lectura, sin comp
 - **Deuda UI (hoja de evaluación, :1748-2372):** 4 hojas anidadas (:1952, :1961, :1970, :1977). `AssessmentImportPreview` (:2372) y `RubricImportPreview` (:3066) pesan ~700 líneas cada una.
 - **Filtros:** un solo `Menu` (`situationFiltersMenu` :909) con 3 `Picker` (Grupo, Materia, Trimestre).
 - **ScheduleSheet** (`App/LearningSituationScheduleSheet.swift`, 1125 líneas): muchos `@State`, varios `Picker`/`DatePicker`, `fileImporter` propio.
-- **Pendiente:** rediseño de usabilidad (ticket `codex/ui-situaciones-aprendizaje`).
+- **Rediseño hecho (2026-10, rama `codex/ui-situaciones-aprendizaje`):** la vista principal queda en ~600 líneas y se reparte en `LearningSituationsListColumn`, `LearningSituationDetailView`, `LearningSituationsComponents`, `LearningSituationImportReviewSheet`, `LearningSituationDuplicateSheet`, `LearningSituationEvaluationSheet` y `LearningSituationAssessmentReviewView` (todos en `App/`). Los números de línea de arriba son anteriores al rediseño: buscar por nombre de símbolo.
+- **Pendiente:** QA visual (iPhone, iPad, Mac estrecho, letra XXL); errores de guardar/borrar/importar aún en alerta; botón «Abrir Planner» en el aviso «sin periodos»; pesos ≠ 100 % avisan pero no bloquean; filas repetidas y fechas en inglés en «Lo que se creó» (datos, no diseño).
 
 ## 2. Terreno de Juego (Ficheros y Límites)
 - **Propios:** `App/LearningSituationsWorkspaceView.swift` (vista :650-1493, hojas privadas, `LearningSituationScheduleProjection` :96-600), `App/LearningSituationScheduleSheet.swift`.
@@ -33,4 +34,9 @@ Rutas relativas a `kmp/iosApp/`. Snapshot del 2026-10-03 (solo lectura, sin comp
 - ⚠ **Ids estables:** las hojas usan `.sheet(item:)` con structs `Identifiable`. Mantener ids estables.
 - ⚠ **`loadedDetailSituationId`** evita recargar el detalle. Respetarlo al tocar la selección.
 - ⚠ **Filtro por grupo** depende de `classIdsBySituation`, que se carga aparte de `classLinks`.
+- ⚠ **Navegación anidada:** la vista ya vive dentro del `NavigationSplitView` del shell y el shell trae su buscador. No añadir otro `NavigationSplitView` ni `.searchable` dentro. En ancho estrecho se usa pila propia con «‹ Situaciones».
+- ⚠ **Estado de despliegue compartido:** `expandedCurriculumSections` guarda también el bloque «creado» («Lo que se creó»). Empieza en `["criterios"]`; todo lo demás va plegado.
+- ⚠ **«Inicio común» en Programar** ya no pisa las fechas por grupo: hace falta pulsar «Aplicar a todos».
+- ⚠ **`PhysicalTestsImportPreviewSheet`** tiene un parámetro opcional para abrirse como pantalla con «Atrás» dentro de Evaluar. Se sigue usando como hoja desde otros sitios.
+- ⚠ **Archivadas** ocultas por defecto en la lista; «Desarchivar» devuelve la situación a Activa.
 - ⚠ **Compilar:** `Frameworks/` (MiGestorKit) no está en git. Enlazarlo desde el checkout principal antes de `xcodebuild`.

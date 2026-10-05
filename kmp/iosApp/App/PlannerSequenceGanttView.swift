@@ -812,7 +812,8 @@ struct PlannerGanttWeek: Hashable {
         guard let date = mondayDate else { return "" }
         let formatter = DateFormatter()
         formatter.calendar = Self.isoCalendar
-        formatter.locale = Locale.current
+        // La app no tiene localización en español: Locale.current daría «September».
+        formatter.locale = Locale(identifier: "es_ES")
         formatter.dateFormat = "LLLL"
         return formatter.string(from: date).capitalized
     }

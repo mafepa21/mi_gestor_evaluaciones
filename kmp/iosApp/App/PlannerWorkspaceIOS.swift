@@ -301,9 +301,9 @@ struct PlannerToolbar: View {
 
             if vm.activeSection == .week {
                 compactWeekHeader
-            } else if vm.activeSection == .month {
-                // En vista mensual, la cabecera propia de PlannerMonthCalendarView gestiona la navegación de mes
-            } else {
+            } else if vm.activeSection == .summary {
+                // La tarjeta grande de la SA solo aporta en Resumen; en Día,
+                // Secuencia y Evaluación quitaba altura sin dar información nueva.
                 expandedProgressHeader
             }
 

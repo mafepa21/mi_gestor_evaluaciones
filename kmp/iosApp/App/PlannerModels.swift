@@ -109,6 +109,11 @@ enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Nombre corto para el selector de la barra. rawValue no se toca: se guarda en preferencias.
+    var toolbarTitle: String {
+        self == .term ? "Huecos" : rawValue
+    }
+
     var systemImage: String {
         switch self {
         case .month: return "calendar"

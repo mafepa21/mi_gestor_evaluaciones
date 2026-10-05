@@ -584,46 +584,19 @@ struct PlannerToolbar: View {
         .plannerGlassPanel(.content, cornerRadius: 14)
     }
 
+    /// Solo se muestra en Resumen: nombre de la SA y contexto. Sin bloque de progreso
+    /// desplegable, porque repetía las cifras de las tarjetas del Resumen.
     private var expandedProgressHeader: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Button {
-                toggleSectionProgress()
-            } label: {
-                HStack(alignment: .center, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(toolbarTitle)
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .lineLimit(1)
-                            .foregroundStyle(.primary)
-                        Text(toolbarSubtitle)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(sectionProgressExpanded ? 90 : 0))
-                }
-            }
-            .buttonStyle(.plain)
-
-            if sectionProgressExpanded {
-                Group {
-                    if let progress = vm.situationProgress(for: vm.selectedSession) {
-                        PlannerSituationProgressStrip(progress: progress)
-                    } else {
-                        PlannerWeekProgressStrip(vm: vm)
-                    }
-                }
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)).animation(.easeOut(duration: 0.2)),
-                    removal: .opacity.animation(.easeIn(duration: 0.15))
-                ))
-            }
+        VStack(alignment: .leading, spacing: 4) {
+            Text(toolbarTitle)
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .foregroundStyle(.primary)
+            Text(toolbarSubtitle)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .plannerGlassPanel(.hero, cornerRadius: 24)
     }

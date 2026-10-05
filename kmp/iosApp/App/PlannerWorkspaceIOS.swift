@@ -468,6 +468,23 @@ struct PlannerToolbar: View {
         .accessibilityLabel("Acciones secundarias del planificador")
     }
 
+    /// Un mismo hito llega repetido (uno por grupo): se cuenta una vez por título y fecha.
+    private var uniqueWeekMilestoneCount: Int {
+        Set(vm.weekMilestones.map { "\($0.dateIso)|\($0.title)" }).count
+    }
+
+    /// «X de Y franjas planificadas»: el grid enseña franjas del horario,
+    /// y «0 sesiones» contradecía una semana llena de clases.
+    private var weekSlotCoverageLabel: String {
+        let cells = vm.weekRenderModel.entriesByCell.values
+        let lessonCells = cells.filter { entries in
+            entries.contains { $0.kind == .session || $0.kind == .scheduledSlot }
+        }
+        let plannedCells = lessonCells.filter { entries in entries.contains { $0.kind == .session } }
+        guard !lessonCells.isEmpty else { return "\(vm.filteredSessions.count) sesiones" }
+        return "\(plannedCells.count) de \(lessonCells.count) franjas planificadas"
+    }
+
     private var compactWeekHeader: some View {
         VStack(alignment: .leading, spacing: isWeekProgressExpanded ? 8 : 0) {
             HStack(alignment: .center, spacing: 8) {
@@ -492,7 +509,7 @@ struct PlannerToolbar: View {
                         HStack(spacing: 4) {
                             Image(systemName: "calendar.badge.clock")
                                 .font(.system(size: 8, weight: .bold))
-                            Text("\(vm.weekMilestones.count) hitos")
+                            Text("\(uniqueWeekMilestoneCount) hitos")
                                 .font(.caption2.weight(.bold))
                         }
                         .foregroundStyle(Color.orange)
@@ -502,7 +519,7 @@ struct PlannerToolbar: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(onShowCalendarMilestones == nil)
-                    .accessibilityLabel("\(vm.weekMilestones.count) hitos del curso")
+                    .accessibilityLabel("\(uniqueWeekMilestoneCount) hitos del curso")
                     .accessibilityHint("Abre el listado de hitos y salidas")
                 }
 
@@ -514,7 +531,7 @@ struct PlannerToolbar: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text("\(vm.filteredSessions.count) sesiones")
+                        Text(weekSlotCoverageLabel)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -529,7 +546,7 @@ struct PlannerToolbar: View {
                     .background(EvaluationDesign.surfaceSoft, in: Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(vm.weekLabel), \(vm.dateRangeLabel), \(vm.filteredSessions.count) sesiones")
+                .accessibilityLabel("\(vm.weekLabel), \(vm.dateRangeLabel), \(weekSlotCoverageLabel)")
                 .accessibilityHint("Mostrar u ocultar las métricas de progreso de la semana")
 
                 Button {

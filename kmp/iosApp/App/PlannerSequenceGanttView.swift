@@ -76,7 +76,8 @@ struct PlannerSequenceGanttView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 248)
+                .labelsHidden()
+                .fixedSize()
 
                 Picker("Periodo", selection: $selectedRange) {
                     Text("13 semanas").tag(PlannerGanttRange.rolling)
@@ -179,9 +180,12 @@ struct PlannerSequenceGanttView: View {
                     .scrollIndicators(.visible)
                 }
                 .plannerGlassPanel(.content, cornerRadius: 16)
-            }
 
-            legend
+                // Pegada a la tabla: al fondo de la pantalla quedaba lejos de lo que explica.
+                legend
+                    .padding(.top, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
@@ -417,7 +421,8 @@ struct PlannerSequenceGanttView: View {
                 GeometryReader { proxy in
                     HStack(spacing: 0) {
                         progressSegment(value: completed, total: total, width: proxy.size.width, tint: EvaluationDesign.success)
-                        progressSegment(value: planned, total: total, width: proxy.size.width, tint: EvaluationDesign.accent.opacity(0.55))
+                        // Lo planificado es la pista vacía: la barra solo se llena con lo impartido.
+                        progressSegment(value: planned, total: total, width: proxy.size.width, tint: Color.secondary.opacity(0.18))
                         progressSegment(value: pending, total: total, width: proxy.size.width, tint: IOSAppStyle.warning)
                         progressSegment(value: cancelled, total: total, width: proxy.size.width, tint: EvaluationDesign.danger)
                     }
@@ -485,10 +490,10 @@ struct PlannerSequenceGanttView: View {
 
     private var legend: some View {
         HStack(spacing: 16) {
-            PlannerGanttLegendItem(label: "Cerrada", tint: PlannerSequenceStatus.closed.tint)
-            PlannerGanttLegendItem(label: "Impartida", tint: PlannerSequenceStatus.taught.tint)
-            PlannerGanttLegendItem(label: "Planificada", tint: PlannerSequenceStatus.planned.tint)
-            PlannerGanttLegendItem(label: "Cancelada", tint: PlannerSequenceStatus.cancelled.tint)
+            PlannerGanttLegendItem(label: "Cerrada", tint: PlannerSequenceStatus.closed.tint, systemImage: PlannerSequenceStatus.closed.systemImage)
+            PlannerGanttLegendItem(label: "Impartida", tint: PlannerSequenceStatus.taught.tint, systemImage: PlannerSequenceStatus.taught.systemImage)
+            PlannerGanttLegendItem(label: "Planificada", tint: PlannerSequenceStatus.planned.tint, systemImage: PlannerSequenceStatus.planned.systemImage)
+            PlannerGanttLegendItem(label: "Cancelada", tint: PlannerSequenceStatus.cancelled.tint, systemImage: PlannerSequenceStatus.cancelled.systemImage)
             PlannerGanttLegendItem(label: "Vacaciones", tint: Color.secondary.opacity(0.35))
             Spacer()
         }
@@ -1085,12 +1090,21 @@ private struct PlannerGanttSessionMark: View {
 private struct PlannerGanttLegendItem: View {
     let label: String
     let tint: Color
+    /// Con icono, «Cerrada» e «Impartida» (mismo verde) se distinguen.
+    var systemImage: String? = nil
 
     var body: some View {
         HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(tint)
-                .frame(width: 14, height: 14)
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 14, height: 14)
+            } else {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(tint)
+                    .frame(width: 14, height: 14)
+            }
             Text(label)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)

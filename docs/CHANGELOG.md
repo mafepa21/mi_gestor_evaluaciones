@@ -13,6 +13,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Pulido HIG de Alumnado (Mac) y Planificación (solo presentación)**:
+  - Alumnado (`MacStudentsView.swift`): la lista ya no muestra otro grupo al cambiar rápido (se descartan respuestas tardías); los filtros pasan a una línea sobre la tabla y la búsqueda a la cabecera; «Clase» solo con «Todas las clases»; lo normal se muestra vacío; media con coma decimal a la derecha y «Sin nota» en gris; un solo contador. `MacPremiumTableContainer` gana `showsHeader` (aditivo).
+  - Barra del planificador (`MacRootView.swift`): secciones con texto (Mes, Semana, Día, Secuencia, Huecos, Resumen) vía `toolbarTitle` sin tocar `rawValue`; fuera «Sync» y «Refrescar», la etiqueta de estado sincroniza y recarga (⌘R) en toda la app.
+  - Mes: semanas vacías más bajas, sesión «6ª · grupo» a 11 pt, sin borde rojo. Semana: eje con horas en vez de «P10», sin subtítulo repetido, «+» solo al pasar el ratón, «X de Y franjas planificadas» e hitos sin duplicados.
+  - Día: grupo y SA en texto neutro, sesión repetida resumida, «Impartida» como casilla. Secuencia: barra que solo se llena con lo impartido, leyenda con iconos pegada a la tabla, meses en español.
+  - Huecos (antes «Evaluación · Tablero de Encaje»): título claro, lista recortada, SA en la cabecera de semana. Resumen: tarjeta de SA solo aquí y sin el bloque de progreso duplicado; «Cobertura» explicada.
+  - Verificación: `xcodebuild` `MiGestorKMPMac` OK en cada paso y `MiGestorKMPiOS` (simulador) OK desde la fase C; `MiGestorPlannerTests`: 245 tests, 4 omitidos, 2 fallos preexistentes (`testMislataCurricularFilesImportSuccessfully`, iguales sin estos cambios). QA manual del usuario en Mac en cada fase; no se hizo QA en iPad ni iPhone ni capturas.
+  - Pendiente: los hitos se guardan duplicados por grupo (solo se corrige el conteo en pantalla); el dato «Revisión» ya no aparece en Resumen.
+
 - **Situaciones de Aprendizaje: rediseño de usabilidad y UI (solo presentación)**:
   - `LearningSituationsWorkspaceView.swift` baja de 3144 a unas 600 líneas; las piezas pasan a 7 archivos nuevos (`LearningSituationsListColumn`, `LearningSituationDetailView`, `LearningSituationsComponents`, `LearningSituationImportReviewSheet`, `LearningSituationDuplicateSheet`, `LearningSituationEvaluationSheet`, `LearningSituationAssessmentReviewView`). La proyección de horarios no se toca.
   - Lista y detalle: dos columnas en iPad/Mac y pila en ancho estrecho; búsqueda propia, chips de filtro visibles con «Limpiar», estado de carga separado del vacío, selección múltiple con Archivar y Eliminar, un solo cuadro de confirmación de borrado, error de recarga en línea.

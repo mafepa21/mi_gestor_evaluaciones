@@ -499,7 +499,9 @@ struct MacStudentsView: View {
     }
 
     private func handleClassIdChange(_ newClassId: Int64?) {
-        guard ownsStudentSideEffects, store.didBootstrap else { return }
+        // También durante el arranque: si el grupo cambia mientras carga, hay que recargar.
+        // reloadRows descarta después el resultado que llegue tarde de un grupo anterior.
+        guard ownsStudentSideEffects, store.didBootstrap || store.isBootstrapping else { return }
         store.selectedStudentIds.removeAll()
         Task {
             await bridge.selectStudentsClass(classId: newClassId)
@@ -702,7 +704,11 @@ struct MacStudentsView: View {
                     Text("Seguimiento").tag("seguimiento")
                     Text("Lesionados").tag("lesionados")
                 }
-                .pickerStyle(.segmented)
+                // Un segmentado de 4 opciones no cabe en la columna de filtros y la
+                // desbordaba por la izquierda, bajo la barra lateral. El menú se ajusta al ancho.
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -872,7 +878,10 @@ struct MacStudentsView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(row.lastObservationText == "Sin observaciones" ? .secondary : .primary)
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(row.lastObservationText)
                 }
+                .width(min: 140, ideal: 220)
             }
             .tableStyle(.inset(alternatesRowBackgrounds: true))
             .contextMenu(forSelectionType: Int64.self) { selectedIds in
@@ -1385,7 +1394,12 @@ struct MacStudentsView: View {
             }
         }
         do {
-            store.rows = try await bridge.loadMacStudentRows(classId: selectedClassId)
+            let requestedClassId = selectedClassId
+            let loadedRows = try await bridge.loadMacStudentRows(classId: requestedClassId)
+            // Si el grupo cambió mientras se cargaba, esta respuesta es de otro grupo:
+            // no la pintamos (la carga del grupo nuevo ya está en marcha).
+            guard requestedClassId == selectedClassId else { return }
+            store.rows = loadedRows
             let visibleIds = filteredRows.map(\.id)
             if let preferredStudentId, visibleIds.contains(preferredStudentId) {
                 store.localSelectedStudentId = preferredStudentId

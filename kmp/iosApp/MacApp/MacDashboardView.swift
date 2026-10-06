@@ -681,7 +681,7 @@ private struct QuickEvaluationSheet: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 16) {
             Image(systemName: "checklist.checked")
-                .font(.system(size: 22, weight: .bold))
+                .font(.title2.bold())
                 .foregroundStyle(MacAppStyle.infoTint)
                 .frame(width: 48, height: 48)
                 .background(MacAppStyle.infoTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1059,7 +1059,7 @@ private struct DashboardRubricImportPreviewSheet: View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 16) {
                 Image(systemName: "checklist")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.title2.bold())
                     .foregroundStyle(MacAppStyle.infoTint)
                     .frame(width: 48, height: 48)
                     .background(MacAppStyle.infoTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))

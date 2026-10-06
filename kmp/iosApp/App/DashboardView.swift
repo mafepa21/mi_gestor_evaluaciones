@@ -108,6 +108,9 @@ struct DashboardView: View {
     var body: some View {
         dashboardScroll
             .background { DashboardBackground() }
+            // Tope en AX2: la vista ya pasa a una columna en tamaños de
+            // accesibilidad, pero más allá las tarjetas dejan de caber en iPhone.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
             .inspector(isPresented: $isInspectorPresented) {
                 DashboardInspectorContent(
                     snapshot: dashboardStore.dashboardSnapshot,

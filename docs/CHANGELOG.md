@@ -18,7 +18,7 @@ El formato sigue una variante practica de Keep a Changelog:
   - Fila de fechas fija arriba que sigue el desplazamiento horizontal (`onScrollGeometryChange`, iOS 18+ y macOS); en iOS 17 la cabecera se desplaza con la tabla.
   - Al abrir salta a la columna de hoy (o la última fecha anterior); sombra suave en la columna fija al desplazar.
   - Alturas de cabecera y pie con `@ScaledMetric` para que ambas columnas casen con letra grande.
-  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. Puerta técnica de rendimiento y sincronía **pendiente**: no hay runtimes de simulador iOS instalados en este Mac.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. Puerta técnica superada en QA manual del usuario en macOS («Todo el curso»: desplazamiento fluido, fechas y nombres alineados). Sin prueba en iPad/iPhone: no hay runtimes de simulador iOS en este Mac.
 
 - **Sábana de asistencia: deshacer, errores honestos y controles accesibles (solo presentación)**:
   - «Marcar todos hoy (P)» pasa a «Todos presentes hoy» con Cmd+Mayús+P; se desactiva si no queda nadie por marcar. Tras marcar: aviso «Deshacer» (6 s) y Cmd+Z, que restauran el estado exacto de cada alumno.

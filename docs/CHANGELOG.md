@@ -13,6 +13,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Asistencia: rapidez con teclado y menús (solo presentación)**:
+  - Menú al mantener pulsada una fila con los 6 estados, desmarcar, lesión, nota, «Registrar incidencia» y ficha; comparte contenido con el botón «…».
+  - Menú en las celdas del historial para cambiar el estado de ese día sin abrir la ficha.
+  - Teclado en iPad y Mac (iOS 17 / macOS 14): ↑↓ mueven la fila activa (resaltada), P/A/R/M marcan y avanzan, retroceso desmarca, espacio/intro abren la ficha. Solo actúan con la lista enfocada.
+  - Cmd+Mayús+P para «Todos presentes»; pista de atajos en la ficha vacía.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. Sin prueba manual de teclado ni de menús.
+
 - **Asistencia: claridad y seguridad (solo presentación)**:
   - Filtro «Todos / Con incidencias» como `Picker` segmentado nativo (antes píldoras hechas a mano; «Excepciones» pasa a «Con incidencias»).
   - «Marcar todos (P)» pasa a «Todos presentes» y se puede deshacer: aviso con «Deshacer» durante 6 s y Cmd+Z (`UndoManager`). Cada alumno recupera su estado exacto, también «sin marcar»; si alguno falla, el aviso dice cuántos.

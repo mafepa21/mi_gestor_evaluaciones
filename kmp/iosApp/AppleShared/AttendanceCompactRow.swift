@@ -15,6 +15,9 @@ struct AttendanceCompactRow: View {
     let onSelect: () -> Void
     var onToggleInjury: (() -> Void)? = nil
     var onQuickNote: (() -> Void)? = nil
+    var onRegisterIncident: (() -> Void)? = nil
+    /// Fila activa al pasar lista con el teclado (↑↓ y P/A/R/M).
+    var isKeyboardFocused: Bool = false
 
     private var currentOption: AttendanceStatusOption? {
         AttendanceStatusOption.all.first(where: { $0.id == row.record?.status })
@@ -158,48 +161,8 @@ struct AttendanceCompactRow: View {
 
             // Zona 3: Acciones secundarias y opciones extendidas
             Menu {
-                Section("Otros estados") {
-                    ForEach(AttendanceStatusOption.secondaryOptions) { option in
-                        let isCurrent = row.record?.status == option.id
-                        Button {
-                            AppleInteractionFeedback.play(.selection)
-                            if isCurrent {
-                                onClearStatus?()
-                            } else {
-                                onPickStatus(option)
-                            }
-                        } label: {
-                            Label(
-                                isCurrent ? "\(option.label) (Desmarcar)" : option.label,
-                                systemImage: option.id == "JUSTIFICADO" ? "checkmark.seal" : "person.badge.shield.checkmark"
-                            )
-                        }
-                    }
-                }
-
-                Section("Acciones") {
-                    if let status = row.record?.status, !status.isEmpty {
-                        Button {
-                            AppleInteractionFeedback.play(.selection)
-                            onClearStatus?()
-                        } label: {
-                            Label("Desmarcar asistencia", systemImage: "arrow.counterclockwise")
-                        }
-                    }
-                    Button(action: onSelect) {
-                        Label("Abrir ficha completa", systemImage: "person.crop.circle")
-                    }
-                    if let onToggleInjury {
-                        Button(action: onToggleInjury) {
-                            Label(row.isInjured ? "Desmarcar lesión" : "Marcar lesión activa", systemImage: "cross.case")
-                        }
-                    }
-                    if let onQuickNote {
-                        Button(action: onQuickNote) {
-                            Label("Nota rápida de sesión", systemImage: "square.and.pencil")
-                        }
-                    }
-                }
+                secondaryStatusesSection
+                actionsSection
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.footnote.weight(.bold))
@@ -223,8 +186,22 @@ struct AttendanceCompactRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(isSelected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.05), lineWidth: 0.5)
+                .stroke(
+                    isKeyboardFocused ? Color.accentColor : (isSelected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.05)),
+                    lineWidth: isKeyboardFocused ? 2 : 0.5
+                )
         )
+        #if os(iOS)
+        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
+        #endif
+        .contextMenu {
+            Section("Estado") {
+                ForEach(AttendanceStatusOption.all) { option in
+                    statusMenuButton(option)
+                }
+            }
+            actionsSection
+        }
         #if os(iOS)
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
@@ -269,5 +246,65 @@ struct AttendanceCompactRow: View {
             .tint(.purple)
         }
         #endif
+    }
+
+    // MARK: - Menús compartidos (botón «…» y menú contextual)
+
+    private func statusMenuButton(_ option: AttendanceStatusOption) -> some View {
+        let isCurrent = row.record?.status == option.id
+        return Button {
+            AppleInteractionFeedback.play(.selection)
+            if isCurrent {
+                onClearStatus?()
+            } else {
+                onPickStatus(option)
+            }
+        } label: {
+            if isCurrent {
+                Label("\(option.label) (Desmarcar)", systemImage: "checkmark")
+            } else {
+                Text(option.label)
+            }
+        }
+    }
+
+    private var secondaryStatusesSection: some View {
+        Section("Otros estados") {
+            ForEach(AttendanceStatusOption.secondaryOptions) { option in
+                statusMenuButton(option)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actionsSection: some View {
+        Section("Acciones") {
+            if let status = row.record?.status, !status.isEmpty {
+                Button {
+                    AppleInteractionFeedback.play(.selection)
+                    onClearStatus?()
+                } label: {
+                    Label("Desmarcar asistencia", systemImage: "arrow.counterclockwise")
+                }
+            }
+            Button(action: onSelect) {
+                Label("Abrir ficha completa", systemImage: "person.crop.circle")
+            }
+            if let onToggleInjury {
+                Button(action: onToggleInjury) {
+                    Label(row.isInjured ? "Desmarcar lesión" : "Marcar lesión activa", systemImage: "cross.case")
+                }
+            }
+            if let onQuickNote {
+                Button(action: onQuickNote) {
+                    Label("Nota rápida de sesión", systemImage: "square.and.pencil")
+                }
+            }
+            if let onRegisterIncident {
+                Button(action: onRegisterIncident) {
+                    Label("Registrar incidencia", systemImage: "exclamationmark.triangle")
+                }
+            }
+        }
     }
 }

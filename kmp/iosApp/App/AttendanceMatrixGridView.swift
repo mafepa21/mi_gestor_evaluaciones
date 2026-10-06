@@ -164,7 +164,7 @@ struct AttendanceMatrixGridView: View {
             ForEach(AttendanceStatusOption.all) { option in
                 HStack(spacing: 4) {
                     Text(option.shortLabel)
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(.caption2, design: .rounded).weight(.bold))
                         .foregroundStyle(.white)
                         .frame(width: 16, height: 16)
                         .background(Circle().fill(option.color))
@@ -240,10 +240,10 @@ struct AttendanceMatrixGridView: View {
                         let summary = dateSummary(for: date)
                         VStack(spacing: 1) {
                             Text("\(summary.present)")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.system(.caption2, design: .rounded).weight(.bold))
                                 .foregroundStyle(AppleDesignSystem.success)
                             Text("/\(summary.total)")
-                                .font(.system(size: 9, weight: .medium))
+                                .font(.caption2.weight(.medium))
                                 .foregroundStyle(.secondary)
                         }
                         .frame(width: 50, height: 40)
@@ -273,11 +273,11 @@ struct AttendanceMatrixGridView: View {
         let isToday = Calendar.current.isDateInToday(date)
         return VStack(spacing: 2) {
             Text(weekdayFormatter.string(from: date).uppercased())
-                .font(.system(size: 9, weight: .bold))
+                .font(.caption2.weight(.bold))
                 .foregroundStyle(isToday ? EvaluationDesign.accent : .secondary)
 
             Text(dayFormatter.string(from: date))
-                .font(.system(size: 11, weight: isToday ? .bold : .medium, design: .rounded))
+                .font(.system(.caption2, design: .rounded).weight(isToday ? .bold : .medium))
                 .foregroundStyle(isToday ? .white : .primary)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
@@ -319,7 +319,7 @@ struct AttendanceMatrixGridView: View {
         } label: {
             HStack(spacing: 8) {
                 Text(student.initials)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(.caption2, design: .rounded).weight(.bold))
                     .foregroundStyle(.white)
                     .frame(width: 26, height: 26)
                     .background(Circle().fill(Color.accentColor))
@@ -333,9 +333,9 @@ struct AttendanceMatrixGridView: View {
                     if student.isInjured {
                         HStack(spacing: 2) {
                             Image(systemName: "bandage.fill")
-                                .font(.system(size: 9))
+                                .font(.caption2)
                             Text("Lesión")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.caption2.weight(.bold))
                         }
                         .foregroundStyle(Color.orange)
                     }
@@ -357,7 +357,7 @@ struct AttendanceMatrixGridView: View {
             ZStack {
                 if let option {
                     Text(option.shortLabel)
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.system(.caption2, design: .rounded).weight(.black))
                         .foregroundStyle(option.color)
                         .frame(width: 28, height: 28)
                         .background(
@@ -370,7 +370,7 @@ struct AttendanceMatrixGridView: View {
                         )
                 } else {
                     Text("·")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.subheadline.weight(.bold))
                         .foregroundStyle(Color.secondary.opacity(0.3))
                         .frame(width: 28, height: 28)
                 }
@@ -397,7 +397,7 @@ struct AttendanceMatrixGridView: View {
     private func statsRowCells(stats: AttendanceMatrixStudentStats) -> some View {
         HStack(spacing: 0) {
             Text("\(stats.attendanceRate)%")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(.system(.caption, design: .rounded).weight(.bold))
                 .foregroundStyle(stats.attendanceRateColor)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
@@ -405,17 +405,17 @@ struct AttendanceMatrixGridView: View {
                 .frame(width: 64)
 
             Text("\(stats.absentCount)")
-                .font(.system(size: 12, weight: stats.absentCount > 0 ? .black : .regular, design: .rounded))
+                .font(.system(.caption, design: .rounded).weight(stats.absentCount > 0 ? .black : .regular))
                 .foregroundStyle(stats.absentCount > 0 ? AppleDesignSystem.danger : .secondary)
                 .frame(width: 50)
 
             Text("\(stats.lateCount)")
-                .font(.system(size: 12, weight: stats.lateCount > 0 ? .bold : .regular, design: .rounded))
+                .font(.system(.caption, design: .rounded).weight(stats.lateCount > 0 ? .bold : .regular))
                 .foregroundStyle(stats.lateCount > 0 ? AppleDesignSystem.warning : .secondary)
                 .frame(width: 50)
 
             Text("\(stats.justifiedCount)")
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .font(.system(.caption, design: .rounded).weight(.medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 50)
         }
@@ -702,7 +702,7 @@ private struct AttendanceMatrixStatusPicker: View {
                     } label: {
                         HStack(spacing: 8) {
                             Text(option.shortLabel)
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.system(.caption2, design: .rounded).weight(.bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 22, height: 22)
                                 .background(Circle().fill(option.color))

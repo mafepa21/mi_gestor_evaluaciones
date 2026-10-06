@@ -327,7 +327,7 @@ struct AttendanceWorkspaceView: View {
                             Image(systemName: alert.systemImage)
                                 .font(.caption2.bold())
                             Text("\(alert.student.firstName): \(alert.message)")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.system(.caption2, design: .rounded).weight(.bold))
                         }
                         .foregroundStyle(alert.tint)
                         .padding(.horizontal, 10)
@@ -352,7 +352,7 @@ struct AttendanceWorkspaceView: View {
                 }
             } label: {
                 Text("Todos (\(filteredRows.count))")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.system(.caption, design: .rounded).weight(.bold))
                     .foregroundStyle(!showOnlyExceptions ? Color.primary : Color.secondary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -376,7 +376,7 @@ struct AttendanceWorkspaceView: View {
                             .frame(width: 6, height: 6)
                     }
                 }
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(.system(.caption, design: .rounded).weight(.bold))
                 .foregroundStyle(showOnlyExceptions ? Color.primary : Color.secondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
@@ -402,7 +402,7 @@ struct AttendanceWorkspaceView: View {
                         .foregroundStyle(Color.secondary)
                 }
             }
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .font(.system(.caption, design: .rounded).weight(.bold))
             .padding(.trailing, 4)
 
             // Botón primario: Marcar todos presentes (alta velocidad)
@@ -410,7 +410,7 @@ struct AttendanceWorkspaceView: View {
                 Task { await markAllPresent() }
             } label: {
                 Label("Marcar todos (P)", systemImage: "checkmark.circle")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.system(.caption, design: .rounded).weight(.bold))
                     .foregroundStyle(AppleDesignSystem.success)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
@@ -492,7 +492,7 @@ struct AttendanceWorkspaceView: View {
                                 }
                                 Spacer()
                                 Text("\(overview.attendanceRate)%")
-                                    .font(.system(size: 28, weight: .black, design: .rounded))
+                                    .font(.system(.title, design: .rounded).weight(.black))
                                     .foregroundStyle(EvaluationDesign.success)
                             }
 

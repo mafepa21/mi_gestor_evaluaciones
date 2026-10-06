@@ -27,7 +27,7 @@ struct AttendanceCompactRow: View {
                 HStack(spacing: 10) {
                     if let index {
                         Text("\(index)")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(.caption2, design: .rounded).weight(.semibold))
                             .foregroundStyle(.tertiary)
                             .frame(width: 22, alignment: .trailing)
                     }
@@ -42,13 +42,13 @@ struct AttendanceCompactRow: View {
                         )
                         .overlay(
                             Text(row.student.initials)
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.system(.caption2, design: .rounded).weight(.bold))
                                 .foregroundStyle(currentOption?.color ?? .secondary)
                         )
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(row.student.fullName)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
 
@@ -56,7 +56,7 @@ struct AttendanceCompactRow: View {
                         HStack(spacing: 6) {
                             if row.isInjured {
                                 Label("Lesión", systemImage: "bandage.fill")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.caption2.weight(.bold))
                                     .foregroundStyle(.orange)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 1.5)
@@ -64,7 +64,7 @@ struct AttendanceCompactRow: View {
                             }
                             if row.record?.hasIncident == true {
                                 Label("Incidencia", systemImage: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.caption2.weight(.bold))
                                     .foregroundStyle(EvaluationDesign.danger)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 1.5)
@@ -76,12 +76,12 @@ struct AttendanceCompactRow: View {
                                     Text(note)
                                         .lineLimit(1)
                                 }
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.caption2.weight(.medium))
                                 .foregroundStyle(.secondary)
                             }
                             if !row.isInjured && row.record?.hasIncident != true && (row.record?.note ?? "").isEmpty {
                                 Text(currentOption?.label ?? "Sin pasar")
-                                    .font(.system(size: 11, weight: .regular))
+                                    .font(.caption2.weight(.regular))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -112,7 +112,7 @@ struct AttendanceCompactRow: View {
                         }
                     } label: {
                         Text(option.shortLabel)
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .font(.system(.footnote, design: .rounded).weight(.bold))
                             .foregroundStyle(isCurrent ? option.accessibleTextColor : Color.secondary)
                             .frame(width: 34, height: 30)
                             .background(
@@ -181,7 +181,7 @@ struct AttendanceCompactRow: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.footnote.weight(.bold))
                     .foregroundStyle(.secondary)
                     .frame(width: 32, height: 32)
                     .background(Color.primary.opacity(0.04), in: Circle())

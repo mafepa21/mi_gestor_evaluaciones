@@ -510,6 +510,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
         // ver el lienzo del módulo tras las celdas. Con una superficie propia (más
         // clara que el lienzo) el área de datos se lee como una tarjeta elevada.
         .background(appSecondarySystemBackgroundColor())
+        .dynamicTypeSize(NotebookDynamicType.gridRange)
     }
 
     private static func instrumentBody(

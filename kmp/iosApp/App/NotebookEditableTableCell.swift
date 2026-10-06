@@ -753,7 +753,7 @@ private struct NotebookStatefulEditableTableCell: View {
 
             if isNumericDragging {
                 Text("Desliza para ajustar")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .notebookFont(size: 10, weight: .semibold, design: .rounded)
                     .foregroundStyle(Color.accentColor)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 4)
@@ -963,13 +963,13 @@ private struct NotebookStatefulEditableTableCell: View {
                     } label: {
                         HStack(spacing: 6) {
                             Text(numericDraft.isEmpty ? "—" : numericDraft)
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .notebookFont(size: 13, weight: .bold, design: .rounded)
                                 .monospacedDigit()
                                 .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                                 .lineLimit(1)
                             if let physicalScore {
                                 Text("· \(IosFormatting.decimal(physicalScore))")
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .notebookFont(size: 11, weight: .bold, design: .rounded)
                                     .monospacedDigit()
                                     .foregroundStyle(tint)
                                     .lineLimit(1)
@@ -1024,13 +1024,13 @@ private struct NotebookStatefulEditableTableCell: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text(displaySnapshot.calculatedText)
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .notebookFont(size: 13, weight: .semibold, design: .rounded)
                             .italic()
                             .monospacedDigit()
                             .foregroundStyle(formulaDisplay?.isError == true ? Color.orange : (isSelected ? Color.accentColor : Color.primary))
                             .lineLimit(1)
                         Image(systemName: formulaDisplay?.isError == true ? "exclamationmark.triangle.fill" : "function")
-                            .font(.system(size: 10, weight: .bold))
+                            .notebookFont(size: 10, weight: .bold)
                             .foregroundStyle(formulaDisplay?.isError == true ? Color.orange : Color.accentColor.opacity(0.75))
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1045,7 +1045,7 @@ private struct NotebookStatefulEditableTableCell: View {
                     activeChoiceCellId = cellId
                 } label: {
                     Text(textDraft.isEmpty ? "Seleccionar" : textDraft)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .notebookFont(size: 13, weight: .semibold, design: .rounded)
                         .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
@@ -1076,7 +1076,7 @@ private struct NotebookStatefulEditableTableCell: View {
                 HStack(spacing: 6) {
                     if isNotebookIndividualSummaryColumn(column) {
                         Text(textDraft.isEmpty ? "Síntesis pendiente" : textDraft)
-                            .font(.system(size: 13))
+                            .notebookFont(size: 13)
                             .foregroundStyle(textDraft.isEmpty ? .secondary : .primary)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1220,13 +1220,13 @@ private struct NotebookStatefulEditableTableCell: View {
         } label: {
             HStack(spacing: 6) {
                 Text(numericDraft.isEmpty ? "—" : numericDraft)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .notebookFont(size: 13, weight: .bold, design: .rounded)
                     .monospacedDigit()
                     .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                 if let physicalScore {
                     Text("· \(IosFormatting.decimal(physicalScore))")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .notebookFont(size: 11, weight: .bold, design: .rounded)
                         .monospacedDigit()
                         .foregroundStyle(tint)
                         .lineLimit(1)
@@ -1369,7 +1369,7 @@ private struct NotebookStatefulEditableTableCell: View {
             cycleCheckValue()
         } label: {
             Text(checkDraft ? "✓" : "—")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .notebookFont(size: 20, weight: .bold, design: .rounded)
                 .frame(maxWidth: .infinity, minHeight: 32)
                 .foregroundStyle(checkDraft ? NotebookStyle.successTint : .secondary)
                 .background(
@@ -1517,7 +1517,7 @@ private struct NotebookStatefulEditableTableCell: View {
     private func attendanceChip(value: String) -> some View {
         let display = attendanceDisplay(value)
         return Text(display.label)
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .notebookFont(size: 12, weight: .bold, design: .rounded)
             .foregroundStyle(display.color)
             .lineLimit(1)
             .padding(.horizontal, 10)
@@ -1922,13 +1922,13 @@ private struct NotebookFormulaCell: View, Equatable {
             } label: {
                 HStack(spacing: 5) {
                     Text(displaySnapshot.calculatedText)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .notebookFont(size: 13, weight: .semibold, design: .rounded)
                         .italic()
                         .monospacedDigit()
                         .foregroundStyle(formulaDisplay?.isError == true ? Color.orange : (isSelected ? Color.accentColor : Color.primary))
                         .lineLimit(1)
                     Image(systemName: formulaDisplay?.isError == true ? "exclamationmark.triangle.fill" : "function")
-                        .font(.system(size: 10, weight: .bold))
+                        .notebookFont(size: 10, weight: .bold)
                         .foregroundStyle(formulaDisplay?.isError == true ? Color.orange : Color.accentColor.opacity(0.75))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

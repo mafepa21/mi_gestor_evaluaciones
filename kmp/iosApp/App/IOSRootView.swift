@@ -1235,6 +1235,15 @@ struct IOSContextualToolbar: ToolbarContent {
     let onToggleInspector: () -> Void
     @Binding var dashboardModeRaw: String
 
+    private var dashboardModePicker: some View {
+        Picker("Modo del Dashboard", selection: $dashboardModeRaw) {
+            ForEach(DashboardModePreference.allCases) { option in
+                Text(option.title).tag(option.rawValue)
+            }
+        }
+        .accessibilityLabel("Modo del Dashboard")
+    }
+
     var body: some ToolbarContent {
         // Sync is available from the overflow so the primary action remains obvious.
         ToolbarItem(placement: .secondaryAction) {
@@ -1249,13 +1258,12 @@ struct IOSContextualToolbar: ToolbarContent {
         // aquí no se repite en azul.
         if activeModule == .dashboard {
             ToolbarItem(placement: .principal) {
-                Picker("Modo del Dashboard", selection: $dashboardModeRaw) {
-                    ForEach(DashboardModePreference.allCases) { option in
-                        Text(option.title).tag(option.rawValue)
-                    }
+                // En iPhone estrecho o con letra grande el segmentado no cabe:
+                // ViewThatFits cae a un menú nativo con el mismo valor.
+                ViewThatFits(in: .horizontal) {
+                    dashboardModePicker.pickerStyle(.segmented).fixedSize()
+                    dashboardModePicker.pickerStyle(.menu)
                 }
-                .pickerStyle(.segmented)
-                .fixedSize()
             }
             if let pill = layoutState.dashboardSyncPill {
                 ToolbarItem(placement: .topBarLeading) {

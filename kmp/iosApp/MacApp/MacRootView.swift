@@ -920,6 +920,10 @@ struct MacRootView: View {
                 .fixedSize()
                 .help("Modo del Dashboard (⌘1, ⌘2, ⌘3)")
 
+                if let pill = dashboardToolbarActions.syncPill {
+                    DashboardSyncPillView(state: pill)
+                }
+
                 Button {
                     dashboardToolbarActions.passList()
                 } label: {
@@ -933,7 +937,7 @@ struct MacRootView: View {
                     Button {
                         dashboardToolbarActions.observation()
                     } label: {
-                        Label("Observación", systemImage: "note.text.badge.plus")
+                        Label("Nueva observación", systemImage: "note.text.badge.plus")
                     }
                     .disabled(!dashboardToolbarActions.canRunActions)
 

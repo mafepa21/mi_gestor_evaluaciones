@@ -8,6 +8,7 @@ struct MacDashboardToolbarActions {
     let passList: () -> Void
     let observation: () -> Void
     var snapshot: DashboardSnapshot? = nil
+    var syncPill: DashboardSyncPill? = nil
 }
 
 enum MacDashboardDestination {
@@ -390,7 +391,7 @@ struct MacDashboardView: View {
 
     private var toolbarKey: String {
         let snapshotKey = snapshot.map { ObjectIdentifier($0).hashValue } ?? 0
-        return "\(activeContext?.classId?.int64Value ?? -1)|\(activeContext.map { dashboardContextStatusLabel($0.status) } ?? "none")|\(snapshotKey)"
+        return "\(activeContext?.classId?.int64Value ?? -1)|\(activeContext.map { dashboardContextStatusLabel($0.status) } ?? "none")|\(snapshotKey)|\(syncPill)"
     }
 
     private func syncToolbarActions() {
@@ -400,7 +401,8 @@ struct MacDashboardView: View {
                 refresh: { retryLoad() },
                 passList: { onNavigate(.attendance(classId: activeContext?.classId?.int64Value)) },
                 observation: { activeSheet = .observation(classId: activeContext?.classId?.int64Value) },
-                snapshot: snapshot
+                snapshot: snapshot,
+                syncPill: syncPill
             )
         )
     }

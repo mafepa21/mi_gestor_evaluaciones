@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Situaciones de Aprendizaje</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#111;--mut:#55555d;--line:#e1e1e6;--acc:#0062cc;--onacc:#fff;--accbg:#e3eefc;--ok:#136b39;--okbg:#e4f5ea;--warn:#7a4300;--warnbg:#fff1dc;--bad:#b01c1c;--badbg:#fdeaea;--fs:16px}
+:root[data-theme=dark]{--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#9a9aa2;--line:#2c2c2e;--acc:#7bbcff;--onacc:#00203d;--accbg:#10263d;--ok:#4cd080;--okbg:#10301e;--warn:#ffb54d;--warnbg:#3a2a10;--bad:#ff6b6b;--badbg:#3a1616}
+*{box-sizing:border-box}
+body{margin:0;font:var(--fs)/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+.top{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-direction:column;gap:8px;font-size:16px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.lbl{font-size:12px;color:var(--mut);margin-right:2px}
+.tab,.chip,.tool{min-height:44px;padding:0 12px;border-radius:18px;border:1px solid var(--line);background:none;color:var(--fg);font:inherit;font-size:13px;cursor:pointer}
+.tab[aria-pressed=true],.chip[aria-pressed=true],.tool[aria-pressed=true]{background:var(--acc);border-color:var(--acc);color:var(--onacc)}
+.stagewrap{padding:20px 12px 60px;display:flex;justify-content:center;overflow-x:auto}
+.device{background:var(--bg);border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.12);width:var(--w);max-width:100%;min-height:640px;display:flex;flex-direction:column;position:relative}
+.bar{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line);min-height:52px;flex-wrap:wrap}
+.bar h1{font-size:1.05em;margin:0;flex:1;font-weight:600}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-weight:500;cursor:pointer}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:var(--onacc)}
+.btn.dng{color:var(--bad)}
+.btn.link{border:none;background:none;color:var(--acc);padding:0 8px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.split{display:grid;flex:1;min-height:0}
+.list{background:var(--card);border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px}
+.detail{padding:20px;display:flex;flex-direction:column;gap:16px}
+input.search{width:100%;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:0 12px;font:inherit}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.fchip{display:inline-flex;gap:6px;align-items:center;min-height:44px;padding:0 12px;border-radius:22px;background:var(--accbg);color:var(--acc);font:inherit;font-size:.9em;border:1px solid transparent}
+.fchip .x{background:none;border:none;color:inherit;min-width:32px;min-height:44px;font:inherit;cursor:pointer;margin-right:-8px}
+.fchip.n{background:var(--bg);color:var(--fg);border:1px solid var(--line)}
+.item{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;min-height:56px;cursor:pointer}
+.item.sel{background:var(--accbg);box-shadow:inset 4px 0 0 var(--acc)}
+.item.sel .t::after{content:" ✓";color:var(--acc)}
+.item .t{font-weight:600}
+.item .s{font-size:.82em;color:var(--mut)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:.85em;padding:2px 8px;border-radius:10px;font-weight:600}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.b-act{background:var(--okbg);color:var(--ok)}.b-bor{background:var(--warnbg);color:var(--warn)}.b-arc{background:var(--line);color:var(--mut)}.b-err{background:var(--badbg);color:var(--bad)}
+.card{background:var(--card);border-radius:14px;padding:16px;border:1px solid var(--line)}
+.card h3{margin:0 0 8px;font-size:1em}
+h2.title{font-size:1.6em;margin:0;line-height:1.2;overflow-wrap:anywhere}
+.sub{color:var(--mut);font-size:.9em}
+details{border-top:1px solid var(--line);padding:4px 0}details:first-of-type{border-top:none}
+summary{min-height:44px;display:flex;align-items:center;font-weight:600;cursor:pointer}
+.sk{height:14px;margin:10px 0;border-radius:6px;background:var(--line);animation:p 1.2s infinite alternate}
+@keyframes p{to{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.empty{text-align:center;padding:40px 16px;color:var(--mut);display:flex;flex-direction:column;align-items:center;gap:10px}
+.empty .big{font-size:2.2em}
+.empty .t{color:var(--fg);font-weight:600;font-size:1.05em}
+.inl{padding:10px 12px;border-radius:10px;font-size:.9em;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.inl.err{background:var(--badbg);color:var(--bad)}.inl.warn{background:var(--warnbg);color:var(--warn)}.inl.info{background:var(--accbg);color:var(--acc)}
+.seg{display:flex;background:var(--line);border-radius:10px;padding:2px;gap:2px}
+.seg button{flex:1;min-height:44px;border:none;border-radius:8px;background:none;color:var(--fg);font:inherit;font-size:.9em;cursor:pointer}
+.seg button.on{background:var(--card);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:.82em;color:var(--mut)}
+.field select,.field input,.ctl{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:0 12px;font:inherit}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.foot{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:auto}
+.foot .st{font-size:.85em;color:var(--mut);flex:1;min-width:140px}
+.body{padding:16px;display:flex;flex-direction:column;gap:14px}
+.ln{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.ln:first-child{border-top:none}
+.ck{width:28px;height:28px;border-radius:50%;border:2px solid var(--line);display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:14px}
+.ck.on{background:var(--acc);border-color:var(--acc);color:var(--onacc)}
+.dlgback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.35)}
+.dlg{background:var(--card);border-radius:16px;padding:20px;max-width:360px;width:100%;display:flex;flex-direction:column;gap:12px}
+.note{margin:0 auto;max-width:860px;font-size:.85em;color:var(--mut);padding:0 12px 40px}
+.note b{color:var(--fg)}
+</style></head><body>
+<div class="top">
+  <div class="row"><span class="lbl">Pantalla</span><span id="tabs" class="row"></span></div>
+  <div class="row"><span class="lbl">Estado</span><span id="chips" class="row"></span></div>
+  <div class="row"><span class="lbl">Dispositivo</span><span id="devs" class="row"></span>
+    <span class="lbl" style="margin-left:12px">Ajustes</span><button class="tool" id="xxl" aria-pressed="false">Letra XXL</button><button class="tool" id="dk" aria-pressed="false">Modo oscuro</button></div>
+</div>
+<div class="stagewrap"><div id="dev" class="device"></div></div>
+<div class="note" id="note"></div>
+<script>
+const $=s=>document.querySelector(s);
+const S={screen:'principal',state:{},dev:'iphone',xxl:false,dark:matchMedia('(prefers-color-scheme: dark)').matches,detailOpen:false,sel:'a'};
+const DEVS={iphone:['iPhone 390',390],ipadv:['iPad vertical 820',820],ipadh:['iPad horizontal 1180',1180],mac:['Mac ventana estrecha 760',760]};
+const NOTES={
+principal:'<b>Cambios clave:</b> lista y detalle adaptativos (iPhone: navegación; iPad y Mac: dos columnas). Búsqueda nativa y chips visibles con «Limpiar». Una sola acción principal («Programar»). Vínculos antes que el documento. Cargando y vacío separados. Error de recarga en línea.',
+importar:'<b>Cambios clave:</b> una sola hoja «Revisar importación» para 1 o varios documentos. Grupo del módulo preseleccionado y asignación a todas.',
+programar:'<b>Cambios clave:</b> un solo botón de cierre, controles que se reparten en líneas, secuencia Word visible, avisos y errores en línea.',
+evaluar:'<b>Cambios clave:</b> selector único de origen. Las vistas previas son pantallas con «Atrás», no hojas apiladas. La rúbrica Excel salta la vista previa y abre el editor.',
+confirmar:'<b>Cambios clave:</b> un solo cuadro de confirmación para borrar (una o varias). Duplicar con el grupo ya elegido.'
+};
+const SCREENS={
+principal:{name:'Lista y detalle',states:[['cargando','Cargando'],['vacio','Vacío inicial'],['sinres','Sin resultados'],['datos','Con datos'],['archivadas','Con archivadas'],['seleccion','Selección múltiple'],['sel0','Selección: 0'],['nadasel','Nada elegido (con datos)'],['detcarga','Detalle cargando'],['deterr','Detalle con aviso'],['sinvin','Sin vínculos'],['sincur','Sin contenido curricular']]},
+importar:{name:'Importar',states:[['leyendo','Leyendo'],['uno','Revisión de 1'],['lote','Lote con fallo parcial'],['singrupos','Sin grupos'],['errtotal','Error total']]},
+programar:{name:'Programar',states:[['cargando','Cargando'],['singrupos','Sin grupos'],['sinfranjas','Sin franjas'],['sinperiodos','Sin periodos'],['uno','1 grupo'],['varios','Varios grupos'],['compacto','Varios (compacto)'],['secuencia','Secuencia Word'],['guardando','Guardando'],['error','Error']]},
+evaluar:{name:'Evaluar',states:[['sda','Origen: la situación (rúbrica lista)'],['pendiente','Rúbrica pendiente'],['docx','Word (pantalla propia)'],['pruebas','Pruebas físicas (pantalla propia)'],['pesos','Pesos ≠ 100 %'],['sinpest','Sin pestañas'],['creando','Creando'],['error','Error']]},
+confirmar:{name:'Confirmaciones',states:[['borrar1','Borrar una'],['borrarN','Borrar lote'],['dup','Duplicar con grupos'],['dupsin','Duplicar sin grupos']]}
+};
+Object.keys(SCREENS).forEach(k=>S.state[k]=SCREENS[k].states[k==='principal'?3:0][0]);
+const SDA=[
+ {id:'a',t:'Carrera de orientación',s:'EF · 1º ESO · 2.º trimestre',st:'act'},
+ {id:'b',t:'Cuidamos nuestro cuerpo',s:'EF · 2º ESO · 1.er trimestre',st:'bor'},
+ {id:'c',t:'Juegos cooperativos',s:'EF · 1º ESO · 1.er trimestre',st:'act'},
+ {id:'d',t:'Acrosport',s:'EF · 3º ESO · 3.er trimestre',st:'arc'}
+];
+const BADGE={act:['b-act','Activa'],bor:['b-bor','Borrador'],arc:['b-arc','Archivada']};
+const badge=k=>`<span class="badge ${BADGE[k][0]}">${BADGE[k][1]}</span>`;
+const bar=(title,left,right)=>`<div class="bar">${left||''}<h1>${title}</h1>${right||''}</div>`;
+const dlg=inner=>`<div class="dlgback"><div class="dlg" role="alertdialog" aria-modal="true">${inner}</div></div>`;
+const foot=(txt,dis,lbl)=>`<div class="foot"><div class="st">${txt}</div><button class="btn pri" ${dis?'disabled':''}>${lbl}</button></div>`;
+const chip=t=>`<span class="fchip">${t}<button class="x" aria-label="Quitar ${t}">✕</button></span>`;
+
+/* ---------- PRINCIPAL ---------- */
+function listCol(st){
+  const sel=st==='seleccion'||st==='sel0';
+  let h=`<input class="search" placeholder="Buscar situación" aria-label="Buscar situación" ${st==='sinres'?'value="orientacion xyz"':''}>`;
+  const filtros=st==='sinres'?['Grupo: 4º ESO','Trimestre: 3.º']:['datos','seleccion','sinvin','sincur','deterr','detcarga'].includes(st)?['Grupo: 1º ESO']:[];
+  h+=`<div class="chips"><button class="fchip n">Grupo ▾</button><button class="fchip n">Materia ▾</button><button class="fchip n">Trimestre ▾</button>${filtros.map(chip).join('')}${filtros.length?'<button class="btn link">Limpiar</button>':''}</div>`;
+  if(st==='cargando')h+=`<div role="status" aria-busy="true" class="sub" style="padding:4px 12px">Cargando…</div>`+[1,2,3,4].map(()=>`<div style="padding:12px"><div class="sk" style="width:70%"></div><div class="sk" style="width:45%"></div></div>`).join('');
+  else if(st==='vacio')h+=`<div class="empty"><div class="big" aria-hidden="true">📄</div><div class="t">Aún no hay situaciones</div><div>Importa un documento Word para empezar.</div><button class="btn pri">Importar</button></div>`;
+  else if(st==='sinres')h+=`<div class="empty"><div class="big" aria-hidden="true">🔍</div><div class="t">Sin resultados</div><div>Prueba con otro texto o quita filtros.</div><button class="btn">Limpiar filtros</button></div>`;
+  else{
+    const data=SDA.filter(x=>st==='archivadas'||x.st!=='arc');
+    h+=data.map(x=>{const on=st==='seleccion'&&(x.id==='a'||x.id==='c');return `<div class="item ${(!sel&&st!=='nadasel'&&S.sel===x.id)?'sel':''}" data-sel="${x.id}" role="button" tabindex="0" aria-pressed="${sel?on:(S.sel===x.id)}">${sel?`<span class="ck ${on&&sel?'on':''}" aria-hidden="true">${on?'✓':'○'}</span>`:''}<div style="flex:1"><div class="t">${x.t}</div><div class="s">${x.s}</div></div>${badge(x.st)}</div>`}).join('');
+    if(st==='archivadas')h+=`<div class="sub" style="padding:4px 12px">Mostrando archivadas · <button class="btn link">Ocultar</button></div>`;
+  }
+  return h;
+}
+function listBar(st){
+  if(st==='sel0')return bar('Elige situaciones',`<button class="btn link">Hecho</button>`,`<button class="btn" disabled>Archivar</button><button class="btn dng" disabled>Eliminar</button>`);
+  if(st==='seleccion')return bar('2 seleccionadas',`<button class="btn link">Hecho</button>`,`<button class="btn">Archivar</button><button class="btn dng">Eliminar</button>`);
+  return bar('Situaciones','',`<button class="btn">Seleccionar</button><button class="btn" aria-label="Importar documento Word">＋ Importar</button>`);
+}
+function detailCol(st){
+  if(['cargando','vacio','sinres','nadasel','sel0'].includes(st))return `<div class="empty" style="margin:auto"><div class="big" aria-hidden="true">👈</div><div class="t">Elige una situación</div><div>Verás aquí su contenido, vínculos y acciones.</div></div>`;
+  if(st==='detcarga')return `<div class="detail"><div class="sk" style="width:60%;height:28px"></div><div class="sk" style="width:35%"></div><div class="card"><div class="sk"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:55%"></div></div></div>`;
+  const x=SDA[0];
+  let h=`<div class="detail"><div><div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">${badge(x.st)}<span class="sub">${x.s}</span></div><h2 class="title">${x.t}</h2></div>`;
+  h+=`<div class="row"><button class="btn pri">Programar</button><button class="btn">Evaluar</button><button class="btn" aria-label="Más acciones">⋯</button></div>`;
+  if(st==='deterr')h+=`<div class="inl err" role="alert"><span>No se pudo actualizar este contenido.</span><button class="btn link">Reintentar</button></div>`;
+  h+=`<div class="card"><h3>Lo que se creó</h3>`;
+  h+=st==='sinvin'?`<div class="sub">Aún no se ha creado nada. Al programar o evaluar aparecerá aquí.</div>`:`<div class="ln"><span><span aria-hidden="true">📅</span> Planner · 1º ESO A, 8 sesiones</span><button class="btn link">Abrir</button></div><div class="ln"><span><span aria-hidden="true">📒</span> Cuaderno · 3 columnas</span><button class="btn link">Abrir</button></div>`;
+  h+=`</div>`;
+  h+=st==='sincur'?`<div class="card"><h3>Contenido curricular</h3><div class="sub">Este documento no trae criterios ni saberes. Puedes completarlo desde «Editar ficha».</div><button class="btn" style="margin-top:8px">Editar ficha</button></div>`
+   :`<div class="card"><details open><summary>Criterios de evaluación</summary><div class="sub">1.1 Resolver situaciones motrices con autonomía. 2.3 Aplicar estrategias de orientación.</div></details><details><summary>Saberes básicos</summary><div class="sub">Orientación en el medio natural. Lectura de mapas.</div></details><details><summary>Diseño universal (DUA)</summary><div class="sub">Rutas con distinto nivel de dificultad.</div></details></div>`;
+  h+=`<div class="card"><h3>Documento original</h3><div class="ln"><span>carrera_orientacion.docx<br><span class="sub">Importado el 12 sep · 3 versiones</span></span><button class="btn link">Ver versiones</button></div></div></div>`;
+  return h;
+}
+function principal(){
+  const st=S.state.principal,w=DEVS[S.dev][1],sel=st==='seleccion'||st==='sel0';
+  if(w<700){
+    if(S.detailOpen&&!sel&&!['cargando','vacio','sinres','nadasel'].includes(st))return bar('Carrera de orientación',`<button class="btn link" data-back>‹ Situaciones</button>`,`<button class="btn" aria-label="Más acciones">⋯</button>`)+detailCol(st);
+    return listBar(st)+`<div class="list" style="flex:1;border:none">${listCol(st)}</div>`;
+  }
+  return listBar(st)+`<div class="split" style="grid-template-columns:${w<1000?'300px':'340px'} 1fr;flex:1"><div class="list">${listCol(st)}</div><div>${detailCol(st)}</div></div>`;
+}
+
+/* ---------- IMPORTAR ---------- */
+function importar(){
+  const st=S.state.importar;
+  const head=bar('Revisar importación',`<button class="btn link">Cancelar</button>`,'');
+  if(st==='leyendo')return head+`<div class="body"><div class="card"><div class="sk" style="width:60%"></div><div class="sk"></div><div class="sk" style="width:40%"></div></div><div class="sub">Leyendo el documento…</div></div>`+foot('Leyendo…',true,'Importar');
+  if(st==='errtotal')return head+`<div class="body"><div class="inl err" role="alert"><span>No se pudo leer ningún documento. Comprueba que son .docx válidos.</span></div><button class="btn">Elegir otros documentos</button></div>`+foot('Nada que importar',true,'Importar');
+  const group=`<div class="field"><label>Grupos (se aplican a todas)</label><div class="row">${chip('1º ESO A')}<button class="btn link">+ Añadir</button></div></div>`;
+  if(st==='uno')return head+`<div class="body"><div class="card"><h3>Carrera de orientación</h3><div class="sub">EF · 1º ESO · 2.º trimestre · 8 sesiones · 5 criterios</div></div>${group}<div class="inl warn"><span>⚠ 1 criterio sin código. Puedes corregirlo después.</span></div></div>`+foot('Lista para importar · 1 grupo',false,'Importar');
+  if(st==='singrupos')return head+`<div class="body"><div class="card"><h3>Carrera de orientación</h3><div class="sub">8 sesiones · 5 criterios</div></div><div class="inl info"><span>Elige al menos un grupo.</span><button class="btn">Elegir grupo</button></div></div>`+foot('Falta elegir un grupo',true,'Importar');
+  const rows=[['Carrera de orientación','Lista','b-act'],['Cuidamos nuestro cuerpo','Lista','b-act'],['Acrosport','Aviso: 1 criterio sin código','b-bor'],['Juegos de raqueta','No se pudo leer: tabla dañada','b-err']];
+  return head+`<div class="body">${group}<div class="card">${rows.map(([n,m,c])=>`<div class="ln"><span>${n}<br><span class="sub">${m}</span></span><span class="badge ${c}">${c==='b-act'?'Lista':c==='b-bor'?'Aviso':'Fallo'}</span></div>`).join('')}</div><div class="inl warn"><span>1 documento falló. Se importarán los otros 3.</span></div></div>`+foot('3 de 4 listas · 1 grupo',false,'Importar 3');
+}
+
+/* ---------- PROGRAMAR ---------- */
+const groupRow=(g,d)=>`<div class="card"><h3>${g}</h3><div class="grid2"><div class="field"><label>Evaluación</label><select><option>2.º trimestre</option></select></div><div class="field"><label>Fecha de inicio</label><input type="date" value="${d}"></div></div><div class="sub" style="margin-top:8px">8 sesiones · martes y jueves</div></div>`;
+function programar(){
+  const st=S.state.programar;
+  const head=bar('Programar sesiones',`<button class="btn link">Cancelar</button>`,'');
+  const ctx=`<div><div style="font-weight:600">Carrera de orientación</div><div class="sub">Elige cuándo empieza en cada grupo.</div></div>`;
+  if(st==='cargando')return head+`<div class="body">${ctx}<div class="card"><div class="sk"></div><div class="sk" style="width:70%"></div></div></div>`+foot('Calculando horario…',true,'Programar');
+  if(st==='singrupos')return head+`<div class="body">${ctx}<div class="empty"><div class="big" aria-hidden="true">👥</div><div class="t">No hay grupos vinculados</div><div>Vincula un grupo antes de programar.</div><button class="btn">Vincular grupo</button></div></div>`+foot('Sin grupos',true,'Programar');
+  if(st==='sinfranjas')return head+`<div class="body">${ctx}<div class="inl warn"><span>1º ESO A no tiene franjas en el horario.</span><button class="btn">Abrir horario</button></div></div>`+foot('No se puede programar',true,'Programar');
+  if(st==='sinperiodos')return head+`<div class="body">${ctx}<div class="inl warn"><span>Faltan periodos de evaluación en el Planner.</span><button class="btn">Abrir Planner</button></div></div>`+foot('No se puede programar',true,'Programar');
+  if(st==='guardando')return head+`<div class="body">${ctx}${groupRow('1º ESO A','2026-10-15')}</div>`+foot('Guardando 8 sesiones…',true,'Guardando…');
+  let b=ctx;
+  if(st==='uno'||st==='error')b+=groupRow('1º ESO A','2026-10-15');
+  if(st==='compacto')b+=`<div class="field"><label>Grupo</label><select><option>1º ESO A</option><option>1º ESO B</option></select></div>`+groupRow('1º ESO A','2026-10-15')+`<div class="sub">Hay 1 grupo más. Cámbialo en el selector de arriba.</div>`;
+  if(st==='varios'||st==='secuencia')b+=`<div class="field"><label>Inicio común</label><div class="row"><input class="ctl" type="date" value="2026-10-15"><button class="btn">Aplicar a todos</button></div><div class="sub">Cambiará las fechas de los 2 grupos. Podrás ajustarlas.</div></div>`+groupRow('1º ESO A','2026-10-15')+groupRow('1º ESO B','2026-10-16');
+  if(st==='secuencia')b+=`<div class="card"><h3>Secuencia desde Word</h3><div class="sub">sesiones_secuenciadas.docx · 2 itinerarios</div><div class="ln"><span>Grupo 1º ESO A · ruta</span><select class="ctl"><option>Ruta A (más guiada)</option></select></div><div class="inl warn" style="margin-top:8px"><span>⚠ La sesión 6 cae en festivo. Se moverá al jueves.</span></div><button class="btn" style="margin-top:8px">Cambiar documento</button></div>`;
+  else if(st!=='error')b+=`<button class="btn" style="align-self:flex-start">Usar secuencia desde Word…</button>`;
+  if(st==='error')b+=`<div class="inl err" role="alert"><span>No se pudieron crear las sesiones. No se ha guardado nada.</span><button class="btn link">Reintentar</button></div>`;
+  return head+`<div class="body">${b}</div>`+foot(st==='uno'||st==='error'?'1 grupo · 8 sesiones':st==='compacto'?'2 grupos · 16 sesiones':'2 grupos · 16 sesiones',false,'Programar');
+}
+
+/* ---------- EVALUAR ---------- */
+function evaluar(){
+  const st=S.state.evaluar;
+  const push=st==='docx'||st==='pruebas';
+  const head=bar(st==='docx'?'Instrumentos del Word':st==='pruebas'?'Pruebas físicas':'Evaluar',push?`<button class="btn link">‹ Evaluar</button>`:`<button class="btn link">Cancelar</button>`,'');
+  if(st==='docx')return head+`<div class="body"><div class="inl info"><span>evaluacion_orientacion.docx · 3 instrumentos encontrados</span></div><div class="card">${[['Mapa de ruta','Lista de control'],['Trabajo en equipo','Escala'],['Informe final','Rúbrica']].map(([a,b])=>`<div class="ln"><span><span class="ck on">✓</span> ${a}<br><span class="sub">${b} · 30 %</span></span></div>`).join('')}</div></div>`+foot('3 seleccionados',false,'Usar estos instrumentos');
+  if(st==='pruebas')return head+`<div class="body"><div class="card">${[['Course Navette','Resistencia'],['Salto horizontal','Fuerza']].map(([a,b])=>`<div class="ln"><span><span class="ck on">✓</span> ${a}<br><span class="sub">${b}</span></span></div>`).join('')}</div></div>`+foot('2 seleccionadas',false,'Añadir pruebas');
+  const origin=`<div class="seg" role="group" aria-label="Origen"><button class="on" aria-pressed="true">De la situación</button><button aria-pressed="false">Documento Word</button><button aria-pressed="false">Pruebas físicas</button></div>`;
+  const ctx=`<div class="grid2"><div class="field"><label>Grupo</label><select><option>1º ESO A</option></select></div><div class="field"><label>Pestaña del Cuaderno</label>${st==='sinpest'?`<input placeholder="Nombre de la nueva pestaña" value="Orientación">`:`<select><option>2.º trimestre</option><option>+ Nueva pestaña…</option></select>`}</div></div>`;
+  const items=[['Mapa de ruta','Lista de control','35 %'],['Trabajo en equipo','Escala','25 %'],['Informe final','Rúbrica',st==='pesos'?'50 %':'40 %']];
+  const rows=`<div class="card">${items.map(([a,b,p])=>`<div class="ln"${st==='pesos'&&b==='Rúbrica'?' style="background:var(--warnbg);border-radius:8px;padding:10px"':''}><span>${a}<br><span class="sub">${b} · ${p}${st==='pesos'&&b==='Rúbrica'?' · ⚠ revisar':''}</span></span>${b==='Rúbrica'&&(st==='error'||st==='pendiente')?`<button class="btn">Elegir rúbrica ▾</button>`:`<span class="badge b-act">${b==='Rúbrica'?'Rúbrica lista':'Lista'}</span>`}</div>`).join('')}</div>`;
+  let extra='';
+  if(st==='pesos')extra=`<div class="inl warn"><span>⚠ Los pesos suman 110 %. Ajusta antes de crear.</span><button class="btn">Repartir</button></div>`;
+  if(st==='error')extra=`<div class="inl err" role="alert"><span>No se pudo crear. El Cuaderno no ha cambiado.</span><button class="btn link">Reintentar</button></div>`;
+  const dis=st==='pesos'||st==='creando'||st==='pendiente';
+  return head+`<div class="body">${origin}${ctx}${extra}${rows}</div>`+foot(st==='pendiente'?'Falta elegir la rúbrica del informe final':st==='pesos'?'Los pesos suman 110 %':st==='creando'?'Creando 3 columnas…':'3 columnas · pesos 100 %',dis,st==='creando'?'Creando…':'Crear en el Cuaderno');
+}
+
+/* ---------- CONFIRMAR ---------- */
+function confirmar(){
+  const st=S.state.confirmar;
+  const bg=`<div style="opacity:.35;pointer-events:none;flex:1;display:flex;flex-direction:column">${bar('Situaciones','','')}<div class="list" style="border:none;flex:1">${listCol('datos')}</div></div>`;
+  const acts=(a,b)=>`<div class="row" style="justify-content:flex-end"><button class="btn">Cancelar</button>${b}</div>`;
+  const dup=`<h3 style="margin:0">Duplicar situación</h3><div class="field"><label>Nombre</label><input value="Carrera de orientación (copia)"></div>`;
+  const body={
+    borrar1:`<h3 style="margin:0">¿Eliminar «Carrera de orientación»?</h3><div class="sub">Se borran sus versiones y vínculos. Las sesiones ya creadas en el Planner no se tocan.</div>${acts(0,'<button class="btn dng">Eliminar</button>')}`,
+    borrarN:`<h3 style="margin:0">¿Eliminar 2 situaciones?</h3><div class="sub">Carrera de orientación y Juegos cooperativos. No se puede deshacer.</div>${acts(0,'<button class="btn dng">Eliminar 2</button>')}`,
+    dup:dup+`<div class="field"><label>Grupos</label><div class="row">${chip('1º ESO A')}<button class="btn link">+ Añadir</button></div></div>${acts(0,'<button class="btn pri">Duplicar</button>')}`,
+    dupsin:dup+`<div class="inl info"><span>Sin grupos. Podrás vincularlos después.</span></div>${acts(0,'<button class="btn pri">Duplicar</button>')}`
+  }[st];
+  return bg+dlg(body);
+}
+
+function render(){
+  document.documentElement.style.setProperty('--fs',S.xxl?'24px':'16px');
+  document.documentElement.setAttribute('data-theme',S.dark?'dark':'light');
+  $('#tabs').innerHTML=Object.entries(SCREENS).map(([k,v])=>`<button class="tab" aria-pressed="${S.screen===k}" data-screen="${k}">${v.name}</button>`).join('');
+  $('#chips').innerHTML=SCREENS[S.screen].states.map(([k,l])=>`<button class="chip" aria-pressed="${S.state[S.screen]===k}" data-state="${k}">${l}</button>`).join('');
+  $('#devs').innerHTML=Object.entries(DEVS).map(([k,[l]])=>`<button class="tool" aria-pressed="${S.dev===k}" data-dev="${k}">${l}</button>`).join('');
+  $('#xxl').setAttribute('aria-pressed',S.xxl);$('#dk').setAttribute('aria-pressed',S.dark);
+  const d=$('#dev');d.style.setProperty('--w',DEVS[S.dev][1]+'px');
+  d.innerHTML=({principal,importar,programar,evaluar,confirmar})[S.screen]();
+  $('#note').innerHTML=NOTES[S.screen]+(S.screen==='principal'&&DEVS[S.dev][1]<700?'<br><b>En iPhone:</b> pulsa una fila para ver el detalle y «‹ Situaciones» para volver.':'');
+}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-screen],[data-state],[data-dev],[data-sel],[data-back],#xxl,#dk');if(!t)return;
+  if(t.dataset.screen){S.screen=t.dataset.screen;S.detailOpen=false}
+  else if(t.dataset.state!==undefined){S.state[S.screen]=t.dataset.state;S.detailOpen=false}
+  else if(t.dataset.dev){S.dev=t.dataset.dev;S.detailOpen=false}
+  else if(t.dataset.sel){S.sel=t.dataset.sel;S.detailOpen=true}
+  else if(t.hasAttribute('data-back'))S.detailOpen=false;
+  else if(t.id==='xxl')S.xxl=!S.xxl;else if(t.id==='dk')S.dark=!S.dark;
+  render();
+});
+render();
+</script></body></html>

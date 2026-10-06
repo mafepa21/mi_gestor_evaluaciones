@@ -2,6 +2,10 @@ import SwiftUI
 
 struct PhysicalTestsImportPreviewSheet: View {
     let draft: PhysicalTestsImportDraft
+    /// `false` cuando se apila dentro de otro `NavigationStack` (p. ej. la hoja «Evaluar»):
+    /// entonces no crea su propia pila ni muestra «Cancelar» (vuelve con «Atrás»).
+    let embedsInNavigationStack: Bool
+    let confirmTitle: String
     let cancel: () -> Void
     let confirm: (PhysicalTestsImportDraft) -> Void
 
@@ -9,17 +13,36 @@ struct PhysicalTestsImportPreviewSheet: View {
 
     init(
         draft: PhysicalTestsImportDraft,
+        embedsInNavigationStack: Bool = true,
+        confirmTitle: String = "Importar",
         cancel: @escaping () -> Void,
         confirm: @escaping (PhysicalTestsImportDraft) -> Void
     ) {
         self.draft = draft
+        self.embedsInNavigationStack = embedsInNavigationStack
+        self.confirmTitle = confirmTitle
         self.cancel = cancel
         self.confirm = confirm
         _editableDraft = State(initialValue: draft)
     }
 
     var body: some View {
-        NavigationStack {
+        if embedsInNavigationStack {
+            NavigationStack {
+                reviewForm
+            }
+            #if os(macOS)
+            .frame(minWidth: 620, minHeight: 620)
+            #else
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            #endif
+        } else {
+            reviewForm
+        }
+    }
+
+    private var reviewForm: some View {
             Form {
                 Section("Resumen") {
                     LabeledContent("Batería", value: editableDraft.assignmentTemplate.batteryName)
@@ -93,25 +116,20 @@ struct PhysicalTestsImportPreviewSheet: View {
                     }
                 }
             }
-            .navigationTitle("Revisar pruebas físicas")
+            .navigationTitle(embedsInNavigationStack ? "Revisar pruebas físicas" : "Pruebas físicas")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar", action: cancel)
+                if embedsInNavigationStack {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancelar", action: cancel)
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Importar") {
+                    Button(confirmTitle) {
                         confirm(editableDraft)
                     }
                     .disabled(editableDraft.testDefinitions.isEmpty || editableDraft.testDefinitions.contains { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
                 }
             }
-        }
-        #if os(macOS)
-        .frame(minWidth: 620, minHeight: 620)
-        #else
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        #endif
     }
 
     private func sexLabel(_ sex: String?) -> String {

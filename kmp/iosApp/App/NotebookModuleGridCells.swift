@@ -99,7 +99,7 @@ extension NotebookModuleView {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 5) {
                             Image(systemName: "person.fill")
-                                .font(.system(size: 11, weight: .semibold))
+                                .notebookFont(size: 11, weight: .semibold)
                                 .foregroundStyle(Color.secondary)
                                 .accessibilityHidden(true)
 
@@ -162,7 +162,7 @@ extension NotebookModuleView {
                         }
                     } label: {
                         Image(systemName: groupByWorkGroup ? "person.2.fill" : "person.2")
-                            .font(.system(size: 13, weight: .bold))
+                            .notebookFont(size: 13, weight: .bold)
                             .foregroundStyle(groupByWorkGroup ? NotebookStyle.primaryTint : .secondary)
                             .padding(6)
                             .background(Color.secondary.opacity(groupByWorkGroup ? 0.15 : 0.08), in: RoundedRectangle(cornerRadius: 6))
@@ -209,7 +209,7 @@ extension NotebookModuleView {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 5) {
                                     Image(systemName: "chart.xyaxis.line")
-                                        .font(.system(size: 11, weight: .semibold))
+                                        .notebookFont(size: 11, weight: .semibold)
                                         .foregroundStyle(NotebookStyle.primaryTint)
                                         .accessibilityHidden(true)
 
@@ -227,7 +227,7 @@ extension NotebookModuleView {
                             }
                             Spacer(minLength: 4)
                             Image(systemName: "slider.horizontal.3")
-                                .font(.system(size: 11, weight: .bold))
+                                .notebookFont(size: 11, weight: .bold)
                                 .foregroundStyle(NotebookStyle.primaryTint)
                                 .padding(6)
                                 .background(NotebookStyle.primaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
@@ -282,6 +282,16 @@ extension NotebookModuleView {
                 .contextMenu {
                     columnContextMenu(column, data: data)
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(columnHeaderAccessibilityLabel(for: column))
+                .accessibilityAddTraits(isColumnHighlighted(column) ? [.isHeader, .isButton, .isSelected] : [.isHeader, .isButton])
+                .accessibilityHint("Selecciona la columna. Mantén pulsado para más opciones.")
+                .accessibilityAction {
+                    selectedColumnId = column.id
+                    inspectorSelection = nil
+                    focusedCellId = nil
+                    activeChoiceCellId = nil
+                }
             )
         case .collapsedCategory(let category, let columns):
             return AnyView(
@@ -317,7 +327,7 @@ extension NotebookModuleView {
         return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Image(systemName: isEmpty ? "folder" : "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .notebookFont(size: 11, weight: .bold)
                     .foregroundStyle(categoryTint)
                     .accessibilityHidden(true)
 
@@ -556,6 +566,15 @@ extension NotebookModuleView {
     /// "Configurar media": si la columna pesa distinto de ×1 o si está
     /// excluida del cálculo. Sin esto, una columna excluida era indistinguible
     /// de una que cuenta ×3 con solo mirar la rejilla.
+    /// Lectura de VoiceOver de una cabecera: "Salto, Numérica, peso 20 %".
+    func columnHeaderAccessibilityLabel(for column: NotebookColumnDefinition) -> String {
+        var parts = [column.title, columnTypeMeta(for: column)]
+        if let weight = columnWeightBadge(for: column) {
+            parts.append(weight == "no cuenta" ? "no cuenta en la media" : "peso \(weight)")
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
     func columnWeightBadge(for column: NotebookColumnDefinition) -> String? {
         if !column.countsTowardAverage {
             return "no cuenta"
@@ -854,12 +873,12 @@ extension NotebookModuleView {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "rectangle.stack")
-                        .font(.system(size: 10, weight: .semibold))
+                        .notebookFont(size: 10, weight: .semibold)
                         .foregroundStyle(categoryTint.opacity(0.82))
                         .accessibilityHidden(true)
 
                     Text(total == 0 ? "Vacía" : "\(filled)/\(total)")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .notebookFont(size: 12, weight: .bold, design: .rounded)
                         .foregroundStyle(total == 0 ? .secondary : .primary)
                         .monospacedDigit()
                         .lineLimit(1)
@@ -1021,7 +1040,7 @@ extension NotebookModuleView {
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .bold))
+                    .notebookFont(size: 11, weight: .bold)
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
             }

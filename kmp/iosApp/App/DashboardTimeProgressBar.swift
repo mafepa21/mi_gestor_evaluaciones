@@ -55,14 +55,14 @@ struct DashboardTimeProgressBar: View {
         VStack(spacing: 8) {
             HStack {
                 Text(timeRangeLabel)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .dashboardFont(size: 13, weight: .semibold, design: .rounded)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
 
                 Spacer()
 
                 Text(percentageLabel)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .dashboardFont(size: 13, weight: .bold, design: .rounded)
                     .foregroundStyle(tint)
                     .monospacedDigit()
             }

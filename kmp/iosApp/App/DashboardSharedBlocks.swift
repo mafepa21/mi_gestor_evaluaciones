@@ -154,7 +154,7 @@ func dashboardSecondaryCard<Content: View>(@ViewBuilder content: () -> Content) 
 
 func dashboardSecondaryTitle(_ title: String, systemImage: String) -> some View {
     Label(title, systemImage: systemImage)
-        .font(.system(size: 13, weight: .semibold, design: .rounded))
+        .dashboardFont(size: 13, weight: .semibold, design: .rounded)
         .foregroundStyle(.secondary)
 }
 
@@ -333,7 +333,7 @@ func dashboardNowCard(
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(dashboardContextTitle(context))
-                        .font(.system(size: isCompact ? 22 : 26, weight: .bold, design: .rounded))
+                        .dashboardFont(size: isCompact ? 22 : 26, weight: .bold, design: .rounded)
                     Text(dashboardContextSubtitle(context))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -374,7 +374,7 @@ func dashboardNowCard(
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Sin clase activa", systemImage: "calendar")
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .dashboardFont(size: 18, weight: .semibold, design: .rounded)
                 Text("No hay franja lectiva en el horario docente para este momento.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -439,7 +439,7 @@ private func dashboardNowScheduleGap(
 private func dashboardNowPlannedSession(context: DashboardSessionContext, colorScheme: ColorScheme) -> some View {
     VStack(alignment: .leading, spacing: 6) {
         Label("Sesión planificada", systemImage: "calendar.badge.checkmark")
-            .font(.system(size: 13, weight: .semibold, design: .rounded))
+            .dashboardFont(size: 13, weight: .semibold, design: .rounded)
             .foregroundStyle(.secondary)
         Text(context.sessionTitle ?? context.unitLabel ?? "Sesión")
             .font(.callout.weight(.semibold))
@@ -643,23 +643,23 @@ private func dashboardEnhancedKpiCard(card: DashboardKpiItem, colorScheme: Color
     VStack(alignment: .leading, spacing: 8) {
         HStack(spacing: 8) {
             Image(systemName: card.icon)
-                .font(.system(size: 12, weight: .semibold))
+                .dashboardFont(size: 12, weight: .semibold)
                 .foregroundStyle(card.tint)
             Text(card.title)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .dashboardFont(size: 12, weight: .semibold, design: .rounded)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
 
         if card.isNumeric {
             Text(card.value)
-                .font(.system(size: 24, weight: .black, design: .rounded))
+                .dashboardFont(size: 24, weight: .black, design: .rounded)
                 .monospacedDigit()
                 .foregroundStyle(card.value != "0" && card.tint != .secondary ? card.tint : .primary)
                 .lineLimit(1)
         } else {
             Text(card.value)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .dashboardFont(size: 14, weight: .bold, design: .rounded)
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .minimumScaleFactor(0.85)
@@ -711,12 +711,12 @@ func dashboardGroupSummaryBlock(snapshot: DashboardSnapshot, isWide: Bool) -> so
                         Spacer()
                         Text("As \(summary.attendancePct)% · Ev \(summary.evaluationCompletedPct)%")
                     }
-                    .font(.system(size: 13, weight: .medium))
+                    .dashboardFont(size: 13, weight: .medium)
                 }
             }
             if snapshot.groupSummaries.isEmpty {
                 Text("Sin datos de grupos")
-                    .font(.system(size: 13, weight: .medium))
+                    .dashboardFont(size: 13, weight: .medium)
                     .foregroundStyle(.secondary)
             }
         }
@@ -742,18 +742,18 @@ func dashboardAgendaBlock(
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.title)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .dashboardFont(size: 14, weight: .bold, design: .rounded)
                             Text(item.subtitle)
-                                .font(.system(size: 12, weight: .medium))
+                                .dashboardFont(size: 12, weight: .medium)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Text(item.timeLabel)
-                            .font(.system(size: 10, weight: .semibold))
+                            .dashboardFont(size: 11, weight: .semibold)
                             .foregroundStyle(.tertiary)
                         if isNavigable {
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 10, weight: .bold))
+                                .dashboardFont(size: 11, weight: .bold)
                                 .foregroundStyle(.tertiary)
                         }
                     }
@@ -773,7 +773,7 @@ func dashboardAgendaBlock(
             }
             if snapshot.agendaItems.isEmpty {
                 Text("Sin agenda para hoy")
-                    .font(.system(size: 13, weight: .medium))
+                    .dashboardFont(size: 13, weight: .medium)
                     .foregroundStyle(.secondary)
             }
         }
@@ -798,14 +798,14 @@ func dashboardPEBlock(
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.title)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .dashboardFont(size: 14, weight: .bold, design: .rounded)
                             Text(item.detail)
-                                .font(.system(size: 12, weight: .medium))
+                                .dashboardFont(size: 12, weight: .medium)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Text(dashboardFilterLabel(item.severity))
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .dashboardFont(size: 11, weight: .bold, design: .rounded)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(riskTint(item.severity).opacity(0.12), in: Capsule())
@@ -826,7 +826,7 @@ func dashboardPEBlock(
             }
             if snapshot.peItems.isEmpty {
                 Text("Sin incidencias EF hoy")
-                    .font(.system(size: 13, weight: .medium))
+                    .dashboardFont(size: 13, weight: .medium)
                     .foregroundStyle(.secondary)
             }
         }
@@ -860,7 +860,7 @@ func dashboardLomloeAuditBlock(
                         Image(systemName: directionInfo.icon)
                             .foregroundStyle(directionInfo.color)
                         Text("Trayectoria: \(directionInfo.label)")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .dashboardFont(size: 13, weight: .bold, design: .rounded)
                             .foregroundStyle(directionInfo.color)
 
                         Spacer()
@@ -872,10 +872,10 @@ func dashboardLomloeAuditBlock(
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Cobertura Curricular del Grupo")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .dashboardFont(size: 11, weight: .bold, design: .rounded)
                                 .foregroundStyle(.secondary)
                             Text("\(IosFormatting.decimal(from: trends.curriculumCoveragePct))%")
-                                .font(.system(size: 24, weight: .black, design: .rounded))
+                                .dashboardFont(size: 24, weight: .black, design: .rounded)
                                 .foregroundStyle(NotebookStyle.primaryTint)
                         }
 
@@ -883,10 +883,10 @@ func dashboardLomloeAuditBlock(
 
                         VStack(alignment: .trailing, spacing: 4) {
                             Text("Asistencia Media")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .dashboardFont(size: 11, weight: .bold, design: .rounded)
                                 .foregroundStyle(.secondary)
                             Text("\(IosFormatting.decimal(from: trends.attendanceRate))%")
-                                .font(.system(size: 24, weight: .black, design: .rounded))
+                                .dashboardFont(size: 24, weight: .black, design: .rounded)
                                 .foregroundStyle(trends.attendanceRate >= 85 ? Color.primary : Color.orange)
                         }
                     }
@@ -905,13 +905,13 @@ func dashboardLomloeAuditBlock(
 
                     if !trends.attendanceCorrelationNote.isEmpty {
                         Text(trends.attendanceCorrelationNote)
-                            .font(.system(size: 12))
+                            .dashboardFont(size: 12)
                             .foregroundStyle(.secondary)
                     }
 
                     if !trends.behaviorIncidentSummary.isEmpty {
                         Text(trends.behaviorIncidentSummary)
-                            .font(.system(size: 12))
+                            .dashboardFont(size: 12)
                             .foregroundStyle(.secondary)
                     }
 
@@ -921,7 +921,7 @@ func dashboardLomloeAuditBlock(
 
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Competencias clave sin evidencias en el grupo:")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .dashboardFont(size: 11, weight: .bold, design: .rounded)
                                 .foregroundStyle(.secondary)
 
                             FlexibleTagRow(
@@ -935,17 +935,17 @@ func dashboardLomloeAuditBlock(
             } else if loadFailed {
                 HStack(spacing: 10) {
                     Label("No se pudo cargar la auditoría de este grupo.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 13, weight: .medium))
+                        .dashboardFont(size: 13, weight: .medium)
                         .foregroundStyle(IOSAppStyle.warning)
                     Spacer()
                     Button("Reintentar") {
                         onRetry()
                     }
-                    .font(.system(size: 13, weight: .semibold))
+                    .dashboardFont(size: 13, weight: .semibold)
                 }
             } else if !isLoading {
                 Text("No hay datos suficientes para generar la auditoría de cobertura curricular y tendencias de este grupo.")
-                    .font(.system(size: 13, weight: .medium))
+                    .dashboardFont(size: 13, weight: .medium)
                     .foregroundStyle(.secondary)
             }
         }

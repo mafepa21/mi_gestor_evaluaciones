@@ -144,6 +144,7 @@ struct DashboardView: View {
         }
         .animation(uiFeatureFlags.inspectorAnimation(presented: isInspectorPresented), value: isInspectorPresented)
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+        .dynamicTypeSize(DashboardDynamicType.range)
         .sheet(isPresented: $isQuickEvaluationPresented) {
             DashboardQuickEvaluationSheet(
                 bridge: bridge,
@@ -233,9 +234,9 @@ struct DashboardView: View {
     private var dashboardHeaderTitle: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(dashboardGreeting)
-                .font(.system(size: 26, weight: .black, design: .rounded))
+                .dashboardFont(size: 26, weight: .black, design: .rounded)
             Text("\(dashboardFormattedDate) · \(selectedClassLabel)")
-                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .dashboardFont(size: 14, weight: .medium, design: .rounded)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
@@ -327,9 +328,9 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
             HStack(alignment: .top, spacing: 18) {
                 Image(systemName: "person.3.sequence")
-                    .font(.system(size: 28, weight: .semibold))
+                    .dashboardFont(size: 28, weight: .semibold)
                     .foregroundStyle(EvaluationDesign.accent)
-                    .frame(width: 52, height: 52)
+                    .dashboardIconFrame(52)
                     .background(EvaluationDesign.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -398,16 +399,16 @@ struct DashboardView: View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 16, weight: .semibold))
+                    .dashboardFont(size: 16, weight: .semibold)
                     .foregroundStyle(tint)
-                    .frame(width: 26, height: 26)
+                    .dashboardIconFrame(26)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .dashboardFont(size: 14, weight: .semibold, design: .rounded)
                         .foregroundStyle(.primary)
                     Text(subtitle)
-                        .font(.system(size: 12))
+                        .dashboardFont(size: 12)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
@@ -882,7 +883,7 @@ struct DashboardView: View {
     private func inspectorNavigationButton(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .dashboardFont(size: 13, weight: .semibold, design: .rounded)
         }
         .buttonStyle(.bordered)
     }
@@ -1143,7 +1144,7 @@ struct DashboardView: View {
             // El recuento ya vive en la KPI "Hoy" de arriba; repetirlo aquí
             // era el mismo número dos veces en la misma pantalla.
             Label("Hoy", systemImage: "calendar.badge.clock")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .dashboardFont(size: 16, weight: .bold, design: .rounded)
             ForEach(snapshot.todaySessions, id: \.id) { item in
                 Button {
                     inspectorSelection = .session(item.id)
@@ -1152,12 +1153,12 @@ struct DashboardView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("\(item.groupName) · \(item.timeLabel)")
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .dashboardFont(size: 14, weight: .bold, design: .rounded)
                             Text(item.didacticUnit)
-                                .font(.system(size: 12, weight: .medium))
+                                .dashboardFont(size: 12, weight: .medium)
                                 .foregroundStyle(.secondary)
                             Text("Espacio: \(item.space) · \(dashboardSessionStatusLabel(item.sessionStatus))")
-                                .font(.system(size: 10, weight: .semibold))
+                                .dashboardFont(size: 11, weight: .semibold)
                                 .foregroundStyle(.tertiary)
                         }
                         Spacer()
@@ -1177,7 +1178,7 @@ struct DashboardView: View {
             }
             if snapshot.todaySessions.isEmpty {
                 Text("Sin sesiones hoy")
-                    .font(.system(size: 13, weight: .medium))
+                    .dashboardFont(size: 13, weight: .medium)
                     .foregroundStyle(.secondary)
             }
         }
@@ -1199,7 +1200,7 @@ struct DashboardView: View {
             // Mismo motivo que en Hoy: el recuento ya está en la KPI
             // "Pendientes" de arriba.
             Label("Pendiente", systemImage: "tray.full")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .dashboardFont(size: 16, weight: .bold, design: .rounded)
 
             ForEach(pendingAlerts.prefix(4), id: \.id) { alert in
                 dashboardActionRow(
@@ -1226,7 +1227,7 @@ struct DashboardView: View {
 
             if pendingAlerts.isEmpty && pendingAgenda.isEmpty && snapshot.pendingCount == 0 {
                 Text("Sin pendientes críticos con los datos disponibles.")
-                    .font(.system(size: 13, weight: .medium))
+                    .dashboardFont(size: 13, weight: .medium)
                     .foregroundStyle(.secondary)
             }
         }
@@ -1246,10 +1247,10 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Riesgo", systemImage: "exclamationmark.triangle")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .dashboardFont(size: 16, weight: .bold, design: .rounded)
                 Spacer()
                 Text("\(riskAlerts.count + snapshot.peItems.count)")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .dashboardFont(size: 12, weight: .bold, design: .rounded)
                     .foregroundStyle(.secondary)
             }
 
@@ -1286,7 +1287,7 @@ struct DashboardView: View {
 
             if riskAlerts.isEmpty && snapshot.peItems.isEmpty {
                 Text("Sin alumnado en riesgo detectado por las reglas actuales.")
-                    .font(.system(size: 13, weight: .medium))
+                    .dashboardFont(size: 13, weight: .medium)
                     .foregroundStyle(.secondary)
             }
         }
@@ -1332,7 +1333,7 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Alertas")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .dashboardFont(size: 16, weight: .bold, design: .rounded)
                 Spacer()
             }
             ForEach(snapshot.alerts.prefix(8), id: \.id) { alert in
@@ -1343,14 +1344,14 @@ struct DashboardView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(alert.title)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .dashboardFont(size: 14, weight: .bold, design: .rounded)
                             Text(alert.detail)
-                                .font(.system(size: 12, weight: .medium))
+                                .dashboardFont(size: 12, weight: .medium)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Text(dashboardFilterLabel(alert.severity))
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .dashboardFont(size: 11, weight: .bold, design: .rounded)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(riskTint(alert.severity).opacity(0.12), in: Capsule())
@@ -1371,7 +1372,7 @@ struct DashboardView: View {
             }
             if snapshot.alerts.isEmpty {
                 Text("Sin alertas")
-                    .font(.system(size: 13, weight: .medium))
+                    .dashboardFont(size: 13, weight: .medium)
                     .foregroundStyle(.secondary)
             }
         }
@@ -1390,17 +1391,17 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Evaluación rápida")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .dashboardFont(size: 16, weight: .bold, design: .rounded)
                 Spacer()
             }
             if !snapshot.quickColumns.isEmpty {
                 Text("Columnas disponibles: \(snapshot.quickColumns.joined(separator: ", "))")
-                    .font(.system(size: 12, weight: .medium))
+                    .dashboardFont(size: 12, weight: .medium)
                     .foregroundStyle(.secondary)
             }
             if !snapshot.quickRubrics.isEmpty {
                 Text("Rúbricas disponibles: \(snapshot.quickRubrics.joined(separator: ", "))")
-                    .font(.system(size: 12, weight: .medium))
+                    .dashboardFont(size: 12, weight: .medium)
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: 12) {
@@ -1440,7 +1441,7 @@ struct DashboardView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .dashboardFont(size: 11, weight: .bold, design: .rounded)
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 ForEach(options) { option in
@@ -1448,7 +1449,7 @@ struct DashboardView: View {
                         selection.wrappedValue = option
                     } label: {
                         Text(option.title)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .dashboardFont(size: 12, weight: .semibold, design: .rounded)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .background(
@@ -1486,7 +1487,7 @@ struct DashboardView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .dashboardFont(size: 11, weight: .bold, design: .rounded)
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 ForEach(options) { option in
@@ -1494,7 +1495,7 @@ struct DashboardView: View {
                         selection.wrappedValue = option
                     } label: {
                         Text(option.title)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .dashboardFont(size: 12, weight: .semibold, design: .rounded)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .background(
@@ -1543,11 +1544,11 @@ struct DashboardView: View {
     private func dashboardRecommendationLine(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "lightbulb.fill")
-                .font(.system(size: 11, weight: .bold))
+                .dashboardFont(size: 11, weight: .bold)
                 .foregroundStyle(.yellow)
                 .frame(width: 16)
             Text(text)
-                .font(.system(size: 12, weight: .medium))
+                .dashboardFont(size: 12, weight: .medium)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -1573,17 +1574,17 @@ struct DashboardView: View {
     ) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .bold))
+                .dashboardFont(size: 12, weight: .bold)
                 .foregroundStyle(tint)
-                .frame(width: 18, height: 18)
+                .dashboardIconFrame(18)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .dashboardFont(size: 14, weight: .semibold, design: .rounded)
                     .lineLimit(2)
                 if !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(.system(size: 12, weight: .medium))
+                        .dashboardFont(size: 12, weight: .medium)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
@@ -2153,7 +2154,7 @@ private struct DashboardEvaluationHero: View {
             Image(systemName: systemImage)
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(EvaluationDesign.accent)
-                .frame(width: 48, height: 48)
+                .dashboardIconFrame(48)
                 .background(EvaluationDesign.accentSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             VStack(alignment: .leading, spacing: 8) {
@@ -2186,7 +2187,7 @@ private struct DashboardEvaluationNotice: View {
             Image(systemName: systemImage)
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(tint)
-                .frame(width: 28, height: 28)
+                .dashboardIconFrame(28)
                 .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             Text(text)

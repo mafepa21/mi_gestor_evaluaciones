@@ -69,24 +69,24 @@ struct DashboardCompactHeroStrip: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text("Ahora")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .dashboardFont(size: 13, weight: .bold, design: .rounded)
                         .foregroundStyle(.primary)
 
                     if let context {
                         Text("· \(dashboardContextStatusLabel(context.status))")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .dashboardFont(size: 12, weight: .semibold, design: .rounded)
                             .foregroundStyle(tint)
                     }
                 }
 
                 if let context {
                     Text(summaryLine(for: context))
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .dashboardFont(size: 12, weight: .medium, design: .rounded)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 } else {
                     Text("No hay franja lectiva en el horario docente")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .dashboardFont(size: 12, weight: .medium, design: .rounded)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -100,7 +100,7 @@ struct DashboardCompactHeroStrip: View {
                 onAction(primaryAction)
             } label: {
                 Label(primaryTitle, systemImage: primaryAction.systemImage)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .dashboardFont(size: 13, weight: .bold, design: .rounded)
             }
             .buttonStyle(.borderedProminent)
             .tint(EvaluationDesign.accent)
@@ -118,8 +118,8 @@ struct DashboardCompactHeroStrip: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 32, height: 32)
+                        .dashboardFont(size: 15, weight: .semibold)
+                        .dashboardIconFrame(32)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)

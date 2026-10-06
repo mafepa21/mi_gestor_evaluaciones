@@ -67,24 +67,24 @@ struct DashboardClassroomView: View {
                         .frame(width: 8, height: 8)
 
                     Text(context?.status == .active ? "CLASE EN CURSO" : "SESIÓN SELECCIONADA")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .dashboardFont(size: 11, weight: .bold, design: .rounded)
                         .foregroundStyle(tint)
                         .tracking(1.2)
                 }
 
                 Text(groupTitle)
-                    .font(.system(size: isCompact ? 28 : 36, weight: .black, design: .rounded))
+                    .dashboardFont(size: isCompact ? 28 : 36, weight: .black, design: .rounded)
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
 
                 Text(groupSubtitle)
-                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .dashboardFont(size: 15, weight: .medium, design: .rounded)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
                 Text(sessionTitle)
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .dashboardFont(size: 17, weight: .semibold, design: .rounded)
                     .foregroundStyle(.primary)
                     .padding(.top, 4)
                     .multilineTextAlignment(.center)
@@ -131,9 +131,9 @@ struct DashboardClassroomView: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 18, weight: .bold))
+                    .dashboardFont(size: 18, weight: .bold)
                 Text("Pasar lista")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .dashboardFont(size: 16, weight: .bold, design: .rounded)
             }
             .frame(maxWidth: .infinity, minHeight: 56)
         }
@@ -148,9 +148,9 @@ struct DashboardClassroomView: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "note.text.badge.plus")
-                    .font(.system(size: 18, weight: .bold))
+                    .dashboardFont(size: 18, weight: .bold)
                 Text("Nueva observación")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .dashboardFont(size: 16, weight: .bold, design: .rounded)
             }
             .frame(maxWidth: .infinity, minHeight: 56)
         }
@@ -191,7 +191,7 @@ struct DashboardClassroomView: View {
                 Image(systemName: "ellipsis.circle")
                 Text("Más acciones")
             }
-            .font(.system(size: 13, weight: .medium, design: .rounded))
+            .dashboardFont(size: 13, weight: .medium, design: .rounded)
             .foregroundStyle(.secondary)
             .padding(.vertical, 6)
             .padding(.horizontal, 12)
@@ -205,9 +205,9 @@ struct DashboardClassroomView: View {
             if !snapshot.nextSessionLabel.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "clock")
-                        .font(.system(size: 11, weight: .semibold))
+                        .dashboardFont(size: 11, weight: .semibold)
                     Text("Próxima: \(snapshot.nextSessionLabel)")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .dashboardFont(size: 12, weight: .medium, design: .rounded)
                 }
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -220,7 +220,7 @@ struct DashboardClassroomView: View {
                         .fill(IOSAppStyle.warning)
                         .frame(width: 6, height: 6)
                     Text("\(snapshot.alertsCount) alertas")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .dashboardFont(size: 11, weight: .bold, design: .rounded)
                         .foregroundStyle(IOSAppStyle.warning)
                 }
                 .padding(.horizontal, 8)
@@ -234,9 +234,9 @@ struct DashboardClassroomView: View {
             Button(action: onExitClassroomMode) {
                 HStack(spacing: 6) {
                     Text("Salir de modo clase")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .dashboardFont(size: 13, weight: .semibold, design: .rounded)
                     Image(systemName: "arrow.up.right.square")
-                        .font(.system(size: 12, weight: .semibold))
+                        .dashboardFont(size: 12, weight: .semibold)
                 }
                 .foregroundStyle(.secondary)
                 .frame(minHeight: 44)

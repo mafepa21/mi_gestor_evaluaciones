@@ -13,6 +13,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Dashboard con letra adaptable (Dynamic Type)**:
+  - Todo el texto del Dashboard iOS/iPadOS (`DashboardView`, `DashboardSharedBlocks`, `DashboardClassroomView`, `DashboardCompactHeroStrip`, `DashboardTimeProgressBar`) usa `.dashboardFont(size:weight:design:)` (nuevo `DashboardTypeStyle.swift`): escala con el tamaño de letra del sistema y no cambia en macOS.
+  - Ningún texto por debajo de 11 pt (5 etiquetas de 10 pt suben a 11).
+  - Los iconos con caja fija usan `.dashboardIconFrame(_:)` y crecen con el texto.
+  - Tope de Dynamic Type en AX2 en la raíz del Dashboard.
+  - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador genérico) y `MiGestorKMPMac` OK. No se hizo QA visual con letra grande: no hay simuladores instalados en el Mac.
+  - Docs: ámbito nuevo `docs/ambitos/dashboard.md`.
+
 - **Cuaderno accesible (Dynamic Type y VoiceOver)**:
   - El texto del grid, la barra superior, las pestañas y la barra compacta usa `.notebookFont(size:weight:design:)`: escala con el tamaño de letra del sistema en iOS/iPadOS y no cambia en macOS.
   - El grid tiene tope de Dynamic Type en AX2 y la altura de fila escala con el mismo tope.

@@ -13,6 +13,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Asistencia: claridad y seguridad (solo presentación)**:
+  - Filtro «Todos / Con incidencias» como `Picker` segmentado nativo (antes píldoras hechas a mano; «Excepciones» pasa a «Con incidencias»).
+  - «Marcar todos (P)» pasa a «Todos presentes» y se puede deshacer: aviso con «Deshacer» durante 6 s y Cmd+Z (`UndoManager`). Cada alumno recupera su estado exacto, también «sin marcar»; si alguno falla, el aviso dice cuántos.
+  - Ficha del alumno: una sola acción principal («Registrar incidencia») y menú «Abrir en…» (Ficha, Diario, Cuaderno). La nota se guarda sola al salir del campo, al cambiar de alumno o al cerrar la ficha, siempre en el alumno y la fecha en que se empezó a escribir.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. Sin prueba manual en simulador ni dispositivo.
+
 - **Asistencia: accesibilidad (solo presentación)**:
   - Letra adaptable: se eliminan los tamaños fijos (9-28 pt) en `AttendanceWorkspaceView`, `AttendanceMatrixGridView` y `AttendanceCompactRow`; columnas, filas y chips crecen con `@ScaledMetric`.
   - VoiceOver: cada celda de la tabla se lee con alumno, fecha y estado (más incidencia o nota); cabeceras marcadas; totales y estadísticas en una frase.

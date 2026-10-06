@@ -46,6 +46,11 @@ struct AttendanceWorkspaceView: View {
     @State var sessions: [KmpBridge.AttendanceSessionSnapshot] = []
     @State var selectedAttendanceSessionId: Int64?
     @State var noteDraft = ""
+    @State var noteEditContext: AttendanceNoteEditContext?
+    @FocusState var isNoteFieldFocused: Bool
+    @State var bulkUndo: AttendanceBulkUndo?
+    @State var bulkUndoDismissTask: Task<Void, Never>?
+    @Environment(\.undoManager) private var undoManager
     @State var isAttendanceInspectorPresented = false
     @State var showAllPresent = false
     @State var showOnlyExceptions = false
@@ -268,6 +273,7 @@ struct AttendanceWorkspaceView: View {
                 }
             }
             .appOnChange(of: selectedStudentId) { _ in
+                commitPendingNote()
                 noteDraft = selectedInspectionAttendance?.note ?? ""
                 isAttendanceInspectorPresented = isInspectorPresented
             }
@@ -313,6 +319,17 @@ struct AttendanceWorkspaceView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(appPageBackground(for: colorScheme))
+        .overlay(alignment: .bottom) {
+            if let bulkUndo {
+                AttendanceUndoBanner(
+                    message: "\(bulkUndo.entries.count) marcados como presentes",
+                    onUndo: { Task { await undoBulkMarkPresent() } }
+                )
+                .padding(.bottom, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(uiFeatureFlags.animation(.easeInOut(duration: 0.2)), value: bulkUndo?.id)
     }
 
     var criticalAlertsBanner: some View {
@@ -349,55 +366,14 @@ struct AttendanceWorkspaceView: View {
 
     var attendanceMetricsSubbar: some View {
         HStack(spacing: 8) {
-            // Pills de filtrado rápido
-            Button {
-                withAnimation(uiFeatureFlags.animation(.easeInOut(duration: 0.15))) {
-                    showOnlyExceptions = false
-                }
-            } label: {
-                Text("Todos (\(filteredRows.count))")
-                    .font(.system(.caption, design: .rounded).weight(.bold))
-                    .foregroundStyle(!showOnlyExceptions ? Color.primary : Color.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        !showOnlyExceptions ? appMutedCardBackground(for: colorScheme) : Color.clear,
-                        in: Capsule()
-                    )
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
+            Picker("Filtro", selection: $showOnlyExceptions.animation(uiFeatureFlags.animation(.easeInOut(duration: 0.15)))) {
+                Text("Todos (\(filteredRows.count))").tag(false)
+                Text("Con incidencias (\(exceptionRows.count))").tag(true)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Todos, \(filteredRows.count) alumnos")
-            .accessibilityAddTraits(!showOnlyExceptions ? .isSelected : [])
-
-            Button {
-                withAnimation(uiFeatureFlags.animation(.easeInOut(duration: 0.15))) {
-                    showOnlyExceptions = true
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text("Excepciones (\(exceptionRows.count))")
-                    if !exceptionRows.isEmpty {
-                        Circle()
-                            .fill(EvaluationDesign.danger)
-                            .frame(width: 6, height: 6)
-                    }
-                }
-                .font(.system(.caption, design: .rounded).weight(.bold))
-                .foregroundStyle(showOnlyExceptions ? Color.primary : Color.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    showOnlyExceptions ? appMutedCardBackground(for: colorScheme) : Color.clear,
-                    in: Capsule()
-                )
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Excepciones, \(exceptionRows.count) alumnos")
-            .accessibilityAddTraits(showOnlyExceptions ? .isSelected : [])
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .controlSize(.large)
 
             Spacer()
 
@@ -423,7 +399,7 @@ struct AttendanceWorkspaceView: View {
             Button {
                 Task { await markAllPresent() }
             } label: {
-                Label("Marcar todos (P)", systemImage: "checkmark.circle")
+                Label("Todos presentes", systemImage: "checkmark.circle")
                     .font(.system(.caption, design: .rounded).weight(.bold))
                     .foregroundStyle(AppleDesignSystem.success)
                     .padding(.horizontal, 12)
@@ -865,35 +841,51 @@ struct AttendanceWorkspaceView: View {
                         TextField("Observación rápida de la sesión…", text: $noteDraft, axis: .vertical)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .lineLimit(3, reservesSpace: true)
-
-                        Button("Guardar nota") {
-                            Task { await saveAttendanceNote(for: student.id) }
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(selectedInspectionAttendance == nil)
+                            .focused($isNoteFieldFocused)
+                            .disabled(selectedInspectionAttendance == nil)
+                            .onSubmit { commitPendingNote() }
+                        Text(selectedInspectionAttendance == nil
+                             ? "Marca la asistencia para poder añadir una nota."
+                             : "Se guarda sola al salir del campo.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-
-                    HStack(spacing: 16) {
-                        Button("Abrir ficha de alumno") {
-                            onOpenModule(.students, selectedClassId, student.id)
+                    .appOnChange(of: isNoteFieldFocused) { focused in
+                        if focused {
+                            noteEditContext = AttendanceNoteEditContext(
+                                studentId: student.id,
+                                date: inspectorDate,
+                                record: selectedInspectionAttendance,
+                                originalNote: noteDraft
+                            )
+                        } else {
+                            commitPendingNote()
                         }
-                        .buttonStyle(.borderedProminent)
-
-                        Button("Abrir diario") {
-                            onOpenModule(.diary, selectedClassId, student.id)
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button("Abrir cuaderno") {
-                            onOpenModule(.notebook, selectedClassId, student.id)
-                        }
-                        .buttonStyle(.bordered)
                     }
+                    .onDisappear { commitPendingNote() }
 
-                    if let selectedClassId {
-                        Button("Registrar incidencia desde asistencia") {
-                            Task { await createAttendanceIncident(for: student.id, classId: selectedClassId, latestStatus: recentStatuses.first?.status) }
+                    HStack(spacing: 12) {
+                        if let selectedClassId {
+                            Button("Registrar incidencia") {
+                                Task { await createAttendanceIncident(for: student.id, classId: selectedClassId, latestStatus: recentStatuses.first?.status) }
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
+
+                        Menu {
+                            Button("Ficha del alumno", systemImage: "person.crop.circle") {
+                                onOpenModule(.students, selectedClassId, student.id)
+                            }
+                            Button("Diario", systemImage: "book") {
+                                onOpenModule(.diary, selectedClassId, student.id)
+                            }
+                            Button("Cuaderno", systemImage: "tablecells") {
+                                onOpenModule(.notebook, selectedClassId, student.id)
+                            }
+                        } label: {
+                            Label("Abrir en…", systemImage: "arrow.up.forward.app")
+                        }
+                        .menuStyle(.button)
                         .buttonStyle(.bordered)
                     }
                 }
@@ -1181,6 +1173,8 @@ struct AttendanceWorkspaceView: View {
         guard !students.isEmpty else { return }
         var saved = 0
         var failed = 0
+        var undoEntries: [AttendanceBulkUndo.Entry] = []
+        let date = selectedDate
         for student in students {
             let previous = recordsByStudentId[student.id]
             applyLocalAttendanceStatus("PRESENTE", for: student, classId: selectedClassId)
@@ -1193,6 +1187,9 @@ struct AttendanceWorkspaceView: View {
                     sessionId: recordsByStudentId[student.id]?.sessionId
                 )
                 saved += 1
+                if previous?.status != "PRESENTE" {
+                    undoEntries.append(.init(studentId: student.id, previousStatus: previous?.status ?? "", sessionId: previous?.sessionId))
+                }
             } catch {
                 recordsByStudentId[student.id] = previous
                 failed += 1
@@ -1204,6 +1201,59 @@ struct AttendanceWorkspaceView: View {
         bridge.status = failed == 0
             ? "Todos los alumnos filtrados marcados como presentes."
             : "Guardadas \(saved) / fallidas \(failed). Vuelve a marcar las que faltan."
+        if !undoEntries.isEmpty {
+            offerBulkUndo(AttendanceBulkUndo(classId: selectedClassId, date: date, entries: undoEntries))
+        }
+    }
+
+    func offerBulkUndo(_ undo: AttendanceBulkUndo) {
+        bulkUndo = undo
+        undoManager?.registerUndo(withTarget: bridge) { _ in
+            Task { @MainActor in await undoBulkMarkPresent() }
+        }
+        undoManager?.setActionName("Todos presentes")
+        bulkUndoDismissTask?.cancel()
+        bulkUndoDismissTask = Task {
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            guard !Task.isCancelled else { return }
+            if bulkUndo?.id == undo.id { bulkUndo = nil }
+        }
+    }
+
+    func undoBulkMarkPresent() async {
+        guard let undo = bulkUndo else { return }
+        bulkUndo = nil
+        bulkUndoDismissTask?.cancel()
+        var failed = 0
+        for entry in undo.entries {
+            do {
+                try await bridge.saveAttendance(
+                    studentId: entry.studentId,
+                    classId: undo.classId,
+                    on: undo.date,
+                    status: entry.previousStatus,
+                    sessionId: entry.sessionId
+                )
+            } catch {
+                failed += 1
+            }
+        }
+        await reloadAttendance()
+        await reloadClassOverviews()
+        bridge.status = failed == 0
+            ? "Asistencia restaurada."
+            : "No se pudieron restaurar \(failed) de \(undo.entries.count) alumnos. Revísalos a mano."
+        AppleInteractionFeedback.play(failed == 0 ? .success : .error)
+    }
+
+    /// Guarda la nota en edición si cambió. Usa el contexto capturado al empezar a
+    /// escribir para no guardarla en otro alumno si la selección cambia antes.
+    func commitPendingNote() {
+        guard let context = noteEditContext else { return }
+        noteEditContext = nil
+        let draft = noteDraft
+        guard draft != context.originalNote, let record = context.record else { return }
+        Task { await saveAttendanceNote(context: context, record: record, note: draft) }
     }
 
     func repeatPattern() async {
@@ -1330,24 +1380,67 @@ struct AttendanceWorkspaceView: View {
         }
     }
 
-    func saveAttendanceNote(for studentId: Int64) async {
+    func saveAttendanceNote(context: AttendanceNoteEditContext, record: KmpBridge.AttendanceRecordSnapshot, note: String) async {
         guard let selectedClassId else { return }
-        let current = selectedInspectionAttendance
-        let currentStatus = current?.status ?? "PRESENTE"
         do {
             try await bridge.saveAttendance(
-                studentId: studentId,
+                studentId: context.studentId,
                 classId: selectedClassId,
-                on: inspectorDate,
-                status: currentStatus,
-                note: noteDraft,
-                hasIncident: current?.hasIncident ?? false,
-                followUpRequired: current?.followUpRequired
+                on: context.date,
+                status: record.status,
+                note: note,
+                hasIncident: record.hasIncident,
+                followUpRequired: record.followUpRequired
             )
-            bridge.status = "Nota de asistencia guardada."
+            bridge.status = "Nota guardada."
             await reloadAttendance()
         } catch {
             bridge.status = "No se pudo guardar la nota: \(error.localizedDescription)"
         }
+    }
+}
+
+struct AttendanceNoteEditContext {
+    let studentId: Int64
+    let date: Date
+    let record: KmpBridge.AttendanceRecordSnapshot?
+    let originalNote: String
+}
+
+struct AttendanceBulkUndo {
+    struct Entry {
+        let studentId: Int64
+        let previousStatus: String
+        let sessionId: Int64?
+    }
+    let id = UUID()
+    let classId: Int64
+    let date: Date
+    let entries: [Entry]
+}
+
+/// Aviso flotante tras una acción masiva de asistencia, con botón para deshacerla.
+struct AttendanceUndoBanner: View {
+    let message: String
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(AppleDesignSystem.success)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.subheadline.weight(.semibold))
+            Button("Deshacer", action: onUndo)
+                .font(.subheadline.weight(.bold))
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .padding(.horizontal, 16)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: "Deshacer", onUndo)
     }
 }

@@ -13,6 +13,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Asistencia: accesibilidad (solo presentación)**:
+  - Letra adaptable: se eliminan los tamaños fijos (9-28 pt) en `AttendanceWorkspaceView`, `AttendanceMatrixGridView` y `AttendanceCompactRow`; columnas, filas y chips crecen con `@ScaledMetric`.
+  - VoiceOver: cada celda de la tabla se lee con alumno, fecha y estado (más incidencia o nota); cabeceras marcadas; totales y estadísticas en una frase.
+  - Más que color: «sin dato» pasa de `·` a guion visible; nota con anillo e incidencia con punto relleno.
+  - Zonas táctiles de 44 pt en filtros, alertas y «Marcar todos»; alertas con inicial del apellido.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No se hicieron capturas con letra XL ni prueba de VoiceOver en dispositivo. Las vistas `MacAttendance*` quedan fuera.
+
 - **Pulido HIG de Alumnado (Mac) y Planificación (solo presentación)**:
   - Alumnado (`MacStudentsView.swift`): la lista ya no muestra otro grupo al cambiar rápido (se descartan respuestas tardías); los filtros pasan a una línea sobre la tabla y la búsqueda a la cabecera; «Clase» solo con «Todas las clases»; lo normal se muestra vacío; media con coma decimal a la derecha y «Sin nota» en gris; un solo contador. `MacPremiumTableContainer` gana `showsHeader` (aditivo).
   - Barra del planificador (`MacRootView.swift`): secciones con texto (Mes, Semana, Día, Secuencia, Huecos, Resumen) vía `toolbarTitle` sin tocar `rawValue`; fuera «Sync» y «Refrescar», la etiqueta de estado sincroniza y recarga (⌘R) en toda la app.

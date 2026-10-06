@@ -375,7 +375,7 @@ extension NotebookModuleView {
             Image(systemName: toast.style == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .foregroundStyle(toast.style.tint)
             Text(toast.message)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .notebookFont(size: 13, weight: .bold, design: .rounded)
                 .foregroundStyle(.primary)
         }
         .padding(.horizontal, 16)
@@ -457,7 +457,7 @@ extension NotebookModuleView {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
                                     Text("\(item.student.firstName) \(item.student.lastName)")
-                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .notebookFont(size: 14, weight: .semibold, design: .rounded)
                                         .foregroundStyle(.primary)
                                         .lineLimit(2)
                                         .minimumScaleFactor(0.6)
@@ -470,7 +470,7 @@ extension NotebookModuleView {
                                 let isInjured = isStudentInjured(item.student)
                                 if isInjured {
                                     Text("Seguimiento físico")
-                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .notebookFont(size: 11, weight: .medium, design: .rounded)
                                         .foregroundStyle(.orange)
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.8)
@@ -508,10 +508,29 @@ extension NotebookModuleView {
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(studentNameAccessibilityLabel(for: item.student))
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint("Abre el inspector del alumno. Usa el rotor de acciones para pasar lista.")
+                    // El deslizamiento para pasar lista no es accesible con VoiceOver:
+                    // las mismas acciones se ofrecen como acciones con nombre.
+                    .accessibilityAction(named: "Presente") { Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.present) } }
+                    .accessibilityAction(named: "Ausente") { Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.absent) } }
+                    .accessibilityAction(named: "Retraso") { Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.late) } }
+                    .accessibilityAction(named: "Sin material") { Task { await markAttendance(for: item.student.id, status: "SIN_MATERIAL") } }
+                    .accessibilityAction(named: "Justificado") { Task { await markAttendance(for: item.student.id, status: "JUSTIFICADO") } }
+                    .accessibilityAction(named: isStudentInjured(item.student) ? "Quitar lesión" : "Marcar lesión") { Task { await toggleStudentInjuryStatus(item.student) } }
+                    .accessibilityAction(named: "Ficha 360º del alumno") {
+                        openStudentProfile360(
+                            studentId: item.student.id,
+                            studentName: "\(item.student.firstName) \(item.student.lastName)",
+                            data: data
+                        )
+                    }
                 }
             case .group:
                 Text(item.groupName)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .notebookFont(size: 13, weight: .medium, design: .rounded)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
@@ -520,7 +539,7 @@ extension NotebookModuleView {
                     .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
             case .attendance:
                 Text(attendanceSummary(for: item))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .notebookFont(size: 13, weight: .semibold, design: .rounded)
                     .foregroundStyle(.primary)
                     .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
             case .average:
@@ -544,6 +563,24 @@ extension NotebookModuleView {
                 .notebookAverageExplanation(item: mappedExplanationItemBinding)
             }
         }
+    }
+
+    /// Lectura de VoiceOver de la celda Nombre: nombre + avisos que en pantalla
+    /// solo son iconos o color (riesgo, medida de apoyo, lesión).
+    func studentNameAccessibilityLabel(for student: Student) -> String {
+        var parts = ["\(student.firstName) \(student.lastName)"]
+        switch riskLevelCache[student.id] {
+        case .atencionPrioritaria: parts.append("atención prioritaria")
+        case .atencionPuntual: parts.append("atención puntual")
+        case .seguimientoNormal, .none: break
+        }
+        if activeSupportMeasureStudentIds.contains(student.id) {
+            parts.append("medida de apoyo activa")
+        }
+        if isStudentInjured(student) {
+            parts.append("seguimiento físico")
+        }
+        return parts.joined(separator: ", ")
     }
 
     @ViewBuilder

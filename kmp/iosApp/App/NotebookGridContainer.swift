@@ -187,17 +187,17 @@ struct NotebookGridContainer<
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
                     Image(systemName: isUngrouped ? "person.slash" : "person.2.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .notebookFont(size: 11, weight: .bold)
                         .foregroundStyle(isUngrouped ? Color.secondary : NotebookStyle.primaryTint)
 
                     Text(header.groupName)
-                        .font(.system(size: 12, weight: .bold))
+                        .notebookFont(size: 12, weight: .bold)
                         .foregroundStyle(isUngrouped ? Color.secondary : Color.primary)
                         .lineLimit(1)
 
                     if header.count > 0 {
                         Text("\(header.count)")
-                            .font(.system(size: 10, weight: .bold))
+                            .notebookFont(size: 10, weight: .bold)
                             .foregroundStyle(isUngrouped ? Color.secondary : NotebookStyle.primaryTint)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1.5)

@@ -13,6 +13,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Cuaderno accesible (Dynamic Type y VoiceOver)**:
+  - El texto del grid, la barra superior, las pestañas y la barra compacta usa `.notebookFont(size:weight:design:)`: escala con el tamaño de letra del sistema en iOS/iPadOS y no cambia en macOS.
+  - El grid tiene tope de Dynamic Type en AX2 y la altura de fila escala con el mismo tope.
+  - VoiceOver: las acciones del deslizamiento de asistencia en la celda Nombre y las cabeceras de columna tienen etiqueta y acción propias.
+  - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No se hizo QA visual con letra grande ni prueba manual con VoiceOver.
+  - Docs: trampas nuevas en `docs/ambitos/cuaderno.md`.
+
+### Changed
+
 - **Situaciones de Aprendizaje: rediseño de usabilidad y UI (solo presentación)**:
   - `LearningSituationsWorkspaceView.swift` baja de 3144 a unas 600 líneas; las piezas pasan a 7 archivos nuevos (`LearningSituationsListColumn`, `LearningSituationDetailView`, `LearningSituationsComponents`, `LearningSituationImportReviewSheet`, `LearningSituationDuplicateSheet`, `LearningSituationEvaluationSheet`, `LearningSituationAssessmentReviewView`). La proyección de horarios no se toca.
   - Lista y detalle: dos columnas en iPad/Mac y pila en ancho estrecho; búsqueda propia, chips de filtro visibles con «Limpiar», estado de carga separado del vacío, selección múltiple con Archivar y Eliminar, un solo cuadro de confirmación de borrado, error de recarga en línea.

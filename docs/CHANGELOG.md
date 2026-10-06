@@ -13,6 +13,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Sábana de asistencia: deshacer, errores honestos y controles accesibles (solo presentación)**:
+  - «Marcar todos hoy (P)» pasa a «Todos presentes hoy» con Cmd+Mayús+P; se desactiva si no queda nadie por marcar. Tras marcar: aviso «Deshacer» (6 s) y Cmd+Z, que restauran el estado exacto de cada alumno.
+  - Si el guardado masivo falla, la sábana recarga desde la base en vez de seguir mostrando a todos presentes; la vibración de éxito solo suena tras guardar.
+  - Selector de estado: filas de 44 pt, ancho que crece con la letra, estado actual anunciado a VoiceOver; «Limpiar registro» pasa a «Desmarcar».
+  - Barra superior a tamaño normal, búsqueda flexible y «Copiar resumen» solo con icono cuando falta espacio.
+  - `AttendanceUndoBanner` pasa a `AttendanceShared.swift` para compartirlo entre vista del día y sábana.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. Sin prueba manual.
+
 - **Asistencia: rapidez con teclado y menús (solo presentación)**:
   - Menú al mantener pulsada una fila con los 6 estados, desmarcar, lesión, nota, «Registrar incidencia» y ficha; comparte contenido con el botón «…».
   - Menú en las celdas del historial para cambiar el estado de ese día sin abrir la ficha.
@@ -60,6 +68,8 @@ El formato sigue una variante practica de Keep a Changelog:
   - Docs: ámbito `docs/ambitos/situaciones-aprendizaje.md`, mapa de flujos y maqueta viva en `docs/planes/`.
 
 ### Fixed
+
+- **Sábana de asistencia: «Limpiar registro» no se guardaba**: solo borraba la marca en pantalla y reaparecía al recargar. Ahora se guarda como desmarcada y, si falla, vuelve a mostrarse con el aviso de error.
 
 - **Apertura fluida del Planner en macOS/iOS**:
   - El grid semanal ya no enseña «Aún no has configurado tu horario» mientras carga: hasta la primera carga se ve un esqueleto con la forma del grid.

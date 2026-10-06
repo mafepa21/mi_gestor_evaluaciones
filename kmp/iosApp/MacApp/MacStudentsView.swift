@@ -130,13 +130,8 @@ struct MacStudentsView: View {
         let content = Group {
             switch presentation {
             case .content:
-                HStack(spacing: 0) {
-                    studentsFilters
-                        .frame(minWidth: 200, idealWidth: 240, maxWidth: 280)
-                    Divider()
-                    studentsList
-                        .frame(minWidth: 360, maxWidth: .infinity)
-                }
+                studentsList
+                    .frame(minWidth: 520, maxWidth: .infinity)
             case .inspector:
                 studentInspector
                     .frame(minWidth: 330, idealWidth: 370, maxWidth: 430, maxHeight: .infinity)
@@ -499,7 +494,9 @@ struct MacStudentsView: View {
     }
 
     private func handleClassIdChange(_ newClassId: Int64?) {
-        guard ownsStudentSideEffects, store.didBootstrap else { return }
+        // También durante el arranque: si el grupo cambia mientras carga, hay que recargar.
+        // reloadRows descarta después el resultado que llegue tarde de un grupo anterior.
+        guard ownsStudentSideEffects, store.didBootstrap || store.isBootstrapping else { return }
         store.selectedStudentIds.removeAll()
         Task {
             await bridge.selectStudentsClass(classId: newClassId)
@@ -607,6 +604,7 @@ struct MacStudentsView: View {
     private var studentsList: some View {
         VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
             studentsHeader
+            studentsFilterBar
             if store.selectedStudentIds.count > 1 {
                 studentsBatchActionBar
             }
@@ -656,83 +654,74 @@ struct MacStudentsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private var studentsFilters: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Filtros")
-                    .font(.title3.weight(.semibold))
-                Text("\(filteredRows.count) de \(store.rows.count) alumnos")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+    /// Filtros en una sola línea sobre la tabla: así la tabla usa todo el ancho
+    /// y nada queda bajo la barra lateral.
+    private var studentsFilterBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                trackingFilterPicker
+                Spacer(minLength: 12)
+                classAndWorkGroupPickers
             }
-
             VStack(alignment: .leading, spacing: 8) {
-                Text("Clase")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Picker("Clase", selection: $selectedClassId) {
-                    Text("Todas").tag(Optional<Int64>.none)
-                    ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in
-                        Text(schoolClass.name).tag(Optional(schoolClass.id))
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Búsqueda")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                TextField("Nombre o clase", text: $store.searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isSearchFocused)
-                    .appOnChange(of: store.searchText) { _ in
-                        scheduleSearchDebounce()
-                    }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Seguimiento")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Picker("Seguimiento", selection: $store.trackingFilter) {
-                    Text("Todos").tag("todos")
-                    Text("Sin curso").tag("sin_curso")
-                    Text("Seguimiento").tag("seguimiento")
-                    Text("Lesionados").tag("lesionados")
-                }
-                .pickerStyle(.segmented)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Grupo de trabajo")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Picker("Grupo de trabajo", selection: $store.workGroupFilter) {
-                    ForEach(workGroupOptions, id: \.self) { option in
-                        Text(option).tag(option)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-            }
-
-            Spacer()
-
-            if let errorMessage = store.errorMessage {
-                MacPremiumOperationState(kind: .failed(errorMessage))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                trackingFilterPicker
+                HStack(spacing: 12) { classAndWorkGroupPickers }
             }
         }
-        .padding(MacAppStyle.pagePadding)
-        .background(MacAppStyle.cardBackground)
+    }
+
+    private var trackingFilterPicker: some View {
+            Picker("Seguimiento", selection: $store.trackingFilter) {
+                Text("Todos").tag("todos")
+                Text("Sin curso").tag("sin_curso")
+                Text("Seguimiento").tag("seguimiento")
+                Text("Lesionados").tag("lesionados")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+    }
+
+    @ViewBuilder
+    private var classAndWorkGroupPickers: some View {
+            Picker("Clase", selection: $selectedClassId) {
+                Text("Todas las clases").tag(Optional<Int64>.none)
+                ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in
+                    Text(schoolClass.name).tag(Optional(schoolClass.id))
+                }
+            }
+            .fixedSize()
+
+            Picker("Grupo de trabajo", selection: $store.workGroupFilter) {
+                ForEach(workGroupOptions, id: \.self) { option in
+                    Text(option).tag(option)
+                }
+            }
+            .fixedSize()
+    }
+
+    private var studentsSearchField: some View {
+        TextField("Buscar alumno", text: $store.searchText)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 200)
+            .focused($isSearchFocused)
+            .appOnChange(of: store.searchText) { _ in
+                scheduleSearchDebounce()
+            }
+    }
+
+    private var studentsHeaderSubtitle: String {
+        let className = selectedClassId.flatMap { id in
+            studentsBridgeStore.classes.first(where: { $0.id == id })?.name
+        } ?? "Todas las clases"
+        let count = filteredRows.count
+        return "\(className) · \(count) alumno\(count == 1 ? "" : "s")"
     }
 
     private var studentsHeader: some View {
         MacPremiumModuleHeader(
             title: "Alumnado",
-            subtitle: "Seguimiento, asistencia, media e incidencias.",
+            subtitle: studentsHeaderSubtitle,
             state: studentsOperationState,
             primaryAction: MacPremiumHeaderAction(
                 title: "Nuevo alumno",
@@ -774,7 +763,9 @@ struct MacStudentsView: View {
                     Task { await reloadRows() }
                 }
             ]
-        )
+        ) {
+            studentsSearchField
+        }
     }
 
     private var studentsOperationState: MacPremiumOperationStateKind? {
@@ -791,12 +782,28 @@ struct MacStudentsView: View {
     private var studentsTable: some View {
         MacPremiumTableContainer(
             title: "Listado de alumnado",
-            subtitle: selectedClassId == nil ? "Todas las clases visibles" : "Clase seleccionada",
             count: filteredRows.count,
-            isLoading: store.isLoadingRows
+            isLoading: store.isLoadingRows,
+            showsHeader: false
         ) {
             studentsTableContent
         }
+    }
+
+    /// Media con coma decimal según el idioma; nil si no hay nota («--»).
+    static func formattedAverage(_ raw: String) -> String? {
+        guard let value = Double(raw.replacingOccurrences(of: ",", with: ".")) else { return nil }
+        return value.formatted(.number.precision(.fractionLength(2)))
+    }
+
+    /// Solo devuelve texto si la última asistencia no es una presencia normal.
+    static func notableAttendanceLabel(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.lowercased()
+        if trimmed.isEmpty || normalized == "sin registro" || normalized.hasPrefix("presen") {
+            return nil
+        }
+        return trimmed.prefix(1).uppercased() + trimmed.dropFirst().lowercased()
     }
 
     @ViewBuilder
@@ -836,43 +843,63 @@ struct MacStudentsView: View {
                         }
                     }
                 }
-                TableColumn("Clase") { row in
-                    Text(row.className)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                // Con un grupo elegido, «Clase» repetiría el mismo valor en cada fila.
+                if selectedClassId == nil {
+                    TableColumn("Clase") { row in
+                        Text(row.className)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    .width(min: 80, ideal: 100)
                 }
+                // Solo se pinta lo que se sale de lo normal; lo normal queda vacío.
                 TableColumn("Seguimiento") { row in
-                    MacStatusPill(
-                        label: row.followUpLabel,
-                        isActive: row.isFollowUp,
-                        tint: row.isInjured ? MacAppStyle.warningTint : (row.isFollowUp ? MacAppStyle.infoTint : MacAppStyle.successTint)
-                    )
+                    if row.isInjured || row.isFollowUp {
+                        MacStatusPill(
+                            label: row.followUpLabel,
+                            isActive: true,
+                            tint: row.isInjured ? MacAppStyle.warningTint : MacAppStyle.infoTint
+                        )
+                    }
                 }
-                .width(min: 112, ideal: 130)
-                TableColumn("Asistencia reciente") { row in
-                    Text(row.recentAttendanceLabel)
-                        .font(.system(size: 12, weight: .medium))
+                .width(min: 100, ideal: 120)
+                TableColumn("Asistencia") { row in
+                    if let label = Self.notableAttendanceLabel(row.recentAttendanceLabel) {
+                        Text(label)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(MacAppStyle.warningTint)
+                    }
                 }
-                .width(min: 130, ideal: 150)
+                .width(min: 90, ideal: 110)
                 TableColumn("Media") { row in
-                    Text(row.averageText)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    let average = Self.formattedAverage(row.averageText)
+                    Text(average ?? "Sin nota")
+                        .font(.system(size: 12, weight: average == nil ? .regular : .semibold, design: .rounded))
+                        .foregroundStyle(average == nil ? .tertiary : .primary)
                         .monospacedDigit()
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .width(min: 70, ideal: 82)
                 TableColumn("Incidencias") { row in
-                    Text("\(row.incidentCount)")
-                        .font(.system(size: 12, weight: row.incidentCount > 0 ? .bold : .regular))
-                        .foregroundStyle(row.incidentCount > 0 ? .red : .secondary)
-                        .monospacedDigit()
+                    if row.incidentCount > 0 {
+                        Text("\(row.incidentCount)")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.red)
+                            .monospacedDigit()
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
                 }
                 .width(min: 82, ideal: 96)
                 TableColumn("Última observación") { row in
-                    Text(row.lastObservationText)
-                        .font(.system(size: 12))
-                        .foregroundStyle(row.lastObservationText == "Sin observaciones" ? .secondary : .primary)
-                        .lineLimit(1)
+                    if row.lastObservationText != "Sin observaciones" {
+                        Text(row.lastObservationText)
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(row.lastObservationText)
+                    }
                 }
+                .width(min: 140, ideal: 220)
             }
             .tableStyle(.inset(alternatesRowBackgrounds: true))
             .contextMenu(forSelectionType: Int64.self) { selectedIds in
@@ -1385,7 +1412,12 @@ struct MacStudentsView: View {
             }
         }
         do {
-            store.rows = try await bridge.loadMacStudentRows(classId: selectedClassId)
+            let requestedClassId = selectedClassId
+            let loadedRows = try await bridge.loadMacStudentRows(classId: requestedClassId)
+            // Si el grupo cambió mientras se cargaba, esta respuesta es de otro grupo:
+            // no la pintamos (la carga del grupo nuevo ya está en marcha).
+            guard requestedClassId == selectedClassId else { return }
+            store.rows = loadedRows
             let visibleIds = filteredRows.map(\.id)
             if let preferredStudentId, visibleIds.contains(preferredStudentId) {
                 store.localSelectedStudentId = preferredStudentId

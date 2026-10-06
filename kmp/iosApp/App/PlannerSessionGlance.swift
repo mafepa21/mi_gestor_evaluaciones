@@ -7,9 +7,10 @@ struct PlannerSessionGlanceContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Texto neutro: el color del grupo sobre gris no llegaba al contraste mínimo.
             Text(data.situationTitle)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(tint)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
                 .lineLimit(style == .expanded ? 2 : 1)
 
             if !data.badges.isEmpty {
@@ -17,10 +18,10 @@ struct PlannerSessionGlanceContent: View {
                     ForEach(data.badges, id: \.self) { badge in
                         Text(badge)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(tint)
+                            .foregroundStyle(.primary)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 4)
-                            .background(tint.opacity(0.10), in: Capsule())
+                            .background(tint.opacity(0.18), in: Capsule())
                     }
                 }
             }

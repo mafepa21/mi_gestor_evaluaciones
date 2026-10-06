@@ -13,6 +13,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Dashboard: contraste y significado sin depender del color**:
+  - Tarjetas con borde de separador del sistema; controles anteriores a iOS/macOS 26 con borde a 1 pt.
+  - Filas de Atención con el tipo escrito; contadores con fondo de acento a 4,5:1 o más con texto blanco (claro 6,1:1; oscuro 5,4:1).
+  - Con error de carga el texto conserva su contraste; el botón principal desactivado explica por qué; el aviso de error se anuncia como "Sin conexión".
+  - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador genérico) y `MiGestorKMPMac` OK. Contraste calculado con la fórmula WCAG. Sin capturas: no hay simuladores instalados.
+
 - **Dashboard: un solo título y controles en la barra**:
   - La cabecera del contenido queda en fecha y saludo; en iPhone/iPad no se repite el título "Hoy".
   - Modo (Auto/Clase/Despacho) segmentado, estado de sync, «+» (Nueva observación, Evaluación rápida) y «Más» (Exportar, Detalle, Recargar) en la barra: ya no se van al desplazar.

@@ -134,6 +134,13 @@ struct DashboardNowCard: View {
 
             actions(model)
                 .padding(.top, DashboardStyle.Spacing.s1)
+            if model.classId == nil {
+                // Explica el botón apagado; la pista de VoiceOver ya lo dice.
+                Text("Elige un grupo para empezar.")
+                    .font(DashboardStyle.Typography.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
         }
     }
 
@@ -212,6 +219,7 @@ struct DashboardNowCard: View {
                 }
                 .dashboardButtonStyle(prominent: true, large: true)
                 .disabled(model.classId == nil)
+                .accessibilityValue(model.classId == nil ? "No disponible: elige un grupo para empezar" : "")
 
                 Menu {
                     ForEach(Array(model.menuGroups.enumerated()), id: \.offset) { index, group in
@@ -351,7 +359,7 @@ struct DashboardAttentionCard: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .frame(minWidth: 22, minHeight: 22)
-                    .background(DashboardStyle.accent, in: Capsule())
+                    .background(DashboardStyle.accentBadgeFill, in: Capsule())
                     .contentTransition(reduceMotion ? .opacity : .numericText(value: Double(total)))
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: total)
                     .accessibilityLabel("\(total) por atender")
@@ -391,7 +399,7 @@ struct DashboardAttentionCard: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)
                         .frame(minWidth: 22, minHeight: 22)
-                        .background(DashboardStyle.accent, in: Capsule())
+                        .background(DashboardStyle.accentBadgeFill, in: Capsule())
                 }
             }
             .font(DashboardStyle.Typography.footnoteStrong)
@@ -500,12 +508,13 @@ private struct DashboardAttentionRow: View {
                         Text(item.title)
                             .font(DashboardStyle.Typography.headline)
                             .multilineTextAlignment(.leading)
-                        if !item.detail.isEmpty {
-                            Text(item.detail)
-                                .font(DashboardStyle.Typography.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.leading)
-                        }
+                        // El tipo va escrito, no solo en el color del icono.
+                        // VoiceOver ya lo lee en `accessibilitySummary`.
+                        (Text(item.kind.accessibilityName).fontWeight(.semibold)
+                            + Text(item.detail.isEmpty ? "" : " · \(item.detail)"))
+                            .font(DashboardStyle.Typography.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
                     }
                     Spacer(minLength: 0)
                 }

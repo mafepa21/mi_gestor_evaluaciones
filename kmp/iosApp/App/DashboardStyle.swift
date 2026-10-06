@@ -64,6 +64,22 @@ enum DashboardStyle {
 
     static var accent: Color { EvaluationDesign.accent }
 
+    /// Fondo de contadores con texto blanco. En oscuro el acento es demasiado
+    /// claro para el blanco (3,6:1); esta variante llega a 5,4:1 (claro: 6,1:1).
+    static let accentBadgeFill = appAdaptiveBrandColor(
+        light: (0.09, 0.32, 0.92),
+        dark: (0.0, 0.40, 0.85)
+    )
+
+    /// Línea de separación del sistema: borde mínimo de tarjetas y controles.
+    static var separator: Color {
+#if os(iOS)
+        Color(.separator)
+#else
+        Color(nsColor: .separatorColor)
+#endif
+    }
+
     static func cardShape() -> RoundedRectangle {
         RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
     }
@@ -144,9 +160,12 @@ struct DashboardCardSurface: ViewModifier {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(DashboardStyle.cardFill, in: DashboardStyle.cardShape())
             .overlay {
-                if contrast == .increased {
-                    DashboardStyle.cardShape().strokeBorder(Color.primary.opacity(0.5), lineWidth: 1)
-                }
+                // Borde siempre: el cambio de tono entre tarjeta y fondo no basta
+                // en modo oscuro. Con contraste alto, borde fuerte.
+                DashboardStyle.cardShape().strokeBorder(
+                    contrast == .increased ? Color.primary.opacity(0.5) : DashboardStyle.separator,
+                    lineWidth: contrast == .increased ? 1 : 0.5
+                )
             }
     }
 }
@@ -181,7 +200,7 @@ struct DashboardGlassBackground<S: InsettableShape>: ViewModifier {
         } else {
             content
                 .background(.ultraThinMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5))
+                .overlay(shape.strokeBorder(DashboardStyle.separator, lineWidth: 1))
         }
     }
 }

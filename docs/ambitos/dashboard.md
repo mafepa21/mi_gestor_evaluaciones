@@ -13,6 +13,9 @@
 
 ## Trampas
 
+- Bordes y separadores: `DashboardStyle.separator`, nunca `Color.primary.opacity(<0.1)`.
+- Texto blanco sobre acento: fondo `DashboardStyle.accentBadgeFill`, no `DashboardStyle.accent` (en oscuro solo llega a 3,6:1).
+- Con error de carga no se baja la opacidad del contenido: el aviso de error ya avisa.
 - La barra real de iPhone/iPad es `IOSContextualToolbar` en `IOSRootView.swift` (y la fila `IOSGlobalContextRow`). `AppWorkspaceShell` en `IPadWorkspaceShell.swift` no es la raíz en iOS: su «Acción principal» no se ve.
 - Modo, snapshot y estado de sync llegan a la barra por `WorkspaceLayoutState.configureDashboardToolbar`; si se añade un dato nuevo, meterlo también en `toolbarStateKey` o no se refresca.
 - El modo se comparte por `@AppStorage("dashboard_mode_preference")` entre la vista y las barras.

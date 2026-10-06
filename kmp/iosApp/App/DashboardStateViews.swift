@@ -188,6 +188,7 @@ struct DashboardErrorBanner: View {
             }
             .dashboardButtonStyle()
             .disabled(isRetrying)
+            .accessibilityValue(isRetrying ? "Reintentando" : "")
         }
         .padding(.horizontal, DashboardStyle.Spacing.s2)
         .padding(.vertical, DashboardStyle.Spacing.s1)
@@ -195,7 +196,10 @@ struct DashboardErrorBanner: View {
         .overlay(DashboardStyle.controlShape().fill(DashboardStyle.Tint.alert.opacity(0.10)).allowsHitTesting(false))
         .overlay(DashboardStyle.controlShape().strokeBorder(DashboardStyle.Tint.alert.opacity(0.6), lineWidth: 1))
         .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel("Sin conexión")
+        .onAppear {
+            AccessibilityNotification.Announcement("Sin conexión. Se muestran los últimos datos cargados.").post()
+        }
     }
 }
 

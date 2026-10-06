@@ -33,6 +33,33 @@ struct AppleBridgeBootstrap {
         #endif
     }
 
+    /// Ruta de la base de datos sin abrirla. `current()` abre un driver completo
+    /// (validación, migraciones de rescate, contenedor KMP) y el driver se queda
+    /// abierto: usarlo solo para leer la ruta abría la base hasta 4 veces al
+    /// arrancar y las conexiones extra competían por el fichero.
+    static var databasePath: String {
+        #if os(macOS)
+        if isRunningTests {
+            return MacosDriverKt.getMacosTestDatabasePath()
+        }
+        return MacosDriverKt.getMacosDatabasePath()
+        #else
+        return IosDriverKt.getIosDatabasePath()
+        #endif
+    }
+
+    static var platformName: String {
+        #if os(macOS)
+        return isRunningTests ? "macOS Tests" : "macOS"
+        #else
+        return "iOS"
+        #endif
+    }
+
+    private static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     var connectedStatusText: String {
         "KMP conectado en \(platformName)"
     }

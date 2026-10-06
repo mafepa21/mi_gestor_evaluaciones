@@ -203,10 +203,13 @@ struct MacPremiumTableContainer<Content: View>: View {
     var subtitle: String? = nil
     let count: Int
     var isLoading: Bool = false
+    /// false cuando la pantalla ya muestra título y contador en su cabecera.
+    var showsHeader: Bool = true
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if showsHeader {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
@@ -225,6 +228,7 @@ struct MacPremiumTableContainer<Content: View>: View {
                     isActive: count > 0,
                     tint: MacAppStyle.infoTint
                 )
+            }
             }
 
             ZStack(alignment: .topTrailing) {

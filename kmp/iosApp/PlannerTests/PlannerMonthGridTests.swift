@@ -2077,4 +2077,15 @@ final class PlannerMonthGridTests: XCTestCase {
         XCTAssertTrue(LanSyncPayloadParser.dictionary(from: "no-es-json").isEmpty)
         XCTAssertTrue(LanSyncPayloadParser.dictionary(from: "[1,2]").isEmpty)
     }
+
+    /// Los exámenes de 1º Bach se guardan a las 00:00 locales. Compararlos en UTC
+    /// los ponía en el día anterior y la sincronización creaba copias sin fin.
+    func testExamAtLocalMidnightMatchesItsOwnDay() {
+        var comp = DateComponents()
+        comp.year = 2026; comp.month = 10; comp.day = 8
+        let midnight = Calendar.current.date(from: comp)!
+        let ms = Int64(midnight.timeIntervalSince1970 * 1000)
+        XCTAssertTrue(SchoolCalendarPreset2026_2027.isSameDay(epochMs: ms, targetDateIso: "2026-10-08"))
+        XCTAssertFalse(SchoolCalendarPreset2026_2027.isSameDay(epochMs: ms, targetDateIso: "2026-10-07"))
+    }
 }

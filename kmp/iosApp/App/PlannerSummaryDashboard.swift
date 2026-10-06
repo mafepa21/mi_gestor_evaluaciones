@@ -241,7 +241,7 @@ struct PlannerSummaryDashboard: View {
                 PlannerSummaryMetricCard(
                     title: "Cobertura",
                     value: "\(stats.coveragePercent)%",
-                    subtitle: "\(stats.coveredSlots) de \(stats.totalSlots) franjas",
+                    subtitle: "Clases de tu horario con sesión: \(stats.coveredSlots) de \(stats.totalSlots)",
                     tint: stats.coveragePercent >= 80 ? EvaluationDesign.success : EvaluationDesign.accent,
                     systemImage: "chart.bar.xaxis"
                 )

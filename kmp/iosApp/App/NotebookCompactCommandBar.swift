@@ -254,13 +254,13 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
     private func commandLabel(systemImage: String, label: String, badgeCount: Int = 0) -> some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .bold))
+                .notebookFont(size: 13, weight: .bold)
             Text(label)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .notebookFont(size: 13, weight: .semibold, design: .rounded)
                 .lineLimit(1)
             if badgeCount > 0 {
                 Text("\(badgeCount)")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .notebookFont(size: 11, weight: .bold, design: .rounded)
                     .monospacedDigit()
                     .foregroundStyle(.white)
                     .frame(minWidth: 16, minHeight: 16)

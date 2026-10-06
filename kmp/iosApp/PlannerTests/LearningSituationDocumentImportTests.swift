@@ -1126,6 +1126,85 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.routeVariants[.longFirst]?[1].effectiveMinutes, 30)
     }
 
+    func testBachilleratoSA2BadmintonSessionsImportBothRoutes() throws {
+        let url = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/SA 2 - Smash Together Badminton (1 BAC)/02_SESIONES/sesiones_secuenciadas.docx")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
+        for route in [LearningSituationWeeklySequenceRoute.shortFirst, .longFirst] {
+            let plans = try XCTUnwrap(draft.routeVariants[route])
+            XCTAssertEqual(plans.count, 8)
+            for plan in plans {
+                let expected = plan.sessionType == "LONG" ? 80 : 30
+                let unitKeys = Set(plan.activities.compactMap(\.segmentKey))
+                print("SA2-IMPORT \(route.rawValue) \(plan.sourceLabel.prefix(30)) type=\(plan.sessionType) min=\(plan.effectiveMinutes) acts=\(plan.activities.count) units=\(unitKeys.sorted()) sum=\(plan.activities.compactMap(\.plannedMinutes).reduce(0, +)) dev=\(plan.development.count)")
+                XCTAssertEqual(plan.effectiveMinutes, expected)
+                XCTAssertEqual(plan.activities.compactMap(\.plannedMinutes).reduce(0, +), expected, "\(route.rawValue) \(plan.sourceLabel)")
+            }
+        }
+    }
+
+    func testBachilleratoSA4bHandballSessionsImportBothRoutes() throws {
+        let url = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/SA 4b - Balonmano (1 BAC)/02_SESIONES/sesiones_secuenciadas.docx")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
+        for route in [LearningSituationWeeklySequenceRoute.shortFirst, .longFirst] {
+            let plans = try XCTUnwrap(draft.routeVariants[route])
+            XCTAssertEqual(plans.count, 7)
+            var units = Set<String>()
+            for plan in plans {
+                let expected = plan.sessionType == "SHORT" ? 30 : (plan.sessionType == "LONG_PART_1" ? 40 : 80)
+                let keys = Set(plan.activities.compactMap(\.segmentKey))
+                units.formUnion(keys)
+                print("SA4B-IMPORT \(route.rawValue) type=\(plan.sessionType) min=\(plan.effectiveMinutes) acts=\(plan.activities.count) units=\(keys.sorted()) sum=\(plan.activities.compactMap(\.plannedMinutes).reduce(0, +))")
+                XCTAssertEqual(plan.effectiveMinutes, expected)
+                XCTAssertEqual(plan.activities.compactMap(\.plannedMinutes).reduce(0, +), expected, "\(route.rawValue) \(plan.sourceLabel)")
+            }
+            XCTAssertEqual(units.count, 10, "\(route.rawValue) debe cubrir U01-U10")
+        }
+    }
+
+    /// SA de 1º BAC en formato narrativo (BLOQUE CORTO/LARGO): ambas rutas importan con los minutos exactos.
+    func testBachilleratoNarrativeSAsImportBothRoutes() throws {
+        let root = "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato"
+        let cases: [(folder: String, units: Int)] = [
+            ("SA 5 - Primeros Auxilios y RCP (1 BAC)", 3),
+            ("SA 6 - Ultimate Frisbee (1 BAC)", 8),
+            ("SA 7 - Acrosport y Evento Sostenible (1 BAC)", 8),
+            ("SA 2b - Challenge Yourself (1 BAC)", 8),
+            ("SA 3 - Building Health", 10),
+            ("SA 4 - Pilota Valenciana (1 BAC)", 6),
+            ("00 - Evaluación Inicial (1 BAC)", 4),
+        ]
+        for item in cases {
+            let url = URL(fileURLWithPath: "\(root)/\(item.folder)/02_SESIONES/sesiones_secuenciadas.docx")
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
+            for route in [LearningSituationWeeklySequenceRoute.shortFirst, .longFirst] {
+                let plans = try XCTUnwrap(draft.routeVariants[route], item.folder)
+                var units = Set<String>()
+                for plan in plans {
+                    let expected = plan.sessionType == "SHORT" ? 30 : (plan.sessionType == "LONG_PART_1" ? 40 : 80)
+                    units.formUnion(plan.activities.compactMap(\.segmentKey))
+                    print("NARR-IMPORT visuals=\(plan.visuals.count) \(item.folder.prefix(5)) \(route.rawValue) type=\(plan.sessionType) min=\(plan.effectiveMinutes) acts=\(plan.activities.count) sum=\(plan.activities.compactMap(\.plannedMinutes).reduce(0, +))")
+                    XCTAssertEqual(plan.effectiveMinutes, expected, "\(item.folder) \(route.rawValue)")
+                    XCTAssertEqual(plan.activities.compactMap(\.plannedMinutes).reduce(0, +), expected, "\(item.folder) \(route.rawValue) \(plan.sourceLabel)")
+                }
+                XCTAssertEqual(units.count, item.units, "\(item.folder) \(route.rawValue) debe cubrir todas las unidades")
+            }
+        }
+    }
+
+    func testBachilleratoSA1BaseballWeeklySessionsImport() throws {
+        let url = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/1º Bachillerato/SA 1 - Béisbol (1 BAC)/02_SESIONES/sesiones_secuenciadas.docx")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(from: url)
+        for plan in draft.plans {
+            print("SA1-IMPORT visuals=\(plan.visuals.count) \(plan.sessionNumber) type=\(plan.sessionType) min=\(plan.effectiveMinutes) acts=\(plan.activities.count) dev=\(plan.development.count) week=\(plan.weekKey ?? "-")")
+        }
+        XCTAssertEqual(draft.plans.count, 10)
+        XCTAssertTrue(draft.plans.allSatisfy { !$0.objective.isEmpty })
+    }
+
     func testMislataCurricularFilesImportSuccessfully() throws {
         let service = LearningSituationSessionSequenceDocumentImportService()
 

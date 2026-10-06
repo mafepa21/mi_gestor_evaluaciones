@@ -413,22 +413,25 @@ struct WebSubmissionPublishSheet: View {
     @ViewBuilder
     private func publishedContent(_ result: WebPublishResult) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            // Los dos pasos van primero y numerados: sin hacerlos, el formulario
-            // no funciona, y es donde más fácil es quedarse a medias.
+            // Los pasos van primero: sin hacerlos, el formulario no funciona, y es
+            // donde más fácil es quedarse a medias. Con el manifiesto dentro de los
+            // enlaces solo queda repartirlos, así que no hay lista numerada.
             VStack(alignment: .leading, spacing: 12) {
-                Text("Te quedan dos cosas por hacer")
+                Text(result.isSelfContained ? "Te queda una cosa por hacer" : "Te quedan dos cosas por hacer")
                     .font(.headline)
 
-                stepCard(
-                    number: 1,
-                    title: "Sube el manifiesto a la web",
-                    detail: "Copia este fichero a la carpeta public/manifiestos/ del repo de la web, SIN cambiarle el nombre, y despliega. Los enlaces buscan ese nombre exacto. Se puede subir a un sitio público: solo lleva preguntas y una clave pública.",
-                    path: result.manifestPath,
-                    tint: .indigo
-                )
+                if !result.isSelfContained {
+                    stepCard(
+                        number: 1,
+                        title: "Sube el manifiesto a la web",
+                        detail: "Copia este fichero a la carpeta public/manifiestos/ del repo de la web, SIN cambiarle el nombre, y despliega. Los enlaces buscan ese nombre exacto. Se puede subir a un sitio público: solo lleva preguntas y una clave pública.",
+                        path: result.manifestPath,
+                        tint: .indigo
+                    )
+                }
 
                 stepCard(
-                    number: 2,
+                    number: result.isSelfContained ? nil : 2,
                     title: "Reparte los enlaces en privado",
                     detail: "Un enlace por alumno. Esta hoja SÍ relaciona nombre y código: no la subas a ningún sitio ni la mandes al grupo entero.",
                     path: result.linksPath,
@@ -462,8 +465,11 @@ struct WebSubmissionPublishSheet: View {
                         Text(enlace.url)
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
+                            // Con el manifiesto dentro, la URL mide 1-3 KB: una sola
+                            // línea cortada por el medio. "Copiar todos" copia completos.
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                             .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -475,17 +481,19 @@ struct WebSubmissionPublishSheet: View {
     }
 
     private func stepCard(
-        number: Int,
+        number: Int?,
         title: String,
         detail: String,
         path: String,
         tint: Color
     ) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Text("\(number)")
-                .font(.callout.weight(.bold))
-                .frame(width: 26, height: 26)
-                .background(tint.opacity(0.18), in: Circle())
+            if let number {
+                Text("\(number)")
+                    .font(.callout.weight(.bold))
+                    .frame(width: 26, height: 26)
+                    .background(tint.opacity(0.18), in: Circle())
+            }
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)

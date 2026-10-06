@@ -33,6 +33,13 @@ struct GroupScheduleState: Identifiable {
     }
 }
 
+/// Acción que se repite con «Reintentar» tras un error en línea.
+enum LearningSituationScheduleRetry: Equatable {
+    case loadAll
+    case project
+    case save
+}
+
 struct LearningSituationScheduleSheet: View {
     let situation: LearningSituation
     let bridge: KmpBridge
@@ -40,7 +47,7 @@ struct LearningSituationScheduleSheet: View {
     let onSaved: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
+    @ScaledMetric(relativeTo: .body) private var minimumTapSize: CGFloat = 44
 
     @State private var groupStates: [GroupScheduleState] = []
     @State private var selectedCompactClassId: Int64?
@@ -50,15 +57,17 @@ struct LearningSituationScheduleSheet: View {
 
     @State private var isLoading = false
     @State private var isSaving = false
+    // Errores y avisos en línea (sin alertas).
     @State private var errorMessage = ""
-    @State private var showingErrorAlert = false
+    @State private var failedAction: LearningSituationScheduleRetry?
+    @State private var hasNoEvaluationPeriods = false
+    @State private var hasLoadedGroups = false
 
     // Sequence import & routes (DOCX / Bachillerato)
     @State private var isSequenceImporterPresented = false
     @State private var sequenceDraft: LearningSituationSessionSequenceImportDraft?
     @State private var selectedSequenceRoute: LearningSituationWeeklySequenceRoute?
     @State private var expandedPlanNumbers: Set<Int> = []
-    @State private var isSequenceSectionExpanded = false
 
     private var sortedEvaluationPeriods: [PlannerEvaluationPeriod] {
         evaluationPeriods.sorted { ($0.sortOrder, $0.startDateIso) < ($1.sortOrder, $1.startDateIso) }
@@ -128,53 +137,42 @@ struct LearningSituationScheduleSheet: View {
         return includedGroups.contains { $0.previewCount > 0 }
     }
 
+    /// Grupos incluidos cuya fecha de inicio no coincide con el «Inicio común».
+    private var groupsWithOtherStartDate: Int {
+        let calendar = Calendar(identifier: .iso8601)
+        return includedGroups.filter { !calendar.isDate($0.startDate, inSameDayAs: situationStartDate) }.count
+    }
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Header & Configuration Strip
-                sheetHeader
-                    .padding(.horizontal, EvaluationDesign.screenPadding)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
-
-                // Main Content
-                if isLoading && groupStates.allSatisfy({ $0.slots.isEmpty }) {
-                    loadingView
-                } else if includedGroups.isEmpty {
-                    noGroupsSelectedView
-                } else {
-                    ScrollView(.vertical) {
-                        VStack(spacing: 16) {
-                            sequenceDetailsCard
-
-                            if includedGroups.count == 1, let single = includedGroups.first {
-                                singleGroupView(single)
-                            } else {
-                                multiGroupAdaptiveView
-                            }
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 16) {
+                    sheetHeader
+                    if !errorMessage.isEmpty {
+                        LearningSituationInlineNotice(
+                            kind: .error,
+                            message: errorMessage,
+                            actionTitle: failedAction == nil ? "Cerrar aviso" : "Reintentar"
+                        ) {
+                            retryFailedAction()
                         }
-                        .padding(.horizontal, EvaluationDesign.screenPadding)
-                        .padding(.bottom, 96)
                     }
+                    mainContent
                 }
+                .padding(.horizontal, EvaluationDesign.screenPadding)
+                .padding(.vertical, 16)
             }
             .background(EvaluationDesign.surface)
-            .navigationTitle("Programar SA")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
+            .navigationTitle("Programar sesiones")
+            .appInlineNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") { dismiss() }
+                    Button("Cancelar") { dismiss() }
+                        .disabled(isSaving)
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                floatingBottomBar
-            }
-            .alert("No se pudo programar", isPresented: $showingErrorAlert) {
-                Button("Entendido", role: .cancel) {}
-            } message: {
-                Text(errorMessage)
+                bottomBar
             }
             .fileImporter(
                 isPresented: $isSequenceImporterPresented,
@@ -185,7 +183,7 @@ struct LearningSituationScheduleSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 1040, minHeight: 740)
+        .frame(minWidth: 760, idealWidth: 1040, minHeight: 640, idealHeight: 740)
         #else
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
@@ -196,472 +194,468 @@ struct LearningSituationScheduleSheet: View {
         .appOnChange(of: selectedTermPeriodId) { _ in
             Task { await loadAndProject() }
         }
-        .appOnChange(of: situationStartDate) { newDate in
-            for i in groupStates.indices {
-                groupStates[i].startDate = newDate
+    }
+
+    // MARK: - Contenido
+
+    @ViewBuilder
+    private var mainContent: some View {
+        if !hasLoadedGroups || (isLoading && groupStates.allSatisfy({ $0.slots.isEmpty })) {
+            loadingView
+        } else if hasNoEvaluationPeriods {
+            LearningSituationInlineNotice(
+                kind: .warning,
+                message: "Faltan periodos de evaluación. Créalos en el Planner y vuelve a programar."
+            )
+        } else if groupStates.isEmpty {
+            ContentUnavailableView {
+                Label("No hay grupos vinculados", systemImage: "person.2.slash")
+            } description: {
+                Text("Añade un grupo arriba para programar las sesiones.")
             }
-            Task { await loadAndProject() }
+            .frame(minHeight: 240)
+        } else if includedGroups.isEmpty {
+            ContentUnavailableView {
+                Label("Ningún grupo elegido", systemImage: "person.2.slash")
+            } description: {
+                Text("Marca al menos un grupo arriba para ver su horario.")
+            }
+            .frame(minHeight: 240)
+        } else {
+            sequenceSection
+
+            if includedGroups.count == 1, let single = includedGroups.first {
+                groupCard(single)
+            } else {
+                multiGroupAdaptiveView
+            }
         }
     }
 
-    // MARK: - Header
+    // MARK: - Cabecera
 
     private var sheetHeader: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "sparkles")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(EvaluationDesign.accent)
-                    .frame(width: 42, height: 42)
-                    .background(EvaluationDesign.accentSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        Text(situation.title)
-                            .font(.title3.weight(.bold))
-                            .lineLimit(1)
-
-                        if !situation.subjectLabel.isEmpty {
-                            Text(situation.subjectLabel)
-                                .font(.caption2.weight(.bold))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Color.secondary.opacity(0.12), in: Capsule())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Text("Planificación curricular · Previsión de encaje sobre franjas lectivas reales")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(situation.title)
+                    .font(.title3.weight(.bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Elige cuándo empieza en cada grupo.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
 
-            // Controls: Period Picker, Start Date Picker & DOCX Import
-            HStack(spacing: 12) {
+            // Los controles se reparten en varias líneas cuando no caben.
+            LearningSituationFlowLayout(spacing: 16) {
                 if !sortedEvaluationPeriods.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "calendar")
-                            .font(.caption)
-                            .foregroundStyle(Color.purple)
+                    labeledControl("Evaluación") {
                         Picker("Evaluación", selection: $selectedTermPeriodId) {
                             ForEach(sortedEvaluationPeriods, id: \.id) { period in
                                 Text(period.name).tag(Optional(period.id))
                             }
                         }
                         .pickerStyle(.menu)
+                        .labelsHidden()
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
-                HStack(spacing: 6) {
-                    Image(systemName: "play.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(EvaluationDesign.accent)
-                    Text("Inicio común:")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                    DatePicker(
-                        "",
-                        selection: $situationStartDate,
-                        in: selectedPeriodDateRange,
-                        displayedComponents: [.date]
-                    )
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                Spacer()
-
-                Button {
-                    isSequenceImporterPresented = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: sequenceDraft == nil ? "doc.badge.plus" : "doc.text.fill")
-                        Text(sequenceDraft == nil ? "Secuenciación DOCX" : "DOCX cargado")
+                if includedGroups.count > 1 {
+                    labeledControl("Inicio común") {
+                        HStack(spacing: 8) {
+                            DatePicker(
+                                "Inicio común",
+                                selection: $situationStartDate,
+                                in: selectedPeriodDateRange,
+                                displayedComponents: [.date]
+                            )
+                            .labelsHidden()
+                            Button("Aplicar a todos", action: applyCommonStartDate)
+                                .buttonStyle(.bordered)
+                                .disabled(groupsWithOtherStartDate == 0)
+                        }
                     }
-                    .font(.caption.weight(.semibold))
                 }
-                .buttonStyle(.bordered)
-                .tint(sequenceDraft == nil ? .secondary : EvaluationDesign.accent)
             }
 
-            // Group Selection Strip
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    Text("Grupos:")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+            if includedGroups.count > 1 && groupsWithOtherStartDate > 0 {
+                Text("«Aplicar a todos» cambiará la fecha de \(groupsWithOtherStartDate == 1 ? "1 grupo" : "\(groupsWithOtherStartDate) grupos"). Podrás ajustarlas después.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-                    ForEach($groupStates) { $group in
-                        Toggle(isOn: $group.isIncluded) {
-                            HStack(spacing: 4) {
-                                Image(systemName: group.isIncluded ? "checkmark.circle.fill" : "circle")
-                                Text("\(group.className) (\(group.previewCount)/\(targetSessionCount))")
-                            }
-                            .font(.caption.weight(.semibold))
-                        }
-                        .toggleStyle(.button)
-                        .buttonStyle(.bordered)
-                        .tint(group.isIncluded ? EvaluationDesign.accent : .secondary)
-                    }
+            groupSelection
+        }
+    }
 
-                    let unaddedClasses = bridge.classes.filter { c in !groupStates.contains(where: { $0.classId == c.id }) }
-                    if !unaddedClasses.isEmpty {
-                        Menu {
-                            ForEach(unaddedClasses, id: \.id) { sc in
-                                Button(sc.name) {
-                                    addGroup(classId: sc.id, className: sc.name)
-                                }
-                            }
-                        } label: {
-                            Label("Añadir grupo", systemImage: "plus")
-                                .font(.caption.weight(.semibold))
-                        }
-                        .buttonStyle(.bordered)
+    private func labeledControl<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        let control = content()
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            control
+                .frame(minHeight: minimumTapSize)
+        }
+    }
+
+    private var groupSelection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Grupos")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            LearningSituationFlowLayout(spacing: 8) {
+                ForEach($groupStates) { $group in
+                    Toggle(isOn: $group.isIncluded) {
+                        Label(
+                            "\(group.className) · \(group.previewCount)/\(targetSessionCount)",
+                            systemImage: group.isIncluded ? "checkmark.circle.fill" : "circle"
+                        )
+                        .frame(minHeight: minimumTapSize - 12)
                     }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .tint(group.isIncluded ? EvaluationDesign.accent : .secondary)
+                    .accessibilityLabel("\(group.className), \(group.previewCount) de \(targetSessionCount) sesiones")
+                }
+
+                let unaddedClasses = bridge.classes.filter { c in !groupStates.contains(where: { $0.classId == c.id }) }
+                if !unaddedClasses.isEmpty {
+                    Menu {
+                        ForEach(unaddedClasses, id: \.id) { sc in
+                            Button(sc.name) {
+                                addGroup(classId: sc.id, className: sc.name)
+                            }
+                        }
+                    } label: {
+                        Label("Añadir grupo", systemImage: "plus")
+                            .frame(minHeight: minimumTapSize - 12)
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.bordered)
                 }
             }
         }
-        .padding(14)
-        .plannerGlassPanel(.content, cornerRadius: 16)
     }
 
-    // MARK: - Body Views (Single & Multi-Group Adaptive)
+    // MARK: - Grupos (uno o varios)
 
     private func groupStartDatePicker(for group: GroupScheduleState) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "calendar.badge.clock")
-                .font(.caption2)
-                .foregroundStyle(EvaluationDesign.accent)
-            Text("Inicio:")
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.secondary)
-            DatePicker(
-                "",
-                selection: Binding(
-                    get: { group.startDate },
-                    set: { newDate in
-                        if let idx = groupStates.firstIndex(where: { $0.classId == group.classId }) {
-                            groupStates[idx].startDate = newDate
-                            Task { await loadAndProject() }
-                        }
+        DatePicker(
+            "Fecha de inicio",
+            selection: Binding(
+                get: { group.startDate },
+                set: { newDate in
+                    if let idx = groupStates.firstIndex(where: { $0.classId == group.classId }) {
+                        groupStates[idx].startDate = newDate
+                        Task { await loadAndProject() }
                     }
-                ),
-                in: selectedPeriodDateRange,
-                displayedComponents: [.date]
-            )
-            .labelsHidden()
-            .datePickerStyle(.compact)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            ),
+            in: selectedPeriodDateRange,
+            displayedComponents: [.date]
+        )
+        .frame(minHeight: minimumTapSize)
     }
 
-    private func singleGroupView(_ group: GroupScheduleState) -> some View {
-        VStack(spacing: 16) {
-            HStack {
-                Text(group.className)
-                    .font(.headline.weight(.bold))
-                Spacer()
-                groupStartDatePicker(for: group)
-            }
+    private func groupCard(_ group: GroupScheduleState) -> some View {
+        LearningSituationCard {
+            VStack(alignment: .leading, spacing: 16) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 16) {
+                        groupTitle(group)
+                        Spacer(minLength: 8)
+                        groupStartDatePicker(for: group)
+                            .fixedSize()
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        groupTitle(group)
+                        groupStartDatePicker(for: group)
+                    }
+                }
 
-            if let metrics = group.metrics {
-                TermBoardMetricsStrip(metrics: metrics)
-            }
-            if group.slots.isEmpty {
-                emptySlotsView(for: group.className)
-            } else {
-                TermBoardTimelineView(
-                    slots: group.slots,
-                    bottomPadding: 24
-                )
+                if group.slots.isEmpty {
+                    LearningSituationInlineNotice(
+                        kind: .warning,
+                        message: "\(group.className) no tiene franjas en el horario de esta evaluación. Revisa el horario del Planner."
+                    )
+                } else {
+                    if let metrics = group.metrics {
+                        TermBoardMetricsStrip(metrics: metrics)
+                    }
+                    TermBoardTimelineView(
+                        slots: group.slots,
+                        bottomPadding: 24
+                    )
+                }
             }
         }
+    }
+
+    private func groupTitle(_ group: GroupScheduleState) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(group.className)
+                .font(.headline)
+            let isComplete = group.previewCount >= targetSessionCount
+            Label(
+                "\(group.previewCount) de \(targetSessionCount) sesiones",
+                systemImage: isComplete ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+            )
+            .font(.subheadline)
+            .foregroundStyle(isComplete ? EvaluationDesign.success : IOSAppStyle.warning)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var multiGroupAdaptiveView: some View {
         ViewThatFits(in: .horizontal) {
-            // 1. Regular Horizontal View (iPad landscape, macOS): Two columns side by side!
-            twoColumnHorizontalView
+            // Ancho regular (iPad horizontal, Mac): grupos lado a lado.
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(includedGroups) { group in
+                    groupCard(group)
+                        .frame(minWidth: 440)
+                }
+            }
 
-            // 2. Compact Fallback (iPhone, iPad portrait / split 1/3): Segmented selector
-            compactSegmentedView
+            // Compacto (iPhone, iPad vertical o en multitarea): selector de grupo.
+            compactGroupView
         }
     }
 
-    private var twoColumnHorizontalView: some View {
-        HStack(alignment: .top, spacing: 16) {
-            ForEach(includedGroups) { group in
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(group.className)
-                                .font(.headline.weight(.bold))
-                            Text("\(group.previewCount) de \(targetSessionCount) sesiones")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(group.previewCount >= targetSessionCount ? NotebookStyle.successTint : NotebookStyle.warningTint)
-                        }
-                        Spacer()
-                        groupStartDatePicker(for: group)
-                    }
-
-                    if let metrics = group.metrics {
-                        TermBoardMetricsStrip(metrics: metrics)
-                    }
-
-                    if group.slots.isEmpty {
-                        emptySlotsView(for: group.className)
-                    } else {
-                        TermBoardTimelineView(
-                            slots: group.slots,
-                            bottomPadding: 24
-                        )
-                    }
-                }
-                .padding(14)
-                .plannerGlassPanel(.content, cornerRadius: 16)
-                #if os(macOS)
-                .frame(minWidth: 440)
-                #endif
+    private var compactGroupView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ViewThatFits(in: .horizontal) {
+                compactGroupPicker
+                    .pickerStyle(.segmented)
+                compactGroupPicker
+                    .pickerStyle(.menu)
             }
-        }
-    }
-
-    private var compactSegmentedView: some View {
-        VStack(spacing: 12) {
-            Picker("Grupo", selection: Binding(
-                get: {
-                    if let selected = selectedCompactClassId, includedGroups.contains(where: { $0.classId == selected }) {
-                        return selected
-                    }
-                    return includedGroups.first?.classId ?? 0
-                },
-                set: { selectedCompactClassId = $0 }
-            )) {
-                ForEach(includedGroups) { grp in
-                    Text("\(grp.className) (\(grp.previewCount))").tag(grp.classId)
-                }
-            }
-            .pickerStyle(.segmented)
 
             if let active = includedGroups.first(where: { $0.classId == (selectedCompactClassId ?? includedGroups.first?.classId) }) {
-                singleGroupView(active)
+                groupCard(active)
+            }
+            let others = includedGroups.count - 1
+            Text(others == 1 ? "Hay 1 grupo más. Cámbialo en el selector de arriba." : "Hay \(others) grupos más. Cámbialos en el selector de arriba.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var compactGroupPicker: some View {
+        Picker("Grupo", selection: Binding(
+            get: {
+                if let selected = selectedCompactClassId, includedGroups.contains(where: { $0.classId == selected }) {
+                    return selected
+                }
+                return includedGroups.first?.classId ?? 0
+            },
+            set: { selectedCompactClassId = $0 }
+        )) {
+            ForEach(includedGroups) { grp in
+                Text("\(grp.className) (\(grp.previewCount))").tag(grp.classId)
             }
         }
     }
 
-    // MARK: - Sequence Details Card
+    // MARK: - Secuencia desde Word
 
     @ViewBuilder
-    private var sequenceDetailsCard: some View {
+    private var sequenceSection: some View {
         if let draft = sequenceDraft {
-            DisclosureGroup(isExpanded: $isSequenceSectionExpanded) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Divider()
+            LearningSituationCard(title: "Secuencia desde Word") {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("\(draft.sourceFileName) · \(draft.plans.count) sesiones")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
                     if isRouteAwareDocument {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Itinerario de franjas horarias:")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-
-                                Spacer()
-
-                                if selectedSequenceRoute == nil, let inferred = activeInferredRoute {
-                                    Text("Detectado: \(inferred.displayName)")
-                                        .font(.caption2.weight(.bold))
-                                        .foregroundStyle(EvaluationDesign.accent)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(EvaluationDesign.accentSoft, in: Capsule())
-                                }
-                            }
-
-                            Picker(
-                                "Itinerario",
-                                selection: Binding<LearningSituationWeeklySequenceRoute?>(
-                                    get: { selectedSequenceRoute },
-                                    set: { selectRoute($0) }
-                                )
-                            ) {
-                                Text("Automático según horario").tag(nil as LearningSituationWeeklySequenceRoute?)
-                                ForEach(routeOptions, id: \.self) { route in
-                                    Text(route.displayName).tag(Optional(route))
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-                    }
-
-                    if !draft.warnings.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(draft.warnings, id: \.self) { warning in
-                                Label(warning, systemImage: "exclamationmark.triangle")
-                                    .font(.caption)
-                                    .foregroundStyle(EvaluationDesign.danger)
-                            }
-                        }
-                        .padding(8)
-                        .background(EvaluationDesign.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-
-                    // Quick list of detected session titles
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Planes de sesión detectados:")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        ForEach(draft.plans, id: \.sessionNumber) { plan in
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
+                                Text("Itinerario")
+                                    .font(.subheadline.weight(.semibold))
+                                if selectedSequenceRoute == nil, let inferred = activeInferredRoute {
+                                    Text("Según el horario: \(inferred.displayName)")
+                                        .font(.subheadline)
+                                        .foregroundStyle(EvaluationDesign.accent)
+                                }
+                            }
+                            ViewThatFits(in: .horizontal) {
+                                routePicker
+                                    .pickerStyle(.segmented)
+                                routePicker
+                                    .pickerStyle(.menu)
+                            }
+                        }
+                    }
+
+                    ForEach(draft.warnings, id: \.self) { warning in
+                        LearningSituationInlineNotice(kind: .warning, message: warning)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Sesiones del documento")
+                            .font(.subheadline.weight(.semibold))
+                        ForEach(draft.plans, id: \.sessionNumber) { plan in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text("S\(plan.sessionNumber)")
-                                    .font(.caption2.weight(.bold))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(EvaluationDesign.accentSoft, in: Capsule())
+                                    .font(.subheadline.weight(.bold))
                                     .foregroundStyle(EvaluationDesign.accent)
-
                                 Text(plan.title)
-                                    .font(.caption)
-                                    .lineLimit(1)
-
-                                Spacer()
-
+                                    .font(.subheadline)
+                                Spacer(minLength: 8)
                                 if !plan.criteria.isEmpty {
-                                    Text("\(plan.criteria.count) criterios")
-                                        .font(.caption2)
+                                    Text(plan.criteria.count == 1 ? "1 criterio" : "\(plan.criteria.count) criterios")
+                                        .font(.subheadline)
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                            .accessibilityElement(children: .combine)
                         }
                     }
+
+                    Button("Cambiar documento") {
+                        isSequenceImporterPresented = true
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .padding(.top, 8)
+            }
+        } else {
+            Button {
+                isSequenceImporterPresented = true
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "doc.text")
-                        .foregroundStyle(EvaluationDesign.accent)
-                    Text("Secuenciación activa: \(draft.sourceFileName)")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Text("\(draft.plans.count) sesiones")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(14)
-            .plannerGlassPanel(.content, cornerRadius: 14)
-        }
-    }
-
-    // MARK: - Floating Bottom Bar
-
-    private var floatingBottomBar: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar.badge.clock")
-                        .foregroundStyle(EvaluationDesign.accent)
-                    Text("\(totalPreviewSlotsCount) de \(targetSessionCount * max(1, includedGroups.count)) sesiones encajadas")
-                        .font(.headline)
-                }
-                Text(includedGroups.map { "\($0.className): \($0.previewCount) ses." }.joined(separator: " · "))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button("Cancelar") {
-                dismiss()
+                Label("Usar secuencia desde Word…", systemImage: "doc.badge.plus")
             }
             .buttonStyle(.bordered)
-            .disabled(isSaving)
-
-            Button {
-                Task { await save() }
-            } label: {
-                if isSaving {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(minWidth: 100)
-                } else {
-                    Label("Programar en \(includedGroups.count) grupo\(includedGroups.count == 1 ? "" : "s")", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold))
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(EvaluationDesign.accent)
-            .disabled(!canProgram)
+            .controlSize(.large)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .plannerGlassPanel(.content, cornerRadius: 18, isInteractive: true)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.1), radius: 12, y: 6)
-        .padding(.horizontal, EvaluationDesign.screenPadding)
-        .padding(.bottom, 16)
     }
 
-    // MARK: - State Views
+    private var routePicker: some View {
+        Picker(
+            "Itinerario",
+            selection: Binding<LearningSituationWeeklySequenceRoute?>(
+                get: { selectedSequenceRoute },
+                set: { selectRoute($0) }
+            )
+        ) {
+            Text("Automático según horario").tag(nil as LearningSituationWeeklySequenceRoute?)
+            ForEach(routeOptions, id: \.self) { route in
+                Text(route.displayName).tag(Optional(route))
+            }
+        }
+        .labelsHidden()
+    }
+
+    // MARK: - Barra inferior (chrome del sistema)
+
+    private var bottomBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                bottomStatus
+                Spacer(minLength: 8)
+                programButton
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                bottomStatus
+                programButton
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private var bottomStatus: some View {
+        Text(bottomStatusMessage)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var bottomStatusMessage: String {
+        if isSaving { return "Guardando \(totalPreviewSlotsCount) sesiones…" }
+        if isLoading { return "Calculando horario…" }
+        if hasNoEvaluationPeriods { return "No se puede programar" }
+        if includedGroups.isEmpty { return "Sin grupos" }
+        if !canProgram { return "No se puede programar: no hay franjas libres" }
+        let groups = includedGroups.count == 1 ? "1 grupo" : "\(includedGroups.count) grupos"
+        return "\(groups) · \(totalPreviewSlotsCount) de \(targetSessionCount * max(1, includedGroups.count)) sesiones"
+    }
+
+    private var programButton: some View {
+        Button {
+            Task { await save() }
+        } label: {
+            if isSaving {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Guardando…")
+                }
+            } else {
+                Text("Programar")
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .keyboardShortcut(.defaultAction)
+        .disabled(!canProgram)
+    }
+
+    // MARK: - Estados
 
     private var loadingView: some View {
-        VStack(spacing: 16) {
-            ProgressView()
-                .controlSize(.large)
-            Text("Proyectando encaje en los calendarios lectivos…")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        LearningSituationCard {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Calculando horario…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            LearningSituationSkeletonBlock(lines: 3)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
-    private func emptySlotsView(for groupName: String? = nil) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "calendar.badge.exclamationmark")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text("Sin franjas lectivas encontradas")
-                .font(.headline)
-            Text("El grupo \(groupName ?? "") no tiene franjas horarias configuradas en este periodo de evaluación.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-        }
-        .frame(maxWidth: .infinity, minHeight: 180)
+    // MARK: - Errores en línea
+
+    private func showError(_ message: String, retry: LearningSituationScheduleRetry?) {
+        errorMessage = message
+        failedAction = retry
     }
 
-    private var noGroupsSelectedView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "person.2.slash")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text("Ningún grupo seleccionado")
-                .font(.headline)
-            Text("Activa al menos un grupo arriba para ver su proyección horaria y programar sesiones.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+    private func clearError() {
+        errorMessage = ""
+        failedAction = nil
+    }
+
+    private func retryFailedAction() {
+        let action = failedAction
+        clearError()
+        switch action {
+        case .loadAll:
+            Task { await loadPeriodsAndProject() }
+        case .project:
+            Task { await loadAndProject() }
+        case .save:
+            Task { await save() }
+        case nil:
+            break
         }
-        .frame(maxWidth: .infinity, minHeight: 240)
+    }
+
+    /// Aplica el «Inicio común» a todos los grupos incluidos (tras el aviso visible).
+    private func applyCommonStartDate() {
+        for index in groupStates.indices where groupStates[index].isIncluded {
+            groupStates[index].startDate = situationStartDate
+        }
+        Task { await loadAndProject() }
     }
 
     // MARK: - Projection & Persistence Logic
 
     @MainActor
     private func loadPeriodsAndProject() async {
+        defer { hasLoadedGroups = true }
         do {
             let schedule = try await bridge.plannerTeacherSchedule()
             evaluationPeriods = try await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)
@@ -681,8 +675,7 @@ struct LearningSituationScheduleSheet: View {
             do {
                 links = try await bridge.learningSituationClassLinks(id: situation.id)
             } catch {
-                errorMessage = LearningSituationScheduleLoad.linksFailure
-                showingErrorAlert = true
+                showError(LearningSituationScheduleLoad.linksFailure, retry: .loadAll)
                 return
             }
             var initialGroupIds = links.map(\.classId)
@@ -702,8 +695,7 @@ struct LearningSituationScheduleSheet: View {
 
             await loadAndProject()
         } catch {
-            errorMessage = error.localizedDescription
-            showingErrorAlert = true
+            showError(error.localizedDescription, retry: .loadAll)
         }
     }
 
@@ -730,6 +722,9 @@ struct LearningSituationScheduleSheet: View {
         guard !groupStates.isEmpty else { return }
         isLoading = true
         defer { isLoading = false }
+        if failedAction == .loadAll || failedAction == .project {
+            clearError()
+        }
 
         do {
             let schedule = try await bridge.plannerTeacherSchedule()
@@ -744,10 +739,11 @@ struct LearningSituationScheduleSheet: View {
                 selectedTermPeriodId = first.id
                 resolvedPeriod = first
             } else {
-                errorMessage = "No hay periodos de evaluación configurados."
-                showingErrorAlert = true
+                // Estado en línea, no error: faltan periodos de evaluación en el Planner.
+                hasNoEvaluationPeriods = true
                 return
             }
+            hasNoEvaluationPeriods = false
 
             let allScheduleSlots = try await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)
             let globalNonTeaching = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
@@ -778,8 +774,7 @@ struct LearningSituationScheduleSheet: View {
                 do {
                     versions = try await bridge.learningSituationSessionSequenceVersionsAll()
                 } catch {
-                    errorMessage = LearningSituationScheduleLoad.sequenceFailure
-                    showingErrorAlert = true
+                    showError(LearningSituationScheduleLoad.sequenceFailure, retry: .project)
                     return
                 }
                 let sitVersions = versions.filter { $0.learningSituationId == situation.id }
@@ -788,8 +783,7 @@ struct LearningSituationScheduleSheet: View {
                     do {
                         allPlans = try await bridge.learningSituationSessionPlansAll()
                     } catch {
-                        errorMessage = LearningSituationScheduleLoad.sequenceFailure
-                        showingErrorAlert = true
+                        showError(LearningSituationScheduleLoad.sequenceFailure, retry: .project)
                         return
                     }
                     let plans = allPlans
@@ -1004,8 +998,7 @@ struct LearningSituationScheduleSheet: View {
                 }
             }
         } catch {
-            errorMessage = error.localizedDescription
-            showingErrorAlert = true
+            showError(error.localizedDescription, retry: .project)
         }
     }
 
@@ -1041,15 +1034,12 @@ struct LearningSituationScheduleSheet: View {
                 sequenceDraft = draft
                 selectedSequenceRoute = nil
                 expandedPlanNumbers = Set(draft.plans.prefix(3).map(\.sessionNumber))
-                isSequenceSectionExpanded = true
                 Task { await loadAndProject() }
             } catch {
-                errorMessage = error.localizedDescription
-                showingErrorAlert = true
+                showError(error.localizedDescription, retry: nil)
             }
         case .failure(let error):
-            errorMessage = error.localizedDescription
-            showingErrorAlert = true
+            showError(error.localizedDescription, retry: nil)
         }
     }
 
@@ -1060,6 +1050,7 @@ struct LearningSituationScheduleSheet: View {
 
         isSaving = true
         defer { isSaving = false }
+        if failedAction == .save { clearError() }
 
         do {
             for group in targets {
@@ -1118,8 +1109,7 @@ struct LearningSituationScheduleSheet: View {
             dismiss()
             onSaved()
         } catch {
-            errorMessage = error.localizedDescription
-            showingErrorAlert = true
+            showError("No se pudieron crear las sesiones. \(error.localizedDescription)", retry: .save)
         }
     }
 }

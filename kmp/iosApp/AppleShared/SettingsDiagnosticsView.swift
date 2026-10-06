@@ -93,7 +93,7 @@ struct SettingsDiagnosticsView: View {
         defer { loading = false }
         
         let fileManager = FileManager.default
-        let dbPath = AppleBridgeBootstrap.current().databasePath
+        let dbPath = AppleBridgeBootstrap.databasePath
         let dbURL = URL(fileURLWithPath: dbPath)
         let appDataURL = dbURL.deletingLastPathComponent()
         
@@ -177,8 +177,8 @@ struct SettingsDiagnosticsView: View {
     
     #if os(macOS)
     private func copyDiagnostic(anonymized: Bool) {
-        let dbPath = AppleBridgeBootstrap.current().databasePath
-        let platform = AppleBridgeBootstrap.current().platformName
+        let dbPath = AppleBridgeBootstrap.databasePath
+        let platform = AppleBridgeBootstrap.platformName
         
         let lines = [
             "MiGestor macOS Diagnostic Log",
@@ -193,7 +193,7 @@ struct SettingsDiagnosticsView: View {
     }
     
     private func openLogsFolder() {
-        let dbPath = AppleBridgeBootstrap.current().databasePath
+        let dbPath = AppleBridgeBootstrap.databasePath
         let dbURL = URL(fileURLWithPath: dbPath)
         let logsURL = dbURL.deletingLastPathComponent().appendingPathComponent("logs", isDirectory: true)
         try? FileManager.default.createDirectory(at: logsURL, withIntermediateDirectories: true)

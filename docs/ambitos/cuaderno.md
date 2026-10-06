@@ -28,3 +28,7 @@
 - Las micro-animaciones del grid (`NotebookAnimatedGradeText`, anillo de Media, barra de nivel) dependen de que `animation(value:)`/`keyframeAnimator(trigger:)` no disparen en el primer render: no envolver el grid en `withAnimation` ni cambiar la identidad de la celda al hacer scroll, o los números "rodarán" al aparecer.
 - Grupos de trabajo: `WorkGroupBoardDraft` guarda movimientos recientes 2 s para que una recarga vieja no los pise; el emparejado provisional-real es por nombre y luego por orden. No volver a `selectClass(force = true)` por cada arrastre: usar `scheduleWorkGroupReload` (Kotlin).
 - Los tests de `NotebookViewModelTest` usan scope `Unconfined`: para probar `delay`/debounce hay que pasar un scope con `StandardTestDispatcher(testScheduler)`.
+- Texto del grid: usar `.notebookFont(size:weight:design:)` (en `NotebookGridStyle.swift`), no `.font(.system(size:))`. Escala con Dynamic Type en iOS y no cambia nada en macOS.
+- El grid tiene tope de Dynamic Type en AX2 (`NotebookDynamicType.gridRange`). La altura de fila escala con `notebookRowScale` y lleva el mismo tope a mano (1.95): si cambia uno, cambiar el otro.
+- El deslizamiento de asistencia en la celda Nombre no llega a VoiceOver: sus acciones están duplicadas como `accessibilityAction(named:)`. Toda acción nueva del deslizamiento debe añadirse también ahí.
+- Las cabeceras de columna usan `onTapGesture`; su lectura y su acción de VoiceOver están en `columnHeaderAccessibilityLabel` y en la `accessibilityAction` del mismo bloque.

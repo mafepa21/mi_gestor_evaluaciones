@@ -199,23 +199,30 @@ final class MacBackupStore: ObservableObject {
         lastMessage = "Ruta copiada al portapapeles."
     }
 
-    func exportSelectedBackup() {
-        guard let selectedBackup else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = selectedBackup.descriptor.url.lastPathComponent
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let targetURL = panel.url else { return }
-        
+    func exportEncryptedBackup(_ descriptor: AppleBackupDescriptor, to targetURL: URL, password: String) async throws {
         operationState = .saving("Exportando")
-        Task {
-            do {
-                try await service.exportBackup(selectedBackup.descriptor, to: targetURL)
-                lastMessage = "Backup exportado con éxito a \(targetURL.path)"
-                operationState = .saved("Exportado")
-            } catch {
-                lastMessage = error.localizedDescription
-                operationState = .failed("Error exportando")
-            }
+        do {
+            try await service.exportEncryptedBackup(descriptor, to: targetURL, password: password)
+            lastMessage = "Copia cifrada exportada con éxito a \(targetURL.path)"
+            operationState = .saved("Exportada")
+        } catch {
+            lastMessage = error.localizedDescription
+            operationState = .failed("Error exportando")
+            throw error
+        }
+    }
+
+    func importPortableBackup(from sourceURL: URL, password: String?) async throws {
+        operationState = .saving("Importando")
+        do {
+            _ = try await service.importPortableBackup(from: sourceURL, password: password)
+            lastMessage = "Copia importada y validada con éxito."
+            operationState = .saved("Importada")
+            await loadBackups()
+        } catch {
+            lastMessage = error.localizedDescription
+            operationState = .failed("Error importando")
+            throw error
         }
     }
 

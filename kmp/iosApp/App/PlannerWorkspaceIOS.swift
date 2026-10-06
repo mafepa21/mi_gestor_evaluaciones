@@ -301,9 +301,9 @@ struct PlannerToolbar: View {
 
             if vm.activeSection == .week {
                 compactWeekHeader
-            } else if vm.activeSection == .month {
-                // En vista mensual, la cabecera propia de PlannerMonthCalendarView gestiona la navegación de mes
-            } else {
+            } else if vm.activeSection == .summary {
+                // La tarjeta grande de la SA solo aporta en Resumen; en Día,
+                // Secuencia y Evaluación quitaba altura sin dar información nueva.
                 expandedProgressHeader
             }
 
@@ -468,6 +468,23 @@ struct PlannerToolbar: View {
         .accessibilityLabel("Acciones secundarias del planificador")
     }
 
+    /// Un mismo hito llega repetido (uno por grupo): se cuenta una vez por título y fecha.
+    private var uniqueWeekMilestoneCount: Int {
+        Set(vm.weekMilestones.map { "\($0.dateIso)|\($0.title)" }).count
+    }
+
+    /// «X de Y franjas planificadas»: el grid enseña franjas del horario,
+    /// y «0 sesiones» contradecía una semana llena de clases.
+    private var weekSlotCoverageLabel: String {
+        let cells = vm.weekRenderModel.entriesByCell.values
+        let lessonCells = cells.filter { entries in
+            entries.contains { $0.kind == .session || $0.kind == .scheduledSlot }
+        }
+        let plannedCells = lessonCells.filter { entries in entries.contains { $0.kind == .session } }
+        guard !lessonCells.isEmpty else { return "\(vm.filteredSessions.count) sesiones" }
+        return "\(plannedCells.count) de \(lessonCells.count) franjas planificadas"
+    }
+
     private var compactWeekHeader: some View {
         VStack(alignment: .leading, spacing: isWeekProgressExpanded ? 8 : 0) {
             HStack(alignment: .center, spacing: 8) {
@@ -492,7 +509,7 @@ struct PlannerToolbar: View {
                         HStack(spacing: 4) {
                             Image(systemName: "calendar.badge.clock")
                                 .font(.system(size: 8, weight: .bold))
-                            Text("\(vm.weekMilestones.count) hitos")
+                            Text("\(uniqueWeekMilestoneCount) hitos")
                                 .font(.caption2.weight(.bold))
                         }
                         .foregroundStyle(Color.orange)
@@ -502,7 +519,7 @@ struct PlannerToolbar: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(onShowCalendarMilestones == nil)
-                    .accessibilityLabel("\(vm.weekMilestones.count) hitos del curso")
+                    .accessibilityLabel("\(uniqueWeekMilestoneCount) hitos del curso")
                     .accessibilityHint("Abre el listado de hitos y salidas")
                 }
 
@@ -514,7 +531,7 @@ struct PlannerToolbar: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text("\(vm.filteredSessions.count) sesiones")
+                        Text(weekSlotCoverageLabel)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -529,7 +546,7 @@ struct PlannerToolbar: View {
                     .background(EvaluationDesign.surfaceSoft, in: Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(vm.weekLabel), \(vm.dateRangeLabel), \(vm.filteredSessions.count) sesiones")
+                .accessibilityLabel("\(vm.weekLabel), \(vm.dateRangeLabel), \(weekSlotCoverageLabel)")
                 .accessibilityHint("Mostrar u ocultar las métricas de progreso de la semana")
 
                 Button {
@@ -567,46 +584,19 @@ struct PlannerToolbar: View {
         .plannerGlassPanel(.content, cornerRadius: 14)
     }
 
+    /// Solo se muestra en Resumen: nombre de la SA y contexto. Sin bloque de progreso
+    /// desplegable, porque repetía las cifras de las tarjetas del Resumen.
     private var expandedProgressHeader: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Button {
-                toggleSectionProgress()
-            } label: {
-                HStack(alignment: .center, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(toolbarTitle)
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .lineLimit(1)
-                            .foregroundStyle(.primary)
-                        Text(toolbarSubtitle)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(sectionProgressExpanded ? 90 : 0))
-                }
-            }
-            .buttonStyle(.plain)
-
-            if sectionProgressExpanded {
-                Group {
-                    if let progress = vm.situationProgress(for: vm.selectedSession) {
-                        PlannerSituationProgressStrip(progress: progress)
-                    } else {
-                        PlannerWeekProgressStrip(vm: vm)
-                    }
-                }
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)).animation(.easeOut(duration: 0.2)),
-                    removal: .opacity.animation(.easeIn(duration: 0.15))
-                ))
-            }
+        VStack(alignment: .leading, spacing: 4) {
+            Text(toolbarTitle)
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .foregroundStyle(.primary)
+            Text(toolbarSubtitle)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .plannerGlassPanel(.hero, cornerRadius: 24)
     }

@@ -30,7 +30,7 @@ public final class AppleBackupService: ObservableObject {
 
     private init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
-        let dbPath = AppleBridgeBootstrap.current().databasePath
+        let dbPath = AppleBridgeBootstrap.databasePath
         self.databaseURL = URL(fileURLWithPath: dbPath)
         
         let appDataURL = self.databaseURL.deletingLastPathComponent()
@@ -169,6 +169,7 @@ public final class AppleBackupService: ObservableObject {
                     try fileManager.copyItem(at: sourceSidecar, to: destinationSidecar)
                 }
             }
+            try AppleSQLiteBackupValidator.validateDatabase(at: destinationDBURL)
             
             // 2. Copy attachments
             let destinationAttachmentsURL = packageURL.appendingPathComponent("attachments", isDirectory: true)
@@ -214,7 +215,7 @@ public final class AppleBackupService: ObservableObject {
             // 5. Gather App Metadata
             let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
             let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-            let platform = AppleBridgeBootstrap.current().platformName
+            let platform = AppleBridgeBootstrap.platformName
             
             #if os(macOS)
             let deviceName = Host.current().localizedName ?? "Mac"
@@ -307,9 +308,17 @@ public final class AppleBackupService: ObservableObject {
             
             let checksumsData = try Data(contentsOf: checksumsURL)
             let checksumMap = try JSONDecoder().decode([String: String].self, from: checksumsData)
+            guard let expectedDatabaseChecksum = checksumMap["database.sqlite"],
+                  expectedDatabaseChecksum == descriptor.manifest.checksumSHA256 else {
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 401,
+                    userInfo: [NSLocalizedDescriptionKey: "El checksum principal de la base no coincide con el manifiesto."]
+                )
+            }
             
             for (relPath, expectedChecksum) in checksumMap {
-                let fileURL = packageURL.appendingPathComponent(relPath)
+                let fileURL = try validatedPackageFileURL(relativePath: relPath, packageURL: packageURL)
                 guard fileManager.fileExists(atPath: fileURL.path) else {
                     throw NSError(domain: "AppleBackupService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Falta el archivo: \(relPath)"])
                 }
@@ -319,6 +328,9 @@ public final class AppleBackupService: ObservableObject {
                     throw NSError(domain: "AppleBackupService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Fallo de suma de comprobación (checksum mismatch) en \(relPath)."])
                 }
             }
+            let databaseURL = packageURL.appendingPathComponent("database.sqlite")
+            try validateUsableDatabase(at: databaseURL, context: "la base incluida en la copia")
+            try AppleSQLiteBackupValidator.validateDatabase(at: databaseURL)
             
             verifiedDescriptor.isVerified = true
             verifiedDescriptor.verificationError = nil
@@ -352,6 +364,7 @@ public final class AppleBackupService: ObservableObject {
             let packageURL = descriptor.url
             let sourceDB = packageURL.appendingPathComponent("database.sqlite")
             try validateUsableDatabase(at: sourceDB, context: "la copia seleccionada")
+            try AppleSQLiteBackupValidator.validateDatabase(at: sourceDB)
 
             // 3. Create Emergency Backup
             // Best-effort: si la base activa no es utilizable (vacía o corrupta) no hay nada
@@ -366,80 +379,50 @@ public final class AppleBackupService: ObservableObject {
                 print("[AppleBackupService] Sin copia de emergencia previa a restaurar: \(error.localizedDescription)")
             }
 
-            // 4. Overwrite the database
-            //
-            // El reemplazo es atómico a propósito. La versión anterior hacía
-            // `removeItem` y después `copyItem`, lo que deja una ventana — corta pero
-            // real — en la que la base activa no existe en disco mientras el driver de
-            // SQLDelight la tiene abierta: exactamente la situación que hacía abortar el
-            // proceso en el borrado total (`vnode unlinked while in use` → `SQLITE_IOERR`).
-            // Con `replaceItemAt` la ruta nunca se queda sin fichero, y si la copia falla
-            // a mitad no destruye la base que había.
-            try replaceDatabaseAtomically(with: sourceDB, packageURL: packageURL)
-            
-            // 5. Restore attachments
-            if fileManager.fileExists(atPath: attachmentsURL.path) {
-                try fileManager.removeItem(at: attachmentsURL)
-            }
-            try fileManager.createDirectory(at: attachmentsURL, withIntermediateDirectories: true)
-            
-            let packageAttachments = packageURL.appendingPathComponent("attachments", isDirectory: true)
-            if fileManager.fileExists(atPath: packageAttachments.path) {
-                try copyDirectoryContents(from: packageAttachments, to: attachmentsURL)
+            // 4. Preparar el conjunto completo sin tocar todavía datos activos. La
+            // instantánea SQLite integra cualquier WAL del paquete y vuelve a validarse.
+            let transactionID = UUID().uuidString
+            let stagedDatabaseURL = databaseURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("restore-\(transactionID).sqlite")
+            let stagedAttachmentsURL = attachmentsURL
+                .deletingLastPathComponent()
+                .appendingPathComponent(".restore-\(transactionID)-attachments", isDirectory: true)
+            let stagedLearningSituationsURL = learningSituationsURL
+                .deletingLastPathComponent()
+                .appendingPathComponent(".restore-\(transactionID)-learning-situations", isDirectory: true)
+            let stagedURLs = [stagedDatabaseURL, stagedAttachmentsURL, stagedLearningSituationsURL]
+            defer {
+                stagedURLs.forEach { url in
+                    if fileManager.fileExists(atPath: url.path) {
+                        try? fileManager.removeItem(at: url)
+                    }
+                }
             }
 
-            if fileManager.fileExists(atPath: learningSituationsURL.path) {
-                try fileManager.removeItem(at: learningSituationsURL)
-            }
-            try fileManager.createDirectory(at: learningSituationsURL, withIntermediateDirectories: true)
+            try AppleSQLiteBackupValidator.materializeSnapshot(from: sourceDB, to: stagedDatabaseURL)
+            let packageAttachments = packageURL.appendingPathComponent("attachments", isDirectory: true)
             let packageLearningSituations = packageURL.appendingPathComponent("learning-situations", isDirectory: true)
-            if fileManager.fileExists(atPath: packageLearningSituations.path) {
-                try copyDirectoryContents(from: packageLearningSituations, to: learningSituationsURL)
-            }
+            try stageDirectory(from: packageAttachments, to: stagedAttachmentsURL)
+            try stageDirectory(from: packageLearningSituations, to: stagedLearningSituationsURL)
+
+            // 5. Instalar base + dos árboles como una sola transacción de filesystem.
+            // Si cualquier paso falla, el helper revierte en orden inverso.
+            let activeWalURL = URL(fileURLWithPath: databaseURL.path + "-wal")
+            let activeShmURL = URL(fileURLWithPath: databaseURL.path + "-shm")
+            try AppleBackupRestoreTransaction(fileManager: fileManager).commit([
+                .replace(stagedURL: stagedDatabaseURL, destinationURL: databaseURL),
+                .remove(destinationURL: activeWalURL),
+                .remove(destinationURL: activeShmURL),
+                .replace(stagedURL: stagedAttachmentsURL, destinationURL: attachmentsURL),
+                .replace(stagedURL: stagedLearningSituationsURL, destinationURL: learningSituationsURL),
+            ])
             
             // 6. Trigger restart requirements flag
             self.needsRestart = true
         } catch {
             self.lastError = "Error restaurando copia: \(error.localizedDescription)"
             throw error
-        }
-    }
-
-    /// Sustituye la base activa por `sourceDB` sin que la ruta se quede nunca sin fichero.
-    ///
-    /// `replaceItemAt` consume el elemento de origen, así que primero se hace una copia
-    /// temporal en el mismo directorio (mismo volumen, requisito de la API) y es esa copia
-    /// la que se mueve a su sitio. Los sidecars `-wal`/`-shm` activos se eliminan antes:
-    /// pertenecen a la base anterior y aplicarlos sobre la restaurada la corrompería.
-    private func replaceDatabaseAtomically(with sourceDB: URL, packageURL: URL) throws {
-        let stagingURL = databaseURL
-            .deletingLastPathComponent()
-            .appendingPathComponent("restore-\(UUID().uuidString).sqlite", isDirectory: false)
-
-        try fileManager.copyItem(at: sourceDB, to: stagingURL)
-        defer { try? fileManager.removeItem(at: stagingURL) }
-
-        for suffix in ["-wal", "-shm"] {
-            let activeSidecar = URL(fileURLWithPath: databaseURL.path + suffix)
-            if fileManager.fileExists(atPath: activeSidecar.path) {
-                try fileManager.removeItem(at: activeSidecar)
-            }
-        }
-
-        if fileManager.fileExists(atPath: databaseURL.path) {
-            _ = try fileManager.replaceItemAt(databaseURL, withItemAt: stagingURL)
-        } else {
-            // Primera restauración sobre una instalación sin base: no hay nada que
-            // reemplazar, así que basta con mover la copia a su sitio.
-            try fileManager.moveItem(at: stagingURL, to: databaseURL)
-        }
-
-        for suffix in ["-wal", "-shm"] {
-            let packageSidecar = packageURL.appendingPathComponent("database.sqlite" + suffix)
-            let activeSidecar = URL(fileURLWithPath: databaseURL.path + suffix)
-            if fileManager.fileExists(atPath: packageSidecar.path) {
-                try fileManager.copyItem(at: packageSidecar, to: activeSidecar)
-            }
         }
     }
 
@@ -466,6 +449,153 @@ public final class AppleBackupService: ObservableObject {
             try fileManager.copyItem(at: descriptor.url, to: destinationURL)
         } catch {
             self.lastError = "Error exportando copia: \(error.localizedDescription)"
+            throw error
+        }
+    }
+
+    /// Exporta una copia portable cifrada. El ZIP intermedio y la salida parcial viven en
+    /// staging y se eliminan incluso si la operación falla; nunca se carga el paquete entero
+    /// en memoria.
+    public func exportEncryptedBackup(
+        _ descriptor: AppleBackupDescriptor,
+        to destinationURL: URL,
+        password: String
+    ) async throws {
+        operationState = .exporting
+        defer { operationState = .idle }
+
+        let temporaryRoot = fileManager.temporaryDirectory
+            .appendingPathComponent("migestor-encrypted-export-\(UUID().uuidString)", isDirectory: true)
+        let archiveURL = temporaryRoot.appendingPathComponent("backup.zip")
+        let stagedDestination = destinationURL.deletingLastPathComponent()
+            .appendingPathComponent(".\(UUID().uuidString).migestorbackupx")
+        defer {
+            if fileManager.fileExists(atPath: temporaryRoot.path) { try? fileManager.removeItem(at: temporaryRoot) }
+            if fileManager.fileExists(atPath: stagedDestination.path) { try? fileManager.removeItem(at: stagedDestination) }
+        }
+
+        do {
+            let verified = await verifyBackup(descriptor)
+            guard verified.isRestorable else {
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 400,
+                    userInfo: [NSLocalizedDescriptionKey: "No se puede exportar una copia que no supera la validación de integridad."]
+                )
+            }
+            operationState = .exporting
+            try fileManager.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+            try await Task.detached(priority: .userInitiated) {
+                try AppleBackupPackageArchive.createArchive(packageURL: descriptor.url, archiveURL: archiveURL)
+                try AppleEncryptedBackupContainer.encrypt(
+                    plaintextURL: archiveURL,
+                    destinationURL: stagedDestination,
+                    password: password
+                )
+            }.value
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                _ = try fileManager.replaceItemAt(destinationURL, withItemAt: stagedDestination)
+            } else {
+                try fileManager.moveItem(at: stagedDestination, to: destinationURL)
+            }
+        } catch {
+            self.lastError = "Error exportando copia cifrada: \(error.localizedDescription)"
+            throw error
+        }
+    }
+
+    /// Incorpora al historial una copia externa. Las copias antiguas en directorio siguen
+    /// siendo legibles; las nuevas se descifran y descomprimen en staging antes de pasar por
+    /// checksum, cabecera SQLite, integrity_check y foreign_key_check.
+    public func importPortableBackup(from sourceURL: URL, password: String?) async throws -> AppleBackupDescriptor {
+        operationState = .importing
+        defer { operationState = .idle }
+
+        let importID = UUID().uuidString
+        let temporaryRoot = fileManager.temporaryDirectory
+            .appendingPathComponent("migestor-encrypted-import-\(importID)", isDirectory: true)
+        let decryptedArchiveURL = temporaryRoot.appendingPathComponent("backup.zip")
+        let legacyArchiveURL = temporaryRoot.appendingPathComponent("legacy.zip")
+        let stagedPackageURL = backupsDirectoryURL
+            .appendingPathComponent(".import-\(importID).migestorbackup", isDirectory: true)
+        var finalPackageURL: URL?
+        defer {
+            if fileManager.fileExists(atPath: temporaryRoot.path) { try? fileManager.removeItem(at: temporaryRoot) }
+            if fileManager.fileExists(atPath: stagedPackageURL.path) { try? fileManager.removeItem(at: stagedPackageURL) }
+        }
+
+        do {
+            try ensureDirectoriesExist()
+            let format = try ApplePortableBackupFormat.detect(at: sourceURL)
+            try fileManager.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+            switch format {
+            case .legacyPackage:
+                try await Task.detached(priority: .userInitiated) {
+                    try AppleBackupPackageArchive.createArchive(packageURL: sourceURL, archiveURL: legacyArchiveURL)
+                    try AppleBackupPackageArchive.extractArchive(
+                        archiveURL: legacyArchiveURL,
+                        destinationURL: stagedPackageURL
+                    )
+                }.value
+            case .encryptedV1:
+                guard let password else { throw AppleEncryptedBackupError.passwordRequired }
+                try await Task.detached(priority: .userInitiated) {
+                    try AppleEncryptedBackupContainer.decrypt(
+                        encryptedURL: sourceURL,
+                        destinationURL: decryptedArchiveURL,
+                        password: password
+                    )
+                    try AppleBackupPackageArchive.extractArchive(
+                        archiveURL: decryptedArchiveURL,
+                        destinationURL: stagedPackageURL
+                    )
+                }.value
+            }
+
+            let stagedDescriptor = try loadBackupDescriptor(at: stagedPackageURL)
+            let verified = await verifyBackup(stagedDescriptor)
+            operationState = .importing
+            guard verified.isRestorable else {
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 400,
+                    userInfo: [NSLocalizedDescriptionKey: "La copia importada no supera la validación: \(verified.verificationError ?? "error desconocido")."]
+                )
+            }
+
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyyMMdd_HHmmss"
+            let timestamp = formatter.string(from: stagedDescriptor.manifest.createdAt)
+            let finalURL = backupsDirectoryURL.appendingPathComponent(
+                "imported_\(timestamp)_\(String(importID.prefix(6))).migestorbackup",
+                isDirectory: true
+            )
+            try fileManager.moveItem(at: stagedPackageURL, to: finalURL)
+            finalPackageURL = finalURL
+            await scanBackups()
+            guard let imported = backups.first(where: { $0.url == finalURL }) else {
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 500,
+                    userInfo: [NSLocalizedDescriptionKey: "La copia se validó pero no pudo añadirse al historial."]
+                )
+            }
+            let verifiedImport = await verifyBackup(imported)
+            operationState = .importing
+            guard verifiedImport.isRestorable else {
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 500,
+                    userInfo: [NSLocalizedDescriptionKey: "La copia se importó pero no conservó su validación de integridad."]
+                )
+            }
+            return verifiedImport
+        } catch {
+            if let finalPackageURL, fileManager.fileExists(atPath: finalPackageURL.path) {
+                try? fileManager.removeItem(at: finalPackageURL)
+                await scanBackups()
+            }
+            self.lastError = "Error importando copia: \(error.localizedDescription)"
             throw error
         }
     }
@@ -591,6 +721,56 @@ public final class AppleBackupService: ObservableObject {
                 domain: "AppleBackupService",
                 code: 422,
                 userInfo: [NSLocalizedDescriptionKey: "\(context.prefix(1).uppercased())\(context.dropFirst()) no es una base de datos SQLite válida. Operación cancelada."]
+            )
+        }
+    }
+
+    private func validatedPackageFileURL(relativePath: String, packageURL: URL) throws -> URL {
+        guard !relativePath.hasPrefix("/"),
+              !relativePath.split(separator: "/", omittingEmptySubsequences: false).contains("..") else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: "La copia contiene una ruta no segura: \(relativePath)"]
+            )
+        }
+        let rootURL = packageURL.resolvingSymlinksInPath().standardizedFileURL
+        let root = rootURL.path + "/"
+        let unresolvedCandidate = packageURL.appendingPathComponent(relativePath).standardizedFileURL
+        let candidate = unresolvedCandidate.resolvingSymlinksInPath().standardizedFileURL
+        guard candidate.path.hasPrefix(root) else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: "La copia intenta acceder fuera de su paquete."]
+            )
+        }
+        var componentURL = packageURL
+        for component in relativePath.split(separator: "/") {
+            componentURL.appendPathComponent(String(component))
+            try rejectSymbolicLink(at: componentURL, description: relativePath)
+        }
+        return candidate
+    }
+
+    private func stageDirectory(from source: URL, to destination: URL) throws {
+        try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+        if fileManager.fileExists(atPath: source.path) {
+            try rejectSymbolicLink(at: source, description: source.lastPathComponent)
+            let enumerator = fileManager.enumerator(at: source, includingPropertiesForKeys: nil)
+            while let itemURL = enumerator?.nextObject() as? URL {
+                try rejectSymbolicLink(at: itemURL, description: itemURL.lastPathComponent)
+            }
+            try copyDirectoryContents(from: source, to: destination)
+        }
+    }
+
+    private func rejectSymbolicLink(at url: URL, description: String) throws {
+        guard (try? fileManager.destinationOfSymbolicLink(atPath: url.path)) == nil else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: "La copia contiene un enlace simbólico no admitido: \(description)"]
             )
         }
     }

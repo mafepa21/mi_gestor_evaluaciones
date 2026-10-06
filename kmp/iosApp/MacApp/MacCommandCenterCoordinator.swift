@@ -3,6 +3,12 @@ import AppKit
 
 @MainActor
 final class MacCommandCenterCoordinator: ObservableObject {
+    /// Contraseña con la que la app del Mac habla con su propio helper. Se crea en
+    /// cada arranque del helper y viaja por su stdin (nadie más puede leerla). Antes
+    /// la app mandaba "loopback-token", que el helper rechaza desde que exige
+    /// contraseña también en loopback: el listener y el auto-sync reintentaban sin fin.
+    static private(set) var helperLocalToken: String?
+
     @Published private(set) var statusMessage: String = "La sincronización LAN no está activa en este Mac."
     @Published private(set) var serviceState: ApplePairingServiceState = .stopped
 
@@ -128,7 +134,12 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 .path
             arguments.append(contentsOf: ["--db-path", databasePath])
         }
+        arguments.append("--local-token-stdin")
         launchedProcess.arguments = arguments
+
+        let localToken = UUID().uuidString + UUID().uuidString
+        let stdin = Pipe()
+        launchedProcess.standardInput = stdin
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -198,6 +209,9 @@ final class MacCommandCenterCoordinator: ObservableObject {
 
         do {
             try launchedProcess.run()
+            Self.helperLocalToken = localToken
+            stdin.fileHandleForWriting.write(Data((localToken + "\n").utf8))
+            try? stdin.fileHandleForWriting.close()
             process = launchedProcess
             stdoutPipe = stdout
             stderrPipe = stderr

@@ -13,6 +13,105 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Sábana de asistencia: columna de nombres fija (solo presentación)**:
+  - Un único scroll vertical con dos columnas: nombres fijos a la izquierda y fechas + totales con scroll horizontal propio. Nombres y celdas no pueden desalinearse.
+  - Fila de fechas fija arriba que sigue el desplazamiento horizontal (`onScrollGeometryChange`, iOS 18+ y macOS); en iOS 17 la cabecera se desplaza con la tabla.
+  - Al abrir salta a la columna de hoy (o la última fecha anterior); sombra suave en la columna fija al desplazar.
+  - Alturas de cabecera y pie con `@ScaledMetric` para que ambas columnas casen con letra grande.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. Puerta técnica superada en QA manual del usuario en macOS («Todo el curso»: desplazamiento fluido, fechas y nombres alineados). Sin prueba en iPad/iPhone: no hay runtimes de simulador iOS en este Mac.
+
+- **Sábana de asistencia: deshacer, errores honestos y controles accesibles (solo presentación)**:
+  - «Marcar todos hoy (P)» pasa a «Todos presentes hoy» con Cmd+Mayús+P; se desactiva si no queda nadie por marcar. Tras marcar: aviso «Deshacer» (6 s) y Cmd+Z, que restauran el estado exacto de cada alumno.
+  - Si el guardado masivo falla, la sábana recarga desde la base en vez de seguir mostrando a todos presentes; la vibración de éxito solo suena tras guardar.
+  - Selector de estado: filas de 44 pt, ancho que crece con la letra, estado actual anunciado a VoiceOver; «Limpiar registro» pasa a «Desmarcar».
+  - Barra superior a tamaño normal, búsqueda flexible y «Copiar resumen» solo con icono cuando falta espacio.
+  - `AttendanceUndoBanner` pasa a `AttendanceShared.swift` para compartirlo entre vista del día y sábana.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. Sin prueba manual.
+
+- **Asistencia: rapidez con teclado y menús (solo presentación)**:
+  - Menú al mantener pulsada una fila con los 6 estados, desmarcar, lesión, nota, «Registrar incidencia» y ficha; comparte contenido con el botón «…».
+  - Menú en las celdas del historial para cambiar el estado de ese día sin abrir la ficha.
+  - Teclado en iPad y Mac (iOS 17 / macOS 14): ↑↓ mueven la fila activa (resaltada), P/A/R/M marcan y avanzan, retroceso desmarca, espacio/intro abren la ficha. Solo actúan con la lista enfocada.
+  - Cmd+Mayús+P para «Todos presentes»; pista de atajos en la ficha vacía.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. Sin prueba manual de teclado ni de menús.
+
+- **Asistencia: claridad y seguridad (solo presentación)**:
+  - Filtro «Todos / Con incidencias» como `Picker` segmentado nativo (antes píldoras hechas a mano; «Excepciones» pasa a «Con incidencias»).
+  - «Marcar todos (P)» pasa a «Todos presentes» y se puede deshacer: aviso con «Deshacer» durante 6 s y Cmd+Z (`UndoManager`). Cada alumno recupera su estado exacto, también «sin marcar»; si alguno falla, el aviso dice cuántos.
+  - Ficha del alumno: una sola acción principal («Registrar incidencia») y menú «Abrir en…» (Ficha, Diario, Cuaderno). La nota se guarda sola al salir del campo, al cambiar de alumno o al cerrar la ficha, siempre en el alumno y la fecha en que se empezó a escribir.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. Sin prueba manual en simulador ni dispositivo.
+
+- **Asistencia: accesibilidad (solo presentación)**:
+  - Letra adaptable: se eliminan los tamaños fijos (9-28 pt) en `AttendanceWorkspaceView`, `AttendanceMatrixGridView` y `AttendanceCompactRow`; columnas, filas y chips crecen con `@ScaledMetric`.
+  - VoiceOver: cada celda de la tabla se lee con alumno, fecha y estado (más incidencia o nota); cabeceras marcadas; totales y estadísticas en una frase.
+  - Más que color: «sin dato» pasa de `·` a guion visible; nota con anillo e incidencia con punto relleno.
+  - Zonas táctiles de 44 pt en filtros, alertas y «Marcar todos»; alertas con inicial del apellido.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No se hicieron capturas con letra XL ni prueba de VoiceOver en dispositivo. Las vistas `MacAttendance*` quedan fuera.
+- **Cuaderno accesible (Dynamic Type y VoiceOver)**:
+  - El texto del grid, la barra superior, las pestañas y la barra compacta usa `.notebookFont(size:weight:design:)`: escala con el tamaño de letra del sistema en iOS/iPadOS y no cambia en macOS.
+  - El grid tiene tope de Dynamic Type en AX2 y la altura de fila escala con el mismo tope.
+  - VoiceOver: las acciones del deslizamiento de asistencia en la celda Nombre y las cabeceras de columna tienen etiqueta y acción propias.
+  - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No se hizo QA visual con letra grande ni prueba manual con VoiceOver.
+  - Docs: trampas nuevas en `docs/ambitos/cuaderno.md`.
+
+- **Pulido HIG de Alumnado (Mac) y Planificación (solo presentación)**:
+  - Alumnado (`MacStudentsView.swift`): la lista ya no muestra otro grupo al cambiar rápido (se descartan respuestas tardías); los filtros pasan a una línea sobre la tabla y la búsqueda a la cabecera; «Clase» solo con «Todas las clases»; lo normal se muestra vacío; media con coma decimal a la derecha y «Sin nota» en gris; un solo contador. `MacPremiumTableContainer` gana `showsHeader` (aditivo).
+  - Barra del planificador (`MacRootView.swift`): secciones con texto (Mes, Semana, Día, Secuencia, Huecos, Resumen) vía `toolbarTitle` sin tocar `rawValue`; fuera «Sync» y «Refrescar», la etiqueta de estado sincroniza y recarga (⌘R) en toda la app.
+  - Mes: semanas vacías más bajas, sesión «6ª · grupo» a 11 pt, sin borde rojo. Semana: eje con horas en vez de «P10», sin subtítulo repetido, «+» solo al pasar el ratón, «X de Y franjas planificadas» e hitos sin duplicados.
+  - Día: grupo y SA en texto neutro, sesión repetida resumida, «Impartida» como casilla. Secuencia: barra que solo se llena con lo impartido, leyenda con iconos pegada a la tabla, meses en español.
+  - Huecos (antes «Evaluación · Tablero de Encaje»): título claro, lista recortada, SA en la cabecera de semana. Resumen: tarjeta de SA solo aquí y sin el bloque de progreso duplicado; «Cobertura» explicada.
+  - Verificación: `xcodebuild` `MiGestorKMPMac` OK en cada paso y `MiGestorKMPiOS` (simulador) OK desde la fase C; `MiGestorPlannerTests`: 245 tests, 4 omitidos, 2 fallos preexistentes (`testMislataCurricularFilesImportSuccessfully`, iguales sin estos cambios). QA manual del usuario en Mac en cada fase; no se hizo QA en iPad ni iPhone ni capturas.
+  - Pendiente: los hitos se guardan duplicados por grupo (solo se corrige el conteo en pantalla); el dato «Revisión» ya no aparece en Resumen.
+
+- **Situaciones de Aprendizaje: rediseño de usabilidad y UI (solo presentación)**:
+  - `LearningSituationsWorkspaceView.swift` baja de 3144 a unas 600 líneas; las piezas pasan a 7 archivos nuevos (`LearningSituationsListColumn`, `LearningSituationDetailView`, `LearningSituationsComponents`, `LearningSituationImportReviewSheet`, `LearningSituationDuplicateSheet`, `LearningSituationEvaluationSheet`, `LearningSituationAssessmentReviewView`). La proyección de horarios no se toca.
+  - Lista y detalle: dos columnas en iPad/Mac y pila en ancho estrecho; búsqueda propia, chips de filtro visibles con «Limpiar», estado de carga separado del vacío, selección múltiple con Archivar y Eliminar, un solo cuadro de confirmación de borrado, error de recarga en línea.
+  - Detalle: una sola acción principal («Programar»); «Lo que se creó» pasa tras el contenido curricular, plegado por defecto y con contador; se quitan estadísticas y hash.
+  - Importar: una sola hoja «Revisar importación» para 1 o varios Word, con el grupo del módulo preseleccionado y «Asignar a todas»; sirve también para «Editar ficha».
+  - Evaluar: selector único de origen; las vistas previas pasan de hojas apiladas a pantallas con «Atrás»; la vista previa de rúbrica Excel se elimina y abre directo el editor; «Nueva pestaña» en línea; pesos ≠ 100 % marcados en su fila.
+  - Programar: un solo cierre, controles que se reparten en líneas, `DatePicker` nativos, «Inicio común» solo cambia fechas con «Aplicar a todos», secuencia Word visible, avisos en línea.
+  - Desviaciones del ticket: sin `NavigationSplitView` propio ni `.searchable` (el shell ya los tiene); errores de guardar, borrar e importar siguen en alerta; los pesos ≠ 100 % avisan pero no bloquean; la pantalla «sin periodos» no tiene botón «Abrir Planner».
+  - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK tras cada paso; `LearningSituationDocumentImportTests`, `PlannerTermBoardTests` y `PlannerGanttProjectionTests`: 70 tests, 4 omitidos, 2 fallos preexistentes (`testMislataCurricularFilesImportSuccessfully`, iguales antes de tocar nada). No se hizo QA visual completo (capturas en iPhone, iPad, Mac estrecho y letra XXL) ni se probó con datos reales de importación.
+  - Docs: ámbito `docs/ambitos/situaciones-aprendizaje.md`, mapa de flujos y maqueta viva en `docs/planes/`.
+
+### Fixed
+
+- **Sábana de asistencia: «Limpiar registro» no se guardaba**: solo borraba la marca en pantalla y reaparecía al recargar. Ahora se guarda como desmarcada y, si falla, vuelve a mostrarse con el aviso de error.
+
+- **Apertura fluida del Planner en macOS/iOS**:
+  - El grid semanal ya no enseña «Aún no has configurado tu horario» mientras carga: hasta la primera carga se ve un esqueleto con la forma del grid.
+  - `bind` carga primero grupos, horario y sesiones de la semana y pinta; después, sin bloquear, la previsión del curso, los exámenes de 1º Bach, los planes de SA y el mes.
+  - La previsión (`plannerForecast`) sale de `PlannerScheduleStore.reload` a `reloadForecast`.
+  - La sincronización de exámenes de 1º Bach (lee todo el calendario y borra/crea eventos) solo corre si cambian la versión de la app o los grupos.
+  - Al arrancar, la base de datos se abría 4 veces (`AppleBridgeBootstrap.current()` en KmpBridge, MacAppSessionController, AppleBackupService y AppleDatabaseRescueService). Ahora una: `AppleBridgeBootstrap.databasePath`/`platformName` dan la ruta sin abrir un driver.
+  - `configureAppleSqlite`: los PRAGMA se aplican con `executeQuery` (antes `mmap_size` y `temp_store` fallaban con «Queries can be performed using SQLiteDatabase query...»).
+  - `TeacherScheduleRepositorySqlDelight` (horario, franjas, evaluaciones y previsión) y 5 métodos de `SessionJournalRepositorySqlDelight` corrían en el hilo principal: ahora usan `withContext(Dispatchers.Default)`. Era el cuelgue que quedaba tras pintar el grid.
+  - SyncLAN en Mac: la app mandaba la contraseña fija `loopback-token`, que el helper rechaza desde que exige contraseña también en loopback (604399e3). El listener y el auto-sync fallaban con -1011 sin parar. Ahora la app crea una contraseña por arranque y la pasa al helper por stdin (`--local-token-stdin`); el helper la acepta solo desde loopback. Si el helper responde 401/403, el listener espera 30 s antes de reintentar.
+  - Exámenes de 1º Bach duplicados: `SchoolCalendarPreset2026_2027.isSameDay` comparaba en UTC fechas guardadas a las 00:00 locales; nunca encontraba el examen del día y cada ejecución, en cada dispositivo, creaba otra copia que la sincronización repartía. La base del Mac tenía 1720 eventos, unos 1600 copias (hasta 103 por día y grupo), y todas las lecturas del calendario los cargaban enteros. Ahora compara con el rango local del día; la clave de sincronización pasa a `v2|…` para que la deduplicación existente borre las copias una vez (con borrado sincronizado). Test nuevo `testExamAtLocalMidnightMatchesItsOwnDay`.
+  - Verificación (segunda tanda): `./gradlew :data:desktopTest` 159 tests OK (1 nuevo: `macAppLocalTokenIsAcceptedFromLoopbackEvenWithoutPairing`); `:commandCenterHelper:compileKotlin` OK; `verify_apple_builds.sh` OK; `MiGestorPlannerTests` 232 tests, 4 omitidos, 0 fallos. `./gradlew :shared:test` no se pudo ejecutar en el worktree (falta `local.properties` con el SDK de Android); `kmp/shared` no se tocó. Sin prueba manual Mac↔iPad.
+  - Verificación: `scripts/verify_apple_builds.sh` (macOS y simulador iOS) OK; `MiGestorPlannerTests` (macOS) 231 tests, 4 omitidos: el primer intento dio 1 fallo no identificado y 3 repeticiones posteriores salieron en verde (posible test inestable). No se hizo QA manual al abrir la app ni se midió el tiempo de carga.
+
+### Changed
+
+- **Entregas web: enlace autocontenido, sin subir el manifiesto al repo de la web**:
+  - `WebSubmissionPublisher.swift`: cada enlace personal lleva el manifiesto firmado comprimido (`&m=`, JSON compacto + deflate raw + base64url). Tope de 6000 caracteres: si algún enlace lo supera, ninguno lleva `m` y se vuelve al flujo de subir `public/manifiestos/<id>.json`.
+  - `WebSubmissionPublishSheet.swift`: con enlace autocontenido desaparece el paso «Sube el manifiesto a la web»; las URLs se muestran en una línea con truncado al medio. `WebPublishResult.isSelfContained` nuevo (por defecto `false`).
+  - Web `entregas-alumnado` (rama `codex/enlace-autocontenido`): `src/enlace.mjs` decodifica `m` con `DecompressionStream("deflate-raw")` y topes de tamaño; `m` roto avisa «This form is not trustworthy» sin caer al fichero; enlaces sin `m` siguen cargando el fichero. Debe desplegarse antes de repartir enlaces nuevos.
+  - Sin migración: el contrato del manifiesto y el importador no cambian.
+  - Verificación: web `npm test` 82/0 y `npm run validar` OK; `scripts/interop_entregas_web/verificar.sh` con `ENTREGAS_WEB_REPO` 88/0, incluida la prueba cruzada Swift → web; `scripts/verify_apple_builds.sh` macOS e iOS Simulator OK; en navegador (Vite local) un enlace generado por Swift abre el formulario sin pedir ningún manifiesto y un `m` alterado muestra el aviso. No probado: Safari del iPad real ni enlaces largos en Gmail/Outlook del centro.
+
+### Changed
+
+- **Visor de sesiones del Planner: modo repaso rápido**:
+  - Una sola pantalla con un solo scroll (columna de 820 pt, igual en hoja e inspector). Se quitan Anterior/Siguiente, las pestañas Actividad/Anexos y las tarjetas Organización, Profesorado y Temporización.
+  - Arriba: Objetivo, Montaje (viñetas cortas) y Atención. Debajo: guion por bloques con minutos, hora acumulada desde 00:00 (sin contar el descanso), tipo, título, descripción y consigna CLIL pegada al paso; diagrama ampliable en el paso principal; descanso y Recogida como filas.
+  - «Evidencia y trazabilidad» queda plegada (chunks CLIL, evidencias, criterios, preguntas guía, cierre, adjuntos, DOCX, instrumentos). Los datos que ya no caben en el resumen salen con «Ver más».
+  - Estados de carga, vacío y error reales (antes `try?` tragaba el error). Cabecera sin «LONG», botones de 44 pt, Dynamic Type y VoiceOver por paso.
+  - `PlannerSessionReviewBuilder` (proyección) calcula todo una vez; `PlannerSessionDetailSheet.swift` baja de 1387 a 784 líneas. Nuevo `PlannerSessionReviewComponents.swift` y ámbito `docs/ambitos/planner.md`.
+  - Verificación: `xcodebuild build` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK; `MiGestorPlannerTests` (macOS): 228 tests, 4 omitidos, 0 fallos, con 10 nuevos. No se hizo QA visual ni capturas.
+
+### Changed
+
 - **Grupos del Cuaderno: Liquid Glass y generador de equipos sin cortes**:
   - `CooperativeGroupGeneratorSheet.swift`: layout adaptativo (`ViewThatFits`: dos zonas en ancho, una columna en estrecho); selector segmentado con títulos cortos; `Stepper`, `Toggle` y botones nativos; tarjetas sólidas y botones de vidrio; estado sin alumnado; tamaños de letra por estilo (Dynamic Type); ancho mínimo de macOS 680.
   - `NotebookGroupBoardView.swift`: barra de acciones con vidrio (`GlassEffectContainer`), un solo botón principal («Agrupar automáticamente»), menú «Más» con importar Excel y equipos cooperativos, versión solo iconos en estrecho; columnas al 82 % en compacto con desplazamiento por columna; resalte con borde grueso al soltar; alumnos con altura táctil de 44 pt en iOS; menú contextual «Mover a…» como alternativa accesible al arrastre; helpers `groupGlassButton`, `groupSolidCard` y `groupGlassContainer` con fallback a estilos clásicos antes de iOS/macOS 26.
@@ -117,19 +216,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
-<<<<<<< HEAD
 - **Optimización integral de la pantalla de Asistencia docente**:
   - `AttendanceWorkspaceView.swift`: Eliminada la cabecera duplicada y las 4 tarjetas de métricas fijas que ocupaban más del 50% de la pantalla. Incorporada la sub-barra compacta `attendanceMetricsSubbar` con píldoras de filtro («Todos» / «Excepciones») y botón rápido «Marcar todos (P)». Erradicado el antipatrón de colapso de filas en `DisclosureGroup`: la lista de alumnos es ahora 100% continua, alfabética y estable. Inspector adaptativo por `horizontalSizeClass` (sheet modal en iPhone con detents .medium/.large, panel lateral derecho en iPad/Mac) desacoplado del pase rápido para evitar aperturas no deseadas. Toggle directo de lesión del alumno (`toggleStudentInjury`).
   - `MacAttendanceView.swift`: Paridad total en macOS. Eliminadas las 3 tarjetas de estadísticas fijas en Modo Día, sustituidas por `attendanceMetricsSubbar`. Eliminado `DisclosureGroup` colapsable (`presentSummaryDisclosure`) para mantener la lista continua y alfabética. Conexión de `AttendanceCompactRow` (52pt) y conservación plena de los atajos de teclado nativos (`.onKeyPress` para flechas y estados 'p', 'a', 'r', etc.) con avance de foco automático.
   - `MacAttendanceDayRow.swift`: Simplificado para delegar directamente en `AttendanceCompactRow`, preservando compatibilidad.
   - `IPadWorkspaceShell.swift`: Simplificado `AttendanceRowCard` para delegar en el nuevo `AttendanceCompactRow`.
   - `AttendanceShared.swift`: Añadidos `primaryOptions`, `secondaryOptions` y `accessibleTextColor(for:)`.
-=======
 - **Cuaderno: celdas del grid sin `AnyView`**: `rowCell` (`NotebookModuleGridCells.swift`) pasa a `@ViewBuilder` y delega en `columnRowCell` y `collapsedCategoryRowCell`, con tipos concretos que SwiftUI puede comparar. El fondo de cada celda deja de ser un `Rectangle` hermano en un `ZStack` y pasa a `.background`, una capa menos por celda. Se elimina `NotebookDynamicCellsRow.swift`, que no usaba ninguna pantalla.
 - **Cuaderno: cambiar de pestaña no anima el grid entero**: `NotebookTabButton` ya no envuelve `onSelect` en `withAnimation`. Como `bridge.selectedNotebookTabId` cambia en el acto, la animación arrastraba la reconstrucción de todas las celdas visibles. El deslizamiento de la pastilla se conserva con `.animation(_:value: activeTabId)` limitado al subárbol de `NotebookTabStrip`.
 - **Cuaderno: redimensionar una columna ya no guarda en cada movimiento**: `NotebookResizableHeader` separa `onWidthChange` (solo layout, sin animación) de `onWidthCommit` (al soltar). Antes cada píxel de arrastre llamaba a `bridge.saveColumn` y recargaba el cuaderno. La revisión de anchos entra en la firma de las filas (`gridStructuralInvalidationKey`) para que celdas y cabecera sigan alineadas durante el arrastre.
 - **Cuaderno: índice por columna en cada fila del grid**: `NotebookTableRow.lookup` (`NotebookModuleTypes.swift`) construye una sola vez por fila diccionarios de celdas y notas por columna y por evaluación. Las lecturas por celda visible de `NotebookModuleDisplayFormatting.swift`, `NotebookModuleGridCells.swift` y `NotebookEditableTableCell.swift` pasan de recorrer `persistedCells`/`persistedGrades` a una consulta directa, con la misma regla de "primera coincidencia".
->>>>>>> origin/develop
 - **Rediseño visual y adaptativo del Dashboard docente (Organic Precision v2.2)**:
   - `MacDashboardView.swift`: Unificación completa del Dashboard nativo de macOS con paridad de experiencia: cabecera con saludo horario dinámico y fecha localizada en español, selector segmented reactivo de modos (`Auto`, `Clase`, `Despacho`), Modo Clase centrado (`DashboardClassroomView` con ancho acotado a 680pt) y Modo Despacho reestructurado con franja compacta (`DashboardCompactHeroStrip`), KPIs compartidos a ancho completo y grid responsivo en 3 columnas analíticas (Agenda & Grupos, Radar IA & LOMLOE, Pendientes & Riesgo & Sistema) con fallback balanceado a 2 columnas. Eliminación de estructuras redundantes obsoletas (`DashboardHeroNowCard` y `DashboardQuickActionButton`).
   - `DashboardClassroomView.swift`: Nueva vista cockpit ultra-enfocada para el aula con tarjeta central dominante, tipografía grande (36pt rounded), tiempo transcurrido en tiempo real con `DashboardTimeProgressBar`, dos botones táctiles prominentes de 56pt (*Pasar lista* y *Nueva observación*) y barra inferior contextual con área táctil accesible.
@@ -529,6 +625,11 @@ El formato sigue una variante practica de Keep a Changelog:
 - Las imágenes narrativas se asocian por posición de párrafo además de por título/alt text, por lo que los DOCX que no incluyen `U##` en los metadatos de Word no mezclan apoyos visuales entre unidades.
 - Icono nativo para Compose Desktop: identidad minimalista de cuaderno y validación con variantes `icon-window-light.png`/`icon-window-dark.png` seleccionadas según el tema, además del `icon.icns` del bundle macOS.
 - AppIcon nativo de Apple integrado mediante `AppIcon.icon` de Icon Composer para el target KMP de iPadOS y macOS, con rendiciones `Default` y `Dark` en una única fuente compartida.
+- Exportaciones Apple portables `.migestorbackupx` cifradas y autenticadas con
+  contraseña: formato versionado, PBKDF2-HMAC-SHA256, salt y nonces aleatorios,
+  AES-256-GCM por bloques y límites de tamaño. iOS/iPadOS y macOS ofrecen una acción
+  principal de exportación con confirmación de contraseña, no la guardan y pueden
+  importar tanto el formato nuevo como directorios `.migestorbackup` anteriores.
 - Icono nativo SwiftUI minimalista con diseño squircle en cristal (Liquid Glass) y despliegue del bundle ejecutable en el Escritorio (`Mi Gestor Evaluaciones.app`).
 - Importación directa de manifiestos JSON `mi_gestor.physical-tests-import` desde una Situación de Aprendizaje: valida pruebas personalizadas, escalas, batería y asignación, y crea sus columnas de marca en el Cuaderno de forma idempotente.
 - Captura contextual de pruebas físicas en el Cuaderno: las marcas de tiempo abren cronómetro y entrada manual, y las marcas de distancia o repeticiones usan teclado numérico.
@@ -613,6 +714,16 @@ El formato sigue una variante practica de Keep a Changelog:
 - Activación inicial iPad-first: al completar los cinco pasos de configuración,
   el onboarding ofrece "Abrir Hoy" y navega al cockpit operativo en iOS/iPadOS y
   macOS; bienvenida y checklist usan detents nativos y un drag indicator en iOS.
+- SyncLAN endurece el emparejamiento local: PIN aleatorio con caducidad de 10 minutos
+  y rotación tras vincular/desvincular, máximo de cinco fallos por origen en una
+  ventana de 60 segundos, bloqueo temporal, contador acotado y respuestas/logs que
+  no exponen PIN, token, dispositivo ni dirección remota. Los cuerpos quedan
+  limitados a 16 KiB en handshake, 2 MiB en cambios y 25 MiB en documentos.
+- Las copias Apple conservan el formato `.migestorbackup`, pero su verificación exige
+  ahora checksum principal coherente, cabecera SQLite, `PRAGMA integrity_check` y
+  `PRAGMA foreign_key_check`. La restauración materializa primero una instantánea
+  SQLite autocontenida y prepara base, evidencias y situaciones antes de instalarlas
+  con rollback inverso si falla cualquier paso.
 - Evaluación de rúbricas e instrumentos: la rúbrica individual amplía su área
   de trabajo para mostrar sus cuatro niveles; los selectores numéricos aceptan
   pulsaciones en toda su superficie y la primera columna de la evaluación masiva
@@ -657,6 +768,11 @@ El formato sigue una variante practica de Keep a Changelog:
 - Situaciones de aprendizaje: se añaden lecturas bulk para enlaces de grupo, versiones de secuencia
   y planes de sesión, eliminando el patrón N+1 usado por Situaciones, Cuaderno y Planificador sin
   cambiar el esquema ni requerir migración.
+- La cadena canónica SQLDelight v34→v41 queda cubierta sin ejecutar
+  `RescueMigrations`: el test compara tablas, columnas, índices y claves foráneas de
+  una base actualizada con una base recién creada. No se añade una migración porque
+  no existe un gap reproducible en el camino soportado; el rescate se conserva como
+  fallback para instalaciones históricas con drift.
 - Se añadió la migración 41 con la marca `archived` de `web_form_instances` y operaciones
   SQLDelight transaccionales por lote. No se crean tablas nuevas ni se sincronizan las
   tablas privadas `web_*`.
@@ -702,6 +818,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - ADR `ADR-2026-08-21-session-plan-v2-quick-view.md`: contrato versionado para QUICK VIEW, compatibilidad legacy y persistencia sin migración SQLDelight.
 - ADR `ADR-2026-08-15-bulk-learning-situation-reads.md`: decisión de centralizar las lecturas
   relacionadas con Situaciones en consultas bulk y resolver sus relaciones en memoria en la capa Apple.
+- ADRs de endurecimiento del pairing SyncLAN y de restauración transaccional Apple;
+  el cifrado autenticado de exportaciones se mantiene como trabajo futuro explícito
+  para no romper copias existentes ni improvisar una UX de contraseña.
 - Auditoría y propuesta de rediseño de los instrumentos de evaluación del Cuaderno:
   shell común `Evaluation Workspace`, Liquid Glass reservado al chrome y superficies
   sólidas para el contenido evaluable. Incluye rúbrica individual, evaluación masiva,
@@ -813,6 +932,20 @@ El formato sigue una variante practica de Keep a Changelog:
   snapshot UI del Cuaderno en estado normal sin botón de reintento permanente.
 - `git diff --check`: correcto.
 
+- `./scripts/verify_apple_builds.sh` (2026-08-09, compatibilidad de
+  `MacStudentsView`): XcodeGen correcto; macOS Native e iOS Simulator compilados
+  correctamente.
+- `./scripts/verify_apple_builds.sh` (2026-08-09): XcodeGen correcto; macOS Native
+  e iOS Simulator compilados correctamente.
+- `./gradlew :shared:desktopTest :data:desktopTest`: `BUILD SUCCESSFUL`.
+- `./gradlew :data:desktopTest --tests com.migestor.desktop.sync.LocalSyncServerTest`:
+  `BUILD SUCCESSFUL`.
+- `./gradlew :data:desktopTest --tests com.migestor.data.migration.UpgradePathRegressionTest`:
+  `BUILD SUCCESSFUL`.
+- `xcodebuild ... -only-testing:MiGestorPlannerTests/AppleBackupIntegrityTests test`:
+  4 tests, 0 fallos (`TEST SUCCEEDED`).
+- `xcodebuild -quiet ... -scheme MiGestorKMPiOS ... build` tras el ajuste final de
+  rutas: código de salida 0; solo warnings preexistentes en `KmpBridge.swift`.
 - `./scripts/verify_apple_builds.sh` (2026-08-04): XcodeGen correcto; macOS Native e
   iOS Simulator compilados correctamente.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorPlannerTests
@@ -884,6 +1017,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- `MacStudentsView` separa en helpers tipados la lista de alumnado visible y el manejo
+  del cambio de selección observados por `appOnChange`, evitando que Xcode 26.6 agote
+  el type-checker sin cambiar la selección ni los efectos asociados.
 - Planificador, vista Secuencia/Gantt: la ventana móvil de 13 semanas deja de estar
   anclada permanentemente a la semana actual; incorpora navegación explícita a la
   ventana anterior y siguiente, con etiquetas de semanas visibles y continuidad

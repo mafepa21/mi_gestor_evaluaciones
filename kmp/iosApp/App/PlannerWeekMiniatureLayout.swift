@@ -100,7 +100,9 @@ struct PlannerWeekMiniatureLayout: View {
 
     @ViewBuilder
     private var grid: some View {
-        if vm.teacherSchedule == nil && vm.effectiveScheduleSlots.isEmpty && vm.sessions.isEmpty && vm.evaluationPeriods.isEmpty {
+        if !vm.isLoaded {
+            loadingSkeleton
+        } else if vm.teacherSchedule == nil && vm.effectiveScheduleSlots.isEmpty && vm.sessions.isEmpty && vm.evaluationPeriods.isEmpty {
             emptyScheduleState
         } else {
             VStack(spacing: 8) {
@@ -138,6 +140,27 @@ struct PlannerWeekMiniatureLayout: View {
     }
 
 
+
+    /// Mientras llega la primera carga no se sabe si hay horario: enseñar el aviso
+    /// de "sin horario" en ese hueco era falso. Un esqueleto con la forma del grid.
+    private var loadingSkeleton: some View {
+        VStack(spacing: 4) {
+            ForEach(0..<6, id: \.self) { _ in
+                HStack(spacing: 4) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(EvaluationDesign.surfaceSoft)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: vm.density == .compact ? 44 : 56)
+                    }
+                }
+            }
+        }
+        .padding(.top, gridHeaderHeight)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Cargando la semana")
+    }
 
     /// Sin horario configurado, un grid vacío no dice nada útil. Una única
     /// tarea obvia ("Configurar mi horario") en vez de una rejilla en blanco.

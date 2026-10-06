@@ -177,14 +177,19 @@ struct PlannerMonthCalendarView: View {
         GeometryReader { geometry in
             let weekCount = max(1, grid.weeks.count)
             let totalVerticalSpacing = CGFloat(weekCount - 1) * 6
-            let availableHeight = max(100, geometry.size.height - totalVerticalSpacing)
-            let rowHeight = max(105, availableHeight / CGFloat(weekCount))
+            // Las semanas sin sesiones se quedan bajas; las demás se reparten el resto.
+            let emptyRowHeight: CGFloat = 56
+            let emptyWeekCount = grid.weeks.filter { week in week.allSatisfy { $0.sessions.isEmpty } }.count
+            let busyWeekCount = max(1, weekCount - emptyWeekCount)
+            let availableHeight = max(100, geometry.size.height - totalVerticalSpacing - CGFloat(emptyWeekCount) * emptyRowHeight)
+            let busyRowHeight = max(105, availableHeight / CGFloat(busyWeekCount))
 
             ScrollView(.vertical, showsIndicators: false) {
                 // Lazy: no monta semanas fuera de vista; minHeight conserva el reparto.
                 LazyVStack(spacing: 6) {
                     ForEach(0..<grid.weeks.count, id: \.self) { weekIndex in
                         let week = grid.weeks[weekIndex]
+                        let rowHeight = week.allSatisfy { $0.sessions.isEmpty } ? emptyRowHeight : busyRowHeight
                         HStack(spacing: 6) {
                             ForEach(week) { day in
                                 PlannerMonthDayCell(
@@ -282,9 +287,9 @@ private struct PlannerMonthDayCell: View {
     private func milestoneBadge(_ milestone: PlannerDayMilestone) -> some View {
         HStack(spacing: 3) {
             Image(systemName: milestone.category.iconName)
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 10, weight: .bold))
             Text(milestone.title)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 11, weight: .semibold))
                 .lineLimit(1)
         }
         .foregroundStyle(milestone.category.accentColor)
@@ -293,6 +298,7 @@ private struct PlannerMonthDayCell: View {
         .background(
             Capsule().fill(milestone.category.accentColor.opacity(0.12))
         )
+        .help(milestone.title)
     }
 
     // MARK: - Sessions List
@@ -349,7 +355,8 @@ private struct PlannerMonthDayCell: View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
             .strokeBorder(
                 day.isToday ? Color.accentColor.opacity(0.45) :
-                (day.isHoliday ? Color.red.opacity(0.3) : Color.secondary.opacity(0.1)),
+                // Sin rojo en festivos: parecía un error. La etiqueta del hito ya lo indica.
+                Color.secondary.opacity(0.1),
                 lineWidth: day.isToday ? 1.5 : 1
             )
     }
@@ -374,28 +381,17 @@ private struct PlannerMonthSessionPill: View {
                     .fill(tint)
                     .frame(width: 3)
 
-                Text(session.period > 0 ? "\(session.period)ª" : "")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(tint)
-
-                Text(session.groupName)
-                    .font(.system(size: 9, weight: .bold))
+                // Solo hora de clase y grupo: el título se cortaba siempre («Bádm…»).
+                Text(session.period > 0 ? "\(session.period)ª · \(session.groupName)" : session.groupName)
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-
-                let title = session.teachingUnitName.nilIfBlank ?? session.objectives
-                if !title.isEmpty {
-                    Text("· \(title)")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
 
                 Spacer(minLength: 0)
 
                 if session.status == .completed {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 8))
+                        .font(.system(size: 10))
                         .foregroundStyle(EvaluationDesign.success)
                 }
             }
@@ -407,6 +403,7 @@ private struct PlannerMonthSessionPill: View {
             )
         }
         .buttonStyle(.plain)
+        .help(session.teachingUnitName.nilIfBlank ?? session.objectives)
     }
 }
 

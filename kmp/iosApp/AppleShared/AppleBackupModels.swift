@@ -143,6 +143,7 @@ public enum AppleBackupOperationState: Equatable {
     case verifying
     case restoring
     case exporting
+    case importing
     case failed(String)
     case completed(String)
 }

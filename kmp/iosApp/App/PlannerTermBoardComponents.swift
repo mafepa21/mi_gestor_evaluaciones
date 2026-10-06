@@ -197,7 +197,7 @@ struct TermBoardTimelineView: View {
                 ForEach(groupedSlotsByWeek, id: \.weekKey) { weekGroup in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text(weekGroup.weekTitle)
+                            Text(weekHeaderTitle(weekGroup))
                                 .font(.subheadline.weight(.bold))
                                 .foregroundStyle(.secondary)
                             Spacer()
@@ -209,7 +209,7 @@ struct TermBoardTimelineView: View {
 
                         VStack(spacing: 8) {
                             ForEach(weekGroup.slots) { slot in
-                                slotRow(slot)
+                                slotRow(slot, hidesUnitTitle: sharedUnitTitle(weekGroup) != nil)
                             }
                         }
                     }
@@ -218,6 +218,22 @@ struct TermBoardTimelineView: View {
             .padding(.horizontal, EvaluationDesign.screenPadding)
             .padding(.bottom, bottomPadding)
         }
+    }
+
+    /// Nombre de la SA si todas las sesiones de la semana son de la misma;
+    /// entonces va una vez en la cabecera y no en cada fila.
+    private func sharedUnitTitle(_ group: TermBoardWeekSlotGroup) -> String? {
+        let titles = Set(group.slots.compactMap { slot -> String? in
+            if case .occupied(let session) = slot.kind { return session.teachingUnitName }
+            return nil
+        })
+        guard titles.count == 1, let title = titles.first, !title.isEmpty else { return nil }
+        return title
+    }
+
+    private func weekHeaderTitle(_ group: TermBoardWeekSlotGroup) -> String {
+        guard let title = sharedUnitTitle(group) else { return group.weekTitle }
+        return "\(group.weekTitle) · \(title)"
     }
 
     private var groupedSlotsByWeek: [TermBoardWeekSlotGroup] {
@@ -231,6 +247,7 @@ struct TermBoardTimelineView: View {
         let sortedKeys = grouped.keys.sorted()
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "d MMM"
+        dateFormatter.locale = Locale(identifier: "es_ES")
         dateFormatter.calendar = calendar
 
         return sortedKeys.compactMap { key -> TermBoardWeekSlotGroup? in
@@ -244,7 +261,7 @@ struct TermBoardTimelineView: View {
         }
     }
 
-    private func slotRow(_ slot: TermClassSlot) -> some View {
+    private func slotRow(_ slot: TermClassSlot, hidesUnitTitle: Bool = false) -> some View {
         HStack(alignment: .center, spacing: 14) {
             // Day and time badge
             VStack(alignment: .center, spacing: 2) {
@@ -314,9 +331,11 @@ struct TermBoardTimelineView: View {
                                 .foregroundStyle(EvaluationDesign.accent)
                         }
 
-                        Text(session.teachingUnitName)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
+                        if !hidesUnitTitle {
+                            Text(session.teachingUnitName)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                        }
 
                         Spacer()
 

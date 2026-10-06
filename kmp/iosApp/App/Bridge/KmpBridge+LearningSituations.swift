@@ -609,13 +609,42 @@ extension KmpBridge {
         }
     }
 
+    /// Igualdad de identidad entre los planes guardados de una versión y los de un borrador.
+    /// Los documentos sin rutas conservan el criterio histórico (mismo SHA = misma versión).
+    nonisolated static func sessionPlansMatch(
+        existing: [LearningSituationSessionPlan],
+        draft: [LearningSituationSessionPlanDraft]
+    ) -> Bool {
+        guard draft.contains(where: { $0.sequenceRoute != nil }) else { return true }
+        guard existing.count == draft.count else { return false }
+        return existing.allSatisfy { plan in
+            draft.contains {
+                $0.sessionNumber == Int(plan.sessionNumber)
+                    && $0.sourceLabel == plan.sourceLabel
+                    && $0.sessionType == plan.sessionType
+            }
+        }
+    }
+
     private func persistSessionSequence(
         situation: LearningSituation,
         draft: LearningSituationSessionSequenceImportDraft
     ) async throws -> [Int: Int64] {
         let existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situation.id)
-        if let identicalVersion = existingVersions.first(where: { $0.sha256 == draft.sha256 }) {
-            let existingPlans = try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: identicalVersion.id)
+        // Un documento con rutas (shortFirst/longFirst) genera planes distintos por grupo aunque el
+        // archivo sea el mismo: la versión solo se reutiliza si sus planes coinciden con los del
+        // borrador (misma etiqueta y tipo por sesión). Si no, cada ruta obtiene su propia versión;
+        // antes el segundo grupo heredaba los planes del primero y les sobrescribía el desarrollo.
+        var identicalMatch: (version: LearningSituationSessionSequenceVersion, plans: [LearningSituationSessionPlan])?
+        for candidate in existingVersions where candidate.sha256 == draft.sha256 {
+            let candidatePlans = try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: candidate.id)
+            if Self.sessionPlansMatch(existing: candidatePlans, draft: draft.plans) {
+                identicalMatch = (candidate, candidatePlans)
+                break
+            }
+        }
+        if let identicalMatch {
+            let existingPlans = identicalMatch.plans
             for existingPlan in existingPlans {
                 guard let importedPlan = draft.plans.first(where: { $0.sessionNumber == Int(existingPlan.sessionNumber) }),
                       let developmentJSON = Self.canonicalDevelopmentJSON(

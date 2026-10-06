@@ -52,7 +52,12 @@ enum PlannerSessionPresentationHelper {
             || raw.caseInsensitiveCompare(phase) == .orderedSame
             || genericTerms.contains(normalize(raw))
         
-        if isGeneric {
+        // En explicación y reflexión la primera cita «…» suele ser una consigna o una pregunta, no el
+        // nombre de una tarea: esas fases se titulan con su propia etiqueta.
+        let phaseMoment = NarrativeSessionActivityCompactor.moment(for: phase.isEmpty ? raw : phase)
+        let keepsPhaseTitle = isGeneric && (phaseMoment == .explanation || phaseMoment == .reflection)
+
+        if isGeneric && !keepsPhaseTitle {
             if let extracted = extractGameOrTaskTitle(from: activity.teacherActions) {
                 return extracted
             }
@@ -284,6 +289,44 @@ enum PlannerSessionPresentationHelper {
         )
     }
     
+    /// Separa un texto de propósito que trae fundidos objetivo, material y atención especial
+    /// (documentos antiguos que escribieron las etiquetas en el mismo párrafo).
+    static func splitPurpose(_ text: String) -> (objective: String, material: String, attention: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let materialPattern = #"(?i)material,?\s+(?:space\s+and\s+grouping|espacio\s+y\s+agrupamiento)\s*:"#
+        let attentionPattern = #"(?i)(?:special\s+attention|atenci[oó]n\s+especial)\s*:"#
+        let materialRange = trimmed.range(of: materialPattern, options: .regularExpression)
+        let attentionRange = trimmed.range(of: attentionPattern, options: .regularExpression)
+        guard materialRange != nil || attentionRange != nil else { return (trimmed, "", "") }
+
+        let firstMarker = [materialRange?.lowerBound, attentionRange?.lowerBound].compactMap { $0 }.min() ?? trimmed.endIndex
+        let objective = String(trimmed[..<firstMarker]).trimmingCharacters(in: .whitespacesAndNewlines)
+        var material = ""
+        if let materialRange {
+            let end = attentionRange.map { $0.lowerBound > materialRange.upperBound ? $0.lowerBound : trimmed.endIndex } ?? trimmed.endIndex
+            material = String(trimmed[materialRange.upperBound..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var attention = ""
+        if let attentionRange {
+            let end = materialRange.map { $0.lowerBound > attentionRange.upperBound ? $0.lowerBound : trimmed.endIndex } ?? trimmed.endIndex
+            attention = String(trimmed[attentionRange.upperBound..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return (objective, material, attention)
+    }
+
+    /// Quita del texto docente la línea «Consigna CLIL: …» cuando esa consigna ya se muestra en su banner.
+    static func removingCLILConsigna(from text: String) -> String {
+        text.components(separatedBy: .newlines)
+            .filter { !normalize($0).hasPrefix("consigna clil") }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Identificador técnico del importador (`SF-U01-NARRATIVE-A01`, `LF-U03-A02`…): no se enseña al docente.
+    static func isTechnicalActivityKey(_ key: String) -> Bool {
+        key.range(of: #"^(?:SF|LF)-U[0-9]{2,3}-"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     private static func normalize(_ value: String) -> String {
         value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
@@ -293,75 +336,124 @@ enum PlannerSessionPresentationHelper {
 
 // MARK: - Timeline Bar
 
+/// Barra resumen de la sesión: solo informa (no es interactiva). Un único elemento de accesibilidad
+/// con la duración total, el número de actividades y si hay descanso.
 struct PlannerSessionTimelineBar: View {
     let activities: [LearningSituationSessionActivityDraft]
-    let selectedKey: String?
     let tint: Color
     let effectiveMinutes: Int
-    let onSelectActivity: (String) -> Void
-    
-    private var totalMinutes: Int {
-        let sum = activities.compactMap(\.plannedMinutes).reduce(0, +)
-        return sum > 0 ? sum : max(effectiveMinutes, 1)
+
+    private enum Item {
+        case activity(Int)
+        case rest
     }
-    
+
+    private static let restWidth: CGFloat = 32
+    private static let spacing: CGFloat = 4
+
+    /// Los segmentos (bloques de una sesión LONG) se separan con el descanso legal; ya no depende
+    /// de que haya exactamente 8 actividades.
+    private var items: [Item] {
+        var result: [Item] = []
+        for index in activities.indices {
+            if index > 0,
+               let previous = segment(of: activities[index - 1]),
+               let current = segment(of: activities[index]),
+               previous != current {
+                result.append(.rest)
+            }
+            result.append(.activity(index))
+        }
+        return result
+    }
+
+    private var hasRest: Bool {
+        items.contains { if case .rest = $0 { return true } else { return false } }
+    }
+
+    private func segment(of activity: LearningSituationSessionActivityDraft) -> String? {
+        let key = activity.segmentKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return key.isEmpty ? nil : key
+    }
+
+    private var totalMinutes: Int {
+        max(activities.compactMap(\.plannedMinutes).reduce(0, +), 1)
+    }
+
+    private func minutes(_ activity: LearningSituationSessionActivityDraft) -> Int {
+        activity.plannedMinutes ?? max(totalMinutes / max(activities.count, 1), 1)
+    }
+
+    private var planned: Int { activities.compactMap(\.plannedMinutes).reduce(0, +) }
+
+    private var summaryLabel: String {
+        var parts: [String] = []
+        let total = planned > 0 ? planned : effectiveMinutes
+        if total > 0 { parts.append("Sesión de \(total) minutos") }
+        parts.append(activities.count == 1 ? "1 actividad" : "\(activities.count) actividades")
+        if hasRest { parts.append("con descanso legal de 15 minutos") }
+        if effectiveMinutes > 0, planned > 0, planned != effectiveMinutes {
+            parts.append("\(planned) de \(effectiveMinutes) minutos planificados")
+        }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                ForEach(Array(activities.enumerated()), id: \.element.activityKey) { index, activity in
-                    let isSelected = activity.activityKey == selectedKey
-                    let minutes = activity.plannedMinutes ?? (totalMinutes / max(activities.count, 1))
-                    let weight = CGFloat(minutes) / CGFloat(totalMinutes)
-                    
-                    Button {
-                        onSelectActivity(activity.activityKey)
-                    } label: {
-                        VStack(spacing: 3) {
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(barColor(for: activity, isSelected: isSelected))
-                                .frame(height: isSelected ? 12 : 8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .stroke(isSelected ? Color.primary : Color.clear, lineWidth: 1.5)
-                                )
-                            
-                            Text("\(minutes)'")
-                                .font(.system(size: 10, weight: isSelected ? .bold : .regular, design: .monospaced))
-                                .foregroundStyle(isSelected ? tint : .secondary)
-                                .lineLimit(1)
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { geometry in
+                let restCount = items.filter { if case .rest = $0 { return true } else { return false } }.count
+                let gaps = CGFloat(max(items.count - 1, 0)) * Self.spacing
+                let usable = max(geometry.size.width - gaps - CGFloat(restCount) * Self.restWidth, 40)
+                let sum = max(activities.map(minutes).reduce(0, +), 1)
+                HStack(alignment: .top, spacing: Self.spacing) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                        switch item {
+                        case .activity(let index):
+                            segmentView(activities[index], width: max(usable * CGFloat(minutes(activities[index])) / CGFloat(sum), 16))
+                        case .rest:
+                            VStack(spacing: 4) {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.secondary.opacity(0.18))
+                                    .frame(height: 8)
+                                Text("15'")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .minimumScaleFactor(0.7)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: Self.restWidth)
                         }
-                    }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity)
-                    .layoutPriority(Double(weight * 100))
-                    
-                    // Insertar marcador de descanso legal tras el Bloque 1 si hay 8 actividades en sesión LONG
-                    if activities.count >= 8 && index == 3 {
-                        VStack(spacing: 3) {
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(Color.secondary.opacity(0.18))
-                                .frame(height: 8)
-                            Text("15'☕")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(width: 32)
-                        .accessibilityLabel("Descanso legal 15 minutos")
                     }
                 }
             }
+            .frame(height: 32)
+
+            if effectiveMinutes > 0, planned > 0, planned != effectiveMinutes {
+                Text("\(planned) de \(effectiveMinutes) min planificados")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(EvaluationDesign.surfaceSoft.opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(summaryLabel)
     }
-    
-    private func barColor(for activity: LearningSituationSessionActivityDraft, isSelected: Bool) -> Color {
-        let phase = activity.phase.lowercased()
-        if isSelected {
-            return tint
+
+    private func segmentView(_ activity: LearningSituationSessionActivityDraft, width: CGFloat) -> some View {
+        VStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(barColor(for: activity))
+                .frame(height: 8)
+            Text("\(minutes(activity))'")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
+        .frame(width: width)
+    }
+
+    private func barColor(for activity: LearningSituationSessionActivityDraft) -> Color {
+        let phase = activity.phase.lowercased()
         if phase.contains("activacion") || phase.contains("calentamiento") {
             return tint.opacity(0.60)
         }
@@ -1032,46 +1124,6 @@ enum PlannerSectionKind: Equatable {
     }
 }
 
-struct PlannerActivityDetailSectionCard: View {
-    let kind: PlannerSectionKind
-    let text: String
-    let tint: Color
-    
-    private var cleanText: String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    var body: some View {
-        if !cleanText.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: kind.icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(kind.accentColor ?? tint)
-                        .frame(width: 26, height: 26)
-                        .background((kind.accentColor ?? tint).opacity(0.12), in: Circle())
-                    
-                    Text(kind.title)
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    
-                    Spacer()
-                }
-                
-                PlannerFormattedTextView(text: cleanText, kind: kind, tint: tint)
-            }
-            .padding(14)
-            .background(EvaluationDesign.surfaceSoft)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(EvaluationDesign.border, lineWidth: 1)
-            )
-            .padding(.bottom, 10)
-        }
-    }
-}
-
 struct PlannerFormattedTextView: View {
     let text: String
     let kind: PlannerSectionKind
@@ -1322,3 +1374,50 @@ enum FormattedTextBlock {
     case paragraph(text: String)
 }
 
+
+
+// MARK: - Activity Timer
+
+// MARK: - Enlarged Visual
+
+struct PlannerEnlargedVisual: Identifiable {
+    let id = UUID()
+    let title: String
+    let html: String
+}
+
+/// Diagrama táctico a pantalla completa (o hoja grande en Mac) para verlo desde lejos en pista.
+struct PlannerEnlargedVisualSheet: View {
+    let visual: PlannerEnlargedVisual
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(visual.title)
+                    .font(.headline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Cerrar", systemImage: "xmark.circle.fill")
+                        .labelStyle(.iconOnly)
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cerrar diagrama")
+            }
+            .padding(16)
+            ScrollView {
+                PlannerDocxWebView(html: visual.html, minHeight: 640, idealHeight: 900, maxHeight: 2400)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 16)
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 900, minHeight: 640)
+        #endif
+    }
+}

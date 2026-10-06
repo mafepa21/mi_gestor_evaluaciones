@@ -47,6 +47,12 @@ El formato sigue una variante practica de Keep a Changelog:
   - Más que color: «sin dato» pasa de `·` a guion visible; nota con anillo e incidencia con punto relleno.
   - Zonas táctiles de 44 pt en filtros, alertas y «Marcar todos»; alertas con inicial del apellido.
   - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No se hicieron capturas con letra XL ni prueba de VoiceOver en dispositivo. Las vistas `MacAttendance*` quedan fuera.
+- **Cuaderno accesible (Dynamic Type y VoiceOver)**:
+  - El texto del grid, la barra superior, las pestañas y la barra compacta usa `.notebookFont(size:weight:design:)`: escala con el tamaño de letra del sistema en iOS/iPadOS y no cambia en macOS.
+  - El grid tiene tope de Dynamic Type en AX2 y la altura de fila escala con el mismo tope.
+  - VoiceOver: las acciones del deslizamiento de asistencia en la celda Nombre y las cabeceras de columna tienen etiqueta y acción propias.
+  - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No se hizo QA visual con letra grande ni prueba manual con VoiceOver.
+  - Docs: trampas nuevas en `docs/ambitos/cuaderno.md`.
 
 - **Pulido HIG de Alumnado (Mac) y Planificación (solo presentación)**:
   - Alumnado (`MacStudentsView.swift`): la lista ya no muestra otro grupo al cambiar rápido (se descartan respuestas tardías); los filtros pasan a una línea sobre la tabla y la búsqueda a la cabecera; «Clase» solo con «Todas las clases»; lo normal se muestra vacío; media con coma decimal a la derecha y «Sin nota» en gris; un solo contador. `MacPremiumTableContainer` gana `showsHeader` (aditivo).

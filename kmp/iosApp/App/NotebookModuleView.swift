@@ -24,8 +24,13 @@ struct NotebookModuleView: View {
         isCompactViewActive ? 38 : 50
     }
     #else
+    /// Factor de Dynamic Type para la altura de fila: 1 con la letra estándar.
+    @ScaledMetric(relativeTo: .body) var notebookRowScale: CGFloat = 1
+
     var notebookGridRowHeight: CGFloat {
-        isCompactViewActive ? 44 : (isCompact ? 56 : 52)
+        let base: CGFloat = isCompactViewActive ? 44 : (isCompact ? 56 : 52)
+        // Tope en AX2 (`.body` 33 pt / 17 pt), el mismo que aplica el grid al texto.
+        return (base * min(notebookRowScale, 1.95)).rounded()
     }
     #endif
     let notebookGridHeaderHeight: CGFloat = 60

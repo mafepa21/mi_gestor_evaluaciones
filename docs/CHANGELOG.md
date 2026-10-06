@@ -13,6 +13,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Dashboard en 3 franjas (Ahora · Atención · Contexto)**:
+  - iPad, iPhone y Mac comparten vistas: AHORA con una acción principal, ATENCIÓN (pendientes y riesgo en una lista por urgencia) y CONTEXTO plegado. Modo Clase rediseñado.
+  - Inspector nativo, letra semántica con tope AX2, Reduce Motion respetado y estados vacío, carga, error y sin conexión.
+  - Arreglos: «Pasar lista» abre Asistencia, «Nueva observación» guarda de verdad y las acciones de Educación Física abren su destino.
+  - Rama rescatada (`codex/dashboard-rediseno-3-franjas`) y puesta al día con `develop`; sustituye al PR #285.
+  - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador genérico) y `MiGestorKMPMac` OK. Auditoría HIG (`ui-reviewer`): sin bloqueantes, 9 mejoras pendientes. Sin capturas: no hay simuladores instalados.
+  - Docs: ámbito nuevo `docs/ambitos/dashboard.md`.
+
 - **Sábana de asistencia: columna de nombres fija (solo presentación)**:
   - Un único scroll vertical con dos columnas: nombres fijos a la izquierda y fechas + totales con scroll horizontal propio. Nombres y celdas no pueden desalinearse.
   - Fila de fechas fija arriba que sigue el desplazamiento horizontal (`onScrollGeometryChange`, iOS 18+ y macOS); en iOS 17 la cabecera se desplaza con la tabla.

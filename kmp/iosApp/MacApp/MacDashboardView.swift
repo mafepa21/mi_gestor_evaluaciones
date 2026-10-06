@@ -7,6 +7,8 @@ struct MacDashboardToolbarActions {
     let refresh: () -> Void
     let passList: () -> Void
     let observation: () -> Void
+    var snapshot: DashboardSnapshot? = nil
+    var syncPill: DashboardSyncPill? = nil
 }
 
 enum MacDashboardDestination {
@@ -102,10 +104,7 @@ struct MacDashboardView: View {
                 DashboardHeaderView(
                     greeting: greeting,
                     dateLine: dateLine,
-                    modeRawValue: $modePreferenceRaw,
-                    modeHint: modePreference.resolvedHint(for: activeContext),
-                    snapshot: snapshot,
-                    syncPill: syncPill
+                    modeHint: modePreference.resolvedHint(for: activeContext)
                 )
 
                 if loadFailed, snapshot != nil {
@@ -391,7 +390,8 @@ struct MacDashboardView: View {
     // MARK: Barra de herramientas (shell)
 
     private var toolbarKey: String {
-        "\(activeContext?.classId?.int64Value ?? -1)|\(activeContext.map { dashboardContextStatusLabel($0.status) } ?? "none")"
+        let snapshotKey = snapshot.map { ObjectIdentifier($0).hashValue } ?? 0
+        return "\(activeContext?.classId?.int64Value ?? -1)|\(activeContext.map { dashboardContextStatusLabel($0.status) } ?? "none")|\(snapshotKey)|\(syncPill)"
     }
 
     private func syncToolbarActions() {
@@ -400,7 +400,9 @@ struct MacDashboardView: View {
                 canRunActions: activeContext?.classId != nil,
                 refresh: { retryLoad() },
                 passList: { onNavigate(.attendance(classId: activeContext?.classId?.int64Value)) },
-                observation: { activeSheet = .observation(classId: activeContext?.classId?.int64Value) }
+                observation: { activeSheet = .observation(classId: activeContext?.classId?.int64Value) },
+                snapshot: snapshot,
+                syncPill: syncPill
             )
         )
     }

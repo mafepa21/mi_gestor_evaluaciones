@@ -19,6 +19,13 @@ El formato sigue una variante practica de Keep a Changelog:
   - Con error de carga el texto conserva su contraste; el botón principal desactivado explica por qué; el aviso de error se anuncia como "Sin conexión".
   - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador genérico) y `MiGestorKMPMac` OK. Contraste calculado con la fórmula WCAG. Sin capturas: no hay simuladores instalados.
 
+- **Dashboard: un solo título y controles en la barra**:
+  - La cabecera del contenido queda en fecha y saludo; en iPhone/iPad no se repite el título "Hoy".
+  - Modo (Auto/Clase/Despacho) segmentado, estado de sync, «+» (Nueva observación, Evaluación rápida) y «Más» (Exportar, Detalle, Recargar) en la barra: ya no se van al desplazar.
+  - «Pasar lista» deja de ser botón azul en la barra (iOS y Mac); el protagonista es la franja AHORA. Se mantienen ⌘L, ⌘N y ⌘1/2/3.
+  - Título de módulo de la fila de contexto iOS con letra semántica.
+  - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador genérico) y `MiGestorKMPMac` OK. Sin capturas: no hay simuladores instalados.
+
 - **Dashboard en 3 franjas (Ahora · Atención · Contexto)**:
   - iPad, iPhone y Mac comparten vistas: AHORA con una acción principal, ATENCIÓN (pendientes y riesgo en una lista por urgencia) y CONTEXTO plegado. Modo Clase rediseñado.
   - Inspector nativo, letra semántica con tope AX2, Reduce Motion respetado y estados vacío, carga, error y sin conexión.

@@ -2,39 +2,17 @@ import SwiftUI
 import UniformTypeIdentifiers
 import MiGestorKit
 
-// MARK: - Cabecera del Dashboard: saludo + controles de cristal
+// MARK: - Cabecera del Dashboard: fecha + saludo
 
+/// Único título de la pantalla. El selector de modo, Exportar y el estado de
+/// sync viven en la barra de herramientas del shell (iOS: `IOSContextualToolbar`,
+/// macOS: `MacRootView`), así no se van al desplazar.
 struct DashboardHeaderView: View {
     let greeting: String
     let dateLine: String
-    @Binding var modeRawValue: String
     let modeHint: String?
-    let snapshot: DashboardSnapshot?
-    let syncPill: DashboardSyncPill
-    var body: some View {
-        // Tres formas, de más a menos ancha: título y controles en una fila;
-        // título arriba y controles debajo; y controles en columna. Las piezas
-        // no se comprimen (fixedSize), así que ViewThatFits mide su ancho real.
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: DashboardStyle.Spacing.s2) {
-                titleBlock
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                controls(vertical: false)
-            }
-            VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s2) {
-                titleBlock
-                controls(vertical: false)
-            }
-            VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s2) {
-                titleBlock
-                controls(vertical: true)
-            }
-        }
-        .dashboardReveal(0)
-    }
 
-    /// El aviso "Auto · Despacho" va con la fecha, no suelto bajo el selector.
-    private var titleBlock: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: DashboardStyle.Spacing.micro) {
             Text(modeHint.map { "\(dateLine) · \($0)" } ?? dateLine)
                 .font(DashboardStyle.Typography.footnote)
@@ -43,22 +21,8 @@ struct DashboardHeaderView: View {
                 .font(DashboardStyle.Typography.largeTitle)
                 .accessibilityAddTraits(.isHeader)
         }
-    }
-
-    private func controls(vertical: Bool) -> some View {
-        let layout = vertical
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s1))
-            : AnyLayout(HStackLayout(alignment: .center, spacing: DashboardStyle.Spacing.s1))
-        return DashboardGlassGroup(spacing: DashboardStyle.Spacing.s1) {
-            layout {
-                DashboardModeSelector(selection: $modeRawValue)
-                if let snapshot {
-                    DashboardExportMenu(snapshot: snapshot)
-                }
-                DashboardSyncPillView(state: syncPill)
-            }
-        }
-        .fixedSize(horizontal: true, vertical: false)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardReveal(0)
     }
 }
 

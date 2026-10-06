@@ -219,7 +219,7 @@ struct DashboardNowCard: View {
                 }
                 .dashboardButtonStyle(prominent: true, large: true)
                 .disabled(model.classId == nil)
-                .accessibilityHint(model.classId == nil ? "Elige un grupo para empezar" : "")
+                .accessibilityValue(model.classId == nil ? "No disponible: elige un grupo para empezar" : "")
 
                 Menu {
                     ForEach(Array(model.menuGroups.enumerated()), id: \.offset) { index, group in

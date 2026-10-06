@@ -326,15 +326,19 @@ struct AttendanceWorkspaceView: View {
                         HStack(spacing: 6) {
                             Image(systemName: alert.systemImage)
                                 .font(.caption2.bold())
-                            Text("\(alert.student.firstName): \(alert.message)")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                            Text("\(alert.student.firstName) \(alert.student.lastName.prefix(1)).: \(alert.message)")
+                                .font(.system(.caption2, design: .rounded).weight(.bold))
                         }
                         .foregroundStyle(alert.tint)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(alert.tint.opacity(0.12), in: Capsule())
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Alerta: \(alert.student.fullName), \(alert.message)")
+                    .accessibilityHint("Abre la ficha del alumno")
                 }
             }
             .padding(.horizontal, 16)
@@ -352,7 +356,7 @@ struct AttendanceWorkspaceView: View {
                 }
             } label: {
                 Text("Todos (\(filteredRows.count))")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.system(.caption, design: .rounded).weight(.bold))
                     .foregroundStyle(!showOnlyExceptions ? Color.primary : Color.secondary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -360,8 +364,12 @@ struct AttendanceWorkspaceView: View {
                         !showOnlyExceptions ? appMutedCardBackground(for: colorScheme) : Color.clear,
                         in: Capsule()
                     )
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Todos, \(filteredRows.count) alumnos")
+            .accessibilityAddTraits(!showOnlyExceptions ? .isSelected : [])
 
             Button {
                 withAnimation(uiFeatureFlags.animation(.easeInOut(duration: 0.15))) {
@@ -376,7 +384,7 @@ struct AttendanceWorkspaceView: View {
                             .frame(width: 6, height: 6)
                     }
                 }
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(.system(.caption, design: .rounded).weight(.bold))
                 .foregroundStyle(showOnlyExceptions ? Color.primary : Color.secondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
@@ -384,8 +392,12 @@ struct AttendanceWorkspaceView: View {
                     showOnlyExceptions ? appMutedCardBackground(for: colorScheme) : Color.clear,
                     in: Capsule()
                 )
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Excepciones, \(exceptionRows.count) alumnos")
+            .accessibilityAddTraits(showOnlyExceptions ? .isSelected : [])
 
             Spacer()
 
@@ -402,19 +414,23 @@ struct AttendanceWorkspaceView: View {
                         .foregroundStyle(Color.secondary)
                 }
             }
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .font(.system(.caption, design: .rounded).weight(.bold))
             .padding(.trailing, 4)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(boardSummaryAccessibilityLabel)
 
             // Botón primario: Marcar todos presentes (alta velocidad)
             Button {
                 Task { await markAllPresent() }
             } label: {
                 Label("Marcar todos (P)", systemImage: "checkmark.circle")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.system(.caption, design: .rounded).weight(.bold))
                     .foregroundStyle(AppleDesignSystem.success)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
                     .background(AppleDesignSystem.success.opacity(0.12), in: Capsule())
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Marcar todos los alumnos filtrados como presentes")
@@ -423,6 +439,16 @@ struct AttendanceWorkspaceView: View {
         .padding(.vertical, 6)
         .background(appPageBackground(for: colorScheme))
         .overlay(Divider().opacity(0.15), alignment: .bottom)
+    }
+
+    var boardSummaryAccessibilityLabel: String {
+        var parts = [
+            "\(boardSummary.present) presentes",
+            "\(boardSummary.absent) ausentes",
+            "\(boardSummary.late) retrasos"
+        ]
+        if boardSummary.untracked > 0 { parts.append("\(boardSummary.untracked) sin pasar") }
+        return parts.joined(separator: ", ")
     }
 
     var coursesOverviewToolbar: some View {
@@ -492,7 +518,7 @@ struct AttendanceWorkspaceView: View {
                                 }
                                 Spacer()
                                 Text("\(overview.attendanceRate)%")
-                                    .font(.system(size: 28, weight: .black, design: .rounded))
+                                    .font(.system(.title, design: .rounded).weight(.black))
                                     .foregroundStyle(EvaluationDesign.success)
                             }
 
@@ -1207,6 +1233,7 @@ struct AttendanceWorkspaceView: View {
             .frame(width: 120, height: 54)
             .background(status.color.opacity(0.18))
             .overlay(Rectangle().stroke(borderColor, lineWidth: 0.5))
+            .accessibilityLabel(status.label)
     }
 
     func historyStatusCell(record: KmpBridge.AttendanceRecordSnapshot?, studentId: Int64, date: Date) -> some View {
@@ -1217,7 +1244,7 @@ struct AttendanceWorkspaceView: View {
             historySelection = AttendanceHistorySelection(studentId: studentId, date: date, record: record)
             noteDraft = record?.note ?? ""
         } label: {
-            Text(option?.shortLabel ?? "·")
+            Text(option?.shortLabel ?? "–")
                 .font(.caption.weight(.black))
                 .foregroundStyle(option?.color ?? .secondary)
                 .frame(width: 48, height: 48)
@@ -1228,6 +1255,15 @@ struct AttendanceWorkspaceView: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(historyCellAccessibilityLabel(studentId: studentId, date: date))
+        .accessibilityValue(option?.label ?? "Sin registrar")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    func historyCellAccessibilityLabel(studentId: Int64, date: Date) -> String {
+        let name = filteredRows.first(where: { $0.student.id == studentId })?.student.fullName ?? ""
+        let day = date.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "es_ES")))
+        return name.isEmpty ? day : "\(name), \(day)"
     }
 
     func weekCellHeader(_ title: String, width: CGFloat) -> some View {
@@ -1235,6 +1271,7 @@ struct AttendanceWorkspaceView: View {
             .font(.caption.bold())
             .frame(width: width, height: 44)
             .background(appMutedCardBackground(for: colorScheme))
+            .accessibilityAddTraits(.isHeader)
     }
 
     func overviewMiniStat(_ title: String, _ value: Int, _ tint: Color) -> some View {

@@ -13,6 +13,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Asistencia: accesibilidad (solo presentación)**:
+  - Letra adaptable: se eliminan los tamaños fijos (9-28 pt) en `AttendanceWorkspaceView`, `AttendanceMatrixGridView` y `AttendanceCompactRow`; columnas, filas y chips crecen con `@ScaledMetric`.
+  - VoiceOver: cada celda de la tabla se lee con alumno, fecha y estado (más incidencia o nota); cabeceras marcadas; totales y estadísticas en una frase.
+  - Más que color: «sin dato» pasa de `·` a guion visible; nota con anillo e incidencia con punto relleno.
+  - Zonas táctiles de 44 pt en filtros, alertas y «Marcar todos»; alertas con inicial del apellido.
+  - Verificación: `xcodebuild` `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No se hicieron capturas con letra XL ni prueba de VoiceOver en dispositivo. Las vistas `MacAttendance*` quedan fuera.
 - **Cuaderno accesible (Dynamic Type y VoiceOver)**:
   - El texto del grid, la barra superior, las pestañas y la barra compacta usa `.notebookFont(size:weight:design:)`: escala con el tamaño de letra del sistema en iOS/iPadOS y no cambia en macOS.
   - El grid tiene tope de Dynamic Type en AX2 y la altura de fila escala con el mismo tope.

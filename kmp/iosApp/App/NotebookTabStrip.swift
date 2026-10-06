@@ -53,7 +53,7 @@ struct NotebookTabStrip: View {
                     onCreateTab()
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
+                        .notebookFont(size: 12, weight: .bold)
                         .frame(width: 28, height: 28)
                 }
                 .notebookTabActionButtonStyle(isProminent: false, isCircular: true)

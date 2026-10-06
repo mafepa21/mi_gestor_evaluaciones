@@ -195,7 +195,7 @@ struct DashboardErrorBanner: View {
         .overlay(DashboardStyle.controlShape().fill(DashboardStyle.Tint.alert.opacity(0.10)).allowsHitTesting(false))
         .overlay(DashboardStyle.controlShape().strokeBorder(DashboardStyle.Tint.alert.opacity(0.6), lineWidth: 1))
         .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isStaticText)
+        .accessibilityLabel("Sin conexión")
     }
 }
 

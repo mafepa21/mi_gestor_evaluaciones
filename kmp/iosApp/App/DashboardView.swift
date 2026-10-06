@@ -257,8 +257,8 @@ struct DashboardView: View {
                 .id("modo-despacho")
             }
         }
-        // Error de red: el contenido anterior sigue a la vista, atenuado al 75 %.
-        .opacity(loadFailed ? 0.75 : 1)
+        // Error de red: el contenido anterior sigue a la vista con su contraste
+        // normal (el aviso de error ya avisa); solo pierde algo de color.
         .saturation(loadFailed ? 0.7 : 1)
         .animation(
             reduceMotion ? .linear(duration: 0.2) : .easeInOut(duration: 0.35),

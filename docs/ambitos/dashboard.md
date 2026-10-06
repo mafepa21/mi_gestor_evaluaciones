@@ -13,6 +13,10 @@
 
 ## Trampas
 
+- Bordes y separadores: `DashboardStyle.separator`, nunca `Color.primary.opacity(<0.1)`.
+- Texto blanco sobre acento: fondo `DashboardStyle.accentBadgeFill`, no `DashboardStyle.accent` (en oscuro solo llega a 3,6:1).
+- Con error de carga no se baja la opacidad del contenido: el aviso de error ya avisa.
+
 - Tokens visuales en `DashboardStyle.swift`; no meter colores ni opacidades sueltas en las vistas.
 - Números grandes con `@ScaledMetric`, no `.font(.system(size:))` fijo. Mínimo 11 pt.
 - Tope de Dynamic Type en `DashboardView.body`; en tamaños de accesibilidad la vista pasa a una columna.

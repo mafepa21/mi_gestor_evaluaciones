@@ -49,6 +49,8 @@ struct AttendanceWorkspaceView: View {
     @State var noteEditContext: AttendanceNoteEditContext?
     @FocusState var isNoteFieldFocused: Bool
     @State var bulkUndo: AttendanceBulkUndo?
+    @State var keyboardRowStudentId: Int64?
+    @FocusState var isRollCallFocused: Bool
     @State var bulkUndoDismissTask: Task<Void, Never>?
     @Environment(\.undoManager) private var undoManager
     @State var isAttendanceInspectorPresented = false
@@ -409,6 +411,7 @@ struct AttendanceWorkspaceView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyboardShortcut("p", modifiers: [.command, .shift])
             .accessibilityLabel("Marcar todos los alumnos filtrados como presentes")
         }
         .padding(.horizontal, 16)
@@ -554,7 +557,13 @@ struct AttendanceWorkspaceView: View {
                             onQuickNote: {
                                 historySelection = nil
                                 selectedStudentId = row.student.id
-                            }
+                            },
+                            onRegisterIncident: selectedClassId.map { classId in
+                                {
+                                    Task { await createAttendanceIncident(for: row.student.id, classId: classId, latestStatus: row.record?.status) }
+                                }
+                            },
+                            isKeyboardFocused: isRollCallFocused && keyboardRowStudentId == row.student.id
                         )
                         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
                         .listRowSeparator(.hidden)
@@ -563,6 +572,10 @@ struct AttendanceWorkspaceView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .modifier(RollCallKeyboardModifier(
+                    isFocused: $isRollCallFocused,
+                    onKey: handleRollCallKey
+                ))
             }
         }
     }
@@ -894,7 +907,7 @@ struct AttendanceWorkspaceView: View {
         } else {
             WorkspaceEmptyState(
                 title: "Selecciona un alumno",
-                subtitle: "El inspector muestra histórico, patrón reciente e incidencias de asistencia."
+                subtitle: "El inspector muestra histórico, patrón reciente e incidencias de asistencia. Con teclado: ↑↓ para moverte y P · A · R · M para pasar lista."
             )
         }
     }
@@ -1246,6 +1259,56 @@ struct AttendanceWorkspaceView: View {
         AppleInteractionFeedback.play(failed == 0 ? .success : .error)
     }
 
+    /// Pasar lista con teclado: ↑↓ mueven la fila activa; P/A/R/M marcan y avanzan;
+    /// retroceso desmarca; espacio o intro abren la ficha.
+    func handleRollCallKey(_ key: RollCallKey) -> Bool {
+        let rows = displayRows
+        guard !rows.isEmpty else { return false }
+        let currentIndex = rows.firstIndex { $0.student.id == keyboardRowStudentId }
+        func move(_ delta: Int) {
+            let base = currentIndex ?? (delta > 0 ? -1 : rows.count)
+            let next = min(max(base + delta, 0), rows.count - 1)
+            keyboardRowStudentId = rows[next].student.id
+        }
+        switch key {
+        case .up: move(-1)
+        case .down: move(1)
+        case .status(let statusId):
+            guard let index = currentIndex else { move(1); return true }
+            let student = rows[index].student
+            AppleInteractionFeedback.play(.selection)
+            Task { await updateAttendance(for: student, status: statusId) }
+            move(1)
+        case .clear:
+            guard let index = currentIndex else { return true }
+            let student = rows[index].student
+            Task { await updateAttendance(for: student, status: "") }
+        case .open:
+            guard let index = currentIndex else { return true }
+            historySelection = nil
+            selectedStudentId = rows[index].student.id
+        }
+        return true
+    }
+
+    func setHistoryStatus(studentId: Int64, date: Date, record: KmpBridge.AttendanceRecordSnapshot?, status: String) async {
+        guard let selectedClassId else { return }
+        do {
+            try await bridge.saveAttendance(
+                studentId: studentId,
+                classId: selectedClassId,
+                on: date,
+                status: status,
+                sessionId: record?.sessionId
+            )
+            AppleInteractionFeedback.play(.success)
+            await reloadAttendance()
+        } catch {
+            bridge.status = "No se pudo guardar la asistencia: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
     /// Guarda la nota en edición si cambió. Usa el contexto capturado al empezar a
     /// escribir para no guardarla en otro alumno si la selección cambia antes.
     func commitPendingNote() {
@@ -1305,6 +1368,25 @@ struct AttendanceWorkspaceView: View {
                 )
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            ForEach(AttendanceStatusOption.all) { status in
+                Button {
+                    Task { await setHistoryStatus(studentId: studentId, date: date, record: record, status: status.id) }
+                } label: {
+                    if status.id == record?.status {
+                        Label(status.label, systemImage: "checkmark")
+                    } else {
+                        Text(status.label)
+                    }
+                }
+            }
+            if record != nil {
+                Divider()
+                Button("Desmarcar", systemImage: "arrow.counterclockwise") {
+                    Task { await setHistoryStatus(studentId: studentId, date: date, record: record, status: "") }
+                }
+            }
+        }
         .accessibilityLabel(historyCellAccessibilityLabel(studentId: studentId, date: date))
         .accessibilityValue(option?.label ?? "Sin registrar")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -1442,5 +1524,38 @@ struct AttendanceUndoBanner: View {
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Deshacer", onUndo)
+    }
+}
+
+enum RollCallKey {
+    case up, down, clear, open
+    case status(String)
+}
+
+/// Activa el teclado en la lista del día (iOS 17 / macOS 14 en adelante).
+/// Las letras solo actúan cuando la lista tiene el foco, nunca al escribir en un campo.
+struct RollCallKeyboardModifier: ViewModifier {
+    var isFocused: FocusState<Bool>.Binding
+    let onKey: (RollCallKey) -> Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, macOS 14.0, *) {
+            content
+                .focusable()
+                .focused(isFocused)
+                .focusEffectDisabled()
+                .onKeyPress(.upArrow) { onKey(.up) ? .handled : .ignored }
+                .onKeyPress(.downArrow) { onKey(.down) ? .handled : .ignored }
+                .onKeyPress(.delete) { onKey(.clear) ? .handled : .ignored }
+                .onKeyPress(.space) { onKey(.open) ? .handled : .ignored }
+                .onKeyPress(.return) { onKey(.open) ? .handled : .ignored }
+                .onKeyPress(characters: CharacterSet(charactersIn: "parmPARM")) { press in
+                    let map = ["p": "PRESENTE", "a": "AUSENTE", "r": "TARDE", "m": "SIN_MATERIAL"]
+                    guard let status = map[press.characters.lowercased()] else { return .ignored }
+                    return onKey(.status(status)) ? .handled : .ignored
+                }
+        } else {
+            content
+        }
     }
 }

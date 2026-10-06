@@ -1501,32 +1501,6 @@ struct AttendanceBulkUndo {
     let entries: [Entry]
 }
 
-/// Aviso flotante tras una acción masiva de asistencia, con botón para deshacerla.
-struct AttendanceUndoBanner: View {
-    let message: String
-    let onUndo: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(AppleDesignSystem.success)
-                .accessibilityHidden(true)
-            Text(message)
-                .font(.subheadline.weight(.semibold))
-            Button("Deshacer", action: onUndo)
-                .font(.subheadline.weight(.bold))
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-        }
-        .padding(.horizontal, 16)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityAction(named: "Deshacer", onUndo)
-    }
-}
-
 enum RollCallKey {
     case up, down, clear, open
     case status(String)

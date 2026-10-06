@@ -34,6 +34,17 @@ struct AttendanceMatrixGridView: View {
     @State private var activeCellPopover: MatrixCellTarget? = nil
     @State private var isCopiedAlertPresented: Bool = false
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.undoManager) private var undoManager
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @State private var pendingUndo: MatrixBulkUndo?
+    @State private var undoDismissTask: Task<Void, Never>?
+
+    /// Estados previos de «Todos presentes hoy», guardados para poder deshacer.
+    struct MatrixBulkUndo {
+        let id = UUID()
+        let date: Date
+        let previousDrafts: [KmpBridge.AttendanceDraft]
+    }
     // Medidas que crecen con el tamaño de letra del sistema (Dynamic Type).
     @ScaledMetric(relativeTo: .subheadline) private var studentColumnWidth: CGFloat = 220
     @ScaledMetric(relativeTo: .caption) private var dateColumnWidth: CGFloat = 50
@@ -106,6 +117,17 @@ struct AttendanceMatrixGridView: View {
             }
         }
         .background(appPageBackground(for: colorScheme))
+        .overlay(alignment: .bottom) {
+            if let pendingUndo {
+                AttendanceUndoBanner(
+                    message: "\(pendingUndo.previousDrafts.count) marcados como presentes",
+                    onUndo: { Task { await undoMarkTodayAllPresent() } }
+                )
+                .padding(.bottom, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(uiFeatureFlags.animation(.easeInOut(duration: 0.2)), value: pendingUndo?.id)
         .task(id: "\(selectedClassId)_\(selectedRange.rawValue)") {
             await reloadMatrixData()
         }
@@ -141,29 +163,43 @@ struct AttendanceMatrixGridView: View {
             .frame(maxWidth: 360)
 
             IOSSearchField(text: $searchText, placeholder: "Buscar alumno…")
-                .frame(maxWidth: 200)
+                .frame(minWidth: 160, maxWidth: 260)
 
             Spacer()
 
             Button {
                 Task { await markTodayAllPresent() }
             } label: {
-                Label("Marcar todos hoy (P)", systemImage: "bolt.badge.checkmark.fill")
+                Label("Todos presentes hoy", systemImage: "checkmark.circle")
             }
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.capsule)
             .tint(AppleDesignSystem.success)
-            .controlSize(.small)
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(todayMarkableDrafts().isEmpty)
 
-            Button {
-                copySummaryToClipboard()
-            } label: {
-                Label(isCopiedAlertPresented ? "¡Copiado!" : "Copiar resumen", systemImage: isCopiedAlertPresented ? "checkmark" : "doc.on.doc")
+            ViewThatFits(in: .horizontal) {
+                copySummaryButton(iconOnly: false)
+                copySummaryButton(iconOnly: true)
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
         }
+    }
+
+    private func copySummaryButton(iconOnly: Bool) -> some View {
+        let title = isCopiedAlertPresented ? "¡Copiado!" : "Copiar resumen"
+        let icon = isCopiedAlertPresented ? "checkmark" : "doc.on.doc"
+        return Button {
+            copySummaryToClipboard()
+        } label: {
+            if iconOnly {
+                Label(title, systemImage: icon).labelStyle(.iconOnly)
+            } else {
+                Label(title, systemImage: icon)
+            }
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .accessibilityLabel(title)
     }
 
     // MARK: - Legend Bar
@@ -634,58 +670,125 @@ struct AttendanceMatrixGridView: View {
         }
     }
 
+    /// Desmarca y lo guarda (antes solo se borraba en pantalla y reaparecía al recargar).
     private func clearAttendance(for student: Student, on date: Date) async {
         let key = dateKey(for: date)
+        let previous = matrixRecords[student.id]?[key]
         matrixRecords[student.id]?.removeValue(forKey: key)
         AppleInteractionFeedback.play(.lightImpact)
+        do {
+            try await bridge.saveAttendance(
+                studentId: student.id,
+                classId: selectedClassId,
+                on: date,
+                status: "",
+                note: previous?.note,
+                sessionId: previous?.sessionId
+            )
+        } catch {
+            matrixRecords[student.id]?[key] = previous
+            bridge.status = AttendanceMatrixSaveGate.failureMessage(detail: error.localizedDescription)
+            AppleInteractionFeedback.play(.error)
+        }
     }
 
-    private func markTodayAllPresent() async {
+    /// Alumnos que «Todos presentes hoy» cambiaría (no toca justificados, exentos ni ya presentes).
+    private func todayMarkableDrafts() -> [KmpBridge.AttendanceDraft] {
         let today = Date()
         let key = dateKey(for: today)
-
-        var drafts: [KmpBridge.AttendanceDraft] = []
-        for student in students {
+        return students.compactMap { student in
             let current = matrixRecords[student.id]?[key]
-            guard current?.status != "JUSTIFICADO" && current?.status != "EXENTO" else { continue }
-
-            drafts.append(
-                KmpBridge.AttendanceDraft(
-                    studentId: student.id,
-                    classId: selectedClassId,
-                    date: today,
-                    status: "PRESENTE",
-                    note: current?.note ?? "",
-                    hasIncident: current?.hasIncident ?? false,
-                    followUpRequired: current?.followUpRequired,
-                    sessionId: current?.sessionId
-                )
-            )
-
-            let opt = KmpBridge.AttendanceRecordSnapshot(
-                id: current?.id ?? 0,
+            guard !["JUSTIFICADO", "EXENTO", "PRESENTE"].contains(current?.status ?? "") else { return nil }
+            return KmpBridge.AttendanceDraft(
                 studentId: student.id,
                 classId: selectedClassId,
                 date: today,
-                status: "PRESENTE",
+                status: current?.status ?? "",
                 note: current?.note ?? "",
                 hasIncident: current?.hasIncident ?? false,
-                followUpRequired: current?.followUpRequired ?? false,
+                followUpRequired: current?.followUpRequired,
                 sessionId: current?.sessionId
             )
-            if matrixRecords[student.id] == nil {
-                matrixRecords[student.id] = [:]
-            }
-            matrixRecords[student.id]?[key] = opt
         }
+    }
 
-        AppleInteractionFeedback.play(.success)
+    private func applyLocal(_ drafts: [KmpBridge.AttendanceDraft]) {
+        for draft in drafts {
+            let key = dateKey(for: draft.date)
+            let current = matrixRecords[draft.studentId]?[key]
+            if matrixRecords[draft.studentId] == nil { matrixRecords[draft.studentId] = [:] }
+            if draft.status.isEmpty {
+                matrixRecords[draft.studentId]?.removeValue(forKey: key)
+            } else {
+                matrixRecords[draft.studentId]?[key] = KmpBridge.AttendanceRecordSnapshot(
+                    id: current?.id ?? 0,
+                    studentId: draft.studentId,
+                    classId: draft.classId,
+                    date: draft.date,
+                    status: draft.status,
+                    note: draft.note,
+                    hasIncident: draft.hasIncident,
+                    followUpRequired: draft.followUpRequired ?? false,
+                    sessionId: draft.sessionId
+                )
+            }
+        }
+    }
+
+    private func undoMarkTodayAllPresent() async {
+        guard let undo = pendingUndo else { return }
+        pendingUndo = nil
+        undoDismissTask?.cancel()
+        applyLocal(undo.previousDrafts)
+        do {
+            try await bridge.saveAttendanceBatch(records: undo.previousDrafts)
+            bridge.status = "Asistencia de hoy restaurada."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo deshacer del todo: \(error.localizedDescription). Revisa la columna de hoy."
+            AppleInteractionFeedback.play(.error)
+            await reloadMatrixData()
+        }
+    }
+
+    private func markTodayAllPresent() async {
+        let previousDrafts = todayMarkableDrafts()
+        guard !previousDrafts.isEmpty else { return }
+        let presentDrafts = previousDrafts.map { draft in
+            KmpBridge.AttendanceDraft(
+                studentId: draft.studentId,
+                classId: draft.classId,
+                date: draft.date,
+                status: "PRESENTE",
+                note: draft.note,
+                hasIncident: draft.hasIncident,
+                followUpRequired: draft.followUpRequired,
+                sessionId: draft.sessionId
+            )
+        }
+        applyLocal(presentDrafts)
 
         do {
-            try await bridge.saveAttendanceBatch(records: drafts)
-            bridge.status = "Todos los alumnos marcados como presentes hoy."
+            try await bridge.saveAttendanceBatch(records: presentDrafts)
+            AppleInteractionFeedback.play(.success)
+            bridge.status = "\(presentDrafts.count) alumnos marcados como presentes hoy."
+            let undo = MatrixBulkUndo(date: Date(), previousDrafts: previousDrafts)
+            pendingUndo = undo
+            undoManager?.registerUndo(withTarget: bridge) { _ in
+                Task { @MainActor in await undoMarkTodayAllPresent() }
+            }
+            undoManager?.setActionName("Todos presentes hoy")
+            undoDismissTask?.cancel()
+            undoDismissTask = Task {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                guard !Task.isCancelled else { return }
+                if pendingUndo?.id == undo.id { pendingUndo = nil }
+            }
         } catch {
-            bridge.status = "Error al marcar todos presentes: \(error.localizedDescription)"
+            // El lote no es atómico: recargar desde la base para mostrar lo que de verdad quedó guardado.
+            bridge.status = AttendanceMatrixSaveGate.failureMessage(detail: error.localizedDescription)
+            AppleInteractionFeedback.play(.error)
+            await reloadMatrixData()
         }
     }
 
@@ -718,6 +821,7 @@ struct AttendanceMatrixGridView: View {
 
 // MARK: - Status Picker Popover
 private struct AttendanceMatrixStatusPicker: View {
+    @ScaledMetric(relativeTo: .subheadline) private var pickerWidth: CGFloat = 220
     let target: AttendanceMatrixGridView.MatrixCellTarget
     let onSelectStatus: (String) -> Void
     let onClear: () -> Void
@@ -760,13 +864,15 @@ private struct AttendanceMatrixStatusPicker: View {
                             }
                         }
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                         .background(
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(target.currentRecord?.status == option.id ? EvaluationDesign.accent.opacity(0.12) : Color.clear)
                         )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(target.currentRecord?.status == option.id ? .isSelected : [])
                 }
             }
 
@@ -776,16 +882,17 @@ private struct AttendanceMatrixStatusPicker: View {
                 Button(role: .destructive) {
                     onClear()
                 } label: {
-                    Label("Limpiar registro", systemImage: "trash")
-                        .font(.caption.weight(.medium))
+                    Label("Desmarcar", systemImage: "arrow.counterclockwise")
+                        .font(.subheadline)
                         .foregroundStyle(.red)
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(14)
-        .frame(width: 220)
+        .frame(minWidth: pickerWidth)
     }
 }

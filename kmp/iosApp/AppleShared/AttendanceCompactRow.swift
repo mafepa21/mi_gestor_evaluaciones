@@ -191,7 +191,9 @@ struct AttendanceCompactRow: View {
                     lineWidth: isKeyboardFocused ? 2 : 0.5
                 )
         )
+        #if os(iOS)
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
+        #endif
         .contextMenu {
             Section("Estado") {
                 ForEach(AttendanceStatusOption.all) { option in

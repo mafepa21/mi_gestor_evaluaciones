@@ -20,6 +20,21 @@ struct AttendanceCompactRow: View {
         AttendanceStatusOption.all.first(where: { $0.id == row.record?.status })
     }
 
+    // Medidas que crecen con el tamaño de letra del sistema (Dynamic Type).
+    @ScaledMetric(relativeTo: .caption2) private var avatarSize: CGFloat = 32
+    @ScaledMetric(relativeTo: .footnote) private var statusChipWidth: CGFloat = 34
+    @ScaledMetric(relativeTo: .footnote) private var statusChipHeight: CGFloat = 30
+
+    private var identityAccessibilityValue: String {
+        var parts = [currentOption?.label ?? "Sin pasar"]
+        if row.isInjured { parts.append("lesión activa") }
+        if row.record?.hasIncident == true { parts.append("con incidencia") }
+        if let note = row.record?.note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append("nota: \(note)")
+        }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             // Zona 1: Identidad del alumno (tap abre inspector)
@@ -35,7 +50,7 @@ struct AttendanceCompactRow: View {
                     // Avatar con halo semántico del estado
                     Circle()
                         .fill(currentOption?.color.opacity(0.18) ?? Color.secondary.opacity(0.08))
-                        .frame(width: 32, height: 32)
+                        .frame(width: avatarSize, height: avatarSize)
                         .overlay(
                             Circle()
                                 .stroke(currentOption?.color.opacity(0.4) ?? Color.clear, lineWidth: 1.5)
@@ -91,6 +106,11 @@ struct AttendanceCompactRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(row.student.fullName)
+            .accessibilityValue(identityAccessibilityValue)
+            .accessibilityHint("Abre la ficha del alumno")
+            .accessibilityAddTraits(.isButton)
 
             if isSaving {
                 ProgressView()
@@ -114,7 +134,7 @@ struct AttendanceCompactRow: View {
                         Text(option.shortLabel)
                             .font(.system(.footnote, design: .rounded).weight(.bold))
                             .foregroundStyle(isCurrent ? option.accessibleTextColor : Color.secondary)
-                            .frame(width: 34, height: 30)
+                            .frame(width: statusChipWidth, height: statusChipHeight)
                             .background(
                                 isCurrent ? option.color : Color.clear,
                                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -124,7 +144,8 @@ struct AttendanceCompactRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(isCurrent ? "\(option.label) (activo, pulsar para desmarcar)" : option.label)
+                    .accessibilityLabel("\(option.label), \(row.student.fullName)")
+                    .accessibilityHint(isCurrent ? "Activo. Pulsa para desmarcar" : "")
                     .accessibilityAddTraits(isCurrent ? .isSelected : [])
                 }
             }

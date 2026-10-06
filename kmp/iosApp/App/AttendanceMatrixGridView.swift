@@ -34,6 +34,11 @@ struct AttendanceMatrixGridView: View {
     @State private var activeCellPopover: MatrixCellTarget? = nil
     @State private var isCopiedAlertPresented: Bool = false
     @Environment(\.colorScheme) private var colorScheme
+    // Medidas que crecen con el tamaño de letra del sistema (Dynamic Type).
+    @ScaledMetric(relativeTo: .subheadline) private var studentColumnWidth: CGFloat = 220
+    @ScaledMetric(relativeTo: .caption) private var dateColumnWidth: CGFloat = 50
+    @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 44
+    @ScaledMetric(relativeTo: .caption) private var statusBadgeSize: CGFloat = 28
 
     struct MatrixCellTarget: Identifiable {
         let student: Student
@@ -49,6 +54,13 @@ struct AttendanceMatrixGridView: View {
         let df = DateFormatter()
         df.locale = Locale(identifier: "es_ES")
         df.dateFormat = "dd/MM"
+        return df
+    }()
+
+    private let accessibilityDateFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "es_ES")
+        df.dateFormat = "EEEE d 'de' MMMM"
         return df
     }()
 
@@ -190,12 +202,12 @@ struct AttendanceMatrixGridView: View {
                 // Cabecera de columnas
                 HStack(spacing: 0) {
                     studentColumnHeader
-                        .frame(width: 220, alignment: .leading)
+                        .frame(width: studentColumnWidth, alignment: .leading)
                         .background(appCardBackground(for: colorScheme))
 
                     ForEach(uniqueDates, id: \.self) { date in
                         dateColumnHeader(for: date)
-                            .frame(width: 50)
+                            .frame(width: dateColumnWidth)
                             .background(appCardBackground(for: colorScheme))
                     }
 
@@ -211,18 +223,18 @@ struct AttendanceMatrixGridView: View {
 
                     HStack(spacing: 0) {
                         studentRowCell(student: student)
-                            .frame(width: 220, height: 44, alignment: .leading)
+                            .frame(width: studentColumnWidth, height: rowHeight, alignment: .leading)
                             .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
 
                         ForEach(uniqueDates, id: \.self) { date in
                             let record = recordFor(studentId: student.id, date: date)
                             attendanceCell(student: student, date: date, record: record)
-                                .frame(width: 50, height: 44)
+                                .frame(width: dateColumnWidth, height: rowHeight)
                                 .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
                         }
 
                         statsRowCells(stats: stats)
-                            .frame(height: 44)
+                            .frame(height: rowHeight)
                             .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
                     }
                     .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.08)), alignment: .bottom)
@@ -234,7 +246,8 @@ struct AttendanceMatrixGridView: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 12)
-                        .frame(width: 220, height: 40, alignment: .leading)
+                        .frame(width: studentColumnWidth, alignment: .leading)
+                        .frame(minHeight: 40)
 
                     ForEach(uniqueDates, id: \.self) { date in
                         let summary = dateSummary(for: date)
@@ -246,7 +259,10 @@ struct AttendanceMatrixGridView: View {
                                 .font(.caption2.weight(.medium))
                                 .foregroundStyle(.secondary)
                         }
-                        .frame(width: 50, height: 40)
+                        .frame(width: dateColumnWidth)
+                        .frame(minHeight: 40)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(accessibilityDateFormatter.string(from: date)): \(summary.present) presentes de \(summary.total)")
                     }
 
                     classGlobalStatsCell
@@ -263,6 +279,7 @@ struct AttendanceMatrixGridView: View {
             Text("Alumnado (\(students.count))")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
         }
         .padding(.horizontal, 12)
@@ -285,7 +302,10 @@ struct AttendanceMatrixGridView: View {
                     isToday ? Capsule().fill(EvaluationDesign.accent) : Capsule().fill(Color.clear)
                 )
         }
-        .frame(height: 48)
+        .frame(minHeight: 48)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityDateFormatter.string(from: date) + (isToday ? ", hoy" : ""))
+        .accessibilityAddTraits(.isHeader)
     }
 
     private var statsColumnsHeader: some View {
@@ -310,6 +330,8 @@ struct AttendanceMatrixGridView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 50, height: 48)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: - Student Cell
@@ -345,6 +367,8 @@ struct AttendanceMatrixGridView: View {
             .padding(.horizontal, 10)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(student.fullName + (student.isInjured ? ", lesión activa" : ""))
+        .accessibilityHint("Abre la ficha del alumno")
     }
 
     // MARK: - Attendance Status Cell
@@ -359,7 +383,7 @@ struct AttendanceMatrixGridView: View {
                     Text(option.shortLabel)
                         .font(.system(.caption2, design: .rounded).weight(.black))
                         .foregroundStyle(option.color)
-                        .frame(width: 28, height: 28)
+                        .frame(width: statusBadgeSize, height: statusBadgeSize)
                         .background(
                             Circle()
                                 .fill(option.color.opacity(0.16))
@@ -369,10 +393,11 @@ struct AttendanceMatrixGridView: View {
                                 .strokeBorder(option.color.opacity(0.5), lineWidth: 1)
                         )
                 } else {
-                    Text("·")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(Color.secondary.opacity(0.3))
-                        .frame(width: 28, height: 28)
+                    // Guion visible para "sin dato": no depender de un punto casi invisible.
+                    Text("–")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: statusBadgeSize, height: statusBadgeSize)
                 }
 
                 if record?.hasIncident == true {
@@ -381,9 +406,10 @@ struct AttendanceMatrixGridView: View {
                         .frame(width: 5, height: 5)
                         .offset(x: 10, y: -10)
                 } else if !(record?.note.isEmpty ?? true) {
+                    // Anillo (no punto relleno) para distinguir nota de incidencia sin depender del color.
                     Circle()
-                        .fill(Color.blue)
-                        .frame(width: 5, height: 5)
+                        .strokeBorder(Color.blue, lineWidth: 1.5)
+                        .frame(width: 6, height: 6)
                         .offset(x: 10, y: -10)
                 }
             }
@@ -391,6 +417,16 @@ struct AttendanceMatrixGridView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(student.fullName), \(accessibilityDateFormatter.string(from: date))")
+        .accessibilityValue(attendanceCellAccessibilityValue(option: option, record: record))
+        .accessibilityHint("Cambia el estado de asistencia")
+    }
+
+    private func attendanceCellAccessibilityValue(option: AttendanceStatusOption?, record: KmpBridge.AttendanceRecordSnapshot?) -> String {
+        var parts = [option?.label ?? "Sin registrar"]
+        if record?.hasIncident == true { parts.append("con incidencia") }
+        if !(record?.note.isEmpty ?? true) { parts.append("con nota") }
+        return parts.joined(separator: ", ")
     }
 
     // MARK: - Stats Cells
@@ -419,6 +455,8 @@ struct AttendanceMatrixGridView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 50)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(stats.attendanceRate)% de asistencia, \(stats.absentCount) faltas, \(stats.lateCount) retrasos, \(stats.justifiedCount) justificadas")
     }
 
     private var classGlobalStatsCell: some View {
@@ -442,6 +480,8 @@ struct AttendanceMatrixGridView: View {
             Spacer()
         }
         .frame(width: 214)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Media de la clase \(globalRate)%, \(totalAbsences) faltas en total")
     }
 
     // MARK: - Data Logic & Persistence

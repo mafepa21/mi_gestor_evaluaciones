@@ -177,10 +177,7 @@ struct DashboardView: View {
                 DashboardHeaderView(
                     greeting: dashboardGreeting,
                     dateLine: dashboardDateLine,
-                    modeRawValue: $modeRawValue,
-                    modeHint: modePreference.resolvedHint(for: dashboardStore.dashboardSnapshot?.currentContext),
-                    snapshot: dashboardStore.dashboardSnapshot,
-                    syncPill: syncPill
+                    modeHint: modePreference.resolvedHint(for: dashboardStore.dashboardSnapshot?.currentContext)
                 )
 
                 if loadFailed, dashboardStore.dashboardSnapshot != nil {
@@ -444,7 +441,8 @@ struct DashboardView: View {
         case .none:
             inspectorKey = "none"
         }
-        return "\(classKey)|\(modeRawValue)|\(inspectorKey)|\(isInspectorPresented)"
+        let snapshotKey = dashboardStore.dashboardSnapshot.map { ObjectIdentifier($0).hashValue } ?? 0
+        return "\(classKey)|\(modeRawValue)|\(inspectorKey)|\(isInspectorPresented)|\(syncPill)|\(snapshotKey)"
     }
 
     private func syncToolbarState() {
@@ -452,6 +450,8 @@ struct DashboardView: View {
             inspectorAvailable: dashboardStore.dashboardSnapshot != nil,
             isInspectorPresented: isInspectorPresented,
             actionsAvailable: dashboardActionClassId != nil,
+            snapshot: dashboardStore.dashboardSnapshot,
+            syncPill: syncPill,
             onToggleInspector: {
                 toggleInspector()
             },

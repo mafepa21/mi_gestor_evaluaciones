@@ -28,6 +28,7 @@ struct MacRootView: View {
     @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var isAttendanceFilterPopoverPresented = false
+    @AppStorage("dashboard_mode_preference") private var dashboardModeRaw = DashboardModePreference.auto.rawValue
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var plannerToolbarActions: PlannerMacToolbarActions? = nil
     @State private var plannerInspectorSession: PlanningSession? = nil
@@ -910,6 +911,15 @@ struct MacRootView: View {
     private var macDefaultWorkspaceToolbar: some ToolbarContent {
         ToolbarItemGroup {
             if selectedFeature == .dashboard, let dashboardToolbarActions {
+                Picker("Modo del Dashboard", selection: $dashboardModeRaw) {
+                    ForEach(DashboardModePreference.allCases) { option in
+                        Text(option.title).tag(option.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .help("Modo del Dashboard (⌘1, ⌘2, ⌘3)")
+
                 Button {
                     dashboardToolbarActions.passList()
                 } label: {
@@ -917,7 +927,6 @@ struct MacRootView: View {
                 }
                 .disabled(!dashboardToolbarActions.canRunActions)
                 .keyboardShortcut("l", modifiers: [.command])
-                .buttonStyle(.borderedProminent)
                 .help("Pasar lista para la clase activa")
 
                 Menu {
@@ -927,6 +936,21 @@ struct MacRootView: View {
                         Label("Observación", systemImage: "note.text.badge.plus")
                     }
                     .disabled(!dashboardToolbarActions.canRunActions)
+
+                    if let snapshot = dashboardToolbarActions.snapshot {
+                        Menu {
+                            ForEach([DashboardCSVExport.Kind.today, .alerts, .groups, .agenda], id: \.title) { kind in
+                                ShareLink(
+                                    item: DashboardCSVExport(kind: kind, snapshot: snapshot),
+                                    preview: SharePreview("\(kind.title).csv")
+                                ) {
+                                    Text(kind.title)
+                                }
+                            }
+                        } label: {
+                            Label("Exportar", systemImage: "square.and.arrow.up")
+                        }
+                    }
                 } label: {
                     Label("Más", systemImage: "ellipsis.circle")
                 }

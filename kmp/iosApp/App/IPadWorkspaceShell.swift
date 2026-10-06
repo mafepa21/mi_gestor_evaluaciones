@@ -27,6 +27,9 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var dashboardInspectorAvailable: Bool = false
     @Published var isDashboardInspectorPresented: Bool = false
     @Published var dashboardActionsAvailable: Bool = false
+    /// Datos que la barra de herramientas del Dashboard muestra fuera del scroll.
+    @Published var dashboardSnapshot: DashboardSnapshot? = nil
+    @Published var dashboardSyncPill: DashboardSyncPill? = nil
     @Published var diaryInspectorAvailable: Bool = false
     @Published var isDiaryInspectorPresented: Bool = false
     @Published var plannerAddSessionAvailable: Bool = false
@@ -255,6 +258,8 @@ final class WorkspaceLayoutState: ObservableObject {
         inspectorAvailable: Bool,
         isInspectorPresented: Bool,
         actionsAvailable: Bool,
+        snapshot: DashboardSnapshot? = nil,
+        syncPill: DashboardSyncPill? = nil,
         onToggleInspector: @escaping () -> Void,
         onRefresh: @escaping () -> Void,
         onPassList: @escaping () -> Void,
@@ -265,6 +270,8 @@ final class WorkspaceLayoutState: ObservableObject {
             self.dashboardInspectorAvailable = inspectorAvailable
             self.isDashboardInspectorPresented = isInspectorPresented
             self.dashboardActionsAvailable = actionsAvailable
+            self.dashboardSnapshot = snapshot
+            self.dashboardSyncPill = syncPill
             self.dashboardInspectorAction = onToggleInspector
             self.dashboardRefreshAction = onRefresh
             self.dashboardPassListAction = onPassList
@@ -278,6 +285,8 @@ final class WorkspaceLayoutState: ObservableObject {
             self.dashboardInspectorAvailable = false
             self.isDashboardInspectorPresented = false
             self.dashboardActionsAvailable = false
+            self.dashboardSnapshot = nil
+            self.dashboardSyncPill = nil
             self.dashboardInspectorAction = nil
             self.dashboardRefreshAction = nil
             self.dashboardPassListAction = nil

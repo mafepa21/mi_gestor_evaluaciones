@@ -42,6 +42,7 @@ struct IOSRootView: View {
     @AppStorage("workspace.selected.student.id") private var persistedStudentId: Int = 0
     @AppStorage("teacher.enabledSubjectProfiles.v1") private var enabledSubjectProfilesRaw = TeacherSubjectProfile.general.rawValue
 
+    @AppStorage("dashboard_mode_preference") private var dashboardModeRaw = DashboardModePreference.auto.rawValue
     @State private var activeModule: AppWorkspaceModule = .dashboard
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var banner: IOSRootBanner?
@@ -96,7 +97,8 @@ struct IOSRootView: View {
                         selectionStore: selectionStore,
                         onSync: { Task { await bridge.pullMissingSyncChanges() } },
                         onCreateEvaluation: { activeSheet = .create(.evaluation) },
-                        onToggleInspector: toggleInspector
+                        onToggleInspector: toggleInspector,
+                        dashboardModeRaw: $dashboardModeRaw
                     )
                 }
             }
@@ -796,16 +798,21 @@ struct IOSGlobalContextRow: View {
         .background(appMutedCardBackground(for: colorScheme).opacity(0.94))
     }
 
+    /// En el Dashboard el título es el saludo del contenido: aquí no se repite.
+    @ViewBuilder
     private var moduleTitle: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(activeModule.subtitle.uppercased())
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .tracking(0.8)
-                .foregroundStyle(.secondary)
-            Text(activeModule.title)
-                .font(.system(size: 24, weight: .black, design: .rounded))
+        if activeModule != .dashboard {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(activeModule.subtitle.uppercased())
+                    .font(.system(.caption2, design: .rounded).weight(.bold))
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+                Text(activeModule.title)
+                    .font(.system(.title2, design: .rounded).weight(.black))
+                    .accessibilityAddTraits(.isHeader)
+            }
+            .frame(minWidth: 180, alignment: .leading)
         }
-        .frame(minWidth: 180, alignment: .leading)
     }
 
     private var classMenu: some View {
@@ -1226,6 +1233,7 @@ struct IOSContextualToolbar: ToolbarContent {
     let onSync: () -> Void
     let onCreateEvaluation: () -> Void
     let onToggleInspector: () -> Void
+    @Binding var dashboardModeRaw: String
 
     var body: some ToolbarContent {
         // Sync is available from the overflow so the primary action remains obvious.
@@ -1236,26 +1244,68 @@ struct IOSContextualToolbar: ToolbarContent {
             .help("Sincronizar cambios pendientes")
         }
 
-        // Dashboard-specific actions
+        // Dashboard: modo en el centro, estado de sync, «+» y «Más».
+        // La acción protagonista (Pasar lista) vive en la franja AHORA;
+        // aquí no se repite en azul.
         if activeModule == .dashboard {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { layoutState.dashboardPassList() } label: {
-                    Label("Pasar lista", systemImage: "checkmark.circle")
+            ToolbarItem(placement: .principal) {
+                Picker("Modo del Dashboard", selection: $dashboardModeRaw) {
+                    ForEach(DashboardModePreference.allCases) { option in
+                        Text(option.title).tag(option.rawValue)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(!layoutState.dashboardActionsAvailable)
-                .help("Pasar lista para la clase activa")
+                .pickerStyle(.segmented)
+                .fixedSize()
+            }
+            if let pill = layoutState.dashboardSyncPill {
+                ToolbarItem(placement: .topBarLeading) {
+                    DashboardSyncPillView(state: pill)
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { layoutState.dashboardObservation() } label: {
-                        Label("Observación", systemImage: "note.text.badge.plus")
+                        Label("Nueva observación", systemImage: "note.text.badge.plus")
                     }
-                    .disabled(!layoutState.dashboardActionsAvailable)
+                    Button { layoutState.dashboardQuickEvaluation() } label: {
+                        Label("Evaluación rápida", systemImage: "checklist")
+                    }
+                } label: {
+                    Label("Añadir", systemImage: "plus")
+                }
+                .disabled(!layoutState.dashboardActionsAvailable)
+                .help("Nueva observación o evaluación rápida")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if let snapshot = layoutState.dashboardSnapshot {
+                        Menu {
+                            ForEach([DashboardCSVExport.Kind.today, .alerts, .groups, .agenda], id: \.title) { kind in
+                                ShareLink(
+                                    item: DashboardCSVExport(kind: kind, snapshot: snapshot),
+                                    preview: SharePreview("\(kind.title).csv")
+                                ) {
+                                    Text(kind.title)
+                                }
+                            }
+                        } label: {
+                            Label("Exportar", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                    Button { layoutState.toggleDashboardInspector() } label: {
+                        Label(
+                            layoutState.isDashboardInspectorPresented ? "Ocultar detalle" : "Mostrar detalle",
+                            systemImage: "sidebar.right"
+                        )
+                    }
+                    .disabled(!layoutState.dashboardInspectorAvailable)
+                    Button { layoutState.refreshDashboard() } label: {
+                        Label("Recargar", systemImage: "arrow.clockwise")
+                    }
                 } label: {
                     Label("Más", systemImage: "ellipsis.circle")
                 }
-                .help("Más acciones del día")
+                .help("Más acciones de Hoy")
             }
         }
 

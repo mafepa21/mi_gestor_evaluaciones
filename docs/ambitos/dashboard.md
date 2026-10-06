@@ -13,6 +13,10 @@
 
 ## Trampas
 
+- La barra real de iPhone/iPad es `IOSContextualToolbar` en `IOSRootView.swift` (y la fila `IOSGlobalContextRow`). `AppWorkspaceShell` en `IPadWorkspaceShell.swift` no es la raíz en iOS: su «Acción principal» no se ve.
+- Modo, snapshot y estado de sync llegan a la barra por `WorkspaceLayoutState.configureDashboardToolbar`; si se añade un dato nuevo, meterlo también en `toolbarStateKey` o no se refresca.
+- El modo se comparte por `@AppStorage("dashboard_mode_preference")` entre la vista y las barras.
+
 - Tokens visuales en `DashboardStyle.swift`; no meter colores ni opacidades sueltas en las vistas.
 - Números grandes con `@ScaledMetric`, no `.font(.system(size:))` fijo. Mínimo 11 pt.
 - Tope de Dynamic Type en `DashboardView.body`; en tamaños de accesibilidad la vista pasa a una columna.

@@ -126,10 +126,14 @@ struct PlannerWeekMiniatureGrid: View {
                     let isCurrentPeriod = slot.period == currentPeriodNumber
                     HStack(spacing: gridSpacing) {
                         VStack(spacing: 2) {
-                            Text("P\(slot.period)")
-                                .font(.caption2.weight(.bold))
-                            Text(slot.label)
-                                .font(.system(size: 9, weight: .medium))
+                            // La hora y no «P10»: las franjas propias se numeran tras las
+                            // del centro y el número parecía desordenado.
+                            Text(slot.startTime)
+                                .font(.caption.weight(.bold))
+                                .monospacedDigit()
+                            Text(slot.endTime)
+                                .font(.system(size: 10, weight: .medium))
+                                .monospacedDigit()
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
@@ -346,7 +350,9 @@ private struct PlannerWeekMiniatureCell: View {
                     }
                 }
 
-                if !isHoliday, let entry = primaryEntry, entries.count == 1 {
+                // El «+» de franja libre solo al pasar el ratón; los estados de sesión siempre.
+                if !isHoliday, let entry = primaryEntry, entries.count == 1,
+                   entry.kind != .scheduledSlot || isHovering {
                     VStack {
                         HStack {
                             Spacer()
@@ -433,7 +439,7 @@ private struct PlannerWeekMiniatureCell: View {
         VStack(alignment: .leading, spacing: isCompact ? 1 : 3) {
             HStack(spacing: 4) {
                 Text(abbreviation(for: entry))
-                    .font(.system(size: isCompact ? 9 : 9.5, weight: .heavy, design: .rounded))
+                    .font(.system(size: isCompact ? 10 : 11, weight: .heavy, design: .rounded))
                     .foregroundStyle(groupTint(for: entry))
                     .lineLimit(1)
 
@@ -448,15 +454,16 @@ private struct PlannerWeekMiniatureCell: View {
             }
 
             Text(entryTitle(for: entry))
-                .font(.system(size: isCompact ? 8.5 : 9.5, weight: .semibold))
+                .font(.system(size: isCompact ? 10 : 11, weight: .semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(isCompact ? 1 : 2)
                 .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            if !isCompact, let summary = entrySummary(for: entry) {
+            if !isCompact, let summary = entrySummary(for: entry),
+               summary.localizedCaseInsensitiveCompare(entryTitle(for: entry)) != .orderedSame {
                 Text(summary)
-                    .font(.system(size: 8.5, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)

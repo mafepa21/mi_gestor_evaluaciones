@@ -295,6 +295,7 @@ struct PlannerDayView: View {
                 session: session,
                 isCurrent: isCurrent(session),
                 isNext: session.id == nextSession?.id,
+                repeatsPrevious: repeatsPreviousSession(session),
                 onOpen: { onOpenSession(session) },
                 onComplete: { completeSession(session) },
                 onQuickNote: {
@@ -312,6 +313,21 @@ struct PlannerDayView: View {
         case .now:
             PlannerDayNowMarker(time: currentTime)
         }
+    }
+
+    /// true si la sesión anterior del día es del mismo grupo y con el mismo contenido:
+    /// así no se repite el bloque largo de objetivo y material.
+    private func repeatsPreviousSession(_ session: PlanningSession) -> Bool {
+        let sessions = timelineRows.compactMap { row -> PlanningSession? in
+            if case .session(let value) = row { return value }
+            return nil
+        }
+        guard let index = sessions.firstIndex(where: { $0.id == session.id }), index > 0 else { return false }
+        let previous = sessions[index - 1]
+        guard previous.groupId == session.groupId else { return false }
+        let current = vm.sessionGlance(for: session)
+        let earlier = vm.sessionGlance(for: previous)
+        return current.sessionTitle == earlier.sessionTitle && current.objective == earlier.objective
     }
 
     private var daySwipeGesture: some Gesture {
@@ -526,6 +542,7 @@ private struct PlannerDaySessionRow: View {
     let session: PlanningSession
     let isCurrent: Bool
     let isNext: Bool
+    var repeatsPrevious: Bool = false
     let onOpen: () -> Void
     let onComplete: () -> Void
     let onQuickNote: () -> Void
@@ -548,9 +565,14 @@ private struct PlannerDaySessionRow: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(session.groupName)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(tint)
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(tint)
+                            .frame(width: 8, height: 8)
+                        Text(session.groupName)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.primary)
+                    }
                     Spacer()
                     PlannerStatusBadge(
                         label: vm.sessionStateLabel(for: session),
@@ -559,18 +581,40 @@ private struct PlannerDaySessionRow: View {
                     )
                 }
 
-                PlannerSessionGlanceContent(
-                    data: vm.sessionGlance(for: session),
-                    tint: tint,
-                    style: .expanded
-                )
+                if repeatsPrevious {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(vm.sessionGlance(for: session).sessionTitle)
+                            .font(.headline.weight(.semibold))
+                            .lineLimit(2)
+                        Text("Mismo contenido que la sesión anterior")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    PlannerSessionGlanceContent(
+                        data: vm.sessionGlance(for: session),
+                        tint: tint,
+                        style: .expanded
+                    )
+                }
 
                 HStack(spacing: 8) {
-                    Button("Abrir ficha", action: onOpen)
-                        .buttonStyle(.borderedProminent)
-                    Button("Impartida", action: onComplete)
-                        .buttonStyle(.bordered)
-                        .disabled(session.status == .completed)
+                    if repeatsPrevious {
+                        Button("Abrir ficha", action: onOpen)
+                            .buttonStyle(.bordered)
+                    } else {
+                        Button("Abrir ficha", action: onOpen)
+                            .buttonStyle(.borderedProminent)
+                    }
+                    // Se lee como casilla: círculo vacío o check verde.
+                    let isTaught = session.status == .completed
+                    Button(action: onComplete) {
+                        Label("Impartida", systemImage: isTaught ? "checkmark.circle.fill" : "circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(isTaught ? EvaluationDesign.success : nil)
+                    .disabled(isTaught)
+                    .accessibilityValue(isTaught ? "Marcada" : "Sin marcar")
                     Button {
                         onQuickNote()
                     } label: {

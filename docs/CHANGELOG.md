@@ -20,7 +20,14 @@ El formato sigue una variante practica de Keep a Changelog:
   - Verificación: `xcodebuild` de `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No se hizo QA visual con letra grande ni prueba manual con VoiceOver.
   - Docs: trampas nuevas en `docs/ambitos/cuaderno.md`.
 
-### Changed
+- **Pulido HIG de Alumnado (Mac) y Planificación (solo presentación)**:
+  - Alumnado (`MacStudentsView.swift`): la lista ya no muestra otro grupo al cambiar rápido (se descartan respuestas tardías); los filtros pasan a una línea sobre la tabla y la búsqueda a la cabecera; «Clase» solo con «Todas las clases»; lo normal se muestra vacío; media con coma decimal a la derecha y «Sin nota» en gris; un solo contador. `MacPremiumTableContainer` gana `showsHeader` (aditivo).
+  - Barra del planificador (`MacRootView.swift`): secciones con texto (Mes, Semana, Día, Secuencia, Huecos, Resumen) vía `toolbarTitle` sin tocar `rawValue`; fuera «Sync» y «Refrescar», la etiqueta de estado sincroniza y recarga (⌘R) en toda la app.
+  - Mes: semanas vacías más bajas, sesión «6ª · grupo» a 11 pt, sin borde rojo. Semana: eje con horas en vez de «P10», sin subtítulo repetido, «+» solo al pasar el ratón, «X de Y franjas planificadas» e hitos sin duplicados.
+  - Día: grupo y SA en texto neutro, sesión repetida resumida, «Impartida» como casilla. Secuencia: barra que solo se llena con lo impartido, leyenda con iconos pegada a la tabla, meses en español.
+  - Huecos (antes «Evaluación · Tablero de Encaje»): título claro, lista recortada, SA en la cabecera de semana. Resumen: tarjeta de SA solo aquí y sin el bloque de progreso duplicado; «Cobertura» explicada.
+  - Verificación: `xcodebuild` `MiGestorKMPMac` OK en cada paso y `MiGestorKMPiOS` (simulador) OK desde la fase C; `MiGestorPlannerTests`: 245 tests, 4 omitidos, 2 fallos preexistentes (`testMislataCurricularFilesImportSuccessfully`, iguales sin estos cambios). QA manual del usuario en Mac en cada fase; no se hizo QA en iPad ni iPhone ni capturas.
+  - Pendiente: los hitos se guardan duplicados por grupo (solo se corrige el conteo en pantalla); el dato «Revisión» ya no aparece en Resumen.
 
 - **Situaciones de Aprendizaje: rediseño de usabilidad y UI (solo presentación)**:
   - `LearningSituationsWorkspaceView.swift` baja de 3144 a unas 600 líneas; las piezas pasan a 7 archivos nuevos (`LearningSituationsListColumn`, `LearningSituationDetailView`, `LearningSituationsComponents`, `LearningSituationImportReviewSheet`, `LearningSituationDuplicateSheet`, `LearningSituationEvaluationSheet`, `LearningSituationAssessmentReviewView`). La proyección de horarios no se toca.
@@ -47,6 +54,15 @@ El formato sigue una variante practica de Keep a Changelog:
   - Exámenes de 1º Bach duplicados: `SchoolCalendarPreset2026_2027.isSameDay` comparaba en UTC fechas guardadas a las 00:00 locales; nunca encontraba el examen del día y cada ejecución, en cada dispositivo, creaba otra copia que la sincronización repartía. La base del Mac tenía 1720 eventos, unos 1600 copias (hasta 103 por día y grupo), y todas las lecturas del calendario los cargaban enteros. Ahora compara con el rango local del día; la clave de sincronización pasa a `v2|…` para que la deduplicación existente borre las copias una vez (con borrado sincronizado). Test nuevo `testExamAtLocalMidnightMatchesItsOwnDay`.
   - Verificación (segunda tanda): `./gradlew :data:desktopTest` 159 tests OK (1 nuevo: `macAppLocalTokenIsAcceptedFromLoopbackEvenWithoutPairing`); `:commandCenterHelper:compileKotlin` OK; `verify_apple_builds.sh` OK; `MiGestorPlannerTests` 232 tests, 4 omitidos, 0 fallos. `./gradlew :shared:test` no se pudo ejecutar en el worktree (falta `local.properties` con el SDK de Android); `kmp/shared` no se tocó. Sin prueba manual Mac↔iPad.
   - Verificación: `scripts/verify_apple_builds.sh` (macOS y simulador iOS) OK; `MiGestorPlannerTests` (macOS) 231 tests, 4 omitidos: el primer intento dio 1 fallo no identificado y 3 repeticiones posteriores salieron en verde (posible test inestable). No se hizo QA manual al abrir la app ni se midió el tiempo de carga.
+
+### Changed
+
+- **Entregas web: enlace autocontenido, sin subir el manifiesto al repo de la web**:
+  - `WebSubmissionPublisher.swift`: cada enlace personal lleva el manifiesto firmado comprimido (`&m=`, JSON compacto + deflate raw + base64url). Tope de 6000 caracteres: si algún enlace lo supera, ninguno lleva `m` y se vuelve al flujo de subir `public/manifiestos/<id>.json`.
+  - `WebSubmissionPublishSheet.swift`: con enlace autocontenido desaparece el paso «Sube el manifiesto a la web»; las URLs se muestran en una línea con truncado al medio. `WebPublishResult.isSelfContained` nuevo (por defecto `false`).
+  - Web `entregas-alumnado` (rama `codex/enlace-autocontenido`): `src/enlace.mjs` decodifica `m` con `DecompressionStream("deflate-raw")` y topes de tamaño; `m` roto avisa «This form is not trustworthy» sin caer al fichero; enlaces sin `m` siguen cargando el fichero. Debe desplegarse antes de repartir enlaces nuevos.
+  - Sin migración: el contrato del manifiesto y el importador no cambian.
+  - Verificación: web `npm test` 82/0 y `npm run validar` OK; `scripts/interop_entregas_web/verificar.sh` con `ENTREGAS_WEB_REPO` 88/0, incluida la prueba cruzada Swift → web; `scripts/verify_apple_builds.sh` macOS e iOS Simulator OK; en navegador (Vite local) un enlace generado por Swift abre el formulario sin pedir ningún manifiesto y un `m` alterado muestra el aviso. No probado: Safari del iPad real ni enlaces largos en Gmail/Outlook del centro.
 
 ### Changed
 

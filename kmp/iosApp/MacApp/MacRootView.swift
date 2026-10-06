@@ -908,15 +908,6 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder
     private var macDefaultWorkspaceToolbar: some ToolbarContent {
-        ToolbarItem(placement: .secondaryAction) {
-            Button {
-                Task { await session.bridge.pullMissingSyncChanges() }
-            } label: {
-                Label("Sync", systemImage: "arrow.triangle.2.circlepath")
-            }
-            .help("Sincronizar con desktop")
-        }
-
         ToolbarItemGroup {
             if selectedFeature == .dashboard, let dashboardToolbarActions {
                 Button {
@@ -1116,8 +1107,10 @@ struct MacRootView: View {
                         }
                     }
                 )) {
+                    // Texto y no icono: en la barra de macOS un Label segmentado solo
+                    // enseña el icono, y seis iconos de calendario no se distinguen.
                     ForEach(PlannerWorkspaceSection.allCases) { section in
-                        Label(section.rawValue, systemImage: section.systemImage).tag(section)
+                        Text(section.toolbarTitle).tag(section)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -1219,24 +1212,26 @@ struct MacRootView: View {
                 .help("Nueva sesión (⌘⇧N)")
             }
 
-            Button {
-                refreshCurrentFeature()
-            } label: {
-                Label("Refrescar", systemImage: "arrow.clockwise")
-            }
-            .keyboardShortcut("r", modifiers: [.command])
-            .help("Refrescar datos")
-
         }
 
+        // Un solo control para sincronizar y recargar: antes había «Sync»,
+        // «Refrescar» y la etiqueta de estado, tres cosas para lo mismo.
         ToolbarItem {
-            MacStatusPill(
-                label: session.bridge.syncPendingChanges > 0
-                    ? "\(session.bridge.syncPendingChanges) pendientes"
-                    : "Sincronizado",
-                isActive: session.bridge.syncPendingChanges > 0,
-                tint: session.bridge.syncPendingChanges > 0 ? MacAppStyle.warningTint : MacAppStyle.successTint
-            )
+            Button {
+                Task { await session.bridge.pullMissingSyncChanges() }
+                refreshCurrentFeature()
+            } label: {
+                MacStatusPill(
+                    label: session.bridge.syncPendingChanges > 0
+                        ? "\(session.bridge.syncPendingChanges) pendientes"
+                        : "Sincronizado",
+                    isActive: session.bridge.syncPendingChanges > 0,
+                    tint: session.bridge.syncPendingChanges > 0 ? MacAppStyle.warningTint : MacAppStyle.successTint
+                )
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("r", modifiers: [.command])
+            .help("Sincronizar y recargar (⌘R)")
         }
     }
 

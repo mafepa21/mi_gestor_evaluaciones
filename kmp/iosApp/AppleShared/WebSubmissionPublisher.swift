@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Compression
 
 /// Publicación de formularios: la otra mitad del circuito de entregas del alumnado.
 ///
@@ -39,7 +40,15 @@ enum WebSubmissionPublisher {
         let mode: String
         /// Coevaluación: asignaciones (evaluatorAlias, targetAlias, targetStudentId, targetName)
         let peerTargets: [(evaluatorAlias: String, targetAlias: String, targetStudentId: Int64, targetName: String)]
+        /// `true` si cada enlace lleva el manifiesto dentro (`&m=…`): entonces no
+        /// hace falta subir el fichero a la web. `false` si algún enlace habría
+        /// superado `maxLinkLength` y se ha vuelto al flujo de subir el fichero.
+        let isSelfContained: Bool
     }
+
+    /// Longitud máxima de un enlace con el manifiesto dentro. Por encima, los
+    /// clientes de correo y mensajería empiezan a truncar o rechazar la URL.
+    static let maxLinkLength = 6000
 
     struct PeerTargetToPublish {
         let evaluatorStudentId: Int64
@@ -201,6 +210,9 @@ enum WebSubmissionPublisher {
         )
         let manifestJSON = String(decoding: datos, as: UTF8.self)
 
+        // Mismo manifiesto, en JSON compacto y comprimido, para ir dentro del enlace.
+        let manifiestoEnEnlace = try compactCompressedManifest(manifiesto)
+
         var aliases: [(alias: String, studentId: Int64)] = []
         var links: [(studentId: Int64, studentName: String, url: String)] = []
         var usados = Set<String>()
@@ -261,6 +273,14 @@ enum WebSubmissionPublisher {
             ))
         }
 
+        // Si algún enlace con `m` se pasa del tope, no se añade a ninguno: mezclar
+        // enlaces con y sin manifiesto obligaría a explicar dos flujos a la vez.
+        let sufijoM = "&m=\(manifiestoEnEnlace)"
+        let cabeEnTope = links.allSatisfy { $0.url.count + sufijoM.count <= maxLinkLength }
+        if cabeEnTope {
+            links = links.map { (studentId: $0.studentId, studentName: $0.studentName, url: $0.url + sufijoM) }
+        }
+
         return PublishedForm(
             formInstanceId: formInstanceId,
             manifestJSON: manifestJSON,
@@ -272,7 +292,8 @@ enum WebSubmissionPublisher {
             aliases: aliases,
             links: links,
             mode: mode,
-            peerTargets: publishedPeerTargets
+            peerTargets: publishedPeerTargets,
+            isSelfContained: cabeEnTope
         )
     }
 
@@ -299,6 +320,37 @@ enum WebSubmissionPublisher {
     }
 
     // MARK: - Utilidades
+
+    /// JSON compacto -> deflate RAW -> base64url sin relleno. `COMPRESSION_ZLIB` de
+    /// Apple produce deflate crudo (sin cabecera zlib), que es lo que descomprime
+    /// `DecompressionStream("deflate-raw")` en el navegador. El formato del JSON no
+    /// afecta a la firma, que va sobre la forma canónica.
+    static func compactCompressedManifest(_ manifiesto: [String: Any]) throws -> String {
+        let compacto = try JSONSerialization.data(
+            withJSONObject: manifiesto,
+            options: [.sortedKeys, .withoutEscapingSlashes]
+        )
+        guard let comprimido = deflateRaw(compacto) else { throw PublishError.signingFailed }
+        return comprimido.base64URLEncodedString
+    }
+
+    static func deflateRaw(_ datos: Data) -> Data? {
+        guard !datos.isEmpty else { return nil }
+        // Margen por si los datos no se comprimen: el deflate puede crecer un poco.
+        let capacidad = datos.count + datos.count / 8 + 64
+        var salida = Data(count: capacidad)
+        let escritos = salida.withUnsafeMutableBytes { destino in
+            datos.withUnsafeBytes { origen in
+                compression_encode_buffer(
+                    destino.bindMemory(to: UInt8.self).baseAddress!, capacidad,
+                    origen.bindMemory(to: UInt8.self).baseAddress!, datos.count,
+                    nil, COMPRESSION_ZLIB
+                )
+            }
+        }
+        guard escritos > 0 else { return nil }
+        return salida.prefix(escritos)
+    }
 
     private static func randomAlias() -> String {
         var bytes = [UInt8](repeating: 0, count: 16)

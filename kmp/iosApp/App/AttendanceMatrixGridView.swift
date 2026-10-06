@@ -50,6 +50,9 @@ struct AttendanceMatrixGridView: View {
     @ScaledMetric(relativeTo: .caption) private var dateColumnWidth: CGFloat = 50
     @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var statusBadgeSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .caption) private var headerHeight: CGFloat = 48
+    @ScaledMetric(relativeTo: .caption) private var footerHeight: CGFloat = 40
+    @State private var horizontalOffset: CGFloat = 0
 
     struct MatrixCellTarget: Identifiable {
         let student: Student
@@ -231,82 +234,148 @@ struct AttendanceMatrixGridView: View {
     }
 
     // MARK: - Matrix Grid Content
+    /// Columna de nombres fija a la izquierda y fila de fechas fija arriba (iOS 18+ / macOS):
+    /// un único scroll vertical con dos columnas; el horizontal solo mueve fechas y totales.
     private var matrixContent: some View {
-        ScrollView([.horizontal, .vertical]) {
-            // Lazy: no montar todas las filas alumno×fecha de golpe (trimestre/curso).
-            LazyVStack(alignment: .leading, spacing: 0) {
-                // Cabecera de columnas
+        VStack(spacing: 0) {
+            if pinsDateHeader {
                 HStack(spacing: 0) {
                     studentColumnHeader
-                        .frame(width: studentColumnWidth, alignment: .leading)
+                        .frame(width: studentColumnWidth, height: headerHeight, alignment: .leading)
                         .background(appCardBackground(for: colorScheme))
-
-                    ForEach(uniqueDates, id: \.self) { date in
-                        dateColumnHeader(for: date)
-                            .frame(width: dateColumnWidth)
-                            .background(appCardBackground(for: colorScheme))
-                    }
-
-                    statsColumnsHeader
-                        .background(appCardBackground(for: colorScheme))
+                        .shadow(color: .black.opacity(horizontalOffset > 1 ? 0.10 : 0), radius: 4, x: 2)
+                        .zIndex(1)
+                    dateHeaderStrip
+                        .offset(x: -horizontalOffset)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .clipped()
                 }
                 .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.15)), alignment: .bottom)
+            }
 
-                // Filas de alumnos
-                ForEach(Array(students.enumerated()), id: \.element.id) { index, student in
-                    let stats = computeStats(for: student)
-                    let isEven = index.isMultiple(of: 2)
+            ScrollView(.vertical) {
+                HStack(alignment: .top, spacing: 0) {
+                    pinnedNamesColumn
+                        .frame(width: studentColumnWidth)
+                        .background(appPageBackground(for: colorScheme))
+                        .shadow(color: .black.opacity(horizontalOffset > 1 ? 0.10 : 0), radius: 4, x: 2)
+                        .zIndex(1)
 
-                    HStack(spacing: 0) {
-                        studentRowCell(student: student)
-                            .frame(width: studentColumnWidth, height: rowHeight, alignment: .leading)
-                            .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
-
-                        ForEach(uniqueDates, id: \.self) { date in
-                            let record = recordFor(studentId: student.id, date: date)
-                            attendanceCell(student: student, date: date, record: record)
-                                .frame(width: dateColumnWidth, height: rowHeight)
-                                .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                // Anclas invisibles por fecha para saltar a hoy al abrir.
+                                HStack(spacing: 0) {
+                                    ForEach(uniqueDates, id: \.self) { date in
+                                        Color.clear.frame(width: dateColumnWidth, height: 0).id(date)
+                                    }
+                                }
+                                if !pinsDateHeader {
+                                    dateHeaderStrip
+                                        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.15)), alignment: .bottom)
+                                }
+                                LazyVStack(alignment: .leading, spacing: 0) {
+                                    ForEach(Array(students.enumerated()), id: \.element.id) { index, student in
+                                        dataRow(student: student, isEven: index.isMultiple(of: 2))
+                                    }
+                                }
+                                footerDataRow
+                            }
                         }
-
-                        statsRowCells(stats: stats)
-                            .frame(height: rowHeight)
-                            .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
+                        .modifier(HorizontalOffsetReader(offset: $horizontalOffset))
+                        .onAppear { scrollToToday(proxy) }
+                        .onChange(of: uniqueDates) { _, _ in scrollToToday(proxy) }
                     }
-                    .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.08)), alignment: .bottom)
                 }
-
-                // Fila de resumen de fecha al pie
-                HStack(spacing: 0) {
-                    Text("Presentes / Total")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .frame(width: studentColumnWidth, alignment: .leading)
-                        .frame(minHeight: 40)
-
-                    ForEach(uniqueDates, id: \.self) { date in
-                        let summary = dateSummary(for: date)
-                        VStack(spacing: 1) {
-                            Text("\(summary.present)")
-                                .font(.system(.caption2, design: .rounded).weight(.bold))
-                                .foregroundStyle(AppleDesignSystem.success)
-                            Text("/\(summary.total)")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(width: dateColumnWidth)
-                        .frame(minHeight: 40)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("\(accessibilityDateFormatter.string(from: date)): \(summary.present) presentes de \(summary.total)")
-                    }
-
-                    classGlobalStatsCell
-                        .frame(height: 40)
-                }
-                .background(EvaluationDesign.surfaceSoft.opacity(0.6))
             }
         }
+    }
+
+    private var pinsDateHeader: Bool {
+        if #available(iOS 18.0, macOS 15.0, *) { return true }
+        return false
+    }
+
+    private func scrollToToday(_ proxy: ScrollViewProxy) {
+        let today = Calendar.current.startOfDay(for: Date())
+        let target = uniqueDates.last(where: { Calendar.current.startOfDay(for: $0) <= today }) ?? uniqueDates.last
+        guard let target else { return }
+        DispatchQueue.main.async { proxy.scrollTo(target, anchor: .trailing) }
+    }
+
+    private var pinnedNamesColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !pinsDateHeader {
+                studentColumnHeader
+                    .frame(height: headerHeight, alignment: .leading)
+                    .background(appCardBackground(for: colorScheme))
+                    .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.15)), alignment: .bottom)
+            }
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(students.enumerated()), id: \.element.id) { index, student in
+                    studentRowCell(student: student)
+                        .frame(width: studentColumnWidth, height: rowHeight, alignment: .leading)
+                        .background(index.isMultiple(of: 2) ? Color.secondary.opacity(0.02) : Color.clear)
+                        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.08)), alignment: .bottom)
+                }
+            }
+            Text("Presentes / Total")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .frame(width: studentColumnWidth, height: footerHeight, alignment: .leading)
+                .background(EvaluationDesign.surfaceSoft.opacity(0.6))
+        }
+    }
+
+    private var dateHeaderStrip: some View {
+        HStack(spacing: 0) {
+            ForEach(uniqueDates, id: \.self) { date in
+                dateColumnHeader(for: date)
+                    .frame(width: dateColumnWidth, height: headerHeight)
+            }
+            statsColumnsHeader
+                .frame(height: headerHeight)
+        }
+        .background(appCardBackground(for: colorScheme))
+        .fixedSize()
+    }
+
+    private func dataRow(student: Student, isEven: Bool) -> some View {
+        let stats = computeStats(for: student)
+        return HStack(spacing: 0) {
+            ForEach(uniqueDates, id: \.self) { date in
+                let record = recordFor(studentId: student.id, date: date)
+                attendanceCell(student: student, date: date, record: record)
+                    .frame(width: dateColumnWidth, height: rowHeight)
+            }
+            statsRowCells(stats: stats)
+                .frame(height: rowHeight)
+        }
+        .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.08)), alignment: .bottom)
+    }
+
+    private var footerDataRow: some View {
+        HStack(spacing: 0) {
+            ForEach(uniqueDates, id: \.self) { date in
+                let summary = dateSummary(for: date)
+                VStack(spacing: 1) {
+                    Text("\(summary.present)")
+                        .font(.system(.caption2, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppleDesignSystem.success)
+                    Text("/\(summary.total)")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: dateColumnWidth, height: footerHeight)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(accessibilityDateFormatter.string(from: date)): \(summary.present) presentes de \(summary.total)")
+            }
+            classGlobalStatsCell
+                .frame(height: footerHeight)
+        }
+        .background(EvaluationDesign.surfaceSoft.opacity(0.6))
     }
 
     // MARK: - Column Headers
@@ -319,7 +388,7 @@ struct AttendanceMatrixGridView: View {
             Spacer()
         }
         .padding(.horizontal, 12)
-        .frame(height: 48)
+        .frame(height: headerHeight)
     }
 
     private func dateColumnHeader(for date: Date) -> some View {
@@ -338,7 +407,7 @@ struct AttendanceMatrixGridView: View {
                     isToday ? Capsule().fill(EvaluationDesign.accent) : Capsule().fill(Color.clear)
                 )
         }
-        .frame(minHeight: 48)
+        .frame(minHeight: headerHeight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDateFormatter.string(from: date) + (isToday ? ", hoy" : ""))
         .accessibilityAddTraits(.isHeader)
@@ -349,22 +418,22 @@ struct AttendanceMatrixGridView: View {
             Text("% Asist.")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-                .frame(width: 64, height: 48)
+                .frame(width: 64, height: headerHeight)
 
             Text("Faltas")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(AppleDesignSystem.danger)
-                .frame(width: 50, height: 48)
+                .frame(width: 50, height: headerHeight)
 
             Text("Retr.")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(AppleDesignSystem.warning)
-                .frame(width: 50, height: 48)
+                .frame(width: 50, height: headerHeight)
 
             Text("Just.")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-                .frame(width: 50, height: 48)
+                .frame(width: 50, height: headerHeight)
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
@@ -894,5 +963,22 @@ private struct AttendanceMatrixStatusPicker: View {
         }
         .padding(14)
         .frame(minWidth: pickerWidth)
+    }
+}
+
+/// Lee el desplazamiento horizontal para que la fila de fechas fija lo siga (iOS 18 / macOS 15).
+private struct HorizontalOffsetReader: ViewModifier {
+    @Binding var offset: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.x + geometry.contentInsets.leading
+            } action: { _, newValue in
+                offset = max(0, newValue)
+            }
+        } else {
+            content
+        }
     }
 }

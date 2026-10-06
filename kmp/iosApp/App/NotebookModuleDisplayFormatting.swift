@@ -204,7 +204,7 @@ extension NotebookModuleView {
             Circle()
                 .fill(NotebookStyle.primaryTint.opacity(0.15))
             Text(initials(for: student))
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .notebookFont(size: 12, weight: .bold, design: .rounded)
                 .foregroundStyle(NotebookStyle.primaryTint)
         }
         .frame(width: 36, height: 36)
@@ -220,7 +220,7 @@ extension NotebookModuleView {
         return ZStack {
             Circle().fill(accent.opacity(0.16))
             Text(initials(for: student))
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .notebookFont(size: 11, weight: .bold, design: .rounded)
                 .foregroundStyle(accent)
         }
         .frame(width: 28, height: 28)
@@ -233,7 +233,7 @@ extension NotebookModuleView {
 
     func followUpBadge(for student: Student) -> some View {
         Text(student.isInjured ? "Atención" : "Normal")
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .notebookFont(size: 12, weight: .bold, design: .rounded)
             .foregroundStyle(student.isInjured ? .orange : NotebookStyle.successTint)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -323,7 +323,7 @@ extension NotebookModuleView {
                     NotebookAnimatedGradeText(
                         text: averageText(for: item),
                         value: average ?? 0,
-                        font: .system(size: 17, weight: .bold, design: .rounded),
+                        font: Self.averageNumberFont,
                         style: AnyShapeStyle(numberColor)
                     )
                     if pendingCount > 0 {
@@ -345,7 +345,17 @@ extension NotebookModuleView {
         .clipped()
         .help(averageHelpText(for: state))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Media, \(averageDescription)\(pendingDescription)")
+        .accessibilityLabel("Media de \(item.student.firstName) \(item.student.lastName), \(averageDescription)\(pendingDescription)")
+    }
+
+    /// 17 pt en macOS (sin Dynamic Type); en iOS `.body`, que mide 17 con la
+    /// letra estándar y crece con el tamaño de texto del sistema.
+    static var averageNumberFont: Font {
+        #if os(macOS)
+        .system(size: 17, weight: .bold, design: .rounded)
+        #else
+        .system(.body, design: .rounded, weight: .bold)
+        #endif
     }
 
     func averageHelpText(for state: AverageCellState) -> String {

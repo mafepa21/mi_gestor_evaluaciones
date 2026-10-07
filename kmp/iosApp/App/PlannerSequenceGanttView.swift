@@ -788,11 +788,19 @@ struct PlannerGanttWeek: Hashable {
     let year: Int
     let week: Int
 
-    private static var isoCalendar: Calendar {
+    private static let isoCalendar: Calendar = {
         var calendar = Calendar(identifier: .iso8601)
         calendar.timeZone = TimeZone.current
         return calendar
-    }
+    }()
+
+    private static let monthTitleFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = isoCalendar
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.dateFormat = "LLLL"
+        return formatter
+    }()
 
     init(year: Int, week: Int) {
         self.year = year
@@ -815,12 +823,7 @@ struct PlannerGanttWeek: Hashable {
 
     var monthTitle: String {
         guard let date = mondayDate else { return "" }
-        let formatter = DateFormatter()
-        formatter.calendar = Self.isoCalendar
-        // La app no tiene localización en español: Locale.current daría «September».
-        formatter.locale = Locale(identifier: "es_ES")
-        formatter.dateFormat = "LLLL"
-        return formatter.string(from: date).capitalized
+        return Self.monthTitleFormatter.string(from: date).capitalized
     }
 
     static func range(around reference: Date, before: Int, after: Int) -> [PlannerGanttWeek] {
@@ -868,13 +871,17 @@ struct PlannerGanttWeek: Hashable {
         return Int((Double(days) / 7.0).rounded())
     }
 
-    private static func isoDate(_ value: String) -> Date? {
+    private static let isoDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = isoCalendar
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone.current
         formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: value)
+        return formatter
+    }()
+
+    private static func isoDate(_ value: String) -> Date? {
+        isoDateFormatter.date(from: value)
     }
 }
 

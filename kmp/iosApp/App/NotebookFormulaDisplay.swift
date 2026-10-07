@@ -53,12 +53,16 @@ enum NotebookFormulaDisplay {
         return Double(normalized)
     }
 
-    static func formatResult(_ value: Double) -> String {
+    private static let resultFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.locale = .current
         formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+        return formatter
+    }()
+
+    static func formatResult(_ value: Double) -> String {
+        return resultFormatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
     }
 
     static func spreadsheetFormula(

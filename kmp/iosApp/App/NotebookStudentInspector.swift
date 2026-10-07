@@ -796,12 +796,16 @@ private struct NotebookInspectorPendingRow: View {
         .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private func formattedDecimal(_ value: Double) -> String {
+    private static let decimalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.locale = .current
         formatter.numberStyle = .decimal
         formatter.maximumFractionDigits = 1
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
+        return formatter
+    }()
+
+    private func formattedDecimal(_ value: Double) -> String {
+        Self.decimalFormatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
     }
 }
 

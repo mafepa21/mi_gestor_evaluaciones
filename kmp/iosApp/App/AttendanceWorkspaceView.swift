@@ -63,31 +63,47 @@ struct AttendanceWorkspaceView: View {
     @State var dateReloadTask: Task<Void, Never>?
 
     var boardSummary: (present: Int, absent: Int, late: Int, untracked: Int) {
-        let rows = attendanceStore.studentsInClass.map { recordsByStudentId[$0.id] }
-        let present = rows.filter { AttendanceLogic.isPresentStatus($0?.status) }.count
-        let absent = rows.filter { AttendanceLogic.isAbsentStatus($0?.status) }.count
-        let late = rows.filter { AttendanceLogic.isLateStatus($0?.status) }.count
-        let untracked = attendanceStore.studentsInClass.filter { (recordsByStudentId[$0.id]?.status ?? "").isEmpty }.count
+        var present = 0
+        var absent = 0
+        var late = 0
+        var untracked = 0
+        for student in attendanceStore.studentsInClass {
+            let status = recordsByStudentId[student.id]?.status
+            if AttendanceLogic.isPresentStatus(status) {
+                present += 1
+            } else if AttendanceLogic.isAbsentStatus(status) {
+                absent += 1
+            } else if AttendanceLogic.isLateStatus(status) {
+                late += 1
+            }
+            if (status ?? "").isEmpty {
+                untracked += 1
+            }
+        }
         return (present, absent, late, untracked)
     }
 
     var filteredRows: [AttendanceEntryRow] {
-        attendanceStore.studentsInClass
-            .map { student in
-                AttendanceEntryRow(
-                    id: student.id,
-                    student: student,
-                    isInjured: isStudentInjured(student),
-                    record: recordsByStudentId[student.id]
-                )
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isAllStatus = selectedStatusFilter == AttendanceStatusOption.allFilterId
+        return attendanceStore.studentsInClass.compactMap { student in
+            let record = recordsByStudentId[student.id]
+            if !isAllStatus && record?.status != selectedStatusFilter {
+                return nil
             }
-            .filter {
-                let matchesStatus = selectedStatusFilter == AttendanceStatusOption.allFilterId || $0.record?.status == selectedStatusFilter
-                let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-                let fullName = "\($0.student.firstName) \($0.student.lastName)"
-                let matchesSearch = query.isEmpty || fullName.localizedCaseInsensitiveContains(query)
-                return matchesStatus && matchesSearch
+            if !query.isEmpty {
+                let fullName = "\(student.firstName) \(student.lastName)"
+                if !fullName.localizedCaseInsensitiveContains(query) {
+                    return nil
+                }
             }
+            return AttendanceEntryRow(
+                id: student.id,
+                student: student,
+                isInjured: isStudentInjured(student),
+                record: record
+            )
+        }
     }
 
     func isStudentInjured(_ student: Student) -> Bool {
@@ -367,10 +383,14 @@ struct AttendanceWorkspaceView: View {
     }
 
     var attendanceMetricsSubbar: some View {
-        HStack(spacing: 8) {
+        let rows = filteredRows
+        let exceptionCount = exceptionRows.count
+        let summary = boardSummary
+
+        return HStack(spacing: 8) {
             Picker("Filtro", selection: $showOnlyExceptions.animation(uiFeatureFlags.animation(.easeInOut(duration: 0.15)))) {
-                Text("Todos (\(filteredRows.count))").tag(false)
-                Text("Con incidencias (\(exceptionRows.count))").tag(true)
+                Text("Todos (\(rows.count))").tag(false)
+                Text("Con incidencias (\(exceptionCount))").tag(true)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -381,14 +401,14 @@ struct AttendanceWorkspaceView: View {
 
             // Mini-stats en texto compacto
             HStack(spacing: 10) {
-                Label("\(boardSummary.present)", systemImage: "checkmark.circle.fill")
+                Label("\(summary.present)", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(AppleDesignSystem.success)
-                Label("\(boardSummary.absent)", systemImage: "xmark.circle.fill")
+                Label("\(summary.absent)", systemImage: "xmark.circle.fill")
                     .foregroundStyle(AppleDesignSystem.danger)
-                Label("\(boardSummary.late)", systemImage: "clock.fill")
+                Label("\(summary.late)", systemImage: "clock.fill")
                     .foregroundStyle(AppleDesignSystem.warning)
-                if boardSummary.untracked > 0 {
-                    Label("\(boardSummary.untracked)", systemImage: "clock")
+                if summary.untracked > 0 {
+                    Label("\(summary.untracked)", systemImage: "clock")
                         .foregroundStyle(Color.secondary)
                 }
             }

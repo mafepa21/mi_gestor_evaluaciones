@@ -1228,7 +1228,7 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         let eso4SA0URL = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/4º ESO/SA 0 - Evaluación Inicial (4º ESO)/02_SESIONES/sesiones_secuenciadas.docx")
         if FileManager.default.fileExists(atPath: eso4SA0URL.path) {
             let draft = try service.preview(from: eso4SA0URL)
-            XCTAssertEqual(draft.plans.count, 4)
+            XCTAssertEqual(draft.plans.count, 3)
             XCTAssertTrue(draft.plans.allSatisfy { !$0.title.isEmpty && !$0.objective.isEmpty && $0.effectiveMinutes == 30 })
         }
 
@@ -1236,7 +1236,7 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         let eso4SA1URL = URL(fileURLWithPath: "/Users/mariofernandez/Desktop/Programaciones/output/Programación aula/Situaciones de aprendizaje/4º ESO/SA 1 - Balonmano (4º ESO)/02_SESIONES/sesiones_secuenciadas.docx")
         if FileManager.default.fileExists(atPath: eso4SA1URL.path) {
             let draft = try service.preview(from: eso4SA1URL)
-            XCTAssertEqual(draft.plans.count, 10)
+            XCTAssertEqual(draft.plans.count, 8)
             XCTAssertTrue(draft.plans.allSatisfy { !$0.title.isEmpty && !$0.objective.isEmpty && $0.effectiveMinutes == 30 })
         }
 

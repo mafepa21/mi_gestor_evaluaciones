@@ -21,11 +21,15 @@ enum TermBoardPresentationHelper {
         return "\(calendar.component(.day, from: date))"
     }
 
-    static func monthAbbreviation(_ date: Date) -> String {
+    private static let monthAbbrFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM"
         formatter.calendar = Calendar(identifier: .iso8601)
-        return formatter.string(from: date).uppercased()
+        return formatter
+    }()
+
+    static func monthAbbreviation(_ date: Date) -> String {
+        monthAbbrFormatter.string(from: date).uppercased()
     }
 
     static func slotIsFree(_ slot: TermClassSlot) -> Bool {
@@ -236,6 +240,14 @@ struct TermBoardTimelineView: View {
         return "\(group.weekTitle) · \(title)"
     }
 
+    private static let weekGroupDateFormatter: DateFormatter = {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "d MMM"
+        dateFormatter.locale = Locale(identifier: "es_ES")
+        dateFormatter.calendar = Calendar(identifier: .iso8601)
+        return dateFormatter
+    }()
+
     private var groupedSlotsByWeek: [TermBoardWeekSlotGroup] {
         let calendar = Calendar(identifier: .iso8601)
         let grouped = Dictionary(grouping: slots) { slot in
@@ -245,10 +257,6 @@ struct TermBoardTimelineView: View {
         }
 
         let sortedKeys = grouped.keys.sorted()
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "d MMM"
-        dateFormatter.locale = Locale(identifier: "es_ES")
-        dateFormatter.calendar = calendar
 
         return sortedKeys.compactMap { key -> TermBoardWeekSlotGroup? in
             guard let weekSlots = grouped[key]?.sorted(by: { $0.date < $1.date }),
@@ -256,7 +264,7 @@ struct TermBoardTimelineView: View {
                   let last = weekSlots.last else { return nil }
             let weekNum = calendar.component(.weekOfYear, from: first.date)
             let weekTitle = "Semana \(weekNum)"
-            let range = "\(dateFormatter.string(from: first.date)) – \(dateFormatter.string(from: last.date))"
+            let range = "\(Self.weekGroupDateFormatter.string(from: first.date)) – \(Self.weekGroupDateFormatter.string(from: last.date))"
             return TermBoardWeekSlotGroup(weekKey: key, weekTitle: weekTitle, dateRange: range, slots: weekSlots)
         }
     }

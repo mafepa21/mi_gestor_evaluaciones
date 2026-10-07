@@ -30,6 +30,7 @@ struct AttendanceMatrixGridView: View {
     @State private var searchText: String = ""
     @State private var matrixRecords: [Int64: [String: KmpBridge.AttendanceRecordSnapshot]] = [:]
     @State private var uniqueDates: [Date] = []
+    @State private var uniqueDateKeys: [String] = []
     @State private var isLoading: Bool = false
     @State private var activeCellPopover: MatrixCellTarget? = nil
     @State private var isCopiedAlertPresented: Bool = false
@@ -64,24 +65,32 @@ struct AttendanceMatrixGridView: View {
         }
     }
 
-    private let dayFormatter: DateFormatter = {
+    private static let dayFormatter: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "es_ES")
         df.dateFormat = "dd/MM"
         return df
     }()
 
-    private let accessibilityDateFormatter: DateFormatter = {
+    private static let accessibilityDateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "es_ES")
         df.dateFormat = "EEEE d 'de' MMMM"
         return df
     }()
 
-    private let weekdayFormatter: DateFormatter = {
+    private static let weekdayFormatter: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "es_ES")
         df.dateFormat = "EEE"
+        return df
+    }()
+
+    private static let isoDateFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = .current
+        df.dateFormat = "yyyy-MM-dd"
         return df
     }()
 
@@ -370,7 +379,7 @@ struct AttendanceMatrixGridView: View {
                 }
                 .frame(width: dateColumnWidth, height: footerHeight)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(accessibilityDateFormatter.string(from: date)): \(summary.present) presentes de \(summary.total)")
+                .accessibilityLabel("\(Self.accessibilityDateFormatter.string(from: date)): \(summary.present) presentes de \(summary.total)")
             }
             classGlobalStatsCell
                 .frame(height: footerHeight)
@@ -394,11 +403,11 @@ struct AttendanceMatrixGridView: View {
     private func dateColumnHeader(for date: Date) -> some View {
         let isToday = Calendar.current.isDateInToday(date)
         return VStack(spacing: 2) {
-            Text(weekdayFormatter.string(from: date).uppercased())
+            Text(Self.weekdayFormatter.string(from: date).uppercased())
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(isToday ? EvaluationDesign.accent : .secondary)
 
-            Text(dayFormatter.string(from: date))
+            Text(Self.dayFormatter.string(from: date))
                 .font(.system(.caption2, design: .rounded).weight(isToday ? .bold : .medium))
                 .foregroundStyle(isToday ? .white : .primary)
                 .padding(.horizontal, 4)
@@ -409,7 +418,7 @@ struct AttendanceMatrixGridView: View {
         }
         .frame(minHeight: headerHeight)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityDateFormatter.string(from: date) + (isToday ? ", hoy" : ""))
+        .accessibilityLabel(Self.accessibilityDateFormatter.string(from: date) + (isToday ? ", hoy" : ""))
         .accessibilityAddTraits(.isHeader)
     }
 
@@ -522,7 +531,7 @@ struct AttendanceMatrixGridView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(student.fullName), \(accessibilityDateFormatter.string(from: date))")
+        .accessibilityLabel("\(student.fullName), \(Self.accessibilityDateFormatter.string(from: date))")
         .accessibilityValue(attendanceCellAccessibilityValue(option: option, record: record))
         .accessibilityHint("Cambia el estado de asistencia")
     }
@@ -591,9 +600,7 @@ struct AttendanceMatrixGridView: View {
 
     // MARK: - Data Logic & Persistence
     private func dateKey(for date: Date) -> String {
-        let calendar = Calendar.current
-        let comps = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%04d-%02d-%02d", comps.year ?? 0, comps.month ?? 0, comps.day ?? 0)
+        Self.isoDateFormatter.string(from: date)
     }
 
     private func recordFor(studentId: Int64, date: Date) -> KmpBridge.AttendanceRecordSnapshot? {
@@ -622,8 +629,7 @@ struct AttendanceMatrixGridView: View {
         var noMaterial = 0
         var exempt = 0
 
-        for date in uniqueDates {
-            let key = dateKey(for: date)
+        for key in uniqueDateKeys {
             guard let record = recordsForStudent[key] else { continue }
             switch record.status {
             case "PRESENTE": present += 1
@@ -690,7 +696,9 @@ struct AttendanceMatrixGridView: View {
                 dateMap[todayKey] = Date()
             }
 
-            self.uniqueDates = dateMap.values.sorted()
+            let sortedDates = dateMap.values.sorted()
+            self.uniqueDates = sortedDates
+            self.uniqueDateKeys = sortedDates.map { Self.isoDateFormatter.string(from: $0) }
             self.matrixRecords = recordsByStudent
         } catch {
             print("Error cargando sábana de asistencia: \(error)")

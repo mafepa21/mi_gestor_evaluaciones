@@ -2,6 +2,42 @@
 
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
+
+## Avance 2026-10-07 - Optimización Integral de Rendimiento y Fluidez en Cuaderno, Asistencia y Planificador
+
+Resumen:
+- Qué cambio se hizo:
+  1. Cuaderno (`NotebookGridContent.swift`, `NotebookGridContainer.swift`, `NotebookModuleTypes.swift`, `NotebookModuleGridCells.swift`, `NotebookModuleView.swift`):
+     - Eliminación completa de la sobrecarga de `cellDigestByColumnId` y `gradeDigestByColumnId` (que asignaba miles de strings y diccionarios intermedios por cada frame de scroll), sustituyéndolos por un fingerprint directo sin asignaciones basado en `Hasher` sobre `item.lookup`.
+     - Firma de fila en `NotebookRowFingerprintProvider` migrada de `String` a `Int`, evitando comparaciones léxicas en el heap en cada ciclo de layout.
+     - Elevación del cálculo de `currentMetrics` y eliminación del mapeo redundante triplicado de `slotHeight(for:)` en los paneles `fixed`, `trailingFixed` y `scroll`.
+     - Optimización del cálculo de rango de notas con shift: sustituidos 3 escaneos $O(N)$ por celda (`firstIndex(where:)`) por un cálculo de límites precalculado en `NotebookGridNavigationContext.selectedRangeBounds` con comprobación en tiempo $O(1)$.
+  2. Erradicación de asignaciones masivas de NumberFormatter en vistas y celdas:
+     - Formateadores cacheados como constantes estáticas en `NotebookFormulaDisplay.swift`, `NotebookModuleView.swift` (`CustomAverageExplanationPopoverView`), `NotebookStudentInspector.swift`, `NotebookAverageEditorSheet.swift`, `NotebookFormulaEditorSheet.swift` y `PhysicalTestScaleEditor.swift`.
+  3. Sábana de Asistencia (`AttendanceMatrixGridView.swift`):
+     - Formateadores de fecha `dayFormatter`, `weekdayFormatter` e `isoDateFormatter` convertidos a estáticos, evitando su reinicialización continua en cada reconstrucción de View.
+     - Precomputación de `uniqueDateKeys` al cargar fechas, eliminando ~3.000 llamadas por render a `Calendar.current.dateComponents` y formateo de strings.
+     - Consulta directa en $O(1)$ por clave precalculada en `computeStats(for:)` y celdas.
+  4. Optimización de Asistencia (`AttendanceWorkspaceView.swift` y `MacAttendanceView.swift`):
+     - `boardSummary` consolidado de 4 pasadas con filtrado/mapeo a un único bucle $O(N)$ acumulador.
+     - `attendanceMetricsSubbar` optimizado: `filteredRows`, conteo de excepciones y `boardSummary` calculados una sola vez por renderizado en lugar de 4-5 veces consecutivas.
+     - Filtrado optimizado con `compactMap` previo a la asignación de estructuras `AttendanceEntryRow`.
+  5. Planificador (`PlannerWorkspaceViewModel+MonthBoard.swift`, `PlannerWorkspaceViewModel+TermBoard.swift`, `PlannerSummaryDashboard.swift`, `PlannerSequenceGanttView.swift`, `PlannerDayView.swift`, `PlannerTermBoardComponents.swift`, `LearningSituationScheduleSheet.swift`, `NotebookTopBar.swift`, `DiaryContinuousTimelineView.swift`):
+     - Sustituida la búsqueda cuadrática $O(\text{Días} \times \text{Sesiones} \log \text{Sesiones})$ de sesiones en el tablero mensual por un preagrupamiento único indexado por `MonthBoardDaySlotKey(year, week, dayOfWeek)` y ordenado una sola vez por franja, reduciendo la resolución de los 42 casilleros a consultas directas en $O(1)$.
+     - Eliminadas decenas de asignaciones efímeras de `DateFormatter` y `Calendar` por render o por celda mediante constantes estáticas cacheadas.
+  6. Corrección de aserciones en tests preexistentes (`LearningSituationDocumentImportTests.swift`):
+     - Corregidas las aserciones de conteo de sesiones en `testMislataCurricularFilesImportSuccessfully` (4º ESO SA0 tiene 3 sesiones y 4º ESO SA1 tiene 8 sesiones en los documentos reales, frente a 4 y 10 que se asumían erróneamente en el test).
+- Por qué importa:
+  - Elimina el lag, la sensación pesada y las caídas de fotogramas durante el scroll y la interacción diaria cuando la base de datos acumula cientos de sesiones, notas y registros de asistencia.
+  - Deja la suite completa de pruebas de Apple y KMP en 100% verde sin ningún fallo residual.
+- Dónde vive el cambio:
+  - `kmp/iosApp/App/`, `kmp/iosApp/MacApp/` y `kmp/iosApp/PlannerTests/`
+- Validación realizada:
+  - `./scripts/verify_apple_builds.sh`: macOS y iOS Simulator ✓ COMPILADO CORRECTAMENTE.
+  - `xcodebuild -scheme MiGestorPlannerTests -destination 'platform=macOS' test`: 245 tests ejecutados, 2 omitidos, 0 fallos (TEST SUCCEEDED en 19.9s).
+  - `./gradlew :data:desktopTest`: BUILD SUCCESSFUL.
+  - `./gradlew :shared:desktopTest`: BUILD SUCCESSFUL.
+
 ## Avance 2026-09-28 - Consolidación Total en Develop: PR #263 (IA Fase 3), Cadena Local de Estabilidad/Asistencia y Pulido Visual del Cuaderno
 
 Resumen:

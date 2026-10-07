@@ -180,6 +180,14 @@ struct NotebookFormulaEditorValidationResult {
         referencedColumnIds.isEmpty ? "Sin referencias" : "\(referencedColumnIds.count) referencia(s)"
     }
 
+    private static let previewFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.locale = .current
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter
+    }()
+
     var previewText: String {
         guard hasPreviewRow else {
             return "No hay datos suficientes para previsualizar, pero la fórmula es válida."
@@ -187,11 +195,7 @@ struct NotebookFormulaEditorValidationResult {
         guard let previewValue else {
             return "No hay datos suficientes para previsualizar, pero la fórmula es válida."
         }
-        let formatter = NumberFormatter()
-        formatter.locale = .current
-        formatter.minimumFractionDigits = 0
-        formatter.maximumFractionDigits = 2
-        let value = formatter.string(from: NSNumber(value: previewValue)) ?? String(format: "%.2f", previewValue)
+        let value = Self.previewFormatter.string(from: NSNumber(value: previewValue)) ?? String(format: "%.2f", previewValue)
         return "Preview con el primer alumno: \(value)"
     }
 }

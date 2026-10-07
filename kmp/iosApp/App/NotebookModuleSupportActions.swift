@@ -246,6 +246,10 @@ extension NotebookModuleView {
     }
 
     func cellIsInsideGradeRange(studentId: Int64, columnId: String, rows: [NotebookTableRow]) -> Bool {
+        if let bounds = gridNavigationContext.selectedRangeBounds, bounds.columnId == columnId {
+            guard let index = rows.firstIndex(where: { $0.student.id == studentId }) else { return false }
+            return index >= bounds.lower && index <= bounds.upper
+        }
         guard let range = selectedCellRange, range.columnId == columnId else { return false }
         guard let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
               let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }),

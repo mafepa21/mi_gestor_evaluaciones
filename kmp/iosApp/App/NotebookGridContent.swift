@@ -147,7 +147,7 @@ private final class NotebookRowFingerprintProvider {
     private let transientDigestByStudentId: [Int64: String]
     private let rowContextDigest: (Int, NotebookTableRow) -> Int
     private let structuralInvalidationKey: String
-    private var signatures: [Key: String] = [:]
+    private var signatures: [Key: Int] = [:]
 
     init(
         rows: [NotebookTableRow],
@@ -165,73 +165,53 @@ private final class NotebookRowFingerprintProvider {
         self.structuralInvalidationKey = structuralInvalidationKey
     }
 
-    func signature(index: Int, item: NotebookTableRow, segmentKey: String) -> String {
+    func signature(index: Int, item: NotebookTableRow, segmentKey: String) -> Int {
         let studentId = item.student.id
         let key = Key(studentId: studentId, segmentKey: segmentKey)
         if let cached = signatures[key] {
             return cached
         }
         guard let item = rowsByStudentId[studentId], let pane = panesBySegmentKey[segmentKey] else {
-            return "\(studentId)¬\(segmentKey)"
+            var fallback = Hasher()
+            fallback.combine(studentId)
+            fallback.combine(segmentKey)
+            let value = fallback.finalize()
+            signatures[key] = value
+            return value
         }
-        let visibleIds = Set(pane.visibleColumnIds)
-        let value = Self.signature(
-            studentId: studentId,
-            average: item.row.weightedAverage.map { "\($0.doubleValue)" } ?? "nil",
-            segmentKey: segmentKey,
-            visibleColumnIds: pane.visibleColumnIds,
-            transientRowDigest: transientDigestByStudentId[studentId] ?? "",
-            cellDigestByColumnId: Self.cellDigestByColumnId(item.row.persistedCells, visibleIds: visibleIds),
-            gradeDigestByColumnId: Self.gradeDigestByColumnId(item.row.persistedGrades, visibleIds: visibleIds),
-            rowReloadRevision: rowReloadRevisions[studentId, default: 0],
-            rowContext: rowContextDigest(index, item),
-            structuralInvalidationKey: structuralInvalidationKey
-        )
+
+        var hasher = Hasher()
+        hasher.combine(studentId)
+        hasher.combine(item.row.weightedAverage?.doubleValue)
+        hasher.combine(segmentKey)
+        hasher.combine(transientDigestByStudentId[studentId] ?? "")
+        hasher.combine(rowReloadRevisions[studentId, default: 0])
+        hasher.combine(rowContextDigest(index, item))
+        hasher.combine(structuralInvalidationKey)
+
+        let lookup = item.lookup
+        for colId in pane.visibleColumnIds {
+            if let cell = lookup.cellsByColumnId[colId] {
+                hasher.combine(cell.columnId)
+                hasher.combine(cell.textValue)
+                hasher.combine(cell.displayValue)
+                hasher.combine(cell.iconValue)
+                hasher.combine(cell.annotation?.icon)
+                hasher.combine(cell.annotation?.note)
+                hasher.combine(cell.annotation?.attachmentUris.count ?? 0)
+                hasher.combine(cell.ordinalValue)
+                hasher.combine(cell.boolValue?.boolValue == true)
+            }
+            if let grade = lookup.gradesByColumnId[colId] {
+                hasher.combine(grade.columnId)
+                hasher.combine(grade.value?.doubleValue)
+                hasher.combine(grade.evidencePath)
+                hasher.combine(grade.rubricSelections)
+            }
+        }
+        let value = hasher.finalize()
         signatures[key] = value
         return value
-    }
-
-    private static func signature(
-        studentId: Int64,
-        average: String,
-        segmentKey: String,
-        visibleColumnIds: [String],
-        transientRowDigest: String,
-        cellDigestByColumnId: [String: String],
-        gradeDigestByColumnId: [String: String],
-        rowReloadRevision: Int,
-        rowContext: Int,
-        structuralInvalidationKey: String
-    ) -> String {
-        guard !visibleColumnIds.isEmpty else {
-            return [
-                "\(studentId)",
-                average,
-                segmentKey,
-                transientRowDigest,
-                "\(rowReloadRevision)",
-                "\(rowContext)",
-                structuralInvalidationKey
-            ].joined(separator: "¬")
-        }
-
-        let visibleCellDigest = visibleColumnIds
-            .compactMap { cellDigestByColumnId[$0] }
-            .joined(separator: "|")
-        let visibleGradeDigest = visibleColumnIds
-            .compactMap { gradeDigestByColumnId[$0] }
-            .joined(separator: "|")
-        return [
-            "\(studentId)",
-            average,
-            segmentKey,
-            transientRowDigest,
-            visibleCellDigest,
-            visibleGradeDigest,
-            "\(rowReloadRevision)",
-            "\(rowContext)",
-            structuralInvalidationKey
-        ].joined(separator: "¬")
     }
 
     private static func transientDigestByStudentId(_ transientCellIds: Set<String>) -> [Int64: String] {
@@ -245,43 +225,10 @@ private final class NotebookRowFingerprintProvider {
         }
         return grouped.mapValues { $0.sorted().joined(separator: "|") }
     }
-
-    private static func cellDigestByColumnId(_ cells: [PersistedNotebookCell], visibleIds: Set<String>) -> [String: String] {
-        var digests: [String: String] = [:]
-        digests.reserveCapacity(min(cells.count, visibleIds.count))
-        for cell in cells where visibleIds.contains(cell.columnId) {
-            digests[cell.columnId] = [
-                cell.columnId,
-                cell.textValue ?? "",
-                cell.displayValue ?? "",
-                cell.iconValue ?? "",
-                cell.annotation?.icon ?? "",
-                cell.annotation?.note ?? "",
-                "\(cell.annotation?.attachmentUris.count ?? 0)",
-                cell.ordinalValue ?? "",
-                cell.boolValue?.boolValue == true ? "1" : "0"
-            ].joined(separator: ":")
-        }
-        return digests
-    }
-
-    private static func gradeDigestByColumnId(_ grades: [Grade], visibleIds: Set<String>) -> [String: String] {
-        var digests: [String: String] = [:]
-        digests.reserveCapacity(min(grades.count, visibleIds.count))
-        for grade in grades where visibleIds.contains(grade.columnId) {
-            digests[grade.columnId] = [
-                grade.columnId,
-                grade.value.map { "\($0.doubleValue)" } ?? "",
-                grade.evidencePath ?? "",
-                grade.rubricSelections ?? ""
-            ].joined(separator: ":")
-        }
-        return digests
-    }
 }
 
 private struct NotebookEquatableGridRow<Content: View>: View, Equatable {
-    let signature: String
+    let signature: Int
     let content: () -> Content
 
     var body: some View {

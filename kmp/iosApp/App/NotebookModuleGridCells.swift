@@ -674,7 +674,7 @@ extension NotebookModuleView {
         navigableSegments: [NotebookDisplaySegment]
     ) -> some View {
         let isCellSelected = inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-        let isInGradeRange = cellIsInsideGradeRange(studentId: item.student.id, columnId: column.id, rows: allRows)
+        let isInGradeRange = gridNavigationContext.isInsideGradeRange(columnId: column.id, rowIndex: rowIndex)
         let formulaCellDisplay = formulaDisplay(for: item, column: column, data: data)
         let displaySnapshot = cellDisplaySnapshot(for: item, column: column, formulaDisplay: formulaCellDisplay)
         let cellActions = notebookCellActions()

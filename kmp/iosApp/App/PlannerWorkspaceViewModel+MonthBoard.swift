@@ -1,6 +1,29 @@
 import SwiftUI
 import MiGestorKit
 
+private let monthBoardIsoDateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.calendar = Calendar(identifier: .iso8601)
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone.current
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter
+}()
+
+private let monthBoardNameFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "es_ES")
+    formatter.calendar = Calendar(identifier: .iso8601)
+    formatter.dateFormat = "MMMM yyyy"
+    return formatter
+}()
+
+private struct MonthBoardDaySlotKey: Hashable {
+    let year: Int
+    let week: Int
+    let dayOfWeek: Int
+}
+
 @MainActor
 extension PlannerWorkspaceViewModel {
     func reloadMonthData() async {
@@ -11,13 +34,10 @@ extension PlannerWorkspaceViewModel {
         let firstOfMonth = calendar.date(from: firstComponents) ?? monthViewDate
         let start = calendar.date(byAdding: .day, value: -7, to: firstOfMonth) ?? firstOfMonth
         let end = calendar.date(byAdding: .day, value: 45, to: firstOfMonth) ?? firstOfMonth
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.dateFormat = "yyyy-MM-dd"
         do {
             monthSessions = try await bridge.plannerListSessions(
-                fromIso: formatter.string(from: start),
-                toIso: formatter.string(from: end),
+                fromIso: monthBoardIsoDateFormatter.string(from: start),
+                toIso: monthBoardIsoDateFormatter.string(from: end),
                 classId: nil
             )
             monthLoadError = nil
@@ -157,23 +177,34 @@ extension PlannerWorkspaceViewModel {
             }
         }
 
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        dateFormatter.calendar = calendar
-
-        let monthFormatter = DateFormatter()
-        monthFormatter.locale = Locale(identifier: "es_ES")
-        monthFormatter.dateFormat = "MMMM yyyy"
-        let monthName = monthFormatter.string(from: firstDayOfMonth).capitalized
+        let monthName = monthBoardNameFormatter.string(from: firstDayOfMonth).capitalized
 
         let milestonesByDateIso = Dictionary(grouping: monthMilestones, by: { $0.dateIso })
+
+        let candidateSessions: [PlanningSession]
+        if let selectedGroupId {
+            candidateSessions = monthSessions.filter { $0.groupId == selectedGroupId }
+        } else {
+            candidateSessions = monthSessions
+        }
+        let sessionsByDaySlot: [MonthBoardDaySlotKey: [PlanningSession]] = Dictionary(
+            grouping: candidateSessions,
+            by: { MonthBoardDaySlotKey(year: Int($0.year), week: Int($0.weekNumber), dayOfWeek: Int($0.dayOfWeek)) }
+        ).mapValues { sessions in
+            sessions.sorted { s1, s2 in
+                if s1.period != s2.period {
+                    return s1.period < s2.period
+                }
+                return (s1.startTime ?? "") < (s2.startTime ?? "")
+            }
+        }
 
         var totalMonthSessions = 0
         var allDays: [PlannerMonthDay] = []
 
         for item in allDayDates {
             let dayDate = item.date
-            let dateIso = dateFormatter.string(from: dayDate)
+            let dateIso = monthBoardIsoDateFormatter.string(from: dayDate)
             let dayNum = calendar.component(.day, from: dayDate)
             let monthNum = calendar.component(.month, from: dayDate)
             let yearNum = calendar.component(.year, from: dayDate)
@@ -184,22 +215,8 @@ extension PlannerWorkspaceViewModel {
             let isoWeek = calendar.component(.weekOfYear, from: dayDate)
             let isoYear = calendar.component(.yearForWeekOfYear, from: dayDate)
 
-            // Filtrar sesiones del día
-            let daySessions = monthSessions.filter { session in
-                let matchDate = Int(session.year) == isoYear
-                    && Int(session.weekNumber) == isoWeek
-                    && Int(session.dayOfWeek) == dayOfWeek
-                guard matchDate else { return false }
-                if let selectedGroupId {
-                    return session.groupId == selectedGroupId
-                }
-                return true
-            }.sorted { s1, s2 in
-                if s1.period != s2.period {
-                    return s1.period < s2.period
-                }
-                return (s1.startTime ?? "") < (s2.startTime ?? "")
-            }
+            let slotKey = MonthBoardDaySlotKey(year: isoYear, week: isoWeek, dayOfWeek: dayOfWeek)
+            let daySessions = sessionsByDaySlot[slotKey] ?? []
 
             if item.isCurrentMonth {
                 totalMonthSessions += daySessions.count
@@ -243,9 +260,6 @@ extension PlannerWorkspaceViewModel {
     private func buildMonthMilestones(from events: [CalendarEvent]) -> [PlannerDayMilestone] {
         var milestones: [PlannerDayMilestone] = []
         let calendar = Calendar(identifier: .iso8601)
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        dateFormatter.calendar = calendar
 
         let groupsById = Dictionary(groups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
 
@@ -284,7 +298,7 @@ extension PlannerWorkspaceViewModel {
             let endDay = calendar.startOfDay(for: endDate)
 
             while cursor <= endDay {
-                let dateIso = dateFormatter.string(from: cursor)
+                let dateIso = monthBoardIsoDateFormatter.string(from: cursor)
                 let dayOfWeek = ((calendar.component(.weekday, from: cursor) + 5) % 7) + 1
 
                 milestones.append(

@@ -80,15 +80,20 @@ struct LearningSituationScheduleSheet: View {
         return sortedEvaluationPeriods.first
     }
 
-    private var selectedPeriodDateRange: ClosedRange<Date> {
-        let calendar = Calendar(identifier: .iso8601)
+    private static let isoDateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
-        df.calendar = calendar
+        df.calendar = Calendar(identifier: .iso8601)
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone.current
+        return df
+    }()
 
+    private var selectedPeriodDateRange: ClosedRange<Date> {
+        let calendar = Calendar(identifier: .iso8601)
         if let period = activePeriod,
-           let start = df.date(from: period.startDateIso),
-           let end = df.date(from: period.endDateIso),
+           let start = Self.isoDateFormatter.date(from: period.startDateIso),
+           let end = Self.isoDateFormatter.date(from: period.endDateIso),
            start <= end {
             return start...end
         }
@@ -664,10 +669,7 @@ struct LearningSituationScheduleSheet: View {
                 situationStartDate = Date()
             } else if let first = sortedEvaluationPeriods.first {
                 selectedTermPeriodId = first.id
-                let df = DateFormatter()
-                df.dateFormat = "yyyy-MM-dd"
-                df.calendar = Calendar(identifier: .iso8601)
-                situationStartDate = df.date(from: first.startDateIso) ?? Date()
+                situationStartDate = Self.isoDateFormatter.date(from: first.startDateIso) ?? Date()
             }
 
             // Discover linked groups from SA
@@ -706,11 +708,7 @@ struct LearningSituationScheduleSheet: View {
     }
 
     private func currentPeriodForToday() -> PlannerEvaluationPeriod? {
-        let calendar = Calendar(identifier: .iso8601)
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        dateFormatter.calendar = calendar
-        let todayIso = dateFormatter.string(from: Date())
+        let todayIso = Self.isoDateFormatter.string(from: Date())
 
         return evaluationPeriods.first { period in
             period.startDateIso <= todayIso && todayIso <= period.endDateIso
@@ -818,12 +816,8 @@ struct LearningSituationScheduleSheet: View {
             }
 
             let calendar = Calendar(identifier: .iso8601)
-            let df = DateFormatter()
-            df.dateFormat = "yyyy-MM-dd"
-            df.calendar = calendar
-
-            let pStart = df.date(from: resolvedPeriod.startDateIso)
-            let pEnd = df.date(from: resolvedPeriod.endDateIso)
+            let pStart = Self.isoDateFormatter.date(from: resolvedPeriod.startDateIso)
+            let pEnd = Self.isoDateFormatter.date(from: resolvedPeriod.endDateIso)
 
             // Ensure situationStartDate falls within the resolved period range
             if let pStart, let pEnd {
@@ -839,7 +833,7 @@ struct LearningSituationScheduleSheet: View {
                         groupStates[index].startDate = situationStartDate
                     }
                 }
-                let groupSimStartDateIso = df.string(from: groupStates[index].startDate)
+                let groupSimStartDateIso = Self.isoDateFormatter.string(from: groupStates[index].startDate)
 
                 let classId = groupStates[index].classId
                 let classSlots = allScheduleSlots.filter { $0.schoolClassId == classId }
@@ -920,7 +914,7 @@ struct LearningSituationScheduleSheet: View {
                     for assigned in projectionResult.slots {
                         guard let planNumber = assigned.planSessionNumber else { continue }
                         let plan = groupPlans.first(where: { $0.sessionNumber == planNumber })
-                        let assignedDateIso = df.string(from: assigned.date)
+                        let assignedDateIso = Self.isoDateFormatter.string(from: assigned.date)
                         let isLong = assigned.occupiedPeriods.count > 1
 
                         for (destinationIndex, destination) in assigned.destinationSlots.enumerated() {

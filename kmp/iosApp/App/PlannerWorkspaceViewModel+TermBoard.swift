@@ -24,6 +24,15 @@ struct TermSimulationPlanItem: Equatable {
     }
 }
 
+private let termBoardIsoDateFormatter: DateFormatter = {
+    let df = DateFormatter()
+    df.dateFormat = "yyyy-MM-dd"
+    df.calendar = Calendar(identifier: .iso8601)
+    df.locale = Locale(identifier: "en_US_POSIX")
+    df.timeZone = TimeZone.current
+    return df
+}()
+
 enum TermBoardProjectionEngine {
     static func project(
         periodName: String,
@@ -40,12 +49,9 @@ enum TermBoardProjectionEngine {
         defaultTimeSlots: [PlannerVisibleSlot] = []
     ) -> (slots: [TermClassSlot], metrics: TermCapacityMetrics) {
         let calendar = Calendar(identifier: .iso8601)
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        dateFormatter.calendar = calendar
 
-        guard let startDate = dateFormatter.date(from: startDateIso),
-              let endDate = dateFormatter.date(from: endDateIso) else {
+        guard let startDate = termBoardIsoDateFormatter.date(from: startDateIso),
+              let endDate = termBoardIsoDateFormatter.date(from: endDateIso) else {
             return (
                 [],
                 TermCapacityMetrics(
@@ -60,8 +66,8 @@ enum TermBoardProjectionEngine {
             )
         }
 
-        let deadlineDate = deadlineDateIso.flatMap { dateFormatter.date(from: $0) }
-        let simulationStartDate = simulationStartDateIso.flatMap { dateFormatter.date(from: $0) }
+        let deadlineDate = deadlineDateIso.flatMap { termBoardIsoDateFormatter.date(from: $0) }
+        let simulationStartDate = simulationStartDateIso.flatMap { termBoardIsoDateFormatter.date(from: $0) }
 
         // Filter schedule slots for this class
         let classSlots = scheduleSlots
@@ -79,7 +85,7 @@ enum TermBoardProjectionEngine {
             var cursor = calendar.startOfDay(for: eventStart)
             let endDay = calendar.startOfDay(for: eventEnd)
             while cursor <= endDay {
-                let iso = dateFormatter.string(from: cursor)
+                let iso = termBoardIsoDateFormatter.string(from: cursor)
                 if nonTeachingMap[iso] == nil {
                     nonTeachingMap[iso] = event.title
                 }
@@ -111,7 +117,7 @@ enum TermBoardProjectionEngine {
 
         while cursor <= normalizedEnd {
             let dayOfWeek = ((calendar.component(.weekday, from: cursor) + 5) % 7) + 1 // 1=Mon ... 7=Sun
-            let dayDateIso = dateFormatter.string(from: cursor)
+            let dayDateIso = termBoardIsoDateFormatter.string(from: cursor)
             let year = calendar.component(.yearForWeekOfYear, from: cursor)
             let week = calendar.component(.weekOfYear, from: cursor)
 
@@ -300,11 +306,7 @@ extension PlannerWorkspaceViewModel {
                 if let selectedTermPeriodId {
                     return evaluationPeriods.first(where: { $0.id == selectedTermPeriodId })
                 }
-                let cal = Calendar(identifier: .iso8601)
-                let df = DateFormatter()
-                df.dateFormat = "yyyy-MM-dd"
-                df.calendar = cal
-                let nowIso = df.string(from: Date())
+                let nowIso = termBoardIsoDateFormatter.string(from: Date())
                 if let current = evaluationPeriods.first(where: { $0.startDateIso <= nowIso && nowIso <= $0.endDateIso }) {
                     return current
                 }

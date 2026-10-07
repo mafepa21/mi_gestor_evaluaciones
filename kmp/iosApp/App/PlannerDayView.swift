@@ -708,10 +708,14 @@ private struct PlannerDayGapRow: View {
 private struct PlannerDayNowMarker: View {
     let time: Date
 
-    private var label: String {
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
-        return formatter.string(from: time)
+        return formatter
+    }()
+
+    private var label: String {
+        Self.timeFormatter.string(from: time)
     }
 
     var body: some View {

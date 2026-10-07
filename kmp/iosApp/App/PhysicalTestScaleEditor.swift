@@ -983,12 +983,26 @@ private struct NumberDraftFieldRequired: View {
 }
 
 enum PhysicalTestsFormatting {
-    static func decimal(_ value: Double) -> String {
+    private static let integerFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.locale = .current
         formatter.numberStyle = .decimal
         formatter.maximumFractionDigits = 2
-        formatter.minimumFractionDigits = value.rounded() == value ? 0 : 1
+        formatter.minimumFractionDigits = 0
+        return formatter
+    }()
+
+    private static let fractionFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.locale = .current
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 1
+        return formatter
+    }()
+
+    static func decimal(_ value: Double) -> String {
+        let formatter = value.rounded() == value ? integerFormatter : fractionFormatter
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 }

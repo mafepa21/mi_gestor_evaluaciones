@@ -87,11 +87,14 @@ struct DiaryContinuousTimelineView: View {
         }
     }
 
-    private var monthSections: [DiaryTimelineMonthSection] {
-        let monthFormatter = DateFormatter()
-        monthFormatter.locale = Locale(identifier: "es_ES")
-        monthFormatter.dateFormat = "MMMM yyyy"
+    private static let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter
+    }()
 
+    private var monthSections: [DiaryTimelineMonthSection] {
         let grouped = Dictionary(grouping: filteredEntries) { entry -> String in
             let calendar = Calendar.current
             let comps = calendar.dateComponents([.year, .month], from: entry.date)
@@ -100,7 +103,7 @@ struct DiaryContinuousTimelineView: View {
 
         return grouped.keys.sorted().compactMap { key in
             guard let entries = grouped[key], let firstDate = entries.first?.date else { return nil }
-            let monthName = monthFormatter.string(from: firstDate).capitalized
+            let monthName = Self.monthFormatter.string(from: firstDate).capitalized
             return DiaryTimelineMonthSection(
                 id: key,
                 monthName: monthName,
@@ -377,7 +380,7 @@ private struct DiaryTimelineCard: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private let dateFormatter: DateFormatter = {
+    private static let dateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "es_ES")
         df.dateFormat = "EEEE, d 'de' MMMM"
@@ -409,7 +412,7 @@ private struct DiaryTimelineCard: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 8) {
-                            Text(dateFormatter.string(from: entry.date).capitalized)
+                            Text(Self.dateFormatter.string(from: entry.date).capitalized)
                                 .font(.subheadline.weight(.bold))
                                 .foregroundStyle(.primary)
 

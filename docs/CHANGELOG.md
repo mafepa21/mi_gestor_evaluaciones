@@ -13,6 +13,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Optimización integral de rendimiento y fluidez en Cuaderno, Asistencia y Planificador**:
+  - Cuaderno: firma de fila migrada de `String` a `Int` con `Hasher` directo sobre celdas (`item.lookup`), eliminando miles de asignaciones de strings y diccionarios por frame de scroll. Métricas y altura de slots calculadas una vez en lugar de triplicarse por panel. Comprobación de límites de rango de notas con shift convertida de 3 escaneos $O(N)$ a comprobación $O(1)$ en `NotebookGridNavigationContext.selectedRangeBounds`.
+  - NumberFormatter: formateadores convertidos a constantes estáticas en `NotebookFormulaDisplay`, `CustomAverageExplanationPopoverView`, `NotebookStudentInspector`, `NotebookAverageEditorSheet`, `NotebookFormulaEditorSheet` y `PhysicalTestScaleEditor`.
+  - Asistencia: `dayFormatter`, `weekdayFormatter` e `isoDateFormatter` cacheados en `AttendanceMatrixGridView`; `uniqueDateKeys` precomputado para eliminar ~3.000 llamadas a `Calendar.current.dateComponents` por render; `boardSummary` consolidado a un bucle único $O(N)$; `attendanceMetricsSubbar` evalúa filas y excepciones una sola vez y filtra con `compactMap` antes de asignar celdas.
+  - Planificador: tablero mensual optimizado de $O(\text{Días} \times \text{Sesiones} \log \text{Sesiones})$ a consultas $O(1)$ preagrupando sesiones por `MonthBoardDaySlotKey`; `DateFormatter` y `Calendar` cacheados como estáticos en `MonthBoard`, `TermBoard`, `Gantt`, `DayView`, `SummaryDashboard` y `LearningSituationScheduleSheet`.
+  - Verificación: `./scripts/verify_apple_builds.sh` (macOS y iOS Simulator) OK; `MiGestorPlannerTests` 245 tests, 2 omitidos, 0 fallos (100% pasando tras corregir aserciones en `testMislataCurricularFilesImportSuccessfully`); `./gradlew :data:desktopTest` y `:shared:desktopTest` OK.
+
 - **Cuaderno accesible (Dynamic Type y VoiceOver)**:
   - El texto del grid, la barra superior, las pestañas y la barra compacta usa `.notebookFont(size:weight:design:)`: escala con el tamaño de letra del sistema en iOS/iPadOS y no cambia en macOS.
   - El grid tiene tope de Dynamic Type en AX2 y la altura de fila escala con el mismo tope.

@@ -29,6 +29,7 @@ struct AppleAppRootView: View {
 #if os(macOS)
         ContentView()
             .environmentObject(bridge)
+            .environment(\.kmpBridgeReference, bridge)
             .environment(\.uiFeatureFlags, uiFeatureFlags)
             .environment(\.appThemeMode, themeMode)
             .environment(\.appleCommandCenterState, commandCenterState)
@@ -45,6 +46,7 @@ struct AppleAppRootView: View {
 #else
         IOSRootView()
             .environmentObject(bridge)
+            .environment(\.kmpBridgeReference, bridge)
             .environment(\.uiFeatureFlags, uiFeatureFlags)
             .environment(\.appThemeMode, themeMode)
             .environment(\.appleCommandCenterState, commandCenterState)

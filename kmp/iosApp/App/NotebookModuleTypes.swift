@@ -428,11 +428,30 @@ final class NotebookGridNavigationContext {
     private(set) var segments: [NotebookDisplaySegment] = []
     /// Tinte por categoría precalculado una vez por render (evita `first(where:)` por celda).
     private(set) var categoryTintById: [String: Color] = [:]
+    /// Límites del rango seleccionado precalculados una vez por render (evita 3x firstIndex en cada celda).
+    private(set) var selectedRangeBounds: (columnId: String, lower: Int, upper: Int)?
 
-    func update(rows: [NotebookTableRow], segments: [NotebookDisplaySegment], categoryTintById: [String: Color]) {
+    func update(
+        rows: [NotebookTableRow],
+        segments: [NotebookDisplaySegment],
+        categoryTintById: [String: Color],
+        selectedCellRange: NotebookCellRange? = nil
+    ) {
         self.rows = rows
         self.segments = segments
         self.categoryTintById = categoryTintById
+        if let range = selectedCellRange,
+           let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
+           let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }) {
+            self.selectedRangeBounds = (range.columnId, min(start, end), max(start, end))
+        } else {
+            self.selectedRangeBounds = nil
+        }
+    }
+
+    func isInsideGradeRange(columnId: String, rowIndex: Int) -> Bool {
+        guard let bounds = selectedRangeBounds, bounds.columnId == columnId else { return false }
+        return rowIndex >= bounds.lower && rowIndex <= bounds.upper
     }
 }
 

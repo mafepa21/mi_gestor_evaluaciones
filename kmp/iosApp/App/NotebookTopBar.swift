@@ -550,10 +550,14 @@ struct NotebookSummaryGenerationSheet: View {
         }
     }
 
-    private func formattedRunStamp() -> String {
+    private static let runStampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "dd/MM"
-        return formatter.string(from: .now)
+        return formatter
+    }()
+
+    private func formattedRunStamp() -> String {
+        Self.runStampFormatter.string(from: .now)
     }
 }
 

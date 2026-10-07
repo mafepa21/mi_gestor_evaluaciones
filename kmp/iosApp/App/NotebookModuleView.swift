@@ -571,7 +571,8 @@ struct NotebookModuleView: View {
             categoryTintById: Dictionary(
                 data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
                 uniquingKeysWith: { first, _ in first }
-            )
+            ),
+            selectedCellRange: selectedCellRange
         )
 
         NotebookGridContent(
@@ -2395,13 +2396,17 @@ struct CustomAverageExplanationPopoverView: View {
     let columns: [NotebookColumnDefinition]
     let onClose: () -> Void
 
-    private func formattedDecimal(_ value: Double) -> String {
+    private static let decimalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.locale = .current
         formatter.numberStyle = .decimal
         formatter.minimumFractionDigits = 1
         formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
+        return formatter
+    }()
+
+    private func formattedDecimal(_ value: Double) -> String {
+        Self.decimalFormatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
     }
 
     enum AverageState {

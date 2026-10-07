@@ -592,21 +592,35 @@ final class KmpBridge: ObservableObject {
                 try await seedIfNeeded()
                 UserDefaults.standard.set(true, forKey: Self.hasCompletedInitialSeedKey)
             }
-            try await refreshDashboard()
-            try await loadDashboard(mode: .office)
+            // Los grupos van primero: rúbricas y alumnado los necesitan y,
+            // si se cargaran a la vez, cada uno lanzaría su propia carga.
             try await refreshClasses()
-            try await refreshSubjects()
-            try await refreshRubrics()
-            try await refreshRubricClassLinks()
-            try await refreshPlanning()
-            try await refreshStudentsDirectory()
-            await syncNow(reason: "bootstrap", forceFullPull: true, silent: true)
+            // El resto no depende entre sí: se piden a la vez en lugar de
+            // esperar uno tras otro.
+            async let dashboard: Void = refreshDashboard()
+            async let operationalDashboard: Void = loadDashboard(mode: .office)
+            async let subjects: Void = refreshSubjects()
+            async let rubrics: Void = refreshRubrics()
+            async let rubricLinks: Void = refreshRubricClassLinks()
+            async let planning: Void = refreshPlanning()
+            async let studentsDirectory: Void = refreshStudentsDirectory()
+            _ = try await (dashboard, operationalDashboard, subjects, rubrics, rubricLinks, planning, studentsDirectory)
             status = appleBootstrap.connectedStatusText
         } catch {
             didBootstrap = false
             status = "Error: \(error.localizedDescription)"
+            hasCompletedBootstrap = true
+            return
         }
-        hasCompletedBootstrap = true
+        // El primer pull de Sync LAN ya no bloquea la pantalla de inicio.
+        // `hasCompletedBootstrap` sigue marcándose al terminarlo, porque el
+        // onboarding lo espera para no confundir una base aún vacía con
+        // "sin datos".
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.syncNow(reason: "bootstrap", forceFullPull: true, silent: true)
+            self.hasCompletedBootstrap = true
+        }
     }
 
     var appDatabasePath: String {

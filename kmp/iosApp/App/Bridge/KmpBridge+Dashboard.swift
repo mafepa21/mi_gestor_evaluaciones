@@ -25,22 +25,37 @@ extension KmpBridge {
         // Fetch Classes for distribution and tasks
         let allClasses = try await container.classesRepository.listClasses()
         
-        // Pending Tasks (Incidents)
-        var allIncidents: [Incident] = []
-        for cls in allClasses {
-            let incidents = try await container.incidentsRepository.listIncidents(classId: cls.id)
-            allIncidents.append(contentsOf: incidents)
+        // Pending Tasks (Incidents) y medias por grupo: una consulta por
+        // grupo, pero lanzadas a la vez en lugar de una tras otra.
+        let incidentsRepository = container.incidentsRepository
+        let gradesRepository = container.gradesRepository
+        let incidentsByIndex = try await withThrowingTaskGroup(of: (Int, [Incident]).self) { group in
+            for (index, cls) in allClasses.enumerated() {
+                group.addTask { @MainActor in (index, try await incidentsRepository.listIncidents(classId: cls.id)) }
+            }
+            var result: [Int: [Incident]] = [:]
+            for try await (index, incidents) in group { result[index] = incidents }
+            return result
         }
+        let allIncidents = allClasses.indices.flatMap { incidentsByIndex[$0] ?? [] }
         let pending = Array(allIncidents.prefix(3))
-        
+
         // Activity Groups (Averages by Class)
-        var groups: [ActivityGroup] = []
-        let recentClasses = allClasses.prefix(6)
-        for cls in recentClasses {
-            let grades = try await container.gradesRepository.listGradesForClass(classId: cls.id)
-            let values = grades.compactMap { $0.value?.doubleValue }
-            let avg = values.isEmpty ? 0.0 : values.reduce(0, +) / Double(values.count)
-            groups.append(ActivityGroup(name: cls.name, average: avg))
+        let recentClasses = Array(allClasses.prefix(6))
+        let averagesByIndex = try await withThrowingTaskGroup(of: (Int, Double).self) { group in
+            for (index, cls) in recentClasses.enumerated() {
+                group.addTask { @MainActor in
+                    let grades = try await gradesRepository.listGradesForClass(classId: cls.id)
+                    let values = grades.compactMap { $0.value?.doubleValue }
+                    return (index, values.isEmpty ? 0.0 : values.reduce(0, +) / Double(values.count))
+                }
+            }
+            var result: [Int: Double] = [:]
+            for try await (index, average) in group { result[index] = average }
+            return result
+        }
+        let groups = recentClasses.enumerated().map { index, cls in
+            ActivityGroup(name: cls.name, average: averagesByIndex[index] ?? 0)
         }
 
         statsText = "Alumnos \(stats.totalStudents) · Clases \(stats.totalClasses) · Eval \(stats.totalEvaluations)"

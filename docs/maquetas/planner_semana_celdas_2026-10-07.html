@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Celdas Semana Planner</title>
+<style>
+:root{--bg:#f5f5f7;--card:#fff;--ink:#1d1d1f;--sub:#6e6e73;--line:#e5e5ea;--empty:#ececf0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111;--card:#1c1c1e;--ink:#f5f5f7;--sub:#98989d;--line:#2c2c2e;--empty:#18181a}}
+body{background:var(--bg);color:var(--ink);font:13px -apple-system,system-ui,sans-serif;margin:0;padding:24px 16px}
+h1{font-size:20px;margin:0 0 4px}p.note{color:var(--sub);margin:0 0 20px;max-width:760px}
+h2{font-size:14px;margin:28px 0 10px;color:var(--sub);text-transform:uppercase;letter-spacing:.06em}
+.grid{display:grid;grid-template-columns:64px repeat(5,minmax(120px,1fr));gap:6px;overflow-x:auto}
+.h{font-weight:600;text-align:center;padding:8px 0}.h span{color:var(--sub);font-weight:400}
+.t{font-variant-numeric:tabular-nums;font-weight:600;padding-top:10px;text-align:right;padding-right:8px}.t span{display:block;color:var(--sub);font-weight:400;font-size:11px}
+.c{height:74px;border-radius:12px;background:var(--empty)}
+.s{height:74px;border-radius:12px;background:var(--card);border:1px solid var(--line);position:relative;padding:9px 10px 9px 16px;box-sizing:border-box;display:flex;flex-direction:column;gap:3px}
+.s::before{content:"";position:absolute;left:6px;top:10px;bottom:10px;width:4px;border-radius:2px;background:var(--k)}
+.row{display:flex;align-items:baseline;gap:6px}
+.g{font-size:15px;font-weight:700;letter-spacing:-.01em}
+.lvl{font-size:11px;color:var(--sub);font-weight:500}
+.ti{font-size:12px;line-height:1.25;color:var(--ink);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.ti.pend{color:var(--sub);font-style:italic}
+.tag{font-size:10px;font-weight:600;color:var(--sub);border:1px solid var(--line);border-radius:5px;padding:0 4px;margin-left:auto}
+.done{position:absolute;right:9px;top:9px;width:14px;height:14px;border-radius:50%;background:#34c759;color:#fff;font-size:10px;display:grid;place-items:center}
+.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--sub);margin-top:14px}.legend b{color:var(--ink)}
+</style></head><body>
+<h1>Semana: celdas centradas en grupo y sesión</h1>
+<p class="note">La materia deja de ser el texto principal. Manda el <b>grupo</b> (grande) y debajo el <b>título de la sesión</b> planificada. La materia solo aparece como etiqueta pequeña si no es tu materia habitual (p. ej. Tutoría). El color pasa a una barra lateral fina: la tarjeta queda blanca y limpia.</p>
+
+<h2>Propuesta</h2>
+<div class="grid" id="g"></div>
+<div class="legend"><span><b>3º ESO A</b> grupo, legible sin descifrar «3EA»</span><span><b>Título</b> = sesión planificada</span><span><i>Sin planificar</i> = franja con clase pero sin sesión</span><span>● verde = sesión impartida</span></div>
+
+<script>
+const C={"3EA":"#f97316","3EB":"#0891b2","4EA":"#65a30d","4EB":"#db2777","1EA":"#dc2626","2EA":"#6366f1","2EB":"#a855f7","1BA":"#2563eb","1BB":"#0f766e"};
+const N={"3EA":["3º ESO","A"],"3EB":["3º ESO","B"],"4EA":["4º ESO","A"],"4EB":["4º ESO","B"],"1EA":["1º ESO","A"],"2EA":["2º ESO","A"],"2EB":["2º ESO","B"],"1BA":["1º Bach","A"],"1BB":["1º Bach","B"]};
+const T=[["08:05","09:00"],["09:00","10:00"],["10:00","11:00"],["11:00","12:00"],["11:25","12:20"],["12:00","13:00"],["12:20","13:15"],["13:15","14:10"]];
+const D=[["Lun","5/10"],["Mar","6/10"],["Mié","7/10"],["Jue","8/10"],["Vie","9/10"]];
+const S={"0,0":["3EA","Voleibol · toque de dedos",1],"0,2":["4EA","Condición física: test Course Navette"],"0,4":["3EA",null],
+"1,0":["3EB","Voleibol · toque de dedos",1],"1,2":["4EB","Condición física: test Course Navette"],"1,4":["3EB",null],
+"2,0":["1EA","Asamblea de grupo",0,"Tutoría"],"3,1":["2EA","Malabares: 3 bolas en cascada"],"3,3":["1EA","Juegos cooperativos"],
+"4,0":["4EA",null],"5,1":["2EA","Malabares: 3 bolas en cascada"],"5,3":["1EA","Juegos cooperativos"],
+"6,0":["4EB",null],"6,2":["1BB","Planificación de entrenamiento personal"],"6,4":["1BA","Planificación de entrenamiento personal"],
+"7,0":["1BA",null],"7,2":["2EB","Expresión corporal: mimo"],"7,4":["1BB",null]};
+const g=document.getElementById("g");let h='<div></div>';
+D.forEach(d=>h+=`<div class="h">${d[0]} <span>${d[1]}</span></div>`);
+T.forEach((t,r)=>{h+=`<div class="t">${t[0]}<span>${t[1]}</span></div>`;
+D.forEach((_,c)=>{const s=S[r+","+c];if(!s){h+='<div class="c"></div>';return}
+const [k,ti,done,tag]=s,n=N[k];
+h+=`<div class="s" style="--k:${C[k]}">${done?'<div class="done">✓</div>':''}<div class="row"><span class="g">${n[0]} ${n[1]}</span>${tag?`<span class="tag">${tag}</span>`:''}</div><div class="ti ${ti?'':'pend'}">${ti||'Sin planificar'}</div></div>`})});
+g.innerHTML=h;
+</script></body></html>

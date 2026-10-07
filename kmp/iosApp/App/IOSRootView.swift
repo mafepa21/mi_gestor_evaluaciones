@@ -23,17 +23,20 @@ struct IOSRootBanner: Identifiable, Equatable {
 
 // MARK: - IOSRootView
 struct IOSRootView: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var selectionStore = IOSSelectionStore()
-    @StateObject private var notebookStore = NotebookBridgeStore()
-    @StateObject private var dashboardStore = DashboardBridgeStore()
-    @StateObject private var studentsBridgeStore = StudentsBridgeStore()
-    @StateObject private var attendanceStore = AttendanceBridgeStore()
+    @StateObject private var workspaceStores = WorkspaceBridgeStores()
+    @StateObject private var shellStore = ShellBridgeStore()
+    private var notebookStore: NotebookBridgeStore { workspaceStores.notebook }
+    private var dashboardStore: DashboardBridgeStore { workspaceStores.dashboard }
+    private var studentsBridgeStore: StudentsBridgeStore { workspaceStores.students }
+    private var attendanceStore: AttendanceBridgeStore { workspaceStores.attendance }
 
     // Scene storage keeps state across scene lifecycle
     @SceneStorage("ios.root.sidebarVisible") private var sidebarVisible = true
@@ -121,11 +124,10 @@ struct IOSRootView: View {
                 .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
 #endif
         }
+        .environmentObject(shellStore)
         .task {
-            notebookStore.bind(to: bridge)
-            dashboardStore.bind(to: bridge)
-            studentsBridgeStore.bind(to: bridge)
-            attendanceStore.bind(to: bridge)
+            workspaceStores.bind(to: bridge)
+            shellStore.bind(to: bridge)
 
             // Restore UI layout state immediately to show the sidebar/left menu right away
             restorePersistedUIState()
@@ -163,7 +165,7 @@ struct IOSRootView: View {
                 guard !Task.isCancelled else { return }
                 if let newId = newId {
                     if let studentId = selectionStore.selectedStudentId {
-                        let students = (try? await bridge.students(forClassId: newId)) ?? bridge.studentsInClass
+                        let students = (try? await bridge.students(forClassId: newId)) ?? shellStore.studentsInClass
                         guard !Task.isCancelled else { return }
                         if !students.contains(where: { $0.id == studentId }) {
                             await MainActor.run {
@@ -225,14 +227,14 @@ struct IOSRootView: View {
 
     private func restorePersistedDataState() async {
         if persistedClassId > 0,
-           bridge.classes.contains(where: { $0.id == Int64(persistedClassId) }) {
+           shellStore.classes.contains(where: { $0.id == Int64(persistedClassId) }) {
             selectionStore.selectedClassId = Int64(persistedClassId)
         } else if selectionStore.selectedClassId == nil {
-            selectionStore.selectedClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
+            selectionStore.selectedClassId = shellStore.selectedStudentsClassId ?? shellStore.classes.first?.id
         }
         guard persistedStudentId > 0, let classId = selectionStore.selectedClassId else { return }
         let studentId = Int64(persistedStudentId)
-        let students = (try? await bridge.students(forClassId: classId)) ?? bridge.studentsInClass
+        let students = (try? await bridge.students(forClassId: classId)) ?? shellStore.studentsInClass
         if students.contains(where: { $0.id == studentId }) {
             selectionStore.selectedStudentId = studentId
         }
@@ -322,13 +324,13 @@ struct IOSRootView: View {
 
     private var activeNotebookClassLabel: String {
         guard let classId = selectionStore.selectedClassId,
-              let schoolClass = bridge.classes.first(where: { $0.id == classId })
+              let schoolClass = shellStore.classes.first(where: { $0.id == classId })
         else { return "Seleccionar clase" }
         return "\(schoolClass.name) · \(schoolClass.course)º"
     }
 
     private var groupedNotebookClasses: [(course: Int32, classes: [SchoolClass])] {
-        Dictionary(grouping: bridge.classes, by: \.course)
+        Dictionary(grouping: shellStore.classes, by: \.course)
             .map { course, classes in
                 (
                     course: course,
@@ -400,15 +402,15 @@ struct IOSRootView: View {
                         .fontWeight(.medium)
                 }
             }
-            .disabled(bridge.classes.isEmpty)
+            .disabled(shellStore.classes.isEmpty)
         }
 
-        if bridge.syncPendingChanges > 0 {
+        if shellStore.syncPendingChanges > 0 {
             ToolbarItem(placement: .navigationBarLeading) {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.footnote)
-                    Text("\(bridge.syncPendingChanges) pnd.")
+                    Text("\(shellStore.syncPendingChanges) pnd.")
                         .font(.footnote.weight(.semibold))
                 }
                 .foregroundStyle(IOSAppStyle.warning)
@@ -584,12 +586,12 @@ struct IOSRootView: View {
             .frame(width: 290)
         }
 
-        if bridge.syncPendingChanges > 0 {
+        if shellStore.syncPendingChanges > 0 {
             ToolbarItem(placement: .navigationBarLeading) {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.footnote)
-                    Text("\(bridge.syncPendingChanges) pnd.")
+                    Text("\(shellStore.syncPendingChanges) pnd.")
                         .font(.footnote.weight(.semibold))
                 }
                 .foregroundStyle(IOSAppStyle.warning)
@@ -676,7 +678,7 @@ struct IOSRootView: View {
             Button("Sin clase activa") {
                 selectionStore.selectedClassId = nil
             }
-            ForEach(bridge.classes, id: \.id) { schoolClass in
+            ForEach(shellStore.classes, id: \.id) { schoolClass in
                 Button {
                     selectionStore.selectedClassId = schoolClass.id
                 } label: {
@@ -695,7 +697,7 @@ struct IOSRootView: View {
 
     private var activeAttendanceClassLabel: String {
         guard let classId = selectionStore.selectedClassId,
-              let schoolClass = bridge.classes.first(where: { $0.id == classId }) else {
+              let schoolClass = shellStore.classes.first(where: { $0.id == classId }) else {
             return "Curso"
         }
         return schoolClass.name
@@ -768,7 +770,9 @@ struct IOSRootView: View {
 
 // MARK: - IOSGlobalContextRow
 struct IOSGlobalContextRow: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
+    @EnvironmentObject private var shellStore: ShellBridgeStore
     @Environment(\.colorScheme) private var colorScheme
 
     let activeModule: AppWorkspaceModule
@@ -820,7 +824,7 @@ struct IOSGlobalContextRow: View {
             Button("Sin clase activa") {
                 selectionStore.selectedClassId = nil
             }
-            ForEach(bridge.classes, id: \.id) { schoolClass in
+            ForEach(shellStore.classes, id: \.id) { schoolClass in
                 Button {
                     selectionStore.selectedClassId = schoolClass.id
                 } label: {
@@ -864,7 +868,7 @@ struct IOSGlobalContextRow: View {
 
     private var activeClassLabel: String {
         guard let classId = selectionStore.selectedClassId,
-              let schoolClass = bridge.classes.first(where: { $0.id == classId }) else {
+              let schoolClass = shellStore.classes.first(where: { $0.id == classId }) else {
             return "Clase global"
         }
         return schoolClass.name
@@ -1000,7 +1004,8 @@ private enum IOSWorkspaceSidebarSection: String, CaseIterable, Identifiable {
 /// The detail pane of the split view. Delegates all module rendering to AppWorkspaceShell's
 /// existing activeWorkspace system, keeping feature parity without duplicating code.
 struct IOSWorkspaceContent: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     #if os(iOS)

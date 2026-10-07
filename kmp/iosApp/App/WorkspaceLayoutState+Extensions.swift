@@ -54,10 +54,10 @@ extension AppWorkspaceShell {
     }
 
     var classroomCaptureStudents: [Student] {
-        if !bridge.studentsInClass.isEmpty {
-            return bridge.studentsInClass
+        if !shellStore.studentsInClass.isEmpty {
+            return shellStore.studentsInClass
         }
-        return bridge.allStudents
+        return shellStore.allStudents
     }
 
     func reloadClassroomContext() async {
@@ -70,7 +70,7 @@ extension AppWorkspaceShell {
         await MainActor.run {
             classroomContext = snapshot
             if classroomCaptureStudentId == nil {
-                classroomCaptureStudentId = selectedStudentId ?? bridge.studentsInClass.first?.id
+                classroomCaptureStudentId = selectedStudentId ?? shellStore.studentsInClass.first?.id
             }
         }
     }
@@ -181,9 +181,9 @@ extension AppWorkspaceShell {
             title: module.title,
             subtitle: module.subtitle,
             classId: classId,
-            className: bridge.classes.first(where: { $0.id == classId })?.name,
+            className: shellStore.classes.first(where: { $0.id == classId })?.name,
             studentId: studentId,
-            studentName: bridge.allStudents.first(where: { $0.id == studentId }).map { "\($0.firstName) \($0.lastName)" },
+            studentName: shellStore.allStudents.first(where: { $0.id == studentId }).map { "\($0.firstName) \($0.lastName)" },
             summary: message,
             metrics: [],
             factLines: [message],
@@ -278,7 +278,7 @@ extension AppWorkspaceShell {
 
     var activeClassLabel: String {
         guard let selectedClassId,
-              let schoolClass = bridge.classes.first(where: { $0.id == selectedClassId })
+              let schoolClass = shellStore.classes.first(where: { $0.id == selectedClassId })
         else { return "Clase global" }
         return schoolClass.name
     }

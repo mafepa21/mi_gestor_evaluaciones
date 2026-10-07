@@ -692,7 +692,9 @@ enum ActiveWorkspaceSheet: Identifiable {
 }
 
 struct AppWorkspaceShell: View {
-    @EnvironmentObject var bridge: KmpBridge
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
+    @EnvironmentObject var shellStore: ShellBridgeStore
     @Environment(\.colorScheme) var colorScheme
     #if os(iOS)
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
@@ -717,10 +719,11 @@ struct AppWorkspaceShell: View {
     }
     @State var showingRubricBuilder = false
     @StateObject var layoutState = WorkspaceLayoutState()
-    @StateObject var notebookStore = NotebookBridgeStore()
-    @StateObject var dashboardStore = DashboardBridgeStore()
-    @StateObject var studentsBridgeStore = StudentsBridgeStore()
-    @StateObject var attendanceStore = AttendanceBridgeStore()
+    @StateObject var workspaceStores = WorkspaceBridgeStores()
+    var notebookStore: NotebookBridgeStore { workspaceStores.notebook }
+    var dashboardStore: DashboardBridgeStore { workspaceStores.dashboard }
+    var studentsBridgeStore: StudentsBridgeStore { workspaceStores.students }
+    var attendanceStore: AttendanceBridgeStore { workspaceStores.attendance }
     @State var rootSplitVisibility: NavigationSplitViewVisibility = .all
     @State var debouncedSearchText = ""
     var contextualAISheetState: ContextualAISheetState? {
@@ -752,13 +755,13 @@ struct AppWorkspaceShell: View {
 
     var activeNotebookClassLabel: String {
         guard let selectedClassId,
-              let schoolClass = bridge.classes.first(where: { $0.id == selectedClassId })
+              let schoolClass = shellStore.classes.first(where: { $0.id == selectedClassId })
         else { return "Seleccionar clase" }
         return "\(schoolClass.name) · \(schoolClass.course)º"
     }
 
     var groupedNotebookClasses: [(course: Int32, classes: [SchoolClass])] {
-        Dictionary(grouping: bridge.classes, by: \.course)
+        Dictionary(grouping: shellStore.classes, by: \.course)
             .map { course, classes in
                 (
                     course: course,
@@ -779,11 +782,11 @@ struct AppWorkspaceShell: View {
             .filter { $0.title.localizedCaseInsensitiveContains(query) || $0.subtitle.localizedCaseInsensitiveContains(query) }
             .map { WorkspaceSearchResult(title: $0.title, subtitle: $0.subtitle, kind: .module($0.module)) }
 
-        let classResults = bridge.classes
+        let classResults = shellStore.classes
             .filter { $0.name.localizedCaseInsensitiveContains(query) }
             .map { WorkspaceSearchResult(title: $0.name, subtitle: "Curso \($0.course)", kind: .schoolClass($0.id)) }
 
-        let studentResults = bridge.allStudents
+        let studentResults = shellStore.allStudents
             .filter { "\($0.firstName) \($0.lastName)".localizedCaseInsensitiveContains(query) }
             .prefix(8)
             .map { WorkspaceSearchResult(title: "\($0.firstName) \($0.lastName)", subtitle: "Abrir ficha de alumno", kind: .student($0.id)) }
@@ -915,10 +918,8 @@ struct AppWorkspaceShell: View {
 #endif
         }
         .task {
-            notebookStore.bind(to: bridge)
-            dashboardStore.bind(to: bridge)
-            studentsBridgeStore.bind(to: bridge)
-            attendanceStore.bind(to: bridge)
+            workspaceStores.bind(to: bridge)
+            shellStore.bind(to: bridge)
 
             let restoredModule = AppWorkspaceModule(rawValue: persistedActiveModule) ?? .dashboard
             activeModule = restoredModule == .teacherRadar ? .dashboard : restoredModule
@@ -929,23 +930,23 @@ struct AppWorkspaceShell: View {
             try? await bridge.refreshRubricClassLinks()
             
             if persistedSelectedClassId > 0,
-               bridge.classes.contains(where: { $0.id == Int64(persistedSelectedClassId) }) {
+               shellStore.classes.contains(where: { $0.id == Int64(persistedSelectedClassId) }) {
                 selectedClassId = Int64(persistedSelectedClassId)
             } else if selectedClassId == nil {
-                selectedClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
+                selectedClassId = shellStore.selectedStudentsClassId ?? shellStore.classes.first?.id
             }
             selectedStudentId = persistedSelectedStudentId > 0 ? Int64(persistedSelectedStudentId) : nil
             if let selectedClassId {
                 await bridge.selectStudentsClass(classId: selectedClassId)
             }
             await reloadClassroomContext()
-            updateBulkRubricSheetState(showing: bridge.showingBulkRubricEvaluation, module: activeModule)
+            updateBulkRubricSheetState(showing: shellStore.showingBulkRubricEvaluation, module: activeModule)
         }
         .appOnChange(of: activeModule) { newValue in
             persistedActiveModule = newValue.rawValue
-            updateBulkRubricSheetState(showing: bridge.showingBulkRubricEvaluation, module: newValue)
+            updateBulkRubricSheetState(showing: shellStore.showingBulkRubricEvaluation, module: newValue)
         }
-        .appOnChange(of: bridge.showingBulkRubricEvaluation) { newValue in
+        .appOnChange(of: shellStore.showingBulkRubricEvaluation) { newValue in
             updateBulkRubricSheetState(showing: newValue, module: activeModule)
         }
         .appOnChange(of: selectedClassId) { newValue in
@@ -1256,10 +1257,10 @@ struct AppWorkspaceShell: View {
                 .frame(minWidth: 180, maxWidth: 240, alignment: .leading)
         }
         .buttonStyle(.bordered)
-        .disabled(bridge.classes.isEmpty)
+        .disabled(shellStore.classes.isEmpty)
         .popover(isPresented: $isWorkspaceClassPickerPresented, arrowEdge: .top) {
             NotebookClassPickerPopover(
-                classes: bridge.classes,
+                classes: shellStore.classes,
                 selectedClassId: selectedClassId,
                 bridge: bridge,
                 onSelectClass: { updateGlobalClassContext($0) },
@@ -1359,7 +1360,7 @@ struct AppWorkspaceShell: View {
             Button("Sin clase activa") {
                 updateGlobalClassContext(nil)
             }
-            ForEach(bridge.classes, id: \.id) { schoolClass in
+            ForEach(shellStore.classes, id: \.id) { schoolClass in
                 Button {
                     updateGlobalClassContext(schoolClass.id)
                 } label: {
@@ -1464,7 +1465,7 @@ struct AppWorkspaceShell: View {
                     Button("Sin clase activa") {
                         updateGlobalClassContext(nil)
                     }
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
+                    ForEach(shellStore.classes, id: \.id) { schoolClass in
                         Button {
                             updateGlobalClassContext(schoolClass.id)
                         } label: {
@@ -1721,10 +1722,10 @@ struct AppWorkspaceShell: View {
                 .frame(minWidth: 132, maxWidth: 180, alignment: .leading)
         }
         .buttonStyle(.bordered)
-        .disabled(bridge.classes.isEmpty)
+        .disabled(shellStore.classes.isEmpty)
         .popover(isPresented: $isClassPickerPresented, arrowEdge: .top) {
             NotebookClassPickerPopover(
-                classes: bridge.classes,
+                classes: shellStore.classes,
                 selectedClassId: selectedClassId,
                 bridge: bridge,
                 onSelectClass: { updateGlobalClassContext($0) },
@@ -1867,11 +1868,11 @@ struct AppWorkspaceShell: View {
         HStack(spacing: 12) {
             focusToggleButton
 
-            if bridge.syncPendingChanges > 0 {
+            if shellStore.syncPendingChanges > 0 {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.footnote)
-                    Text("\(bridge.syncPendingChanges) pendientes")
+                    Text("\(shellStore.syncPendingChanges) pendientes")
                         .font(.footnote.weight(.semibold))
                 }
                 .foregroundStyle(IOSAppStyle.warning)
@@ -1974,7 +1975,7 @@ struct AppWorkspaceShell: View {
     var notebookContextToolbarRow: some View {
         HStack(spacing: 12) {
             Menu {
-                ForEach(bridge.classes, id: \.id) { schoolClass in
+                ForEach(shellStore.classes, id: \.id) { schoolClass in
                     Button {
                         updateGlobalClassContext(schoolClass.id)
                     } label: {
@@ -1991,7 +1992,7 @@ struct AppWorkspaceShell: View {
                     .frame(minWidth: 200, alignment: .leading)
             }
             .buttonStyle(.bordered)
-            .disabled(bridge.classes.isEmpty)
+            .disabled(shellStore.classes.isEmpty)
 
             if !layoutState.notebookAvailableGroups.isEmpty {
                 notebookGroupFilterMenu

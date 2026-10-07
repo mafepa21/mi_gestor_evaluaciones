@@ -85,21 +85,23 @@ struct MacAttendanceView: View {
     }
 
     private var filteredRows: [AttendanceEntryRow] {
-        attendanceStore.studentsInClass
-            .map { student in
-                AttendanceEntryRow(
-                    id: student.id,
-                    student: student,
-                    isInjured: isStudentInjured(student),
-                    record: recordsByStudentId[student.id]
-                )
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isAllStatus = selectedStatusFilter == AttendanceStatusOption.allFilterId
+        return attendanceStore.studentsInClass.compactMap { student in
+            let record = recordsByStudentId[student.id]
+            if !isAllStatus && record?.status != selectedStatusFilter {
+                return nil
             }
-            .filter { row in
-                let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-                let matchesSearch = query.isEmpty || row.student.fullName.localizedCaseInsensitiveContains(query)
-                let matchesStatus = selectedStatusFilter == AttendanceStatusOption.allFilterId || row.record?.status == selectedStatusFilter
-                return matchesSearch && matchesStatus
+            if !query.isEmpty && !student.fullName.localizedCaseInsensitiveContains(query) {
+                return nil
             }
+            return AttendanceEntryRow(
+                id: student.id,
+                student: student,
+                isInjured: isStudentInjured(student),
+                record: record
+            )
+        }
     }
 
     private var exceptionRows: [AttendanceEntryRow] {
@@ -132,10 +134,23 @@ struct MacAttendanceView: View {
     }
 
     private var boardSummary: (present: Int, absent: Int, late: Int, pending: Int) {
-        let present = recordsByStudentId.values.filter { AttendanceLogic.isPresentStatus($0.status) }.count
-        let absent = recordsByStudentId.values.filter { AttendanceLogic.isAbsentStatus($0.status) }.count
-        let late = recordsByStudentId.values.filter { AttendanceLogic.isLateStatus($0.status) }.count
-        let pending = attendanceStore.studentsInClass.filter { (recordsByStudentId[$0.id]?.status ?? "").isEmpty }.count
+        var present = 0
+        var absent = 0
+        var late = 0
+        var pending = 0
+        for student in attendanceStore.studentsInClass {
+            let status = recordsByStudentId[student.id]?.status
+            if AttendanceLogic.isPresentStatus(status) {
+                present += 1
+            } else if AttendanceLogic.isAbsentStatus(status) {
+                absent += 1
+            } else if AttendanceLogic.isLateStatus(status) {
+                late += 1
+            }
+            if (status ?? "").isEmpty {
+                pending += 1
+            }
+        }
         return (present, absent, late, pending)
     }
 
@@ -356,14 +371,18 @@ struct MacAttendanceView: View {
     }
 
     private var attendanceMetricsSubbar: some View {
-        HStack(spacing: 8) {
+        let rows = filteredRows
+        let exceptionCount = rows.filter(AttendanceLogic.isRowUnresolved).count
+        let summary = boardSummary
+
+        return HStack(spacing: 8) {
             // Píldoras de filtro rápido
             Button {
                 withAnimation(uiFeatureFlags.animation(.easeInOut(duration: 0.15))) {
                     showOnlyExceptions = false
                 }
             } label: {
-                Text("Todos (\(filteredRows.count))")
+                Text("Todos (\(rows.count))")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(!showOnlyExceptions ? Color.primary : Color.secondary)
                     .padding(.horizontal, 10)
@@ -385,8 +404,8 @@ struct MacAttendanceView: View {
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Text("Excepciones (\(exceptionRows.count))")
-                    if !exceptionRows.isEmpty {
+                    Text("Excepciones (\(exceptionCount))")
+                    if exceptionCount > 0 {
                         Circle()
                             .fill(MacAppStyle.dangerTint)
                             .frame(width: 6, height: 6)
@@ -411,14 +430,14 @@ struct MacAttendanceView: View {
 
             // Mini-stats en texto compacto
             HStack(spacing: 12) {
-                Label("\(boardSummary.present)", systemImage: "checkmark.circle.fill")
+                Label("\(summary.present)", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(MacAppStyle.successTint)
-                Label("\(boardSummary.absent)", systemImage: "xmark.circle.fill")
+                Label("\(summary.absent)", systemImage: "xmark.circle.fill")
                     .foregroundStyle(MacAppStyle.dangerTint)
-                Label("\(boardSummary.late)", systemImage: "clock.fill")
+                Label("\(summary.late)", systemImage: "clock.fill")
                     .foregroundStyle(MacAppStyle.warningTint)
-                if boardSummary.pending > 0 {
-                    Label("\(boardSummary.pending)", systemImage: "clock")
+                if summary.pending > 0 {
+                    Label("\(summary.pending)", systemImage: "clock")
                         .foregroundStyle(Color.secondary)
                 }
             }

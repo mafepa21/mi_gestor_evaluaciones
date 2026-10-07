@@ -33,3 +33,4 @@
 - Los números de franja propios (P10, P11…) se asignan después de los del centro: en pantalla mostrar la hora, no el número.
 - Los hitos de la semana llegan duplicados (uno por grupo): contar por fecha + título.
 - La cabecera grande de SA (`expandedProgressHeader`) solo se pinta en Resumen.
+- Celdas de la Semana (`PlannerWeekMiniatureGrid`): la materia más repetida del horario (`dominantSubject`) no se pinta; solo se etiqueta la de otra materia (p. ej. Tutoría). En franjas sin sesión, `entry.preview` es la materia y `entry.title` repite la materia si no hay bloque: entonces se muestra "Sin planificar".

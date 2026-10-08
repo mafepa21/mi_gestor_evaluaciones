@@ -1563,13 +1563,6 @@
 			path = App;
 			sourceTree = "<group>";
 		};
-		"TEMP_623BDB0E-5FAB-4C7B-8498-0F0E2D3EBEA0" /* .claude */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = .claude;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */

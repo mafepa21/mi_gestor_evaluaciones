@@ -592,10 +592,16 @@ extension KmpBridge {
         return (local, remote)
     }
 
+    static let divergenceCheckInterval: TimeInterval = 15 * 60
+
     func checkSyncDivergence(force: Bool = false) async {
         guard pairedSyncHost != nil, syncToken != nil else { return }
         let now = Date()
-        if !force && now.timeIntervalSince(lastDivergenceCheckAt) < 60 {
+        // La huella recorre toda la base local (todas las notas de todos los
+        // grupos) y obliga al Mac a hacer lo mismo: antes cada minuto, con un
+        // tirón periódico en ambos dispositivos. Es solo un aviso de
+        // divergencia, así que basta con cada 15 minutos.
+        if !force && now.timeIntervalSince(lastDivergenceCheckAt) < Self.divergenceCheckInterval {
             return
         }
         lastDivergenceCheckAt = now
@@ -637,6 +643,8 @@ extension KmpBridge {
                 }
             } else {
                 await MainActor.run {
+                    // Escribir nil sobre nil también redibuja quien observa el bridge.
+                    guard self.syncDivergence != nil else { return }
                     self.syncDivergence = nil
                 }
             }
@@ -807,8 +815,15 @@ extension KmpBridge {
         guard !changes.isEmpty else {
             lastSyncCursorEpochMs = serverEpochMs
             UserDefaults.standard.set(lastSyncCursorEpochMs, forKey: "sync.last.cursor")
-            publishSyncState {
-                $0.syncLastRunAt = Date()
+            // Sin cambios, la hora de "última sincronización" se refresca como
+            // mucho una vez por minuto: cada escritura en este @Published
+            // redibuja todas las vistas que observan el bridge, y el bucle
+            // automático pasa por aquí cada 15-30 s.
+            let lastRun = syncLastRunAt ?? .distantPast
+            if Date().timeIntervalSince(lastRun) >= 60 {
+                publishSyncState {
+                    $0.syncLastRunAt = Date()
+                }
             }
             return
         }

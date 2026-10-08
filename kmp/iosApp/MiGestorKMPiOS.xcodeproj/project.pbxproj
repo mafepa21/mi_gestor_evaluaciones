@@ -50,6 +50,7 @@
 		0E9C6066D11F7F3E989C2C39 /* KmpBridge+AppleCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85FC0478FB157350F9771A58 /* KmpBridge+AppleCalendar.swift */; };
 		0F15862A3DEC13FAECB1C7F7 /* PlannerWorkspaceViewModel+TermBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6236C375F5B4E549E09A1B /* PlannerWorkspaceViewModel+TermBoard.swift */; };
 		100355CB4C2E62ED6B0401CD /* PlannerWorkspaceViewModel+DayBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8BFCF99CED1D1B0B14F406F /* PlannerWorkspaceViewModel+DayBoard.swift */; };
+		103D73A7136D60C1D86AA9E1 /* InclusionTrackerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22A843B7836ADC09ABE07A6E /* InclusionTrackerView.swift */; };
 		107B33FECB5C4C30230B96D1 /* StudentImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964764E602D3B6EF684BD755 /* StudentImportSheet.swift */; };
 		10903EA37C81F9D07DAF6554 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 9B69D966969756BADBA6CAE9 /* ZIPFoundation */; };
 		11284216DC1FBF43634C4B86 /* PlannerCascadeDropCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11CB4D803900F53375043197 /* PlannerCascadeDropCoordinator.swift */; };
@@ -460,6 +461,7 @@
 		AA5712733DDC149C717E4A89 /* NotebookMacToolbarBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9280844A0EAABAC9BCD70218 /* NotebookMacToolbarBinding.swift */; };
 		AAA17E629A97BB63CD240D51 /* WebSubmissionTestBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C2E7C1B3A5F4520E560349 /* WebSubmissionTestBench.swift */; };
 		AD204E79F58440E3B5FEAB9B /* LibraryAndPEWorkspaceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DC16E368E9913D847BB6D51 /* LibraryAndPEWorkspaceViews.swift */; };
+		AD6ED31B93C771E757E515CD /* InclusionTrackerComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EB8CDFD29E04C0A6E6FBBF /* InclusionTrackerComponents.swift */; };
 		ADDD3632347A0CEF05732975 /* KmpBridge+CalendarCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 810BD5FA53DE6CA784B5AA3F /* KmpBridge+CalendarCleanup.swift */; };
 		AE85501F3A967AA77A325F0E /* CoreMLPatternDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F34ADE597027656E84F4C74B /* CoreMLPatternDetectionService.swift */; };
 		AEB56910316695CFA6122CFA /* DashboardStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91ADE8A482466798768F2752 /* DashboardStyle.swift */; };
@@ -579,6 +581,7 @@
 		DAFFFE0EB2194B4D025A6406 /* MiGestorKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B37D82D4C30174CBD843E47 /* MiGestorKit.framework */; };
 		DC3549B40B2B073AB85CAC28 /* TeacherRadarGroupSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93FFE1CAA3FC3A0F8E74115 /* TeacherRadarGroupSummaryView.swift */; };
 		DCA27168B229DA96EC2E2944 /* DataManagementSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */; };
+		DD13B77B44248EB49497524F /* InclusionTrackerComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EB8CDFD29E04C0A6E6FBBF /* InclusionTrackerComponents.swift */; };
 		DD5D6CEE951094108091C062 /* PlannerSummaryDashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1867CC94618A27E645618888 /* PlannerSummaryDashboard.swift */; };
 		DD84170CC38144B0F5383E65 /* DiaryContinuousTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E09B3820CF091595567D36EC /* DiaryContinuousTimelineView.swift */; };
 		DE091C17D85B0375F184C300 /* PlannerMonthCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E548234458F84BCB6EDC98F4 /* PlannerMonthCalendarView.swift */; };
@@ -687,6 +690,7 @@
 		FE239DE3142147BE383E6575 /* AssignStudentToClassSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1014157F85770EA975A8A575 /* AssignStudentToClassSheet.swift */; };
 		FE44A49751896CE5F073F18F /* LomloeCriteriaCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0D53C0F7E51FE144808FD67 /* LomloeCriteriaCatalog.swift */; };
 		FE7FB36A220367CDED1D8E56 /* AppleAIReadinessFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9066EF34A52C09F07E8CFAE7 /* AppleAIReadinessFixtures.swift */; };
+		FEA043A5209B34B027FD8D8E /* InclusionTrackerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22A843B7836ADC09ABE07A6E /* InclusionTrackerView.swift */; };
 		FED6693A0057C3BFB3B39773 /* TeacherRadarCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DB5D8A7B19B0874750549A0 /* TeacherRadarCard.swift */; };
 		FEF8B70AE33C8ABB44582F1C /* WorkspaceLayoutState+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB9B3E078267BD94A53D6B2 /* WorkspaceLayoutState+Extensions.swift */; };
 /* End PBXBuildFile section */
@@ -738,6 +742,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00EB8CDFD29E04C0A6E6FBBF /* InclusionTrackerComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InclusionTrackerComponents.swift; sourceTree = "<group>"; };
 		0176FC5D534ADFA4ACFC6F20 /* PlannerJournalDetailPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerJournalDetailPane.swift; sourceTree = "<group>"; };
 		0243BF8C00C29271B58D894B /* PlannerSessionAIAssistantSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionAIAssistantSheet.swift; sourceTree = "<group>"; };
 		04A85F9CF28068A080599D71 /* DiaryClassPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryClassPDFRenderer.swift; sourceTree = "<group>"; };
@@ -785,6 +790,7 @@
 		20EE80FA20BE8E0C4C732321 /* NotebookWorkGroupImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookWorkGroupImportTests.swift; sourceTree = "<group>"; };
 		212337E509470CFD689BB7F8 /* KmpBridge+Meetings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+Meetings.swift"; sourceTree = "<group>"; };
 		219075A940430441ED71DF42 /* WebSubmissionsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionsWorkspaceView.swift; sourceTree = "<group>"; };
+		22A843B7836ADC09ABE07A6E /* InclusionTrackerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InclusionTrackerView.swift; sourceTree = "<group>"; };
 		246EEFCF796608A3FDAE0AEA /* NotebookWorkGroupPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookWorkGroupPolicy.swift; sourceTree = "<group>"; };
 		2535907CB33BFE4DDB88FDCA /* PlannerCalendarEventSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCalendarEventSheet.swift; sourceTree = "<group>"; };
 		26E65AEB66C13E89107AA8BA /* SupportMeasureBulkImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportMeasureBulkImportSheet.swift; sourceTree = "<group>"; };
@@ -1253,6 +1259,7 @@
 				B8AD3A2E943A41407A974460 /* EvaluationSettingsView.swift */,
 				DDF85B72D878968E171D9F9C /* GeneralSettingsView.swift */,
 				9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */,
+				00EB8CDFD29E04C0A6E6FBBF /* InclusionTrackerComponents.swift */,
 				854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */,
 				E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */,
 				61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */,
@@ -1429,6 +1436,7 @@
 				C40AB5AD5137D95F9DBD3912 /* EvaluationCriterionSection.swift */,
 				61DBB79CD6256350F830529A /* EvaluationDesign.swift */,
 				2960F7D65E3A8DF5997306CD /* EvaluationHubView.swift */,
+				22A843B7836ADC09ABE07A6E /* InclusionTrackerView.swift */,
 				1D15F3CCA44B78B5B6598C4E /* InstrumentEvaluationChrome.swift */,
 				12FE78CDE41ADDC94B9D4A83 /* IOSAppStyle.swift */,
 				335E30511BBCB3DFBF1FA0BE /* IOSFeatureRegistry.swift */,
@@ -1930,7 +1938,9 @@
 				928E20A763449E7538247603 /* IOSSelectionStore.swift in Sources */,
 				A955FA3E7711CA5298A75589 /* IPadWorkspaceShell.swift in Sources */,
 				9886188422D810036E17FDCD /* ImportPreviewModels.swift in Sources */,
+				DD13B77B44248EB49497524F /* InclusionTrackerComponents.swift in Sources */,
 				37C80CD1189B20DD6AF1AC1F /* InclusionTrackerMockView.swift in Sources */,
+				103D73A7136D60C1D86AA9E1 /* InclusionTrackerView.swift in Sources */,
 				0DE95BC2B10B415D1AECA7A5 /* InstrumentEvaluationChrome.swift in Sources */,
 				F9AC280AFCF1F805FFEB44D1 /* InstrumentEvaluationModels.swift in Sources */,
 				0E9C6066D11F7F3E989C2C39 /* KmpBridge+AppleCalendar.swift in Sources */,
@@ -2273,7 +2283,9 @@
 				13371F98A59CE2BFA928D9B0 /* IOSSelectionStore.swift in Sources */,
 				86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */,
 				A917D167542448BDD9007211 /* ImportPreviewModels.swift in Sources */,
+				AD6ED31B93C771E757E515CD /* InclusionTrackerComponents.swift in Sources */,
 				5875943920728E03C6CCBB59 /* InclusionTrackerMockView.swift in Sources */,
+				FEA043A5209B34B027FD8D8E /* InclusionTrackerView.swift in Sources */,
 				3E5486419EB17E40023CA271 /* InstrumentEvaluationChrome.swift in Sources */,
 				5BE361076C0318424B56137F /* InstrumentEvaluationModels.swift in Sources */,
 				E5D12A9785905B9A20C2E37E /* KmpBridge+AppleCalendar.swift in Sources */,

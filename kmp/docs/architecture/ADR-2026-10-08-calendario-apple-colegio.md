@@ -2,7 +2,7 @@
 
 ## Estado
 
-Aprobado
+Aprobado. Sustituido en parte por `ADR-2026-10-08-calendario-colegio-dos-sentidos.md`: el enlace pasa a la base de datos y «Colegio» también se lee desde la app.
 
 ## Contexto
 

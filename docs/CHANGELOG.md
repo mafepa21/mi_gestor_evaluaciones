@@ -31,9 +31,18 @@ El formato sigue una variante practica de Keep a Changelog:
   - Decisión: `kmp/docs/architecture/ADR-2026-10-08-calendario-apple-colegio.md`.
   - Verificación: `xcodebuild` de `MiGestorKMPMac` (macOS) y `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED. Pendiente: prueba con el permiso de Calendario concedido en un aparato real.
 
+- **Calendario «Colegio» en dos sentidos (fase 1: lectura y reconciliación)**:
+  - Los eventos del curso 2026-2027 que están en «Colegio» aparecen en la app. Los que se crean, cambian o borran en «Colegio» se reflejan en la app.
+  - Al volver a la app y al cambiar algo en Calendario de Apple se reconcilia. Si cambió en los dos lados, gana el cambio más reciente.
+  - Si un evento se borra en «Colegio» dentro del curso, se borra en la app.
+  - Decisión: `kmp/docs/architecture/ADR-2026-10-08-calendario-colegio-dos-sentidos.md`. Sustituye en parte al ADR anterior.
+  - Archivos: `AppleShared/AppleCalendarReconciler.swift` (lógica pura), `AppleShared/AppleCalendarMirror.swift`, `App/Bridge/KmpBridge+AppleCalendar.swift`, `App/Bridge/KmpBridge+Planner.swift`, `App/Bridge/KmpBridge+SyncLAN.swift` (una línea al volver a la app).
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` y `MiGestorKMPiOS`: BUILD SUCCEEDED. `MiGestorPlannerTests/AppleCalendarReconcilerTests`: 10 pruebas, 0 fallos. Pendiente: prueba con el permiso de Calendario concedido y con eventos reales de iCloud.
+
 ### Data
 
-- El enlace entre cada evento de la app y su copia en Apple se guarda en `UserDefaults` de cada aparato. No cambia la base de datos.
+- El enlace entre cada evento de la app y su copia en «Colegio» se guarda en `calendar_events` (`external_provider = "apple_calendar"`, `external_id`). Sin cambio de esquema. La versión anterior lo guardaba en `UserDefaults`; se migra en la primera ejecución.
+- Las copias antiguas de «Día no lectivo» se borran de «Colegio» en la migración. El botón de día no lectivo ya no crea copias.
 
 ### Changed
 

@@ -55,6 +55,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Hitos del curso: filtros y exámenes (solo presentación)**:
+  - Los filtros pasan de un selector que se cortaba a chips en una fila con desplazamiento, con estilo Liquid Glass.
+  - Los exámenes de 1º Bach aparecen una vez por examen y grupo, con todas sus fechas. Los demás eventos siguen en una fila cada uno.
+  - Archivo: `App/SchoolCalendarEventsOverviewSheet.swift`.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` y `MiGestorKMPiOS`: BUILD SUCCEEDED.
+
 - **Optimización integral de rendimiento y fluidez en Cuaderno, Asistencia y Planificador**:
   - Cuaderno: firma de fila migrada de `String` a `Int` con `Hasher` directo sobre celdas (`item.lookup`), eliminando miles de asignaciones de strings y diccionarios por frame de scroll. Métricas y altura de slots calculadas una vez en lugar de triplicarse por panel. Comprobación de límites de rango de notas con shift convertida de 3 escaneos $O(N)$ a comprobación $O(1)$ en `NotebookGridNavigationContext.selectedRangeBounds`.
   - NumberFormatter: formateadores convertidos a constantes estáticas en `NotebookFormulaDisplay`, `CustomAverageExplanationPopoverView`, `NotebookStudentInspector`, `NotebookAverageEditorSheet`, `NotebookFormulaEditorSheet` y `PhysicalTestScaleEditor`.

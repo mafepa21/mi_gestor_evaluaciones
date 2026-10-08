@@ -67,14 +67,16 @@ enum class WipeCategory(
             "classes", "class_students", "student_enrollments", "evaluations", "grades",
             "attendance", "incidents", "notebook_tabs", "notebook_columns",
             "notebook_column_categories", "notebook_work_groups", "notebook_cell_entries",
-            "notebook_instrument_templates", "notebook_instrument_items", "notebook_instrument_responses"
+            "notebook_instrument_templates", "notebook_instrument_items", "notebook_instrument_responses",
+            "inclusion_group_settings"
         )
     ),
     STUDENTS(
         displayName = "Alumnado",
         description = "Fichas de estudiantes, medidas de apoyo y tutorías",
         tableNames = listOf(
-            "students", "student_support_measures", "student_tutoring_sessions"
+            "students", "student_support_measures", "student_tutoring_sessions",
+            "inclusion_tasks"
         )
     ),
     RUBRICS(

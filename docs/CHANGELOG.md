@@ -13,6 +13,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Fixed
+
+- **Copias de seguridad bloqueadas por referencias huérfanas**:
+  - La base activa acumula filas que apuntan a grupos, alumnos o situaciones ya borrados (3.423 en la base real del docente). `PRAGMA foreign_key_check` hacía fallar toda copia con «referencias rotas … another row available».
+  - Ahora las huérfanas se cuentan y se registran como aviso (`NSLog`); la copia y la restauración siguen adelante. `integrity_check` sigue bloqueando bases dañadas.
+  - Archivos: `kmp/iosApp/AppleShared/AppleBackupIntegrity.swift`, `kmp/iosApp/PlannerTests/AppleBackupIntegrityTests.swift`.
+  - Verificación: `xcodebuild test -scheme MiGestorPlannerTests -only-testing:MiGestorPlannerTests/AppleBackupIntegrityTests` (macOS): 5/5 tests OK. Comprobado sobre un duplicado de la base real: integrity_check `ok`, 3.423 huérfanas aceptadas. Prueba manual de «Crear copia» en la app: pendiente.
+  - Pendiente: limpieza de huérfanas (ticket aparte) y mostrar el aviso en pantalla.
+
 ### Added
 
 - **Hitos de inclusión en el calendario del curso 2026-2027**:
@@ -68,6 +77,11 @@ El formato sigue una variante practica de Keep a Changelog:
   - Mac (servidor de sync): si la base no ha cambiado desde el último recorrido (marca `total_changes()` + `data_version`), el pull responde vacío sin recorrerla; los diarios se leen en bloque.
   - También: refreshDashboard solo calcula los totales, la huella de divergencia pasa a cada 15 min, la cola de cambios avisa y persiste una vez por tanda, y las raíces de iOS/Mac y vistas que solo llaman acciones dejan de observar el bridge entero.
   - Verificación: `:shared:desktopTest` (136) y `:data:desktopTest` (167) en verde, con 7 pruebas nuevas del atajo de sync; `verify_apple_builds.sh` iOS y macOS. Sin medición en dispositivo.
+- **Hitos del curso: filtros y exámenes (solo presentación)**:
+  - Los filtros pasan de un selector que se cortaba a chips en una fila con desplazamiento, con estilo Liquid Glass.
+  - Los exámenes de 1º Bach aparecen una vez por examen y grupo, con todas sus fechas. Los demás eventos siguen en una fila cada uno.
+  - Archivo: `App/SchoolCalendarEventsOverviewSheet.swift`.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` y `MiGestorKMPiOS`: BUILD SUCCEEDED.
 
 - **Optimización integral de rendimiento y fluidez en Cuaderno, Asistencia y Planificador**:
   - Cuaderno: firma de fila migrada de `String` a `Int` con `Hasher` directo sobre celdas (`item.lookup`), eliminando miles de asignaciones de strings y diccionarios por frame de scroll. Métricas y altura de slots calculadas una vez en lugar de triplicarse por panel. Comprobación de límites de rango de notas con shift convertida de 3 escaneos $O(N)$ a comprobación $O(1)$ en `NotebookGridNavigationContext.selectedRangeBounds`.
@@ -159,6 +173,16 @@ El formato sigue una variante practica de Keep a Changelog:
   - Docs: ámbito `docs/ambitos/situaciones-aprendizaje.md`, mapa de flujos y maqueta viva en `docs/planes/`.
 
 ### Fixed
+
+- **Eventos repetidos en el calendario (exámenes, viajes y periodos)**:
+  - Los viajes y los exámenes de 1º Bach se buscan entre todos los eventos, con o sin grupo, antes de crearlos otra vez.
+  - La importación de «Colegio» enlaza con la fila existente que tiene el mismo título y día, en vez de crear otra.
+  - Solo puede correr una aplicación del preset o una sincronización de exámenes a la vez.
+  - Nuevo botón «Revisar repetidos» en la hoja de hitos. Solo cuenta y muestra el resultado. Borra únicamente después de confirmar, y conserva un evento de cada grupo.
+  - Los exámenes de 1º Bach aparecen en una fila por examen y grupo, con sus fechas.
+  - Archivos: `App/SchoolCalendarPreset2026_2027.swift`, `AppleShared/AppleCalendarReconciler.swift`, `AppleShared/CalendarDuplicatePlanner.swift` (nuevo), `App/Bridge/KmpBridge+CalendarCleanup.swift` (nuevo), `App/Bridge/KmpBridge+AppleCalendar.swift`, `App/SchoolCalendarEventsOverviewSheet.swift`.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` y `MiGestorKMPiOS`: BUILD SUCCEEDED. `AppleCalendarReconcilerTests` (13) y `CalendarDuplicatePlannerTests` (6): 19 pruebas, 0 fallos.
+  - Pendiente: ejecutar «Revisar repetidos» sobre la base de datos real, después de una copia de seguridad.
 
 - **Sábana de asistencia: «Limpiar registro» no se guardaba**: solo borraba la marca en pantalla y reaparecía al recargar. Ahora se guarda como desmarcada y, si falla, vuelve a mostrarse con el aviso de error.
 

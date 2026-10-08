@@ -460,6 +460,10 @@ enum SchoolCalendarPreset2026_2027 {
     }
 
     /// Aplica el preset con verificación de duplicados e idempotencia
+    /// Evita que dos aplicaciones del preset corran a la vez y dupliquen viajes, exámenes y periodos.
+    @MainActor private static var applyInFlight = false
+
+    @MainActor
     static func applyPreset(
         bridge: KmpBridge,
         scheduleId: Int64,
@@ -470,6 +474,11 @@ enum SchoolCalendarPreset2026_2027 {
         applySchoolEvents: Bool,
         applyMilestones: Bool
     ) async throws -> ApplyResult {
+        guard !applyInFlight else {
+            return ApplyResult(evaluationPeriodsCreated: 0, tripEventsCreated: 0, schoolEventsCreated: 0, milestonesCreated: 0)
+        }
+        applyInFlight = true
+        defer { applyInFlight = false }
         var evalCount = 0
         var tripCount = 0
         var schoolEventCount = 0
@@ -498,7 +507,8 @@ enum SchoolCalendarPreset2026_2027 {
 
         // 2. Salidas por curso vinculadas a sus classId correspondientes
         if !selectedTripIds.isEmpty {
-            let existingEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
+            // Todos los eventos, con o sin grupo: un viaje se guarda con grupo y debe reconocerse igual.
+            let existingEvents = try await bridge.plannerAllCalendarEvents()
             let resolvedTrips = resolveTripsForTeacher(groups: groups)
 
             for item in resolvedTrips where selectedTripIds.contains(item.trip.id) {
@@ -508,10 +518,10 @@ enum SchoolCalendarPreset2026_2027 {
                         let title = item.trip.title
 
                         // Comprobar si ya existe para este grupo y fecha
+                        let eventTitle = "\(title) · \(group.name)"
                         let alreadyExists = existingEvents.contains { evt in
-                            evt.classId?.int64Value == group.id &&
-                            isSameDay(epochMs: evt.startAt.toEpochMilliseconds(), targetDateIso: dateIso) &&
-                            evt.title.localizedCaseInsensitiveContains(item.trip.destination)
+                            evt.title == eventTitle &&
+                            isSameDay(epochMs: evt.startAt.toEpochMilliseconds(), targetDateIso: dateIso)
                         }
 
                         if !alreadyExists {
@@ -596,8 +606,15 @@ enum SchoolCalendarPreset2026_2027 {
 
     /// Sincroniza e inserta de forma idempotente los exámenes de 1º Bachillerato en calendar_events,
     /// purgando eventos erróneos previos en grupos de ESO o 2º Bachillerato.
+    /// Evita que dos sincronizaciones de exámenes corran a la vez y creen eventos repetidos.
+    @MainActor private static var sync1BachRunning = false
+
     @discardableResult
+    @MainActor
     static func sync1BachExams(bridge: KmpBridge, groups: [SchoolClass]) async throws -> Int {
+        guard !sync1BachRunning else { return 0 }
+        sync1BachRunning = true
+        defer { sync1BachRunning = false }
         let matching1BachGroups = groups.filter { matches1Bach($0) }
         guard !matching1BachGroups.isEmpty else { return 0 }
 
@@ -633,8 +650,9 @@ enum SchoolCalendarPreset2026_2027 {
             for group in matching1BachGroups {
                 for dateIso in exam.datesIso {
                     guard let (startMs, endMs) = epochRange(for: dateIso) else { continue }
+                    let examTitle = "\(exam.title) · \(group.name)"
                     let existingForDay = cleanEvents.filter { evt in
-                        evt.classId?.int64Value == group.id &&
+                        evt.title == examTitle &&
                         isSameDay(epochMs: evt.startAt.toEpochMilliseconds(), targetDateIso: dateIso) &&
                         (evt.title.localizedCaseInsensitiveContains("parcial") ||
                          evt.title.localizedCaseInsensitiveContains("global") ||

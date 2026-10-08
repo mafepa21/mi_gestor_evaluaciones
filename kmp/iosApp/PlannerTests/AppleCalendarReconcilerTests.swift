@@ -71,7 +71,7 @@ final class AppleCalendarReconcilerTests: XCTestCase {
     func testCambioMasRecienteEnColegioActualizaLaApp() {
         let changed = remote(title: "Evaluación inicial (aplazada)", modified: 1_792_500_000_000)
         let actions = plan(remote: [changed], locals: [local(updated: 1_791_000_000_000)])
-        XCTAssertEqual(actions, [.updateLocal(id: 1, from: changed)])
+        XCTAssertEqual(actions, [.updateLocal(id: 1, classId: nil, from: changed)])
     }
 
     func testCambioMasRecienteEnLaAppEmpujaAColegio() {
@@ -108,5 +108,34 @@ final class AppleCalendarReconcilerTests: XCTestCase {
     func testEventoAjenoALaAppNoSeToca() {
         let actions = plan(remote: [], locals: [local(externalId: nil)])
         XCTAssertEqual(actions, [])
+    }
+
+    func testEventoDeColegioSeEnlazaConLaFilaSinEnlaceDelMismoDia() {
+        let remoteEvent = remote()
+        let unlinked = AppleCalendarLocalEvent(
+            id: 7, title: "Evaluación inicial", notes: nil,
+            startMs: 1_792_000_000_000, endMs: 1_792_086_399_000,
+            updatedMs: 1_791_000_000_000, externalId: nil, classId: 42
+        )
+        let actions = plan(remote: [remoteEvent], locals: [unlinked])
+        XCTAssertEqual(actions, [.adoptLocal(id: 7, classId: 42, from: remoteEvent)])
+    }
+
+    func testEventoDeOtroDiaNoSeEnlazaSeImporta() {
+        let remoteEvent = remote(start: 1_792_200_000_000, end: 1_792_286_399_000)
+        let unlinked = local(7, externalId: nil)
+        let actions = plan(remote: [remoteEvent], locals: [unlinked])
+        XCTAssertEqual(actions, [.importRemote(remoteEvent)])
+    }
+
+    func testCambioEnColegioConservaElGrupo() {
+        let changed = remote(title: "Evaluación inicial (aplazada)", modified: 1_792_500_000_000)
+        let linked = AppleCalendarLocalEvent(
+            id: 1, title: "Evaluación inicial", notes: nil,
+            startMs: 1_792_000_000_000, endMs: 1_792_086_399_000,
+            updatedMs: 1_791_000_000_000, externalId: "ext-1", classId: 42
+        )
+        let actions = plan(remote: [changed], locals: [linked])
+        XCTAssertEqual(actions, [.updateLocal(id: 1, classId: 42, from: changed)])
     }
 }

@@ -14,6 +14,8 @@ struct SchoolCalendarEventsOverviewSheet: View {
     @State private var searchText = ""
     @State private var selectedFilter: EventFilter = .all
     @State private var draft: PlannerCalendarEventDraft?
+    @State private var duplicateReport: CalendarDuplicateReport?
+    @State private var notice: String?
 
     enum EventFilter: String, CaseIterable, Identifiable {
         case all = "Todos"
@@ -28,16 +30,8 @@ struct SchoolCalendarEventsOverviewSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Selector de categoría
-                Picker("Filtro", selection: $selectedFilter) {
-                    ForEach(EventFilter.allCases) { filter in
-                        Text(filter.rawValue).tag(filter)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+                // Selector de categoría: chips en una fila con desplazamiento, para que quepan en Mac e iPhone
+                filterChips
 
                 if isLoading {
                     Spacer()
@@ -60,8 +54,13 @@ struct SchoolCalendarEventsOverviewSheet: View {
                         // 2. Salidas y viajes
                         if (selectedFilter == .all || selectedFilter == .trips) && !filteredTrips.isEmpty {
                             Section {
-                                ForEach(filteredTrips, id: \.id) { event in
-                                    eventRow(event, category: .trip)
+                                ForEach(tripRows) { row in
+                                    switch row {
+                                    case .single(let event):
+                                        eventRow(event, category: .trip)
+                                    case .exam(let title, let events):
+                                        examRow(title: title, events: events)
+                                    }
                                 }
                             } header: {
                                 Label("Salidas y viajes de curso", systemImage: "bus.fill")
@@ -115,6 +114,13 @@ struct SchoolCalendarEventsOverviewSheet: View {
             #endif
             .searchable(text: $searchText, prompt: "Buscar evento, viaje o hito…")
             .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        Task { await reviewDuplicates() }
+                    } label: {
+                        Label("Revisar repetidos", systemImage: "doc.on.doc")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         draft = PlannerCalendarEventDraft(event: nil, day: Date())
@@ -139,8 +145,169 @@ struct SchoolCalendarEventsOverviewSheet: View {
                     }
                 }
             }
+            .confirmationDialog(
+                duplicateDialogTitle,
+                isPresented: Binding(
+                    get: { duplicateReport != nil },
+                    set: { if !$0 { duplicateReport = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Borrar repetidos", role: .destructive) {
+                    Task { await removeDuplicates() }
+                }
+            } message: {
+                Text("Haz antes una copia de seguridad en Ajustes → Datos y seguridad. Se conserva un evento de cada grupo repetido. Los borrados se envían a los demás aparatos.")
+            }
+            .alert(
+                "Repetidos",
+                isPresented: Binding(
+                    get: { notice != nil },
+                    set: { if !$0 { notice = nil } }
+                )
+            ) {
+                Button("Aceptar") { notice = nil }
+            } message: {
+                Text(notice ?? "")
+            }
         }
         .frame(minWidth: 500, minHeight: 520)
+    }
+
+    // MARK: - Repetidos
+
+    private var duplicateDialogTitle: String {
+        guard let report = duplicateReport else { return "" }
+        return "¿Borrar \(report.eventIds.count) eventos y \(report.periodIds.count) periodos repetidos?"
+    }
+
+    /// Solo calcula y muestra el resultado. No borra nada hasta que el usuario confirma.
+    private func reviewDuplicates() async {
+        do {
+            let report = try await bridge.calendarDuplicateReport()
+            if report.isEmpty {
+                notice = "No hay eventos ni periodos repetidos."
+            } else {
+                duplicateReport = report
+            }
+        } catch {
+            notice = "No pude revisar los repetidos: \(error.localizedDescription)"
+        }
+    }
+
+    private func removeDuplicates() async {
+        guard let report = duplicateReport else { return }
+        duplicateReport = nil
+        do {
+            let removed = try await bridge.removeCalendarDuplicates(report)
+            notice = "Se han borrado \(removed.events) eventos y \(removed.periods) periodos repetidos."
+        } catch {
+            notice = "Se borró parte de los repetidos, pero hubo un error: \(error.localizedDescription)"
+        }
+        await loadData()
+    }
+
+    // MARK: - Filtros
+
+    private var filterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            filterChipGroup
+                .padding(.horizontal, 20)
+        }
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private var filterChipGroup: some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            GlassEffectContainer(spacing: 8) {
+                filterChipButtons
+            }
+        } else {
+            filterChipButtons
+        }
+    }
+
+    private var filterChipButtons: some View {
+        HStack(spacing: 8) {
+            ForEach(EventFilter.allCases) { filter in
+                Button(filter.rawValue) {
+                    selectedFilter = filter
+                }
+                .plannerLiquidGlassControlButtonStyle(isProminent: selectedFilter == filter)
+            }
+        }
+    }
+
+    // MARK: - Exámenes agrupados
+
+    /// Una fila por examen y grupo, con todas sus fechas. Los demás eventos siguen en una fila cada uno.
+    private enum TripRow: Identifiable {
+        case single(CalendarEvent)
+        case exam(title: String, events: [CalendarEvent])
+
+        var id: String {
+            switch self {
+            case .single(let event): return "evento-\(event.id)"
+            case .exam(let title, _): return "examen-\(title)"
+            }
+        }
+    }
+
+    private var tripRows: [TripRow] {
+        var rows: [TripRow] = []
+        var examPosition: [String: Int] = [:]
+
+        for event in filteredTrips {
+            guard isExamEvent(event) else {
+                rows.append(.single(event))
+                continue
+            }
+            if let position = examPosition[event.title], case .exam(let title, let events) = rows[position] {
+                rows[position] = .exam(title: title, events: events + [event])
+            } else {
+                examPosition[event.title] = rows.count
+                rows.append(.exam(title: event.title, events: [event]))
+            }
+        }
+        return rows
+    }
+
+    private func isExamEvent(_ event: CalendarEvent) -> Bool {
+        event.title.hasPrefix("Exámenes")
+    }
+
+    private func examRow(title: String, events: [CalendarEvent]) -> some View {
+        let dates = events.map { Self.dayFormatter.string(from: Self.date(of: $0)) }.joined(separator: ", ")
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: PlannerMilestoneCategory.trip.iconName)
+                .font(.title3)
+                .foregroundStyle(PlannerMilestoneCategory.trip.accentColor)
+                .frame(width: 28)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text("\(events.count) fechas · \(dates)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.dateFormat = "d MMM"
+        return formatter
+    }()
+
+    private static func date(of event: CalendarEvent) -> Date {
+        Date(timeIntervalSince1970: Double(event.startAt.toEpochMilliseconds()) / 1000)
     }
 
     private func loadData() async {

@@ -2,7 +2,12 @@ import Foundation
 import SQLite3
 
 enum AppleSQLiteBackupValidator {
-    static func validateDatabase(at url: URL) throws {
+    /// Valida la base y devuelve cuántas referencias huérfanas contiene.
+    /// Las huérfanas (filas que apuntan a un padre ya borrado) no bloquean: la base
+    /// activa las acumula desde hace tiempo y negarse a copiarlas deja al docente
+    /// sin ninguna copia. Solo una base dañada (integrity_check) es motivo de rechazo.
+    @discardableResult
+    static func validateDatabase(at url: URL) throws -> Int {
         var database: OpaquePointer?
         let result = sqlite3_open_v2(
             url.path,
@@ -20,7 +25,11 @@ enum AppleSQLiteBackupValidator {
         }
 
         try requireIntegrityCheck(database)
-        try requireNoForeignKeyViolations(database)
+        let orphanCount = try countForeignKeyViolations(database)
+        if orphanCount > 0 {
+            NSLog("AppleBackupService: la base contiene %d referencias huérfanas (PRAGMA foreign_key_check); se acepta igualmente.", orphanCount)
+        }
+        return orphanCount
     }
 
     /// Materializa una instantánea SQLite autocontenida. La API de backup aplica
@@ -125,7 +134,7 @@ enum AppleSQLiteBackupValidator {
         }
     }
 
-    private static func requireNoForeignKeyViolations(_ database: OpaquePointer) throws {
+    private static func countForeignKeyViolations(_ database: OpaquePointer) throws -> Int {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, "PRAGMA foreign_key_check;", -1, &statement, nil) == SQLITE_OK else {
             throw validationError(
@@ -136,13 +145,20 @@ enum AppleSQLiteBackupValidator {
         }
         defer { sqlite3_finalize(statement) }
 
-        guard sqlite3_step(statement) == SQLITE_DONE else {
+        var count = 0
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
+            count += 1
+            stepResult = sqlite3_step(statement)
+        }
+        guard stepResult == SQLITE_DONE else {
             throw validationError(
                 code: 422,
-                message: "PRAGMA foreign_key_check detectó referencias rotas en la copia.",
+                message: "PRAGMA foreign_key_check no pudo completarse sobre la copia.",
                 database: database
             )
         }
+        return count
     }
 
     private static func validationError(

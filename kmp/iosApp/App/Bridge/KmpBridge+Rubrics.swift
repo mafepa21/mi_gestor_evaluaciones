@@ -320,6 +320,7 @@ extension KmpBridge {
     
     func closeBulkRubricEvaluation() {
         showingBulkRubricEvaluation = false
+        rubricBulkEvaluationViewModel.onSheetClosed()
         // Al cerrar la masiva, limpiamos cualquier overlay individual residual.
         rubricEvaluationState = RubricEvaluationUiState.companion.default()
     }

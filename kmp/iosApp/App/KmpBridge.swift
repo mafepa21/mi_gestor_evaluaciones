@@ -39,7 +39,6 @@ final class KmpBridge: ObservableObject {
     @Published var studentsInClass: [Student] = []
     @Published var evaluationsInClass: [Evaluation] = []
     @Published var rubrics: [RubricDetail] = []
-    @Published var planning: [PlanPeriod] = []
     @Published var rubricsUiState: RubricUiState? = nil
     @Published var rubricClassLinks: [Int64: Set<Int64>] = [:]
     @Published var rubricBuilderTeachingUnits: [TeachingUnit] = []
@@ -66,11 +65,6 @@ final class KmpBridge: ObservableObject {
     @Published var showingBulkRubricEvaluation: Bool = false
     
     // Detailed Dashboard Data
-    @Published var upcomingClasses: [CalendarEvent] = []
-    @Published var pendingTasks: [Incident] = []
-    @Published var esoPercentage: Int = 0
-    @Published var bachPercentage: Int = 0
-    @Published var activityGroups: [ActivityGroup] = []
     @Published var dashboardSnapshot: DashboardSnapshot? = nil
     @Published var dashboardFilters: DashboardFilters = DashboardFilters(classId: nil, severity: nil, priority: nil, sessionStatus: nil)
     @Published var allStudents: [Student] = []
@@ -132,9 +126,11 @@ final class KmpBridge: ObservableObject {
     var syncNeedsAnotherPass = false
     var isAppInForeground = true
     var lastLocalMutationAt: Date = .distantPast
+    /// Último momento en que se aplicaron cambios LAN entrantes (escriben en la base local).
+    var lastAppliedRemoteChangesAt: Date = .distantPast
+    var isPendingCountPublishScheduled = false
     var lastCheckedDbModificationDate: Date = .distantPast
     var lastSuccessfulSyncAt: Date = .distantPast
-    var lastFullPullAt: Date = .distantPast
     var lastSilentSyncAttemptAt: Date = .distantPast
     var lastSyncCursorEpochMs: Int64 = UserDefaults.standard.object(forKey: "sync.last.cursor") as? Int64 ?? 0
     var selectedNotebookTabByClassId: [String: String] = {
@@ -169,7 +165,7 @@ final class KmpBridge: ObservableObject {
     private let notebookStateSubject = CurrentValueSubject<NotebookUiState, Never>(NotebookUiStateLoading())
     var cachedNotebookStateIdentity: ObjectIdentifier? = nil
     var cachedNotebookCellValueIndex: NotebookCellValueIndex? = nil
-    var lastNotebookAggregateSignature: String? = nil
+    var lastNotebookAggregateSignature: NotebookAggregateSignature? = nil
     var gradeOnTenFormatCache: [String: String] = [:]
     struct OptimisticAnnotation {
         let note: String?
@@ -274,12 +270,8 @@ final class KmpBridge: ObservableObject {
             self.lanSyncDiscovery.start()
             self.startAutoSyncLoop()
             self.startSyncEventListenerIfPaired()
-            #if os(iOS)
-            // On iOS the persisted host/token come from a real pairing; rehydrate on launch.
-            if self.hasPersistedLanPairing {
-                await self.syncNow(reason: "rehydrate", forceFullPull: false, silent: true)
-            }
-            #endif
+            // El primer sync del arranque lo lanza `bootstrap()`; aquí ya no se
+            // repite (antes había tres seguidos: rehydrate, bootstrap y foreground).
         }
 
         setupObservers()
@@ -361,66 +353,18 @@ final class KmpBridge: ObservableObject {
         )
     }
 
-    private func notebookAggregateSignature(for state: NotebookUiState) -> String? {
+    /// Lo que decide si hay que republicar `notebookState`: la hoja y los
+    /// borradores, sin selección ni editor activo. Antes se serializaba todo
+    /// el Cuaderno a un texto (cada celda de cada alumno) en cada emisión, en
+    /// el hilo principal; ahora compara Kotlin con `equals` de las data class.
+    private func notebookAggregateSignature(for state: NotebookUiState) -> NotebookAggregateSignature {
         guard let data = state as? NotebookUiStateData else {
-            return String(describing: type(of: state))
+            return NotebookAggregateSignature(kind: String(describing: type(of: state)), parts: [])
         }
-
-        let sheet = data.sheet
-        let columnsSignature = sheet.columns.map { column in
-            [
-                column.id,
-                column.title,
-                "\(column.order)",
-                "\(column.widthDp)",
-                "\(column.visibility)",
-                "\(column.isHidden)",
-                column.categoryId ?? "",
-                column.tabIds.joined(separator: ","),
-                "\(column.weight)",
-                "\(column.countsTowardAverage)"
-            ].joined(separator: ":")
-        }.joined(separator: "|")
-
-        let categoriesSignature = sheet.columnCategories.map { category in
-            "\(category.id):\(category.tabId):\(category.name):\(category.order):\(category.isCollapsed)"
-        }.joined(separator: "|")
-
-        let rowsSignature = sheet.rows.map { row in
-            let cells = row.cells.map { cell in
-                "\(String(describing: cell.evaluationId)):\(String(describing: cell.value))"
-            }.joined(separator: ",")
-            let persistedCells = row.persistedCells.map { cell in
-                [
-                    cell.columnId,
-                    cell.textValue ?? "",
-                    String(describing: cell.boolValue),
-                    cell.iconValue ?? "",
-                    cell.annotation?.icon ?? "",
-                    cell.annotation?.note ?? "",
-                    "\(cell.annotation?.attachmentUris.count ?? 0)",
-                    cell.ordinalValue ?? "",
-                    cell.displayValue ?? ""
-                ].joined(separator: ":")
-            }.joined(separator: ",")
-            let grades = row.persistedGrades.map { grade in
-                "\(grade.columnId):\(String(describing: grade.value)):\(String(describing: grade.evaluationId))"
-            }.joined(separator: ",")
-            return "\(row.student.id):\(String(describing: row.weightedAverage)):\(cells):\(persistedCells):\(grades)"
-        }.joined(separator: "|")
-
-        return [
-            "class:\(sheet.classId)",
-            "tabs:\(sheet.tabs.map { "\($0.id):\($0.title):\($0.order)" }.joined(separator: "|"))",
-            "columns:\(columnsSignature)",
-            "categories:\(categoriesSignature)",
-            "rows:\(rowsSignature)",
-            "numeric:\(data.numericDrafts.description)",
-            "text:\(data.textDrafts.description)",
-            "check:\(data.checkDrafts.description)",
-            "groups:\(sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }.joined(separator: ";"))",
-            "groupMembers:\(sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" }.joined(separator: ";"))"
-        ].joined(separator: "¬")
+        return NotebookAggregateSignature(
+            kind: "data",
+            parts: [data.sheet, data.numericDrafts as NSDictionary, data.textDrafts as NSDictionary, data.checkDrafts as NSDictionary]
+        )
     }
 
     private func setupObservers() {
@@ -468,7 +412,7 @@ final class KmpBridge: ObservableObject {
                     // emitirá Data de vuelta cuando termine la recarga silenciosa.
                 } else {
                     let signature = self.notebookAggregateSignature(for: state)
-                    if signature == nil || signature != self.lastNotebookAggregateSignature {
+                    if signature != self.lastNotebookAggregateSignature {
                         self.lastNotebookAggregateSignature = signature
                         notebookStateSubject.send(state)
                     }
@@ -602,9 +546,8 @@ final class KmpBridge: ObservableObject {
             async let subjects: Void = refreshSubjects()
             async let rubrics: Void = refreshRubrics()
             async let rubricLinks: Void = refreshRubricClassLinks()
-            async let planning: Void = refreshPlanning()
             async let studentsDirectory: Void = refreshStudentsDirectory()
-            _ = try await (dashboard, operationalDashboard, subjects, rubrics, rubricLinks, planning, studentsDirectory)
+            _ = try await (dashboard, operationalDashboard, subjects, rubrics, rubricLinks, studentsDirectory)
             status = appleBootstrap.connectedStatusText
         } catch {
             didBootstrap = false
@@ -618,7 +561,7 @@ final class KmpBridge: ObservableObject {
         // "sin datos".
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.syncNow(reason: "bootstrap", forceFullPull: true, silent: true)
+            await self.syncNow(reason: "bootstrap", forceFullPull: false, silent: true)
             self.hasCompletedBootstrap = true
         }
     }
@@ -693,9 +636,19 @@ final class KmpBridge: ObservableObject {
             pendingOutboundChanges.append(newChange)
         }
         lastLocalMutationAt = Date()
-        let pendingChangesCount = pendingOutboundChanges.count
-        publishSyncState {
-            $0.syncPendingChanges = pendingChangesCount
+        // Un solo aviso por tanda: una instantánea del Cuaderno encola cientos
+        // de cambios seguidos y antes cada uno creaba una Task que escribía este
+        // @Published (y redibujaba todo lo que observa el bridge).
+        if !isPendingCountPublishScheduled {
+            isPendingCountPublishScheduled = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isPendingCountPublishScheduled = false
+                let count = self.pendingOutboundChanges.count
+                if self.syncPendingChanges != count {
+                    self.syncPendingChanges = count
+                }
+            }
         }
         
         if shouldPersist {
@@ -754,5 +707,18 @@ final class KmpBridge: ObservableObject {
 private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+/// Firma barata del estado del Cuaderno: compara con `isEqual` (el `equals`
+/// de Kotlin), que corta en cuanto encuentra la misma referencia.
+struct NotebookAggregateSignature: Equatable {
+    let kind: String
+    let parts: [NSObject]
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.kind == rhs.kind
+            && lhs.parts.count == rhs.parts.count
+            && zip(lhs.parts, rhs.parts).allSatisfy { $0.isEqual($1) }
     }
 }

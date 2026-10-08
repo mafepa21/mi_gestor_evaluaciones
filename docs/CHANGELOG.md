@@ -64,6 +64,19 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Rendimiento: consultas en bloque, sync más ligero y menos recargas**:
+  - Panel: las consultas por grupo se lanzan en paralelo y el cálculo sale del hilo principal.
+  - Ficha del alumno e IA: el diario se pide en bloque con dos consultas nuevas de `Planner.sq` (sin cambio de esquema); antes, 5 consultas por sesión.
+  - Ficha y nota rápida buscan el alumno por id; EF usa `getSession(id)`; la nota rápida mira primero las sesiones recientes.
+  - Rúbricas masivas: el guardado automático ya no recarga el Cuaderno por alumno; se recarga una vez al cerrar.
+  - Sync LAN: la descarga completa pasa de cada 3 min a una vez al día (recordada entre arranques); un solo sync al abrir.
+  - Mac: la comprobación del fichero de base de datos ignora escrituras propias y cambios LAN recientes (15 s).
+  - Se eliminan cargas sin uso: `refreshPlanning`/`bridge.planning` y la precarga al cambiar de grupo.
+  - Cuaderno: la firma de cambios compara con `equals` de Kotlin en vez de serializar cada celda.
+  - Lista de alumnos del Mac y apertura del Planificador cargan en paralelo; Rúbricas calcula la lista y los recuentos una vez.
+  - Mac (servidor de sync): si la base no ha cambiado desde el último recorrido (marca `total_changes()` + `data_version`), el pull responde vacío sin recorrerla; los diarios se leen en bloque.
+  - También: refreshDashboard solo calcula los totales, la huella de divergencia pasa a cada 15 min, la cola de cambios avisa y persiste una vez por tanda, y las raíces de iOS/Mac y vistas que solo llaman acciones dejan de observar el bridge entero.
+  - Verificación: `:shared:desktopTest` (136) y `:data:desktopTest` (167) en verde, con 7 pruebas nuevas del atajo de sync; `verify_apple_builds.sh` iOS y macOS. Sin medición en dispositivo.
 - **Hitos del curso: filtros y exámenes (solo presentación)**:
   - Los filtros pasan de un selector que se cortaba a chips en una fila con desplazamiento, con estilo Liquid Glass.
   - Los exámenes de 1º Bach aparecen una vez por examen y grupo, con todas sus fechas. Los demás eventos siguen en una fila cada uno.

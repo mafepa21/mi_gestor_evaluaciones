@@ -459,7 +459,7 @@ extension KmpBridge {
             persistSyncSecrets()
             let now = Date()
             lastSuccessfulSyncAt = now
-            lastFullPullAt = now
+            persistedLastFullPullAt = now
             publishSyncState {
                 $0.syncStatusMessage = "Emparejado con \(normalizedHost)"
             }
@@ -592,10 +592,16 @@ extension KmpBridge {
         return (local, remote)
     }
 
+    static let divergenceCheckInterval: TimeInterval = 15 * 60
+
     func checkSyncDivergence(force: Bool = false) async {
         guard pairedSyncHost != nil, syncToken != nil else { return }
         let now = Date()
-        if !force && now.timeIntervalSince(lastDivergenceCheckAt) < 60 {
+        // La huella recorre toda la base local (todas las notas de todos los
+        // grupos) y obliga al Mac a hacer lo mismo: antes cada minuto, con un
+        // tirón periódico en ambos dispositivos. Es solo un aviso de
+        // divergencia, así que basta con cada 15 minutos.
+        if !force && now.timeIntervalSince(lastDivergenceCheckAt) < Self.divergenceCheckInterval {
             return
         }
         lastDivergenceCheckAt = now
@@ -637,6 +643,8 @@ extension KmpBridge {
                 }
             } else {
                 await MainActor.run {
+                    // Escribir nil sobre nil también redibuja quien observa el bridge.
+                    guard self.syncDivergence != nil else { return }
                     self.syncDivergence = nil
                 }
             }
@@ -807,13 +815,21 @@ extension KmpBridge {
         guard !changes.isEmpty else {
             lastSyncCursorEpochMs = serverEpochMs
             UserDefaults.standard.set(lastSyncCursorEpochMs, forKey: "sync.last.cursor")
-            publishSyncState {
-                $0.syncLastRunAt = Date()
+            // Sin cambios, la hora de "última sincronización" se refresca como
+            // mucho una vez por minuto: cada escritura en este @Published
+            // redibuja todas las vistas que observan el bridge, y el bucle
+            // automático pasa por aquí cada 15-30 s.
+            let lastRun = syncLastRunAt ?? .distantPast
+            if Date().timeIntervalSince(lastRun) >= 60 {
+                publishSyncState {
+                    $0.syncLastRunAt = Date()
+                }
             }
             return
         }
 
         try await applyPulledChanges(changes)
+        lastAppliedRemoteChangesAt = Date()
         lastSyncCursorEpochMs = serverEpochMs
         UserDefaults.standard.set(lastSyncCursorEpochMs, forKey: "sync.last.cursor")
         let pendingChangesCount = pendingOutboundChanges.count
@@ -849,10 +865,6 @@ extension KmpBridge {
                     try await self.refreshRubrics()
                     guard !Task.isCancelled else { return }
                     try await self.refreshRubricClassLinks()
-                    guard !Task.isCancelled else { return }
-                }
-                if plan.planning {
-                    try await self.refreshPlanning()
                     guard !Task.isCancelled else { return }
                 }
                 let hasNotebookChangesFromRemote = capturedChanges.contains {
@@ -972,11 +984,18 @@ extension KmpBridge {
     }
 
     func persistPendingChanges() {
+        // La copia de la cola se toma al final de la tanda, no en cada cambio:
+        // copiarla en cada `enqueueLocalChange` era O(n²) en una instantánea
+        // del Cuaderno con cientos de cambios.
         pendingChangesPersistenceTask?.cancel()
-        let snapshot = pendingOutboundChanges
-        pendingChangesPersistenceTask = Task.detached(priority: .utility) {
-            guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
-            UserDefaults.standard.set(encoded, forKey: "sync.pending.changes.v2")
+        pendingChangesPersistenceTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            let snapshot = self.pendingOutboundChanges
+            await Task.detached(priority: .utility) {
+                guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
+                UserDefaults.standard.set(encoded, forKey: "sync.pending.changes.v2")
+            }.value
         }
     }
 
@@ -1382,27 +1401,27 @@ extension KmpBridge {
             }
         }
 
+        let studentIds = students.map { KotlinLong(value: $0.id) }
         for evaluation in rubricEvaluations {
-            for student in students {
-                let assessments = try await container.rubricsRepository.listRubricAssessments(
-                    studentId: student.id,
-                    evaluationId: evaluation.id
+            // Todos los alumnos de la evaluación en una consulta (antes: una por alumno).
+            let assessments = try await container.rubricsRepository.listRubricAssessmentsForStudents(
+                studentIds: studentIds,
+                evaluationId: evaluation.id
+            )
+            assessments.forEach { assessment in
+                enqueueLocalChange(
+                    entity: "rubric_assessment",
+                    id: "\(assessment.studentId)-\(assessment.evaluationId)-\(assessment.criterionId)",
+                    updatedAtEpochMs: assessment.trace.updatedAt.toEpochMilliseconds(),
+                    payload: [
+                        "studentId": assessment.studentId,
+                        "evaluationId": assessment.evaluationId,
+                        "criterionId": assessment.criterionId,
+                        "levelId": assessment.levelId
+                    ],
+                    shouldPersist: false,
+                    shouldScheduleAutoSync: false
                 )
-                assessments.forEach { assessment in
-                    enqueueLocalChange(
-                        entity: "rubric_assessment",
-                        id: "\(assessment.studentId)-\(assessment.evaluationId)-\(assessment.criterionId)",
-                        updatedAtEpochMs: assessment.trace.updatedAt.toEpochMilliseconds(),
-                        payload: [
-                            "studentId": assessment.studentId,
-                            "evaluationId": assessment.evaluationId,
-                            "criterionId": assessment.criterionId,
-                            "levelId": assessment.levelId
-                        ],
-                        shouldPersist: false,
-                        shouldScheduleAutoSync: false
-                    )
-                }
             }
         }
 
@@ -1528,6 +1547,14 @@ extension KmpBridge {
         let parsedPayloads = await Task.detached(priority: .utility) {
             payloadStrings.map { LanSyncPayloadParser.dictionary(from: $0) }
         }.value
+        // Los borrados conocidos se leen una vez (antes: una consulta por cada
+        // cambio entrante, miles en una descarga completa).
+        var tombstoneDeletedAt: [String: Int64] = [:]
+        if let tombstones = try? await container.syncTombstoneRepository.listTombstones() {
+            for tombstone in tombstones {
+                tombstoneDeletedAt["\(tombstone.entity)|\(tombstone.entityId)"] = tombstone.deletedAtEpochMs
+            }
+        }
         for (index, change) in orderedChanges.enumerated() {
             let hechos = index + 1
             if SyncLanApplyProgressCopy.shouldPublishProgress(hechos: hechos, total: applyTotal) {
@@ -1564,16 +1591,14 @@ extension KmpBridge {
                     deletedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId
                 )
+                tombstoneDeletedAt["\(change.entity)|\(change.id)"] = change.updatedAtEpochMs
                 continue
             }
 
             // Un upsert fechado antes (o igual) que el último borrado conocido de esta
             // misma entidad no debe resucitarla: el borrado es más reciente y gana LWW.
-            let isBlockedByTombstone = (try? await container.syncTombstoneRepository.isDeletedAtOrAfter(
-                entity: change.entity,
-                entityId: change.id,
-                updatedAtEpochMs: change.updatedAtEpochMs
-            ))?.boolValue ?? false
+            let isBlockedByTombstone = tombstoneDeletedAt["\(change.entity)|\(change.id)"]
+                .map { $0 >= change.updatedAtEpochMs } ?? false
             if isBlockedByTombstone {
                 continue
             }
@@ -3592,7 +3617,10 @@ extension KmpBridge {
             // Si llegamos aquí, el upsert se aplicó (o quedó fuera antes de tiempo por
             // un guard interno). Retirar el tombstone es seguro/idempotente en ambos
             // casos: ya no bloquea futuros upserts legítimos de esta misma entidad.
-            try? await container.syncTombstoneRepository.clearTombstone(entity: change.entity, entityId: change.id)
+            // Solo se escribe si había tombstone (antes: un DELETE por cada cambio).
+            if tombstoneDeletedAt.removeValue(forKey: "\(change.entity)|\(change.id)") != nil {
+                try? await container.syncTombstoneRepository.clearTombstone(entity: change.entity, entityId: change.id)
+            }
             } catch {
                 // No abortar el pull completo por un único cambio defectuoso
                 // (p.ej. entidad fuera de orden o payload parcial).
@@ -4151,6 +4179,8 @@ extension KmpBridge {
         URL(fileURLWithPath: appleBootstrap.databasePath)
     }
 
+    private static let externalDbChangeQuietPeriod: TimeInterval = 15
+
     private func checkLocalDbFileModification() async {
         guard !AppleBackupService.shared.needsRestart else { return }
         guard let dbURL = getDatabaseURL() else { return }
@@ -4165,19 +4195,21 @@ extension KmpBridge {
             }
             
             if modificationDate > lastCheckedDbModificationDate {
-                let timeSinceLocalMutation = Date().timeIntervalSince(lastLocalMutationAt)
-                if timeSinceLocalMutation > 1.5 {
-                    await MainActor.run {
-                        self.refreshCurrentNotebook()
-                        Task(priority: .utility) { [weak self] in
-                            guard let self else { return }
-                            try? await self.refreshDashboard()
-                            try? await self.refreshClasses()
-                            try? await self.refreshStudentsDirectory()
-                            try? await self.refreshRubrics()
-                            try? await self.refreshRubricClassLinks()
-                            try? await self.refreshPlanning()
-                        }
+                // El fichero principal también cambia por escrituras propias que
+                // SQLite vuelca tarde desde el WAL y por los cambios LAN que ya
+                // se aplicaron (y refrescaron) aquí mismo. Solo se trata como
+                // cambio externo si no hubo ninguno de los dos recientemente.
+                let lastOwnWrite = max(lastLocalMutationAt, lastAppliedRemoteChangesAt)
+                if Date().timeIntervalSince(lastOwnWrite) > Self.externalDbChangeQuietPeriod {
+                    self.refreshCurrentNotebook()
+                    postSyncRefreshTask?.cancel()
+                    postSyncRefreshTask = Task(priority: .utility) { [weak self] in
+                        guard let self else { return }
+                        try? await self.refreshDashboard()
+                        try? await self.refreshClasses()
+                        try? await self.refreshStudentsDirectory()
+                        try? await self.refreshRubrics()
+                        try? await self.refreshRubricClassLinks()
                     }
                 }
                 lastCheckedDbModificationDate = modificationDate
@@ -4209,7 +4241,9 @@ extension KmpBridge {
         reconcileAppleCalendarIfEnabled()
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.syncNow(reason: "foreground", forceFullPull: true, silent: true)
+            // Al abrir la app, `bootstrap()` ya está sincronizando: no encadenar otro pase.
+            guard !self.isSyncInFlight else { return }
+            await self.syncNow(reason: "foreground", forceFullPull: false, silent: true)
         }
     }
 
@@ -4235,6 +4269,14 @@ extension KmpBridge {
             guard let self else { return }
             await self.syncNow(reason: "background_flush", forceFullPull: false, silent: true)
         }
+    }
+
+    static let fullPullSafetyInterval: TimeInterval = 24 * 60 * 60
+    private static let lastFullPullDefaultsKey = "sync.last.full.pull"
+
+    var persistedLastFullPullAt: Date {
+        get { UserDefaults.standard.object(forKey: Self.lastFullPullDefaultsKey) as? Date ?? .distantPast }
+        set { UserDefaults.standard.set(newValue, forKey: Self.lastFullPullDefaultsKey) }
     }
 
     func syncNow(reason: String, forceFullPull: Bool, silent: Bool) async {
@@ -4280,13 +4322,18 @@ extension KmpBridge {
                 }
 
                 let now = Date()
-                let shouldForceFullPull = forceFullPull || now.timeIntervalSince(lastFullPullAt) > 180
+                // La descarga completa es solo red de seguridad (una vez al día,
+                // recordada entre arranques). Antes se repetía cada 3 minutos,
+                // al volver a primer plano y dos veces al abrir: cada vez se
+                // reaplicaba toda la base y se recargaban todas las pantallas.
+                let shouldForceFullPull = forceFullPull
+                    || now.timeIntervalSince(persistedLastFullPullAt) > Self.fullPullSafetyInterval
                 try await performPullSync(
                     silent: true,
                     sinceEpochMsOverride: shouldForceFullPull ? 0 : nil
                 )
                 if shouldForceFullPull {
-                    lastFullPullAt = now
+                    persistedLastFullPullAt = now
                 }
                 lastSuccessfulSyncAt = now
 

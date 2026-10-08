@@ -38,6 +38,11 @@ struct RubricsWorkspaceView: View {
 
     var filteredRubrics: [RubricDetail] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // El recuento de evaluaciones solo hace falta en dos filtros, y se
+        // calcula una vez para todas las rúbricas (antes: recorrer todas las
+        // evaluaciones del grupo por cada rúbrica, en cada redibujado).
+        let needsEvaluationCounts = selectedFilter == "Con evaluaciones activas" || selectedFilter == "Sin uso"
+        let evaluationCounts = needsEvaluationCounts ? evaluationCountsByRubric() : [:]
         return baseRubrics.filter { detail in
             let linkedClasses = bridge.rubricClassLinks[detail.rubric.id] ?? []
             let directClassId = detail.rubric.classId?.int64Value
@@ -52,7 +57,9 @@ struct RubricsWorkspaceView: View {
                 return detail.rubric.teachingUnitId?.int64Value == selectedTeachingUnitId
             }()
             let matchesFilter: Bool = {
-                let activeEvaluations = evaluationCountEstimate(for: detail)
+                let activeEvaluations = usageSummary?.rubricId == detail.rubric.id
+                    ? usageSummary?.evaluationCount ?? 0
+                    : evaluationCounts[detail.rubric.id] ?? 0
                 switch selectedFilter {
                 case "Vinculadas":
                     return !linkedClasses.isEmpty
@@ -88,9 +95,10 @@ struct RubricsWorkspaceView: View {
     }
 
     var rubricMetrics: (total: Int, linked: Int, avgCriteria: Double) {
-        let total = filteredRubrics.count
-        let linked = filteredRubrics.filter { !(bridge.rubricClassLinks[$0.rubric.id] ?? []).isEmpty }.count
-        let avg = filteredRubrics.isEmpty ? 0 : Double(filteredRubrics.map { $0.criteria.count }.reduce(0, +)) / Double(filteredRubrics.count)
+        let rubrics = filteredRubrics
+        let total = rubrics.count
+        let linked = rubrics.filter { !(bridge.rubricClassLinks[$0.rubric.id] ?? []).isEmpty }.count
+        let avg = rubrics.isEmpty ? 0 : Double(rubrics.map { $0.criteria.count }.reduce(0, +)) / Double(rubrics.count)
         return (total, linked, avg)
     }
 
@@ -129,10 +137,11 @@ struct RubricsWorkspaceView: View {
                     .padding(.vertical, 16)
                     .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
 
+                    let metrics = rubricMetrics
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        WorkspaceCompactStat(title: "Rúbricas", value: "\(rubricMetrics.total)", tint: RubricsStyle.statAccent)
-                        WorkspaceCompactStat(title: "Vinculadas", value: "\(rubricMetrics.linked)", tint: RubricsStyle.statSuccess)
-                        WorkspaceCompactStat(title: "Criterios", value: String(format: "%.1f", rubricMetrics.avgCriteria), tint: RubricsStyle.statWarning)
+                        WorkspaceCompactStat(title: "Rúbricas", value: "\(metrics.total)", tint: RubricsStyle.statAccent)
+                        WorkspaceCompactStat(title: "Vinculadas", value: "\(metrics.linked)", tint: RubricsStyle.statSuccess)
+                        WorkspaceCompactStat(title: "Criterios", value: String(format: "%.1f", metrics.avgCriteria), tint: RubricsStyle.statWarning)
                         WorkspaceCompactStat(title: "Situaciones", value: "\(availableTeachingUnits.count)", tint: RubricsStyle.statQuaternary)
                     }
 
@@ -625,6 +634,16 @@ struct RubricsWorkspaceView: View {
             ids.insert(classId)
         }
         return ids
+    }
+
+    func evaluationCountsByRubric() -> [Int64: Int] {
+        var counts: [Int64: Int] = [:]
+        for evaluation in bridge.evaluationsInClass {
+            if let rubricId = evaluation.rubricId?.int64Value {
+                counts[rubricId, default: 0] += 1
+            }
+        }
+        return counts
     }
 
     func evaluationCountEstimate(for rubric: RubricDetail) -> Int {

@@ -526,7 +526,6 @@ extension KmpBridge {
             physicalIncidents: physicalIncidents,
             journalStatus: .draft
         )
-        try await refreshPlanning()
         return sessionId
     }
 
@@ -543,7 +542,7 @@ extension KmpBridge {
         physicalIncidents: String,
         journalStatus: SessionJournalStatus
     ) async throws {
-        guard let session = try await container.plannerRepository.listAllSessions().first(where: { $0.id == sessionId }) else {
+        guard let session = try await container.plannerRepository.getSession(id: sessionId) else {
             throw NSError(domain: "KmpBridge", code: -3002, userInfo: [NSLocalizedDescriptionKey: "No se encontró la sesión EF"])
         }
 

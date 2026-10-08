@@ -12,34 +12,6 @@ import SwiftUI
 
 @MainActor
 extension KmpBridge {
-    func refreshPlanning() async throws {
-        let sessions = try await container.plannerRepository.listAllSessions()
-        
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
-        let audit = AuditTrace(authorUserId: nil, createdAt: nowInstant, updatedAt: nowInstant, associatedGroupId: nil, deviceId: nil, syncVersion: 0)
-        
-        // Group sessions into PlanPeriod for UI compatibility
-        let dummyPeriod = Period(id: 1, name: "Planificación (\(sessions.count) sesiones)", startAt: nowInstant, endAt: nowInstant, trace: audit)
-        
-        var unitMap: [Int64: PlanUnit] = [:]
-        for session in sessions {
-            let uId = session.teachingUnitId
-            if unitMap[uId] == nil {
-                let unit = UnitPlan(id: uId, periodId: 1, title: session.teachingUnitName, objectives: "", competences: "", trace: audit)
-                unitMap[uId] = PlanUnit(unit: unit, sessions: [])
-            }
-            let updatedUnit = unitMap[uId]!
-            var updatedSessions = updatedUnit.sessions
-            let sessionPlan = SessionPlan(id: session.id, unitId: uId, date: nowInstant, description: session.activities, trace: audit)
-            updatedSessions.append(sessionPlan)
-            unitMap[uId] = PlanUnit(unit: updatedUnit.unit, sessions: updatedSessions)
-        }
-        
-        let planPeriod = PlanPeriod(period: dummyPeriod, units: Array(unitMap.values))
-        self.planning = [planPeriod]
-    }
-
     // MARK: - Planner iOS (Week Grid + Copy/Move)
     func plannerTimeSlots() -> [TimeSlotConfig] {
         container.plannerRepository.getTimeSlots()
@@ -1325,7 +1297,6 @@ extension KmpBridge {
             ]
         )
         
-        try await refreshPlanning()
     }
 
 }

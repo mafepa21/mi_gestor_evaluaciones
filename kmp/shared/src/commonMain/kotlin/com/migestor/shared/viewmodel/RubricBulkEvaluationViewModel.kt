@@ -73,7 +73,14 @@ class RubricBulkEvaluationViewModel(
     private var autoSaveJobs = mutableMapOf<Long, Job>()
     private val AUTO_SAVE_DELAY_MS = 400L
 
+    // El guardado automático por alumno ya no recarga el Cuaderno entero cada
+    // vez (con 25 alumnos eran ~25 recargas completas mientras se evaluaba):
+    // se anota y se recarga una sola vez al cerrar la hoja.
+    private var hasPendingNotebookRefresh = false
+    private var isSheetClosed = false
+
     fun load(classId: Long, evaluationId: Long, rubricId: Long, columnId: String?, tabId: String? = null) {
+        isSheetClosed = false
         _uiState.update { it.copy(isLoading = true, error = null, classId = classId, evaluationId = evaluationId, columnId = columnId, tabId = tabId) }
         
         scope.launch {
@@ -204,7 +211,20 @@ class RubricBulkEvaluationViewModel(
         autoSaveJobs[studentId]?.cancel()
         autoSaveJobs[studentId] = scope.launch {
             delay(AUTO_SAVE_DELAY_MS)
-            saveStudentEvaluation(studentId)
+            // Si la hoja ya se cerró, este guardado rezagado avisa él mismo.
+            val refreshNow = isSheetClosed
+            if (saveStudentEvaluation(studentId, emitRefresh = refreshNow) && !refreshNow) {
+                hasPendingNotebookRefresh = true
+            }
+        }
+    }
+
+    /** Llamar al cerrar la hoja: recarga el Cuaderno una vez si hubo guardados automáticos. */
+    fun onSheetClosed() {
+        isSheetClosed = true
+        if (hasPendingNotebookRefresh) {
+            hasPendingNotebookRefresh = false
+            NotebookRefreshBus.emitRefresh()
         }
     }
 
@@ -227,6 +247,7 @@ class RubricBulkEvaluationViewModel(
                 }
                 if (failedStudentIds.isEmpty()) {
                     _uiState.update { it.copy(isSaving = false, isSaveSuccessful = true) }
+                    hasPendingNotebookRefresh = false
                     NotebookRefreshBus.emitRefresh()
                     delay(350)
                     _uiState.update { it.copy(isSaveSuccessful = false) }

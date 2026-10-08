@@ -169,7 +169,7 @@ final class KmpBridge: ObservableObject {
     private let notebookStateSubject = CurrentValueSubject<NotebookUiState, Never>(NotebookUiStateLoading())
     var cachedNotebookStateIdentity: ObjectIdentifier? = nil
     var cachedNotebookCellValueIndex: NotebookCellValueIndex? = nil
-    var lastNotebookAggregateSignature: String? = nil
+    var lastNotebookAggregateSignature: NotebookAggregateSignature? = nil
     var gradeOnTenFormatCache: [String: String] = [:]
     struct OptimisticAnnotation {
         let note: String?
@@ -357,66 +357,18 @@ final class KmpBridge: ObservableObject {
         )
     }
 
-    private func notebookAggregateSignature(for state: NotebookUiState) -> String? {
+    /// Lo que decide si hay que republicar `notebookState`: la hoja y los
+    /// borradores, sin selección ni editor activo. Antes se serializaba todo
+    /// el Cuaderno a un texto (cada celda de cada alumno) en cada emisión, en
+    /// el hilo principal; ahora compara Kotlin con `equals` de las data class.
+    private func notebookAggregateSignature(for state: NotebookUiState) -> NotebookAggregateSignature {
         guard let data = state as? NotebookUiStateData else {
-            return String(describing: type(of: state))
+            return NotebookAggregateSignature(kind: String(describing: type(of: state)), parts: [])
         }
-
-        let sheet = data.sheet
-        let columnsSignature = sheet.columns.map { column in
-            [
-                column.id,
-                column.title,
-                "\(column.order)",
-                "\(column.widthDp)",
-                "\(column.visibility)",
-                "\(column.isHidden)",
-                column.categoryId ?? "",
-                column.tabIds.joined(separator: ","),
-                "\(column.weight)",
-                "\(column.countsTowardAverage)"
-            ].joined(separator: ":")
-        }.joined(separator: "|")
-
-        let categoriesSignature = sheet.columnCategories.map { category in
-            "\(category.id):\(category.tabId):\(category.name):\(category.order):\(category.isCollapsed)"
-        }.joined(separator: "|")
-
-        let rowsSignature = sheet.rows.map { row in
-            let cells = row.cells.map { cell in
-                "\(String(describing: cell.evaluationId)):\(String(describing: cell.value))"
-            }.joined(separator: ",")
-            let persistedCells = row.persistedCells.map { cell in
-                [
-                    cell.columnId,
-                    cell.textValue ?? "",
-                    String(describing: cell.boolValue),
-                    cell.iconValue ?? "",
-                    cell.annotation?.icon ?? "",
-                    cell.annotation?.note ?? "",
-                    "\(cell.annotation?.attachmentUris.count ?? 0)",
-                    cell.ordinalValue ?? "",
-                    cell.displayValue ?? ""
-                ].joined(separator: ":")
-            }.joined(separator: ",")
-            let grades = row.persistedGrades.map { grade in
-                "\(grade.columnId):\(String(describing: grade.value)):\(String(describing: grade.evaluationId))"
-            }.joined(separator: ",")
-            return "\(row.student.id):\(String(describing: row.weightedAverage)):\(cells):\(persistedCells):\(grades)"
-        }.joined(separator: "|")
-
-        return [
-            "class:\(sheet.classId)",
-            "tabs:\(sheet.tabs.map { "\($0.id):\($0.title):\($0.order)" }.joined(separator: "|"))",
-            "columns:\(columnsSignature)",
-            "categories:\(categoriesSignature)",
-            "rows:\(rowsSignature)",
-            "numeric:\(data.numericDrafts.description)",
-            "text:\(data.textDrafts.description)",
-            "check:\(data.checkDrafts.description)",
-            "groups:\(sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }.joined(separator: ";"))",
-            "groupMembers:\(sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" }.joined(separator: ";"))"
-        ].joined(separator: "¬")
+        return NotebookAggregateSignature(
+            kind: "data",
+            parts: [data.sheet, data.numericDrafts as NSDictionary, data.textDrafts as NSDictionary, data.checkDrafts as NSDictionary]
+        )
     }
 
     private func setupObservers() {
@@ -464,7 +416,7 @@ final class KmpBridge: ObservableObject {
                     // emitirá Data de vuelta cuando termine la recarga silenciosa.
                 } else {
                     let signature = self.notebookAggregateSignature(for: state)
-                    if signature == nil || signature != self.lastNotebookAggregateSignature {
+                    if signature != self.lastNotebookAggregateSignature {
                         self.lastNotebookAggregateSignature = signature
                         notebookStateSubject.send(state)
                     }
@@ -749,5 +701,18 @@ final class KmpBridge: ObservableObject {
 private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+/// Firma barata del estado del Cuaderno: compara con `isEqual` (el `equals`
+/// de Kotlin), que corta en cuanto encuentra la misma referencia.
+struct NotebookAggregateSignature: Equatable {
+    let kind: String
+    let parts: [NSObject]
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.kind == rhs.kind
+            && lhs.parts.count == rhs.parts.count
+            && zip(lhs.parts, rhs.parts).allSatisfy { $0.isEqual($1) }
     }
 }

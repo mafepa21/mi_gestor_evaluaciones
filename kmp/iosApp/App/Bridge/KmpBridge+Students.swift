@@ -1914,45 +1914,75 @@ extension KmpBridge {
         var averageValuesByStudentId: [Int64: [Double]] = [:]
         var workGroupByStudentClassKey: [String: String] = [:]
 
-        for schoolClass in classesToScan {
-            let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
-            roster.forEach { student in
+        // Los grupos se consultan a la vez (antes, uno tras otro). Cada tarea
+        // va en el actor principal porque Kotlin/Native exige llamar a suspend
+        // desde ese hilo; se solapan mientras esperan a la base de datos.
+        let repositories = (
+            classes: container.classesRepository,
+            attendance: container.attendanceRepository,
+            incidents: container.incidentsRepository,
+            notebook: container.notebookRepository
+        )
+        let perClass = try await withThrowingTaskGroup(of: (Int, MacStudentClassScan).self) { group in
+            for (index, schoolClass) in classesToScan.enumerated() {
+                group.addTask { @MainActor in
+                    let id = schoolClass.id
+                    let roster = try await repositories.classes.listStudentsInClass(classId: id)
+                    let attendance = try await repositories.attendance.listAttendance(classId: id)
+                    let incidents = try await repositories.incidents.listIncidents(classId: id)
+                    let sheet = try? await repositories.notebook.loadNotebookSnapshot(classId: id)
+                    let averages: [(studentId: Int64, average: Double)] = (sheet?.rows ?? []).compactMap { row in
+                        row.weightedAverage.map { (row.student.id, $0.doubleValue) }
+                    }
+                    let groups = try await repositories.notebook.listWorkGroups(classId: id, tabId: nil)
+                    var groupNames: [Int64: String] = [:]
+                    for group in groups where groupNames[group.id] == nil {
+                        groupNames[group.id] = group.name
+                    }
+                    let members = try await repositories.notebook.listWorkGroupMembers(classId: id, tabId: nil)
+                        .map { (studentId: $0.studentId, groupId: $0.groupId) }
+                    return (index, MacStudentClassScan(
+                        schoolClass: schoolClass,
+                        roster: roster,
+                        attendance: attendance,
+                        incidents: incidents,
+                        averages: averages,
+                        groupNames: groupNames,
+                        members: members
+                    ))
+                }
+            }
+            var results: [(Int, MacStudentClassScan)] = []
+            for try await result in group { results.append(result) }
+            return results.sorted { $0.0 < $1.0 }.map(\.1)
+        }
+
+        for scan in perClass {
+            let schoolClass = scan.schoolClass
+            scan.roster.forEach { student in
                 studentsById[student.id] = student
                 membershipsByStudentId[student.id, default: []].append(
                     MacStudentClassMembership(id: schoolClass.id, className: schoolClass.name)
                 )
             }
 
-            let attendance = try await container.attendanceRepository.listAttendance(classId: schoolClass.id)
-                .map(attendanceSnapshot(from:))
-            for record in attendance {
+            for record in scan.attendance.map(attendanceSnapshot(from:)) {
                 attendanceByStudentId[record.studentId, default: []].append(record)
             }
 
-            let incidents = try await container.incidentsRepository.listIncidents(classId: schoolClass.id)
-            for incident in incidents {
+            for incident in scan.incidents {
                 guard let studentId = incident.studentId?.int64Value else { continue }
                 incidentsByStudentId[studentId, default: []].append(incident)
             }
 
-            if let notebookSheet = try? await container.notebookRepository.loadNotebookSnapshot(classId: schoolClass.id) {
-                for row in notebookSheet.rows {
-                    if let average = row.weightedAverage?.doubleValue {
-                        averageValuesByStudentId[row.student.id, default: []].append(average)
-                    }
-                }
+            for entry in scan.averages {
+                averageValuesByStudentId[entry.studentId, default: []].append(entry.average)
             }
 
-            let groups = try await container.notebookRepository.listWorkGroups(classId: schoolClass.id, tabId: nil)
-            let groupNames = Dictionary(
-                groups.map { ($0.id, $0.name) },
-                uniquingKeysWith: { first, _ in first }
-            )
-            let members = try await container.notebookRepository.listWorkGroupMembers(classId: schoolClass.id, tabId: nil)
-            for member in members {
+            for member in scan.members {
                 let key = macStudentClassKey(studentId: member.studentId, classId: schoolClass.id)
                 if workGroupByStudentClassKey[key] == nil {
-                    workGroupByStudentClassKey[key] = groupNames[member.groupId]
+                    workGroupByStudentClassKey[key] = scan.groupNames[member.groupId]
                 }
             }
         }
@@ -2731,4 +2761,15 @@ extension KmpBridge {
         }
     }
 
+}
+
+/// Resultado de las consultas de un grupo para la lista de alumnos del Mac.
+struct MacStudentClassScan {
+    let schoolClass: SchoolClass
+    let roster: [Student]
+    let attendance: [Attendance_]
+    let incidents: [Incident]
+    let averages: [(studentId: Int64, average: Double)]
+    let groupNames: [Int64: String]
+    let members: [(studentId: Int64, groupId: Int64)]
 }

@@ -60,7 +60,8 @@ extension KmpBridge {
             startMs: event.startAt.toEpochMilliseconds(),
             endMs: event.endAt.toEpochMilliseconds(),
             updatedMs: event.trace.updatedAt.toEpochMilliseconds(),
-            externalId: event.externalProvider == AppleCalendarMirror.provider ? event.externalId : nil
+            externalId: event.externalProvider == AppleCalendarMirror.provider ? event.externalId : nil,
+            classId: event.classId?.int64Value
         )
     }
 
@@ -189,10 +190,10 @@ extension KmpBridge {
                 link: appleCalendarLink(externalId: remote.externalId),
                 updatedMs: remote.lastModifiedMs
             )
-        case .updateLocal(let id, let remote):
+        case .adoptLocal(let id, let classId, let remote), .updateLocal(let id, let classId, let remote):
             _ = try await saveCalendarRow(
                 id: id,
-                classId: nil,
+                classId: classId,
                 title: remote.title,
                 description: remote.notes,
                 startMs: remote.startMs,

@@ -14,6 +14,8 @@ struct SchoolCalendarEventsOverviewSheet: View {
     @State private var searchText = ""
     @State private var selectedFilter: EventFilter = .all
     @State private var draft: PlannerCalendarEventDraft?
+    @State private var duplicateReport: CalendarDuplicateReport?
+    @State private var notice: String?
 
     enum EventFilter: String, CaseIterable, Identifiable {
         case all = "Todos"
@@ -112,6 +114,13 @@ struct SchoolCalendarEventsOverviewSheet: View {
             #endif
             .searchable(text: $searchText, prompt: "Buscar evento, viaje o hito…")
             .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        Task { await reviewDuplicates() }
+                    } label: {
+                        Label("Revisar repetidos", systemImage: "doc.on.doc")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         draft = PlannerCalendarEventDraft(event: nil, day: Date())
@@ -136,8 +145,66 @@ struct SchoolCalendarEventsOverviewSheet: View {
                     }
                 }
             }
+            .confirmationDialog(
+                duplicateDialogTitle,
+                isPresented: Binding(
+                    get: { duplicateReport != nil },
+                    set: { if !$0 { duplicateReport = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Borrar repetidos", role: .destructive) {
+                    Task { await removeDuplicates() }
+                }
+            } message: {
+                Text("Haz antes una copia de seguridad en Ajustes → Datos y seguridad. Se conserva un evento de cada grupo repetido. Los borrados se envían a los demás aparatos.")
+            }
+            .alert(
+                "Repetidos",
+                isPresented: Binding(
+                    get: { notice != nil },
+                    set: { if !$0 { notice = nil } }
+                )
+            ) {
+                Button("Aceptar") { notice = nil }
+            } message: {
+                Text(notice ?? "")
+            }
         }
         .frame(minWidth: 500, minHeight: 520)
+    }
+
+    // MARK: - Repetidos
+
+    private var duplicateDialogTitle: String {
+        guard let report = duplicateReport else { return "" }
+        return "¿Borrar \(report.eventIds.count) eventos y \(report.periodIds.count) periodos repetidos?"
+    }
+
+    /// Solo calcula y muestra el resultado. No borra nada hasta que el usuario confirma.
+    private func reviewDuplicates() async {
+        do {
+            let report = try await bridge.calendarDuplicateReport()
+            if report.isEmpty {
+                notice = "No hay eventos ni periodos repetidos."
+            } else {
+                duplicateReport = report
+            }
+        } catch {
+            notice = "No pude revisar los repetidos: \(error.localizedDescription)"
+        }
+    }
+
+    private func removeDuplicates() async {
+        guard let report = duplicateReport else { return }
+        duplicateReport = nil
+        do {
+            let removed = try await bridge.removeCalendarDuplicates(report)
+            notice = "Se han borrado \(removed.events) eventos y \(removed.periods) periodos repetidos."
+        } catch {
+            notice = "Se borró parte de los repetidos, pero hubo un error: \(error.localizedDescription)"
+        }
+        await loadData()
     }
 
     // MARK: - Filtros

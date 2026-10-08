@@ -152,6 +152,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Eventos repetidos en el calendario (exámenes, viajes y periodos)**:
+  - Los viajes y los exámenes de 1º Bach se buscan entre todos los eventos, con o sin grupo, antes de crearlos otra vez.
+  - La importación de «Colegio» enlaza con la fila existente que tiene el mismo título y día, en vez de crear otra.
+  - Solo puede correr una aplicación del preset o una sincronización de exámenes a la vez.
+  - Nuevo botón «Revisar repetidos» en la hoja de hitos. Solo cuenta y muestra el resultado. Borra únicamente después de confirmar, y conserva un evento de cada grupo.
+  - Los exámenes de 1º Bach aparecen en una fila por examen y grupo, con sus fechas.
+  - Archivos: `App/SchoolCalendarPreset2026_2027.swift`, `AppleShared/AppleCalendarReconciler.swift`, `AppleShared/CalendarDuplicatePlanner.swift` (nuevo), `App/Bridge/KmpBridge+CalendarCleanup.swift` (nuevo), `App/Bridge/KmpBridge+AppleCalendar.swift`, `App/SchoolCalendarEventsOverviewSheet.swift`.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` y `MiGestorKMPiOS`: BUILD SUCCEEDED. `AppleCalendarReconcilerTests` (13) y `CalendarDuplicatePlannerTests` (6): 19 pruebas, 0 fallos.
+  - Pendiente: ejecutar «Revisar repetidos» sobre la base de datos real, después de una copia de seguridad.
+
 - **Sábana de asistencia: «Limpiar registro» no se guardaba**: solo borraba la marca en pantalla y reaparecía al recargar. Ahora se guarda como desmarcada y, si falla, vuelve a mostrarse con el aviso de error.
 
 - **Apertura fluida del Planner en macOS/iOS**:

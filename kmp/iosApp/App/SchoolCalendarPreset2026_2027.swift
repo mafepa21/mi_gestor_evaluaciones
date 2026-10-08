@@ -299,6 +299,22 @@ enum SchoolCalendarPreset2026_2027 {
             isNonTeaching: false
         ),
         SchoolEventPreset(
+            id: "evaluacion_inicial_eso_dia1",
+            title: "Evaluación inicial ESO (día 1)",
+            dateIso: "2026-10-21",
+            dateSummary: "Mié 21 oct 2026",
+            description: "Sesión de evaluación inicial · Decisión sobre medidas de inclusión",
+            isNonTeaching: false
+        ),
+        SchoolEventPreset(
+            id: "evaluacion_inicial_eso_dia2",
+            title: "Evaluación inicial ESO (día 2)",
+            dateIso: "2026-10-22",
+            dateSummary: "Jue 22 oct 2026",
+            description: "Sesión de evaluación inicial · Decisión sobre medidas de inclusión",
+            isNonTeaching: false
+        ),
+        SchoolEventPreset(
             id: "reunion_familias_ene",
             title: "Reunión familias 2º trimestre (ESO)",
             dateIso: "2027-01-20",
@@ -312,6 +328,14 @@ enum SchoolCalendarPreset2026_2027 {
             dateIso: "2026-11-29",
             dateSummary: "Dom 29 nov 2026",
             description: "Límite para introducir notas en Educamos · Sesiones 2 y 3 dic",
+            isNonTeaching: false
+        ),
+        SchoolEventPreset(
+            id: "cierre_documentacion_inclusion",
+            title: "Cierre documentación de inclusión",
+            dateIso: "2026-12-18",
+            dateSummary: "Vie 18 dic 2026",
+            description: "Fecha interna propuesta · Documentación de inclusión finalizada antes de Navidad",
             isNonTeaching: false
         ),
         SchoolEventPreset(

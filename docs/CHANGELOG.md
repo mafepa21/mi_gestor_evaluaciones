@@ -15,6 +15,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Hitos de inclusión en el calendario del curso 2026-2027**:
+  - Se añaden dos hitos de evaluación inicial de ESO (21 y 22 de octubre de 2026) y el cierre de documentación de inclusión (18 de diciembre de 2026), según el Manual de Inclusión ESO y Bachillerato.
+  - La fecha del 18 de diciembre es una propuesta interna, pendiente de confirmar.
+  - Los hitos del manual sin fecha (reunión inicial, reuniones con alumnado NEE, revisión de noviembre) no se añaden hasta tener fechas.
+  - Archivo: `kmp/iosApp/App/SchoolCalendarPreset2026_2027.swift`. Se aplican con la función de hitos del preset, que no duplica por día y título.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` (macOS) y `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED. Sin tests unitarios nuevos; comprobación visual del calendario pendiente.
+
 - **Calendario de Apple: copia de eventos a «Colegio»**:
   - Nuevo ajuste en Ajustes → Calendario de Apple. Al activarlo, la app pide permiso de Calendario y crea el calendario «Colegio» en iCloud, o en la cuenta por defecto si no hay iCloud.
   - Los eventos que creas, cambias o borras en la app se crean, cambian o se borran en ese calendario. Los hitos se copian como día completo.

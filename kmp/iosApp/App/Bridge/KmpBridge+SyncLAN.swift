@@ -459,7 +459,7 @@ extension KmpBridge {
             persistSyncSecrets()
             let now = Date()
             lastSuccessfulSyncAt = now
-            lastFullPullAt = now
+            persistedLastFullPullAt = now
             publishSyncState {
                 $0.syncStatusMessage = "Emparejado con \(normalizedHost)"
             }
@@ -814,6 +814,7 @@ extension KmpBridge {
         }
 
         try await applyPulledChanges(changes)
+        lastAppliedRemoteChangesAt = Date()
         lastSyncCursorEpochMs = serverEpochMs
         UserDefaults.standard.set(lastSyncCursorEpochMs, forKey: "sync.last.cursor")
         let pendingChangesCount = pendingOutboundChanges.count
@@ -849,10 +850,6 @@ extension KmpBridge {
                     try await self.refreshRubrics()
                     guard !Task.isCancelled else { return }
                     try await self.refreshRubricClassLinks()
-                    guard !Task.isCancelled else { return }
-                }
-                if plan.planning {
-                    try await self.refreshPlanning()
                     guard !Task.isCancelled else { return }
                 }
                 let hasNotebookChangesFromRemote = capturedChanges.contains {
@@ -4151,6 +4148,8 @@ extension KmpBridge {
         URL(fileURLWithPath: appleBootstrap.databasePath)
     }
 
+    private static let externalDbChangeQuietPeriod: TimeInterval = 15
+
     private func checkLocalDbFileModification() async {
         guard !AppleBackupService.shared.needsRestart else { return }
         guard let dbURL = getDatabaseURL() else { return }
@@ -4165,19 +4164,21 @@ extension KmpBridge {
             }
             
             if modificationDate > lastCheckedDbModificationDate {
-                let timeSinceLocalMutation = Date().timeIntervalSince(lastLocalMutationAt)
-                if timeSinceLocalMutation > 1.5 {
-                    await MainActor.run {
-                        self.refreshCurrentNotebook()
-                        Task(priority: .utility) { [weak self] in
-                            guard let self else { return }
-                            try? await self.refreshDashboard()
-                            try? await self.refreshClasses()
-                            try? await self.refreshStudentsDirectory()
-                            try? await self.refreshRubrics()
-                            try? await self.refreshRubricClassLinks()
-                            try? await self.refreshPlanning()
-                        }
+                // El fichero principal también cambia por escrituras propias que
+                // SQLite vuelca tarde desde el WAL y por los cambios LAN que ya
+                // se aplicaron (y refrescaron) aquí mismo. Solo se trata como
+                // cambio externo si no hubo ninguno de los dos recientemente.
+                let lastOwnWrite = max(lastLocalMutationAt, lastAppliedRemoteChangesAt)
+                if Date().timeIntervalSince(lastOwnWrite) > Self.externalDbChangeQuietPeriod {
+                    self.refreshCurrentNotebook()
+                    postSyncRefreshTask?.cancel()
+                    postSyncRefreshTask = Task(priority: .utility) { [weak self] in
+                        guard let self else { return }
+                        try? await self.refreshDashboard()
+                        try? await self.refreshClasses()
+                        try? await self.refreshStudentsDirectory()
+                        try? await self.refreshRubrics()
+                        try? await self.refreshRubricClassLinks()
                     }
                 }
                 lastCheckedDbModificationDate = modificationDate
@@ -4209,7 +4210,9 @@ extension KmpBridge {
         reconcileAppleCalendarIfEnabled()
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.syncNow(reason: "foreground", forceFullPull: true, silent: true)
+            // Al abrir la app, `bootstrap()` ya está sincronizando: no encadenar otro pase.
+            guard !self.isSyncInFlight else { return }
+            await self.syncNow(reason: "foreground", forceFullPull: false, silent: true)
         }
     }
 
@@ -4235,6 +4238,14 @@ extension KmpBridge {
             guard let self else { return }
             await self.syncNow(reason: "background_flush", forceFullPull: false, silent: true)
         }
+    }
+
+    static let fullPullSafetyInterval: TimeInterval = 24 * 60 * 60
+    private static let lastFullPullDefaultsKey = "sync.last.full.pull"
+
+    var persistedLastFullPullAt: Date {
+        get { UserDefaults.standard.object(forKey: Self.lastFullPullDefaultsKey) as? Date ?? .distantPast }
+        set { UserDefaults.standard.set(newValue, forKey: Self.lastFullPullDefaultsKey) }
     }
 
     func syncNow(reason: String, forceFullPull: Bool, silent: Bool) async {
@@ -4280,13 +4291,18 @@ extension KmpBridge {
                 }
 
                 let now = Date()
-                let shouldForceFullPull = forceFullPull || now.timeIntervalSince(lastFullPullAt) > 180
+                // La descarga completa es solo red de seguridad (una vez al día,
+                // recordada entre arranques). Antes se repetía cada 3 minutos,
+                // al volver a primer plano y dos veces al abrir: cada vez se
+                // reaplicaba toda la base y se recargaban todas las pantallas.
+                let shouldForceFullPull = forceFullPull
+                    || now.timeIntervalSince(persistedLastFullPullAt) > Self.fullPullSafetyInterval
                 try await performPullSync(
                     silent: true,
                     sinceEpochMsOverride: shouldForceFullPull ? 0 : nil
                 )
                 if shouldForceFullPull {
-                    lastFullPullAt = now
+                    persistedLastFullPullAt = now
                 }
                 lastSuccessfulSyncAt = now
 

@@ -39,7 +39,6 @@ final class KmpBridge: ObservableObject {
     @Published var studentsInClass: [Student] = []
     @Published var evaluationsInClass: [Evaluation] = []
     @Published var rubrics: [RubricDetail] = []
-    @Published var planning: [PlanPeriod] = []
     @Published var rubricsUiState: RubricUiState? = nil
     @Published var rubricClassLinks: [Int64: Set<Int64>] = [:]
     @Published var rubricBuilderTeachingUnits: [TeachingUnit] = []
@@ -132,9 +131,10 @@ final class KmpBridge: ObservableObject {
     var syncNeedsAnotherPass = false
     var isAppInForeground = true
     var lastLocalMutationAt: Date = .distantPast
+    /// Último momento en que se aplicaron cambios LAN entrantes (escriben en la base local).
+    var lastAppliedRemoteChangesAt: Date = .distantPast
     var lastCheckedDbModificationDate: Date = .distantPast
     var lastSuccessfulSyncAt: Date = .distantPast
-    var lastFullPullAt: Date = .distantPast
     var lastSilentSyncAttemptAt: Date = .distantPast
     var lastSyncCursorEpochMs: Int64 = UserDefaults.standard.object(forKey: "sync.last.cursor") as? Int64 ?? 0
     var selectedNotebookTabByClassId: [String: String] = {
@@ -274,12 +274,8 @@ final class KmpBridge: ObservableObject {
             self.lanSyncDiscovery.start()
             self.startAutoSyncLoop()
             self.startSyncEventListenerIfPaired()
-            #if os(iOS)
-            // On iOS the persisted host/token come from a real pairing; rehydrate on launch.
-            if self.hasPersistedLanPairing {
-                await self.syncNow(reason: "rehydrate", forceFullPull: false, silent: true)
-            }
-            #endif
+            // El primer sync del arranque lo lanza `bootstrap()`; aquí ya no se
+            // repite (antes había tres seguidos: rehydrate, bootstrap y foreground).
         }
 
         setupObservers()
@@ -602,9 +598,8 @@ final class KmpBridge: ObservableObject {
             async let subjects: Void = refreshSubjects()
             async let rubrics: Void = refreshRubrics()
             async let rubricLinks: Void = refreshRubricClassLinks()
-            async let planning: Void = refreshPlanning()
             async let studentsDirectory: Void = refreshStudentsDirectory()
-            _ = try await (dashboard, operationalDashboard, subjects, rubrics, rubricLinks, planning, studentsDirectory)
+            _ = try await (dashboard, operationalDashboard, subjects, rubrics, rubricLinks, studentsDirectory)
             status = appleBootstrap.connectedStatusText
         } catch {
             didBootstrap = false
@@ -618,7 +613,7 @@ final class KmpBridge: ObservableObject {
         // "sin datos".
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.syncNow(reason: "bootstrap", forceFullPull: true, silent: true)
+            await self.syncNow(reason: "bootstrap", forceFullPull: false, silent: true)
             self.hasCompletedBootstrap = true
         }
     }

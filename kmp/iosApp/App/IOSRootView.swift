@@ -180,10 +180,8 @@ struct IOSRootView: View {
                 }
             }
         }
-        .task(id: selectionStore.selectedClassId) {
-            guard let classId = selectionStore.selectedClassId else { return }
-            await bridge.preloadClassWorkspace(classId: classId)
-        }
+        // Sin precarga al cambiar de grupo: sus consultas no alimentaban
+        // ninguna caché y competían con la carga real de cada módulo.
         .appOnChange(of: selectionStore.selectedStudentId) { newId in
             persistedStudentId = Int(newId ?? 0)
         }

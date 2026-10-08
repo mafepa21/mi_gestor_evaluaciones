@@ -526,7 +526,6 @@ extension KmpBridge {
             physicalIncidents: physicalIncidents,
             journalStatus: .draft
         )
-        try await refreshPlanning()
         return sessionId
     }
 

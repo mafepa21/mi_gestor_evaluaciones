@@ -25,13 +25,18 @@ final class AppleBackupIntegrityTests: XCTestCase {
         XCTAssertNoThrow(try AppleSQLiteBackupValidator.validateDatabase(at: databaseURL))
     }
 
-    func testSQLiteValidationRejectsBrokenForeignKeys() throws {
+    func testSQLiteValidationAcceptsOrphanReferencesAndCountsThem() throws {
         let databaseURL = workDirectory.appendingPathComponent("broken-fk.sqlite")
         try createDatabase(at: databaseURL, withBrokenForeignKey: true)
 
-        XCTAssertThrowsError(try AppleSQLiteBackupValidator.validateDatabase(at: databaseURL)) { error in
-            XCTAssertTrue(error.localizedDescription.contains("foreign_key_check"))
-        }
+        XCTAssertEqual(try AppleSQLiteBackupValidator.validateDatabase(at: databaseURL), 1)
+    }
+
+    func testSQLiteValidationReportsZeroOrphansForIntactDatabase() throws {
+        let databaseURL = workDirectory.appendingPathComponent("intact.sqlite")
+        try createDatabase(at: databaseURL, withBrokenForeignKey: false)
+
+        XCTAssertEqual(try AppleSQLiteBackupValidator.validateDatabase(at: databaseURL), 0)
     }
 
     func testMaterializedSnapshotIsSelfContainedAndValid() throws {

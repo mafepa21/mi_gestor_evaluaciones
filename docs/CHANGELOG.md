@@ -65,7 +65,9 @@ El formato sigue una variante practica de Keep a Changelog:
   - Se eliminan cargas sin uso: `refreshPlanning`/`bridge.planning` y la precarga al cambiar de grupo.
   - Cuaderno: la firma de cambios compara con `equals` de Kotlin en vez de serializar cada celda.
   - Lista de alumnos del Mac y apertura del Planificador cargan en paralelo; Rúbricas calcula la lista y los recuentos una vez.
-  - Verificación: `:shared:desktopTest` (131) y `:data:desktopTest` (165) en verde; `verify_apple_builds.sh` iOS y macOS. Sin medición en dispositivo.
+  - Mac (servidor de sync): si la base no ha cambiado desde el último recorrido (marca `total_changes()` + `data_version`), el pull responde vacío sin recorrerla; los diarios se leen en bloque.
+  - También: refreshDashboard solo calcula los totales, la huella de divergencia pasa a cada 15 min, la cola de cambios avisa y persiste una vez por tanda, y las raíces de iOS/Mac y vistas que solo llaman acciones dejan de observar el bridge entero.
+  - Verificación: `:shared:desktopTest` (136) y `:data:desktopTest` (167) en verde, con 7 pruebas nuevas del atajo de sync; `verify_apple_builds.sh` iOS y macOS. Sin medición en dispositivo.
 
 - **Optimización integral de rendimiento y fluidez en Cuaderno, Asistencia y Planificador**:
   - Cuaderno: firma de fila migrada de `String` a `Int` con `Hasher` directo sobre celdas (`item.lookup`), eliminando miles de asignaciones de strings y diccionarios por frame de scroll. Métricas y altura de slots calculadas una vez en lugar de triplicarse por panel. Comprobación de límites de rango de notas con shift convertida de 3 escaneos $O(N)$ a comprobación $O(1)$ en `NotebookGridNavigationContext.selectedRangeBounds`.

@@ -1,5 +1,8 @@
 package com.migestor.shared.sync
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
 /**
  * Representa un cambio local que debe sincronizarse con el peer.
  *
@@ -43,14 +46,44 @@ data class SyncAck(
 interface SyncStoreAdapter {
     suspend fun collectLocalChanges(sinceEpochMs: Long): List<SyncChange>
     suspend fun applyIncomingChangesLww(changes: List<SyncChange>): SyncAck
+
+    /**
+     * Marca barata que cambia con cualquier escritura en la base local (propia o
+     * de otro proceso). `null` si el adaptador no sabe calcularla: entonces cada
+     * pull recorre la base como siempre.
+     */
+    suspend fun currentChangeToken(): String? = null
 }
 
 class SyncCoordinator(
     private val adapter: SyncStoreAdapter,
 ) {
-    suspend fun pullChanges(sinceEpochMs: Long, serverNowEpochMs: Long): SyncPullResponse {
+    private val pullMutex = Mutex()
+    private var lastFullCollectToken: String? = null
+    private var lastFullCollectServerNowEpochMs: Long = Long.MAX_VALUE
+
+    suspend fun pullChanges(sinceEpochMs: Long, serverNowEpochMs: Long): SyncPullResponse = pullMutex.withLock {
+        // Cada iPad pide cambios cada 15-30 s y recorrer la base entera es caro.
+        // Si la base no ha cambiado desde el último recorrido completo y el
+        // cliente ya recibió una respuesta posterior a ese recorrido, no hay
+        // nada nuevo que mandarle.
+        val token = adapter.currentChangeToken()
+        if (
+            token != null &&
+            sinceEpochMs > 0L &&
+            token == lastFullCollectToken &&
+            sinceEpochMs >= lastFullCollectServerNowEpochMs
+        ) {
+            return@withLock SyncPullResponse(serverEpochMs = serverNowEpochMs, changes = emptyList())
+        }
+        // La marca se lee ANTES de recorrer: una escritura durante el recorrido
+        // deja la marca desfasada y fuerza otro recorrido en el siguiente pull.
         val changes = adapter.collectLocalChanges(sinceEpochMs)
-        return SyncPullResponse(
+        if (token != lastFullCollectToken) {
+            lastFullCollectToken = token
+            lastFullCollectServerNowEpochMs = serverNowEpochMs
+        }
+        SyncPullResponse(
             serverEpochMs = serverNowEpochMs,
             changes = changes,
         )

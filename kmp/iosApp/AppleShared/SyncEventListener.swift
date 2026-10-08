@@ -89,6 +89,12 @@ final class SyncEventListener: @unchecked Sendable {
                 return
             } catch is UnauthorizedError {
                 print("[Sync:error] listener sin autorización (\(host)); se reintenta más tarde")
+                // En el Mac casi siempre significa que en el puerto responde un
+                // helper con otra contraseña (p. ej. uno huérfano de una ejecución
+                // anterior): el coordinador lo relanza en vez de reintentar sin fin.
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .syncListenerUnauthorized, object: nil, userInfo: ["host": host])
+                }
                 backoffIndex = backoffSteps.count - 1
                 try? await Task.sleep(nanoseconds: backoffSteps[backoffIndex])
             } catch is OpenedStreamError {
@@ -226,4 +232,9 @@ final class SyncEventListener: @unchecked Sendable {
         ]
         return transientCodes.contains(nsError.code)
     }
+}
+
+extension Notification.Name {
+    /// El servidor de sync rechazó la contraseña del listener SSE.
+    static let syncListenerUnauthorized = Notification.Name("syncListenerUnauthorized")
 }

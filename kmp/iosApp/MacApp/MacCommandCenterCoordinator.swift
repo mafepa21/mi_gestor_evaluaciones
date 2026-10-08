@@ -30,8 +30,18 @@ final class MacCommandCenterCoordinator: ObservableObject {
     private var lastRunningSnapshot: RunningSnapshot?
     private var lastPublishedPairingPayload: String?
     private var stateUpdateGeneration = 0
+    private var lastUnauthorizedRecoveryAt: Date = .distantPast
 
     init() {
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .syncListenerUnauthorized,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.recoverFromUnauthorizedListener()
+            }
+        })
         observers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
@@ -264,6 +274,18 @@ final class MacCommandCenterCoordinator: ObservableObject {
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
         process?.terminate()
+    }
+
+    /// El listener de la propia app fue rechazado: el helper que escucha en el
+    /// puerto no tiene nuestra contraseña. Se relanza (lo que también termina
+    /// helpers huérfanos), como mucho una vez cada dos minutos.
+    private func recoverFromUnauthorizedListener() {
+        guard !AppleBackupService.shared.needsRestart else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastUnauthorizedRecoveryAt) > 120 else { return }
+        lastUnauthorizedRecoveryAt = now
+        print("[Pairing] listener rechazado por el helper; se relanza con contraseña nueva")
+        reconnect()
     }
 
     func reconnect() {

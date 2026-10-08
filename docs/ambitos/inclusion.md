@@ -20,3 +20,6 @@
 - Añadir un caso a `AppWorkspaceModule` obliga a tocar switches exhaustivos: `WorkspaceLayoutState+Extensions.swift` (dos) y `WorkspaceModuleSwitcher.swift`.
 - `verify_apple_builds.sh` regenera el proyecto con XcodeGen y toca el `.xcscheme`: no commitear ese ruido.
 - Sin runtimes de simulador instalados en esta máquina: no hay capturas de iOS.
+- La hoja «Añadir tarea» es genérica en el id del alumno (`InclusionAddTaskSheet<ID>`): la maqueta usa UUID y la pantalla real Int64. Guardar con varios alumnos usa `addInclusionTasks` (una transacción en `insertFreeTasks`); con ninguno marcado no actúa y muestra «Elige al menos un alumno».
+- Añadir un método a `InclusionTaskRepository` obliga a actualizar el `FakeTasks` del test de `InclusionTasksUseCaseTest`.
+- `./gradlew` falla dentro del sandbox (bloqueo de `~/.gradle`); ejecutarlo fuera.

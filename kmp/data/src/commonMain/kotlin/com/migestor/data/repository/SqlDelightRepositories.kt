@@ -2029,6 +2029,23 @@ class InclusionTaskRepositorySqlDelight(
         }
     }
 
+    override suspend fun insertFreeTasks(
+        studentIds: List<Long>,
+        title: String,
+        phase: com.migestor.shared.inclusion.InclusionPhase,
+        dueDateIso: String,
+        notes: String,
+        schoolYear: String,
+        nowEpochMs: Long,
+    ): List<Long> = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            studentIds.map { studentId ->
+                db.appDatabaseQueries.insertInclusionFreeTask(studentId, title, phase.name, dueDateIso, notes, schoolYear, nowEpochMs, nowEpochMs)
+                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            }
+        }
+    }
+
     override suspend fun setDone(id: Long, doneAtIso: String?, nowEpochMs: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.setInclusionTaskDone(doneAtIso, nowEpochMs, id)
         Unit

@@ -157,12 +157,17 @@ struct InclusionTrackerView: View {
                 selectFirstIfWide()
             }
             .sheet(isPresented: $showingAddTask) {
-                if let student = selectedStudent, let classId = selectedClassId {
-                    InclusionAddTaskSheet(studentName: student.name, today: store.today) { title, phase, due in
+                if let board = store.board, let classId = selectedClassId {
+                    InclusionAddTaskSheet(
+                        recipients: board.students.map { InclusionTaskRecipient(id: $0.id, name: $0.name) },
+                        initialID: selection,
+                        today: store.today
+                    ) { title, phase, due, studentIds in
                         Task {
+                            // Una sola transacción; al terminar el store recarga el tablero.
                             await store.perform(bridge: bridge, classId: classId) {
-                                try await bridge.addInclusionTask(
-                                    studentId: student.id, title: title, phase: phase.ui, due: due
+                                try await bridge.addInclusionTasks(
+                                    studentIds: studentIds, title: title, phase: phase.ui, due: due
                                 )
                             }
                         }

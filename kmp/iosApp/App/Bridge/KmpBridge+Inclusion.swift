@@ -241,6 +241,28 @@ extension KmpBridge {
         ).int64Value
     }
 
+    /// Crea la misma tarea libre para varios alumnos en una sola transacción:
+    /// o se crean todas o ninguna. Devuelve los ids creados.
+    @discardableResult
+    func addInclusionTasks(
+        studentIds: [Int64],
+        title: String,
+        phase: InclusionPhaseUI,
+        due: Date,
+        notes: String = "",
+        today: Date = Date()
+    ) async throws -> [Int64] {
+        try await container.inclusionTasks.addFreeTasks(
+            studentIds: studentIds.map { KotlinLong(value: $0) },
+            title: title,
+            phase: phase.kotlin,
+            due: inclusionLocalDate(due),
+            schoolYear: inclusionSchoolYear(for: today),
+            nowEpochMs: inclusionNowMs(),
+            notes: notes
+        ).map { $0.int64Value }
+    }
+
     // MARK: Conversión
 
     private func inclusionTaskSnapshot(from item: MiGestorKit.InclusionTaskItem) -> InclusionTaskSnapshot? {

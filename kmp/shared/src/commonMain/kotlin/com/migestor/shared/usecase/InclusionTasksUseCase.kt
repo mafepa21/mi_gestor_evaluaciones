@@ -158,6 +158,27 @@ class InclusionTasksUseCase(
         return tasks.insertFreeTask(studentId, clean, phase, due.toString(), notes, schoolYear, nowEpochMs)
     }
 
+    /**
+     * Crea la misma tarea libre para varios alumnos en un solo paso atómico.
+     * Los ids repetidos se ignoran. Devuelve los ids creados, en el orden recibido.
+     */
+    @Throws(Throwable::class)
+    suspend fun addFreeTasks(
+        studentIds: List<Long>,
+        title: String,
+        phase: InclusionPhase,
+        due: LocalDate,
+        schoolYear: String,
+        nowEpochMs: Long,
+        notes: String = "",
+    ): List<Long> {
+        val clean = title.trim()
+        require(clean.isNotEmpty()) { "La tarea necesita un título" }
+        val ids = studentIds.distinct()
+        require(ids.isNotEmpty()) { "Elige al menos un alumno" }
+        return tasks.insertFreeTasks(ids, clean, phase, due.toString(), notes, schoolYear, nowEpochMs)
+    }
+
     private fun manualDueOf(task: InclusionTask, initialEvaluation: LocalDate): LocalDate? {
         val rule = InclusionManual.ruleFor(task.templateKey) ?: return null
         return InclusionManual.manualDue(rule, task.schoolYear, initialEvaluation)

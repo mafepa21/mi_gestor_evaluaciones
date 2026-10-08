@@ -662,33 +662,89 @@ struct InclusionEvaluationDatePopover: View {
 
 // MARK: - Añadir tarea
 
-struct InclusionAddTaskSheet: View {
-    let studentName: String
-    let onAdd: (String, InclusionPhase, Date) -> Void
+/// Alumno al que se puede asignar la tarea. Genérico en el id: la maqueta usa UUID
+/// y la pantalla real usa Int64.
+struct InclusionTaskRecipient<ID: Hashable>: Identifiable {
+    let id: ID
+    let name: String
+}
+
+struct InclusionAddTaskSheet<ID: Hashable>: View {
+    let recipients: [InclusionTaskRecipient<ID>]
+    let onAdd: (String, InclusionPhase, Date, [ID]) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
     @State private var phase: InclusionPhase = .observar
     @State private var due: Date
+    @State private var selected: Set<ID>
+    @State private var showsRecipientHint = false
 
-    init(studentName: String, today: Date, onAdd: @escaping (String, InclusionPhase, Date) -> Void) {
-        self.studentName = studentName
+    /// `initialID`: alumno visible, preseleccionado.
+    init(
+        recipients: [InclusionTaskRecipient<ID>],
+        initialID: ID?,
+        today: Date,
+        onAdd: @escaping (String, InclusionPhase, Date, [ID]) -> Void
+    ) {
+        self.recipients = recipients
         self.onAdd = onAdd
         _due = State(initialValue: InclusionDate.adding(days: 7, to: today))
+        _selected = State(initialValue: initialID.map { [$0] } ?? [])
     }
 
-    private var canAdd: Bool { !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var cleanTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Tarea para \(studentName)") {
+                Section("Tarea") {
                     TextField("Título", text: $title)
                     Picker("Fase", selection: $phase) {
                         ForEach(InclusionPhase.allCases) { Text("\($0.whenLabel) · \($0.actionLabel)").tag($0) }
                     }
                     DatePicker("Vence el", selection: $due, displayedComponents: .date)
                         .environment(\.locale, Locale(identifier: "es_ES"))
+                }
+
+                Section {
+                    ForEach(recipients) { recipient in
+                        Button {
+                            toggle(recipient.id)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text(recipient.name)
+                                    .foregroundStyle(.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                if selected.contains(recipient.id) {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Color.accentColor)
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selected.contains(recipient.id) ? .isSelected : [])
+                    }
+                } header: {
+                    HStack {
+                        Text("Para")
+                        Spacer()
+                        Button("Todos") { selected = Set(recipients.map(\.id)); showsRecipientHint = false }
+                            .disabled(selected.count == recipients.count)
+                        Button("Ninguno") { selected = [] }
+                            .disabled(selected.isEmpty)
+                    }
+                    .textCase(nil)
+                } footer: {
+                    if showsRecipientHint && selected.isEmpty {
+                        Text("Elige al menos un alumno.")
+                            .foregroundStyle(.red)
+                    } else {
+                        Text("\(selected.count) de \(recipients.count) alumnos. Se crea una tarea independiente para cada uno.")
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -701,19 +757,32 @@ struct InclusionAddTaskSheet: View {
                     Button("Cancelar") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Añadir") {
-                        onAdd(title.trimmingCharacters(in: .whitespacesAndNewlines), phase, due)
-                        dismiss()
-                    }
-                    .disabled(!canAdd)
+                    Button("Añadir", action: save)
+                        .disabled(cleanTitle.isEmpty)
                 }
             }
         }
         #if os(macOS)
-        .frame(minWidth: 420, minHeight: 320)
+        .frame(minWidth: 460, minHeight: 480)
         #else
         .presentationDetents([.medium, .large])
         #endif
+    }
+
+    private func toggle(_ id: ID) {
+        if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
+        if !selected.isEmpty { showsRecipientHint = false }
+    }
+
+    private func save() {
+        guard !selected.isEmpty else {
+            showsRecipientHint = true
+            return
+        }
+        // Orden estable: el de la lista, no el del conjunto.
+        let ids = recipients.map(\.id).filter(selected.contains)
+        onAdd(cleanTitle, phase, due, ids)
+        dismiss()
     }
 }
 

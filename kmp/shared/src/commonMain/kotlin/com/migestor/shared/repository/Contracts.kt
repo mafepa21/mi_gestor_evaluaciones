@@ -809,6 +809,17 @@ interface InclusionTaskRepository {
         schoolYear: String,
         nowEpochMs: Long,
     ): Long
+    /** Crea una tarea libre por alumno en una sola transacción: o entran todas o ninguna. */
+    @Throws(Throwable::class)
+    suspend fun insertFreeTasks(
+        studentIds: List<Long>,
+        title: String,
+        phase: com.migestor.shared.inclusion.InclusionPhase,
+        dueDateIso: String,
+        notes: String,
+        schoolYear: String,
+        nowEpochMs: Long,
+    ): List<Long>
     @Throws(Throwable::class)
     suspend fun setDone(id: Long, doneAtIso: String?, nowEpochMs: Long)
     @Throws(Throwable::class)

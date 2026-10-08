@@ -281,8 +281,14 @@ struct InclusionTrackerMockView: View {
         .animation(.snappy, value: store.errorMessage)
         .sheet(isPresented: $showingAddTask) {
             if let student = selectedStudent {
-                InclusionAddTaskSheet(studentName: student.name, today: store.today) { title, phase, due in
-                    store.addTask(studentID: student.id, title: title, phase: phase, due: due)
+                InclusionAddTaskSheet(
+                    recipients: store.students.map { InclusionTaskRecipient(id: $0.id, name: $0.name) },
+                    initialID: student.id,
+                    today: store.today
+                ) { title, phase, due, studentIDs in
+                    for id in studentIDs {
+                        store.addTask(studentID: id, title: title, phase: phase, due: due)
+                    }
                 }
             }
         }

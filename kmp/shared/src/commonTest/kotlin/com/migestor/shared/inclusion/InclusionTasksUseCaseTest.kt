@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -133,6 +134,27 @@ class InclusionTasksUseCaseTest {
     }
 
     @Test
+    fun tareaLibreParaVariosAlumnosCreaUnaPorAlumno() = runTest {
+        val (useCase, repo) = fixture(emptyList())
+        val ids = useCase.addFreeTasks(listOf(1, 2, 2, 3), " Reunión ", InclusionPhase.NOVIEMBRE, LocalDate(2026, 11, 3), YEAR, nowEpochMs = 1, notes = "nota")
+        assertEquals(3, ids.size)
+        assertEquals(listOf(1L, 2L, 3L), ids.map { repo.rows.getValue(it).studentId })
+        assertTrue(ids.all { repo.rows.getValue(it).title == "Reunión" && repo.rows.getValue(it).notes == "nota" && repo.rows.getValue(it).templateKey == null })
+    }
+
+    @Test
+    fun tareaLibreParaVariosRechazaTituloVacioOSinAlumnos() = runTest {
+        val (useCase, repo) = fixture(emptyList())
+        assertFailsWith<IllegalArgumentException> {
+            useCase.addFreeTasks(listOf(1), "  ", InclusionPhase.OBSERVAR, LocalDate(2026, 10, 5), YEAR, nowEpochMs = 1)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            useCase.addFreeTasks(emptyList(), "x", InclusionPhase.OBSERVAR, LocalDate(2026, 10, 5), YEAR, nowEpochMs = 1)
+        }
+        assertTrue(repo.rows.isEmpty())
+    }
+
+    @Test
     fun estadosDePlazoConEstaSemanaIgualASieteDias() {
         val today = LocalDate(2026, 10, 8)
         fun task(due: LocalDate, done: LocalDate? = null) = InclusionTask(
@@ -212,6 +234,10 @@ private class FakeTasks : InclusionTaskRepository {
         rows[id] = InclusionTask(id, studentId, null, null, title, phase, LocalDate.parse(dueDateIso), false, null, notes, schoolYear, nowEpochMs, nowEpochMs)
         return id
     }
+
+    override suspend fun insertFreeTasks(
+        studentIds: List<Long>, title: String, phase: InclusionPhase, dueDateIso: String, notes: String, schoolYear: String, nowEpochMs: Long,
+    ): List<Long> = studentIds.map { insertFreeTask(it, title, phase, dueDateIso, notes, schoolYear, nowEpochMs) }
 
     override suspend fun setDone(id: Long, doneAtIso: String?, nowEpochMs: Long) {
         rows[id] = rows.getValue(id).copy(doneAt = doneAtIso?.let(LocalDate::parse), updatedAtEpochMs = nowEpochMs)

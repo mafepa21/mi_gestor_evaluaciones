@@ -13,6 +13,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Fixed
+
+- **Copias de seguridad bloqueadas por referencias huérfanas**:
+  - La base activa acumula filas que apuntan a grupos, alumnos o situaciones ya borrados (3.423 en la base real del docente). `PRAGMA foreign_key_check` hacía fallar toda copia con «referencias rotas … another row available».
+  - Ahora las huérfanas se cuentan y se registran como aviso (`NSLog`); la copia y la restauración siguen adelante. `integrity_check` sigue bloqueando bases dañadas.
+  - Archivos: `kmp/iosApp/AppleShared/AppleBackupIntegrity.swift`, `kmp/iosApp/PlannerTests/AppleBackupIntegrityTests.swift`.
+  - Verificación: `xcodebuild test -scheme MiGestorPlannerTests -only-testing:MiGestorPlannerTests/AppleBackupIntegrityTests` (macOS): 5/5 tests OK. Comprobado sobre un duplicado de la base real: integrity_check `ok`, 3.423 huérfanas aceptadas. Prueba manual de «Crear copia» en la app: pendiente.
+  - Pendiente: limpieza de huérfanas (ticket aparte) y mostrar el aviso en pantalla.
+
 ### Added
 
 - **Hitos de inclusión en el calendario del curso 2026-2027**:

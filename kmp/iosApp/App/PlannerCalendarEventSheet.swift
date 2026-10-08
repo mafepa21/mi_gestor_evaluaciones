@@ -65,8 +65,12 @@ struct PlannerCalendarEventSheet: View {
 
     private var syncFooter: String {
         syncWithColegio
-            ? "Se guarda también en el calendario «Colegio» de tu cuenta."
-            : "Solo se guarda en la app. Para copiarlo a «Colegio», activa Ajustes → Calendario de Apple."
+            ? "Se guarda también en «Colegio»."
+            : "Solo en la app. Activa Calendario de Apple en Ajustes para copiarlo a «Colegio»."
+    }
+
+    private var syncIcon: String {
+        syncWithColegio ? "calendar.badge.checkmark" : "calendar"
     }
 
     var body: some View {
@@ -75,17 +79,19 @@ struct PlannerCalendarEventSheet: View {
                 Section {
                     TextField("Título", text: $title)
                 } footer: {
-                    Text(syncFooter)
+                    Label(syncFooter, systemImage: syncIcon)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
-                Section {
+                Section("Cuándo") {
                     Toggle("Todo el día", isOn: $isAllDay)
                     DatePicker("Inicio", selection: $startDate, displayedComponents: pickerComponents)
                     DatePicker("Fin", selection: $endDate, displayedComponents: pickerComponents)
                 }
 
                 Section("Notas") {
-                    TextField("Notas", text: $notes, axis: .vertical)
+                    TextField("Añade una nota", text: $notes, axis: .vertical)
                         .lineLimit(2...6)
                 }
 
@@ -99,23 +105,30 @@ struct PlannerCalendarEventSheet: View {
 
                 if isEditing {
                     Section {
-                        Button("Borrar evento", role: .destructive) {
+                        Button(role: .destructive) {
                             confirmDelete = true
+                        } label: {
+                            Label("Borrar evento", systemImage: "trash")
+                                .frame(maxWidth: .infinity)
                         }
+                        .plannerLiquidGlassControlButtonStyle()
                     }
                 }
             }
+            .environment(\.locale, Locale(identifier: "es_ES"))
             .navigationTitle(isEditing ? "Evento" : "Nuevo evento")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") {
                         onFinish(false)
                     }
+                    .plannerLiquidGlassControlButtonStyle()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Guardar") {
                         Task { await save() }
                     }
+                    .plannerLiquidGlassControlButtonStyle(isProminent: true)
                     .disabled(!canSave)
                 }
             }

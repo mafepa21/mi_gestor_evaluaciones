@@ -43,6 +43,8 @@ El formato sigue una variante practica de Keep a Changelog:
   - Botón «Nuevo evento» en la vista mensual y en la hoja de hitos del curso. En la hoja de hitos, tocar un evento lo abre para editarlo.
   - La hoja permite título, todo el día, inicio, fin, notas y borrar. Lo que se guarda se copia también a «Colegio» si la sincronización está activa.
   - No cambian las sesiones, ni el composer de sesiones, ni el día no lectivo.
+  - Hoja de evento rediseñada: formulario en tres bloques (título, cuándo, notas), fechas en español y botones con Liquid Glass, con respaldo para iOS 17.
+  - Archivos: `AppleShared/PlannerLiquidGlassControls.swift` (el ayudante `plannerLiquidGlassControlButtonStyle` deja de ser privado para reutilizarlo).
   - Archivos: `App/PlannerCalendarEventSheet.swift` (nuevo), `App/PlannerMonthCalendarView.swift`, `App/SchoolCalendarEventsOverviewSheet.swift`.
   - Verificación: `xcodebuild` de `MiGestorKMPMac` y `MiGestorKMPiOS`: BUILD SUCCEEDED. `MiGestorPlannerTests`: 255 pruebas, 4 omitidas, 2 fallos en `LearningSituationDocumentImportTests.testMislataCurricularFilesImportSuccessfully`. Esa prueba lee archivos de `~/Desktop/Programaciones` y compara cifras con su contenido; no usa el código que cambia aquí. No comprobado en `main`. Pendiente: revisión visual en simulador y prueba con iCloud.
 

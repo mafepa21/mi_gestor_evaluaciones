@@ -22,7 +22,7 @@ struct StructuredInstrumentEvaluationRequest: Identifiable {
 }
 
 struct StructuredInstrumentEvaluationSheet: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
     let request: StructuredInstrumentEvaluationRequest
     let onSaved: () -> Void
     let onClose: () -> Void

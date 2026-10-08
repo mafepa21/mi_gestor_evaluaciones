@@ -2,7 +2,7 @@ import SwiftUI
 import MiGestorKit
 
 struct MacPhysicalTestsInspectorView: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
     @ObservedObject var inspectorState: PhysicalTestsMacInspectorState
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?

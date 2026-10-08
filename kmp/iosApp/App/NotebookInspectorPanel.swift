@@ -3,7 +3,7 @@ import PhotosUI
 import MiGestorKit
 
 struct NotebookInspectorPanel: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
     let data: NotebookUiStateData
     let rows: [NotebookTableRow]
     let currentClassId: Int64?

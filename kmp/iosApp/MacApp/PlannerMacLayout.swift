@@ -2,7 +2,7 @@ import SwiftUI
 import MiGestorKit
 
 struct PlannerMacLayout: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
     @Binding var selectedSessionId: Int64?
     @Binding var inspectorSession: PlanningSession?
     var onToolbarActionsChange: (PlannerMacToolbarActions?) -> Void = { _ in }

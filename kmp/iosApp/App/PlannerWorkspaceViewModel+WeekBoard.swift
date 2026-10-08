@@ -526,7 +526,8 @@ extension PlannerWorkspaceViewModel {
                     title: "Día no lectivo",
                     description: "Festivo / no lectivo",
                     startEpochMs: startEpochMs,
-                    endEpochMs: endEpochMs
+                    endEpochMs: endEpochMs,
+                    mirrorToAppleCalendar: false
                 )
             }
             await reloadHolidays()

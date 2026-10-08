@@ -13,6 +13,7 @@ struct SchoolCalendarEventsOverviewSheet: View {
     @State private var isLoading = true
     @State private var searchText = ""
     @State private var selectedFilter: EventFilter = .all
+    @State private var draft: PlannerCalendarEventDraft?
 
     enum EventFilter: String, CaseIterable, Identifiable {
         case all = "Todos"
@@ -114,6 +115,13 @@ struct SchoolCalendarEventsOverviewSheet: View {
             #endif
             .searchable(text: $searchText, prompt: "Buscar evento, viaje o hito…")
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        draft = PlannerCalendarEventDraft(event: nil, day: Date())
+                    } label: {
+                        Label("Nuevo evento", systemImage: "plus")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Cerrar") {
                         onClose()
@@ -122,6 +130,14 @@ struct SchoolCalendarEventsOverviewSheet: View {
             }
             .task {
                 await loadData()
+            }
+            .sheet(item: $draft) { draft in
+                PlannerCalendarEventSheet(bridge: bridge, draft: draft) { saved in
+                    self.draft = nil
+                    if saved {
+                        Task { await loadData() }
+                    }
+                }
             }
         }
         .frame(minWidth: 500, minHeight: 520)
@@ -277,6 +293,13 @@ struct SchoolCalendarEventsOverviewSheet: View {
             Spacer()
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            draft = PlannerCalendarEventDraft(
+                event: event,
+                day: Date(timeIntervalSince1970: Double(event.startAt.toEpochMilliseconds()) / 1000)
+            )
+        }
     }
 
     private func formatIsoDate(_ iso: String) -> String {

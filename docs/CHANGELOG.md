@@ -11,6 +11,48 @@ El formato sigue una variante practica de Keep a Changelog:
 - `Docs`: documentacion relevante.
 - `Verification`: builds, tests, auditorias o evidencias.
 
+## Unreleased
+
+### Added
+
+- **Hitos de inclusión en el calendario del curso 2026-2027**:
+  - Se añaden dos hitos de evaluación inicial de ESO (21 y 22 de octubre de 2026) y el cierre de documentación de inclusión (18 de diciembre de 2026), según el Manual de Inclusión ESO y Bachillerato.
+  - La fecha del 18 de diciembre es una propuesta interna, pendiente de confirmar.
+  - Los hitos del manual sin fecha (reunión inicial, reuniones con alumnado NEE, revisión de noviembre) no se añaden hasta tener fechas.
+  - Archivo: `kmp/iosApp/App/SchoolCalendarPreset2026_2027.swift`. Se aplican con la función de hitos del preset, que no duplica por día y título.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` (macOS) y `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED. Sin tests unitarios nuevos; comprobación visual del calendario pendiente.
+
+- **Calendario de Apple: copia de eventos a «Colegio»**:
+  - Nuevo ajuste en Ajustes → Calendario de Apple. Al activarlo, la app pide permiso de Calendario y crea el calendario «Colegio» en iCloud, o en la cuenta por defecto si no hay iCloud.
+  - Los eventos que creas, cambias o borras en la app se crean, cambian o se borran en ese calendario. Los hitos se copian como día completo.
+  - Al activarlo se copian también los eventos que ya existían en la app. Si «Colegio» ya tiene un evento igual (mismo título y mismo día), se enlaza sin duplicarlo.
+  - Solo se copian los cambios hechos en el aparato donde se editan. Los eventos que llegan por SyncLAN no se copian, para no duplicarlos.
+  - Archivos: `AppleShared/AppleCalendarMirror.swift`, `AppleShared/AppleCalendarSettingsView.swift`, `App/Bridge/KmpBridge+Planner.swift`, permiso en `project.yml`.
+  - Decisión: `kmp/docs/architecture/ADR-2026-10-08-calendario-apple-colegio.md`.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` (macOS) y `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED. Pendiente: prueba con el permiso de Calendario concedido en un aparato real.
+
+- **Calendario «Colegio» en dos sentidos (fase 1: lectura y reconciliación)**:
+  - Los eventos del curso 2026-2027 que están en «Colegio» aparecen en la app. Los que se crean, cambian o borran en «Colegio» se reflejan en la app.
+  - Al volver a la app y al cambiar algo en Calendario de Apple se reconcilia. Si cambió en los dos lados, gana el cambio más reciente.
+  - Si un evento se borra en «Colegio» dentro del curso, se borra en la app.
+  - Decisión: `kmp/docs/architecture/ADR-2026-10-08-calendario-colegio-dos-sentidos.md`. Sustituye en parte al ADR anterior.
+  - Archivos: `AppleShared/AppleCalendarReconciler.swift` (lógica pura), `AppleShared/AppleCalendarMirror.swift`, `App/Bridge/KmpBridge+AppleCalendar.swift`, `App/Bridge/KmpBridge+Planner.swift`, `App/Bridge/KmpBridge+SyncLAN.swift` (una línea al volver a la app).
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` y `MiGestorKMPiOS`: BUILD SUCCEEDED. `MiGestorPlannerTests/AppleCalendarReconcilerTests`: 10 pruebas, 0 fallos. Pendiente: prueba con el permiso de Calendario concedido y con eventos reales de iCloud.
+
+- **Planificador: crear y editar eventos de calendario (fase 2)**:
+  - Botón «Nuevo evento» en la vista mensual y en la hoja de hitos del curso. En la hoja de hitos, tocar un evento lo abre para editarlo.
+  - La hoja permite título, todo el día, inicio, fin, notas y borrar. Lo que se guarda se copia también a «Colegio» si la sincronización está activa.
+  - No cambian las sesiones, ni el composer de sesiones, ni el día no lectivo.
+  - Hoja de evento rediseñada: formulario en tres bloques (título, cuándo, notas), fechas en español y botones con Liquid Glass, con respaldo para iOS 17.
+  - Archivos: `AppleShared/PlannerLiquidGlassControls.swift` (el ayudante `plannerLiquidGlassControlButtonStyle` deja de ser privado para reutilizarlo).
+  - Archivos: `App/PlannerCalendarEventSheet.swift` (nuevo), `App/PlannerMonthCalendarView.swift`, `App/SchoolCalendarEventsOverviewSheet.swift`.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` y `MiGestorKMPiOS`: BUILD SUCCEEDED. `MiGestorPlannerTests`: 255 pruebas, 4 omitidas, 2 fallos en `LearningSituationDocumentImportTests.testMislataCurricularFilesImportSuccessfully`. Esa prueba lee archivos de `~/Desktop/Programaciones` y compara cifras con su contenido; no usa el código que cambia aquí. No comprobado en `main`. Pendiente: revisión visual en simulador y prueba con iCloud.
+
+### Data
+
+- El enlace entre cada evento de la app y su copia en «Colegio» se guarda en `calendar_events` (`external_provider = "apple_calendar"`, `external_id`). Sin cambio de esquema. La versión anterior lo guardaba en `UserDefaults`; se migra en la primera ejecución.
+- Las copias antiguas de «Día no lectivo» se borran de «Colegio» en la migración. El botón de día no lectivo ya no crea copias.
+
 ### Changed
 
 - **Optimización integral de rendimiento y fluidez en Cuaderno, Asistencia y Planificador**:

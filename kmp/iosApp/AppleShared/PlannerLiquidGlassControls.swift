@@ -129,7 +129,7 @@ struct PlannerLiquidGlassControls: View {
     private var glassContainerSpacing: CGFloat { 16 }
 }
 
-private extension View {
+extension View {
     @ViewBuilder
     func plannerLiquidGlassControlButtonStyle(isProminent: Bool = false) -> some View {
         if #available(iOS 26.0, macOS 26.0, *) {

@@ -4206,6 +4206,7 @@ extension KmpBridge {
     func onAppDidBecomeActive() {
         isAppInForeground = true
         restartAutoSyncLoopIfPaired()
+        reconcileAppleCalendarIfEnabled()
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.syncNow(reason: "foreground", forceFullPull: true, silent: true)

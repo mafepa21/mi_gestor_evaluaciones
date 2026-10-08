@@ -23,6 +23,7 @@ struct MacSettingsView: View {
                     settingsRow("General", systemImage: "slider.horizontal.3", route: .general)
                     settingsRow("Cursos y grupos", systemImage: "person.2.fill", route: .courses)
                     settingsRow("Horario docente", systemImage: "calendar.badge.clock", route: .schedule)
+                    settingsRow("Calendario de Apple", systemImage: "calendar.badge.plus", route: .appleCalendar)
                     settingsRow("Evaluación", systemImage: "chart.bar.doc.horizontal", route: .evaluation)
                     settingsRow("Cuaderno", systemImage: "text.book.closed", route: .notebook)
                     settingsRow("Datos y Seguridad", systemImage: "lock.shield", route: .dataSecurity)
@@ -115,6 +116,9 @@ struct MacSettingsView: View {
         switch route {
         case .general:
             GeneralSettingsView(settings: settings)
+        case .appleCalendar:
+            AppleCalendarSettingsView()
+                .environmentObject(session.bridge)
         case .courses, .schedule:
             // Se resuelven arriba, fuera del ScrollView genérico.
             EmptyView()

@@ -410,6 +410,18 @@ extension KmpBridge {
                 "endEpochMs": endEpochMs
             ]
         )
+        let mirrored = AppleCalendarMirror.Item(
+            localId: savedId,
+            title: title,
+            notes: description,
+            startMs: startEpochMs,
+            endMs: endEpochMs
+        )
+        if id == nil {
+            AppleCalendarMirror.shared.created(mirrored)
+        } else {
+            AppleCalendarMirror.shared.updated(mirrored)
+        }
         return savedId
     }
 
@@ -425,6 +437,7 @@ extension KmpBridge {
                 "deleted": true
             ]
         )
+        AppleCalendarMirror.shared.deleted(localId: id)
     }
 
     func plannerSaveTeacherSchedule(

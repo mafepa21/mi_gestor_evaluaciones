@@ -40,6 +40,7 @@ targets:
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: MiGestor usa el reconocimiento de voz para rellenar notas del cuaderno por dictado.
         INFOPLIST_KEY_NSCameraUsageDescription: MiGestor usa la cámara para escanear el código QR de vinculación con la app de escritorio.
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: MiGestor usa la fototeca para adjuntar evidencias visuales a la sesión.
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: MiGestor copia los eventos del curso a un calendario Colegio de tu cuenta de Calendario, si lo activas en Ajustes.
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -99,6 +100,7 @@ targets:
         INFOPLIST_KEY_CFBundleShortVersionString: "$(MARKETING_VERSION)"
         INFOPLIST_KEY_CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         INFOPLIST_KEY_NSAppleEventsUsageDescription: "Mi Gestor prepara en Mail un correo por alumno con su enlace privado de entrega."
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "MiGestor copia los eventos del curso a un calendario Colegio de tu cuenta de Calendario, si lo activas en Ajustes."
         FRAMEWORK_SEARCH_PATHS:
           - "$(inherited)"
           - "$(SRCROOT)/Frameworks/macos"

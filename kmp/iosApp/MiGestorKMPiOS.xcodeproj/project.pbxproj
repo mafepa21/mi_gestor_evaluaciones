@@ -213,6 +213,7 @@
 		55881333E8EF00D0F018B1B8 /* NotebookFormulaEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9967D38B9A879C71B174CAE6 /* NotebookFormulaEditorSheet.swift */; };
 		55BC740588BFC9C4D12C7A55 /* PlannerSessionAIAssistantSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0243BF8C00C29271B58D894B /* PlannerSessionAIAssistantSheet.swift */; };
 		56234DAACC18188F7C681066 /* AppleLifecycleNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */; };
+		5632658DCEA1D81F68BCF011 /* AppleCalendarSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A03FDE0C4F31704F1EB7F1E /* AppleCalendarSettingsView.swift */; };
 		565A5DD311EB69A97F331722 /* WorkspaceSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */; };
 		56AC9CE1CBF37A30F9BCA8DA /* PlannerSessionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E409AC49E4C2F349EEC469ED /* PlannerSessionDetailSheet.swift */; };
 		575F872AB42351EA1601BB72 /* KmpBridge+ContextualAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44BE29B25A1BD3726E186BDF /* KmpBridge+ContextualAI.swift */; };
@@ -383,6 +384,7 @@
 		93EB4D66B4335BF6713CEC0A /* WeeklyStudentEmailWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF06311306AB3A288A0C0833 /* WeeklyStudentEmailWorkspaceView.swift */; };
 		940E55921CC7B148C4C5D0C2 /* NotebookCompactCommandBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B06388784ADA4E7EFF4FDB4 /* NotebookCompactCommandBar.swift */; };
 		9431E05EA810B154003DED20 /* SelectiveWipeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F49432D42F3A8BBD54876B /* SelectiveWipeSheet.swift */; };
+		9435F71B4183826F1ECC37B2 /* AppleCalendarMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9905D023CFA0F72316585CC /* AppleCalendarMirror.swift */; };
 		94AE8AEACCA6FABF346032E2 /* KmpBridge+Planner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEBB2CA87CBCB3E4059CF73F /* KmpBridge+Planner.swift */; };
 		9546F37A775EA87B30F4F374 /* MacSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 926C38D687AB3B3B857DA79A /* MacSyncView.swift */; };
 		95AB6E40E5E077A06F111AB2 /* KmpBridge+Students.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09DCB06FB06AE15B6622B367 /* KmpBridge+Students.swift */; };
@@ -415,6 +417,7 @@
 		A0E98D68463C022246BD23DB /* WebSubmissionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C466125BA1B54410C8225D8 /* WebSubmissionStore.swift */; };
 		A10C466E3F7F0E54DCFA2ADA /* WebSubmissionBulkMailer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C2007F7621C210CCA9762CF /* WebSubmissionBulkMailer.swift */; };
 		A18BC39D531663255025F65C /* EducamosSMExportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7718D843E34107AC5241204 /* EducamosSMExportSheet.swift */; };
+		A1E1BA74B99DF09BF74EC82A /* AppleCalendarSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A03FDE0C4F31704F1EB7F1E /* AppleCalendarSettingsView.swift */; };
 		A28DE00327B6A0494218FE26 /* NotebookModuleQuickKeypad.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC4FA91E783D30DECEFCF17B /* NotebookModuleQuickKeypad.swift */; };
 		A31393B5788EF9D99E654BC4 /* PhysicalTestsImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F2744A2DF80ACFD0C00A1B /* PhysicalTestsImportPreviewSheet.swift */; };
 		A31B6319A0B9AB589B53F8F5 /* KmpBridge+SyncLAN.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D1F4F31F6224448FEE5718 /* KmpBridge+SyncLAN.swift */; };
@@ -644,6 +647,7 @@
 		F97BB1FBE7B0EE0179EAC7B9 /* WorkspaceCreationSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B295CDB0A0C9F2C1835EF56 /* WorkspaceCreationSheets.swift */; };
 		F990EE3FCD3323B9BCB3891A /* AppleSpreadsheetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E628D0904D069E276C888E /* AppleSpreadsheetReader.swift */; };
 		F9AC280AFCF1F805FFEB44D1 /* InstrumentEvaluationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 704B902594B5C72A796944D4 /* InstrumentEvaluationModels.swift */; };
+		F9C36740870B4B165036C178 /* AppleCalendarMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9905D023CFA0F72316585CC /* AppleCalendarMirror.swift */; };
 		FA6E812F0B24E08F1F138D29 /* RubricTemplateCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A40260BEB75E2375968B606 /* RubricTemplateCatalog.swift */; };
 		FAB91D97BB3D24245BEBB7BD /* WorkspaceLayoutState+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB9B3E078267BD94A53D6B2 /* WorkspaceLayoutState+Extensions.swift */; };
 		FAF9D1F8EE5E77D85E248623 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 574A36D51DB905768D1450DF /* ContentView.swift */; };
@@ -895,6 +899,7 @@
 		880A34E6ED9FC0F10FE40AC2 /* LearningSituationDocumentImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSituationDocumentImportTests.swift; sourceTree = "<group>"; };
 		88590DE40405667ADB84E5CF /* KmpFlowSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KmpFlowSupport.swift; sourceTree = "<group>"; };
 		893DD0805D75AD4923832EDD /* AssignRubricToTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssignRubricToTabView.swift; sourceTree = "<group>"; };
+		8A03FDE0C4F31704F1EB7F1E /* AppleCalendarSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleCalendarSettingsView.swift; sourceTree = "<group>"; };
 		8A2242F5FBFA0C7B6892334B /* RubricMetacognitionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricMetacognitionSheet.swift; sourceTree = "<group>"; };
 		8A4E8D89679CED5E074F1005 /* NotebookModuleToolbarState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleToolbarState.swift; sourceTree = "<group>"; };
 		8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerWorkspaceIOS.swift; sourceTree = "<group>"; };
@@ -944,6 +949,7 @@
 		A92D241217A257758C98B290 /* OnboardingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingModels.swift; sourceTree = "<group>"; };
 		A938799F8679B8D23E432B6E /* MacMeetingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacMeetingsView.swift; sourceTree = "<group>"; };
 		A93FFE1CAA3FC3A0F8E74115 /* TeacherRadarGroupSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherRadarGroupSummaryView.swift; sourceTree = "<group>"; };
+		A9905D023CFA0F72316585CC /* AppleCalendarMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleCalendarMirror.swift; sourceTree = "<group>"; };
 		A9A2227E2644C8AFEC65949F /* AppleAIPremiumSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAIPremiumSupport.swift; sourceTree = "<group>"; };
 		ABEAFA7B950CAE267617F3C4 /* PhysicalTestScaleEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestScaleEditor.swift; sourceTree = "<group>"; };
 		AC2F0852F9CAA60482FA9785 /* PlannerWorkspaceViewModel+WeekBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+WeekBoard.swift"; sourceTree = "<group>"; };
@@ -1173,6 +1179,8 @@
 				F6B44EBC79907A49017DC0CD /* AppleBackupModels.swift */,
 				E44007C231E03029435B056F /* AppleBackupService.swift */,
 				C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */,
+				A9905D023CFA0F72316585CC /* AppleCalendarMirror.swift */,
+				8A03FDE0C4F31704F1EB7F1E /* AppleCalendarSettingsView.swift */,
 				94B709773B9FE5B2D3E2C936 /* AppleDatabaseRescueService.swift */,
 				587E2F96ED1EDE5BB288D186 /* AppleEncryptedBackup.swift */,
 				6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */,
@@ -1795,6 +1803,8 @@
 				EC465FA1A3AA49BBF03CF1B5 /* AppleBackupModels.swift in Sources */,
 				7054EE8C0407272790015F8C /* AppleBackupService.swift in Sources */,
 				9A31C548996D137897FA1C75 /* AppleBridgeBootstrap.swift in Sources */,
+				9435F71B4183826F1ECC37B2 /* AppleCalendarMirror.swift in Sources */,
+				A1E1BA74B99DF09BF74EC82A /* AppleCalendarSettingsView.swift in Sources */,
 				A3A92B21AB297E3BEBC8DC15 /* AppleDatabaseRescueService.swift in Sources */,
 				4A2FD32D9C3108577160126F /* AppleEncryptedBackup.swift in Sources */,
 				4A94FBA079B366485372AFC6 /* AppleFoundationAnalyticsService.swift in Sources */,
@@ -2124,6 +2134,8 @@
 				39B06EC818722E4C75CA4E8E /* AppleBackupModels.swift in Sources */,
 				0B3B32F606E1E6961B27FFB9 /* AppleBackupService.swift in Sources */,
 				5E3F7337F3A6A0EC2C17DA4E /* AppleBridgeBootstrap.swift in Sources */,
+				F9C36740870B4B165036C178 /* AppleCalendarMirror.swift in Sources */,
+				5632658DCEA1D81F68BCF011 /* AppleCalendarSettingsView.swift in Sources */,
 				307B0FE8D33C497D90F6243A /* AppleDatabaseRescueService.swift in Sources */,
 				0C6049F67B350372D4B74708 /* AppleEncryptedBackup.swift in Sources */,
 				F5D4B655C174800ABAD76329 /* AppleFoundationAnalyticsService.swift in Sources */,
@@ -2499,6 +2511,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = MiGestorKMPiOS;
 				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
 				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "MiGestor copia los eventos del curso a un calendario Colegio de tu cuenta de Calendario, si lo activas en Ajustes.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "MiGestor usa la cámara para escanear el código QR de vinculación con la app de escritorio.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MiGestor usa el micrófono para adjuntar audios breves al diario de aula y para dictar notas rápidas en el cuaderno.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "MiGestor usa la fototeca para adjuntar evidencias visuales a la sesión.";
@@ -2609,6 +2622,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = MiGestorKMPiOS;
 				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
 				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "MiGestor copia los eventos del curso a un calendario Colegio de tu cuenta de Calendario, si lo activas en Ajustes.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "MiGestor usa la cámara para escanear el código QR de vinculación con la app de escritorio.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MiGestor usa el micrófono para adjuntar audios breves al diario de aula y para dictar notas rápidas en el cuaderno.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "MiGestor usa la fototeca para adjuntar evidencias visuales a la sesión.";
@@ -2663,6 +2677,7 @@
 				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
 				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Mi Gestor prepara en Mail un correo por alumno con su enlace privado de entrega.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "MiGestor copia los eventos del curso a un calendario Colegio de tu cuenta de Calendario, si lo activas en Ajustes.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -2721,6 +2736,7 @@
 				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
 				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Mi Gestor prepara en Mail un correo por alumno con su enlace privado de entrega.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "MiGestor copia los eventos del curso a un calendario Colegio de tu cuenta de Calendario, si lo activas en Ajustes.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

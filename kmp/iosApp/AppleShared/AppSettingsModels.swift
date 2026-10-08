@@ -235,6 +235,7 @@ public enum SettingsRoute: Hashable, Identifiable {
     /// ser un módulo de la barra lateral.
     case courses
     case schedule
+    case appleCalendar
     case evaluation
     case notebook
     case dataSecurity
@@ -249,6 +250,7 @@ public enum SettingsRoute: Hashable, Identifiable {
         case .general: return "general"
         case .courses: return "courses"
         case .schedule: return "schedule"
+        case .appleCalendar: return "appleCalendar"
         case .evaluation: return "evaluation"
         case .notebook: return "notebook"
         case .dataSecurity: return "dataSecurity"

@@ -22,6 +22,19 @@ El formato sigue una variante practica de Keep a Changelog:
   - Archivo: `kmp/iosApp/App/SchoolCalendarPreset2026_2027.swift`. Se aplican con la función de hitos del preset, que no duplica por día y título.
   - Verificación: `xcodebuild` de `MiGestorKMPMac` (macOS) y `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED. Sin tests unitarios nuevos; comprobación visual del calendario pendiente.
 
+- **Calendario de Apple: copia de eventos a «Colegio»**:
+  - Nuevo ajuste en Ajustes → Calendario de Apple. Al activarlo, la app pide permiso de Calendario y crea el calendario «Colegio» en iCloud, o en la cuenta por defecto si no hay iCloud.
+  - Los eventos que creas, cambias o borras en la app se crean, cambian o se borran en ese calendario. Los hitos se copian como día completo.
+  - Al activarlo se copian también los eventos que ya existían en la app. Si «Colegio» ya tiene un evento igual (mismo título y mismo día), se enlaza sin duplicarlo.
+  - Solo se copian los cambios hechos en el aparato donde se editan. Los eventos que llegan por SyncLAN no se copian, para no duplicarlos.
+  - Archivos: `AppleShared/AppleCalendarMirror.swift`, `AppleShared/AppleCalendarSettingsView.swift`, `App/Bridge/KmpBridge+Planner.swift`, permiso en `project.yml`.
+  - Decisión: `kmp/docs/architecture/ADR-2026-10-08-calendario-apple-colegio.md`.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` (macOS) y `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED. Pendiente: prueba con el permiso de Calendario concedido en un aparato real.
+
+### Data
+
+- El enlace entre cada evento de la app y su copia en Apple se guarda en `UserDefaults` de cada aparato. No cambia la base de datos.
+
 ### Changed
 
 - **Situaciones de Aprendizaje: rediseño de usabilidad y UI (solo presentación)**:

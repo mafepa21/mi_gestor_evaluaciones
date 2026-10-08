@@ -65,11 +65,6 @@ final class KmpBridge: ObservableObject {
     @Published var showingBulkRubricEvaluation: Bool = false
     
     // Detailed Dashboard Data
-    @Published var upcomingClasses: [CalendarEvent] = []
-    @Published var pendingTasks: [Incident] = []
-    @Published var esoPercentage: Int = 0
-    @Published var bachPercentage: Int = 0
-    @Published var activityGroups: [ActivityGroup] = []
     @Published var dashboardSnapshot: DashboardSnapshot? = nil
     @Published var dashboardFilters: DashboardFilters = DashboardFilters(classId: nil, severity: nil, priority: nil, sessionStatus: nil)
     @Published var allStudents: [Student] = []

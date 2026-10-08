@@ -12,64 +12,16 @@ import SwiftUI
 
 @MainActor
 extension KmpBridge {
+    /// Solo el texto de totales (subtítulo de la ventana del Mac). Antes también
+    /// cargaba eventos, partes de todos los grupos y notas de seis grupos para
+    /// valores que ninguna vista leía, y se llama tras muchas acciones
+    /// (guardar asistencia, editar alumnado) y tras cada sync.
     func refreshDashboard() async throws {
         let stats = try await container.dashboardRepository.getStats()
-        
-        // Fetch Upcoming Classes
-        let allEvents = try await container.calendarRepository.listEvents(classId: nil)
-        let now = ClockSystem.shared.now()
-        let upcoming = allEvents.filter { $0.startAt.epochSeconds > now.epochSeconds }
-            .sorted { $0.startAt.epochSeconds < $1.startAt.epochSeconds }
-            .prefix(3).map { $0 }
-
-        // Fetch Classes for distribution and tasks
-        let allClasses = try await container.classesRepository.listClasses()
-        
-        // Pending Tasks (Incidents) y medias por grupo: una consulta por
-        // grupo, pero lanzadas a la vez en lugar de una tras otra.
-        let incidentsRepository = container.incidentsRepository
-        let gradesRepository = container.gradesRepository
-        let incidentsByIndex = try await withThrowingTaskGroup(of: (Int, [Incident]).self) { group in
-            for (index, cls) in allClasses.enumerated() {
-                group.addTask { @MainActor in (index, try await incidentsRepository.listIncidents(classId: cls.id)) }
-            }
-            var result: [Int: [Incident]] = [:]
-            for try await (index, incidents) in group { result[index] = incidents }
-            return result
+        let text = "Alumnos \(stats.totalStudents) · Clases \(stats.totalClasses) · Eval \(stats.totalEvaluations)"
+        if statsText != text {
+            statsText = text
         }
-        let allIncidents = allClasses.indices.flatMap { incidentsByIndex[$0] ?? [] }
-        let pending = Array(allIncidents.prefix(3))
-
-        // Activity Groups (Averages by Class)
-        let recentClasses = Array(allClasses.prefix(6))
-        let averagesByIndex = try await withThrowingTaskGroup(of: (Int, Double).self) { group in
-            for (index, cls) in recentClasses.enumerated() {
-                group.addTask { @MainActor in
-                    let grades = try await gradesRepository.listGradesForClass(classId: cls.id)
-                    let values = grades.compactMap { $0.value?.doubleValue }
-                    return (index, values.isEmpty ? 0.0 : values.reduce(0, +) / Double(values.count))
-                }
-            }
-            var result: [Int: Double] = [:]
-            for try await (index, average) in group { result[index] = average }
-            return result
-        }
-        let groups = recentClasses.enumerated().map { index, cls in
-            ActivityGroup(name: cls.name, average: averagesByIndex[index] ?? 0)
-        }
-
-        statsText = "Alumnos \(stats.totalStudents) · Clases \(stats.totalClasses) · Eval \(stats.totalEvaluations)"
-        self.upcomingClasses = upcoming
-        
-        // Distribution
-        let esoCount = allClasses.filter { $0.course <= 4 }.count
-        let totalC = max(allClasses.count, 1)
-        let ratio = Double(esoCount) / Double(totalC)
-        self.esoPercentage = Int(ratio * 100)
-        self.bachPercentage = 100 - self.esoPercentage
-        
-        self.pendingTasks = pending
-        self.activityGroups = groups
     }
 
     func loadDashboard(mode: DashboardMode) async throws {

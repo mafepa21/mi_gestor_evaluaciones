@@ -39,6 +39,13 @@ El formato sigue una variante practica de Keep a Changelog:
   - Archivos: `AppleShared/AppleCalendarReconciler.swift` (lógica pura), `AppleShared/AppleCalendarMirror.swift`, `App/Bridge/KmpBridge+AppleCalendar.swift`, `App/Bridge/KmpBridge+Planner.swift`, `App/Bridge/KmpBridge+SyncLAN.swift` (una línea al volver a la app).
   - Verificación: `xcodebuild` de `MiGestorKMPMac` y `MiGestorKMPiOS`: BUILD SUCCEEDED. `MiGestorPlannerTests/AppleCalendarReconcilerTests`: 10 pruebas, 0 fallos. Pendiente: prueba con el permiso de Calendario concedido y con eventos reales de iCloud.
 
+- **Planificador: crear y editar eventos de calendario (fase 2)**:
+  - Botón «Nuevo evento» en la vista mensual y en la hoja de hitos del curso. En la hoja de hitos, tocar un evento lo abre para editarlo.
+  - La hoja permite título, todo el día, inicio, fin, notas y borrar. Lo que se guarda se copia también a «Colegio» si la sincronización está activa.
+  - No cambian las sesiones, ni el composer de sesiones, ni el día no lectivo.
+  - Archivos: `App/PlannerCalendarEventSheet.swift` (nuevo), `App/PlannerMonthCalendarView.swift`, `App/SchoolCalendarEventsOverviewSheet.swift`.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` y `MiGestorKMPiOS`: BUILD SUCCEEDED. `MiGestorPlannerTests`: 255 pruebas, 4 omitidas, 2 fallos en `LearningSituationDocumentImportTests.testMislataCurricularFilesImportSuccessfully`. Esa prueba lee archivos de `~/Desktop/Programaciones` y compara cifras con su contenido; no usa el código que cambia aquí. No comprobado en `main`. Pendiente: revisión visual en simulador y prueba con iCloud.
+
 ### Data
 
 - El enlace entre cada evento de la app y su copia en «Colegio» se guarda en `calendar_events` (`external_provider = "apple_calendar"`, `external_id`). Sin cambio de esquema. La versión anterior lo guardaba en `UserDefaults`; se migra en la primera ejecución.

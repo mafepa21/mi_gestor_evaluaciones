@@ -10,6 +10,7 @@ struct PlannerMonthCalendarView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @State private var selectedOverflowDay: PlannerMonthDay? = nil
+    @State private var calendarEventDraft: PlannerCalendarEventDraft? = nil
 
     private var monthReloadKey: String {
         let calendar = Calendar(identifier: .iso8601)
@@ -39,6 +40,16 @@ struct PlannerMonthCalendarView: View {
         }
         .task(id: monthReloadKey) {
             await vm.reloadMonthData()
+        }
+        .sheet(item: $calendarEventDraft) { draft in
+            if let bridge = vm.bridge {
+                PlannerCalendarEventSheet(bridge: bridge, draft: draft) { saved in
+                    calendarEventDraft = nil
+                    if saved {
+                        Task { await vm.reloadMonthData() }
+                    }
+                }
+            }
         }
         .sheet(item: $selectedOverflowDay) { day in
             PlannerMonthDaySessionsSheet(
@@ -133,6 +144,15 @@ struct PlannerMonthCalendarView: View {
                 .controlSize(.small)
                 .frame(maxWidth: 160)
             }
+
+            Button {
+                calendarEventDraft = PlannerCalendarEventDraft(event: nil, day: vm.monthViewDate)
+            } label: {
+                Label("Nuevo evento", systemImage: "calendar.badge.plus")
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
 
             Button {
                 vm.openComposerForDate(vm.monthViewDate)

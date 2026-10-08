@@ -1525,6 +1525,14 @@ extension KmpBridge {
         let parsedPayloads = await Task.detached(priority: .utility) {
             payloadStrings.map { LanSyncPayloadParser.dictionary(from: $0) }
         }.value
+        // Los borrados conocidos se leen una vez (antes: una consulta por cada
+        // cambio entrante, miles en una descarga completa).
+        var tombstoneDeletedAt: [String: Int64] = [:]
+        if let tombstones = try? await container.syncTombstoneRepository.listTombstones() {
+            for tombstone in tombstones {
+                tombstoneDeletedAt["\(tombstone.entity)|\(tombstone.entityId)"] = tombstone.deletedAtEpochMs
+            }
+        }
         for (index, change) in orderedChanges.enumerated() {
             let hechos = index + 1
             if SyncLanApplyProgressCopy.shouldPublishProgress(hechos: hechos, total: applyTotal) {
@@ -1561,16 +1569,14 @@ extension KmpBridge {
                     deletedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId
                 )
+                tombstoneDeletedAt["\(change.entity)|\(change.id)"] = change.updatedAtEpochMs
                 continue
             }
 
             // Un upsert fechado antes (o igual) que el último borrado conocido de esta
             // misma entidad no debe resucitarla: el borrado es más reciente y gana LWW.
-            let isBlockedByTombstone = (try? await container.syncTombstoneRepository.isDeletedAtOrAfter(
-                entity: change.entity,
-                entityId: change.id,
-                updatedAtEpochMs: change.updatedAtEpochMs
-            ))?.boolValue ?? false
+            let isBlockedByTombstone = tombstoneDeletedAt["\(change.entity)|\(change.id)"]
+                .map { $0 >= change.updatedAtEpochMs } ?? false
             if isBlockedByTombstone {
                 continue
             }
@@ -3589,7 +3595,10 @@ extension KmpBridge {
             // Si llegamos aquí, el upsert se aplicó (o quedó fuera antes de tiempo por
             // un guard interno). Retirar el tombstone es seguro/idempotente en ambos
             // casos: ya no bloquea futuros upserts legítimos de esta misma entidad.
-            try? await container.syncTombstoneRepository.clearTombstone(entity: change.entity, entityId: change.id)
+            // Solo se escribe si había tombstone (antes: un DELETE por cada cambio).
+            if tombstoneDeletedAt.removeValue(forKey: "\(change.entity)|\(change.id)") != nil {
+                try? await container.syncTombstoneRepository.clearTombstone(entity: change.entity, entityId: change.id)
+            }
             } catch {
                 // No abortar el pull completo por un único cambio defectuoso
                 // (p.ej. entidad fuera de orden o payload parcial).

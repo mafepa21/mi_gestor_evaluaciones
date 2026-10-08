@@ -55,6 +55,18 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Rendimiento: consultas en bloque, sync más ligero y menos recargas**:
+  - Panel: las consultas por grupo se lanzan en paralelo y el cálculo sale del hilo principal.
+  - Ficha del alumno e IA: el diario se pide en bloque con dos consultas nuevas de `Planner.sq` (sin cambio de esquema); antes, 5 consultas por sesión.
+  - Ficha y nota rápida buscan el alumno por id; EF usa `getSession(id)`; la nota rápida mira primero las sesiones recientes.
+  - Rúbricas masivas: el guardado automático ya no recarga el Cuaderno por alumno; se recarga una vez al cerrar.
+  - Sync LAN: la descarga completa pasa de cada 3 min a una vez al día (recordada entre arranques); un solo sync al abrir.
+  - Mac: la comprobación del fichero de base de datos ignora escrituras propias y cambios LAN recientes (15 s).
+  - Se eliminan cargas sin uso: `refreshPlanning`/`bridge.planning` y la precarga al cambiar de grupo.
+  - Cuaderno: la firma de cambios compara con `equals` de Kotlin en vez de serializar cada celda.
+  - Lista de alumnos del Mac y apertura del Planificador cargan en paralelo; Rúbricas calcula la lista y los recuentos una vez.
+  - Verificación: `:shared:desktopTest` (131) y `:data:desktopTest` (165) en verde; `verify_apple_builds.sh` iOS y macOS. Sin medición en dispositivo.
+
 - **Optimización integral de rendimiento y fluidez en Cuaderno, Asistencia y Planificador**:
   - Cuaderno: firma de fila migrada de `String` a `Int` con `Hasher` directo sobre celdas (`item.lookup`), eliminando miles de asignaciones de strings y diccionarios por frame de scroll. Métricas y altura de slots calculadas una vez en lugar de triplicarse por panel. Comprobación de límites de rango de notas con shift convertida de 3 escaneos $O(N)$ a comprobación $O(1)$ en `NotebookGridNavigationContext.selectedRangeBounds`.
   - NumberFormatter: formateadores convertidos a constantes estáticas en `NotebookFormulaDisplay`, `CustomAverageExplanationPopoverView`, `NotebookStudentInspector`, `NotebookAverageEditorSheet`, `NotebookFormulaEditorSheet` y `PhysicalTestScaleEditor`.

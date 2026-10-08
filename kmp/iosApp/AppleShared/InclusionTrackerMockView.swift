@@ -3,88 +3,9 @@ import SwiftUI
 // MAQUETA de la pantalla «Inclusión»: seguimiento de plazos de las tareas del
 // manual para el alumnado con medidas de Nivel III y IV.
 //
-// Es solo interfaz: datos de ejemplo en memoria, sin persistencia ni KMP.
-// Reutiliza `SupportMeasureLevelUI` (SupportMeasureShared.swift) para el nivel.
-// Liquid Glass solo en el "chrome" (cabecera, franja de fases, avisos); las
-// filas de tareas quedan sobre fondos sólidos del sistema.
-
-// MARK: - Fechas
-
-enum InclusionDate {
-    static let calendar: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.locale = Locale(identifier: "es_ES")
-        calendar.firstWeekday = 2
-        return calendar
-    }()
-
-    private static let shortFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "es_ES")
-        formatter.dateFormat = "d MMM"
-        return formatter
-    }()
-
-    static func make(_ year: Int, _ month: Int, _ day: Int) -> Date {
-        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12)) ?? Date()
-    }
-
-    static func short(_ date: Date) -> String {
-        shortFormatter.string(from: date).replacingOccurrences(of: ".", with: "")
-    }
-
-    static func days(from: Date, to: Date) -> Int {
-        let start = calendar.startOfDay(for: from)
-        let end = calendar.startOfDay(for: to)
-        return calendar.dateComponents([.day], from: start, to: end).day ?? 0
-    }
-
-    static func adding(days: Int, to date: Date) -> Date {
-        calendar.date(byAdding: .day, value: days, to: date) ?? date
-    }
-}
-
-// MARK: - Modelo de la maqueta
-
-enum InclusionPhase: Int, CaseIterable, Identifiable {
-    case septiembre, observar, evaluacionInicial, noviembre, diciembre
-
-    var id: Int { rawValue }
-
-    /// Cuándo ocurre, tal y como lo dice el manual.
-    var whenLabel: String {
-        switch self {
-        case .septiembre: return "Septiembre"
-        case .observar: return "Sep-Oct"
-        case .evaluacionInicial: return "Evaluación inicial"
-        case .noviembre: return "Noviembre"
-        case .diciembre: return "Diciembre"
-        }
-    }
-
-    /// Qué hay que hacer en esa fase.
-    var actionLabel: String {
-        switch self {
-        case .septiembre: return "Recopilar"
-        case .observar: return "Observar"
-        case .evaluacionInicial: return "Decidir medidas"
-        case .noviembre: return "Revisar + ITACA"
-        case .diciembre: return "Cerrar antes de Navidad"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .septiembre: return "tray.full"
-        case .observar: return "eye"
-        case .evaluacionInicial: return "checklist"
-        case .noviembre: return "arrow.triangle.2.circlepath"
-        case .diciembre: return "flag.checkered"
-        }
-    }
-
-    var accessibleName: String { "\(whenLabel), \(actionLabel)" }
-}
+// Es solo interfaz: datos de ejemplo en memoria, sin persistencia ni KMP. Se
+// conserva para los #Preview; la pantalla real es `InclusionTrackerView` y las
+// piezas visuales viven en `InclusionTrackerComponents.swift`.
 
 /// Cómo se calcula la fecha del manual de una tarea.
 enum InclusionDueRule: Hashable {
@@ -116,9 +37,7 @@ struct InclusionTask: Identifiable, Hashable {
     var isEdited: Bool { !InclusionDate.calendar.isDate(due, inSameDayAs: manualDue) }
 }
 
-enum InclusionDeadlineStatus {
-    case done, overdue, soon, normal
-
+extension InclusionDeadlineStatus {
     /// "Esta semana" = los próximos 7 días a partir de hoy (incluido hoy).
     static func of(_ task: InclusionTask, today: Date) -> InclusionDeadlineStatus {
         if task.isDone { return .done }
@@ -126,14 +45,6 @@ enum InclusionDeadlineStatus {
         if delta < 0 { return .overdue }
         if delta <= 7 { return .soon }
         return .normal
-    }
-
-    var color: Color {
-        switch self {
-        case .overdue: return .red
-        case .soon: return .orange
-        case .done, .normal: return .secondary
-        }
     }
 }
 
@@ -344,96 +255,12 @@ final class InclusionMockStore: ObservableObject {
     }
 }
 
-// MARK: - Estilo: Liquid Glass con fallback
-
-private extension SupportMeasureLevelUI {
-    /// Mismo criterio que la vista de grupo: Nivel IV índigo; Nivel III verde azulado.
-    var inclusionColor: Color {
-        switch self {
-        case .iii: return .teal
-        case .iv: return .indigo
-        }
-    }
-}
-
-private struct InclusionGlassSurface: ViewModifier {
-    var cornerRadius: CGFloat = 18
-    var tint: Color?
-    var interactive = false
-
-    func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if #available(iOS 26.0, macOS 26.0, *) {
-            let glass: Glass = tint.map { Glass.regular.tint($0.opacity(0.28)) } ?? Glass.regular
-            content.glassEffect(interactive ? glass.interactive() : glass, in: shape)
-        } else {
-            content
-                .background(.regularMaterial, in: shape)
-                .overlay {
-                    if let tint { shape.fill(tint.opacity(0.14)) }
-                }
-        }
-    }
-}
-
-private extension View {
-    func inclusionGlass(cornerRadius: CGFloat = 18, tint: Color? = nil, interactive: Bool = false) -> some View {
-        modifier(InclusionGlassSurface(cornerRadius: cornerRadius, tint: tint, interactive: interactive))
-    }
-}
-
-/// Agrupa superficies glass relacionadas (iOS/macOS 26) o las deja tal cual.
-private struct InclusionGlassGroup<Content: View>: View {
-    var spacing: CGFloat = 12
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) { content() }
-        } else {
-            content()
-        }
-    }
-}
-
-private struct InclusionLevelChip: View {
-    let level: SupportMeasureLevelUI
-
-    var body: some View {
-        Text(level.shortLabel)
-            .font(.caption.weight(.bold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 3)
-            .background(level.inclusionColor, in: Capsule())
-            .accessibilityLabel(level.displayName)
-    }
-}
-
-private struct InclusionCountBadge: View {
-    let count: Int
-    let text: String
-    let symbol: String
-    let color: Color
-
-    var body: some View {
-        Label("\(count) \(text)", systemImage: symbol)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(count > 0 ? color : Color.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .inclusionGlass(cornerRadius: 14, tint: count > 0 ? color : nil)
-            .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - Pantalla
+// MARK: - Pantalla de la maqueta
 
 struct InclusionTrackerMockView: View {
     @StateObject private var store: InclusionMockStore
     @State private var selection: UUID?
     @State private var showingAddTask = false
-    @State private var showingEvaluationDate = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     init(state: InclusionMockState = .data) {
@@ -446,11 +273,15 @@ struct InclusionTrackerMockView: View {
         } detail: {
             detail
         }
-        .overlay(alignment: .bottom) { errorBanner }
+        .overlay(alignment: .bottom) {
+            if let message = store.errorMessage {
+                InclusionErrorBanner(message: message) { store.errorMessage = nil }
+            }
+        }
         .animation(.snappy, value: store.errorMessage)
         .sheet(isPresented: $showingAddTask) {
             if let student = selectedStudent {
-                InclusionAddTaskSheet(student: student, today: store.today) { title, phase, due in
+                InclusionAddTaskSheet(studentName: student.name, today: store.today) { title, phase, due in
                     store.addTask(studentID: student.id, title: title, phase: phase, due: due)
                 }
             }
@@ -476,8 +307,6 @@ struct InclusionTrackerMockView: View {
         #endif
     }
 
-    // MARK: Lateral
-
     private var sidebar: some View {
         Group {
             if store.state == .empty {
@@ -489,7 +318,10 @@ struct InclusionTrackerMockView: View {
             } else {
                 List(selection: $selection) {
                     ForEach(store.students) { student in
-                        InclusionStudentRow(student: student, store: store)
+                        let progress = store.progress(for: student.id)
+                        InclusionStudentRowView(name: student.name, level: student.level,
+                                                done: progress.done, total: progress.total,
+                                                overdue: store.overdueCount(for: student.id))
                             .tag(student.id)
                     }
                 }
@@ -500,70 +332,23 @@ struct InclusionTrackerMockView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) { header }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            InclusionHeaderCard(
+                subtitle: "\(store.groupName) · curso 2026-2027",
+                overdueCount: store.overdueCount,
+                dueThisWeekCount: store.dueThisWeekCount,
+                initialEvaluationDate: store.initialEvaluationDate,
+                isLoading: store.isLoading,
+                canEditEvaluation: store.state != .empty,
+                applyEvaluation: { store.setInitialEvaluationDate($0) }
+            )
+        }
         .navigationTitle("Inclusión")
         #if os(macOS)
         .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
         #endif
         .toolbar {
             ToolbarItem(placement: .automatic) { debugMenu }
-        }
-    }
-
-    private var header: some View {
-        InclusionGlassGroup(spacing: 10) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Inclusión")
-                            .font(.title2.weight(.bold))
-                        Text("\(store.groupName) · curso 2026-2027")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                }
-                HStack(spacing: 8) {
-                    InclusionCountBadge(count: store.overdueCount, text: store.overdueCount == 1 ? "vencida" : "vencidas",
-                                        symbol: "exclamationmark.circle.fill", color: .red)
-                    InclusionCountBadge(count: store.dueThisWeekCount, text: "esta semana",
-                                        symbol: "clock.fill", color: .orange)
-                }
-                .redacted(reason: store.isLoading ? .placeholder : [])
-                evaluationDateButton
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .inclusionGlass(cornerRadius: 22)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
-    }
-
-    private var evaluationDateButton: some View {
-        Button {
-            showingEvaluationDate = true
-        } label: {
-            HStack {
-                Label("Evaluación inicial", systemImage: "calendar.badge.clock")
-                Spacer(minLength: 8)
-                Text(InclusionDate.short(store.initialEvaluationDate))
-                    .fontWeight(.semibold)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .font(.subheadline)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(store.isLoading || store.state == .empty)
-        .accessibilityLabel("Fecha de evaluación inicial del grupo")
-        .accessibilityValue(InclusionDate.short(store.initialEvaluationDate))
-        .accessibilityHint("Abre un selector de fecha. Recalcula las tareas que dependen de ella.")
-        .popover(isPresented: $showingEvaluationDate) {
-            InclusionEvaluationDatePopover(store: store)
         }
     }
 
@@ -579,12 +364,21 @@ struct InclusionTrackerMockView: View {
         .accessibilityLabel("Estado de la maqueta, solo depuración")
     }
 
-    // MARK: Detalle
-
     @ViewBuilder
     private var detail: some View {
         if let student = selectedStudent {
-            InclusionStudentDetail(student: student, store: store, showingAddTask: $showingAddTask)
+            let progress = store.progress(for: student.id)
+            InclusionStudentDetailView(
+                name: student.name,
+                level: student.level,
+                measuresSummary: student.measuresSummary,
+                done: progress.done,
+                total: progress.total,
+                groups: groups(for: student),
+                currentPhase: store.currentPhase,
+                isLoading: store.isLoading,
+                showingAddTask: $showingAddTask
+            )
         } else if store.state == .empty {
             ContentUnavailableView(
                 "Ningún alumno con medidas de nivel III o IV",
@@ -596,473 +390,26 @@ struct InclusionTrackerMockView: View {
         }
     }
 
-    // MARK: Banner de error
-
-    @ViewBuilder
-    private var errorBanner: some View {
-        if let message = store.errorMessage {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .accessibilityHidden(true)
-                Text(message)
-                    .font(.subheadline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    store.errorMessage = nil
-                } label: {
-                    Image(systemName: "xmark")
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Cerrar aviso")
-            }
-            .padding(.leading, 14)
-            .padding(.vertical, 2)
-            .inclusionGlass(cornerRadius: 18, tint: .red)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
-            .frame(maxWidth: 560)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Error al guardar")
+    private func groups(for student: InclusionStudent) -> [InclusionPhaseGroup] {
+        InclusionPhase.allCases.compactMap { phase in
+            let tasks = store.tasks(for: student.id, in: phase)
+            guard !tasks.isEmpty else { return nil }
+            return InclusionPhaseGroup(phase: phase, tasks: tasks.map { task in
+                InclusionTaskDisplay(
+                    id: task.id,
+                    title: task.title,
+                    due: task.due,
+                    manualDue: task.manualDue,
+                    doneOn: task.doneOn,
+                    isEdited: task.isEdited,
+                    canReset: task.isEdited,
+                    status: InclusionDeadlineStatus.of(task, today: store.today),
+                    onToggle: { store.toggleDone(task.id) },
+                    onSetDue: { store.setDue(task.id, to: $0) },
+                    onReset: { store.resetDue(task.id) }
+                )
+            })
         }
-    }
-}
-
-// MARK: - Fila de alumno (lateral)
-
-private struct InclusionStudentRow: View {
-    let student: InclusionStudent
-    @ObservedObject var store: InclusionMockStore
-
-    var body: some View {
-        let progress = store.progress(for: student.id)
-        let overdue = store.overdueCount(for: student.id)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(student.name)
-                    .font(.headline)
-                InclusionLevelChip(level: student.level)
-                Spacer(minLength: 0)
-                if overdue > 0 {
-                    Label("\(overdue)", systemImage: "exclamationmark.circle.fill")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.red)
-                        .accessibilityLabel("\(overdue) \(overdue == 1 ? "tarea vencida" : "tareas vencidas")")
-                }
-            }
-            HStack(spacing: 8) {
-                ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
-                    .tint(student.level.inclusionColor)
-                    .frame(maxWidth: 90)
-                Text("\(progress.done) de \(progress.total)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 6)
-        .frame(minHeight: 44, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(student.name), \(student.level.displayName)")
-        .accessibilityValue("\(progress.done) de \(progress.total) tareas hechas" + (overdue > 0 ? ", \(overdue) vencidas" : ""))
-    }
-}
-
-// MARK: - Detalle del alumno
-
-private struct InclusionStudentDetail: View {
-    let student: InclusionStudent
-    @ObservedObject var store: InclusionMockStore
-    @Binding var showingAddTask: Bool
-
-    var body: some View {
-        let progress = store.progress(for: student.id)
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        InclusionLevelChip(level: student.level)
-                        Text(student.measuresSummary)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("\(progress.done) de \(progress.total) tareas hechas")
-                        .font(.callout.weight(.semibold))
-                }
-                .padding(.vertical, 4)
-                .accessibilityElement(children: .combine)
-            }
-
-            ForEach(InclusionPhase.allCases) { phase in
-                let phaseTasks = store.tasks(for: student.id, in: phase)
-                if !phaseTasks.isEmpty {
-                    Section {
-                        ForEach(phaseTasks) { task in
-                            InclusionTaskRow(task: task, store: store)
-                        }
-                    } header: {
-                        phaseHeader(phase, tasks: phaseTasks)
-                    }
-                }
-            }
-        }
-        .redacted(reason: store.isLoading ? .placeholder : [])
-        .disabled(store.isLoading)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            InclusionPhaseStrip(current: store.currentPhase)
-        }
-        .navigationTitle(student.name)
-        #if !os(macOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAddTask = true
-                } label: {
-                    Label("Añadir tarea", systemImage: "plus")
-                        .frame(minHeight: 44)
-                }
-                .accessibilityHint("Abre un formulario para crear una tarea para \(student.name)")
-            }
-        }
-    }
-
-    private func phaseHeader(_ phase: InclusionPhase, tasks: [InclusionTask]) -> some View {
-        let done = tasks.filter(\.isDone).count
-        let isCurrent = phase == store.currentPhase
-        return HStack(alignment: .firstTextBaseline) {
-            Text("\(phase.whenLabel) · \(phase.actionLabel)")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-            if isCurrent {
-                Text("Ahora")
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.18), in: Capsule())
-            }
-            Spacer(minLength: 8)
-            Text("\(done) de \(tasks.count) hechas")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .textCase(nil)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - Franja de fases
-
-private struct InclusionPhaseStrip: View {
-    let current: InclusionPhase
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            InclusionGlassGroup(spacing: 8) {
-                HStack(spacing: 8) {
-                    ForEach(InclusionPhase.allCases) { phase in
-                        chip(for: phase)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Fases del curso")
-    }
-
-    private func chip(for phase: InclusionPhase) -> some View {
-        let isCurrent = phase == current
-        let isPast = phase.rawValue < current.rawValue
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 5) {
-                Image(systemName: isPast ? "checkmark.circle.fill" : phase.symbol)
-                    .imageScale(.small)
-                    .accessibilityHidden(true)
-                Text(phase.whenLabel)
-                    .font(.caption.weight(.bold))
-            }
-            Text(phase.actionLabel)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .foregroundStyle(isPast ? Color.secondary : Color.primary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(minWidth: 112, minHeight: 44, alignment: .leading)
-        .inclusionGlass(cornerRadius: 14, tint: isCurrent ? .orange : nil)
-        .overlay {
-            if isCurrent {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.35), lineWidth: 1.5)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(phase.accessibleName)
-        .accessibilityValue(isCurrent ? "Fase actual" : (isPast ? "Pasada" : "Pendiente"))
-    }
-}
-
-// MARK: - Fila de tarea
-
-private struct InclusionTaskRow: View {
-    let task: InclusionTask
-    @ObservedObject var store: InclusionMockStore
-    @State private var showingDueEditor = false
-
-    var body: some View {
-        let status = InclusionDeadlineStatus.of(task, today: store.today)
-        HStack(alignment: .top, spacing: 4) {
-            Button {
-                store.toggleDone(task.id)
-            } label: {
-                Image(systemName: task.isDone ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-                    .foregroundStyle(task.isDone ? Color.green : Color.secondary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(task.title)
-            .accessibilityValue(task.isDone ? "Hecha el \(InclusionDate.short(task.doneOn ?? store.today))" : "Pendiente")
-            .accessibilityHint(task.isDone ? "Toca dos veces para desmarcarla" : "Toca dos veces para marcarla como hecha")
-            .accessibilityAddTraits(.isToggle)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(task.title)
-                    .font(.body)
-                    .strikethrough(task.isDone, color: .secondary)
-                    .foregroundStyle(task.isDone ? Color.secondary : Color.primary)
-                    .frame(minHeight: 44, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let doneOn = task.doneOn {
-                    Label("Hecha el \(InclusionDate.short(doneOn))", systemImage: "checkmark")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                dueControl(status: status)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 2)
-        .accessibilityElement(children: .contain)
-    }
-
-    private func dueControl(status: InclusionDeadlineStatus) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                showingDueEditor = true
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: status == .overdue ? "exclamationmark.circle.fill" : "calendar")
-                        .imageScale(.small)
-                    Text(dueText(status: status))
-                        .fontWeight(status == .overdue || status == .soon ? .semibold : .regular)
-                }
-                .font(.subheadline)
-                .foregroundStyle(status.color)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Fecha de vencimiento: \(InclusionDate.short(task.due))")
-            .accessibilityValue(accessibleStatus(status))
-            .accessibilityHint("Abre un selector para cambiar la fecha")
-            .popover(isPresented: $showingDueEditor) {
-                InclusionDueDateEditor(task: task, store: store)
-            }
-
-            if task.isEdited {
-                Text("editada")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(.quaternary, in: Capsule())
-            }
-        }
-    }
-
-    private func dueText(status: InclusionDeadlineStatus) -> String {
-        let date = InclusionDate.short(task.due)
-        switch status {
-        case .overdue: return "Venció el \(date)"
-        case .soon, .normal: return "Vence el \(date)"
-        case .done: return "Vencía el \(date)"
-        }
-    }
-
-    private func accessibleStatus(_ status: InclusionDeadlineStatus) -> String {
-        switch status {
-        case .overdue: return "Vencida"
-        case .soon: return "Vence esta semana"
-        case .done: return "Tarea hecha"
-        case .normal: return task.isEdited ? "Fecha editada" : "En plazo"
-        }
-    }
-}
-
-// MARK: - Editor de fecha de una tarea
-
-private struct InclusionDueDateEditor: View {
-    let task: InclusionTask
-    @ObservedObject var store: InclusionMockStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var draft: Date
-
-    init(task: InclusionTask, store: InclusionMockStore) {
-        self.task = task
-        self.store = store
-        _draft = State(initialValue: task.due)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Fecha de vencimiento")
-                .font(.headline)
-            Text(task.title)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            DatePicker("Fecha", selection: $draft, displayedComponents: .date)
-                .datePickerStyle(.graphical)
-                .environment(\.locale, Locale(identifier: "es_ES"))
-                .labelsHidden()
-
-            Button {
-                store.resetDue(task.id)
-                dismiss()
-            } label: {
-                Label("Restablecer al \(InclusionDate.short(task.manualDue)) (manual)", systemImage: "arrow.uturn.backward")
-                    .frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .disabled(!task.isEdited)
-
-            HStack {
-                Button("Cancelar", role: .cancel) { dismiss() }
-                    .frame(minHeight: 44)
-                Spacer()
-                Button("Guardar") {
-                    store.setDue(task.id, to: draft)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .frame(minHeight: 44)
-            }
-        }
-        .padding(16)
-        .frame(minWidth: 320, idealWidth: 360)
-        .presentationCompactAdaptation(.sheet)
-        .presentationDetents([.medium, .large])
-    }
-}
-
-// MARK: - Fecha de la evaluación inicial
-
-private struct InclusionEvaluationDatePopover: View {
-    @ObservedObject var store: InclusionMockStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var draft: Date = Date()
-    @State private var movedCount: Int?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Evaluación inicial del grupo")
-                .font(.headline)
-            Text("Al cambiarla se recalculan las tareas que dependen de ella. Las que ya editaste a mano no se mueven.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            DatePicker("Fecha", selection: $draft, displayedComponents: .date)
-                .datePickerStyle(.graphical)
-                .environment(\.locale, Locale(identifier: "es_ES"))
-                .labelsHidden()
-            if let movedCount {
-                Label("\(movedCount) \(movedCount == 1 ? "fecha recalculada" : "fechas recalculadas")",
-                      systemImage: "checkmark.circle")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            HStack {
-                Button("Cerrar", role: .cancel) { dismiss() }
-                    .frame(minHeight: 44)
-                Spacer()
-                Button("Aplicar") {
-                    movedCount = store.setInitialEvaluationDate(draft)
-                }
-                .keyboardShortcut(.defaultAction)
-                .frame(minHeight: 44)
-            }
-        }
-        .padding(16)
-        .frame(minWidth: 320, idealWidth: 360)
-        .presentationCompactAdaptation(.sheet)
-        .presentationDetents([.medium, .large])
-        .onAppear { draft = store.initialEvaluationDate }
-    }
-}
-
-// MARK: - Añadir tarea
-
-private struct InclusionAddTaskSheet: View {
-    let student: InclusionStudent
-    let today: Date
-    let onAdd: (String, InclusionPhase, Date) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var phase: InclusionPhase = .observar
-    @State private var due: Date
-
-    init(student: InclusionStudent, today: Date, onAdd: @escaping (String, InclusionPhase, Date) -> Void) {
-        self.student = student
-        self.today = today
-        self.onAdd = onAdd
-        _due = State(initialValue: InclusionDate.adding(days: 7, to: today))
-    }
-
-    private var canAdd: Bool { !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Tarea para \(student.name)") {
-                    TextField("Título", text: $title)
-                    Picker("Fase", selection: $phase) {
-                        ForEach(InclusionPhase.allCases) { Text("\($0.whenLabel) · \($0.actionLabel)").tag($0) }
-                    }
-                    DatePicker("Vence el", selection: $due, displayedComponents: .date)
-                        .environment(\.locale, Locale(identifier: "es_ES"))
-                }
-            }
-            .formStyle(.grouped)
-            .navigationTitle("Añadir tarea")
-            #if !os(macOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Añadir") {
-                        onAdd(title.trimmingCharacters(in: .whitespacesAndNewlines), phase, due)
-                        dismiss()
-                    }
-                    .disabled(!canAdd)
-                }
-            }
-        }
-        #if os(macOS)
-        .frame(minWidth: 420, minHeight: 320)
-        #else
-        .presentationDetents([.medium, .large])
-        #endif
     }
 }
 

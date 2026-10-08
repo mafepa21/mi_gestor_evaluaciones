@@ -740,6 +740,10 @@ interface RubricsRepository {
     ): Double?
     @Throws(Throwable::class)
     suspend fun listRubricAssessments(studentId: Long, evaluationId: Long): List<RubricAssessment>
+
+    /** Valoraciones de varios alumnos en una evaluación, en bloque. */
+    suspend fun listRubricAssessmentsForStudents(studentIds: List<Long>, evaluationId: Long): List<RubricAssessment> =
+        studentIds.flatMap { listRubricAssessments(it, evaluationId) }
     @Throws(Throwable::class)
     suspend fun getStudentEvaluation(studentId: Long, rubricId: Long, evaluationId: Long): Map<Long, Long>
     @Throws(Throwable::class)

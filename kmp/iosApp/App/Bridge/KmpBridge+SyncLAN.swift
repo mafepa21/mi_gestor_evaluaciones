@@ -1401,27 +1401,27 @@ extension KmpBridge {
             }
         }
 
+        let studentIds = students.map { KotlinLong(value: $0.id) }
         for evaluation in rubricEvaluations {
-            for student in students {
-                let assessments = try await container.rubricsRepository.listRubricAssessments(
-                    studentId: student.id,
-                    evaluationId: evaluation.id
+            // Todos los alumnos de la evaluación en una consulta (antes: una por alumno).
+            let assessments = try await container.rubricsRepository.listRubricAssessmentsForStudents(
+                studentIds: studentIds,
+                evaluationId: evaluation.id
+            )
+            assessments.forEach { assessment in
+                enqueueLocalChange(
+                    entity: "rubric_assessment",
+                    id: "\(assessment.studentId)-\(assessment.evaluationId)-\(assessment.criterionId)",
+                    updatedAtEpochMs: assessment.trace.updatedAt.toEpochMilliseconds(),
+                    payload: [
+                        "studentId": assessment.studentId,
+                        "evaluationId": assessment.evaluationId,
+                        "criterionId": assessment.criterionId,
+                        "levelId": assessment.levelId
+                    ],
+                    shouldPersist: false,
+                    shouldScheduleAutoSync: false
                 )
-                assessments.forEach { assessment in
-                    enqueueLocalChange(
-                        entity: "rubric_assessment",
-                        id: "\(assessment.studentId)-\(assessment.evaluationId)-\(assessment.criterionId)",
-                        updatedAtEpochMs: assessment.trace.updatedAt.toEpochMilliseconds(),
-                        payload: [
-                            "studentId": assessment.studentId,
-                            "evaluationId": assessment.evaluationId,
-                            "criterionId": assessment.criterionId,
-                            "levelId": assessment.levelId
-                        ],
-                        shouldPersist: false,
-                        shouldScheduleAutoSync: false
-                    )
-                }
             }
         }
 

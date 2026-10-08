@@ -1200,6 +1200,11 @@ SELECT student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, u
 FROM rubric_assessments
 WHERE student_id = ? AND evaluation_id = ?;
 
+selectRubricAssessmentsForStudents:
+SELECT student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM rubric_assessments
+WHERE evaluation_id = ? AND student_id IN ?;
+
 selectRubricAssessmentByKey:
 SELECT updated_at_epoch_ms, device_id
 FROM rubric_assessments

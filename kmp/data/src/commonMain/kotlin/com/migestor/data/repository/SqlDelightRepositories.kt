@@ -1957,6 +1957,127 @@ class StudentSupportMeasureRepositorySqlDelight(
     }
 }
 
+/** Tareas del Manual de Inclusión (migración 45). */
+class InclusionTaskRepositorySqlDelight(
+    private val db: AppDatabase,
+) : com.migestor.shared.repository.InclusionTaskRepository {
+
+    /** `null` si la fase guardada ya no existe o la fecha no se puede leer: se descarta en vez de lanzar. */
+    private fun rowToModel(row: com.migestor.data.db.Inclusion_tasks): com.migestor.shared.inclusion.InclusionTask? {
+        val phase = runCatching { com.migestor.shared.inclusion.InclusionPhase.valueOf(row.phase) }.getOrNull() ?: return null
+        val due = localDateOrNull(row.due_date_iso) ?: return null
+        return com.migestor.shared.inclusion.InclusionTask(
+            id = row.id,
+            studentId = row.student_id,
+            measureId = row.measure_id,
+            templateKey = row.template_key,
+            title = row.title,
+            phase = phase,
+            dueDate = due,
+            dueIsCustom = row.due_is_custom != 0L,
+            doneAt = localDateOrNull(row.done_at_iso),
+            notes = row.notes,
+            schoolYear = row.school_year,
+            createdAtEpochMs = row.created_at,
+            updatedAtEpochMs = row.updated_at,
+        )
+    }
+
+    override suspend fun listByStudents(studentIds: List<Long>, schoolYear: String) = withContext(Dispatchers.Default) {
+        if (studentIds.isEmpty()) return@withContext emptyList()
+        // Troceado para no pasar del límite de parámetros de SQLite en grupos enormes.
+        studentIds.distinct().chunked(500).flatMap { chunk ->
+            db.appDatabaseQueries.selectInclusionTasksByStudents(chunk, schoolYear).executeAsList().mapNotNull(::rowToModel)
+        }.sortedWith(compareBy({ it.dueDate }, { it.id }))
+    }
+
+    override suspend fun getById(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectInclusionTaskById(id).executeAsOneOrNull()?.let(::rowToModel)
+    }
+
+    override suspend fun insertTemplateIfAbsent(
+        studentId: Long,
+        measureId: Long?,
+        templateKey: String,
+        title: String,
+        phase: com.migestor.shared.inclusion.InclusionPhase,
+        dueDateIso: String,
+        schoolYear: String,
+        nowEpochMs: Long,
+    ): Boolean = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            db.appDatabaseQueries.insertInclusionTemplateTaskIfAbsent(
+                studentId, measureId, templateKey, title, phase.name, dueDateIso, schoolYear, nowEpochMs, nowEpochMs,
+            )
+            db.appDatabaseQueries.inclusionChanges().executeAsOne() > 0L
+        }
+    }
+
+    override suspend fun insertFreeTask(
+        studentId: Long,
+        title: String,
+        phase: com.migestor.shared.inclusion.InclusionPhase,
+        dueDateIso: String,
+        notes: String,
+        schoolYear: String,
+        nowEpochMs: Long,
+    ): Long = withContext(Dispatchers.Default) {
+        // lastInsertedId dentro de la transacción (lección del bug rubricId = 0).
+        db.transactionWithResult {
+            db.appDatabaseQueries.insertInclusionFreeTask(studentId, title, phase.name, dueDateIso, notes, schoolYear, nowEpochMs, nowEpochMs)
+            db.appDatabaseQueries.lastInsertedId().executeAsOne()
+        }
+    }
+
+    override suspend fun insertFreeTasks(
+        studentIds: List<Long>,
+        title: String,
+        phase: com.migestor.shared.inclusion.InclusionPhase,
+        dueDateIso: String,
+        notes: String,
+        schoolYear: String,
+        nowEpochMs: Long,
+    ): List<Long> = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            studentIds.map { studentId ->
+                db.appDatabaseQueries.insertInclusionFreeTask(studentId, title, phase.name, dueDateIso, notes, schoolYear, nowEpochMs, nowEpochMs)
+                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            }
+        }
+    }
+
+    override suspend fun setDone(id: Long, doneAtIso: String?, nowEpochMs: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.setInclusionTaskDone(doneAtIso, nowEpochMs, id)
+        Unit
+    }
+
+    override suspend fun setDue(id: Long, dueDateIso: String, isCustom: Boolean, nowEpochMs: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.setInclusionTaskDue(dueDateIso, if (isCustom) 1L else 0L, nowEpochMs, id)
+        Unit
+    }
+
+    override suspend fun updateDueIfNotCustom(id: Long, dueDateIso: String, nowEpochMs: Long): Boolean = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            db.appDatabaseQueries.updateInclusionTaskDueIfNotCustom(dueDateIso, nowEpochMs, id)
+            db.appDatabaseQueries.inclusionChanges().executeAsOne() > 0L
+        }
+    }
+
+    override suspend fun delete(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteInclusionTask(id)
+        Unit
+    }
+
+    override suspend fun getInitialEvaluationDate(classId: Long, schoolYear: String): String? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectInclusionGroupInitialEval(classId, schoolYear).executeAsOneOrNull()
+    }
+
+    override suspend fun setInitialEvaluationDate(classId: Long, schoolYear: String, dateIso: String) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.upsertInclusionGroupInitialEval(classId, schoolYear, dateIso)
+        Unit
+    }
+}
+
 class StudentTutoringSessionRepositorySqlDelight(
     private val db: AppDatabase,
 ) : StudentTutoringSessionRepository {

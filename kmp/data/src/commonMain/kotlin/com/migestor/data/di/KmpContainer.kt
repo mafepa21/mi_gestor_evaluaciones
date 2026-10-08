@@ -82,6 +82,8 @@ class KmpContainer(val driver: SqlDriver) {
     val attendanceRepository: AttendanceRepository = AttendanceRepositorySqlDelight(database)
     val studentSupportMeasureRepository: StudentSupportMeasureRepository = StudentSupportMeasureRepositorySqlDelight(database)
     val studentTutoringSessionRepository: StudentTutoringSessionRepository = StudentTutoringSessionRepositorySqlDelight(database)
+    val inclusionTaskRepository: com.migestor.shared.repository.InclusionTaskRepository =
+        com.migestor.data.repository.InclusionTaskRepositorySqlDelight(database)
     val meetingRepository: MeetingRepository = MeetingRepositorySqlDelight(database)
     val plannerWeekPlanRepository: PlannerWeekPlanRepository = PlannerWeekPlanRepositorySqlDelight(database)
 
@@ -142,6 +144,11 @@ class KmpContainer(val driver: SqlDriver) {
     val retireStudentSupportMeasure = RetireStudentSupportMeasureUseCase(studentSupportMeasureRepository)
     val listStudentSupportMeasures = ListStudentSupportMeasuresUseCase(studentSupportMeasureRepository)
     val listActiveSupportMeasureStudentIds = ListActiveSupportMeasureStudentIdsUseCase(studentSupportMeasureRepository)
+    val inclusionTasks = com.migestor.shared.usecase.InclusionTasksUseCase(
+        tasks = inclusionTaskRepository,
+        measures = studentSupportMeasureRepository,
+        studentIdsForClass = { classId -> classesRepository.listStudentsInClass(classId).map { it.id } },
+    )
     val saveWeeklyTemplate = SaveWeeklyTemplateUseCase(weeklyTemplateRepository)
     val generateSessionsFromUD = GenerateSessionsFromUDUseCase(weeklyTemplateRepository, plannerRepository)
     val deleteStudent = DeleteStudentUseCase(studentsRepository, classesRepository)

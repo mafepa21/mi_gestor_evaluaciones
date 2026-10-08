@@ -13,6 +13,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Changed
+
+- **Barra lateral de macOS más ligera**:
+  - Se quitan Evaluación, Mediciones y baremos, Sync LAN y Backups de la barra lateral.
+  - Siguen accesibles: Evaluación desde el inspector del Cuaderno, Rúbricas y la barra de herramientas; Sync LAN y Backups desde el menú Archivo (⌘⇧S, ⌘B) y Ajustes.
+  - Nuevo comando Navegación → Ir a Mediciones (⌘4), en macOS y en iPad con teclado, porque Mediciones no tenía otra entrada.
+  - Sin efecto en rendimiento: el detalle solo construye la pantalla seleccionada.
+  - Archivos: `MacApp/MacFeatureRegistry.swift`, `MacApp/MacRootView.swift`, `AppleShared/AppleAppCommands.swift`, `App/IPadWorkspaceShell.swift`.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` (macOS) y `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED. Prueba manual del menú y la barra: pendiente.
+
 ### Fixed
 
 - **Copias de seguridad bloqueadas por referencias huérfanas**:

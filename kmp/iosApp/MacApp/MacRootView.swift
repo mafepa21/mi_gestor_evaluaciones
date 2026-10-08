@@ -1523,6 +1523,9 @@ struct MacRootView: View {
             selectFeature(.attendance)
         case .planner:
             selectFeature(.planner)
+        case .physicalTests:
+            // Mediciones ya no está en la barra lateral: se abre desde el menú.
+            selectFeature(.physicalTests)
         }
     }
 

@@ -83,13 +83,20 @@ enum MacFeatureSection: String, CaseIterable, Identifiable {
             // de curso, no trabajo diario. Vive en Ajustes → Cursos y grupos.
             //
             // `Entregas web` va aquí y no en Planificación porque lo que hace es
-            // meter evidencias en el Cuaderno, igual que Asistencia o Mediciones.
+            // meter evidencias en el Cuaderno, igual que Asistencia.
             // Publica el formulario, pero el trabajo es recoger para evaluar.
-            return [.evaluationHub, .notebook, .attendance, .rubrics, .physicalTests, .webSubmissions]
+            //
+            // `Evaluación` y `Mediciones` tampoco están, para aligerar la barra.
+            // Evaluación se abre desde el inspector del Cuaderno, Rúbricas y la
+            // barra de herramientas. Mediciones, desde Navegación → Ir a
+            // Mediciones (⌘4).
+            return [.notebook, .attendance, .rubrics, .webSubmissions]
         case .planificacion:
             return [.planner, .diary, .situations, .meetings, .students]
         case .sistema:
-            return [.reports, .sync, .backups, .settings]
+            // `Sync LAN` y `Backups` se abren desde el menú Archivo (⌘⇧S, ⌘B)
+            // en su propia ventana, y Sync también desde Ajustes.
+            return [.reports, .settings]
         }
     }
 }

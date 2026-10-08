@@ -1,6 +1,9 @@
 package com.migestor.data.repository
 
 import com.migestor.shared.domain.AgendaNavigationTarget
+import com.migestor.shared.domain.Student
+import com.migestor.shared.domain.Incident
+import com.migestor.shared.domain.Attendance
 import com.migestor.shared.domain.AgendaItem
 import com.migestor.shared.domain.AlertItem
 import com.migestor.shared.domain.DashboardFilters
@@ -33,6 +36,11 @@ import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.SessionJournalRepository
 import com.migestor.shared.repository.TeacherScheduleRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.Instant
@@ -63,7 +71,7 @@ class DashboardOperationalRepositoryDefault(
         date: LocalDate,
         mode: DashboardMode,
         filters: DashboardFilters,
-    ): DashboardSnapshot {
+    ): DashboardSnapshot = withContext(Dispatchers.Default) {
         val now = Clock.System.now()
         val tz = TimeZone.currentSystemDefault()
         val dayStart = date.atStartOfDayIn(tz)
@@ -103,18 +111,42 @@ class DashboardOperationalRepositoryDefault(
         val scopedClassId = if (isClassroom) classroomClassId else filters.classId
 
         val targetClasses = scopedClassId?.let { id -> allClasses.filter { it.id == id } } ?: allClasses
-        val studentsByClass = targetClasses.associate { it.id to classesRepository.listStudentsInClass(it.id) }
-        val gradesByClass = targetClasses.associate { it.id to gradesRepository.listGradesForClass(it.id) }
-        val evaluationsByClass = targetClasses.associate { it.id to evaluationsRepository.listClassEvaluations(it.id) }
-        val columnsByClass = targetClasses.associate { it.id to notebookConfigRepository.listColumns(it.id) }
-        val incidencesByClass = targetClasses.associate { it.id to incidentsRepository.listIncidents(it.id) }
-        val attendanceByClass = targetClasses.associate {
-            it.id to attendanceRepository.getAttendanceForClassBetweenDates(
-                classId = it.id,
-                startDateMs = dateMinus30.toEpochMilliseconds(),
-                endDateMs = dayEnd.toEpochMilliseconds(),
-            )
+        // Las 6 consultas por grupo se lanzan a la vez (antes, una tras otra:
+        // con 8 grupos eran ~50 esperas seguidas en cada carga del panel).
+        val perClass = coroutineScope {
+            targetClasses.map { schoolClass ->
+                async {
+                    val id = schoolClass.id
+                    val students = async { classesRepository.listStudentsInClass(id) }
+                    val grades = async { gradesRepository.listGradesForClass(id) }
+                    val evaluations = async { evaluationsRepository.listClassEvaluations(id) }
+                    val columns = async { notebookConfigRepository.listColumns(id) }
+                    val incidences = async { incidentsRepository.listIncidents(id) }
+                    val attendance = async {
+                        attendanceRepository.getAttendanceForClassBetweenDates(
+                            classId = id,
+                            startDateMs = dateMinus30.toEpochMilliseconds(),
+                            endDateMs = dayEnd.toEpochMilliseconds(),
+                        )
+                    }
+                    ClassDashboardData(
+                        classId = id,
+                        students = students.await(),
+                        grades = grades.await(),
+                        evaluations = evaluations.await(),
+                        columns = columns.await(),
+                        incidences = incidences.await(),
+                        attendance = attendance.await(),
+                    )
+                }
+            }.awaitAll()
         }
+        val studentsByClass = perClass.associate { it.classId to it.students }
+        val gradesByClass = perClass.associate { it.classId to it.grades }
+        val evaluationsByClass = perClass.associate { it.classId to it.evaluations }
+        val columnsByClass = perClass.associate { it.classId to it.columns }
+        val incidencesByClass = perClass.associate { it.classId to it.incidences }
+        val attendanceByClass = perClass.associate { it.classId to it.attendance }
 
         val todayEvents = calendarRepository.listEvents(classId = null)
             .asSequence()
@@ -366,7 +398,7 @@ class DashboardOperationalRepositoryDefault(
             .sortedBy { it.startAt }
             .firstOrNull()
 
-        return DashboardSnapshot(
+        DashboardSnapshot(
             mode = mode,
             currentContext = currentContext,
             filters = filters,
@@ -800,3 +832,14 @@ class DashboardOperationalRepositoryDefault(
         else -> 0
     }
 }
+
+/** Datos de un grupo para el panel, cargados en paralelo. */
+private class ClassDashboardData(
+    val classId: Long,
+    val students: List<Student>,
+    val grades: List<Grade>,
+    val evaluations: List<Evaluation>,
+    val columns: List<NotebookColumnDefinition>,
+    val incidences: List<Incident>,
+    val attendance: List<Attendance>,
+)

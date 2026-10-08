@@ -1026,7 +1026,7 @@ extension KmpBridge {
         isInjured: Bool,
         classId: Int64?
     ) async throws {
-        guard let student = try await container.studentsRepository.listStudents().first(where: { $0.id == studentId }) else {
+        guard let student = try await container.studentsRepository.getStudent(studentId: studentId) else {
             throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró el alumno \(studentId)."])
         }
 
@@ -1757,7 +1757,7 @@ extension KmpBridge {
     }
 
     func loadStudentProfile(studentId: Int64, classId: Int64?) async throws -> StudentProfileSnapshot {
-        guard let student = try await container.studentsRepository.listStudents().first(where: { $0.id == studentId }) else {
+        guard let student = try await container.studentsRepository.getStudent(studentId: studentId) else {
             throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró el alumno \(studentId)."])
         }
         let schoolClass = try await container.classesRepository.listClasses().first(where: { $0.id == classId })
@@ -1785,17 +1785,10 @@ extension KmpBridge {
                 },
                 uniquingKeysWith: { first, _ in first }
             )
-            var collectedAggregates: [SessionJournalAggregate] = []
-            for session in sessions {
-                let aggregate = try await self.container.sessionJournalRepository.getJournalForSession(
-                    planningSessionId: session.id
-                )
-                if let aggregate,
-                   aggregate.individualNotes.contains(where: { $0.studentId?.int64Value == studentId }) {
-                    collectedAggregates.append(aggregate)
-                }
-            }
-            journalAggregates = collectedAggregates
+            journalAggregates = try await container.sessionJournalRepository.listJournalsWithStudentNotes(
+                planningSessionIds: sessions.map { KotlinLong(value: $0.id) },
+                studentId: studentId
+            )
             journalDateByJournalId = Dictionary(
                 journalAggregates.map { aggregate in
                     let sessionDate = sessionDateById[aggregate.journal.planningSessionId] ?? Date.distantPast
@@ -2039,9 +2032,18 @@ extension KmpBridge {
             throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró el alumno \(studentId)."])
         }
         let now = Date()
-        let sessions = try await container.plannerRepository.listAllSessions()
-            .filter { $0.groupId == classId }
-            .sorted { date(from: $0) > date(from: $1) }
+        // Primero solo las sesiones recientes del grupo; si no hay ninguna, se
+        // busca en todo el histórico como antes.
+        let recentFrom = Calendar.current.date(byAdding: .day, value: -120, to: now) ?? now
+        var sessions = try await plannerListSessions(
+            fromIso: AppDateTimeSupport.isoDateString(from: recentFrom),
+            toIso: AppDateTimeSupport.isoDateString(from: now),
+            classId: classId
+        )
+        if !sessions.contains(where: { date(from: $0) <= now }) {
+            sessions = try await container.plannerRepository.listAllSessions().filter { $0.groupId == classId }
+        }
+        sessions.sort { date(from: $0) > date(from: $1) }
         guard let session = sessions.first(where: { date(from: $0) <= now }) else {
             throw NSError(domain: "KmpBridge", code: -4102, userInfo: [NSLocalizedDescriptionKey: "No hay sesiones pasadas o de hoy donde guardar la nota rápida."])
         }

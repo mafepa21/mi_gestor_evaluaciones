@@ -653,6 +653,16 @@ interface SessionJournalRepository {
     suspend fun getJournalForSession(planningSessionId: Long): SessionJournalAggregate?
     @Throws(Throwable::class)
     suspend fun listSummariesForSessions(planningSessionIds: List<Long>): List<SessionJournalSummary>
+
+    /** Diarios (solo cabecera) de varias sesiones en bloque, sin cargar notas ni adjuntos. */
+    suspend fun listJournalsForSessions(planningSessionIds: List<Long>): List<SessionJournal> =
+        planningSessionIds.mapNotNull { getJournalForSession(it)?.journal }
+
+    /** Diarios completos de las sesiones dadas que tienen alguna nota individual del alumno. */
+    suspend fun listJournalsWithStudentNotes(planningSessionIds: List<Long>, studentId: Long): List<SessionJournalAggregate> =
+        planningSessionIds.mapNotNull { id ->
+            getJournalForSession(id)?.takeIf { aggregate -> aggregate.individualNotes.any { it.studentId == studentId } }
+        }
     @Throws(Throwable::class)
     suspend fun sessionIdsWithMaterial(): Set<Long> = emptySet()
     @Throws(Throwable::class)

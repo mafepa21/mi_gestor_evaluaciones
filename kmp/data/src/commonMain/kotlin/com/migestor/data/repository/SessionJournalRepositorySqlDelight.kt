@@ -89,6 +89,25 @@ class SessionJournalRepositorySqlDelight(
         )
     }
 
+    override suspend fun listJournalsForSessions(planningSessionIds: List<Long>): List<SessionJournal> = withContext(Dispatchers.Default) {
+        planningSessionIds.distinct().chunked(JOURNAL_ID_CHUNK).flatMap { chunk ->
+            db.plannerQueries.selectJournalsBySessions(chunk).executeAsList().map { it.toDomain() }
+        }
+    }
+
+    override suspend fun listJournalsWithStudentNotes(
+        planningSessionIds: List<Long>,
+        studentId: Long,
+    ): List<SessionJournalAggregate> = withContext(Dispatchers.Default) {
+        // Una consulta localiza las sesiones con notas del alumno; solo esas se
+        // cargan completas (antes: 5 consultas por cada sesión del grupo).
+        val withNotes = planningSessionIds.distinct().chunked(JOURNAL_ID_CHUNK).flatMap { chunk ->
+            db.plannerQueries.selectJournalSessionIdsWithStudentNote(studentId, chunk).executeAsList()
+        }.toSet()
+        // Mismo orden que las sesiones recibidas.
+        planningSessionIds.distinct().filter { it in withNotes }.mapNotNull { getJournalForSessionBlocking(it) }
+    }
+
     override suspend fun listSummariesForSessions(planningSessionIds: List<Long>): List<SessionJournalSummary> = withContext(Dispatchers.Default) { listSummariesForSessionsBlocking(planningSessionIds) }
 
     private suspend fun listSummariesForSessionsBlocking(planningSessionIds: List<Long>): List<SessionJournalSummary> {
@@ -259,3 +278,6 @@ class SessionJournalRepositorySqlDelight(
         return enumValues<T>().firstOrNull { it.name == this } ?: fallback
     }
 }
+
+// Por debajo del límite de variables por sentencia de SQLite (999).
+private const val JOURNAL_ID_CHUNK = 500

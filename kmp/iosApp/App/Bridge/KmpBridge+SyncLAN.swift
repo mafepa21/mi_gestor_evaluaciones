@@ -984,11 +984,18 @@ extension KmpBridge {
     }
 
     func persistPendingChanges() {
+        // La copia de la cola se toma al final de la tanda, no en cada cambio:
+        // copiarla en cada `enqueueLocalChange` era O(n²) en una instantánea
+        // del Cuaderno con cientos de cambios.
         pendingChangesPersistenceTask?.cancel()
-        let snapshot = pendingOutboundChanges
-        pendingChangesPersistenceTask = Task.detached(priority: .utility) {
-            guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
-            UserDefaults.standard.set(encoded, forKey: "sync.pending.changes.v2")
+        pendingChangesPersistenceTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            let snapshot = self.pendingOutboundChanges
+            await Task.detached(priority: .utility) {
+                guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
+                UserDefaults.standard.set(encoded, forKey: "sync.pending.changes.v2")
+            }.value
         }
     }
 

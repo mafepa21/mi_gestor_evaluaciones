@@ -128,6 +128,7 @@ final class KmpBridge: ObservableObject {
     var lastLocalMutationAt: Date = .distantPast
     /// Último momento en que se aplicaron cambios LAN entrantes (escriben en la base local).
     var lastAppliedRemoteChangesAt: Date = .distantPast
+    var isPendingCountPublishScheduled = false
     var lastCheckedDbModificationDate: Date = .distantPast
     var lastSuccessfulSyncAt: Date = .distantPast
     var lastSilentSyncAttemptAt: Date = .distantPast
@@ -635,9 +636,19 @@ final class KmpBridge: ObservableObject {
             pendingOutboundChanges.append(newChange)
         }
         lastLocalMutationAt = Date()
-        let pendingChangesCount = pendingOutboundChanges.count
-        publishSyncState {
-            $0.syncPendingChanges = pendingChangesCount
+        // Un solo aviso por tanda: una instantánea del Cuaderno encola cientos
+        // de cambios seguidos y antes cada uno creaba una Task que escribía este
+        // @Published (y redibujaba todo lo que observa el bridge).
+        if !isPendingCountPublishScheduled {
+            isPendingCountPublishScheduled = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isPendingCountPublishScheduled = false
+                let count = self.pendingOutboundChanges.count
+                if self.syncPendingChanges != count {
+                    self.syncPendingChanges = count
+                }
+            }
         }
         
         if shouldPersist {

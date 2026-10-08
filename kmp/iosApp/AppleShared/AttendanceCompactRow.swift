@@ -15,9 +15,27 @@ struct AttendanceCompactRow: View {
     let onSelect: () -> Void
     var onToggleInjury: (() -> Void)? = nil
     var onQuickNote: (() -> Void)? = nil
+    var onRegisterIncident: (() -> Void)? = nil
+    /// Fila activa al pasar lista con el teclado (↑↓ y P/A/R/M).
+    var isKeyboardFocused: Bool = false
 
     private var currentOption: AttendanceStatusOption? {
         AttendanceStatusOption.all.first(where: { $0.id == row.record?.status })
+    }
+
+    // Medidas que crecen con el tamaño de letra del sistema (Dynamic Type).
+    @ScaledMetric(relativeTo: .caption2) private var avatarSize: CGFloat = 32
+    @ScaledMetric(relativeTo: .footnote) private var statusChipWidth: CGFloat = 34
+    @ScaledMetric(relativeTo: .footnote) private var statusChipHeight: CGFloat = 30
+
+    private var identityAccessibilityValue: String {
+        var parts = [currentOption?.label ?? "Sin pasar"]
+        if row.isInjured { parts.append("lesión activa") }
+        if row.record?.hasIncident == true { parts.append("con incidencia") }
+        if let note = row.record?.note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append("nota: \(note)")
+        }
+        return parts.joined(separator: ", ")
     }
 
     var body: some View {
@@ -27,7 +45,7 @@ struct AttendanceCompactRow: View {
                 HStack(spacing: 10) {
                     if let index {
                         Text("\(index)")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(.caption2, design: .rounded).weight(.semibold))
                             .foregroundStyle(.tertiary)
                             .frame(width: 22, alignment: .trailing)
                     }
@@ -35,20 +53,20 @@ struct AttendanceCompactRow: View {
                     // Avatar con halo semántico del estado
                     Circle()
                         .fill(currentOption?.color.opacity(0.18) ?? Color.secondary.opacity(0.08))
-                        .frame(width: 32, height: 32)
+                        .frame(width: avatarSize, height: avatarSize)
                         .overlay(
                             Circle()
                                 .stroke(currentOption?.color.opacity(0.4) ?? Color.clear, lineWidth: 1.5)
                         )
                         .overlay(
                             Text(row.student.initials)
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.system(.caption2, design: .rounded).weight(.bold))
                                 .foregroundStyle(currentOption?.color ?? .secondary)
                         )
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(row.student.fullName)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
 
@@ -56,7 +74,7 @@ struct AttendanceCompactRow: View {
                         HStack(spacing: 6) {
                             if row.isInjured {
                                 Label("Lesión", systemImage: "bandage.fill")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.caption2.weight(.bold))
                                     .foregroundStyle(.orange)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 1.5)
@@ -64,7 +82,7 @@ struct AttendanceCompactRow: View {
                             }
                             if row.record?.hasIncident == true {
                                 Label("Incidencia", systemImage: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.caption2.weight(.bold))
                                     .foregroundStyle(EvaluationDesign.danger)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 1.5)
@@ -76,12 +94,12 @@ struct AttendanceCompactRow: View {
                                     Text(note)
                                         .lineLimit(1)
                                 }
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.caption2.weight(.medium))
                                 .foregroundStyle(.secondary)
                             }
                             if !row.isInjured && row.record?.hasIncident != true && (row.record?.note ?? "").isEmpty {
                                 Text(currentOption?.label ?? "Sin pasar")
-                                    .font(.system(size: 11, weight: .regular))
+                                    .font(.caption2.weight(.regular))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -91,6 +109,11 @@ struct AttendanceCompactRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(row.student.fullName)
+            .accessibilityValue(identityAccessibilityValue)
+            .accessibilityHint("Abre la ficha del alumno")
+            .accessibilityAddTraits(.isButton)
 
             if isSaving {
                 ProgressView()
@@ -112,9 +135,9 @@ struct AttendanceCompactRow: View {
                         }
                     } label: {
                         Text(option.shortLabel)
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .font(.system(.footnote, design: .rounded).weight(.bold))
                             .foregroundStyle(isCurrent ? option.accessibleTextColor : Color.secondary)
-                            .frame(width: 34, height: 30)
+                            .frame(width: statusChipWidth, height: statusChipHeight)
                             .background(
                                 isCurrent ? option.color : Color.clear,
                                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -124,7 +147,8 @@ struct AttendanceCompactRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(isCurrent ? "\(option.label) (activo, pulsar para desmarcar)" : option.label)
+                    .accessibilityLabel("\(option.label), \(row.student.fullName)")
+                    .accessibilityHint(isCurrent ? "Activo. Pulsa para desmarcar" : "")
                     .accessibilityAddTraits(isCurrent ? .isSelected : [])
                 }
             }
@@ -137,51 +161,11 @@ struct AttendanceCompactRow: View {
 
             // Zona 3: Acciones secundarias y opciones extendidas
             Menu {
-                Section("Otros estados") {
-                    ForEach(AttendanceStatusOption.secondaryOptions) { option in
-                        let isCurrent = row.record?.status == option.id
-                        Button {
-                            AppleInteractionFeedback.play(.selection)
-                            if isCurrent {
-                                onClearStatus?()
-                            } else {
-                                onPickStatus(option)
-                            }
-                        } label: {
-                            Label(
-                                isCurrent ? "\(option.label) (Desmarcar)" : option.label,
-                                systemImage: option.id == "JUSTIFICADO" ? "checkmark.seal" : "person.badge.shield.checkmark"
-                            )
-                        }
-                    }
-                }
-
-                Section("Acciones") {
-                    if let status = row.record?.status, !status.isEmpty {
-                        Button {
-                            AppleInteractionFeedback.play(.selection)
-                            onClearStatus?()
-                        } label: {
-                            Label("Desmarcar asistencia", systemImage: "arrow.counterclockwise")
-                        }
-                    }
-                    Button(action: onSelect) {
-                        Label("Abrir ficha completa", systemImage: "person.crop.circle")
-                    }
-                    if let onToggleInjury {
-                        Button(action: onToggleInjury) {
-                            Label(row.isInjured ? "Desmarcar lesión" : "Marcar lesión activa", systemImage: "cross.case")
-                        }
-                    }
-                    if let onQuickNote {
-                        Button(action: onQuickNote) {
-                            Label("Nota rápida de sesión", systemImage: "square.and.pencil")
-                        }
-                    }
-                }
+                secondaryStatusesSection
+                actionsSection
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.footnote.weight(.bold))
                     .foregroundStyle(.secondary)
                     .frame(width: 32, height: 32)
                     .background(Color.primary.opacity(0.04), in: Circle())
@@ -202,8 +186,22 @@ struct AttendanceCompactRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(isSelected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.05), lineWidth: 0.5)
+                .stroke(
+                    isKeyboardFocused ? Color.accentColor : (isSelected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.05)),
+                    lineWidth: isKeyboardFocused ? 2 : 0.5
+                )
         )
+        #if os(iOS)
+        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
+        #endif
+        .contextMenu {
+            Section("Estado") {
+                ForEach(AttendanceStatusOption.all) { option in
+                    statusMenuButton(option)
+                }
+            }
+            actionsSection
+        }
         #if os(iOS)
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
@@ -248,5 +246,65 @@ struct AttendanceCompactRow: View {
             .tint(.purple)
         }
         #endif
+    }
+
+    // MARK: - Menús compartidos (botón «…» y menú contextual)
+
+    private func statusMenuButton(_ option: AttendanceStatusOption) -> some View {
+        let isCurrent = row.record?.status == option.id
+        return Button {
+            AppleInteractionFeedback.play(.selection)
+            if isCurrent {
+                onClearStatus?()
+            } else {
+                onPickStatus(option)
+            }
+        } label: {
+            if isCurrent {
+                Label("\(option.label) (Desmarcar)", systemImage: "checkmark")
+            } else {
+                Text(option.label)
+            }
+        }
+    }
+
+    private var secondaryStatusesSection: some View {
+        Section("Otros estados") {
+            ForEach(AttendanceStatusOption.secondaryOptions) { option in
+                statusMenuButton(option)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actionsSection: some View {
+        Section("Acciones") {
+            if let status = row.record?.status, !status.isEmpty {
+                Button {
+                    AppleInteractionFeedback.play(.selection)
+                    onClearStatus?()
+                } label: {
+                    Label("Desmarcar asistencia", systemImage: "arrow.counterclockwise")
+                }
+            }
+            Button(action: onSelect) {
+                Label("Abrir ficha completa", systemImage: "person.crop.circle")
+            }
+            if let onToggleInjury {
+                Button(action: onToggleInjury) {
+                    Label(row.isInjured ? "Desmarcar lesión" : "Marcar lesión activa", systemImage: "cross.case")
+                }
+            }
+            if let onQuickNote {
+                Button(action: onQuickNote) {
+                    Label("Nota rápida de sesión", systemImage: "square.and.pencil")
+                }
+            }
+            if let onRegisterIncident {
+                Button(action: onRegisterIncident) {
+                    Label("Registrar incidencia", systemImage: "exclamationmark.triangle")
+                }
+            }
+        }
     }
 }

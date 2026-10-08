@@ -1212,12 +1212,13 @@ extension KmpBridge {
         let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date.distantPast
         let sessions = try await container.plannerRepository.listAllSessions()
             .filter { $0.groupId == classId && date(from: $0) >= cutoff }
+        // Todos los diarios en una consulta (antes: uno por sesión).
+        let journals = (try? await container.sessionJournalRepository.listJournalsForSessions(
+            planningSessionIds: sessions.map { KotlinLong(value: $0.id) }
+        )) ?? []
         var count = 0
-        for session in sessions {
-            guard let aggregate = try? await container.sessionJournalRepository.getJournalForSession(planningSessionId: session.id) else {
-                continue
-            }
-            let text = aggregate.journal.unequippedStudentsText.trimmingCharacters(in: .whitespacesAndNewlines)
+        for journal in journals {
+            let text = journal.unequippedStudentsText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty {
                 count += max(1, tokenCount(in: text))
             }

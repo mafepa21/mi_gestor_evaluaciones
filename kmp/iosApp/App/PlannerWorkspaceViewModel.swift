@@ -195,8 +195,11 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     func reloadAll(keepSelection: Bool = true) async {
-        await reloadPlannerBootstrap()
-        await reloadScheduleOnly()
+        // Grupos/planes y horario no dependen entre sí: se cargan a la vez.
+        // Las sesiones van después porque necesitan el horario.
+        async let bootstrap: Void = reloadPlannerBootstrap()
+        async let schedule: Void = reloadScheduleOnly()
+        _ = await (bootstrap, schedule)
         await reloadSessionsOnly(keepSelection: keepSelection)
     }
 

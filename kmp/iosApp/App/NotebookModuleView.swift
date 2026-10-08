@@ -24,8 +24,13 @@ struct NotebookModuleView: View {
         isCompactViewActive ? 38 : 50
     }
     #else
+    /// Factor de Dynamic Type para la altura de fila: 1 con la letra estándar.
+    @ScaledMetric(relativeTo: .body) var notebookRowScale: CGFloat = 1
+
     var notebookGridRowHeight: CGFloat {
-        isCompactViewActive ? 44 : (isCompact ? 56 : 52)
+        let base: CGFloat = isCompactViewActive ? 44 : (isCompact ? 56 : 52)
+        // Tope en AX2 (`.body` 33 pt / 17 pt), el mismo que aplica el grid al texto.
+        return (base * min(notebookRowScale, 1.95)).rounded()
     }
     #endif
     let notebookGridHeaderHeight: CGFloat = 60
@@ -566,7 +571,8 @@ struct NotebookModuleView: View {
             categoryTintById: Dictionary(
                 data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
                 uniquingKeysWith: { first, _ in first }
-            )
+            ),
+            selectedCellRange: selectedCellRange
         )
 
         NotebookGridContent(
@@ -2390,13 +2396,17 @@ struct CustomAverageExplanationPopoverView: View {
     let columns: [NotebookColumnDefinition]
     let onClose: () -> Void
 
-    private func formattedDecimal(_ value: Double) -> String {
+    private static let decimalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.locale = .current
         formatter.numberStyle = .decimal
         formatter.minimumFractionDigits = 1
         formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
+        return formatter
+    }()
+
+    private func formattedDecimal(_ value: Double) -> String {
+        Self.decimalFormatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
     }
 
     enum AverageState {

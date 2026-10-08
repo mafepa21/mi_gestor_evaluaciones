@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import SwiftUI
 import MiGestorKit
 
 extension ObservableObject where Self: AnyObject {
@@ -218,5 +219,84 @@ final class AttendanceBridgeStore: ObservableObject {
         bridgeSink(bridge.$studentsInClass, \.studentsInClass, into: &cancellables)
         bridgeSink(bridge.$allStudents, \.allStudents, into: &cancellables)
         bridgeSink(bridge.$selectedStudentsClassId, \.selectedStudentsClassId, into: &cancellables)
+    }
+}
+
+/// Lo poco que leen las pantallas base (shell iOS/iPad/Mac y `ContentView`).
+/// Las pantallas base ya no observan `KmpBridge` entero: con ~50 valores
+/// publicados, cualquier cambio (una nota guardándose, la hora del último
+/// sync cada 15-30 s) las obligaba a recalcularse enteras.
+@MainActor
+final class ShellBridgeStore: ObservableObject {
+    @Published private(set) var classes: [SchoolClass] = []
+    @Published private(set) var studentsInClass: [Student] = []
+    @Published private(set) var allStudents: [Student] = []
+    @Published private(set) var selectedStudentsClassId: Int64?
+    @Published private(set) var syncPendingChanges = 0
+    @Published private(set) var showingBulkRubricEvaluation = false
+    @Published private(set) var isRubricEvaluationPresented = false
+
+    private weak var bridge: KmpBridge?
+    private var cancellables = Set<AnyCancellable>()
+
+    func bind(to bridge: KmpBridge) {
+        guard self.bridge !== bridge else { return }
+        self.bridge = bridge
+        cancellables.removeAll()
+
+        classes = bridge.classes
+        studentsInClass = bridge.studentsInClass
+        allStudents = bridge.allStudents
+        selectedStudentsClassId = bridge.selectedStudentsClassId
+        syncPendingChanges = bridge.syncPendingChanges
+        showingBulkRubricEvaluation = bridge.showingBulkRubricEvaluation
+        isRubricEvaluationPresented = Self.isPresented(bridge.rubricEvaluationState)
+
+        bridgeSink(bridge.$classes, \.classes, into: &cancellables)
+        bridgeSink(bridge.$studentsInClass, \.studentsInClass, into: &cancellables)
+        bridgeSink(bridge.$allStudents, \.allStudents, into: &cancellables)
+        bridgeSink(bridge.$selectedStudentsClassId, \.selectedStudentsClassId, into: &cancellables)
+        bridgeSink(bridge.$syncPendingChanges, \.syncPendingChanges, into: &cancellables)
+        bridgeSink(bridge.$showingBulkRubricEvaluation, \.showingBulkRubricEvaluation, into: &cancellables)
+        bridge.$rubricEvaluationState
+            .map(Self.isPresented)
+            .removeDuplicates()
+            .sink { [weak self] value in self?.isRubricEvaluationPresented = value }
+            .store(in: &cancellables)
+    }
+
+    private static func isPresented(_ state: RubricEvaluationUiState) -> Bool {
+        state.isLoading || state.rubricDetail != nil || state.error != nil
+    }
+}
+
+/// Contenedor de los stores por módulo. No publica nada a propósito: así la
+/// pantalla base que lo posee no se redibuja cuando cambia uno de ellos; solo
+/// lo hacen las vistas hijas que observan cada store.
+@MainActor
+final class WorkspaceBridgeStores: ObservableObject {
+    let notebook = NotebookBridgeStore()
+    let dashboard = DashboardBridgeStore()
+    let students = StudentsBridgeStore()
+    let attendance = AttendanceBridgeStore()
+
+    func bind(to bridge: KmpBridge) {
+        notebook.bind(to: bridge)
+        dashboard.bind(to: bridge)
+        students.bind(to: bridge)
+        attendance.bind(to: bridge)
+    }
+}
+
+/// Referencia a `KmpBridge` sin suscribirse a sus cambios. Para vistas que
+/// solo llaman a acciones del bridge; los datos que pintan llegan por un store.
+private struct KmpBridgeReferenceKey: EnvironmentKey {
+    static let defaultValue: KmpBridge? = nil
+}
+
+extension EnvironmentValues {
+    var kmpBridgeReference: KmpBridge? {
+        get { self[KmpBridgeReferenceKey.self] }
+        set { self[KmpBridgeReferenceKey.self] = newValue }
     }
 }

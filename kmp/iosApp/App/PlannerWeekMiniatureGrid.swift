@@ -35,6 +35,7 @@ struct PlannerWeekMiniatureGrid: View {
             let columnWidth = gridWidth(proxy.size.width, days: days.count)
             let rowHeight = gridHeight(proxy.size.height, rows: slots.count)
             let isCompact = vm.density == .compact
+            let mainSubject = dominantSubject
 
             // El grid tiene celdas de tamaño fijo calculado geométricamente; a partir de
             // tamaños de accesibilidad grandes el texto rompería el layout, así que se
@@ -126,10 +127,14 @@ struct PlannerWeekMiniatureGrid: View {
                     let isCurrentPeriod = slot.period == currentPeriodNumber
                     HStack(spacing: gridSpacing) {
                         VStack(spacing: 2) {
-                            Text("P\(slot.period)")
-                                .font(.caption2.weight(.bold))
-                            Text(slot.label)
-                                .font(.system(size: 9, weight: .medium))
+                            // La hora y no «P10»: las franjas propias se numeran tras las
+                            // del centro y el número parecía desordenado.
+                            Text(slot.startTime)
+                                .font(.caption.weight(.bold))
+                                .monospacedDigit()
+                            Text(slot.endTime)
+                                .font(.system(size: 10, weight: .medium))
+                                .monospacedDigit()
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
@@ -151,6 +156,7 @@ struct PlannerWeekMiniatureGrid: View {
                                 isToday: day == todayDayIndex,
                                 vm: vm,
                                 isCompact: isCompact,
+                                mainSubject: mainSubject,
                                 onTap: {
                                     withAnimation(uiFeatureFlags.interactionAnimation) {
                                         selectedCell = key
@@ -171,6 +177,18 @@ struct PlannerWeekMiniatureGrid: View {
             }
         }
         .dynamicTypeSize(...DynamicTypeSize.xLarge)
+    }
+
+    /// Materia más repetida del horario de la semana: no se muestra en cada celda
+    /// porque no aporta nada; solo se etiquetan las franjas de otra materia.
+    private var dominantSubject: String? {
+        var counts: [String: Int] = [:]
+        for entries in weekBoard.weekRenderModel.entriesByCell.values {
+            for entry in entries where entry.kind == .scheduledSlot {
+                if let subject = entry.preview.nilIfBlank { counts[subject, default: 0] += 1 }
+            }
+        }
+        return counts.max { $0.value < $1.value }?.key
     }
 
     private var isCurrentWeek: Bool {
@@ -281,6 +299,7 @@ private struct PlannerWeekMiniatureCell: View {
     let isToday: Bool
     let vm: PlannerWorkspaceViewModel
     let isCompact: Bool
+    let mainSubject: String?
     let onTap: () -> Void
     let onOpenSession: (PlanningSession) -> Void
     var onOpenDiary: ((PlanningSession) -> Void)? = nil
@@ -346,7 +365,9 @@ private struct PlannerWeekMiniatureCell: View {
                     }
                 }
 
-                if !isHoliday, let entry = primaryEntry, entries.count == 1 {
+                // El «+» de franja libre solo al pasar el ratón; los estados de sesión siempre.
+                if !isHoliday, let entry = primaryEntry, entries.count == 1,
+                   entry.kind != .scheduledSlot || isHovering {
                     VStack {
                         HStack {
                             Spacer()
@@ -430,41 +451,79 @@ private struct PlannerWeekMiniatureCell: View {
 
     @ViewBuilder
     private func singleEntryContent(_ entry: PlannerWeekCellEntry) -> some View {
-        VStack(alignment: .leading, spacing: isCompact ? 1 : 3) {
-            HStack(spacing: 4) {
-                Text(abbreviation(for: entry))
-                    .font(.system(size: isCompact ? 9 : 9.5, weight: .heavy, design: .rounded))
-                    .foregroundStyle(groupTint(for: entry))
-                    .lineLimit(1)
+        HStack(alignment: .top, spacing: isCompact ? 5 : 7) {
+            Capsule()
+                .fill(entry.kind == .blockedSlot ? Color.indigo : groupTint(for: entry))
+                .frame(width: 3.5)
+                .padding(.vertical, 1)
 
-                if let sessionBadge = compactSessionBadge(for: entry) {
-                    Text(sessionBadge)
-                        .font(.system(size: isCompact ? 8 : 8.5, weight: .bold, design: .rounded))
+            VStack(alignment: .leading, spacing: isCompact ? 1 : 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(entry.className)
+                        .font(.system(size: isCompact ? 12 : 13.5, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    if let sessionBadge = compactSessionBadge(for: entry) {
+                        Text(sessionBadge)
+                            .font(.system(size: isCompact ? 9 : 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    if let subject = otherSubject(for: entry) {
+                        Text(subject)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .stroke(EvaluationDesign.border, lineWidth: 1)
+                            )
+                    }
+                }
+                .padding(.trailing, 14)
+
+                if let title = plannedTitle(for: entry) {
+                    Text(title)
+                        .font(.system(size: isCompact ? 10.5 : 11.5, weight: .medium))
+                        .foregroundStyle(.primary.opacity(0.85))
+                        .lineLimit(isCompact ? 1 : 2)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text("Sin planificar")
+                        .font(.system(size: isCompact ? 10.5 : 11.5, weight: .regular).italic())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-
-                Spacer(minLength: 0)
-            }
-
-            Text(entryTitle(for: entry))
-                .font(.system(size: isCompact ? 8.5 : 9.5, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(isCompact ? 1 : 2)
-                .minimumScaleFactor(0.75)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if !isCompact, let summary = entrySummary(for: entry) {
-                Text(summary)
-                    .font(.system(size: 8.5, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(isCompact ? 4 : 6)
+        .padding(isCompact ? 5 : 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// Título de la sesión o del bloque. Si la franja solo repite la materia,
+    /// devuelve nil para mostrar "Sin planificar".
+    private func plannedTitle(for entry: PlannerWeekCellEntry) -> String? {
+        guard let title = entryTitle(for: entry).nilIfBlank else { return nil }
+        if entry.kind == .scheduledSlot,
+           title.localizedCaseInsensitiveCompare(entry.preview) == .orderedSame || title == "Franja preparada" {
+            return nil
+        }
+        return title
+    }
+
+    /// Materia solo cuando no es la habitual del horario (p. ej. Tutoría).
+    private func otherSubject(for entry: PlannerWeekCellEntry) -> String? {
+        guard entry.kind == .scheduledSlot, let subject = entry.preview.nilIfBlank else { return nil }
+        if let mainSubject, subject.localizedCaseInsensitiveCompare(mainSubject) == .orderedSame { return nil }
+        return subject
     }
 
     @ViewBuilder
@@ -495,12 +554,6 @@ private struct PlannerWeekMiniatureCell: View {
 
     private func entryTitle(for entry: PlannerWeekCellEntry) -> String {
         entry.sessionGlance?.sessionTitle.nilIfBlank ?? entry.title
-    }
-
-    private func entrySummary(for entry: PlannerWeekCellEntry) -> String? {
-        entry.sessionGlance?.objective?.nilIfBlank
-            ?? entry.sessionGlance?.activity?.nilIfBlank
-            ?? entry.preview.nilIfBlank
     }
 
     private func compactSessionBadge(for entry: PlannerWeekCellEntry) -> String? {
@@ -572,6 +625,7 @@ private struct PlannerWeekMiniatureCell: View {
         if entry.kind == .blockedSlot {
             return Color.indigo.opacity(0.14)
         }
+        if entries.count == 1 { return EvaluationDesign.surface }
         return groupTint(for: entry).opacity(entry.kind == .scheduledSlot ? 0.14 : 0.22)
     }
 

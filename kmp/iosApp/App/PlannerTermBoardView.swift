@@ -46,6 +46,8 @@ struct PlannerTermBoardView: View {
                     onOpenSession: onOpenSession,
                     onAddExtraSession: { vm.addExtraSession(at: $0) }
                 )
+                // Sin recorte, la lista se veía pasar por debajo de las tarjetas de arriba.
+                .clipped()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -73,9 +75,9 @@ struct PlannerTermBoardView: View {
     private var topControlBar: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Evaluación · Tablero de Encaje")
+                Text("Huecos por planificar")
                     .font(.title2.weight(.bold))
-                Text("Capacidad lectiva real, festivos y previsión de encaje de SAs")
+                Text("Clases de tu horario, festivos y dónde cabe cada SA")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

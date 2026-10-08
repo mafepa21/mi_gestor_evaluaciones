@@ -1,7 +1,7 @@
 import SwiftUI
 import MiGestorKit
 
-/// Ajustes → Calendario de Apple: activa la copia de los eventos de la app a un calendario «Colegio».
+/// Ajustes → Calendario de Apple: sincroniza la app con el calendario «Colegio» de la cuenta de Calendario.
 struct AppleCalendarSettingsView: View {
     @EnvironmentObject var bridge: KmpBridge
     @AppStorage(AppleCalendarMirror.enabledKey) private var isEnabled = false
@@ -11,13 +11,13 @@ struct AppleCalendarSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Copiar eventos a Calendario de Apple", isOn: Binding(
+                Toggle("Sincronizar con Calendario de Apple", isOn: Binding(
                     get: { isEnabled },
                     set: { newValue in Task { await update(newValue) } }
                 ))
                 .disabled(isWorking)
             } footer: {
-                Text("Los eventos que creas, cambias o borras en la app se copian a un calendario «Colegio» de tu cuenta de Calendario.")
+                Text("Los eventos del curso que están en «Colegio» aparecen en la app. Los eventos que creas o cambias en la app se guardan en «Colegio».")
             }
 
             if let message {
@@ -34,7 +34,7 @@ struct AppleCalendarSettingsView: View {
     private func update(_ enable: Bool) async {
         guard enable else {
             isEnabled = false
-            message = "Copia desactivada. Los eventos que ya están en Calendario de Apple no se borran."
+            message = "Sincronización desactivada. Los eventos que ya están en Calendario de Apple no se borran."
             return
         }
 
@@ -58,25 +58,13 @@ struct AppleCalendarSettingsView: View {
 
         isEnabled = true
         do {
-            let events = try await bridge.plannerAllCalendarEvents()
-            let copied = mirror.mirrorMissing(events.map(AppleCalendarMirror.Item.init(event:)))
-            message = copied == 0
-                ? "Calendario «Colegio» listo."
-                : "Calendario «Colegio» listo. Se han copiado \(copied) eventos que ya existían."
+            let created = try await bridge.backfillAppleCalendarLinks()
+            bridge.reconcileAppleCalendarIfEnabled()
+            message = created == 0
+                ? "Calendario «Colegio» listo y sincronizado."
+                : "Calendario «Colegio» listo. Se han copiado \(created) eventos que ya existían."
         } catch {
             message = "Calendario «Colegio» listo, pero no pude copiar los eventos que ya existían: \(error.localizedDescription)"
         }
-    }
-}
-
-extension AppleCalendarMirror.Item {
-    init(event: CalendarEvent) {
-        self.init(
-            localId: event.id,
-            title: event.title,
-            notes: event.description_,
-            startMs: event.startAt.toEpochMilliseconds(),
-            endMs: event.endAt.toEpochMilliseconds()
-        )
     }
 }

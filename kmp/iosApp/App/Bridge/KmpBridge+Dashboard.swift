@@ -12,49 +12,16 @@ import SwiftUI
 
 @MainActor
 extension KmpBridge {
+    /// Solo el texto de totales (subtítulo de la ventana del Mac). Antes también
+    /// cargaba eventos, partes de todos los grupos y notas de seis grupos para
+    /// valores que ninguna vista leía, y se llama tras muchas acciones
+    /// (guardar asistencia, editar alumnado) y tras cada sync.
     func refreshDashboard() async throws {
         let stats = try await container.dashboardRepository.getStats()
-        
-        // Fetch Upcoming Classes
-        let allEvents = try await container.calendarRepository.listEvents(classId: nil)
-        let now = ClockSystem.shared.now()
-        let upcoming = allEvents.filter { $0.startAt.epochSeconds > now.epochSeconds }
-            .sorted { $0.startAt.epochSeconds < $1.startAt.epochSeconds }
-            .prefix(3).map { $0 }
-
-        // Fetch Classes for distribution and tasks
-        let allClasses = try await container.classesRepository.listClasses()
-        
-        // Pending Tasks (Incidents)
-        var allIncidents: [Incident] = []
-        for cls in allClasses {
-            let incidents = try await container.incidentsRepository.listIncidents(classId: cls.id)
-            allIncidents.append(contentsOf: incidents)
+        let text = "Alumnos \(stats.totalStudents) · Clases \(stats.totalClasses) · Eval \(stats.totalEvaluations)"
+        if statsText != text {
+            statsText = text
         }
-        let pending = Array(allIncidents.prefix(3))
-        
-        // Activity Groups (Averages by Class)
-        var groups: [ActivityGroup] = []
-        let recentClasses = allClasses.prefix(6)
-        for cls in recentClasses {
-            let grades = try await container.gradesRepository.listGradesForClass(classId: cls.id)
-            let values = grades.compactMap { $0.value?.doubleValue }
-            let avg = values.isEmpty ? 0.0 : values.reduce(0, +) / Double(values.count)
-            groups.append(ActivityGroup(name: cls.name, average: avg))
-        }
-
-        statsText = "Alumnos \(stats.totalStudents) · Clases \(stats.totalClasses) · Eval \(stats.totalEvaluations)"
-        self.upcomingClasses = upcoming
-        
-        // Distribution
-        let esoCount = allClasses.filter { $0.course <= 4 }.count
-        let totalC = max(allClasses.count, 1)
-        let ratio = Double(esoCount) / Double(totalC)
-        self.esoPercentage = Int(ratio * 100)
-        self.bachPercentage = 100 - self.esoPercentage
-        
-        self.pendingTasks = pending
-        self.activityGroups = groups
     }
 
     func loadDashboard(mode: DashboardMode) async throws {

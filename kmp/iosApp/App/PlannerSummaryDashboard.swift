@@ -241,7 +241,7 @@ struct PlannerSummaryDashboard: View {
                 PlannerSummaryMetricCard(
                     title: "Cobertura",
                     value: "\(stats.coveragePercent)%",
-                    subtitle: "\(stats.coveredSlots) de \(stats.totalSlots) franjas",
+                    subtitle: "Clases de tu horario con sesión: \(stats.coveredSlots) de \(stats.totalSlots)",
                     tint: stats.coveragePercent >= 80 ? EvaluationDesign.success : EvaluationDesign.accent,
                     systemImage: "chart.bar.xaxis"
                 )
@@ -594,15 +594,19 @@ private struct PlannerCoveragePanel: View {
         }
     }
 
-    /// Semanas restantes hasta el final de curso configurado (`vm.scheduleEndDate`),
-    /// para dar contexto a un porcentaje de cobertura que si no queda sin referencia.
-    private var remainingWeeks: Int? {
+    private static let isoDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .iso8601)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone.current
         formatter.dateFormat = "yyyy-MM-dd"
-        guard let endDate = formatter.date(from: vm.scheduleEndDate) else { return nil }
+        return formatter
+    }()
+
+    /// Semanas restantes hasta el final de curso configurado (`vm.scheduleEndDate`),
+    /// para dar contexto a un porcentaje de cobertura que si no queda sin referencia.
+    private var remainingWeeks: Int? {
+        guard let endDate = Self.isoDateFormatter.date(from: vm.scheduleEndDate) else { return nil }
         let days = Calendar(identifier: .iso8601).dateComponents([.day], from: Date(), to: endDate).day ?? 0
         guard days > 0 else { return nil }
         return Int((Double(days) / 7.0).rounded(.up))

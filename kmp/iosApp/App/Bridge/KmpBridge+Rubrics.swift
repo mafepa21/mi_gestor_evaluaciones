@@ -40,13 +40,24 @@ extension KmpBridge {
         }
 
         let currentClasses = self.classes
+        let evaluationsRepository = container.evaluationsRepository
+        // Una consulta por grupo, lanzadas a la vez.
+        let evaluationsByClass = try await withThrowingTaskGroup(of: (Int64, [Evaluation]).self) { group in
+            for schoolClass in currentClasses {
+                group.addTask { @MainActor in
+                    (schoolClass.id, try await evaluationsRepository.listClassEvaluations(classId: schoolClass.id))
+                }
+            }
+            var result: [(Int64, [Evaluation])] = []
+            for try await entry in group { result.append(entry) }
+            return result
+        }
         var links: [Int64: Set<Int64>] = [:]
-        for schoolClass in currentClasses {
-            let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: schoolClass.id)
+        for (classId, evaluations) in evaluationsByClass {
             for evaluation in evaluations {
                 if let rubricId = evaluation.rubricId?.int64Value {
                     var classSet = links[rubricId] ?? Set<Int64>()
-                    classSet.insert(schoolClass.id)
+                    classSet.insert(classId)
                     links[rubricId] = classSet
                 }
             }
@@ -309,6 +320,7 @@ extension KmpBridge {
     
     func closeBulkRubricEvaluation() {
         showingBulkRubricEvaluation = false
+        rubricBulkEvaluationViewModel.onSheetClosed()
         // Al cerrar la masiva, limpiamos cualquier overlay individual residual.
         rubricEvaluationState = RubricEvaluationUiState.companion.default()
     }

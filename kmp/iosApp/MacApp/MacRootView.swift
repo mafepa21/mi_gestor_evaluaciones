@@ -14,10 +14,13 @@ struct MacRootView: View {
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
     @ObservedObject private var notebookEditMenu = NotebookEditMenuState.shared
-    @StateObject private var notebookStore = NotebookBridgeStore()
-    @StateObject private var dashboardStore = DashboardBridgeStore()
-    @StateObject private var studentsBridgeStore = StudentsBridgeStore()
-    @StateObject private var attendanceStore = AttendanceBridgeStore()
+    // Contenedor que no publica: la raíz del Mac ya no se redibuja entera con
+    // cada nota o cada sync; solo las vistas que observan cada store.
+    @StateObject private var workspaceStores = WorkspaceBridgeStores()
+    private var notebookStore: NotebookBridgeStore { workspaceStores.notebook }
+    private var dashboardStore: DashboardBridgeStore { workspaceStores.dashboard }
+    private var studentsBridgeStore: StudentsBridgeStore { workspaceStores.students }
+    private var attendanceStore: AttendanceBridgeStore { workspaceStores.attendance }
     @StateObject private var physicalTestsToolbarActions = MacPhysicalTestsToolbarActions()
     @StateObject private var physicalTestsInspectorState = PhysicalTestsMacInspectorState()
     @StateObject private var studentsStore = MacStudentsStore()
@@ -28,6 +31,7 @@ struct MacRootView: View {
     @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var isAttendanceFilterPopoverPresented = false
+    @AppStorage("dashboard_mode_preference") private var dashboardModeRaw = DashboardModePreference.auto.rawValue
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var plannerToolbarActions: PlannerMacToolbarActions? = nil
     @State private var plannerInspectorSession: PlanningSession? = nil
@@ -106,10 +110,7 @@ struct MacRootView: View {
             // escaneo, una base apartada cuyo marcador ya se había descartado
             // seguía pareciendo una base vacía sin explicación.
             backupService.scanQuarantinedDatabases()
-            notebookStore.bind(to: session.bridge)
-            dashboardStore.bind(to: session.bridge)
-            studentsBridgeStore.bind(to: session.bridge)
-            attendanceStore.bind(to: session.bridge)
+            workspaceStores.bind(to: session.bridge)
 
             session.start()
             await startCommandCenterAfterInitialLayout()
@@ -908,17 +909,21 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder
     private var macDefaultWorkspaceToolbar: some ToolbarContent {
-        ToolbarItem(placement: .secondaryAction) {
-            Button {
-                Task { await session.bridge.pullMissingSyncChanges() }
-            } label: {
-                Label("Sync", systemImage: "arrow.triangle.2.circlepath")
-            }
-            .help("Sincronizar con desktop")
-        }
-
         ToolbarItemGroup {
             if selectedFeature == .dashboard, let dashboardToolbarActions {
+                Picker("Modo del Dashboard", selection: $dashboardModeRaw) {
+                    ForEach(DashboardModePreference.allCases) { option in
+                        Text(option.title).tag(option.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .help("Modo del Dashboard (⌘1, ⌘2, ⌘3)")
+
+                if let pill = dashboardToolbarActions.syncPill {
+                    DashboardSyncPillView(state: pill)
+                }
+
                 Button {
                     dashboardToolbarActions.passList()
                 } label: {
@@ -926,16 +931,30 @@ struct MacRootView: View {
                 }
                 .disabled(!dashboardToolbarActions.canRunActions)
                 .keyboardShortcut("l", modifiers: [.command])
-                .buttonStyle(.borderedProminent)
                 .help("Pasar lista para la clase activa")
 
                 Menu {
                     Button {
                         dashboardToolbarActions.observation()
                     } label: {
-                        Label("Observación", systemImage: "note.text.badge.plus")
+                        Label("Nueva observación", systemImage: "note.text.badge.plus")
                     }
                     .disabled(!dashboardToolbarActions.canRunActions)
+
+                    if let snapshot = dashboardToolbarActions.snapshot {
+                        Menu {
+                            ForEach([DashboardCSVExport.Kind.today, .alerts, .groups, .agenda], id: \.title) { kind in
+                                ShareLink(
+                                    item: DashboardCSVExport(kind: kind, snapshot: snapshot),
+                                    preview: SharePreview("\(kind.title).csv")
+                                ) {
+                                    Text(kind.title)
+                                }
+                            }
+                        } label: {
+                            Label("Exportar", systemImage: "square.and.arrow.up")
+                        }
+                    }
                 } label: {
                     Label("Más", systemImage: "ellipsis.circle")
                 }
@@ -1116,8 +1135,10 @@ struct MacRootView: View {
                         }
                     }
                 )) {
+                    // Texto y no icono: en la barra de macOS un Label segmentado solo
+                    // enseña el icono, y seis iconos de calendario no se distinguen.
                     ForEach(PlannerWorkspaceSection.allCases) { section in
-                        Label(section.rawValue, systemImage: section.systemImage).tag(section)
+                        Text(section.toolbarTitle).tag(section)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -1219,24 +1240,26 @@ struct MacRootView: View {
                 .help("Nueva sesión (⌘⇧N)")
             }
 
-            Button {
-                refreshCurrentFeature()
-            } label: {
-                Label("Refrescar", systemImage: "arrow.clockwise")
-            }
-            .keyboardShortcut("r", modifiers: [.command])
-            .help("Refrescar datos")
-
         }
 
+        // Un solo control para sincronizar y recargar: antes había «Sync»,
+        // «Refrescar» y la etiqueta de estado, tres cosas para lo mismo.
         ToolbarItem {
-            MacStatusPill(
-                label: session.bridge.syncPendingChanges > 0
-                    ? "\(session.bridge.syncPendingChanges) pendientes"
-                    : "Sincronizado",
-                isActive: session.bridge.syncPendingChanges > 0,
-                tint: session.bridge.syncPendingChanges > 0 ? MacAppStyle.warningTint : MacAppStyle.successTint
-            )
+            Button {
+                Task { await session.bridge.pullMissingSyncChanges() }
+                refreshCurrentFeature()
+            } label: {
+                MacStatusPill(
+                    label: session.bridge.syncPendingChanges > 0
+                        ? "\(session.bridge.syncPendingChanges) pendientes"
+                        : "Sincronizado",
+                    isActive: session.bridge.syncPendingChanges > 0,
+                    tint: session.bridge.syncPendingChanges > 0 ? MacAppStyle.warningTint : MacAppStyle.successTint
+                )
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("r", modifiers: [.command])
+            .help("Sincronizar y recargar (⌘R)")
         }
     }
 

@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta viva: Dashboard en 3 franjas</title>
+<style>
+/* ============ Tokens ============ */
+:root{
+  --s1:.5rem;--s2:1rem;--s3:1.5rem;--s4:2rem;--s5:2.5rem;--s6:3rem;   /* rejilla 8pt */
+  --r-card:1.25rem;--r-ctrl:.875rem;--r-pill:62.5rem;--r-sm:.5rem;    /* 20 / 14 / pill / 8 */
+  --t-large:2.125rem;--t-title:1.375rem;--t-head:1.0625rem;--t-sub:.9375rem;--t-foot:.8125rem;--t-cap:.75rem;
+  --bg:#f2f2f7;--card:#fff;--card2:#f7f7fa;--fg:#1c1c1e;--mut:#5b5b62;--line:rgba(60,60,67,.18);
+  --acc:#0060df;--acc-fg:#fff;--red:#c4231a;--red-bg:rgba(196,35,26,.10);--org:#a34700;--org-bg:rgba(163,71,0,.11);
+  --blu:#0060df;--blu-bg:rgba(0,96,223,.10);--grn:#1d7a3a;--grn-bg:rgba(29,122,58,.11);
+  --glass:rgba(255,255,255,.55);--glass-b:rgba(255,255,255,.75);--glass-s:rgba(0,0,0,.10);--glass-hi:rgba(255,255,255,.9);
+  --wall1:#cfe3ff;--wall2:#ffe3d1;--shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06);
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#000;--card:#1c1c1e;--card2:#242427;--fg:#f5f5f7;--mut:#a5a5ad;--line:rgba(235,235,245,.18);
+  --acc:#4da3ff;--acc-fg:#001a33;--red:#ff7b73;--red-bg:rgba(255,123,115,.16);--org:#ffb340;--org-bg:rgba(255,179,64,.15);
+  --blu:#4da3ff;--blu-bg:rgba(77,163,255,.16);--grn:#5fd07f;--grn-bg:rgba(95,208,127,.15);
+  --glass:rgba(60,60,67,.5);--glass-b:rgba(255,255,255,.22);--glass-s:rgba(0,0,0,.5);--glass-hi:rgba(255,255,255,.3);
+  --wall1:#12305e;--wall2:#4a2a1c;--shadow:0 1px 2px rgba(0,0,0,.4);}}
+:root[data-theme=dark]{
+  --bg:#000;--card:#1c1c1e;--card2:#242427;--fg:#f5f5f7;--mut:#a5a5ad;--line:rgba(235,235,245,.18);
+  --acc:#4da3ff;--acc-fg:#001a33;--red:#ff7b73;--red-bg:rgba(255,123,115,.16);--org:#ffb340;--org-bg:rgba(255,179,64,.15);
+  --blu:#4da3ff;--blu-bg:rgba(77,163,255,.16);--grn:#5fd07f;--grn-bg:rgba(95,208,127,.15);
+  --glass:rgba(60,60,67,.5);--glass-b:rgba(255,255,255,.22);--glass-s:rgba(0,0,0,.5);--glass-hi:rgba(255,255,255,.3);
+  --wall1:#12305e;--wall2:#4a2a1c;--shadow:0 1px 2px rgba(0,0,0,.4);}
+*{box-sizing:border-box}
+html{font-size:100%}
+body{margin:0;font:var(--t-sub)/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+button,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:.125rem solid var(--acc);outline-offset:.125rem}
+h1,h2,h3,p{margin:0}
+.t-large{font-size:var(--t-large);font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.t-title{font-size:var(--t-title);font-weight:700;line-height:1.2}
+.t-head{font-size:var(--t-head);font-weight:600;line-height:1.3}
+.t-sub{font-size:var(--t-sub)}
+.t-foot{font-size:var(--t-foot)}
+.t-cap{font-size:var(--t-foot);font-weight:600}
+.mut{color:var(--mut)}
+.num{font-variant-numeric:tabular-nums}
+
+/* ============ Barra de la maqueta (no forma parte de la app) ============ */
+.lab{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;gap:var(--s2) var(--s3);align-items:center;padding:var(--s1) var(--s2);
+  background:var(--card);border-bottom:1px solid var(--line)}
+.lab fieldset{border:0;margin:0;padding:0;display:flex;gap:.25rem;align-items:center;flex-wrap:wrap}
+.lab legend{float:left;margin-right:var(--s1);font-size:var(--t-cap);text-transform:uppercase;letter-spacing:.04em;color:var(--mut);padding:0}
+.chip{min-height:2.75rem;padding:0 var(--s2);border-radius:var(--r-pill);border:1px solid var(--line);background:var(--card2)}
+.chip[aria-pressed=true]{background:var(--acc);color:var(--acc-fg);border-color:transparent;font-weight:600}
+.stage{padding:var(--s3) var(--s2) var(--s5);display:flex;justify-content:center}
+
+/* ============ Marcos de dispositivo ============ */
+.device{position:relative;width:100%;border-radius:1.75rem;background:var(--bg);border:1px solid var(--line);box-shadow:var(--shadow);
+  container-type:inline-size;transition:max-width .35s ease}
+.device[data-dev=ipad]{max-width:73.75rem}
+.device[data-dev=half]{max-width:32.5rem}
+.device[data-dev=mac]{max-width:80rem;border-radius:.75rem}
+.titlebar{display:none;height:2.5rem;align-items:center;gap:.5rem;padding:0 var(--s2);border-bottom:1px solid var(--line)}
+.device[data-dev=mac] .titlebar{display:flex}
+.dot{width:.75rem;height:.75rem;border-radius:50%}
+.win{display:grid;grid-template-columns:1fr}
+.device[data-dev=mac] .win{grid-template-columns:13.5rem 1fr}
+.side{display:none;padding:var(--s2);border-right:1px solid var(--line);background:var(--card2);border-radius:0 0 0 .75rem}
+.device[data-dev=mac] .side{display:block}
+.side a{display:flex;align-items:center;min-height:2.75rem;padding:0 var(--s1);border-radius:var(--r-sm);color:var(--fg);text-decoration:none;gap:var(--s1)}
+.side a[aria-current]{background:var(--blu-bg);color:var(--acc);font-weight:600}
+
+/* ============ App ============ */
+.app{position:relative;padding:var(--s3);min-height:46rem;overflow:hidden;border-radius:inherit;
+  background:radial-gradient(40rem 24rem at 90% -10%,var(--wall1),transparent 70%),radial-gradient(34rem 22rem at -10% 0%,var(--wall2),transparent 70%),var(--bg)}
+.app.mode-clase{background:radial-gradient(50rem 32rem at 80% 0%,var(--wall1),transparent 70%),radial-gradient(40rem 30rem at 0% 100%,var(--wall2),transparent 70%),var(--bg)}
+.hdr{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;justify-content:space-between;margin-bottom:var(--s4)}
+.hdr .who{min-width:0}
+.hdr .ctl{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap}
+.sync-line{position:absolute;left:0;right:0;top:0;height:.1875rem;background:linear-gradient(90deg,transparent,var(--acc),transparent);background-size:40% 100%;background-repeat:no-repeat;animation:sl 1.4s linear infinite}
+@keyframes sl{from{background-position:-40% 0}to{background-position:140% 0}}
+
+/* ---- Liquid Glass simulado: solo controles ---- */
+.glass{background:var(--glass);-webkit-backdrop-filter:blur(20px) saturate(1.7);backdrop-filter:blur(20px) saturate(1.7);
+  border:1px solid var(--glass-b);box-shadow:inset 0 1px 0 var(--glass-hi),0 2px 10px var(--glass-s);color:var(--fg)}
+.btn{min-height:2.75rem;min-width:2.75rem;padding:0 var(--s2);border-radius:var(--r-ctrl);display:inline-flex;align-items:center;justify-content:center;gap:var(--s1);
+  font-weight:600;transition:transform .15s ease,background .15s ease}
+.btn:hover{background:var(--glass-b)}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--acc);color:var(--acc-fg);border-color:transparent;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 14px rgba(0,96,223,.3)}
+.btn.primary:hover{filter:brightness(1.08);background:var(--acc)}
+.btn.lg{min-height:3.5rem;padding:0 var(--s4);font-size:var(--t-head);border-radius:1.125rem}
+.btn.sm{font-size:var(--t-foot);padding:0 var(--s2)}
+.seg{display:inline-flex;padding:.25rem;border-radius:var(--r-pill);gap:.125rem;position:relative}
+.seg button{min-height:2.75rem;padding:0 var(--s2);border:0;background:none;border-radius:var(--r-pill);font-weight:500;color:var(--mut);transition:background .25s,color .25s}
+.seg button[aria-checked=true]{background:var(--card);color:var(--fg);font-weight:600;box-shadow:0 1px 4px var(--glass-s)}
+.pill{display:inline-flex;align-items:center;gap:var(--s1);min-height:2.75rem;padding:0 var(--s2);border-radius:var(--r-pill);font-size:var(--t-foot);font-weight:600;border:1px solid var(--glass-b)}
+.pill i{width:.5rem;height:.5rem;border-radius:50%;background:var(--grn)}
+.pill.off i{background:var(--org)}
+.pill .spin{width:.875rem;height:.875rem;border:.125rem solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:rot .8s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.menu-wrap{position:relative}
+.menu{position:absolute;right:0;top:calc(100% + .5rem);z-index:30;min-width:15rem;padding:.5rem;border-radius:var(--r-card);animation:pop .18s ease both;transform-origin:top right}
+.menu button{display:flex;width:100%;align-items:center;gap:var(--s1);min-height:2.75rem;padding:0 var(--s1);border:0;background:none;border-radius:.625rem;text-align:left}
+.menu button:hover{background:var(--blu-bg)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:.25rem 0}
+.badge{min-width:1.375rem;height:1.375rem;padding:0 .375rem;border-radius:var(--r-pill);background:var(--acc);color:var(--acc-fg);font-size:var(--t-cap);font-weight:700;display:inline-grid;place-items:center}
+@keyframes pop{from{opacity:0;transform:scale(.96) translateY(-4px)}}
+
+/* ---- Contenido: tarjetas planas, sin cristal ---- */
+.card{background:var(--card);border-radius:var(--r-card);padding:var(--s3);box-shadow:var(--shadow)}
+.stack{display:grid;gap:var(--s4)}
+.band-h{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s2);margin-bottom:var(--s2)}
+.kpis{display:flex;gap:var(--s3);flex-wrap:wrap}
+.kpi{min-width:6rem}
+.kpi b{display:block;font-size:var(--t-title);line-height:1.2}
+.roll{display:inline-block;animation:roll .35s ease both}
+@keyframes roll{from{opacity:0;transform:translateY(.5rem)}}
+
+/* AHORA */
+.now{display:grid;gap:var(--s2);grid-template-columns:1fr auto;align-items:end}
+.now .big{font-size:var(--t-large);font-weight:700;letter-spacing:-.02em}
+.now .time{text-align:right}
+.now .time b{font-size:3rem;line-height:1;font-weight:700;letter-spacing:-.03em}
+.bar{height:.5rem;border-radius:var(--r-pill);background:var(--line);overflow:hidden;grid-column:1/-1}
+.bar>span{display:block;height:100%;width:0;border-radius:inherit;background:var(--acc);transition:width 1s cubic-bezier(.2,.8,.2,1)}
+.now .acts{grid-column:1/-1;display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;margin-top:var(--s1)}
+
+/* ATENCION */
+.brief{display:flex;gap:var(--s1);align-items:center;color:var(--mut);margin-bottom:var(--s2)}
+.rows{display:grid}
+.row{display:grid;grid-template-columns:2.5rem 1fr auto;gap:var(--s2);align-items:center;min-height:4.5rem;padding:var(--s1) var(--s1);border-radius:var(--r-ctrl);transition:background .15s ease}
+.row+.row{border-top:1px solid var(--line)}
+@media(hover:hover){.row:hover{background:var(--card2)}.row:hover .row-t{color:var(--acc)}}
+.row-main{background:none;border:0;text-align:left;padding:0;min-height:2.75rem;display:grid;align-content:center}
+.row-t{font-weight:600;transition:color .15s}
+.ico{width:2.5rem;height:2.5rem;border-radius:.75rem;display:grid;place-items:center}
+.ico svg{width:1.25rem;height:1.25rem}
+.ico.risk{background:var(--red-bg);color:var(--red)}.ico.alert{background:var(--org-bg);color:var(--org)}.ico.pend{background:var(--blu-bg);color:var(--blu)}
+.act{min-height:2.75rem;padding:0 var(--s2);border-radius:var(--r-pill);border:1px solid var(--line);background:var(--card2);font-weight:600;font-size:var(--t-foot);color:var(--acc)}
+.act:hover{background:var(--blu-bg)}
+.empty{display:grid;justify-items:center;text-align:center;gap:var(--s1);padding:var(--s4) var(--s2)}
+.empty .ico{width:3.5rem;height:3.5rem;border-radius:50%;background:var(--grn-bg);color:var(--grn)}
+
+/* CONTEXTO */
+.ctx{display:grid;gap:var(--s2);grid-template-columns:repeat(3,1fr);align-items:start}
+details.card{padding:0}
+details summary{list-style:none;display:flex;justify-content:space-between;align-items:center;min-height:3.5rem;padding:0 var(--s3);cursor:pointer;font-weight:600;border-radius:var(--r-card)}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:"";width:.5rem;height:.5rem;border-right:.125rem solid var(--mut);border-bottom:.125rem solid var(--mut);transform:rotate(45deg);transition:transform .2s}
+details[open] summary::after{transform:rotate(-135deg)}
+details .inner{padding:0 var(--s3) var(--s3);display:grid;gap:var(--s1)}
+.li{display:flex;justify-content:space-between;gap:var(--s1);min-height:2.75rem;align-items:center;border-top:1px solid var(--line)}
+.li.cur{color:var(--acc);font-weight:600}
+
+/* CLASE */
+.clase{display:grid;justify-items:center;text-align:center;gap:var(--s4);padding:var(--s3) 0 var(--s4);max-width:44rem;margin:0 auto}
+.clase .huge{font-size:clamp(5rem,16cqw,9rem);line-height:.95;font-weight:700;letter-spacing:-.05em}
+.clase .bar{max-width:28rem;width:100%}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2);width:100%}
+.tile{background:var(--card);border-radius:var(--r-card);padding:var(--s2) var(--s2);text-align:left;box-shadow:var(--shadow)}
+.tile b{display:block;font-size:var(--t-title);margin:.25rem 0}
+.clase .acts{display:flex;gap:var(--s2);flex-wrap:wrap;justify-content:center}
+.exit{position:absolute;right:var(--s3);top:var(--s3)}
+
+/* ---- Estados ---- */
+.err-banner{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;background:var(--org-bg);color:var(--fg);border:1px solid var(--org);border-radius:var(--r-ctrl);padding:var(--s1) var(--s2);margin-bottom:var(--s3)}
+.err-banner svg{width:1.25rem;height:1.25rem;color:var(--org)}
+.dim{opacity:.75;filter:saturate(.7)}
+.sk{background:var(--line);border-radius:.375rem;animation:shim 1.2s ease-in-out infinite alternate}
+.sk.c{border-radius:50%}.sk.p{border-radius:var(--r-pill)}
+@keyframes shim{to{opacity:.45}}
+.sk-row{display:grid;grid-template-columns:2.5rem 1fr 5rem;gap:var(--s2);align-items:center;min-height:4.5rem}
+
+/* ---- Aparicion escalonada ---- */
+.reveal{animation:rv .45s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0)*70ms)}
+@keyframes rv{from{opacity:0;transform:translateY(.5rem)}}
+.modein{animation:mi .35s ease both}
+@keyframes mi{from{opacity:0;transform:scale(.985)}}
+
+/* ---- Inspector ---- */
+.split{display:grid;grid-template-columns:1fr;gap:var(--s3)}
+.split.ins{grid-template-columns:1fr 20rem}
+.inspector{background:var(--card);border-radius:var(--r-card);padding:var(--s3);box-shadow:var(--shadow);align-self:start;position:sticky;top:5rem;animation:rv .3s ease both}
+.inspector h3{margin-bottom:var(--s1)}
+.inspector .x{float:right}
+.field{display:flex;justify-content:space-between;border-top:1px solid var(--line);min-height:2.75rem;align-items:center}
+
+/* ---- Hojas ---- */
+dialog{border:0;padding:0;background:none;color:var(--fg);max-width:100vw}
+dialog::backdrop{background:rgba(0,0,0,.35);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+dialog[open]{animation:sheet .3s cubic-bezier(.2,.8,.2,1) both}
+@keyframes sheet{from{opacity:0;transform:translateY(1.5rem)}}
+.sheet{width:min(30rem,100vw - 1rem);background:var(--card);border-radius:1.75rem;padding:var(--s3);display:grid;gap:var(--s2);box-shadow:0 24px 64px rgba(0,0,0,.35)}
+.sheet header{display:flex;justify-content:space-between;align-items:center}
+.sheet select,.sheet textarea{width:100%;min-height:2.75rem;border-radius:var(--r-ctrl);border:1px solid var(--line);background:var(--card2);padding:var(--s1) var(--s2)}
+.sheet textarea{min-height:7rem;resize:vertical}
+.sheet label{display:grid;gap:.25rem;font-size:var(--t-foot);color:var(--mut)}
+.sheet footer{display:flex;gap:var(--s1);justify-content:flex-end}
+.lvl{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s1)}
+.lvl button{min-height:3.5rem;border-radius:var(--r-ctrl);border:1px solid var(--line);background:var(--card2);font-weight:600}
+.lvl button[aria-pressed=true]{background:var(--acc);color:var(--acc-fg);border-color:transparent}
+.tags{display:flex;gap:var(--s1);flex-wrap:wrap}
+
+/* ---- Tooltips (i) ---- */
+.i{position:relative;display:inline-grid;place-items:center;width:1.375rem;height:1.375rem;border-radius:50%;border:1px solid var(--line);font-size:var(--t-cap);color:var(--mut);cursor:help;vertical-align:middle;margin-left:.25rem;text-transform:none;letter-spacing:0;font-weight:600}
+.i:hover::after,.i:focus::after{content:attr(data-tip);position:absolute;z-index:60;bottom:calc(100% + .5rem);left:50%;transform:translateX(-50%);width:15rem;padding:var(--s1) var(--s2);
+  background:var(--fg);color:var(--bg);border-radius:.625rem;font-size:var(--t-foot);font-weight:400;line-height:1.35;text-align:left}
+.toast{position:fixed;left:50%;bottom:var(--s3);transform:translateX(-50%);z-index:100;padding:var(--s1) var(--s3);border-radius:var(--r-pill);animation:rv .3s both;font-weight:600}
+
+/* ---- Compacto (iPad 1/2 pantalla): responde al ancho del marco ---- */
+@container (max-width:760px){
+  .app{padding:var(--s2)}
+  .ctx{grid-template-columns:1fr}
+  .now{grid-template-columns:1fr}.now .time{text-align:left}.now .time b{font-size:2.5rem}
+  .now .big{font-size:var(--t-title)}
+  .split.ins{grid-template-columns:1fr}
+  .inspector{position:absolute;right:var(--s1);top:5rem;width:18rem;z-index:20;box-shadow:0 16px 48px rgba(0,0,0,.3)}
+  .tiles{grid-template-columns:1fr}
+  .tile{display:flex;justify-content:space-between;align-items:center}
+  .tile b{margin:0}
+  .exit{position:static;justify-self:end}
+  .row{grid-template-columns:2.5rem 1fr}
+  .row .act{grid-column:2;justify-self:start}
+  .hdr{margin-bottom:var(--s3)}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .modein{animation:xf .2s linear both!important}
+}
+@keyframes xf{from{opacity:0}}
+/* ---- Tamaño de texto (simula Dynamic Type) ---- */
+html[data-ts="150"]{font-size:150%}html[data-ts="200"]{font-size:200%}
+html[data-ts="150"] .now,html[data-ts="200"] .now{grid-template-columns:1fr}
+html[data-ts="150"] .now .time,html[data-ts="200"] .now .time{text-align:left}
+html[data-ts="150"] .tiles,html[data-ts="200"] .tiles,html[data-ts="150"] .ctx,html[data-ts="200"] .ctx{grid-template-columns:1fr}
+html[data-ts="150"] .tile,html[data-ts="200"] .tile{display:flex;justify-content:space-between;align-items:center;gap:var(--s1);flex-wrap:wrap}
+html[data-ts="150"] .row,html[data-ts="200"] .row{grid-template-columns:2.5rem 1fr}
+html[data-ts="150"] .row .act,html[data-ts="200"] .row .act{grid-column:2;justify-self:start}
+html[data-ts="150"] .exit,html[data-ts="200"] .exit{position:static;justify-self:end}
+html[data-ts="150"] .hdr .ctl,html[data-ts="200"] .hdr .ctl{flex-wrap:wrap}
+html[data-ts="150"] .seg,html[data-ts="200"] .seg{flex-wrap:wrap;border-radius:var(--r-card)}
+.row.sel{background:var(--blu-bg)}
+.gap-err{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;padding:var(--s2)}
+.gap-err svg{width:1.5rem;height:1.5rem;color:var(--org)}
+/* ---- Accesibilidad: cristal a fondo sólido ---- */
+@media(prefers-contrast:more),(prefers-reduced-transparency:reduce){
+  .glass{background:var(--card);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;border:1px solid var(--fg)}
+  .btn.primary{box-shadow:none}.seg button[aria-checked=true]{outline:.125rem solid var(--fg)}
+  :root{--mut:var(--fg);--line:var(--fg)}
+  dialog::backdrop{-webkit-backdrop-filter:none;backdrop-filter:none}
+}
+
+
+/* ---- Notas ---- */
+.notes{max-width:73.75rem;margin:0 auto;padding:var(--s3) var(--s2) var(--s6);display:grid;gap:var(--s3)}
+.notes table{width:100%;border-collapse:collapse;font-size:var(--t-foot)}
+.notes th,.notes td{text-align:left;padding:var(--s1);border-top:1px solid var(--line);vertical-align:top}
+.notes .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(18rem,1fr));gap:var(--s2)}
+.notes ul{margin:0;padding-left:var(--s3)}
+</style></head>
+<body>
+
+<!-- ============ Barra de la maqueta ============ -->
+<div class="lab" role="toolbar" aria-label="Controles de la maqueta">
+  <fieldset><legend>Estado</legend><span id="l-state"></span></fieldset>
+  <fieldset><legend>Dispositivo</legend><span id="l-dev"></span></fieldset>
+  <fieldset><legend>Simular</legend><span id="l-sim"></span></fieldset>
+  <fieldset><legend>Texto</legend><span id="l-ts"></span></fieldset>
+  <fieldset><legend>Tema</legend><span id="l-theme"></span></fieldset>
+</div>
+
+<div class="stage">
+  <div class="device" id="device" data-dev="ipad">
+    <div class="titlebar" aria-hidden="true"><i class="dot" style="background:#ff5f57"></i><i class="dot" style="background:#febc2e"></i><i class="dot" style="background:#28c840"></i></div>
+    <div class="win">
+      <nav class="side" aria-label="Navegación (solo Mac)">
+        <a href="#" aria-current="page">Dashboard</a><a href="#">Cuaderno</a><a href="#">Planificación</a><a href="#">Asistencia</a><a href="#">Alumnado</a><a href="#">Informes</a>
+      </nav>
+      <div id="app" class="app"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Hojas ============ -->
+<dialog id="dlg-obs" aria-labelledby="t-obs"><form method="dialog" class="sheet" onsubmit="return false">
+  <header><h2 class="t-title" id="t-obs">Nueva observación</h2>
+    <span class="i" aria-hidden="true" data-tip="Hoja: entra desde abajo con opacidad y 24px de desplazamiento; el fondo se desenfoca. Escape o Cancelar la cierra.">i</span></header>
+  <label>Alumno<select id="o-al"></select></label>
+  <label>Observación<textarea id="o-tx" placeholder="Qué has visto en clase…"></textarea></label>
+  <div class="tags" role="group" aria-label="Etiqueta"><button type="button" class="chip" aria-pressed="false">Logro</button><button type="button" class="chip" aria-pressed="false">Conducta</button><button type="button" class="chip" aria-pressed="false">Salud</button></div>
+  <footer><button type="button" class="btn glass" data-close>Cancelar</button><button type="button" class="btn primary" data-save="Observación guardada">Guardar</button></footer>
+</form></dialog>
+
+<dialog id="dlg-ev" aria-labelledby="t-ev"><form method="dialog" class="sheet" onsubmit="return false">
+  <header><h2 class="t-title" id="t-ev">Evaluación rápida</h2>
+    <span class="i" aria-hidden="true" data-tip="Un toque elige el nivel; el botón elegido cambia de color con transición de 150 ms. Cuatro niveles, sin teclear.">i</span></header>
+  <label>Alumno<select class="o-al"></select></label>
+  <label>Criterio<select><option>Resistencia aeróbica</option><option>Trabajo en equipo</option><option>Técnica de voleibol</option></select></label>
+  <div class="lvl" role="group" aria-label="Nivel"><button type="button" aria-pressed="false">Insuf.</button><button type="button" aria-pressed="false">Sufic.</button><button type="button" aria-pressed="true">Notable</button><button type="button" aria-pressed="false">Sobres.</button></div>
+  <footer><button type="button" class="btn glass" data-close>Cancelar</button><button type="button" class="btn primary" data-save="Evaluación guardada">Guardar</button></footer>
+</form></dialog>
+
+<!-- ============ Notas para implementación ============ -->
+<section class="notes" aria-labelledby="n-h">
+  <h2 class="t-large" id="n-h">Notas para implementación</h2>
+  <div class="card">
+    <h3 class="t-head">Tokens</h3>
+    <table>
+      <tr><th>Token</th><th>Valor</th><th>Equivalente SwiftUI</th></tr>
+      <tr><td>Espaciado</td><td>8, 16, 24, 32, 40, 48 pt (múltiplos de 8; 4 solo para microajustes)</td><td>constantes <code>Spacing.s1…s6</code></td></tr>
+      <tr><td>Radio tarjeta</td><td>20 pt</td><td><code>RoundedRectangle(cornerRadius: 20, style: .continuous)</code></td></tr>
+      <tr><td>Radio control</td><td>14 pt (botón grande 18 pt); píldora = cápsula</td><td><code>.buttonBorderShape(.roundedRectangle(radius: 14))</code> / <code>Capsule()</code></td></tr>
+      <tr><td>Radio hoja</td><td>28 pt</td><td>lo pone <code>.sheet</code> del sistema</td></tr>
+      <tr><td>Título grande (saludo, nombre del grupo)</td><td>34 pt, bold</td><td><code>.largeTitle.bold()</code></td></tr>
+      <tr><td>Título de sección, KPI</td><td>22 pt, bold</td><td><code>.title2.bold()</code></td></tr>
+      <tr><td>Título de fila, botones</td><td>17 pt, semibold</td><td><code>.headline</code></td></tr>
+      <tr><td>Detalle de fila</td><td>15 pt</td><td><code>.subheadline</code> (color <code>.secondary</code>)</td></tr>
+      <tr><td>Etiqueta de franja, píldoras</td><td>12-13 pt</td><td><code>.caption</code> / <code>.footnote</code></td></tr>
+      <tr><td>Tiempo restante</td><td>48 pt (Despacho), 9 rem máx. (Clase)</td><td><code>.system(size:, weight: .bold).monospacedDigit()</code> con <code>@ScaledMetric</code></td></tr>
+      <tr><td>Zona táctil</td><td>mínimo 44 pt (aquí 2,75 rem)</td><td><code>.frame(minHeight: 44)</code></td></tr>
+      <tr><td>Liquid Glass</td><td>solo selector, botones, menús y píldora de sync</td><td><code>.glassEffect()</code> / <code>.buttonStyle(.glass)</code>; con fallback <code>.ultraThinMaterial</code> antes de iOS/macOS 26. Tarjetas de contenido: fondo plano <code>secondarySystemGroupedBackground</code></td></tr>
+      <tr><td>Movimiento</td><td>aparición 450 ms (opacidad + 8 pt, retraso 70 ms por bloque); número 350 ms; barra 1 s; fila hover 150 ms</td><td><code>.transition(.opacity.combined(with: .offset(y: 8)))</code>, <code>.contentTransition(.numericText())</code>, <code>@Environment(\.accessibilityReduceMotion)</code> para anular todo</td></tr>
+      <tr><td>Urgencia</td><td>rojo = riesgo, naranja = alerta, azul = pendiente (siempre con icono, nunca solo color)</td><td>colores semánticos del sistema</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="card"><h3 class="t-head">Se reutiliza</h3><ul>
+      <li>Agenda docente: pasa a CONTEXTO, plegable.</li>
+      <li>Resumen por grupo: pasa a CONTEXTO, plegable.</li>
+      <li>Educación Física: pasa a CONTEXTO, plegable y compacto.</li>
+      <li>Datos de Radar, Pendientes y Riesgo: se mantienen los orígenes de datos, se unifican en una sola lista.</li>
+      <li>Briefing IA: se reutiliza el servicio, ahora una frase.</li>
+      <li>Selector Auto/Clase/Despacho y píldora de sync: mismos componentes con estilo glass.</li>
+      <li>Hojas de observación y de evaluación rápida existentes.</li>
+    </ul></div>
+    <div class="card"><h3 class="t-head">Se elimina</h3><ul>
+      <li>Las tarjetas separadas Radar docente, Pendientes y Riesgo.</li>
+      <li>La franja completa de KPIs (Sesiones hoy, Alertas 70, Pendientes, Próxima sesión): cada dato vive en un solo bloque. Sesiones hoy y próxima sesión ya están en Agenda y AHORA; "Por atender" queda como insignia en el título de Atención, con el mismo total que la lista.</li>
+      <li>Los datos repetidos en 3 sitios: cada dato vive en un único bloque.</li>
+      <li>La tarjeta central antigua del modo Clase.</li>
+    </ul></div>
+    <div class="card"><h3 class="t-head">Reglas de comportamiento</h3><ul>
+      <li>Lista de atención: máximo 5 filas, orden por urgencia (riesgo, alerta, pendiente; dentro de cada uno, fecha límite).</li>
+      <li>Contador = total de la cola sin filtrar; al filtrar la insignia muestra cuántos filtros hay activos.</li>
+      <li>Salir del modo Clase pone el selector en Auto.</li>
+      <li>Error de red: contenido anterior atenuado, con hora de la última sincronización y Reintentar.</li>
+      <li>Skeleton con la forma real de cada bloque; sin brillo si hay movimiento reducido.</li>
+      <li>Inspector: lateral en iPad ancho y Mac; superpuesto en iPad 1/2 pantalla.</li>
+      <li>Las hojas de esta maqueta se ven en el navegador sin marco de dispositivo; en la app serán <code>.sheet</code> con detents.</li>
+    </ul></div>
+  </div>
+
+  <div class="cols">
+    <div class="card"><h3 class="t-head">Accesibilidad (SwiftUI)</h3><ul>
+      <li>Los (i) son notas de la maqueta, no se portan a SwiftUI: por eso están ocultos a lectores de pantalla y no son táctiles.</li>
+      <li>Texto: probar 100, 150 y 200 %. Usar <code>@ScaledMetric</code> para tamaños propios, <code>ViewThatFits</code> y <code>dynamicTypeSize.isAccessibilitySize</code> para pasar AHORA, fichas y Contexto a 1 columna sin cortes.</li>
+      <li>Fila de Atención: <code>.accessibilityElement(children: .combine)</code> más <code>.accessibilityAction(named: "Evaluar")</code>. Sin estado de selección falso: la selección se ve, pero no se declara como lista seleccionable.</li>
+      <li>Modo Clase: número con etiqueta "Quedan N minutos"; barra con valor "Han pasado X de Y minutos" (<code>.accessibilityValue</code>). Al entrar, <code>UIApplication.shared.isIdleTimerDisabled = true</code> (y restaurar al salir); el temporizador con <code>TimelineView(.periodic)</code> o <code>.updatesFrequently</code> en el widget/live activity.</li>
+      <li>Esc sale del modo Clase (<code>.keyboardShortcut(.cancelAction)</code>).</li>
+      <li>Cristal: con <code>accessibilityReduceTransparency</code> o contraste alto, fondo sólido con borde visible (<code>@Environment(\.colorSchemeContrast)</code>).</li>
+      <li>Movimiento reducido: el cambio de modo pasa de escala a fundido simple.</li>
+      <li>Skeleton: un solo <code>.accessibilityLabel("Cargando")</code> en el contenedor y los rectángulos con <code>.accessibilityHidden(true)</code>.</li>
+      <li>Anuncios (fila resuelta, lista pasada, reintento): <code>AccessibilityNotification.Announcement("…").post()</code>.</li>
+      <li>Error de red: contenido atenuado al 75 % como mínimo, con la etiqueta "Datos de las HH:MM". Error parcial: solo la franja afectada muestra el fallo con su Reintentar.</li>
+    </ul></div>
+    <div class="card"><h3 class="t-head">Mac e iPad</h3><ul>
+      <li>Mac: controles de 28 a 32 pt (los 44 pt son para táctil), con hover y anillo de foco visibles.</li>
+      <li>Atajos: Cmd+N nueva observación, Esc salir de Clase.</li>
+      <li>Menú contextual en filas de Atención (<code>.contextMenu</code>) con la misma acción y Ver ficha.</li>
+      <li>iPad con ratón o Pencil: <code>.hoverEffect(.highlight)</code> en filas y botones.</li>
+      <li>Etiquetas de franja en <code>.footnote</code> semibold, sin mayúsculas forzadas.</li>
+    </ul></div>
+  </div>
+</section>
+
+<script>
+/* ====== Datos de ejemplo ====== */
+const ALUMNOS=['Hugo Peña','Nico Ramos','Marta Gil','Lucía Martín','Adrián Soto','Carla Vidal'];
+const COLA=[
+ {id:1,t:'risk' ,ti:'Hugo Peña, en riesgo de suspender',de:'3º ESO B · media 3,8 en esta evaluación',ac:'Ver ficha'},
+ {id:2,t:'alert',ti:'Faltas sin justificar en 2º ESO A',de:'4 faltas esta semana',ac:'Revisar'},
+ {id:3,t:'pend' ,ti:'Corregir test de resistencia',de:'1º Bach. A · 18 entregas sin nota, vence hoy',ac:'Evaluar'},
+ {id:4,t:'alert',ti:'Adaptación de Marta Gil caduca mañana',de:'Lesión de tobillo, sin renovar',ac:'Renovar'},
+ {id:5,t:'pend' ,ti:'Lista de ayer sin pasar en 4º ESO C',de:'27 alumnos sin registro',ac:'Pasar lista'},
+ {id:6,t:'pend' ,ti:'Rúbrica de voleibol sin publicar',de:'2º ESO A · borrador',ac:'Publicar'},
+ {id:7,t:'risk' ,ti:'Nico Ramos, tendencia a la baja',de:'Baja 1,2 puntos en 3 semanas',ac:'Ver ficha'}];
+const AGENDA=[['08:00','1º Bach. A'],['09:05','2º ESO A'],['10:05','3º ESO B'],['12:10','1º Bach. A'],['13:05','4º ESO C']];
+const GRUPOS=[['3º ESO B','92 %','6,4'],['2º ESO A','85 %','7,1'],['1º Bach. A','96 %','7,8'],['4º ESO C','89 %','6,9']];
+const TXT={sync:'Sincronizando…'};
+const ORD={risk:0,alert:1,pend:2};
+const IC={
+ risk:'<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
+ alert:'<path d="M12 3l10 18H2L12 3zM12 10v5M12 18v.01"/>',
+ pend:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+ ok:'<path d="M5 13l4 4L19 7"/>',
+ spark:'<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2"/>',
+ off:'<path d="M2 8a15 15 0 0120 0M5 12a10 10 0 0114 0M8.5 15.5a5 5 0 017 0M12 19v.01M3 3l18 18"/>',
+ more:'<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>',
+ filter:'<path d="M3 6h18M6 12h12M10 18h4"/>',
+ cal:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>'};
+const ic=(k,c='')=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="${c}">${IC[k]}</svg>`;
+const tip=t=>`<span class="i" aria-hidden="true" data-tip="${t}">i</span>`;
+
+/* ====== Estado ====== */
+const S={state:'data',dev:'ipad',mode:'despacho',enClase:false,elapsed:38,total:55,resueltas:[],
+  filtros:{risk:true,alert:true,pend:true},menu:null,sel:null,ins:false,lista:false,openCtx:{agenda:true,grupos:false,ef:false}};
+const $=s=>document.querySelector(s), app=$('#app');
+const cola=()=>COLA.filter(x=>!S.resueltas.includes(x.id)).sort((a,b)=>ORD[a.t]-ORD[b.t]||a.id-b.id);
+const visibles=()=>cola().filter(x=>S.filtros[x.t]).slice(0,5);
+const empty=()=>S.state==='empty', hoy=()=>!empty();
+const modoEfectivo=()=>S.mode==='auto'?(S.enClase&&hoy()?'clase':'despacho'):S.mode;
+const rest=()=>Math.max(0,S.total-S.elapsed);
+let anim=true, prevNums={};
+
+/* ====== Vistas ====== */
+function numero(k,v){const ch=prevNums[k]!==undefined&&prevNums[k]!==v;prevNums[k]=v;return `<span class="num ${ch?'roll':''}">${v}</span>`}
+function header(){
+  const syncing=S.state==='sync',off=S.state==='error';
+  const d=new Date(2026,8,30);
+  return `${syncing?'<div class="sync-line"></div>':''}
+  <header class="hdr ${anim?'reveal':''}" style="--i:0"><div class="who"><p class="t-foot mut">${d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</p>
+    <h1 class="t-large">Buenos días, Mario</h1></div>
+    <div class="ctl">
+      <div class="seg glass" role="radiogroup" aria-label="Modo del Dashboard">${['auto:Auto','clase:Clase','despacho:Despacho'].map(x=>{const[k,l]=x.split(':');
+        return `<button role="radio" aria-checked="${S.mode===k}" data-mode="${k}">${l}</button>`}).join('')}</div>
+      ${tip('Selector de cristal. Al cambiar de modo, el contenido entra con un fundido y una escala de 98,5 % a 100 %.')}
+      <button class="pill glass ${off?'off':''}" data-act="sync" aria-label="Estado de sincronización">${syncing?'<span class="spin"></span>Sincronizando…':off?'<i></i>Sin conexión':'<i></i>Sincronizado'}</button>
+    </div></header>`;
+}
+function ahora(){
+  const en=S.enClase||S.mode==='despacho'&&false;
+  const live=S.enClase;
+  const pct=live?Math.round(S.elapsed/S.total*100):0;
+  if(empty())return `<article class="card ${anim?'reveal':''}" style="--i:1"><div class="empty"><div class="ico" style="background:var(--blu-bg);color:var(--blu)">${ic('cal')}</div><h3 class="t-head">Hoy no tienes sesiones</h3><p class="mut t-sub">Disfruta del día o prepara la semana.</p><button class="btn glass" data-act="horario">Ver horario</button></div></article>`;
+  return `<article class="card ${anim?'reveal':''}" style="--i:1"><div class="band-h"><span class="t-cap mut">${live?'Ahora':'Siguiente clase'}${tip(live?'La barra se anima de 0 % al valor real en 1 segundo al entrar. El número del tiempo cambia con desplazamiento vertical.':'Fuera de horario se muestra la próxima sesión y cuánto falta.')}</span></div>
+   <div class="now"><div><h2 class="big">${live?'3º ESO B':'1º Bach. A'}</h2><p class="mut t-sub">Educación Física · ${live?'Pabellón 2 · 10:05 a 11:00':'Pista 1 · 12:10 a 13:05'}</p></div>
+   <div class="time"><b>${numero('min',live?rest():25)}</b><p class="mut t-sub">${live?'min restantes':'min para empezar'}</p></div>
+   <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Han pasado ${S.elapsed} de ${S.total} minutos" aria-label="Progreso de la sesión"><span data-w="${pct}"></span></div>
+   <div class="acts"><button class="btn primary lg" data-act="${live?'lista':'preparar'}">${live?(S.lista?'Lista pasada (25 de 27)':'Pasar lista'):'Preparar sesión'}</button>
+     <div class="menu-wrap"><button class="btn glass lg" aria-haspopup="menu" aria-expanded="${S.menu==='more'}" data-menu="more" aria-label="Más acciones">${ic('more','')}<span>Más</span></button>
+     ${S.menu==='more'?`<div class="menu glass" role="menu"><button role="menuitem" data-sheet="obs">Nueva observación</button><button role="menuitem" data-sheet="ev">Evaluación rápida</button><hr><button role="menuitem" data-act="grupo">Ver grupo</button><button role="menuitem" data-act="cuaderno">Abrir en el Cuaderno</button></div>`:''}</div>
+   </div></div></article>`;
+}
+function atencion(){
+  const total=cola().length, list=visibles();
+  if(S.state==='partial')return `<section class="card ${anim?'reveal':''}" style="--i:2" role="alert"><div class="band-h"><span class="t-cap mut">Atención</span></div><div class="gap-err">${ic('off')}<span class="t-sub" style="flex:1"><b>No se pudo cargar Atención.</b> El resto sigue al día.</span><button class="btn glass sm" data-act="retryPart">Reintentar</button></div></section>`;
+  const nf=Object.values(S.filtros).filter(v=>!v).length;
+  const filtro=`<div class="menu-wrap"><button class="btn glass sm" aria-haspopup="menu" aria-expanded="${S.menu==='filter'}" data-menu="filter">${ic('filter')}Filtrar${nf?`<span class="badge">${nf}</span>`:''}</button>
+   ${S.menu==='filter'?`<div class="menu glass" role="menu">${[['risk','Riesgo'],['alert','Alertas'],['pend','Pendientes']].map(([k,l])=>`<button role="menuitemcheckbox" aria-checked="${S.filtros[k]}" data-f="${k}"><span style="width:1.25rem">${S.filtros[k]?'✓':''}</span>${l}</button>`).join('')}</div>`:''}</div>`;
+  let body;
+  if(empty()||total===0)body=`<div class="empty"><div class="ico">${ic('ok')}</div><h3 class="t-head">Todo al día</h3><p class="mut t-sub">No hay nada que atender ahora.</p></div>`;
+  else if(!list.length)body=`<div class="empty"><h3 class="t-head">Nada con estos filtros</h3><button class="btn glass" data-act="limpiar">Quitar filtros</button></div>`;
+  else body=`<div class="rows" role="list">${list.map((x,i)=>`<div class="row ${S.sel===x.id?'sel':''} ${anim?'reveal':''}" style="--i:${i+3}" role="listitem">
+      <span class="ico ${x.t}">${ic(x.t)}</span>
+      <button class="row-main" data-sel="${x.id}"><span class="row-t">${x.ti}</span><span class="mut t-sub">${x.de}</span></button>
+      <button class="act" data-done="${x.id}" aria-label="${x.ac}: ${x.ti}">${x.ac}</button></div>`).join('')}</div>`;
+  const brief=empty()||total===0?'':`<p class="brief t-sub">${ic('spark','')}<span>Hoy destaca Hugo Peña: baja la media y hay 3 asuntos con fecha límite.</span>${tip('Resumen de IA en una frase. Sustituye al bloque Radar docente. Aparece con fundido.')}</p>`;
+  return `<section class="card ${anim?'reveal':''}" style="--i:2"><div class="band-h"><span class="t-cap mut">Atención${empty()||total===0?'':`<span class="badge" style="margin-left:.5rem" aria-label="${total} por atender">${numero('k2',total)}</span>`}${tip('Una sola lista por urgencia (riesgo, alerta, pendiente). Al pulsar la acción, la fila sale y entra la siguiente; el número por atender cambia con transición. Es el único contador y sustituye a los KPIs.')}</span>${filtro}</div>
+   ${brief}${body}
+   ${total>list.length&&!empty()?`<p class="t-foot mut" style="margin-top:.5rem">Mostrando ${list.length} de ${total}. <button class="act" style="border:0;background:none;padding:0" data-act="todas">Ver todas</button></p>`:''}</section>`;
+}
+function kpis(){
+  const t=cola().length;
+  return `<div class="kpis ${anim?'reveal':''}" style="--i:1" role="list">
+   <div class="kpi" role="listitem"><span class="t-foot mut">Sesiones hoy</span><b>${numero('k1',empty()?0:5)}</b></div>
+   <div class="kpi" role="listitem"><span class="t-foot mut">Por atender${tip('Único contador de atención: es igual al total de la lista, sin filtrar. Reemplaza "Alertas 70" y "Pendientes".')}</span><b>${numero('k2',empty()?0:t)}</b></div>
+   <div class="kpi" role="listitem"><span class="t-foot mut">Próxima sesión</span><b>${empty()?'Sin sesión':'12:10'}</b></div></div>`;
+}
+function ctxCard(k,ti,inner,i){return `<details class="card ${anim?'reveal':''}" style="--i:${i}" data-ctx="${k}" ${S.openCtx[k]?'open':''}><summary>${ti}</summary><div class="inner">${inner}</div></details>`}
+function contexto(){
+  const ag=empty()?'<p class="mut t-sub">Sin sesiones hoy.</p>':AGENDA.map(a=>`<div class="li ${a[0]==='10:05'&&S.enClase?'cur':''}"><span class="num">${a[0]}</span><span>${a[1]}</span></div>`).join('');
+  const gr=GRUPOS.map(g=>`<div class="li"><span>${g[0]}</span><span class="mut num">${g[1]} · media ${g[2]}</span></div>`).join('');
+  const ef=`<div class="li"><span>Próxima prueba</span><span class="mut">Test de Cooper, 3 oct</span></div><div class="li"><span>Lesiones activas</span><span class="mut num">3</span></div><div class="li"><span>Material</span><span class="mut">Voleibol, revisar redes</span></div>`;
+  return `<div><div class="band-h"><span class="t-cap mut">Contexto${tip('Tarjetas plegables. El chevrón gira 180 grados y el contenido se despliega. En iPad compacto se apilan; solo Agenda empieza abierta.')}</span></div>
+   <div class="ctx">${ctxCard('agenda','Agenda de hoy',ag,4)}${ctxCard('grupos','Resumen por grupo',gr,5)}${ctxCard('ef','Educación Física',ef,6)}</div></div>`;
+}
+function skDespacho(){
+  const r=`<div class="sk-row"><div class="sk c" style="width:2.5rem;height:2.5rem;border-radius:.75rem"></div><div><div class="sk" style="height:1rem;width:70%"></div><div class="sk" style="height:.875rem;width:45%;margin-top:.5rem"></div></div><div class="sk p" style="height:2.75rem"></div></div>`;
+  return `<div class="stack" role="status" aria-busy="true" aria-label="Cargando">
+   <div class="card"><div class="sk" style="width:5rem;height:.75rem"></div><div style="display:flex;justify-content:space-between;margin:var(--s2) 0"><div><div class="sk" style="width:12rem;height:2.125rem"></div><div class="sk" style="width:16rem;height:1rem;margin-top:.5rem"></div></div><div class="sk" style="width:6rem;height:3rem"></div></div>
+     <div class="sk p" style="height:.5rem"></div><div style="display:flex;gap:var(--s2);margin-top:var(--s2)"><div class="sk" style="width:10rem;height:3.5rem;border-radius:1.125rem"></div><div class="sk" style="width:6rem;height:3.5rem;border-radius:1.125rem"></div></div></div>
+   <div class="card"><div class="sk" style="width:16rem;height:1rem;margin-bottom:var(--s2)"></div>${r.repeat(5)}</div>
+   <div class="ctx">${[1,2,3].map(()=>'<div class="card"><div class="sk" style="width:60%;height:1rem"></div></div>').join('')}</div></div>`;
+}
+function skClase(){
+  return `<div class="clase" role="status" aria-busy="true" aria-label="Cargando"><div class="sk" style="width:min(18rem,80%);height:6rem"></div><div class="sk" style="width:14rem;height:2.125rem"></div><div class="sk p" style="width:100%;max-width:28rem;height:.5rem"></div>
+   <div class="tiles">${[1,2,3].map(()=>'<div class="tile"><div class="sk" style="width:60%;height:.75rem"></div><div class="sk" style="width:40%;height:1.5rem;margin:.5rem 0"></div></div>').join('')}</div>
+   <div class="acts">${[10,9,9].map(w=>`<div class="sk" style="width:${w}rem;height:3.5rem;border-radius:1.125rem"></div>`).join('')}</div></div>`;
+}
+function despacho(){
+  return `<div class="stack modein">${ahora()}${atencion()}${contexto()}</div>`;
+}
+function clase(){
+  if(empty())return `<div class="clase modein"><div class="empty"><h2 class="t-title">No hay clase ahora</h2><p class="mut">Hoy no tienes sesiones.</p><button class="btn primary lg" data-mode="auto">Volver a Auto</button></div></div>`;
+  const nal=cola().filter(x=>x.t==='risk'||x.t==='alert').length;
+  return `<div class="clase modein">
+   <div class="${anim?'reveal':''}" style="--i:1"><p class="t-cap mut">Quedan${tip('El número grande cambia con desplazamiento vertical cada minuto (aquí, botón Avanzar 1 min).')}</p><div class="huge" role="img" aria-label="Quedan ${rest()} minutos">${numero('min',rest())}</div><p class="t-title mut">minutos</p></div>
+   <div class="${anim?'reveal':''}" style="--i:2"><h2 class="t-large">3º ESO B</h2><p class="mut t-sub">Educación Física · Pabellón 2 · hasta las 11:00</p></div>
+   <div class="bar ${anim?'reveal':''}" style="--i:3" role="progressbar" aria-valuenow="${Math.round(S.elapsed/S.total*100)}" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Han pasado ${S.elapsed} de ${S.total} minutos" aria-label="Progreso"><span data-w="${Math.round(S.elapsed/S.total*100)}"></span></div>
+   <div class="tiles ${anim?'reveal':''}" style="--i:4">
+    <div class="tile"><span class="t-foot mut">Asistencia de hoy</span><b class="num">${S.lista?'25 de 27':'Sin pasar'}</b><span class="t-foot mut">${S.lista?'2 ausentes':'27 alumnos'}</span></div>
+    <div class="tile"><span class="t-foot mut">Pendientes de evaluar</span><b class="num">4</b><span class="t-foot mut">Test de resistencia</span></div>
+    <div class="tile"><span class="t-foot mut">Alumnos con alerta</span><b class="num">${nal>1?2:nal}</b><span class="t-foot mut">Hugo P., Nico R.</span></div></div>
+   <div class="acts ${anim?'reveal':''}" style="--i:5"><button class="btn primary lg" data-act="lista">${S.lista?'Lista pasada':'Pasar lista'}</button>
+     <button class="btn glass lg" data-sheet="obs">Nueva observación</button><button class="btn glass lg" data-sheet="ev">Evaluación rápida</button></div>
+  </div>`;
+}
+function inspector(){
+  const x=COLA.find(c=>c.id===S.sel);
+  if(!S.ins)return '';
+  return `<aside class="inspector" aria-label="Inspector"><button class="btn glass x" data-act="cerrarIns" aria-label="Cerrar inspector">✕</button>
+   <p class="t-cap mut">Inspector${tip('Panel lateral: aparece con opacidad y 8 px. En iPad compacto se superpone a la derecha.')}</p>
+   ${x?`<h3 class="t-head">${x.ti}</h3><p class="mut t-sub" style="margin-bottom:var(--s2)">${x.de}</p>
+   <div class="field"><span class="mut">Tipo</span><span>${{risk:'Riesgo',alert:'Alerta',pend:'Pendiente'}[x.t]}</span></div>
+   <div class="field"><span class="mut">Origen</span><span>${{risk:'Radar de riesgo',alert:'Radar docente',pend:'Pendientes'}[x.t]}</span></div>
+   <div class="field"><span class="mut">Fecha límite</span><span>${x.t==='pend'?'Hoy':'Esta semana'}</span></div>
+   <div style="display:grid;gap:var(--s1);margin-top:var(--s2)"><button class="btn primary" data-done="${x.id}">${x.ac}</button><button class="btn glass" data-sheet="obs">Nueva observación</button></div>`
+   :'<p class="mut t-sub" style="margin-top:var(--s1)">Elige una fila para ver su detalle.</p>'}</aside>`;
+}
+function errorBanner(){
+  return S.state==='error'?`<div class="err-banner" role="alert">${ic('off')}<span class="t-sub" style="flex:1"><b>Sin conexión.</b> <span class="num">Datos de las 09:41.</span></span><button class="btn glass sm" data-act="retry">Reintentar</button></div>`:'';
+}
+function render(){
+  const modo=modoEfectivo();
+  app.className='app mode-'+modo;
+  let body;
+  if(S.state==='loading')body=modo==='clase'?skClase():skDespacho();
+  else body=modo==='clase'?clase():despacho();
+  const dim=S.state==='error'?'dim':'';
+  const exit=modo==='clase'&&S.state!=='loading'?`<button class="btn glass exit" data-act="salir">Salir de modo Clase</button>`:'';
+  app.innerHTML=`${header()}${exit}${errorBanner()}<div class="split ${S.ins&&modo==='despacho'?'ins':''}"><div class="${dim}">${body}</div>${modo==='despacho'?inspector():''}</div>`;
+  app.querySelectorAll('.sk').forEach(x=>x.setAttribute('aria-hidden','true'));
+  anim=false;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>app.querySelectorAll('.bar>span').forEach(b=>b.style.width=b.dataset.w+'%')));
+  $('#device').dataset.dev=S.dev;
+  labSync();
+}
+function go(){anim=true;prevNums={};render()}
+
+/* ====== Barra de la maqueta ====== */
+function mk(host,items,key,cb){$(host).innerHTML=items.map(([k,l])=>`<button class="chip" data-k="${k}" aria-pressed="${S[key]===k}">${l}</button>`).join('');
+  $(host).onclick=e=>{const b=e.target.closest('[data-k]');if(b)cb(b.dataset.k)}}
+function labSync(){
+  mk('#l-state',[['data','Datos'],['loading','Cargando'],['empty','Vacío'],['error','Error de red'],['sync','Sync en curso'],['partial','Error parcial']],'state',k=>{S.state=k;S.menu=null;go()});
+  mk('#l-dev',[['ipad','iPad ancho'],['half','iPad 1/2 pantalla'],['mac','Mac']],'dev',k=>{S.dev=k;S.ins=false;go()});
+  $('#l-sim').innerHTML=`<button class="chip" aria-pressed="${S.enClase}" id="b-cl">En horario de clase</button><button class="chip" id="b-min">Avanzar 1 min</button><button class="chip" id="b-ins" aria-pressed="${S.ins}">Inspector</button>`;
+  $('#b-cl').onclick=()=>{S.enClase=!S.enClase;go()};
+  $('#b-min').onclick=()=>{S.elapsed=Math.min(S.total,S.elapsed+1);render()};
+  $('#b-ins').onclick=()=>{S.ins=!S.ins;render()};
+  const ts=document.documentElement.dataset.ts||'100';
+  $('#l-ts').innerHTML=['100','150','200'].map(k=>`<button class="chip" data-ts="${k}" aria-pressed="${ts===k}">${k} %</button>`).join('');
+  $('#l-ts').onclick=e=>{const b=e.target.closest('[data-ts]');if(b){document.documentElement.dataset.ts=b.dataset.ts;labSync()}};
+  const th=document.documentElement.dataset.theme||'auto';
+  $('#l-theme').innerHTML=[['auto','Auto'],['light','Claro'],['dark','Oscuro']].map(([k,l])=>`<button class="chip" data-t="${k}" aria-pressed="${th===k}">${l}</button>`).join('');
+  $('#l-theme').onclick=e=>{const b=e.target.closest('[data-t]');if(!b)return;b.dataset.t==='auto'?document.documentElement.removeAttribute('data-theme'):document.documentElement.dataset.theme=b.dataset.t;labSync()};
+}
+
+/* ====== Eventos de la app ====== */
+function toast(t){document.querySelectorAll('.toast').forEach(x=>x.remove());const e=document.createElement('div');e.className='toast glass';e.setAttribute('role','status');e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),2200)}
+app.addEventListener('click',e=>{
+  const t=e.target.closest('button,summary');if(!t)return;
+  if(t.dataset.mode){S.mode=t.dataset.mode;S.menu=null;return go()}
+  if(t.dataset.menu){S.menu=S.menu===t.dataset.menu?null:t.dataset.menu;return render()}
+  if(t.dataset.f){S.filtros[t.dataset.f]=!S.filtros[t.dataset.f];return render()}
+  if(t.dataset.sheet){S.menu=null;render();return open(t.dataset.sheet)}
+  if(t.dataset.sel){S.sel=+t.dataset.sel;S.ins=true;S.menu=null;return render()}
+  if(t.dataset.done){const id=+t.dataset.done;S.resueltas.push(id);if(S.sel===id)S.sel=null;render();return toast('Hecho. Quedan '+cola().length+' por atender')}
+  const a=t.dataset.act;
+  if(a==='salir'){S.mode='auto';toast('Modo Auto');return go()}
+  if(a==='lista'){S.lista=true;render();return toast('Lista pasada: 25 de 27')}
+  if(a==='retryPart'){S.state='data';go();return toast('Atención recargada')}
+  if(a==='retry'){S.state='loading';go();return setTimeout(()=>{S.state='data';go()},1500)}
+  if(a==='sync'){toast(S.state==='sync'?'Sincronizando con el Mac…':S.state==='error'?'Sin conexión. Pulsa Reintentar':'Todo sincronizado');return}
+  if(a==='cerrarIns'){S.ins=false;return render()}
+  if(a==='limpiar'){S.filtros={risk:true,alert:true,pend:true};return render()}
+  if(a){S.menu=null;render();toast('Acción de ejemplo: '+a)}
+});
+document.addEventListener('click',e=>{if(S.menu&&e.target.isConnected&&!e.target.closest('.menu-wrap')){S.menu=null;render()}});
+document.addEventListener('keydown',e=>{if(e.key!=='Escape'||document.querySelector('dialog[open]'))return;if(S.menu){S.menu=null;return render()}if(modoEfectivo()==='clase'&&S.mode==='clase'){S.mode='auto';toast('Modo Auto');go()}});
+app.addEventListener('toggle',e=>{const d=e.target.closest('[data-ctx]');if(d)S.openCtx[d.dataset.ctx]=d.open},true);
+
+/* ====== Hojas ====== */
+const opts=ALUMNOS.map(a=>`<option>${a}</option>`).join('');
+$('#o-al').innerHTML=opts;document.querySelector('.o-al').innerHTML=opts;
+function open(k){$(k==='obs'?'#dlg-obs':'#dlg-ev').showModal()}
+document.querySelectorAll('dialog').forEach(d=>{
+  d.addEventListener('click',e=>{
+    if(e.target===d)d.close();
+    const b=e.target.closest('button');if(!b)return;
+    if(b.hasAttribute('data-close'))d.close();
+    if(b.dataset.save){d.close();toast(b.dataset.save)}
+    if(b.closest('.lvl')){d.querySelectorAll('.lvl button').forEach(x=>x.setAttribute('aria-pressed',x===b))}
+    if(b.closest('.tags'))b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true');
+  })});
+go();
+</script>
+</body></html>

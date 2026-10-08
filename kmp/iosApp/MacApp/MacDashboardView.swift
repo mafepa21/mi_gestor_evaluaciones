@@ -7,6 +7,8 @@ struct MacDashboardToolbarActions {
     let refresh: () -> Void
     let passList: () -> Void
     let observation: () -> Void
+    var snapshot: DashboardSnapshot? = nil
+    var syncPill: DashboardSyncPill? = nil
 }
 
 enum MacDashboardDestination {
@@ -19,8 +21,19 @@ enum MacDashboardDestination {
     case reports(classId: Int64?)
 }
 
+// MARK: - Dashboard de macOS
+//
+// Mismo diseño que iPad: Despacho en 3 franjas (AHORA, ATENCIÓN, CONTEXTO) y
+// modo Clase, con las mismas vistas (DashboardDispatchView,
+// DashboardClassroomView, DashboardHeaderView, DashboardStateViews) y el mismo
+// modelo de presentación (DashboardPresentation). Aquí solo queda lo propio de
+// Mac: navegación por el shell, atajos de teclado, la asistencia de hoy
+// pendiente y el formulario de evaluación rápida de escritorio.
+
 struct MacDashboardView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let bridge: KmpBridge
     @ObservedObject var dashboardStore: DashboardBridgeStore
     @ObservedObject var backupStore: MacBackupStore
@@ -29,65 +42,97 @@ struct MacDashboardView: View {
     var onToolbarActionsChange: (MacDashboardToolbarActions?) -> Void = { _ in }
     var onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void = { _, _, _ in }
 
-    @State private var loadState: MacDashboardLoadState = .loading
-    @State private var reloadTask: Task<Void, Never>?
+    /// Misma clave de preferencia que iPad.
+    @AppStorage("dashboard_mode_preference") private var modePreferenceRaw: String = DashboardModePreference.auto.rawValue
+
+    // Presentación (todo local: filtrar o plegar no llama a KMP).
+    @State private var presentationCache = DashboardPresentationCache()
+    @State private var hiddenKinds: Set<DashboardAttentionKind> = []
+    @State private var showAllAttention = false
+    @State private var openContext: Set<DashboardContextCard> = [.agenda]
+    @State private var containerWidth: CGFloat = 1000
+
+    // Inspector y hojas.
+    @State private var inspectorSelection: DashboardInspectorSelection?
+    @State private var isInspectorPresented = false
     @State private var activeSheet: DashboardSheet?
+
+    // Análisis (briefing de una frase).
+    @State private var classTrends: KmpBridge.AITrendsSnapshot?
+    @State private var classTrendsLoadFailed = false
     @State private var proactiveInsights: [DashboardProactiveInsight] = []
-    @State private var aiBriefing: TeachingAssistantDraft? = nil
+    @State private var aiBriefing: TeachingAssistantDraft?
     @State private var aiBriefingState: DashboardAIBriefingState = .deterministic
     @State private var activeAIBriefingKey: DashboardAIBriefingCacheKey?
+    @State private var trendsTask: Task<Void, Never>?
+    @State private var aiBriefingTask: Task<Void, Never>?
+    private let teachingAssistantService = AppleFoundationTeachingAssistantService()
 
-    // Bloques compartidos con iPad (Resumen por grupo/Agenda/EF/LOMLOE/KPIs):
-    // se apoyan en el `DashboardSnapshot` real del backend, el mismo que usa
-    // iPad, en vez del modelo ad-hoc (`MacDashboardSnapshot`) que hasta ahora
-    // era la única fuente de datos de este dashboard.
-    @State private var operationalSnapshot: DashboardSnapshot?
-    @State private var classTrends: KmpBridge.AITrendsSnapshot?
-    @State private var isLoadingClassTrends = false
-    @State private var classTrendsLoadFailed = false
-
-    @State private var teachingAssistantService = AppleFoundationTeachingAssistantService()
-
-    /// Misma clave de preferencia que iPad: el modo elegido en una plataforma
-    /// no se pisa con el de la otra porque `@AppStorage` es local, pero el
-    /// comportamiento y las opciones son idénticos.
-    @AppStorage("dashboard_mode_preference") private var modePreferenceRaw: String = DashboardModePreference.auto.rawValue
+    // Carga.
+    @State private var reloadTask: Task<Void, Never>?
+    @State private var reloadGeneration = 0
+    @State private var isRefreshing = false
+    @State private var loadFailed = false
+    @State private var lastLoadedAt: Date?
+    /// Clase con la asistencia de hoy sin pasar (información solo de Mac).
+    @State private var attendancePendingClassId: Int64?
 
     private var modePreference: DashboardModePreference {
         DashboardModePreference(rawValue: modePreferenceRaw) ?? .auto
     }
 
-    private var activeContext: DashboardSessionContext? {
-        guard case .ready(let snapshot) = loadState else { return nil }
-        return snapshot.context
+    private var snapshot: DashboardSnapshot? { dashboardStore.dashboardSnapshot }
+
+    private var activeContext: DashboardSessionContext? { snapshot?.currentContext }
+
+    private var effectiveMode: DashboardMode { modePreference.resolved(for: activeContext) }
+
+    private var isClassroomMode: Bool { effectiveMode == .classroom }
+
+    /// Una columna en ventanas estrechas o con Dynamic Type de accesibilidad.
+    private var singleColumn: Bool {
+        containerWidth < 760 || dynamicTypeSize.isAccessibilitySize
     }
 
-    var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    dashboardHeader
+    private var snapshotIdentity: ObjectIdentifier? { snapshot.map { ObjectIdentifier($0) } }
 
-                    switch loadState {
-                    case .loading:
-                        DashboardLoadingView()
-                    case .ready(let snapshot):
-                        readyContent(snapshot: snapshot, isWide: proxy.size.width >= 1040)
-                    case .empty(let reason):
-                        DashboardEmptyStateView(reason: reason) { destination in
-                            onNavigate(destination)
-                        }
-                    case .error(let message):
-                        DashboardErrorStateView(message: message) {
-                            scheduleReload()
-                        }
-                    }
+    // MARK: Cuerpo
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s3) {
+                DashboardHeaderView(
+                    greeting: greeting,
+                    dateLine: dateLine,
+                    modeHint: modePreference.resolvedHint(for: activeContext)
+                )
+
+                if loadFailed, snapshot != nil {
+                    DashboardErrorBanner(lastLoadedAt: lastLoadedAt, isRetrying: isRefreshing, onRetry: retryLoad)
+                        .transition(.opacity)
                 }
-                .padding(MacAppStyle.pagePadding)
-                .macLiquidGlassGroup(spacing: 18)
+
+                dashboardBody
             }
+            .padding(MacAppStyle.pagePadding)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: loadFailed)
         }
-        .background(MacAppStyle.pageBackground)
+        .overlay(alignment: .top) {
+            if isRefreshing, snapshot != nil { DashboardSyncLine() }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { containerWidth = $0 }
+        .background { DashboardBackground() }
+        .background { keyboardShortcuts }
+        .inspector(isPresented: $isInspectorPresented) {
+            DashboardInspectorContent(
+                snapshot: snapshot,
+                selection: inspectorSelection,
+                onOpenModule: openModule,
+                onNewObservation: { activeSheet = .observation(classId: activeClassId) },
+                onClose: closeInspector
+            )
+            .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
+        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .quickEvaluation(let classId):
@@ -99,42 +144,163 @@ struct MacDashboardView: View {
                 }
                 .frame(minWidth: 760, minHeight: 680)
             case .observation(let classId):
-                ObservationComposerSheet(bridge: bridge, initialClassId: classId) {
-                    activeSheet = nil
-                } onOpenStudents: { classId in
-                    activeSheet = nil
-                    onNavigate(.students(classId: classId))
-                }
-                .frame(minWidth: 560, minHeight: 520)
+                DashboardObservationSheet(bridge: bridge, initialClassId: classId)
+                    .frame(minWidth: 520, minHeight: 460)
             }
         }
         .task {
-            scheduleReload()
             await backupStore.loadBackups()
         }
-        .onAppear {
-            scheduleToolbarActionsSync()
+        .task {
+            await reloadDashboard()
         }
+        .onAppear { scheduleToolbarActionsSync() }
         .onDisappear {
             reloadTask?.cancel()
+            trendsTask?.cancel()
+            aiBriefingTask?.cancel()
             onToolbarActionsChange(nil)
         }
-        .appOnChange(of: toolbarKey) { _ in
-            scheduleToolbarActionsSync()
+        .appOnChange(of: toolbarKey) { _ in scheduleToolbarActionsSync() }
+        // El modo efectivo decide el alcance del snapshot (Clase = solo el
+        // grupo en curso). La sync (pendientes, host) ya NO recarga la página:
+        // solo cambia la píldora.
+        .appOnChange(of: isClassroomMode) { _ in triggerReload() }
+        .appOnChange(of: snapshotIdentity) { _ in snapshotDidChange() }
+    }
+
+    /// Atajos propios del Dashboard: ⌘1/2/3 cambian de modo, ⌘N nueva observación.
+    /// ⌘R (recargar) y Esc (salir de Clase) ya los cubren el shell y el modo Clase.
+    private var keyboardShortcuts: some View {
+        Group {
+            Button("Modo Auto") { modePreferenceRaw = DashboardModePreference.auto.rawValue }
+                .keyboardShortcut("1", modifiers: .command)
+            Button("Modo Clase") { modePreferenceRaw = DashboardModePreference.classroom.rawValue }
+                .keyboardShortcut("2", modifiers: .command)
+            Button("Modo Despacho") { modePreferenceRaw = DashboardModePreference.office.rawValue }
+                .keyboardShortcut("3", modifiers: .command)
+            Button("Nueva observación") { activeSheet = .observation(classId: activeClassId) }
+                .keyboardShortcut("n", modifiers: .command)
         }
-        .appOnChange(of: dashboardStore.syncPendingChanges) { _ in
-            scheduleReload()
-        }
-        .appOnChange(of: dashboardStore.pairedSyncHost) { _ in
-            scheduleReload()
-        }
-        .appOnChange(of: modePreferenceRaw) { _ in
-            scheduleReload()
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    // MARK: Contenido
+
+    @ViewBuilder
+    private var dashboardBody: some View {
+        if let snapshot {
+            if dashboardStore.classes.isEmpty {
+                DashboardNoClassesView(singleColumn: singleColumn) { module in
+                    openModule(module, nil, nil)
+                }
+            } else {
+                loadedContent(snapshot: snapshot)
+            }
+        } else if loadFailed {
+            DashboardLoadFailureView(onRetry: retryLoad)
+        } else if isClassroomMode {
+            DashboardClassroomSkeleton(singleColumn: singleColumn)
+        } else {
+            DashboardDispatchSkeleton(singleColumn: singleColumn)
         }
     }
 
-    private var isClassroomMode: Bool {
-        modePreference.resolved(for: operationalSnapshot?.currentContext) == .classroom
+    private func loadedContent(snapshot: DashboardSnapshot) -> some View {
+        let presentation = presentationCache.model(for: snapshot, extraItems: extraAttentionItems)
+        return Group {
+            if isClassroomMode {
+                DashboardClassroomView(
+                    snapshot: snapshot,
+                    colorScheme: colorScheme,
+                    isCompact: singleColumn,
+                    onAction: handleNowAction,
+                    onExitClassroomMode: {
+                        // Salir de Clase devuelve el selector a Auto; no fija Despacho.
+                        modePreferenceRaw = DashboardModePreference.auto.rawValue
+                    },
+                    studentNames: studentNames
+                )
+                .dashboardModeTransition(reduceMotion: reduceMotion)
+                .id("modo-clase")
+            } else {
+                DashboardDispatchView(
+                    presentation: presentation,
+                    briefing: briefingSentence,
+                    analysisFailed: classTrendsLoadFailed && briefingSentence == nil,
+                    singleColumn: singleColumn,
+                    hiddenKinds: $hiddenKinds,
+                    showAllAttention: $showAllAttention,
+                    openContext: $openContext,
+                    handlers: dispatchHandlers
+                )
+                .dashboardModeTransition(reduceMotion: reduceMotion)
+                .id("modo-despacho")
+            }
+        }
+        .opacity(loadFailed ? 0.75 : 1)
+        .saturation(loadFailed ? 0.7 : 1)
+        .animation(reduceMotion ? .linear(duration: 0.2) : .easeInOut(duration: 0.35), value: isClassroomMode)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(staleDataLabel ?? "Dashboard")
+    }
+
+    private var staleDataLabel: String? {
+        guard loadFailed, let lastLoadedAt else { return nil }
+        return "Datos de las \(lastLoadedAt.formatted(date: .omitted, time: .shortened))"
+    }
+
+    private var dispatchHandlers: DashboardDispatchHandlers {
+        DashboardDispatchHandlers(
+            onNowAction: handleNowAction,
+            onAttentionAction: performAttentionAction,
+            onAttentionSelect: { select($0.inspector) },
+            onSelectSession: { select(.session($0)) },
+            onSelectPE: { select(.pe($0)) },
+            onRetryAnalysis: startTrendsLoad
+        )
+    }
+
+    /// La asistencia de hoy sin pasar solo se conoce en Mac: entra en la lista
+    /// de Atención como una fila más, con la misma lógica que el resto.
+    private var extraAttentionItems: [DashboardAttentionItem] {
+        guard let classId = attendancePendingClassId else { return [] }
+        return [
+            DashboardAttentionItem(
+                id: "attendance-today-\(classId)",
+                kind: .pending,
+                title: "Asistencia pendiente de hoy",
+                detail: "Abre Asistencia para pasar lista.",
+                classId: classId,
+                studentId: nil,
+                inspector: .attendance(classId: classId),
+                action: DashboardAttentionAction(
+                    title: "Pasar lista",
+                    route: .module(.attendance, classId: classId, studentId: nil)
+                )
+            )
+        ]
+    }
+
+    // MARK: Cabecera
+
+    private var syncPill: DashboardSyncPill {
+        if loadFailed { return .offline }
+        if isRefreshing { return .syncing }
+        return DashboardSyncPill.make(
+            message: dashboardStore.syncStatusMessage,
+            pendingChanges: dashboardStore.syncPendingChanges,
+            pairedHost: dashboardStore.pairedSyncHost
+        )
+    }
+
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour >= 6 && hour < 14 { return "Buenos días" }
+        if hour >= 14 && hour < 21 { return "Buenas tardes" }
+        return "Buenas noches"
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -144,333 +310,236 @@ struct MacDashboardView: View {
         return formatter
     }()
 
-    private var dashboardFormattedDate: String {
-        let dateStr = Self.dateFormatter.string(from: Date())
-        return dateStr.prefix(1).uppercased() + dateStr.dropFirst()
+    private var dateLine: String {
+        let text = Self.dateFormatter.string(from: Date())
+        return text.prefix(1).uppercased() + text.dropFirst()
     }
 
-    private var dashboardGreeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        if hour >= 6 && hour < 14 {
-            return "Buenos días"
-        } else if hour >= 14 && hour < 21 {
-            return "Buenas tardes"
-        } else {
-            return "Buenas noches"
-        }
+    private var activeClassId: Int64? {
+        activeContext?.classId?.int64Value ?? dashboardStore.classes.first?.id
     }
 
-    private var dashboardHeader: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(dashboardGreeting)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                Text("\(dashboardFormattedDate) · \(headerSubtitle)")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 16)
-            dashboardModePicker
-            SyncStatusCompactView(summary: DashboardSyncSummary(bridge: bridge))
-        }
-        .padding(.bottom, 8)
+    /// Nombres cortos ("Hugo P.") para la ficha de alerta del modo Clase.
+    private var studentNames: [Int64: String] {
+        Dictionary(
+            dashboardStore.studentsInClass.map { ($0.id, "\($0.firstName) \($0.lastName.prefix(1)).") },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
-    private var headerSubtitle: String {
-        modePreference.resolvedHint(for: operationalSnapshot?.currentContext)
-            ?? (modePreference == .classroom ? "Solo el grupo que tengo delante" : "Qué tengo ahora, qué falta y qué hago")
-    }
-
-    /// macOS no tenía selector de modo: el dashboard estaba fijado a Despacho.
-    /// Ahora ofrece las mismas tres opciones que iPad.
-    private var dashboardModePicker: some View {
-        Picker("Contexto", selection: $modePreferenceRaw) {
-            ForEach(DashboardModePreference.allCases) { option in
-                Text(option.title).tag(option.rawValue)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(maxWidth: 260)
-    }
-
-    @ViewBuilder
-    private func readyContent(snapshot: MacDashboardSnapshot, isWide: Bool) -> some View {
-        if isClassroomMode {
-            classroomModeContent
-        } else {
-            officeModeContent(snapshot: snapshot, isWide: isWide)
-        }
-    }
-
-    @ViewBuilder
-    private var classroomModeContent: some View {
-        if let operationalSnapshot {
-            VStack(spacing: 24) {
-                DashboardClassroomView(
-                    snapshot: operationalSnapshot,
-                    colorScheme: colorScheme,
-                    isCompact: false,
-                    onAction: handleNowAction,
-                    onExitClassroomMode: {
-                        modePreferenceRaw = DashboardModePreference.office.rawValue
-                        scheduleReload()
-                    }
-                )
-                .frame(maxWidth: 680)
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 24)
-        } else {
-            DashboardLoadingView()
-        }
-    }
-
-    @ViewBuilder
-    private func officeModeContent(snapshot: MacDashboardSnapshot, isWide: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // 1. Hero compacto para optimizar espacio vertical
-            if let operationalSnapshot {
-                DashboardCompactHeroStrip(
-                    context: operationalSnapshot.currentContext,
-                    colorScheme: colorScheme,
-                    onAction: handleNowAction
-                )
-            }
-
-            // 2. Fila de KPIs
-            if let operationalSnapshot {
-                dashboardKpiRow(snapshot: operationalSnapshot, colorScheme: colorScheme, isCompact: false)
-            }
-
-            // 3. Grid de escritorio (3 columnas si es >= 1040, 2 columnas si es más estrecha)
-            if isWide {
-                HStack(alignment: .top, spacing: 20) {
-                    // Columna 1: Agenda docente + Resumen por grupo
-                    VStack(alignment: .leading, spacing: 20) {
-                        if let operationalSnapshot {
-                            dashboardAgendaBlock(snapshot: operationalSnapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
-                            dashboardGroupSummaryBlock(snapshot: operationalSnapshot, isWide: false)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                    // Columna 2: Radar docente (Insights + IA Briefing) + Auditoría LOMLOE
-                    VStack(alignment: .leading, spacing: 20) {
-                        DashboardProactiveInsightCard(
-                            insights: proactiveInsights,
-                            aiBriefing: aiBriefing,
-                            aiBriefingState: aiBriefingState,
-                            actionAvailability: proactiveActionAvailable,
-                            onAction: handleProactiveAction
-                        )
-                        dashboardLomloeAuditBlock(
-                            trends: classTrends,
-                            isLoading: isLoadingClassTrends,
-                            loadFailed: classTrendsLoadFailed,
-                            onRetry: { Task { await rebuildProactiveRadarForCurrentState() } }
-                        )
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                    // Columna 3: Tareas pendientes + Bloque Educación Física + Riesgo + Estado del Sistema
-                    VStack(alignment: .leading, spacing: 20) {
-                        DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
-                        if let operationalSnapshot {
-                            dashboardPEBlock(snapshot: operationalSnapshot, colorScheme: colorScheme, onSelectItem: handleSelectPEItem)
-                        }
-                        DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
-                        DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-            } else {
-                HStack(alignment: .top, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 20) {
-                        if let operationalSnapshot {
-                            dashboardAgendaBlock(snapshot: operationalSnapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
-                            dashboardGroupSummaryBlock(snapshot: operationalSnapshot, isWide: false)
-                        }
-                        DashboardProactiveInsightCard(
-                            insights: proactiveInsights,
-                            aiBriefing: aiBriefing,
-                            aiBriefingState: aiBriefingState,
-                            actionAvailability: proactiveActionAvailable,
-                            onAction: handleProactiveAction
-                        )
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                    VStack(alignment: .leading, spacing: 20) {
-                        DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
-                        dashboardLomloeAuditBlock(
-                            trends: classTrends,
-                            isLoading: isLoadingClassTrends,
-                            loadFailed: classTrendsLoadFailed,
-                            onRetry: { Task { await rebuildProactiveRadarForCurrentState() } }
-                        )
-                        if let operationalSnapshot {
-                            dashboardPEBlock(snapshot: operationalSnapshot, colorScheme: colorScheme, onSelectItem: handleSelectPEItem)
-                        }
-                        DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
-                        DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-            }
-        }
-    }
+    // MARK: Navegación
 
     private func handleNowAction(_ action: DashboardNowAction) {
-        let classId = operationalSnapshot?.currentContext?.classId?.int64Value
+        let classId = activeContext?.classId?.int64Value
         switch action {
         case .passList:
-            handleQuickAction(.attendance(classId: classId))
+            onNavigate(.attendance(classId: classId))
         case .openNotebook:
-            handleQuickAction(.notebook(classId: classId))
+            onNavigate(.notebook(classId: classId))
         case .evaluate:
-            handleQuickAction(.rubrics(classId: classId))
+            onNavigate(.rubrics(classId: classId))
         case .observation:
             activeSheet = .observation(classId: classId)
         case .quickEvaluation:
             activeSheet = .quickEvaluation(classId: classId)
         case .openPlanner:
-            handleQuickAction(.plannerAgenda)
+            onNavigate(.plannerAgenda)
         case .openJournal:
-            if let sessionId = operationalSnapshot?.currentContext?.sessionId?.int64Value {
-                handleQuickAction(.plannerSession(sessionId: sessionId))
-            } else {
-                handleQuickAction(.plannerAgenda)
-            }
+            onNavigate(.plannerSession(sessionId: activeContext?.sessionId?.int64Value))
         }
     }
 
-    private func handleSelectPEItem(_ item: PEOperationalItem) {
-        if let destination = peDestination(for: item) {
-            onOpenModule(destination, item.classId?.int64Value, nil)
+    private func performAttentionAction(_ item: DashboardAttentionItem) {
+        switch item.action.route {
+        case .module(let module, let classId, let studentId):
+            openModule(module, classId, studentId)
+        case .inspector:
+            select(item.inspector)
         }
     }
+
+    /// El shell de Mac no tiene todos los módulos de iPad: Rúbricas y Planner
+    /// se abren por su destino propio, y los de Educación Física caen en el
+    /// módulo general equivalente (si no, el shell solo enseñaría un aviso).
+    private func openModule(_ module: AppWorkspaceModule, _ classId: Int64?, _ studentId: Int64?) {
+        let classId = classId ?? activeClassId
+        switch module {
+        case .attendance:
+            onNavigate(.attendance(classId: classId))
+        case .rubrics, .peRubrics:
+            onNavigate(.rubrics(classId: classId))
+        case .planner, .peMaterial:
+            onNavigate(.plannerAgenda)
+        case .peIncidents:
+            onOpenModule(.students, classId, studentId)
+        default:
+            onOpenModule(module, classId, studentId)
+        }
+    }
+
+    private func select(_ selection: DashboardInspectorSelection) {
+        inspectorSelection = selection
+        isInspectorPresented = true
+    }
+
+    private func closeInspector() {
+        inspectorSelection = nil
+        isInspectorPresented = false
+    }
+
+    // MARK: Barra de herramientas (shell)
 
     private var toolbarKey: String {
-        let context = activeContext
-        return "\(context?.classId?.int64Value ?? -1)|\(context.map { dashboardContextStatusLabel($0.status) } ?? "none")|\(dashboardStore.syncPendingChanges)|\(dashboardStore.pairedSyncHost ?? "")"
+        let snapshotKey = snapshot.map { ObjectIdentifier($0).hashValue } ?? 0
+        return "\(activeContext?.classId?.int64Value ?? -1)|\(activeContext.map { dashboardContextStatusLabel($0.status) } ?? "none")|\(snapshotKey)|\(syncPill)"
     }
 
     private func syncToolbarActions() {
         onToolbarActionsChange(
             MacDashboardToolbarActions(
                 canRunActions: activeContext?.classId != nil,
-                refresh: { scheduleReload() },
-                passList: { handleQuickAction(.attendance(classId: activeContext?.classId?.int64Value)) },
-                observation: { activeSheet = .observation(classId: activeContext?.classId?.int64Value) }
+                refresh: { retryLoad() },
+                passList: { onNavigate(.attendance(classId: activeContext?.classId?.int64Value)) },
+                observation: { activeSheet = .observation(classId: activeContext?.classId?.int64Value) },
+                snapshot: snapshot,
+                syncPill: syncPill
             )
         )
     }
 
     private func scheduleToolbarActionsSync() {
-        Task { @MainActor in
-            syncToolbarActions()
-        }
+        Task { @MainActor in syncToolbarActions() }
     }
 
-    private func scheduleReload() {
+    // MARK: Carga
+
+    private func triggerReload() {
         reloadTask?.cancel()
-        reloadTask = Task {
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            guard !Task.isCancelled else { return }
-            await loadDashboard()
+        reloadGeneration += 1
+        let generation = reloadGeneration
+        reloadTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled, generation == reloadGeneration else { return }
+            await reloadDashboard(expectedGeneration: generation)
         }
     }
 
+    private func retryLoad() {
+        AccessibilityNotification.Announcement("Reintentando").post()
+        reloadTask?.cancel()
+        reloadGeneration += 1
+        Task { @MainActor in await reloadDashboard() }
+    }
+
+    /// Recarga sin vaciar la pantalla: el contenido anterior se queda a la vista.
     @MainActor
-    private func loadDashboard() async {
-        loadState = .loading
-        do {
-            await bridge.ensureClassesLoaded()
-            // El modo ya no está fijado a `.office`: se resuelve desde la
-            // preferencia del usuario y del contexto del horario, igual que en
-            // iPad. Se pide primero con el modo vigente y, si el automático
-            // cambia de opinión al ver el contexto, se recarga una sola vez.
-            let requestedMode = modePreference.resolved(for: operationalSnapshot?.currentContext)
-            await bridge.refreshDashboard(mode: requestedMode)
-            var snapshot = dashboardStore.dashboardSnapshot
-            let settledMode = modePreference.resolved(for: snapshot?.currentContext)
-            if settledMode != requestedMode {
-                await bridge.refreshDashboard(mode: settledMode)
-                snapshot = dashboardStore.dashboardSnapshot
+    private func reloadDashboard(expectedGeneration: Int? = nil) async {
+        if let expectedGeneration, expectedGeneration != reloadGeneration { return }
+        isRefreshing = true
+        defer {
+            if expectedGeneration == nil || expectedGeneration == reloadGeneration {
+                isRefreshing = false
             }
-            operationalSnapshot = snapshot
-
-            guard !dashboardStore.classes.isEmpty else {
-                loadState = .empty(.noClasses)
-                return
-            }
-
-            // Sin horario o fuera del rango del curso ya NO vacían la página.
-            // Antes sí, y por eso el mismo estado se veía radicalmente distinto
-            // en las dos plataformas: macOS sustituía todo el dashboard por una
-            // tarjeta de aviso mientras iPad seguía enseñando alertas,
-            // pendientes y riesgo. Ese aviso lo da ahora la propia tarjeta
-            // "Ahora", igual que en iPad, y el resto del dashboard sigue ahí:
-            // el trabajo pendiente no deja de existir porque sea julio.
-            loadState = .ready(try await buildSnapshot(context: snapshot?.currentContext))
-        } catch {
-            loadState = .error("No se pudo cargar el dashboard: \(error.localizedDescription)")
         }
-        await rebuildProactiveRadarForCurrentState()
-        syncToolbarActions()
+        await bridge.ensureClassesLoaded()
+        let previous = bridge.dashboardSnapshot
+        // Se pide con el modo vigente y, si el automático cambia de opinión al
+        // ver el contexto, se recarga una sola vez.
+        let requestedMode = modePreference.resolved(for: previous?.currentContext)
+        await bridge.refreshDashboard(mode: requestedMode)
+        guard !Task.isCancelled else { return }
+        var latest = bridge.dashboardSnapshot
+        let settledMode = modePreference.resolved(for: latest?.currentContext)
+        if settledMode != requestedMode {
+            await bridge.refreshDashboard(mode: settledMode)
+            latest = bridge.dashboardSnapshot
+        }
+        guard !Task.isCancelled else { return }
+        if let expectedGeneration, expectedGeneration != reloadGeneration { return }
+
+        // `refreshDashboard` no lanza: si falla deja el snapshot anterior y
+        // escribe el error en `status`.
+        if latest === previous && bridge.status.hasPrefix("Error dashboard operativo") {
+            loadFailed = true
+            return
+        }
+        if loadFailed {
+            AccessibilityNotification.Announcement("Datos actualizados").post()
+        }
+        loadFailed = false
+        lastLoadedAt = Date()
+        await refreshAttendancePending(context: latest?.currentContext)
+        startTrendsLoad()
     }
 
-    private func rebuildProactiveRadarForCurrentState() async {
-        guard case .ready(let snapshot) = loadState else {
+    private func refreshAttendancePending(context: DashboardSessionContext?) async {
+        guard let context, let classId = context.classId?.int64Value,
+              context.status == .active || context.status == .nextToday else {
+            attendancePendingClassId = nil
+            return
+        }
+        let records = (try? await bridge.attendanceRecords(for: classId, on: Date())) ?? []
+        attendancePendingClassId = records.isEmpty ? classId : nil
+    }
+
+    private func snapshotDidChange() {
+        guard snapshot != nil else { return }
+        lastLoadedAt = Date()
+        loadFailed = false
+        rebuildProactiveRadar()
+        scheduleToolbarActionsSync()
+    }
+
+    // MARK: Análisis (briefing)
+
+    private var briefingSentence: String? {
+        DashboardBriefing.oneSentence(aiBriefing?.summary ?? proactiveInsights.first?.summary)
+    }
+
+    private var contextClassName: String? {
+        guard let name = activeContext?.className, !name.isEmpty else { return nil }
+        return name
+    }
+
+    private func rebuildProactiveRadar() {
+        guard let snapshot else {
             proactiveInsights = []
             aiBriefing = nil
             aiBriefingState = .deterministic
-            classTrends = nil
-            classTrendsLoadFailed = false
             return
         }
-        let context = snapshot.context
-        isLoadingClassTrends = context?.classId != nil
-        let trends: KmpBridge.AITrendsSnapshot?
-        if let classId = context?.classId?.int64Value {
-            trends = try? await bridge.getAITrendsAndMetrics(classId: classId, studentId: nil)
-        } else {
-            trends = nil
-        }
-        classTrends = trends
-        classTrendsLoadFailed = context?.classId != nil && trends == nil
-        isLoadingClassTrends = false
         proactiveInsights = DashboardProactiveInsightEngine.build(
-            snapshot: snapshot.proactiveSnapshot,
-            trends: trends,
+            snapshot: snapshot,
+            trends: classTrends,
             context: DashboardProactiveContext(
-                className: context.map { $0.className.isEmpty ? nil : $0.className } ?? nil,
-                modeLabel: "macOS",
-                syncPendingChanges: snapshot.syncStatus.pendingChanges,
-                pairedSyncHost: snapshot.syncStatus.pairedHost,
+                className: contextClassName,
+                // El motor compara con "Clase": antes Mac pasaba "macOS" y
+                // nunca reconocía el modo Clase.
+                modeLabel: isClassroomMode ? "Clase" : "Despacho",
+                syncPendingChanges: dashboardStore.syncPendingChanges,
+                pairedSyncHost: dashboardStore.pairedSyncHost,
                 latestBackupDate: backupStore.latestBackup?.createdAt,
                 platformName: "macOS"
             ),
             limit: 5
         )
-        loadAIBriefingIfNeeded(snapshot: snapshot)
+        loadAIBriefingIfNeeded()
     }
 
-    private func loadAIBriefingIfNeeded(snapshot: MacDashboardSnapshot) {
-        let key = aiBriefingKey(snapshot: snapshot)
+    private func loadAIBriefingIfNeeded() {
+        let classId = activeContext?.classId?.int64Value
+        let key = DashboardAIBriefingCacheKey(classId: classId, scope: "macOS")
         activeAIBriefingKey = key
         if let cached = DashboardAIBriefingCache.shared.cachedDraft(for: key) {
             aiBriefing = cached
             aiBriefingState = .cached
             return
         }
-        let context = snapshot.context
-        aiBriefing = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: context.map { $0.className.isEmpty ? nil : $0.className } ?? nil)
+        aiBriefing = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: contextClassName)
         aiBriefingState = .updating
         guard DashboardAIBriefingCache.shared.beginRefresh(for: key) else { return }
-        let classId = context?.classId?.int64Value
-        Task { @MainActor in
+        aiBriefingTask?.cancel()
+        aiBriefingTask = Task { @MainActor in
             defer { DashboardAIBriefingCache.shared.finishRefresh(for: key) }
             do {
                 let draft = try await teachingAssistantService.generateDailyBriefingDraft(
@@ -480,14 +549,13 @@ struct MacDashboardView: View {
                     tone: .breve,
                     customPrompt: nil
                 )
-                guard activeAIBriefingKey == key else { return }
+                guard !Task.isCancelled, activeAIBriefingKey == key else { return }
                 DashboardAIBriefingCache.shared.store(draft, for: key)
                 aiBriefing = draft
                 aiBriefingState = .fresh
             } catch {
-                guard activeAIBriefingKey == key else { return }
-                let fallback = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: context.map { $0.className.isEmpty ? nil : $0.className } ?? nil)
-                if let fallback {
+                guard !Task.isCancelled, activeAIBriefingKey == key else { return }
+                if let fallback = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: contextClassName) {
                     aiBriefing = fallback
                 }
                 aiBriefingState = .failed
@@ -495,252 +563,25 @@ struct MacDashboardView: View {
         }
     }
 
-    private func aiBriefingKey(snapshot: MacDashboardSnapshot) -> DashboardAIBriefingCacheKey {
-        let context = snapshot.context
-        return DashboardAIBriefingCacheKey(classId: context?.classId?.int64Value, scope: "macOS")
-    }
-
-    private func proactiveActionAvailable(_ action: DashboardProactiveAction) -> Bool {
-        let classId = activeContext?.classId?.int64Value
-        switch action {
-        case .passList, .openNotebook, .evaluatePending, .quickEvaluation, .openReports:
-            return classId != nil
-        case .openPlanner:
-            return true
-        case .reviewPhysicalEducation:
-            return classId != nil
-        case .reviewSystem, .openInspector:
-            return false
-        }
-    }
-
-    private func handleProactiveAction(_ action: DashboardProactiveAction) {
-        let classId = activeContext?.classId?.int64Value
-        switch action {
-        case .passList:
-            handleQuickAction(.attendance(classId: classId))
-        case .openNotebook:
-            handleQuickAction(.notebook(classId: classId))
-        case .evaluatePending:
-            handleQuickAction(.rubrics(classId: classId))
-        case .quickEvaluation:
-            activeSheet = .quickEvaluation(classId: classId)
-        case .openPlanner:
-            handleQuickAction(.plannerAgenda)
-        case .openReports:
-            handleQuickAction(.reports(classId: classId))
-        case .reviewPhysicalEducation:
-            handleQuickAction(.notebook(classId: classId))
-        case .reviewSystem, .openInspector:
-            break
-        }
-    }
-
-    private func buildSnapshot(context: DashboardSessionContext?) async throws -> MacDashboardSnapshot {
-        let pending = try await pendingItems(for: context)
-        return MacDashboardSnapshot(
-            context: context,
-            pendingItems: pending,
-            syncStatus: DashboardSyncSummary(bridge: bridge),
-            quickActions: DashboardQuickAction.defaults(for: context)
-        )
-    }
-
-
-    private func pendingItems(for context: DashboardSessionContext?) async throws -> [DashboardPendingItem] {
-        var items: [DashboardPendingItem] = []
-
-        if let context, context.classId != nil, context.sessionId == nil {
-            items.append(
-                DashboardPendingItem(
-                    title: context.status == .active ? "Crear diario de sesión" : "Próxima clase sin sesión creada",
-                    subtitle: "Hay clase en el horario fijo, pero no hay sesión planificada asociada.",
-                    priority: context.status == .active ? .high : .medium,
-                    destination: .plannerAgenda
-                )
-            )
-        }
-
-        if let context, let classId = context.classId?.int64Value {
-            let records = try await bridge.attendanceRecords(for: classId, on: Date())
-            if records.isEmpty {
-                items.append(
-                    DashboardPendingItem(
-                        title: "Asistencia pendiente de hoy",
-                        subtitle: "Abre Asistencia para pasar lista; el dashboard no marcará nada automáticamente.",
-                        priority: context.status == .active ? .high : .medium,
-                        destination: .attendance(classId: classId)
-                    )
-                )
+    private func startTrendsLoad() {
+        trendsTask?.cancel()
+        trendsTask = Task { @MainActor in
+            guard let classId = activeContext?.classId?.int64Value else {
+                classTrends = nil
+                classTrendsLoadFailed = false
+                rebuildProactiveRadar()
+                return
             }
-        }
-
-        if dashboardStore.syncPendingChanges > 0 {
-            items.append(
-                DashboardPendingItem(
-                    title: "\(dashboardStore.syncPendingChanges) cambios pendientes de sync",
-                    subtitle: dashboardStore.pairedSyncHost.map { "Conectado a \($0)" } ?? "Sync local inactivo o desconectado.",
-                    priority: .medium,
-                    destination: nil
-                )
-            )
-        }
-
-        return items
-    }
-
-    private func handleQuickAction(_ destination: MacDashboardDestination) {
-        switch destination {
-        case .plannerSession(let sessionId):
-            onNavigate(.plannerSession(sessionId: sessionId))
-        case .rubrics(let classId):
-            onNavigate(.rubrics(classId: classId))
-        default:
-            onNavigate(destination)
-        }
-    }
-}
-
-private enum MacDashboardLoadState {
-    case loading
-    case ready(MacDashboardSnapshot)
-    case empty(MacDashboardEmptyReason)
-    case error(String)
-}
-
-/// Única razón que justifica vaciar la página entera: sin clases no hay nada
-/// que enseñar. Sin horario o fuera de curso sí hay dashboard, y lo avisa la
-/// tarjeta "Ahora".
-private enum MacDashboardEmptyReason {
-    case noClasses
-}
-
-private struct MacDashboardSnapshot {
-    /// Antes había dos contextos (`currentClassContext` y `nextClassContext`)
-    /// resueltos aquí en Swift. Ahora es uno solo y viene del backend, dentro
-    /// del `DashboardSnapshot` compartido con iPad: su `status` ya distingue si
-    /// la clase está en curso o es la siguiente.
-    let context: DashboardSessionContext?
-    let pendingItems: [DashboardPendingItem]
-    let syncStatus: DashboardSyncSummary
-    let quickActions: [DashboardQuickAction]
-
-    var proactiveSnapshot: DashboardProactiveSnapshot {
-        DashboardProactiveSnapshot(
-            todayCount: context?.status == .active ? 1 : 0,
-            alertsCount: pendingItems.filter { $0.priority == .high }.count,
-            pendingCount: pendingItems.count,
-            nextSessionLabel: context.map { $0.className.isEmpty ? "Sin próxima sesión" : $0.className } ?? "Sin próxima sesión",
-            todaySessions: [context].compactMap { context in
-                guard let context else { return nil }
-                return DashboardProactiveSession(
-                    id: "\(context.scheduleSlotId?.int64Value ?? context.classId?.int64Value ?? -1)",
-                    groupName: context.className.isEmpty ? "Grupo" : context.className,
-                    timeLabel: [context.startTime, context.endTime].compactMap { $0 }.joined(separator: "-"),
-                    didacticUnit: context.sessionTitle ?? context.unitLabel ?? "Sin sesión planificada",
-                    sessionStatus: dashboardContextStatusLabel(context.status)
-                )
-            },
-            alerts: pendingItems.map { item in
-                DashboardProactiveSignal(
-                    id: item.id.uuidString,
-                    type: "pending",
-                    title: item.title,
-                    detail: item.subtitle,
-                    severity: item.priority.proactiveSeverity,
-                    count: 1
-                )
+            classTrendsLoadFailed = false
+            do {
+                classTrends = try await bridge.getAITrendsAndMetrics(classId: classId, studentId: nil)
+            } catch {
+                guard !Task.isCancelled else { return }
+                classTrendsLoadFailed = true
             }
-        )
-    }
-}
-
-private struct DashboardPendingItem: Identifiable {
-    enum Priority: Equatable {
-        case low
-        case medium
-        case high
-
-        var tint: Color {
-            switch self {
-            case .low: return MacAppStyle.successTint
-            case .medium: return MacAppStyle.warningTint
-            case .high: return MacAppStyle.dangerTint
-            }
+            guard !Task.isCancelled else { return }
+            rebuildProactiveRadar()
         }
-
-        var proactiveSeverity: String {
-            switch self {
-            case .low: return "low"
-            case .medium: return "medium"
-            case .high: return "high"
-            }
-        }
-    }
-
-    let id = UUID()
-    let title: String
-    let subtitle: String
-    let priority: Priority
-    let destination: MacDashboardDestination?
-}
-
-private struct DashboardSyncSummary {
-    let message: String
-    let pendingChanges: Int
-    let lastRunAt: Date?
-    let pairedHost: String?
-    let state: State
-
-    enum State {
-        case synced
-        case pending
-        case disconnected
-        case inactive
-
-        var tint: Color {
-            switch self {
-            case .synced: return MacAppStyle.successTint
-            case .pending: return MacAppStyle.warningTint
-            case .disconnected: return MacAppStyle.dangerTint
-            case .inactive: return .secondary
-            }
-        }
-    }
-
-    @MainActor init(bridge: KmpBridge) {
-        message = bridge.syncStatusMessage
-        pendingChanges = bridge.syncPendingChanges
-        lastRunAt = bridge.syncLastRunAt
-        pairedHost = bridge.pairedSyncHost
-        if bridge.syncPendingChanges > 0 {
-            state = .pending
-        } else if bridge.pairedSyncHost != nil {
-            state = .synced
-        } else if bridge.syncStatusMessage.lowercased().contains("error") {
-            state = .disconnected
-        } else {
-            state = .inactive
-        }
-    }
-}
-
-private struct DashboardQuickAction: Identifiable {
-    let id: String
-    let title: String
-    let systemImage: String
-    let destination: MacDashboardDestination?
-    let sheet: DashboardSheet?
-
-    static func defaults(for context: DashboardSessionContext?) -> [DashboardQuickAction] {
-        let classId = context?.classId?.int64Value
-        return [
-            .init(id: "attendance", title: "Pasar lista", systemImage: "checkmark.circle", destination: .attendance(classId: classId), sheet: nil),
-            .init(id: "notebook", title: "Abrir cuaderno", systemImage: "tablecells", destination: .notebook(classId: classId), sheet: nil),
-            .init(id: "rubrics", title: "Evaluar rúbrica", systemImage: "checklist.checked", destination: .rubrics(classId: classId), sheet: nil),
-            .init(id: "observation", title: "Preparar observación", systemImage: "note.text.badge.plus", destination: nil, sheet: .observation(classId: classId)),
-            .init(id: "quick-evaluation", title: "Preparar evaluación", systemImage: "sparkles", destination: nil, sheet: .quickEvaluation(classId: classId))
-        ]
     }
 }
 
@@ -752,461 +593,6 @@ private enum DashboardSheet: Identifiable, Hashable {
         switch self {
         case .quickEvaluation(let classId): return "quick-\(classId ?? -1)"
         case .observation(let classId): return "observation-\(classId ?? -1)"
-        }
-    }
-}
-
-private struct MacPanel<Content: View>: View {
-    let title: String
-    var role: MacLiquidGlassSurfaceRole = .primaryPanel
-    var tint: Color? = nil
-    let content: Content
-
-    init(
-        title: String,
-        role: MacLiquidGlassSurfaceRole = .primaryPanel,
-        tint: Color? = nil,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.role = role
-        self.tint = tint
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            MacSectionHeader(title: title)
-            content
-        }
-        .padding(MacAppStyle.innerPadding)
-        .macLiquidGlassPanel(role, isActive: true, tint: tint)
-    }
-}
-
-private struct DashboardPendingCard: View {
-    let items: [DashboardPendingItem]
-    let onNavigate: (MacDashboardDestination) -> Void
-
-    var body: some View {
-        MacPanel(title: "Pendientes", tint: items.first?.priority.tint ?? MacAppStyle.infoTint) {
-            VStack(spacing: 12) {
-                if items.isEmpty {
-                    Text("Sin pendientes fiables con los datos disponibles.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                        .background(MacAppStyle.subtleFill)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                } else {
-                    pendingGroup("Resolver ahora", items: items.filter { $0.priority == .high })
-                    pendingGroup("Preparar", items: items.filter { $0.priority == .medium })
-                    pendingGroup("Revisar", items: items.filter { $0.priority == .low })
-                    let groupedCount = items.filter { $0.priority == .high || $0.priority == .medium || $0.priority == .low }.count
-                    if groupedCount == 0 {
-                        Text("Sin pendientes categorizados.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func pendingGroup(_ title: String, items: [DashboardPendingItem]) -> some View {
-        if !items.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ForEach(items) { item in
-                    Button {
-                        if let destination = item.destination {
-                            onNavigate(destination)
-                        }
-                    } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            Circle()
-                                .fill(item.priority.tint)
-                                .frame(width: 8, height: 8)
-                                .padding(.top, 6)
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(item.title)
-                                    .font(.callout.weight(.semibold))
-                                Text(item.subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if item.destination != nil {
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                        .padding(16)
-                        .background(MacAppStyle.subtleFill)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    .buttonStyle(MacHoverableButtonStyle(cornerRadius: 12))
-                }
-            }
-        }
-    }
-}
-
-private struct DashboardRiskCard: View {
-    let snapshot: MacDashboardSnapshot
-    let insights: [DashboardProactiveInsight]
-    let onNavigate: (MacDashboardDestination) -> Void
-
-    private var riskItems: [DashboardPendingItem] {
-        snapshot.pendingItems.filter { $0.priority == .high }
-    }
-
-    private var proactiveRiskItems: [DashboardProactiveInsight] {
-        insights.filter { $0.priority >= .high && $0.kind != .system }
-    }
-
-    var body: some View {
-        MacPanel(title: "Riesgo", tint: riskItems.isEmpty && proactiveRiskItems.isEmpty ? MacAppStyle.successTint : MacAppStyle.warningTint) {
-            VStack(spacing: 12) {
-                if riskItems.isEmpty {
-                    if proactiveRiskItems.isEmpty {
-                        Text("Sin alumnado o sesiones en riesgo inmediato con los datos cargados.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(16)
-                            .background(MacAppStyle.subtleFill)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    } else {
-                        ForEach(proactiveRiskItems.prefix(2)) { insight in
-                            proactiveRiskRow(insight)
-                        }
-                    }
-                } else {
-                    ForEach(riskItems) { item in
-                        Button {
-                            if let destination = item.destination {
-                                onNavigate(destination)
-                            }
-                        } label: {
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(item.priority.tint)
-                                    .frame(width: 18)
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(item.title)
-                                        .font(.callout.weight(.semibold))
-                                    Text(item.subtitle)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    if let recommendation = DashboardRecommendations.action(
-                                        type: "", title: item.title, detail: item.subtitle
-                                    ) {
-                                        HStack(alignment: .top, spacing: 6) {
-                                            Image(systemName: "lightbulb.fill")
-                                                .font(.caption2.weight(.bold))
-                                                .foregroundStyle(.yellow)
-                                            Text(recommendation)
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                        }
-                                        .padding(.top, 2)
-                                    }
-                                }
-                                Spacer()
-                            }
-                            .padding(16)
-                            .background(MacAppStyle.subtleFill)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(MacHoverableButtonStyle(cornerRadius: 12))
-                    }
-                }
-            }
-        }
-    }
-
-    private func proactiveRiskRow(_ insight: DashboardProactiveInsight) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: insight.kind.systemImage)
-                .foregroundStyle(insight.priority.tint)
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(insight.title)
-                    .font(.callout.weight(.semibold))
-                Text(insight.summary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .padding(16)
-        .background(MacAppStyle.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-}
-
-private struct DashboardStatusCard: View {
-    let summary: DashboardSyncSummary
-    @ObservedObject var backupStore: MacBackupStore
-    let platformName: String
-
-    var body: some View {
-        MacPanel(title: "Sistema", tint: summary.state.tint) {
-            VStack(alignment: .leading, spacing: 12) {
-                statusRow("Sync LAN", value: summaryLine, tint: summary.state.tint)
-                statusRow("Cambios pendientes", value: "\(summary.pendingChanges)", tint: summary.pendingChanges > 0 ? MacAppStyle.warningTint : MacAppStyle.successTint)
-                statusRow("Última sync", value: summary.lastRunAt.map(Self.relativeTime) ?? "Sin registro", tint: .secondary)
-                statusRow("Último backup", value: backupLine, tint: backupStore.latestBackup == nil ? MacAppStyle.warningTint : MacAppStyle.successTint)
-                statusRow("Host", value: summary.pairedHost ?? "Sync local inactivo", tint: summary.pairedHost == nil ? .secondary : MacAppStyle.infoTint)
-                statusRow("Plataforma", value: platformName, tint: .secondary)
-            }
-        }
-    }
-
-    private var summaryLine: String {
-        if summary.pendingChanges > 0 {
-            return "\(summary.pendingChanges) cambios pendientes"
-        }
-        if let lastRunAt = summary.lastRunAt {
-            return "Sincronizado · \(Self.relativeTime(lastRunAt))"
-        }
-        return summary.message.isEmpty ? "Sync local inactivo" : summary.message
-    }
-
-    private var backupLine: String {
-        guard let latestBackup = backupStore.latestBackup else {
-            return "Sin backup registrado"
-        }
-        return "\(Self.relativeTime(latestBackup.createdAt)) · \(latestBackup.sizeBytes.macBackupFileSizeText)"
-    }
-
-    private func statusRow(_ title: String, value: String, tint: Color) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Circle()
-                .fill(tint)
-                .frame(width: 8, height: 8)
-                .padding(.top, 5)
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .font(.caption)
-                .multilineTextAlignment(.trailing)
-        }
-        .padding(12)
-        .background(MacAppStyle.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private static func relativeTime(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
-    }
-
-    private static func absoluteTime(_ date: Date) -> String {
-        date.formatted(date: .abbreviated, time: .shortened)
-    }
-}
-
-private struct SyncStatusCompactView: View {
-    let summary: DashboardSyncSummary
-
-    var body: some View {
-        MacStatusPill(
-            label: label,
-            isActive: summary.state == .synced || summary.state == .pending,
-            tint: summary.state.tint
-        )
-    }
-
-    private var label: String {
-        if summary.pendingChanges > 0 {
-            return "\(summary.pendingChanges) pendientes"
-        }
-        if summary.pairedHost != nil {
-            return "Sincronizado"
-        }
-        return "Sync local inactivo"
-    }
-}
-
-private struct DashboardLoadingView: View {
-    var body: some View {
-        MacPanel(title: "Ahora") {
-            VStack(alignment: .leading, spacing: 16) {
-                ProgressView("Cargando dashboard…")
-                    .controlSize(.large)
-                ForEach(0..<3, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(MacAppStyle.subtleFill)
-                        .frame(height: 44)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 260, alignment: .center)
-        }
-    }
-}
-
-private struct DashboardEmptyStateView: View {
-    let reason: MacDashboardEmptyReason
-    let onNavigate: (MacDashboardDestination) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            MacPanel(title: "Ahora", tint: tint) {
-                HStack(alignment: .top, spacing: 18) {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundStyle(tint)
-                        .frame(width: 44, height: 44)
-                        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(title)
-                            .font(.title2.weight(.semibold))
-                        Text(message)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer(minLength: 24)
-
-                    Button(buttonTitle) {
-                        onNavigate(destination)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                }
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 16)], alignment: .leading, spacing: 16) {
-                ForEach(actions) { action in
-                    Button {
-                        onNavigate(action.destination)
-                    } label: {
-                        DashboardEmptyActionCard(action: action)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private var title: String {
-        switch reason {
-        case .noClasses: return "Sin clases"
-        }
-    }
-
-    private var message: String {
-        switch reason {
-        case .noClasses: return "Todavía no hay clases creadas."
-        }
-    }
-
-    private var buttonTitle: String {
-        switch reason {
-        case .noClasses: return "Crear clase"
-        }
-    }
-
-    private var destination: MacDashboardDestination {
-        switch reason {
-        case .noClasses: return .students(classId: nil)
-        }
-    }
-
-    private var systemImage: String {
-        switch reason {
-        case .noClasses: return "person.3.sequence"
-        }
-    }
-
-    private var tint: Color {
-        switch reason {
-        case .noClasses: return MacAppStyle.infoTint
-        }
-    }
-
-    private var actions: [DashboardEmptyAction] {
-        switch reason {
-        case .noClasses:
-            return [
-                .init(title: "Crear grupo", subtitle: "Empieza por el alumnado y sus clases.", systemImage: "person.3.sequence", destination: .students(classId: nil), tint: MacAppStyle.infoTint),
-                .init(title: "Preparar agenda", subtitle: "Define el marco del curso.", systemImage: "calendar", destination: .plannerAgenda, tint: MacAppStyle.warningTint)
-            ]
-        }
-    }
-}
-
-private struct DashboardEmptyAction: Identifiable {
-    let title: String
-    let subtitle: String
-    let systemImage: String
-    let destination: MacDashboardDestination
-    let tint: Color
-
-    var id: String { title }
-}
-
-private struct DashboardEmptyActionCard: View {
-    let action: DashboardEmptyAction
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: action.systemImage)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(action.tint)
-                .frame(width: 28, height: 28)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(action.title)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Text(action.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .macLiquidGlassPanel(.secondaryPanel, cornerRadius: 14, tint: action.tint.opacity(0.5), isInteractive: true)
-    }
-}
-
-private struct DashboardErrorStateView: View {
-    let message: String
-    let retry: () -> Void
-
-    var body: some View {
-        MacPanel(title: "Error") {
-            VStack(alignment: .leading, spacing: 16) {
-                Label("No se pudo preparar el dashboard", systemImage: "exclamationmark.triangle")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(MacAppStyle.dangerTint)
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("Reintentar", action: retry)
-                    .buttonStyle(.borderedProminent)
-            }
-            .frame(maxWidth: .infinity, minHeight: 260, alignment: .leading)
         }
     }
 }
@@ -1297,7 +683,7 @@ private struct QuickEvaluationSheet: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 16) {
             Image(systemName: "checklist.checked")
-                .font(.system(size: 22, weight: .bold))
+                .font(.title2.bold())
                 .foregroundStyle(MacAppStyle.infoTint)
                 .frame(width: 48, height: 48)
                 .background(MacAppStyle.infoTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1675,7 +1061,7 @@ private struct DashboardRubricImportPreviewSheet: View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 16) {
                 Image(systemName: "checklist")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.title2.bold())
                     .foregroundStyle(MacAppStyle.infoTint)
                     .frame(width: 48, height: 48)
                     .background(MacAppStyle.infoTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1774,74 +1160,3 @@ private struct DashboardRubricImportPreviewSheet: View {
     }
 }
 
-private struct ObservationComposerSheet: View {
-    @ObservedObject var bridge: KmpBridge
-    let initialClassId: Int64?
-    let onCancel: () -> Void
-    let onOpenStudents: (Int64?) -> Void
-
-    @State private var selectedClassId: Int64?
-    @State private var selectedStudentId: Int64?
-    @State private var type = "Seguimiento"
-    @State private var text = ""
-    @State private var requiresFollowUp = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text("Registrar observación")
-                .font(.title2.weight(.semibold))
-            Form {
-                Picker("Clase", selection: $selectedClassId) {
-                    Text("Seleccionar").tag(Int64?.none)
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
-                        Text("\(schoolClass.name) · \(schoolClass.course)º").tag(Optional(schoolClass.id))
-                    }
-                }
-                Picker("Alumno opcional", selection: $selectedStudentId) {
-                    Text("Sin alumno").tag(Int64?.none)
-                    ForEach(Array(bridge.studentsInClass), id: \.id) { student in
-                        Text(student.fullName).tag(Optional(student.id))
-                    }
-                }
-                Picker("Tipo", selection: $type) {
-                    Text("Seguimiento").tag("Seguimiento")
-                    Text("Convivencia").tag("Convivencia")
-                    Text("Académica").tag("Académica")
-                    Text("Familia").tag("Familia")
-                }
-                TextField("Texto", text: $text, axis: .vertical)
-                    .lineLimit(4...8)
-                Toggle("Requiere seguimiento", isOn: $requiresFollowUp)
-            }
-            Text("El dashboard no crea observaciones automáticamente. Esta sheet prepara el contexto; el guardado queda pendiente de un método seguro específico.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
-            HStack {
-                Button("Cancelar", action: onCancel)
-                Spacer()
-                Button("Abrir alumnado") {
-                    onOpenStudents(selectedClassId)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(selectedClassId == nil || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(24)
-        .onAppear {
-            selectedClassId = initialClassId
-            loadStudents()
-        }
-        .appOnChange(of: selectedClassId) { _ in
-            loadStudents()
-        }
-    }
-
-    private func loadStudents() {
-        Task {
-            guard let selectedClassId else { return }
-            bridge.selectClass(id: selectedClassId)
-            await bridge.selectStudentsClass(classId: selectedClassId)
-        }
-    }
-}

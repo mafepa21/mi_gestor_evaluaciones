@@ -30,10 +30,30 @@ struct AttendanceMatrixGridView: View {
     @State private var searchText: String = ""
     @State private var matrixRecords: [Int64: [String: KmpBridge.AttendanceRecordSnapshot]] = [:]
     @State private var uniqueDates: [Date] = []
+    @State private var uniqueDateKeys: [String] = []
     @State private var isLoading: Bool = false
     @State private var activeCellPopover: MatrixCellTarget? = nil
     @State private var isCopiedAlertPresented: Bool = false
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.undoManager) private var undoManager
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @State private var pendingUndo: MatrixBulkUndo?
+    @State private var undoDismissTask: Task<Void, Never>?
+
+    /// Estados previos de «Todos presentes hoy», guardados para poder deshacer.
+    struct MatrixBulkUndo {
+        let id = UUID()
+        let date: Date
+        let previousDrafts: [KmpBridge.AttendanceDraft]
+    }
+    // Medidas que crecen con el tamaño de letra del sistema (Dynamic Type).
+    @ScaledMetric(relativeTo: .subheadline) private var studentColumnWidth: CGFloat = 220
+    @ScaledMetric(relativeTo: .caption) private var dateColumnWidth: CGFloat = 50
+    @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 44
+    @ScaledMetric(relativeTo: .caption) private var statusBadgeSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .caption) private var headerHeight: CGFloat = 48
+    @ScaledMetric(relativeTo: .caption) private var footerHeight: CGFloat = 40
+    @State private var horizontalOffset: CGFloat = 0
 
     struct MatrixCellTarget: Identifiable {
         let student: Student
@@ -45,17 +65,32 @@ struct AttendanceMatrixGridView: View {
         }
     }
 
-    private let dayFormatter: DateFormatter = {
+    private static let dayFormatter: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "es_ES")
         df.dateFormat = "dd/MM"
         return df
     }()
 
-    private let weekdayFormatter: DateFormatter = {
+    private static let accessibilityDateFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "es_ES")
+        df.dateFormat = "EEEE d 'de' MMMM"
+        return df
+    }()
+
+    private static let weekdayFormatter: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "es_ES")
         df.dateFormat = "EEE"
+        return df
+    }()
+
+    private static let isoDateFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = .current
+        df.dateFormat = "yyyy-MM-dd"
         return df
     }()
 
@@ -94,6 +129,17 @@ struct AttendanceMatrixGridView: View {
             }
         }
         .background(appPageBackground(for: colorScheme))
+        .overlay(alignment: .bottom) {
+            if let pendingUndo {
+                AttendanceUndoBanner(
+                    message: "\(pendingUndo.previousDrafts.count) marcados como presentes",
+                    onUndo: { Task { await undoMarkTodayAllPresent() } }
+                )
+                .padding(.bottom, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(uiFeatureFlags.animation(.easeInOut(duration: 0.2)), value: pendingUndo?.id)
         .task(id: "\(selectedClassId)_\(selectedRange.rawValue)") {
             await reloadMatrixData()
         }
@@ -129,29 +175,43 @@ struct AttendanceMatrixGridView: View {
             .frame(maxWidth: 360)
 
             IOSSearchField(text: $searchText, placeholder: "Buscar alumno…")
-                .frame(maxWidth: 200)
+                .frame(minWidth: 160, maxWidth: 260)
 
             Spacer()
 
             Button {
                 Task { await markTodayAllPresent() }
             } label: {
-                Label("Marcar todos hoy (P)", systemImage: "bolt.badge.checkmark.fill")
+                Label("Todos presentes hoy", systemImage: "checkmark.circle")
             }
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.capsule)
             .tint(AppleDesignSystem.success)
-            .controlSize(.small)
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(todayMarkableDrafts().isEmpty)
 
-            Button {
-                copySummaryToClipboard()
-            } label: {
-                Label(isCopiedAlertPresented ? "¡Copiado!" : "Copiar resumen", systemImage: isCopiedAlertPresented ? "checkmark" : "doc.on.doc")
+            ViewThatFits(in: .horizontal) {
+                copySummaryButton(iconOnly: false)
+                copySummaryButton(iconOnly: true)
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.small)
         }
+    }
+
+    private func copySummaryButton(iconOnly: Bool) -> some View {
+        let title = isCopiedAlertPresented ? "¡Copiado!" : "Copiar resumen"
+        let icon = isCopiedAlertPresented ? "checkmark" : "doc.on.doc"
+        return Button {
+            copySummaryToClipboard()
+        } label: {
+            if iconOnly {
+                Label(title, systemImage: icon).labelStyle(.iconOnly)
+            } else {
+                Label(title, systemImage: icon)
+            }
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .accessibilityLabel(title)
     }
 
     // MARK: - Legend Bar
@@ -164,7 +224,7 @@ struct AttendanceMatrixGridView: View {
             ForEach(AttendanceStatusOption.all) { option in
                 HStack(spacing: 4) {
                     Text(option.shortLabel)
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(.caption2, design: .rounded).weight(.bold))
                         .foregroundStyle(.white)
                         .frame(width: 16, height: 16)
                         .background(Circle().fill(option.color))
@@ -183,78 +243,148 @@ struct AttendanceMatrixGridView: View {
     }
 
     // MARK: - Matrix Grid Content
+    /// Columna de nombres fija a la izquierda y fila de fechas fija arriba (iOS 18+ / macOS):
+    /// un único scroll vertical con dos columnas; el horizontal solo mueve fechas y totales.
     private var matrixContent: some View {
-        ScrollView([.horizontal, .vertical]) {
-            // Lazy: no montar todas las filas alumno×fecha de golpe (trimestre/curso).
-            LazyVStack(alignment: .leading, spacing: 0) {
-                // Cabecera de columnas
+        VStack(spacing: 0) {
+            if pinsDateHeader {
                 HStack(spacing: 0) {
                     studentColumnHeader
-                        .frame(width: 220, alignment: .leading)
+                        .frame(width: studentColumnWidth, height: headerHeight, alignment: .leading)
                         .background(appCardBackground(for: colorScheme))
-
-                    ForEach(uniqueDates, id: \.self) { date in
-                        dateColumnHeader(for: date)
-                            .frame(width: 50)
-                            .background(appCardBackground(for: colorScheme))
-                    }
-
-                    statsColumnsHeader
-                        .background(appCardBackground(for: colorScheme))
+                        .shadow(color: .black.opacity(horizontalOffset > 1 ? 0.10 : 0), radius: 4, x: 2)
+                        .zIndex(1)
+                    dateHeaderStrip
+                        .offset(x: -horizontalOffset)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .clipped()
                 }
                 .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.15)), alignment: .bottom)
+            }
 
-                // Filas de alumnos
-                ForEach(Array(students.enumerated()), id: \.element.id) { index, student in
-                    let stats = computeStats(for: student)
-                    let isEven = index.isMultiple(of: 2)
+            ScrollView(.vertical) {
+                HStack(alignment: .top, spacing: 0) {
+                    pinnedNamesColumn
+                        .frame(width: studentColumnWidth)
+                        .background(appPageBackground(for: colorScheme))
+                        .shadow(color: .black.opacity(horizontalOffset > 1 ? 0.10 : 0), radius: 4, x: 2)
+                        .zIndex(1)
 
-                    HStack(spacing: 0) {
-                        studentRowCell(student: student)
-                            .frame(width: 220, height: 44, alignment: .leading)
-                            .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
-
-                        ForEach(uniqueDates, id: \.self) { date in
-                            let record = recordFor(studentId: student.id, date: date)
-                            attendanceCell(student: student, date: date, record: record)
-                                .frame(width: 50, height: 44)
-                                .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                // Anclas invisibles por fecha para saltar a hoy al abrir.
+                                HStack(spacing: 0) {
+                                    ForEach(uniqueDates, id: \.self) { date in
+                                        Color.clear.frame(width: dateColumnWidth, height: 0).id(date)
+                                    }
+                                }
+                                if !pinsDateHeader {
+                                    dateHeaderStrip
+                                        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.15)), alignment: .bottom)
+                                }
+                                LazyVStack(alignment: .leading, spacing: 0) {
+                                    ForEach(Array(students.enumerated()), id: \.element.id) { index, student in
+                                        dataRow(student: student, isEven: index.isMultiple(of: 2))
+                                    }
+                                }
+                                footerDataRow
+                            }
                         }
-
-                        statsRowCells(stats: stats)
-                            .frame(height: 44)
-                            .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
+                        .modifier(HorizontalOffsetReader(offset: $horizontalOffset))
+                        .onAppear { scrollToToday(proxy) }
+                        .onChange(of: uniqueDates) { _, _ in scrollToToday(proxy) }
                     }
-                    .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.08)), alignment: .bottom)
                 }
-
-                // Fila de resumen de fecha al pie
-                HStack(spacing: 0) {
-                    Text("Presentes / Total")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .frame(width: 220, height: 40, alignment: .leading)
-
-                    ForEach(uniqueDates, id: \.self) { date in
-                        let summary = dateSummary(for: date)
-                        VStack(spacing: 1) {
-                            Text("\(summary.present)")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(AppleDesignSystem.success)
-                            Text("/\(summary.total)")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(width: 50, height: 40)
-                    }
-
-                    classGlobalStatsCell
-                        .frame(height: 40)
-                }
-                .background(EvaluationDesign.surfaceSoft.opacity(0.6))
             }
         }
+    }
+
+    private var pinsDateHeader: Bool {
+        if #available(iOS 18.0, macOS 15.0, *) { return true }
+        return false
+    }
+
+    private func scrollToToday(_ proxy: ScrollViewProxy) {
+        let today = Calendar.current.startOfDay(for: Date())
+        let target = uniqueDates.last(where: { Calendar.current.startOfDay(for: $0) <= today }) ?? uniqueDates.last
+        guard let target else { return }
+        DispatchQueue.main.async { proxy.scrollTo(target, anchor: .trailing) }
+    }
+
+    private var pinnedNamesColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !pinsDateHeader {
+                studentColumnHeader
+                    .frame(height: headerHeight, alignment: .leading)
+                    .background(appCardBackground(for: colorScheme))
+                    .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.15)), alignment: .bottom)
+            }
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(students.enumerated()), id: \.element.id) { index, student in
+                    studentRowCell(student: student)
+                        .frame(width: studentColumnWidth, height: rowHeight, alignment: .leading)
+                        .background(index.isMultiple(of: 2) ? Color.secondary.opacity(0.02) : Color.clear)
+                        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.08)), alignment: .bottom)
+                }
+            }
+            Text("Presentes / Total")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .frame(width: studentColumnWidth, height: footerHeight, alignment: .leading)
+                .background(EvaluationDesign.surfaceSoft.opacity(0.6))
+        }
+    }
+
+    private var dateHeaderStrip: some View {
+        HStack(spacing: 0) {
+            ForEach(uniqueDates, id: \.self) { date in
+                dateColumnHeader(for: date)
+                    .frame(width: dateColumnWidth, height: headerHeight)
+            }
+            statsColumnsHeader
+                .frame(height: headerHeight)
+        }
+        .background(appCardBackground(for: colorScheme))
+        .fixedSize()
+    }
+
+    private func dataRow(student: Student, isEven: Bool) -> some View {
+        let stats = computeStats(for: student)
+        return HStack(spacing: 0) {
+            ForEach(uniqueDates, id: \.self) { date in
+                let record = recordFor(studentId: student.id, date: date)
+                attendanceCell(student: student, date: date, record: record)
+                    .frame(width: dateColumnWidth, height: rowHeight)
+            }
+            statsRowCells(stats: stats)
+                .frame(height: rowHeight)
+        }
+        .background(isEven ? Color.secondary.opacity(0.02) : Color.clear)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.08)), alignment: .bottom)
+    }
+
+    private var footerDataRow: some View {
+        HStack(spacing: 0) {
+            ForEach(uniqueDates, id: \.self) { date in
+                let summary = dateSummary(for: date)
+                VStack(spacing: 1) {
+                    Text("\(summary.present)")
+                        .font(.system(.caption2, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppleDesignSystem.success)
+                    Text("/\(summary.total)")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: dateColumnWidth, height: footerHeight)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(Self.accessibilityDateFormatter.string(from: date)): \(summary.present) presentes de \(summary.total)")
+            }
+            classGlobalStatsCell
+                .frame(height: footerHeight)
+        }
+        .background(EvaluationDesign.surfaceSoft.opacity(0.6))
     }
 
     // MARK: - Column Headers
@@ -263,21 +393,22 @@ struct AttendanceMatrixGridView: View {
             Text("Alumnado (\(students.count))")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
         }
         .padding(.horizontal, 12)
-        .frame(height: 48)
+        .frame(height: headerHeight)
     }
 
     private func dateColumnHeader(for date: Date) -> some View {
         let isToday = Calendar.current.isDateInToday(date)
         return VStack(spacing: 2) {
-            Text(weekdayFormatter.string(from: date).uppercased())
-                .font(.system(size: 9, weight: .bold))
+            Text(Self.weekdayFormatter.string(from: date).uppercased())
+                .font(.caption2.weight(.bold))
                 .foregroundStyle(isToday ? EvaluationDesign.accent : .secondary)
 
-            Text(dayFormatter.string(from: date))
-                .font(.system(size: 11, weight: isToday ? .bold : .medium, design: .rounded))
+            Text(Self.dayFormatter.string(from: date))
+                .font(.system(.caption2, design: .rounded).weight(isToday ? .bold : .medium))
                 .foregroundStyle(isToday ? .white : .primary)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
@@ -285,7 +416,10 @@ struct AttendanceMatrixGridView: View {
                     isToday ? Capsule().fill(EvaluationDesign.accent) : Capsule().fill(Color.clear)
                 )
         }
-        .frame(height: 48)
+        .frame(minHeight: headerHeight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.accessibilityDateFormatter.string(from: date) + (isToday ? ", hoy" : ""))
+        .accessibilityAddTraits(.isHeader)
     }
 
     private var statsColumnsHeader: some View {
@@ -293,23 +427,25 @@ struct AttendanceMatrixGridView: View {
             Text("% Asist.")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-                .frame(width: 64, height: 48)
+                .frame(width: 64, height: headerHeight)
 
             Text("Faltas")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(AppleDesignSystem.danger)
-                .frame(width: 50, height: 48)
+                .frame(width: 50, height: headerHeight)
 
             Text("Retr.")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(AppleDesignSystem.warning)
-                .frame(width: 50, height: 48)
+                .frame(width: 50, height: headerHeight)
 
             Text("Just.")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-                .frame(width: 50, height: 48)
+                .frame(width: 50, height: headerHeight)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: - Student Cell
@@ -319,7 +455,7 @@ struct AttendanceMatrixGridView: View {
         } label: {
             HStack(spacing: 8) {
                 Text(student.initials)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(.caption2, design: .rounded).weight(.bold))
                     .foregroundStyle(.white)
                     .frame(width: 26, height: 26)
                     .background(Circle().fill(Color.accentColor))
@@ -333,9 +469,9 @@ struct AttendanceMatrixGridView: View {
                     if student.isInjured {
                         HStack(spacing: 2) {
                             Image(systemName: "bandage.fill")
-                                .font(.system(size: 9))
+                                .font(.caption2)
                             Text("Lesión")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.caption2.weight(.bold))
                         }
                         .foregroundStyle(Color.orange)
                     }
@@ -345,6 +481,8 @@ struct AttendanceMatrixGridView: View {
             .padding(.horizontal, 10)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(student.fullName + (student.isInjured ? ", lesión activa" : ""))
+        .accessibilityHint("Abre la ficha del alumno")
     }
 
     // MARK: - Attendance Status Cell
@@ -357,9 +495,9 @@ struct AttendanceMatrixGridView: View {
             ZStack {
                 if let option {
                     Text(option.shortLabel)
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.system(.caption2, design: .rounded).weight(.black))
                         .foregroundStyle(option.color)
-                        .frame(width: 28, height: 28)
+                        .frame(width: statusBadgeSize, height: statusBadgeSize)
                         .background(
                             Circle()
                                 .fill(option.color.opacity(0.16))
@@ -369,10 +507,11 @@ struct AttendanceMatrixGridView: View {
                                 .strokeBorder(option.color.opacity(0.5), lineWidth: 1)
                         )
                 } else {
-                    Text("·")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color.secondary.opacity(0.3))
-                        .frame(width: 28, height: 28)
+                    // Guion visible para "sin dato": no depender de un punto casi invisible.
+                    Text("–")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: statusBadgeSize, height: statusBadgeSize)
                 }
 
                 if record?.hasIncident == true {
@@ -381,9 +520,10 @@ struct AttendanceMatrixGridView: View {
                         .frame(width: 5, height: 5)
                         .offset(x: 10, y: -10)
                 } else if !(record?.note.isEmpty ?? true) {
+                    // Anillo (no punto relleno) para distinguir nota de incidencia sin depender del color.
                     Circle()
-                        .fill(Color.blue)
-                        .frame(width: 5, height: 5)
+                        .strokeBorder(Color.blue, lineWidth: 1.5)
+                        .frame(width: 6, height: 6)
                         .offset(x: 10, y: -10)
                 }
             }
@@ -391,13 +531,23 @@ struct AttendanceMatrixGridView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(student.fullName), \(Self.accessibilityDateFormatter.string(from: date))")
+        .accessibilityValue(attendanceCellAccessibilityValue(option: option, record: record))
+        .accessibilityHint("Cambia el estado de asistencia")
+    }
+
+    private func attendanceCellAccessibilityValue(option: AttendanceStatusOption?, record: KmpBridge.AttendanceRecordSnapshot?) -> String {
+        var parts = [option?.label ?? "Sin registrar"]
+        if record?.hasIncident == true { parts.append("con incidencia") }
+        if !(record?.note.isEmpty ?? true) { parts.append("con nota") }
+        return parts.joined(separator: ", ")
     }
 
     // MARK: - Stats Cells
     private func statsRowCells(stats: AttendanceMatrixStudentStats) -> some View {
         HStack(spacing: 0) {
             Text("\(stats.attendanceRate)%")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(.system(.caption, design: .rounded).weight(.bold))
                 .foregroundStyle(stats.attendanceRateColor)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
@@ -405,20 +555,22 @@ struct AttendanceMatrixGridView: View {
                 .frame(width: 64)
 
             Text("\(stats.absentCount)")
-                .font(.system(size: 12, weight: stats.absentCount > 0 ? .black : .regular, design: .rounded))
+                .font(.system(.caption, design: .rounded).weight(stats.absentCount > 0 ? .black : .regular))
                 .foregroundStyle(stats.absentCount > 0 ? AppleDesignSystem.danger : .secondary)
                 .frame(width: 50)
 
             Text("\(stats.lateCount)")
-                .font(.system(size: 12, weight: stats.lateCount > 0 ? .bold : .regular, design: .rounded))
+                .font(.system(.caption, design: .rounded).weight(stats.lateCount > 0 ? .bold : .regular))
                 .foregroundStyle(stats.lateCount > 0 ? AppleDesignSystem.warning : .secondary)
                 .frame(width: 50)
 
             Text("\(stats.justifiedCount)")
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .font(.system(.caption, design: .rounded).weight(.medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 50)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(stats.attendanceRate)% de asistencia, \(stats.absentCount) faltas, \(stats.lateCount) retrasos, \(stats.justifiedCount) justificadas")
     }
 
     private var classGlobalStatsCell: some View {
@@ -442,13 +594,13 @@ struct AttendanceMatrixGridView: View {
             Spacer()
         }
         .frame(width: 214)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Media de la clase \(globalRate)%, \(totalAbsences) faltas en total")
     }
 
     // MARK: - Data Logic & Persistence
     private func dateKey(for date: Date) -> String {
-        let calendar = Calendar.current
-        let comps = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%04d-%02d-%02d", comps.year ?? 0, comps.month ?? 0, comps.day ?? 0)
+        Self.isoDateFormatter.string(from: date)
     }
 
     private func recordFor(studentId: Int64, date: Date) -> KmpBridge.AttendanceRecordSnapshot? {
@@ -477,8 +629,7 @@ struct AttendanceMatrixGridView: View {
         var noMaterial = 0
         var exempt = 0
 
-        for date in uniqueDates {
-            let key = dateKey(for: date)
+        for key in uniqueDateKeys {
             guard let record = recordsForStudent[key] else { continue }
             switch record.status {
             case "PRESENTE": present += 1
@@ -545,7 +696,9 @@ struct AttendanceMatrixGridView: View {
                 dateMap[todayKey] = Date()
             }
 
-            self.uniqueDates = dateMap.values.sorted()
+            let sortedDates = dateMap.values.sorted()
+            self.uniqueDates = sortedDates
+            self.uniqueDateKeys = sortedDates.map { Self.isoDateFormatter.string(from: $0) }
             self.matrixRecords = recordsByStudent
         } catch {
             print("Error cargando sábana de asistencia: \(error)")
@@ -594,58 +747,125 @@ struct AttendanceMatrixGridView: View {
         }
     }
 
+    /// Desmarca y lo guarda (antes solo se borraba en pantalla y reaparecía al recargar).
     private func clearAttendance(for student: Student, on date: Date) async {
         let key = dateKey(for: date)
+        let previous = matrixRecords[student.id]?[key]
         matrixRecords[student.id]?.removeValue(forKey: key)
         AppleInteractionFeedback.play(.lightImpact)
+        do {
+            try await bridge.saveAttendance(
+                studentId: student.id,
+                classId: selectedClassId,
+                on: date,
+                status: "",
+                note: previous?.note,
+                sessionId: previous?.sessionId
+            )
+        } catch {
+            matrixRecords[student.id]?[key] = previous
+            bridge.status = AttendanceMatrixSaveGate.failureMessage(detail: error.localizedDescription)
+            AppleInteractionFeedback.play(.error)
+        }
     }
 
-    private func markTodayAllPresent() async {
+    /// Alumnos que «Todos presentes hoy» cambiaría (no toca justificados, exentos ni ya presentes).
+    private func todayMarkableDrafts() -> [KmpBridge.AttendanceDraft] {
         let today = Date()
         let key = dateKey(for: today)
-
-        var drafts: [KmpBridge.AttendanceDraft] = []
-        for student in students {
+        return students.compactMap { student in
             let current = matrixRecords[student.id]?[key]
-            guard current?.status != "JUSTIFICADO" && current?.status != "EXENTO" else { continue }
-
-            drafts.append(
-                KmpBridge.AttendanceDraft(
-                    studentId: student.id,
-                    classId: selectedClassId,
-                    date: today,
-                    status: "PRESENTE",
-                    note: current?.note ?? "",
-                    hasIncident: current?.hasIncident ?? false,
-                    followUpRequired: current?.followUpRequired,
-                    sessionId: current?.sessionId
-                )
-            )
-
-            let opt = KmpBridge.AttendanceRecordSnapshot(
-                id: current?.id ?? 0,
+            guard !["JUSTIFICADO", "EXENTO", "PRESENTE"].contains(current?.status ?? "") else { return nil }
+            return KmpBridge.AttendanceDraft(
                 studentId: student.id,
                 classId: selectedClassId,
                 date: today,
-                status: "PRESENTE",
+                status: current?.status ?? "",
                 note: current?.note ?? "",
                 hasIncident: current?.hasIncident ?? false,
-                followUpRequired: current?.followUpRequired ?? false,
+                followUpRequired: current?.followUpRequired,
                 sessionId: current?.sessionId
             )
-            if matrixRecords[student.id] == nil {
-                matrixRecords[student.id] = [:]
-            }
-            matrixRecords[student.id]?[key] = opt
         }
+    }
 
-        AppleInteractionFeedback.play(.success)
+    private func applyLocal(_ drafts: [KmpBridge.AttendanceDraft]) {
+        for draft in drafts {
+            let key = dateKey(for: draft.date)
+            let current = matrixRecords[draft.studentId]?[key]
+            if matrixRecords[draft.studentId] == nil { matrixRecords[draft.studentId] = [:] }
+            if draft.status.isEmpty {
+                matrixRecords[draft.studentId]?.removeValue(forKey: key)
+            } else {
+                matrixRecords[draft.studentId]?[key] = KmpBridge.AttendanceRecordSnapshot(
+                    id: current?.id ?? 0,
+                    studentId: draft.studentId,
+                    classId: draft.classId,
+                    date: draft.date,
+                    status: draft.status,
+                    note: draft.note,
+                    hasIncident: draft.hasIncident,
+                    followUpRequired: draft.followUpRequired ?? false,
+                    sessionId: draft.sessionId
+                )
+            }
+        }
+    }
+
+    private func undoMarkTodayAllPresent() async {
+        guard let undo = pendingUndo else { return }
+        pendingUndo = nil
+        undoDismissTask?.cancel()
+        applyLocal(undo.previousDrafts)
+        do {
+            try await bridge.saveAttendanceBatch(records: undo.previousDrafts)
+            bridge.status = "Asistencia de hoy restaurada."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo deshacer del todo: \(error.localizedDescription). Revisa la columna de hoy."
+            AppleInteractionFeedback.play(.error)
+            await reloadMatrixData()
+        }
+    }
+
+    private func markTodayAllPresent() async {
+        let previousDrafts = todayMarkableDrafts()
+        guard !previousDrafts.isEmpty else { return }
+        let presentDrafts = previousDrafts.map { draft in
+            KmpBridge.AttendanceDraft(
+                studentId: draft.studentId,
+                classId: draft.classId,
+                date: draft.date,
+                status: "PRESENTE",
+                note: draft.note,
+                hasIncident: draft.hasIncident,
+                followUpRequired: draft.followUpRequired,
+                sessionId: draft.sessionId
+            )
+        }
+        applyLocal(presentDrafts)
 
         do {
-            try await bridge.saveAttendanceBatch(records: drafts)
-            bridge.status = "Todos los alumnos marcados como presentes hoy."
+            try await bridge.saveAttendanceBatch(records: presentDrafts)
+            AppleInteractionFeedback.play(.success)
+            bridge.status = "\(presentDrafts.count) alumnos marcados como presentes hoy."
+            let undo = MatrixBulkUndo(date: Date(), previousDrafts: previousDrafts)
+            pendingUndo = undo
+            undoManager?.registerUndo(withTarget: bridge) { _ in
+                Task { @MainActor in await undoMarkTodayAllPresent() }
+            }
+            undoManager?.setActionName("Todos presentes hoy")
+            undoDismissTask?.cancel()
+            undoDismissTask = Task {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                guard !Task.isCancelled else { return }
+                if pendingUndo?.id == undo.id { pendingUndo = nil }
+            }
         } catch {
-            bridge.status = "Error al marcar todos presentes: \(error.localizedDescription)"
+            // El lote no es atómico: recargar desde la base para mostrar lo que de verdad quedó guardado.
+            bridge.status = AttendanceMatrixSaveGate.failureMessage(detail: error.localizedDescription)
+            AppleInteractionFeedback.play(.error)
+            await reloadMatrixData()
         }
     }
 
@@ -678,6 +898,7 @@ struct AttendanceMatrixGridView: View {
 
 // MARK: - Status Picker Popover
 private struct AttendanceMatrixStatusPicker: View {
+    @ScaledMetric(relativeTo: .subheadline) private var pickerWidth: CGFloat = 220
     let target: AttendanceMatrixGridView.MatrixCellTarget
     let onSelectStatus: (String) -> Void
     let onClear: () -> Void
@@ -702,7 +923,7 @@ private struct AttendanceMatrixStatusPicker: View {
                     } label: {
                         HStack(spacing: 8) {
                             Text(option.shortLabel)
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.system(.caption2, design: .rounded).weight(.bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 22, height: 22)
                                 .background(Circle().fill(option.color))
@@ -720,13 +941,15 @@ private struct AttendanceMatrixStatusPicker: View {
                             }
                         }
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                         .background(
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(target.currentRecord?.status == option.id ? EvaluationDesign.accent.opacity(0.12) : Color.clear)
                         )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(target.currentRecord?.status == option.id ? .isSelected : [])
                 }
             }
 
@@ -736,16 +959,34 @@ private struct AttendanceMatrixStatusPicker: View {
                 Button(role: .destructive) {
                     onClear()
                 } label: {
-                    Label("Limpiar registro", systemImage: "trash")
-                        .font(.caption.weight(.medium))
+                    Label("Desmarcar", systemImage: "arrow.counterclockwise")
+                        .font(.subheadline)
                         .foregroundStyle(.red)
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(14)
-        .frame(width: 220)
+        .frame(minWidth: pickerWidth)
+    }
+}
+
+/// Lee el desplazamiento horizontal para que la fila de fechas fija lo siga (iOS 18 / macOS 15).
+private struct HorizontalOffsetReader: ViewModifier {
+    @Binding var offset: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.x + geometry.contentInsets.leading
+            } action: { _, newValue in
+                offset = max(0, newValue)
+            }
+        } else {
+            content
+        }
     }
 }

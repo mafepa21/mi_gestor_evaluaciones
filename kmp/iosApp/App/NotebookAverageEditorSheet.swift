@@ -628,12 +628,16 @@ private struct AveragePreviewRow {
     let name: String
     let value: Double?
 
-    var valueText: String {
-        guard let value else { return "-" }
+    private static let previewFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.locale = .current
         formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+        return formatter
+    }()
+
+    var valueText: String {
+        guard let value else { return "-" }
+        return Self.previewFormatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
     }
 }

@@ -653,6 +653,20 @@ interface SessionJournalRepository {
     suspend fun getJournalForSession(planningSessionId: Long): SessionJournalAggregate?
     @Throws(Throwable::class)
     suspend fun listSummariesForSessions(planningSessionIds: List<Long>): List<SessionJournalSummary>
+
+    /** Diarios (solo cabecera) de varias sesiones en bloque, sin cargar notas ni adjuntos. */
+    suspend fun listJournalsForSessions(planningSessionIds: List<Long>): List<SessionJournal> =
+        planningSessionIds.mapNotNull { getJournalForSession(it)?.journal }
+
+    /** Diarios completos de varias sesiones en bloque (mismo resultado que llamar a getJournalForSession por cada una). */
+    suspend fun listJournalAggregatesForSessions(planningSessionIds: List<Long>): List<SessionJournalAggregate> =
+        planningSessionIds.mapNotNull { getJournalForSession(it) }
+
+    /** Diarios completos de las sesiones dadas que tienen alguna nota individual del alumno. */
+    suspend fun listJournalsWithStudentNotes(planningSessionIds: List<Long>, studentId: Long): List<SessionJournalAggregate> =
+        planningSessionIds.mapNotNull { id ->
+            getJournalForSession(id)?.takeIf { aggregate -> aggregate.individualNotes.any { it.studentId == studentId } }
+        }
     @Throws(Throwable::class)
     suspend fun sessionIdsWithMaterial(): Set<Long> = emptySet()
     @Throws(Throwable::class)
@@ -726,6 +740,10 @@ interface RubricsRepository {
     ): Double?
     @Throws(Throwable::class)
     suspend fun listRubricAssessments(studentId: Long, evaluationId: Long): List<RubricAssessment>
+
+    /** Valoraciones de varios alumnos en una evaluación, en bloque. */
+    suspend fun listRubricAssessmentsForStudents(studentIds: List<Long>, evaluationId: Long): List<RubricAssessment> =
+        studentIds.flatMap { listRubricAssessments(it, evaluationId) }
     @Throws(Throwable::class)
     suspend fun getStudentEvaluation(studentId: Long, rubricId: Long, evaluationId: Long): Map<Long, Long>
     @Throws(Throwable::class)

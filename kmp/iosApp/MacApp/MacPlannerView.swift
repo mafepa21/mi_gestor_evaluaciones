@@ -44,7 +44,7 @@ struct PlannerMacToolbarActions {
 
 
 struct MacPlannerView: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Binding var selectedSessionIdFromRoot: Int64?
     @Binding var inspectorSession: PlanningSession?
@@ -356,7 +356,7 @@ private struct MacPlannerBanner: View {
 }
 
 private struct MacPlannerScheduleSettingsSheet: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
     @Binding var selectedClassId: Int64?
     let onClose: () -> Void
 

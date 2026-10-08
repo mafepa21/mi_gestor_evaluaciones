@@ -334,6 +334,27 @@ AND status = 'PLANNED';
 selectJournalBySession:
 SELECT * FROM session_journal WHERE planning_session_id = ?;
 
+selectJournalsBySessions:
+SELECT * FROM session_journal WHERE planning_session_id IN ?;
+
+selectJournalIndividualNotesByJournals:
+SELECT * FROM session_journal_individual_note WHERE journal_id IN ? ORDER BY id;
+
+selectJournalActionsByJournals:
+SELECT * FROM session_journal_action WHERE journal_id IN ? ORDER BY id;
+
+selectJournalMediaByJournals:
+SELECT * FROM session_journal_media WHERE journal_id IN ? ORDER BY id;
+
+selectJournalLinksByJournals:
+SELECT * FROM session_journal_link WHERE journal_id IN ? ORDER BY id;
+
+selectJournalSessionIdsWithStudentNote:
+SELECT DISTINCT j.planning_session_id
+FROM session_journal j
+JOIN session_journal_individual_note n ON n.journal_id = j.id
+WHERE n.student_id = ? AND j.planning_session_id IN ?;
+
 selectJournalSummariesBySessions:
 SELECT
     j.planning_session_id,

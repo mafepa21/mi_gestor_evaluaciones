@@ -1632,6 +1632,23 @@ class RubricsRepositorySqlDelight(
         }
     }
 
+    override suspend fun listRubricAssessmentsForStudents(studentIds: List<Long>, evaluationId: Long): List<RubricAssessment> = withContext(Dispatchers.Default) {
+        studentIds.distinct().chunked(500).flatMap { chunk -> db.appDatabaseQueries.selectRubricAssessmentsForStudents(evaluationId, chunk).executeAsList() }.map {
+            RubricAssessment(
+                studentId = it.student_id,
+                evaluationId = it.evaluation_id,
+                criterionId = it.criterion_id,
+                levelId = it.level_id,
+                trace = AuditTrace(
+                    createdAt = Instant.fromEpochMilliseconds(it.created_at_epoch_ms),
+                    updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
+                    deviceId = it.device_id,
+                    syncVersion = it.sync_version,
+                ),
+            )
+        }
+    }
+
     override suspend fun getStudentEvaluation(studentId: Long, rubricId: Long, evaluationId: Long): Map<Long, Long> = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.selectStudentEvaluation(studentId, rubricId, evaluationId).executeAsList()
             .associate { it.criterion_id to it.level_id }

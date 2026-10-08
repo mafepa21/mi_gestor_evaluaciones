@@ -1,5 +1,8 @@
 package com.migestor.data.sync
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import app.cash.sqldelight.db.QueryResult
 import com.migestor.data.di.KmpContainer
 import com.migestor.shared.domain.AuditTrace
 import com.migestor.shared.domain.LearningSituation
@@ -60,6 +63,27 @@ class SqlDelightSyncAdapter(
     private val liveIdsByEntityThisCollect = mutableMapOf<String, MutableSet<String>>()
     private var outgoingDeletesSeeded = false
     private val rosterSnapshotByClass = mutableMapOf<Long, Set<Long>>()
+
+    /**
+     * `total_changes()` cuenta las escrituras de esta conexión y `data_version`
+     * cambia cuando otra conexión (p. ej. la app del Mac, en otro proceso)
+     * confirma escrituras. En una sola sentencia para leer ambas en la misma
+     * conexión. Si algo falla se devuelve null y el pull recorre la base.
+     */
+    override suspend fun currentChangeToken(): String? = withContext(Dispatchers.Default) {
+        runCatching {
+            container.driver.executeQuery(
+                identifier = null,
+                sql = "SELECT total_changes(), (SELECT data_version FROM pragma_data_version())",
+                mapper = { cursor ->
+                    QueryResult.Value(
+                        if (cursor.next().value) "${cursor.getLong(0)}:${cursor.getLong(1)}" else null
+                    )
+                },
+                parameters = 0,
+            ).value
+        }.getOrNull()
+    }
 
     // ---------------------------------------------------------------------------
     // COLLECT LOCAL CHANGES
@@ -810,9 +834,9 @@ class SqlDelightSyncAdapter(
         }
         syncSignatureSnapshotByScope[plannerSessionScope] = plannerSessionSignatures
 
-        val journals = plannerSessions.mapNotNull { session ->
-            container.sessionJournalRepository.getJournalForSession(session.id)
-        }
+        val journals = container.sessionJournalRepository.listJournalAggregatesForSessions(
+            plannerSessions.map { it.id }
+        )
         val journalScope = "global:session_journal"
         val journalSignatures = journals.associate { aggregate ->
             aggregate.journal.planningSessionId.toString() to SessionJournalSyncCodec.signature(aggregate)

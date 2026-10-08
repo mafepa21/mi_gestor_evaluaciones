@@ -12,34 +12,6 @@ import SwiftUI
 
 @MainActor
 extension KmpBridge {
-    func refreshPlanning() async throws {
-        let sessions = try await container.plannerRepository.listAllSessions()
-        
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
-        let audit = AuditTrace(authorUserId: nil, createdAt: nowInstant, updatedAt: nowInstant, associatedGroupId: nil, deviceId: nil, syncVersion: 0)
-        
-        // Group sessions into PlanPeriod for UI compatibility
-        let dummyPeriod = Period(id: 1, name: "Planificación (\(sessions.count) sesiones)", startAt: nowInstant, endAt: nowInstant, trace: audit)
-        
-        var unitMap: [Int64: PlanUnit] = [:]
-        for session in sessions {
-            let uId = session.teachingUnitId
-            if unitMap[uId] == nil {
-                let unit = UnitPlan(id: uId, periodId: 1, title: session.teachingUnitName, objectives: "", competences: "", trace: audit)
-                unitMap[uId] = PlanUnit(unit: unit, sessions: [])
-            }
-            let updatedUnit = unitMap[uId]!
-            var updatedSessions = updatedUnit.sessions
-            let sessionPlan = SessionPlan(id: session.id, unitId: uId, date: nowInstant, description: session.activities, trace: audit)
-            updatedSessions.append(sessionPlan)
-            unitMap[uId] = PlanUnit(unit: updatedUnit.unit, sessions: updatedSessions)
-        }
-        
-        let planPeriod = PlanPeriod(period: dummyPeriod, units: Array(unitMap.values))
-        self.planning = [planPeriod]
-    }
-
     // MARK: - Planner iOS (Week Grid + Copy/Move)
     func plannerTimeSlots() -> [TimeSlotConfig] {
         container.plannerRepository.getTimeSlots()
@@ -379,53 +351,88 @@ extension KmpBridge {
         title: String,
         description: String?,
         startEpochMs: Int64,
-        endEpochMs: Int64
+        endEpochMs: Int64,
+        mirrorToAppleCalendar: Bool = true
     ) async throws -> Int64 {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let savedId = try await container.calendarRepository.saveEvent(
-            id: kotlinLong(id),
-            classId: kotlinLong(classId),
+        let mirror = AppleCalendarMirror.shared
+
+        // Enlace con «Colegio»: el de la base de datos o, si el evento es anterior a esa versión, el antiguo.
+        var link: AppleCalendarLink?
+        var usedLegacyLink = false
+        if let id {
+            link = await appleCalendarLink(forEventId: id)
+            if link == nil, let legacyExternalId = mirror.legacyExternalId(localId: id) {
+                link = appleCalendarLink(externalId: legacyExternalId)
+                usedLegacyLink = true
+            }
+        }
+
+        let savedId = try await saveCalendarRow(
+            id: id,
+            classId: classId,
             title: title,
             description: description,
-            startEpochMs: startEpochMs,
-            endEpochMs: endEpochMs,
-            externalProvider: nil,
-            externalId: nil,
-            authorUserId: nil,
-            updatedAtEpochMs: nowMs,
-            deviceId: localDeviceId,
-            syncVersion: 1
-        ).int64Value
-        
+            startMs: startEpochMs,
+            endMs: endEpochMs,
+            link: link,
+            updatedMs: nowMs
+        )
+
+        if mirrorToAppleCalendar && mirror.isEnabled {
+            let item = AppleCalendarMirror.Item(
+                localId: savedId,
+                title: title,
+                notes: description,
+                startMs: startEpochMs,
+                endMs: endEpochMs
+            )
+            if let current = link {
+                mirror.updateCopy(externalId: current.externalId, item: item)
+            } else if let created = mirror.createCopy(item) {
+                link = appleCalendarLink(externalId: created)
+                _ = try await saveCalendarRow(
+                    id: savedId,
+                    classId: classId,
+                    title: title,
+                    description: description,
+                    startMs: startEpochMs,
+                    endMs: endEpochMs,
+                    link: link,
+                    updatedMs: nowMs
+                )
+            }
+        }
+        if usedLegacyLink {
+            mirror.removeLegacyMapping(localId: savedId)
+        }
+
+        var payload: [String: Any] = [
+            "id": savedId,
+            "classId": classId ?? 0,
+            "title": title,
+            "description": description ?? "",
+            "startEpochMs": startEpochMs,
+            "endEpochMs": endEpochMs
+        ]
+        if let link {
+            payload["externalProvider"] = link.provider
+            payload["externalId"] = link.externalId
+        }
         enqueueLocalChange(
             entity: "calendar_event",
             id: "\(savedId)",
             updatedAtEpochMs: nowMs,
-            payload: [
-                "id": savedId,
-                "classId": classId ?? 0,
-                "title": title,
-                "description": description ?? "",
-                "startEpochMs": startEpochMs,
-                "endEpochMs": endEpochMs
-            ]
+            payload: payload
         )
-        let mirrored = AppleCalendarMirror.Item(
-            localId: savedId,
-            title: title,
-            notes: description,
-            startMs: startEpochMs,
-            endMs: endEpochMs
-        )
-        if id == nil {
-            AppleCalendarMirror.shared.created(mirrored)
-        } else {
-            AppleCalendarMirror.shared.updated(mirrored)
-        }
         return savedId
     }
 
     func plannerDeleteCalendarEvent(id: Int64) async throws {
+        let mirror = AppleCalendarMirror.shared
+        let link = await appleCalendarLink(forEventId: id)
+        let legacyExternalId = link == nil ? mirror.legacyExternalId(localId: id) : nil
+
         try await container.calendarRepository.deleteEvent(id: id)
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         enqueueLocalChange(
@@ -437,7 +444,11 @@ extension KmpBridge {
                 "deleted": true
             ]
         )
-        AppleCalendarMirror.shared.deleted(localId: id)
+
+        if mirror.isEnabled, let externalId = link?.externalId ?? legacyExternalId {
+            mirror.deleteCopy(externalId: externalId)
+        }
+        mirror.removeLegacyMapping(localId: id)
     }
 
     func plannerSaveTeacherSchedule(
@@ -1286,7 +1297,6 @@ extension KmpBridge {
             ]
         )
         
-        try await refreshPlanning()
     }
 
 }

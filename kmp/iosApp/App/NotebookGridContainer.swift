@@ -99,6 +99,7 @@ struct NotebookGridContainer<
         } else if surfaceMode == .seatingPlan {
             seatingContent(rows)
         } else {
+            let metrics = currentMetrics
             NotebookDataGrid(
                 scrollSyncCoordinator: scrollSyncCoordinator,
                 fixedColumnWidth: fixedColumnWidth,
@@ -121,16 +122,20 @@ struct NotebookGridContainer<
             } scrollHeader: {
                 scrollHeader()
             } fixedRows: {
-                rowStack(rows: rows, pane: .fixed, rowContent: fixedRow)
+                rowStack(rows: rows, pane: .fixed, metrics: metrics, rowContent: fixedRow)
             } trailingFixedRows: {
-                rowStack(rows: rows, pane: .trailingFixed, rowContent: trailingFixedRow)
+                rowStack(rows: rows, pane: .trailingFixed, metrics: metrics, rowContent: trailingFixedRow)
             } scrollRows: {
-                rowStack(rows: rows, pane: .scroll, rowContent: scrollRow)
+                rowStack(rows: rows, pane: .scroll, metrics: metrics, rowContent: scrollRow)
             }
             .onAppear {
+                scrollSyncCoordinator.install(metrics: metrics)
                 scrollProxy?.scrollToRow = { [scrollSyncCoordinator] index in
                     scrollSyncCoordinator.scrollToRow(index)
                 }
+            }
+            .appOnChange(of: metrics) { newMetrics in
+                scrollSyncCoordinator.install(metrics: newMetrics)
             }
             .overlay {
                 if rows.isEmpty {
@@ -143,6 +148,19 @@ struct NotebookGridContainer<
                 }
             }
         }
+    }
+
+    private var currentMetrics: NotebookRowWindowMath.Metrics {
+        NotebookRowWindowMath.metrics(slotHeights: rows.map { slotHeight(for: $0) })
+    }
+
+    private func slotHeight(for item: Row) -> CGFloat {
+        rowHeight + (showsGroupHeader(for: item) ? groupHeaderHeight : 0)
+    }
+
+    private func showsGroupHeader(for item: Row) -> Bool {
+        guard let groupHeaderInfo else { return false }
+        return groupHeaderInfo(item).isFirst
     }
 
     private enum PaneKind {
@@ -162,11 +180,13 @@ struct NotebookGridContainer<
     private func rowStack<Content: View>(
         rows: [Row],
         pane: PaneKind,
+        metrics: NotebookRowWindowMath.Metrics,
         @ViewBuilder rowContent: @escaping (Int, Row) -> Content
     ) -> some View {
         NotebookWindowedRowStack(
             viewport: scrollSyncCoordinator,
             rows: rows,
+            metrics: metrics,
             paneName: pane.debugName,
             rowHeight: rowHeight,
             groupHeaderHeight: groupHeaderHeight,
@@ -187,17 +207,17 @@ struct NotebookGridContainer<
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
                     Image(systemName: isUngrouped ? "person.slash" : "person.2.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .notebookFont(size: 11, weight: .bold)
                         .foregroundStyle(isUngrouped ? Color.secondary : NotebookStyle.primaryTint)
 
                     Text(header.groupName)
-                        .font(.system(size: 12, weight: .bold))
+                        .notebookFont(size: 12, weight: .bold)
                         .foregroundStyle(isUngrouped ? Color.secondary : Color.primary)
                         .lineLimit(1)
 
                     if header.count > 0 {
                         Text("\(header.count)")
-                            .font(.system(size: 10, weight: .bold))
+                            .notebookFont(size: 10, weight: .bold)
                             .foregroundStyle(isUngrouped ? Color.secondary : NotebookStyle.primaryTint)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1.5)
@@ -270,6 +290,7 @@ private struct NotebookWindowedRowStack<
 >: View {
     @ObservedObject var viewport: NotebookScrollSyncCoordinator
     let rows: [Row]
+    let metrics: NotebookRowWindowMath.Metrics
     let paneName: String
     let rowHeight: CGFloat
     let groupHeaderHeight: CGFloat
@@ -278,7 +299,6 @@ private struct NotebookWindowedRowStack<
     let rowContent: (Int, Row) -> Content
 
     var body: some View {
-        let metrics = currentMetrics
         let range = NotebookRowWindowMath.clamped(viewport.visibleRange, count: rows.count)
         let topInset = metrics.prefixY.indices.contains(range.lowerBound) ? metrics.prefixY[range.lowerBound] : 0
         let visibleRows = range.map { NotebookWindowedRow(index: $0, row: rows[$0]) }
@@ -302,25 +322,6 @@ private struct NotebookWindowedRowStack<
             transaction.animation = nil
             transaction.disablesAnimations = true
         }
-        .onAppear {
-            viewport.install(metrics: metrics)
-        }
-        .appOnChange(of: metrics) { newMetrics in
-            viewport.install(metrics: newMetrics)
-        }
-    }
-
-    private var currentMetrics: NotebookRowWindowMath.Metrics {
-        NotebookRowWindowMath.metrics(slotHeights: rows.map { slotHeight(for: $0) })
-    }
-
-    private func slotHeight(for item: Row) -> CGFloat {
-        rowHeight + (showsGroupHeader(for: item) ? groupHeaderHeight : 0)
-    }
-
-    private func showsGroupHeader(for item: Row) -> Bool {
-        guard let groupHeaderInfo else { return false }
-        return groupHeaderInfo(item).isFirst
     }
 
     private func headerInfo(for item: Row) -> (isFirst: Bool, groupName: String, count: Int)? {

@@ -28,4 +28,9 @@
 - Un repositorio KMP sin `withContext(Dispatchers.Default)` corre la consulta en el hilo principal cuando lo llama Swift: la UI se congela. Comprobarlo antes de culpar a SwiftUI.
 - SyncLAN en Mac: la app habla con su helper con `MacCommandCenterCoordinator.helperLocalToken` (stdin, solo loopback). No volver a una contraseña fija.
 - Fechas de eventos: se guardan a las 00:00 locales. Nunca compararlas con `AppDateTimeSupport.isoDateString` (formatea en UTC); usar el calendario local.
-
+- `PlannerWorkspaceSection.rawValue` se guarda en preferencias: para cambiar el nombre visible usar `toolbarTitle`, no el `rawValue`.
+- La app no tiene localización en español: `Locale.current` da meses en inglés. En formateadores de fecha visibles usar `Locale(identifier: "es_ES")`.
+- Los números de franja propios (P10, P11…) se asignan después de los del centro: en pantalla mostrar la hora, no el número.
+- Los hitos de la semana llegan duplicados (uno por grupo): contar por fecha + título.
+- La cabecera grande de SA (`expandedProgressHeader`) solo se pinta en Resumen.
+- Celdas de la Semana (`PlannerWeekMiniatureGrid`): la materia más repetida del horario (`dominantSubject`) no se pinta; solo se etiqueta la de otra materia (p. ej. Tutoría). En franjas sin sesión, `entry.preview` es la materia y `entry.title` repite la materia si no hay bloque: entonces se muestra "Sin planificar".

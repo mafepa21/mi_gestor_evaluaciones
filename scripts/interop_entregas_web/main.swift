@@ -591,7 +591,8 @@ comprobar("el alumno sin grupo NO lleva parámetro &t= en el enlace", linkCarmen
 
 // Comprobar que en el fragmento &t= viene la lista de targets con nombre completo
 if let urlAna = linkAna?.url, let tRange = urlAna.range(of: "&t=") {
-    let tB64 = String(urlAna[tRange.upperBound...])
+    // `t` ya no es el último parámetro: detrás puede ir `&m=` (manifiesto en el enlace).
+    let tB64 = String(urlAna[tRange.upperBound...].prefix { $0 != "&" })
     if let data = Data(base64URLEncoded: tB64),
        let json = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] {
         comprobar("el target contiene el nombre completo del compañero", json.first?["n"] == "Bruno Gil")
@@ -697,6 +698,110 @@ comprobar("previsualización de coevaluación genera 1 borrador para el compañe
 comprobar("el borrador está atribuido al alumno evaluado (Bruno Gil)", previewPeer.drafts.first?.studentId == 43)
 comprobar("el borrador está marcado como coevaluación", previewPeer.drafts.first?.isPeerEvaluation == true)
 comprobar("el submissionId del borrador incluye el targetAlias", previewPeer.drafts.first?.submissionId == "sub-peer-1#\(targetAliasBruno)")
+
+// MARK: - Enlace autocontenido (&m=)
+
+print("\nEnlace autocontenido")
+
+/// Valor de un parámetro del fragmento de un enlace.
+func parametroDelFragmento(_ nombre: String, en url: String) -> String? {
+    guard let almohadilla = url.firstIndex(of: "#") else { return nil }
+    let fragmento = url[url.index(after: almohadilla)...]
+    for campo in fragmento.split(separator: "&") {
+        let partes = campo.split(separator: "=", maxSplits: 1).map(String.init)
+        if partes.count == 2, partes[0] == nombre { return partes[1] }
+    }
+    return nil
+}
+
+/// Inversa de `compactCompressedManifest`: base64url -> deflate raw -> JSON.
+/// `.zlib` de Apple es deflate crudo, igual que `deflate-raw` del navegador.
+func manifiestoDelEnlace(_ url: String) -> (json: Data, objeto: [String: Any])? {
+    guard let m = parametroDelFragmento("m", en: url),
+          let comprimido = Data(base64URLEncoded: m),
+          let json = try? (comprimido as NSData).decompressed(using: .zlib) as Data,
+          let objeto = try? JSONSerialization.jsonObject(with: json) as? [String: Any]
+    else { return nil }
+    return (json, objeto)
+}
+
+comprobar("el formulario se publica autocontenido", publicado.isSelfContained)
+comprobar(
+    "todos los enlaces llevan m, después de f y a",
+    publicado.links.allSatisfy { enlace in
+        guard let a = enlace.url.range(of: "&a="), let m = enlace.url.range(of: "&m=") else { return false }
+        return a.lowerBound < m.lowerBound
+    }
+)
+comprobar(
+    "ningún enlace pasa del tope de \(WebSubmissionPublisher.maxLinkLength) caracteres",
+    publicado.links.allSatisfy { $0.url.count <= WebSubmissionPublisher.maxLinkLength }
+)
+comprobar(
+    "el manifiesto guardado sigue siendo el JSON legible (pretty)",
+    publicado.manifestJSON.contains("\n")
+)
+
+if let primero = publicado.links.first, let dentro = manifiestoDelEnlace(primero.url) {
+    comprobar(
+        "m descomprime a un JSON con el mismo formInstanceId",
+        dentro.objeto["formInstanceId"] as? String == publicado.formInstanceId
+    )
+    comprobar("m va en JSON compacto, sin saltos de línea", !String(decoding: dentro.json, as: UTF8.self).contains("\n"))
+    do {
+        try WebSubmissionCrypto.verifyManifestSignature(rawManifestJSON: dentro.json)
+        pasadas += 1
+        print("  ok    la firma del manifiesto sacado del enlace verifica")
+    } catch {
+        fallos += 1
+        print("  FALLA la firma del manifiesto sacado del enlace verifica -> \(error)")
+    }
+    // Manifiesto alterado tras comprimir: cambiar el título tiene que romper la firma.
+    var alterado = dentro.objeto
+    alterado["title"] = "Otro título"
+    let alteradoJSON = try JSONSerialization.data(withJSONObject: alterado, options: [.sortedKeys])
+    comprobarLanza("un manifiesto alterado dentro del enlace no verifica") {
+        try WebSubmissionCrypto.verifyManifestSignature(rawManifestJSON: alteradoJSON)
+    }
+    // Fixtures para la prueba cruzada con la función JS de la web (ver verificar.sh).
+    let lineas = publicado.links.map(\.url).joined(separator: "\n") + "\n"
+    try lineas.write(toFile: "/tmp/enlaces-publicados-por-swift.txt", atomically: true, encoding: .utf8)
+    print("  ->    escrito /tmp/enlaces-publicados-por-swift.txt (\(primero.url.count) caracteres el primero)")
+} else {
+    comprobar("m se puede extraer y descomprimir del primer enlace", false)
+}
+
+// Coevaluación: `t` y `m` conviven y `t` sigue siendo decodificable.
+comprobar("el formulario peer también es autocontenido", publicadoPeer.isSelfContained)
+if let urlAna = linkAna?.url {
+    comprobar("el enlace peer lleva t y m, en ese orden", {
+        guard let t = urlAna.range(of: "&t="), let m = urlAna.range(of: "&m=") else { return false }
+        return t.lowerBound < m.lowerBound
+    }())
+    comprobar(
+        "el manifiesto del enlace peer es schemaVersion 2",
+        (manifiestoDelEnlace(urlAna)?.objeto["schemaVersion"] as? Int) == 2
+    )
+    try "\(urlAna)\n".write(toFile: "/tmp/enlace-peer-publicado-por-swift.txt", atomically: true, encoding: .utf8)
+}
+
+// Tope: un título enorme (incompresible) dispara el límite y se vuelve al flujo
+// de subir el fichero, sin `m` en NINGÚN enlace.
+var textoIncompresible = ""
+for _ in 0..<4000 { textoIncompresible += String(UUID().uuidString.prefix(8)) }
+let publicadoGrande = try WebSubmissionPublisher.publish(
+    title: "Grande",
+    subtitle: textoIncompresible,
+    locale: "es",
+    sections: [],
+    items: [.init(itemId: "x", title: "Casilla", type: .check, required: true, options: [], helpText: nil, scaleLabels: nil, sectionId: nil)],
+    students: [.init(id: 1, name: "Ana"), .init(id: 2, name: "Bruno")],
+    baseURL: "https://entregas-alumnado.vercel.app",
+    deliveryEmail: nil,
+    expiresAtEpochMs: 1_900_000_000_000
+)
+comprobar("pasado el tope no es autocontenido", !publicadoGrande.isSelfContained)
+comprobar("pasado el tope ningún enlace lleva m", publicadoGrande.links.allSatisfy { !$0.url.contains("&m=") })
 
 // MARK: - Resultado
 

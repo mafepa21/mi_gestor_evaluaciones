@@ -55,7 +55,7 @@ struct NotebookSectionLabel: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .notebookFont(size: 12, weight: .bold, design: .rounded)
             .tracking(0.8)
             .foregroundStyle(.secondary)
     }
@@ -64,13 +64,13 @@ struct NotebookSectionLabel: View {
 struct NotebookIconButton: View {
     let systemImage: String
     let tint: Color
-    var accessibilityLabel: String? = nil
+    let accessibilityLabel: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .bold))
+                .notebookFont(size: 16, weight: .bold)
                 .foregroundStyle(tint)
                 .frame(width: NotebookStyle.iconButtonSize, height: NotebookStyle.iconButtonSize)
                 .background(
@@ -83,7 +83,7 @@ struct NotebookIconButton: View {
                 )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel ?? systemImage)
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 
@@ -98,11 +98,11 @@ struct NotebookPill: View {
         HStack(spacing: NotebookStyle.controlSpacing) {
             if let systemImage {
                 Image(systemName: systemImage)
-                    .font(.system(size: 12, weight: .semibold))
+                    .notebookFont(size: 12, weight: .semibold)
             }
 
             Text(label)
-                .font(.system(size: compact ? 12 : 13, weight: .semibold, design: .rounded))
+                .notebookFont(size: compact ? 12 : 13, weight: .semibold, design: .rounded)
         }
         .foregroundStyle(active ? contrastingTextColor(for: tint) : tint)
         .padding(.horizontal, compact ? 12 : 16)
@@ -550,10 +550,14 @@ struct NotebookSummaryGenerationSheet: View {
         }
     }
 
-    private func formattedRunStamp() -> String {
+    private static let runStampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "dd/MM"
-        return formatter.string(from: .now)
+        return formatter
+    }()
+
+    private func formattedRunStamp() -> String {
+        Self.runStampFormatter.string(from: .now)
     }
 }
 

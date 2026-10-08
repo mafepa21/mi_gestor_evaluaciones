@@ -14,10 +14,13 @@ struct MacRootView: View {
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
     @ObservedObject private var notebookEditMenu = NotebookEditMenuState.shared
-    @StateObject private var notebookStore = NotebookBridgeStore()
-    @StateObject private var dashboardStore = DashboardBridgeStore()
-    @StateObject private var studentsBridgeStore = StudentsBridgeStore()
-    @StateObject private var attendanceStore = AttendanceBridgeStore()
+    // Contenedor que no publica: la raíz del Mac ya no se redibuja entera con
+    // cada nota o cada sync; solo las vistas que observan cada store.
+    @StateObject private var workspaceStores = WorkspaceBridgeStores()
+    private var notebookStore: NotebookBridgeStore { workspaceStores.notebook }
+    private var dashboardStore: DashboardBridgeStore { workspaceStores.dashboard }
+    private var studentsBridgeStore: StudentsBridgeStore { workspaceStores.students }
+    private var attendanceStore: AttendanceBridgeStore { workspaceStores.attendance }
     @StateObject private var physicalTestsToolbarActions = MacPhysicalTestsToolbarActions()
     @StateObject private var physicalTestsInspectorState = PhysicalTestsMacInspectorState()
     @StateObject private var studentsStore = MacStudentsStore()
@@ -107,10 +110,7 @@ struct MacRootView: View {
             // escaneo, una base apartada cuyo marcador ya se había descartado
             // seguía pareciendo una base vacía sin explicación.
             backupService.scanQuarantinedDatabases()
-            notebookStore.bind(to: session.bridge)
-            dashboardStore.bind(to: session.bridge)
-            studentsBridgeStore.bind(to: session.bridge)
-            attendanceStore.bind(to: session.bridge)
+            workspaceStores.bind(to: session.bridge)
 
             session.start()
             await startCommandCenterAfterInitialLayout()

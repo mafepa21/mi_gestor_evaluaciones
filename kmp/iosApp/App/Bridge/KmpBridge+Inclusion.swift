@@ -147,17 +147,24 @@ extension KmpBridge {
         var students: [InclusionStudentSnapshot] = []
         for studentBoard in board.students {
             let studentId = studentBoard.studentId
-            let measures = try await supportMeasures(for: studentId).filter(\.isActive)
+            let allMeasures = try await supportMeasures(for: studentId)
+            let measures = allMeasures.filter(\.isActive)
+            let activeMeasureIds = Set(measures.map(\.id))
             if let gate, let ticket, !gate.isCurrent(ticket) { return nil }
             let level: SupportMeasureLevelUI? = measures.contains { $0.level == .iv } ? .iv : (measures.isEmpty ? nil : .iii)
+            // Medida retirada: su tarea pendiente deja de mostrarse; la ya hecha
+            // se conserva como historial. Los contadores salen de lo visible.
+            let visibleTasks = studentBoard.items
+                .compactMap(inclusionTaskSnapshot(from:))
+                .filter { $0.measureId == nil || activeMeasureIds.contains($0.measureId!) || $0.isDone }
             students.append(InclusionStudentSnapshot(
                 id: studentId,
                 name: names[studentId] ?? "",
                 level: level,
                 measuresSummary: measures.map(\.measureType.displayName).joined(separator: " + "),
-                tasks: studentBoard.items.compactMap(inclusionTaskSnapshot(from:)),
-                doneCount: Int(studentBoard.doneCount),
-                overdueCount: Int(studentBoard.overdueCount)
+                tasks: visibleTasks,
+                doneCount: visibleTasks.filter(\.isDone).count,
+                overdueCount: visibleTasks.filter { $0.status == .overdue }.count
             ))
         }
         if let gate, let ticket, !gate.isCurrent(ticket) { return nil }
@@ -167,8 +174,8 @@ extension KmpBridge {
             schoolYear: board.schoolYear,
             initialEvaluationDate: inclusionDate(board.initialEvaluationDate),
             students: students.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
-            overdueCount: Int(board.summary.overdue),
-            dueThisWeekCount: Int(board.summary.dueThisWeek)
+            overdueCount: students.reduce(0) { $0 + $1.overdueCount },
+            dueThisWeekCount: students.reduce(0) { $0 + $1.tasks.filter { $0.status == .soon }.count }
         )
     }
 

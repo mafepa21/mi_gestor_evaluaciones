@@ -810,9 +810,9 @@ class SqlDelightSyncAdapter(
         }
         syncSignatureSnapshotByScope[plannerSessionScope] = plannerSessionSignatures
 
-        val journals = plannerSessions.mapNotNull { session ->
-            container.sessionJournalRepository.getJournalForSession(session.id)
-        }
+        val journals = container.sessionJournalRepository.listJournalAggregatesForSessions(
+            plannerSessions.map { it.id }
+        )
         val journalScope = "global:session_journal"
         val journalSignatures = journals.associate { aggregate ->
             aggregate.journal.planningSessionId.toString() to SessionJournalSyncCodec.signature(aggregate)

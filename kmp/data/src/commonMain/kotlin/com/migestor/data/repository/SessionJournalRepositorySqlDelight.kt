@@ -48,46 +48,75 @@ class SessionJournalRepositorySqlDelight(
         val journal = row.toDomain()
         return SessionJournalAggregate(
             journal = journal,
-            individualNotes = db.plannerQueries.selectJournalIndividualNotes(journal.id).executeAsList().map { note ->
-                SessionJournalIndividualNote(
-                    id = note.id,
-                    journalId = note.journal_id,
-                    studentId = note.student_id,
-                    studentName = note.student_name,
-                    note = note.note,
-                    tag = note.tag,
-                )
-            },
-            actions = db.plannerQueries.selectJournalActions(journal.id).executeAsList().map { action ->
-                SessionJournalAction(
-                    id = action.id,
-                    journalId = action.journal_id,
-                    title = action.title,
-                    detail = action.detail,
-                    isCompleted = action.is_completed != 0L,
-                )
-            },
-            media = db.plannerQueries.selectJournalMedia(journal.id).executeAsList().map { media ->
-                SessionJournalMedia(
-                    id = media.id,
-                    journalId = media.journal_id,
-                    type = media.type.toEnum(SessionJournalMediaType.PHOTO),
-                    uri = media.uri,
-                    transcript = media.transcript,
-                    caption = media.caption,
-                )
-            },
-            links = db.plannerQueries.selectJournalLinks(journal.id).executeAsList().map { link ->
-                SessionJournalLink(
-                    id = link.id,
-                    journalId = link.journal_id,
-                    type = link.type.toEnum(SessionJournalLinkType.NOTEBOOK),
-                    targetId = link.target_id,
-                    label = link.label,
-                )
-            }
+            individualNotes = db.plannerQueries.selectJournalIndividualNotes(journal.id).executeAsList().map { it.toDomain() },
+            actions = db.plannerQueries.selectJournalActions(journal.id).executeAsList().map { it.toDomain() },
+            media = db.plannerQueries.selectJournalMedia(journal.id).executeAsList().map { it.toDomain() },
+            links = db.plannerQueries.selectJournalLinks(journal.id).executeAsList().map { it.toDomain() },
         )
     }
+
+    override suspend fun listJournalAggregatesForSessions(
+        planningSessionIds: List<Long>,
+    ): List<SessionJournalAggregate> = withContext(Dispatchers.Default) {
+        // 5 consultas por bloque en lugar de 5 por sesión (el sync del Mac lo
+        // pide para todas las sesiones en cada pull).
+        val ids = planningSessionIds.distinct()
+        val journals = ids.chunked(JOURNAL_ID_CHUNK).flatMap { chunk ->
+            db.plannerQueries.selectJournalsBySessions(chunk).executeAsList().map { it.toDomain() }
+        }
+        val journalIds = journals.map { it.id }
+        val notes = journalIds.chunked(JOURNAL_ID_CHUNK).flatMap { db.plannerQueries.selectJournalIndividualNotesByJournals(it).executeAsList().map { row -> row.toDomain() } }.groupBy { it.journalId }
+        val actions = journalIds.chunked(JOURNAL_ID_CHUNK).flatMap { db.plannerQueries.selectJournalActionsByJournals(it).executeAsList().map { row -> row.toDomain() } }.groupBy { it.journalId }
+        val media = journalIds.chunked(JOURNAL_ID_CHUNK).flatMap { db.plannerQueries.selectJournalMediaByJournals(it).executeAsList().map { row -> row.toDomain() } }.groupBy { it.journalId }
+        val links = journalIds.chunked(JOURNAL_ID_CHUNK).flatMap { db.plannerQueries.selectJournalLinksByJournals(it).executeAsList().map { row -> row.toDomain() } }.groupBy { it.journalId }
+        val bySession = journals.associateBy { it.planningSessionId }
+        // Mismo orden que las sesiones recibidas, como la versión de una en una.
+        ids.mapNotNull { sessionId ->
+            bySession[sessionId]?.let { journal ->
+                SessionJournalAggregate(
+                    journal = journal,
+                    individualNotes = notes[journal.id].orEmpty(),
+                    actions = actions[journal.id].orEmpty(),
+                    media = media[journal.id].orEmpty(),
+                    links = links[journal.id].orEmpty(),
+                )
+            }
+        }
+    }
+
+    private fun com.migestor.data.db.Session_journal_individual_note.toDomain() = SessionJournalIndividualNote(
+        id = id,
+        journalId = journal_id,
+        studentId = student_id,
+        studentName = student_name,
+        note = note,
+        tag = tag,
+    )
+
+    private fun com.migestor.data.db.Session_journal_action.toDomain() = SessionJournalAction(
+        id = id,
+        journalId = journal_id,
+        title = title,
+        detail = detail,
+        isCompleted = is_completed != 0L,
+    )
+
+    private fun com.migestor.data.db.Session_journal_media.toDomain() = SessionJournalMedia(
+        id = id,
+        journalId = journal_id,
+        type = type.toEnum(SessionJournalMediaType.PHOTO),
+        uri = uri,
+        transcript = transcript,
+        caption = caption,
+    )
+
+    private fun com.migestor.data.db.Session_journal_link.toDomain() = SessionJournalLink(
+        id = id,
+        journalId = journal_id,
+        type = type.toEnum(SessionJournalLinkType.NOTEBOOK),
+        targetId = target_id,
+        label = label,
+    )
 
     override suspend fun listJournalsForSessions(planningSessionIds: List<Long>): List<SessionJournal> = withContext(Dispatchers.Default) {
         planningSessionIds.distinct().chunked(JOURNAL_ID_CHUNK).flatMap { chunk ->

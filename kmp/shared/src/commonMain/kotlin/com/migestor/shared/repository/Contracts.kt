@@ -658,6 +658,10 @@ interface SessionJournalRepository {
     suspend fun listJournalsForSessions(planningSessionIds: List<Long>): List<SessionJournal> =
         planningSessionIds.mapNotNull { getJournalForSession(it)?.journal }
 
+    /** Diarios completos de varias sesiones en bloque (mismo resultado que llamar a getJournalForSession por cada una). */
+    suspend fun listJournalAggregatesForSessions(planningSessionIds: List<Long>): List<SessionJournalAggregate> =
+        planningSessionIds.mapNotNull { getJournalForSession(it) }
+
     /** Diarios completos de las sesiones dadas que tienen alguna nota individual del alumno. */
     suspend fun listJournalsWithStudentNotes(planningSessionIds: List<Long>, studentId: Long): List<SessionJournalAggregate> =
         planningSessionIds.mapNotNull { id ->

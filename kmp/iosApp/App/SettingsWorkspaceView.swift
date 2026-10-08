@@ -19,6 +19,7 @@ extension SettingsSectionDescriptor {
         .init(id: "general",     title: "General",          subtitle: "Curso escolar y nombre del centro",         systemImage: "slider.horizontal.3",         tint: .blue),
         .init(id: "courses",     title: "Cursos y grupos",  subtitle: "Curso escolar, asignaturas, grupos y archivado", systemImage: "person.2.fill",           tint: .cyan),
         .init(id: "schedule",    title: "Horario docente",  subtitle: "Franjas semanales, curso y evaluaciones",   systemImage: "calendar.badge.clock",         tint: .teal),
+        .init(id: "appleCalendar", title: "Calendario de Apple", subtitle: "Copiar eventos a un calendario «Colegio»", systemImage: "calendar.badge.plus",  tint: .mint),
         .init(id: "appearance",  title: "Apariencia",        subtitle: "Tema de color y accesibilidad",            systemImage: "paintpalette.fill",            tint: .orange),
         .init(id: "evaluation",  title: "Evaluación",        subtitle: "Escalas, redondeos y cuaderno",            systemImage: "chart.bar.doc.horizontal.fill", tint: .indigo),
         .init(id: "datasec",     title: "Datos y seguridad", subtitle: "Copias de seguridad, restaurar, borrar",   systemImage: "lock.shield.fill",             tint: .green),
@@ -163,6 +164,9 @@ struct SettingsWorkspaceView: View {
                 }
             )
             .environmentObject(bridge)
+        case "appleCalendar":
+            AppleCalendarSettingsView()
+                .environmentObject(bridge)
         case "schedule":
             TeacherScheduleWizard(
                 bridge: bridge,

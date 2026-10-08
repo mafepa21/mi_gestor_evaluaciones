@@ -132,6 +132,7 @@
 		35CE08146C413A10B6E6B72A /* NotebookCellStampCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06247DBCEF5FCAED33273150 /* NotebookCellStampCatalog.swift */; };
 		35E4CB3140B5AC23435486FE /* DashboardDispatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCF119E0DE892DBACD7073A3 /* DashboardDispatchView.swift */; };
 		36BAB911C91FE8E529E29FE4 /* MacBackupsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320C2ED322845177EEDADD11 /* MacBackupsView.swift */; };
+		37C80CD1189B20DD6AF1AC1F /* InclusionTrackerMockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */; };
 		37F6AA5AB648A3885DEB6A1B /* PhysicalTestsImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F2744A2DF80ACFD0C00A1B /* PhysicalTestsImportPreviewSheet.swift */; };
 		380C5B0861247861C8158E36 /* LearningSituationDocumentImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */; };
 		39033AE9A5333567B878BD6A /* NotebookColumnStatisticsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDEB71116492CCC22B09906C /* NotebookColumnStatisticsSheet.swift */; };
@@ -228,6 +229,7 @@
 		5765367BFF3B25A005AD911A /* TournamentModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB05410ADED16A84A47A761 /* TournamentModule.swift */; };
 		57A5317C5BC18AA83AD50E93 /* PlannerDayQuickJournalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E02793302768B092E8BA3154 /* PlannerDayQuickJournalSheet.swift */; };
 		57B71C3913C7F4D901323B42 /* PlannerFloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E80A05F8F203CF9F01667C /* PlannerFloatingTabBar.swift */; };
+		5875943920728E03C6CCBB59 /* InclusionTrackerMockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */; };
 		58BC993ADD2C8A0AE4F3F1F1 /* CooperativeGroupGeneratorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995790F8B9F9C8C528105319 /* CooperativeGroupGeneratorService.swift */; };
 		59234820B563D9BA8FB23DE3 /* NotebookAICommentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFB7CB99B772BA64AA591A9 /* NotebookAICommentSheet.swift */; };
 		59720E0A98318EF90A5FBFB9 /* NotebookInspectorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 064505192DE6C78C8E8249B0 /* NotebookInspectorPanel.swift */; };
@@ -916,6 +918,7 @@
 		834354958EC7B5CE22A3BA07 /* NotebookSupportViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookSupportViews.swift; sourceTree = "<group>"; };
 		843AF96A09D81C7848F791DD /* CalendarDuplicatePlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarDuplicatePlannerTests.swift; sourceTree = "<group>"; };
 		8457F6307147064BDBB54971 /* NotebookModuleGridCells.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleGridCells.swift; sourceTree = "<group>"; };
+		854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InclusionTrackerMockView.swift; sourceTree = "<group>"; };
 		85B4496675F03A7009E2F05A /* PhysicalTestsImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestsImportTests.swift; sourceTree = "<group>"; };
 		85B8ED1FDFD34D1DF02ACDD8 /* TeacherScheduleSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherScheduleSettingsView.swift; sourceTree = "<group>"; };
 		85FC0478FB157350F9771A58 /* KmpBridge+AppleCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+AppleCalendar.swift"; sourceTree = "<group>"; };
@@ -1247,6 +1250,7 @@
 				B8AD3A2E943A41407A974460 /* EvaluationSettingsView.swift */,
 				DDF85B72D878968E171D9F9C /* GeneralSettingsView.swift */,
 				9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */,
+				854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */,
 				E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */,
 				61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */,
 				365A0156DBB041D3F8FD72CC /* MacTrackpadSwipeHelper.swift */,
@@ -1572,27 +1576,6 @@
 				796F0A2453E323BD1C3BE3F6 /* Bridge */,
 			);
 			path = App;
-			sourceTree = "<group>";
-		};
-		"TEMP_3A25E3E8-C2C6-4BE7-B2B2-4A511FC1F825" /* .claude */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = .claude;
-			sourceTree = "<group>";
-		};
-		"TEMP_901D3009-ED78-4458-87C6-0FAE9795E78B" /* .claude */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = .claude;
-			sourceTree = "<group>";
-		};
-		"TEMP_B6DEB1B1-0109-4536-B6F5-2EF4DC6506E8" /* .claude */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = .claude;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -1943,6 +1926,7 @@
 				928E20A763449E7538247603 /* IOSSelectionStore.swift in Sources */,
 				A955FA3E7711CA5298A75589 /* IPadWorkspaceShell.swift in Sources */,
 				9886188422D810036E17FDCD /* ImportPreviewModels.swift in Sources */,
+				37C80CD1189B20DD6AF1AC1F /* InclusionTrackerMockView.swift in Sources */,
 				0DE95BC2B10B415D1AECA7A5 /* InstrumentEvaluationChrome.swift in Sources */,
 				F9AC280AFCF1F805FFEB44D1 /* InstrumentEvaluationModels.swift in Sources */,
 				0E9C6066D11F7F3E989C2C39 /* KmpBridge+AppleCalendar.swift in Sources */,
@@ -2284,6 +2268,7 @@
 				13371F98A59CE2BFA928D9B0 /* IOSSelectionStore.swift in Sources */,
 				86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */,
 				A917D167542448BDD9007211 /* ImportPreviewModels.swift in Sources */,
+				5875943920728E03C6CCBB59 /* InclusionTrackerMockView.swift in Sources */,
 				3E5486419EB17E40023CA271 /* InstrumentEvaluationChrome.swift in Sources */,
 				5BE361076C0318424B56137F /* InstrumentEvaluationModels.swift in Sources */,
 				E5D12A9785905B9A20C2E37E /* KmpBridge+AppleCalendar.swift in Sources */,

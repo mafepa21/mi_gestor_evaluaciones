@@ -13,6 +13,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Fixed
+
+- **Restaurar copias guardadas en carpetas sin permiso de escritura** (iCloud, volumen externo, carpeta protegida): la validación fallaba con «PRAGMA integrity_check … unable to open database file» aunque la copia estuviera intacta, porque una base WAL en solo lectura necesita crear `-shm` a su lado. Ahora, ante `SQLITE_CANTOPEN`, la validación y la instantánea se repiten sobre un duplicado temporal; el paquete original no se modifica.
+
+### Verification
+
+- `xcodebuild test` (esquema `MiGestorPlannerTests`, macOS, `AppleBackupIntegrityTests`): 6 tests OK, incluido el nuevo de base WAL en carpeta de solo lectura (reproducía el error antes del arreglo).
+- `xcodebuild build` (esquema `MiGestorKMPiOS`, iOS Simulator): OK.
+- QA manual del docente: la restauración de la copia que fallaba funciona.
+
 ### Changed
 
 - **Cuaderno: volver a la pantalla sin montarlo todo desde cero**: lo preparado de la tabla (columnas, categorías plegadas, filas visibles) vive en `NotebookBridgeStore` y sobrevive al cambio de pantalla; las situaciones de aprendizaje del grupo se pintan desde lo guardado y se refrescan por detrás. Medidas nuevas del montaje en el registro de lentitud.

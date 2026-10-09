@@ -8,6 +8,10 @@ enum AppleSQLiteBackupValidator {
     /// sin ninguna copia. Solo una base dañada (integrity_check) es motivo de rechazo.
     @discardableResult
     static func validateDatabase(at url: URL) throws -> Int {
+        try withWritableLocation(of: url) { try validateDatabaseInPlace(at: $0) }
+    }
+
+    private static func validateDatabaseInPlace(at url: URL) throws -> Int {
         var database: OpaquePointer?
         let result = sqlite3_open_v2(
             url.path,
@@ -36,6 +40,53 @@ enum AppleSQLiteBackupValidator {
     /// cualquier WAL del paquete de origen y evita instalar sidecars antiguos junto
     /// a la base activa.
     static func materializeSnapshot(from sourceURL: URL, to destinationURL: URL) throws {
+        try withWritableLocation(of: sourceURL) {
+            try materializeSnapshotInPlace(from: $0, to: destinationURL)
+        }
+    }
+
+    /// Una base en modo WAL abierta en solo lectura necesita crear `-shm` a su lado.
+    /// Si la carpeta de la copia no admite escritura (iCloud, volumen externo,
+    /// carpeta protegida), SQLite responde «unable to open database file» aunque la
+    /// copia esté intacta. En ese caso se repite la operación sobre un duplicado
+    /// temporal de la base y sus sidecars, sin tocar nunca el paquete original.
+    static func withWritableLocation<T>(of url: URL, _ body: (URL) throws -> T) throws -> T {
+        do {
+            return try body(url)
+        } catch let error as NSError where isCannotOpenError(error) {
+            let fileManager = FileManager.default
+            let temporaryDirectory = fileManager.temporaryDirectory
+                .appendingPathComponent("migestor-restore-\(UUID().uuidString)", isDirectory: true)
+            try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+            defer { try? fileManager.removeItem(at: temporaryDirectory) }
+
+            let copyURL = temporaryDirectory.appendingPathComponent(url.lastPathComponent)
+            try fileManager.copyItem(at: url, to: copyURL)
+            for suffix in ["-wal", "-shm"] {
+                let sidecar = URL(fileURLWithPath: url.path + suffix)
+                if fileManager.fileExists(atPath: sidecar.path) {
+                    try fileManager.copyItem(at: sidecar, to: URL(fileURLWithPath: copyURL.path + suffix))
+                }
+            }
+            // El duplicado sí admite escritura: se integra el WAL en la base y se
+            // pasa a modo DELETE para que la apertura en solo lectura no dependa
+            // de sidecars.
+            var database: OpaquePointer?
+            if sqlite3_open_v2(copyURL.path, &database, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK {
+                sqlite3_exec(database, "PRAGMA journal_mode = DELETE;", nil, nil, nil)
+            }
+            sqlite3_close(database)
+            return try body(copyURL)
+        }
+    }
+
+    private static func isCannotOpenError(_ error: NSError) -> Bool {
+        (error.userInfo[sqliteCodeKey] as? Int32) == SQLITE_CANTOPEN
+    }
+
+    private static let sqliteCodeKey = "SQLiteResultCode"
+
+    private static func materializeSnapshotInPlace(from sourceURL: URL, to destinationURL: URL) throws {
         var source: OpaquePointer?
         var destination: OpaquePointer?
         let sourceResult = sqlite3_open_v2(
@@ -174,11 +225,11 @@ enum AppleSQLiteBackupValidator {
             sqliteMessage = nil
         }
         let description = sqliteMessage.map { "\(message) SQLite: \($0)" } ?? message
-        return NSError(
-            domain: "AppleBackupService",
-            code: code,
-            userInfo: [NSLocalizedDescriptionKey: description]
-        )
+        var userInfo: [String: Any] = [NSLocalizedDescriptionKey: description]
+        if let database {
+            userInfo[sqliteCodeKey] = sqlite3_errcode(database) & 0xFF
+        }
+        return NSError(domain: "AppleBackupService", code: code, userInfo: userInfo)
     }
 }
 

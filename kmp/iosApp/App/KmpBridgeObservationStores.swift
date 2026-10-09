@@ -307,20 +307,21 @@ extension EnvironmentValues {
 
 /// Lo último que enseñó cada pantalla que guarda sus datos en `@State`. Al cambiar
 /// de pantalla, la vista se destruye (`.id(activeModule)`); al volver arranca con
-/// esto y refresca por detrás, sin pantalla vacía ni ruedita. Va ligada al bridge:
-/// si este se recrea (restaurar una copia, borrar datos) se vacía.
+/// esto y refresca por detrás, sin pantalla vacía ni ruedita. Va ligada a una
+/// instancia de bridge (se vacía si cambia). Tras borrar o restaurar datos la app
+/// pide reiniciar, así que no se llegan a ver datos borrados.
+/// Supone una sola ventana por bridge: el store de Inclusión es compartido.
 @MainActor
 final class WorkspaceScreenMemory {
     static let shared = WorkspaceScreenMemory()
 
-    private var ownerId: ObjectIdentifier?
+    private weak var owner: KmpBridge?
     private var values: [String: Any] = [:]
     private var inclusionStore: InclusionTrackerStore?
 
     private func adopt(_ bridge: KmpBridge) {
-        let id = ObjectIdentifier(bridge)
-        guard ownerId != id else { return }
-        ownerId = id
+        guard owner !== bridge else { return }
+        owner = bridge
         values = [:]
         inclusionStore = nil
     }

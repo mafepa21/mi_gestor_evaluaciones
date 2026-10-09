@@ -28,6 +28,13 @@ final class InclusionTrackerStore: ObservableObject {
     /// Responde si la respuesta de una carga es todavía válida (cambio de grupo).
     private let gate = InclusionLoadGate()
 
+    /// El store sobrevive a la pantalla: al salir se olvidan avisos y fallos para no
+    /// enseñarlos al volver.
+    func resetTransientState() {
+        errorMessage = nil
+        loadFailed = false
+    }
+
     func load(bridge: KmpBridge, classId: Int64?) async {
         guard let classId else {
             board = nil
@@ -142,6 +149,17 @@ struct InclusionTrackerView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
 
+    /// El tablero solo vale si es del grupo elegido: al volver tras cambiar de grupo
+    /// en otra pantalla no se enseña, ni un fotograma, el del grupo anterior.
+    private var currentBoard: InclusionBoardSnapshot? {
+        guard let board = store.board, board.classId == selectedClassId else { return nil }
+        return board
+    }
+
+    private var isLoadingCurrent: Bool {
+        store.isLoading || (selectedClassId != nil && currentBoard == nil && !store.loadFailed)
+    }
+
     private var isWide: Bool {
         #if os(macOS)
         return true
@@ -158,13 +176,14 @@ struct InclusionTrackerView: View {
                 }
             }
             .animation(.snappy, value: store.errorMessage)
+            .onDisappear { store.resetTransientState() }
             .task(id: selectedClassId) {
                 selection = nil
                 await store.load(bridge: bridge, classId: selectedClassId)
                 selectFirstIfWide()
             }
             .sheet(isPresented: $showingAddTask) {
-                if let board = store.board, let classId = selectedClassId {
+                if let board = currentBoard, let classId = selectedClassId {
                     InclusionAddTaskSheet(
                         recipients: board.students.map { InclusionTaskRecipient(id: $0.id, name: $0.name) },
                         initialID: selection,
@@ -184,14 +203,14 @@ struct InclusionTrackerView: View {
     }
 
     private var selectedStudent: InclusionStudentSnapshot? {
-        store.board?.students.first { $0.id == selection }
+        currentBoard?.students.first { $0.id == selection }
     }
 
     /// En pantallas anchas se abre con el primer alumno. En compacto no se fuerza,
     /// para no saltarse la lista.
     private func selectFirstIfWide() {
         guard isWide, selection == nil else { return }
-        selection = store.board?.students.first?.id
+        selection = currentBoard?.students.first?.id
     }
 
     // MARK: Estructura
@@ -227,7 +246,7 @@ struct InclusionTrackerView: View {
             NavigationStack {
                 listPane
                     .navigationDestination(for: Int64.self) { studentId in
-                        if let student = store.board?.students.first(where: { $0.id == studentId }) {
+                        if let student = currentBoard?.students.first(where: { $0.id == studentId }) {
                             detailView(for: student)
                         }
                     }
@@ -242,9 +261,9 @@ struct InclusionTrackerView: View {
     }
 
     private var listPane: some View {
-        let board = store.board
+        let board = currentBoard
         return Group {
-            if store.isLoading {
+            if isLoadingCurrent {
                 List {
                     ForEach(0..<4, id: \.self) { _ in
                         InclusionStudentRowView(name: "Nombre Apellido", level: .iii, done: 0, total: 8, overdue: 0)
@@ -298,13 +317,13 @@ struct InclusionTrackerView: View {
     }
 
     private var header: some View {
-        let board = store.board
+        let board = currentBoard
         return InclusionHeaderCard(
             subtitle: "\(groupName) · curso \(board?.schoolYear ?? "")",
             overdueCount: board?.overdueCount ?? 0,
             dueThisWeekCount: board?.dueThisWeekCount ?? 0,
             initialEvaluationDate: board?.initialEvaluationDate ?? Date(),
-            isLoading: store.isLoading,
+            isLoading: isLoadingCurrent,
             canEditEvaluation: !(board?.students.isEmpty ?? true),
             applyEvaluation: { date in
                 guard let classId = selectedClassId else { return nil }
@@ -323,7 +342,7 @@ struct InclusionTrackerView: View {
     private var detailPane: some View {
         if let student = selectedStudent {
             detailView(for: student)
-        } else if store.board?.students.isEmpty == true {
+        } else if currentBoard?.students.isEmpty == true {
             ContentUnavailableView(
                 "Ningún alumno con medidas de nivel III o IV",
                 systemImage: "person.crop.circle.badge.checkmark"
@@ -343,7 +362,7 @@ struct InclusionTrackerView: View {
             total: student.tasks.count,
             groups: groups(for: student),
             currentPhase: store.currentPhase,
-            isLoading: store.isLoading,
+            isLoading: isLoadingCurrent,
             showingAddTask: $showingAddTask
         )
         .onAppear { selection = student.id }

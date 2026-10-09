@@ -296,6 +296,7 @@ extension AppWorkspaceShell {
     func open(module: AppWorkspaceModule, classId: Int64? = nil, studentId: Int64? = nil) {
         // Cursos dejó de ser una entrada de la barra lateral: vive dentro de
         // Ajustes, y se pide la sección para aterrizar ya abierto por ella.
+        PerfLog.markScreenSwitch(to: "\(module)")
         if module == .courses {
             SettingsNavigationStore.shared.request(.courses)
             activeModule = .settings

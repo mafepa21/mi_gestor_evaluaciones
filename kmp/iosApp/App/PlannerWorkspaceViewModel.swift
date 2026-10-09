@@ -206,6 +206,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             invalidateReadCaches()
         }
         guard !isLoaded, !isBinding else { return }
+        let perfStart = DispatchTime.now()
+        defer { PerfLog.finish("Planner: primera carga", start: perfStart) }
         isBinding = true
         defer { isBinding = false }
         self.bridge = bridge
@@ -357,6 +359,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         guard let bridge else { return }
         let requestedWeek = week
         let requestedYear = year
+        let perfStart = DispatchTime.now()
+        defer { PerfLog.finish("Planner: carga de semana", start: perfStart, detail: "semana \(requestedWeek)/\(requestedYear)") }
         do {
             try await sessionStore.reload(bridge: bridge, week: week, year: year)
         } catch {

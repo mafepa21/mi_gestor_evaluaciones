@@ -467,6 +467,7 @@ struct MacRootView: View {
         let feature = normalizedFeature(feature)
         guard selectedFeature != feature || session.selectedFeature != feature else { return }
         // Cambio de pantalla al instante, sin animación (antes un fundido de 0,2 s).
+        PerfLog.markScreenSwitch(to: "\(feature)")
         selectedFeature = feature
         isInspectorVisible = storedInspectorVisible
         columnVisibility = .all

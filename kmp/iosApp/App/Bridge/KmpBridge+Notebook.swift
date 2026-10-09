@@ -19,6 +19,7 @@ extension KmpBridge {
         let restoredTabId = restoredSelectedNotebookTab(forClassId: id)
         selectedNotebookTabId = restoredTabId
         notebookViewModel.setSelectedTabId(tabId: restoredTabId)
+        PerfLog.begin("Cuaderno: cambio de grupo")
         notebookViewModel.selectClass(classId: id, force: true)
     }
 

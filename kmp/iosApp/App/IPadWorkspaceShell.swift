@@ -1055,6 +1055,8 @@ struct AppWorkspaceShell: View {
             activeModule = .attendance
         case .planner:
             activeModule = .planner
+        case .physicalTests:
+            activeModule = .peTests
         }
     }
 

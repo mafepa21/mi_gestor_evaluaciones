@@ -4,6 +4,7 @@ enum AppleAppCommandDestination: String {
     case notebook
     case attendance
     case planner
+    case physicalTests
 }
 
 @MainActor
@@ -98,6 +99,11 @@ struct AppleAppCommands: Commands {
                 AppleAppCommand.post(.appleAppNavigateRequested, object: AppleAppCommandDestination.planner.rawValue)
             }
             .keyboardShortcut("3", modifiers: .command)
+
+            Button("Ir a Mediciones") {
+                AppleAppCommand.post(.appleAppNavigateRequested, object: AppleAppCommandDestination.physicalTests.rawValue)
+            }
+            .keyboardShortcut("4", modifiers: .command)
         }
 
         // ⌘⌥1–6 en vez de ⌘1–4: el menú "Navegación" ya reserva ⌘1–3 para saltar

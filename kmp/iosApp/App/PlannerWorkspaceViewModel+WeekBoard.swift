@@ -299,9 +299,9 @@ extension PlannerWorkspaceViewModel {
     }
 
     func reloadHolidays(rebuildsWeek: Bool = true) async {
-        guard let bridge else { return }
+        guard bridge != nil else { return }
         do {
-            let allEvents = try await bridge.plannerAllCalendarEvents()
+            let allEvents = try await plannerCalendarEvents()
             let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(week), year: Int32(year))
             var holidays: Set<Int> = []
             var milestonesByDay: [Int: [PlannerDayMilestone]] = [:]
@@ -540,6 +540,7 @@ extension PlannerWorkspaceViewModel {
                     mirrorToAppleCalendar: false
                 )
             }
+            cachedCalendarEvents = nil
             await reloadHolidays()
             rebuildVisiblePlannerStructure()
             rebuildWeekRenderModel()

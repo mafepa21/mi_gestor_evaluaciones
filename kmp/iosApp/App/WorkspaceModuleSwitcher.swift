@@ -59,6 +59,7 @@ extension AppWorkspaceShell {
             )
         case .planner:
             PlannerWorkspaceIOS(
+                viewModel: workspaceStores.planner,
                 context: resolvedPlannerContext,
                 onOpenDiary: { context in
                     openDiary(context: context)

@@ -41,3 +41,5 @@
 - El Mes no se carga en `bind`: lo carga `PlannerMonthCalendarView` con `.task(id: monthReloadKey)`, y `reloadSessionsOnly` solo lo recarga si `activeSection == .month`. Una vista nueva que lea `monthSessions` fuera del Mes debe pedirlo ella.
 - `vm.forecastRows` no lo pinta nadie en el Planner y `reloadScheduleConfiguration` ya no lo carga por defecto (`includeForecast: false`).
 - Al reaparecer, el Planner usa `refreshOnReappear()` (máximo una vez cada 30 s). Tras cambiar el horario hay que llamar a `reloadAll()`, como hace el cierre del asistente.
+- El `PlannerWorkspaceViewModel` lo crea `WorkspaceBridgeStores.planner`, no la vista: `PlannerWorkspaceIOS(viewModel:)` y `MacPlannerView(vm:)` lo reciben. No volver a `@StateObject` en la vista (se perdería la semana al salir). `bind` solo carga la primera vez; al volver manda `refreshOnReappear()`.
+- Eventos del calendario y planes de SA: leerlos con `vm.plannerCalendarEvents()` y `vm.plannerSessionPlansAll()` (copia de 30 s). Tras escribir en el calendario, poner `vm.cachedCalendarEvents = nil` antes de recargar.

@@ -81,7 +81,7 @@ extension PlannerWorkspaceViewModel {
             try Task.checkCancellation()
             let allSequenceVersions = try await bridge.learningSituationSessionSequenceVersionsAll()
             try Task.checkCancellation()
-            let allSessionPlans = try await bridge.learningSituationSessionPlansAll()
+            let allSessionPlans = try await plannerSessionPlansAll()
             try Task.checkCancellation()
 
             let groupNames = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })

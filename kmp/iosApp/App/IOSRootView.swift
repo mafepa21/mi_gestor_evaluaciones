@@ -80,6 +80,7 @@ struct IOSRootView: View {
                     dashboardStore: dashboardStore,
                     studentsBridgeStore: studentsBridgeStore,
                     attendanceStore: attendanceStore,
+                    plannerViewModel: workspaceStores.planner,
                     plannerContext: plannerContext,
                     activeSheet: $activeSheet,
                     showingRubricBuilder: $showingRubricBuilder,
@@ -1017,6 +1018,8 @@ struct IOSWorkspaceContent: View {
     @ObservedObject var dashboardStore: DashboardBridgeStore
     @ObservedObject var studentsBridgeStore: StudentsBridgeStore
     @ObservedObject var attendanceStore: AttendanceBridgeStore
+    /// Sin observar: solo se pasa al Planner, que lo observa él.
+    let plannerViewModel: PlannerWorkspaceViewModel
     var plannerContext: PlannerNavigationContext
     @Binding var activeSheet: ActiveWorkspaceSheet?
     @Binding var showingRubricBuilder: Bool
@@ -1099,6 +1102,7 @@ struct IOSWorkspaceContent: View {
             )
         case .planner:
             PlannerWorkspaceIOS(
+                viewModel: plannerViewModel,
                 context: resolvedPlannerContext,
                 onOpenDiary: { ctx in onOpenModule(.diary, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
                 onNavigationContextChange: onUpdatePlannerContext

@@ -43,6 +43,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Planner**: la app se cerraba al abrir el Planner en Mac. `learningSituationSessionPlansAll()` llamaba a KMP desde un `async let`, fuera del hilo principal; ahora encadena las dos consultas.
 - **Copias de seguridad bloqueadas por referencias huérfanas**:
   - La base activa acumula filas que apuntan a grupos, alumnos o situaciones ya borrados (3.423 en la base real del docente). `PRAGMA foreign_key_check` hacía fallar toda copia con «referencias rotas … another row available».
   - Ahora las huérfanas se cuentan y se registran como aviso (`NSLog`); la copia y la restauración siguen adelante. `integrity_check` sigue bloqueando bases dañadas.

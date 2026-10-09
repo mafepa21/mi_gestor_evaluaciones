@@ -140,9 +140,10 @@ extension KmpBridge {
     /// corre fuera del hilo principal: antes eran una consulta y una lectura por plan
     /// en el hilo principal, cada vez que se abría el Planner.
     func learningSituationSessionPlansAll() async throws -> [LearningSituationSessionPlan] {
-        async let plansRequest = container.learningSituationsRepository.listAllSessionPlans()
-        async let versionsRequest = container.learningSituationsRepository.listAllSessionSequenceVersions()
-        let (plans, versions) = try await (plansRequest, versionsRequest)
+        // Seguidas y no con `async let`: Kotlin solo admite llamadas suspend desde el
+        // hilo principal, y un `async let` las lanza fuera de él (cierre de la app).
+        let plans = try await container.learningSituationsRepository.listAllSessionPlans()
+        let versions = try await container.learningSituationsRepository.listAllSessionSequenceVersions()
         let versionById = Dictionary(versions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let matchedVersions: [LearningSituationSessionSequenceVersion?] = plans.map { plan in
             guard let version = versionById[plan.sequenceVersionId],

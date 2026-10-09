@@ -24,6 +24,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Planner más fluido (parte 2)**:
+  - Al abrir el Planner ya no se cargan el Mes ni la previsión del curso: el Mes se carga al abrir su pestaña y la previsión no se pinta en el Planner.
+  - La rejilla de la semana agrupa las sesiones una sola vez y se recalcula dos veces por carga (antes cuatro, con un recorrido de todas las sesiones por casilla).
+  - Al volver al Planner, horario y festivos solo se recargan si han pasado más de 30 segundos. Cerrar el asistente de horario sigue recargando todo.
+  - Borrada la rejilla antigua sin uso (`PlannerWeekBoard` y sus tarjetas) de `PlannerWorkspaceIOS.swift`.
+
 - **Planner más fluido**:
   - `PlannerWorkspaceIOS` y `PlannerToolbar` usan `kmpBridgeReference` en lugar de `@EnvironmentObject`: el Planner ya no se redibuja con cada cambio del Cuaderno, rúbricas o SyncLAN.
   - `PlannerWorkspaceViewModel` deja de reenviar `weekRenderModel` (se reconstruye varias veces por carga); solo reenvía semana, año, franjas, festivos e hitos cuando cambian de verdad. La toolbar observa `weekBoard` directamente.
@@ -35,6 +41,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Planner más fluido (parte 2): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator): compila el código Swift pero el enlazado falla por disco lleno (`errno=28 No space left on device`); pendiente de repetir.
 - Planner más fluido: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED (266 tests, 0 fallos, 4 omitidos), incluido `testCanonicalSessionPlanCheckMatchesRepairCriteria`. `xcodebuild build -scheme MiGestorKMPiOS -destination "generic/platform=iOS Simulator"` → BUILD SUCCEEDED. Sin medición con Instruments ni prueba manual en dispositivo.
 - `./gradlew :data:desktopTest`: 168 tests OK (incluye `UpgradePathRegressionTest` hasta la 45).
 - `./gradlew :shared:desktopTest`: OK, con los tests nuevos de `InclusionTasksUseCaseTest`. `:shared:test` no ejecutable en esta máquina (sin SDK de Android).

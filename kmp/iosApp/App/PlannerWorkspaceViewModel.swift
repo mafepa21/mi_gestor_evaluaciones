@@ -84,6 +84,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var isApplyingSimulation = false
 
     weak var bridge: KmpBridge?
+    var lastReappearRefreshAt: Date = .distantPast
+    static let reappearRefreshInterval: TimeInterval = 30
     var autosaveTask: Task<Void, Never>?
     var isHydratingDraft = false
     var loadedAggregate: SessionJournalAggregate?
@@ -187,7 +189,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     /// Primera carga en dos fases: primero lo que pinta la semana (grupos, horario,
     /// sesiones) y se marca `isLoaded`; después, sin bloquear el grid, lo que solo
-    /// enriquece (previsión del curso, exámenes de 1º Bach, planes de SA, mes).
+    /// enriquece (exámenes de 1º Bach y planes de SA). El Mes se carga al abrir su
+    /// pestaña (`PlannerMonthCalendarView`) y la previsión no se pinta en el Planner.
     func bind(bridge: KmpBridge) async {
         guard !isLoaded, !isBinding else { return }
         isBinding = true
@@ -202,11 +205,19 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         await reloadScheduleConfiguration(includeForecast: false)
         await reloadWeekSessions(keepSelection: false)
         isLoaded = true
+        lastReappearRefreshAt = Date()
 
-        await reloadForecast()
         await syncExamsIfNeeded()
         await reloadSessionPlans()
-        await reloadMonthData()
+    }
+
+    /// Al volver al Planner: horario y festivos solo si han pasado unos segundos.
+    /// Cerrar el asistente de horario sigue recargando todo (`reloadAll`).
+    func refreshOnReappear() async {
+        guard isLoaded, Date().timeIntervalSince(lastReappearRefreshAt) > Self.reappearRefreshInterval else { return }
+        lastReappearRefreshAt = Date()
+        await reloadScheduleOnly()
+        await reloadHolidays()
     }
 
     func reloadAll(keepSelection: Bool = true) async {
@@ -223,7 +234,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             await reloadScheduleOnly()
         }
         await reloadWeekSessions(keepSelection: keepSelection)
-        await reloadMonthData()
+        // El Mes se recarga solo si está a la vista; al abrirlo se carga de nuevo.
+        if activeSection == .month {
+            await reloadMonthData()
+        }
     }
 
     func reloadScheduleOnly() async {
@@ -300,8 +314,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         rebuildVisiblePlannerStructure()
         // Pintar la semana ya; diarios y festivos la completan después.
         rebuildWeekRenderModel()
-        await reloadJournalSummaries()
-        await reloadHolidays()
+        // La rejilla se recalcula una vez más, al final, con diarios y festivos.
+        await reloadJournalSummaries(rebuildsWeek: false)
+        await reloadHolidays(rebuildsWeek: false)
         rebuildWeekRenderModel()
         applySearch()
 
@@ -318,14 +333,16 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
     }
 
-    func reloadJournalSummaries() async {
+    func reloadJournalSummaries(rebuildsWeek: Bool = true) async {
         guard let bridge else { return }
         let loadedJournals = await journalStore.reloadSummaries(bridge: bridge, sessionIds: sessions.map(\.id))
         journalSummaryBySessionId = journalStore.journalSummaryBySessionId
         if !loadedJournals {
             bulkSummary = "No se pudieron cargar los diarios de la semana. Se mantienen los que ya ves."
         }
-        rebuildWeekRenderModel()
+        if rebuildsWeek {
+            rebuildWeekRenderModel()
+        }
     }
 
     private func reloadSelectedJournal() async {

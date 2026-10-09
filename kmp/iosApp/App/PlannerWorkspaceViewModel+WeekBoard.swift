@@ -83,7 +83,11 @@ extension PlannerWorkspaceViewModel {
     }
 
     func entries(for day: Int, period: Int) -> [PlannerWeekCellEntry] {
-        weekRenderModel.entriesByCell[PlannerCellKey(day: day, period: period)] ?? buildEntries(for: day, period: period)
+        weekRenderModel.entriesByCell[PlannerCellKey(day: day, period: period)] ?? buildEntries(
+            for: day,
+            period: period,
+            cellSessions: filteredPlannerSessions().filter { Int($0.dayOfWeek) == day && Int($0.period) == period }
+        )
     }
 
     func daySessions(for day: Int? = nil) -> [PlanningSession] {
@@ -119,10 +123,15 @@ extension PlannerWorkspaceViewModel {
     }
 
     func rebuildWeekRenderModel() {
+        // Agrupar una vez: antes cada casilla recorría todas las sesiones.
+        let sessionsByCell = Dictionary(grouping: filteredPlannerSessions()) {
+            PlannerCellKey(day: Int($0.dayOfWeek), period: Int($0.period))
+        }
         var entriesByCell: [PlannerCellKey: [PlannerWeekCellEntry]] = [:]
         for day in visibleWeekdays {
             for slot in visibleSlots {
-                let entries = buildEntries(for: day, period: Int(slot.period))
+                let key = PlannerCellKey(day: day, period: Int(slot.period))
+                let entries = buildEntries(for: day, period: Int(slot.period), cellSessions: sessionsByCell[key] ?? [])
                 if !entries.isEmpty {
                     entriesByCell[PlannerCellKey(day: day, period: Int(slot.period))] = entries
                 }
@@ -142,9 +151,8 @@ extension PlannerWorkspaceViewModel {
         }
     }
 
-    private func buildEntries(for day: Int, period: Int) -> [PlannerWeekCellEntry] {
-        let sessionEntries = filteredPlannerSessions()
-            .filter { Int($0.dayOfWeek) == day && Int($0.period) == period }
+    private func buildEntries(for day: Int, period: Int, cellSessions: [PlanningSession]) -> [PlannerWeekCellEntry] {
+        let sessionEntries = cellSessions
             .sorted {
                 if $0.groupName == $1.groupName { return $0.teachingUnitName < $1.teachingUnitName }
                 return $0.groupName < $1.groupName
@@ -290,7 +298,7 @@ extension PlannerWorkspaceViewModel {
         return sections
     }
 
-    func reloadHolidays() async {
+    func reloadHolidays(rebuildsWeek: Bool = true) async {
         guard let bridge else { return }
         do {
             let allEvents = try await bridge.plannerAllCalendarEvents()
@@ -455,7 +463,9 @@ extension PlannerWorkspaceViewModel {
 
             self.dayMilestones = milestonesByDay
             self.holidayDays = holidays
-            rebuildWeekRenderModel()
+            if rebuildsWeek {
+                rebuildWeekRenderModel()
+            }
         } catch {
             bulkSummary = "No se pudieron cargar los festivos. Se mantienen los que ya ves."
         }

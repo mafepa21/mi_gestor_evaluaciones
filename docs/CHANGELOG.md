@@ -27,6 +27,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - **Planner más fluido**:
   - `PlannerWorkspaceIOS` y `PlannerToolbar` usan `kmpBridgeReference` en lugar de `@EnvironmentObject`: el Planner ya no se redibuja con cada cambio del Cuaderno, rúbricas o SyncLAN.
   - `PlannerWorkspaceViewModel` deja de reenviar `weekRenderModel` (se reconstruye varias veces por carga); solo reenvía semana, año, franjas, festivos e hitos cuando cambian de verdad. La toolbar observa `weekBoard` directamente.
+  - `learningSituationSessionPlansAll()` pide las versiones de secuencia en una sola consulta y comprueba los planes fuera del hilo principal (`isCanonicalSessionPlanJSON`). La reparación de planes antiguos no cambia.
 
 ### Data
 
@@ -34,6 +35,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Planner más fluido: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED (266 tests, 0 fallos, 4 omitidos), incluido `testCanonicalSessionPlanCheckMatchesRepairCriteria`. `xcodebuild build -scheme MiGestorKMPiOS -destination "generic/platform=iOS Simulator"` → BUILD SUCCEEDED. Sin medición con Instruments ni prueba manual en dispositivo.
 - `./gradlew :data:desktopTest`: 168 tests OK (incluye `UpgradePathRegressionTest` hasta la 45).
 - `./gradlew :shared:desktopTest`: OK, con los tests nuevos de `InclusionTasksUseCaseTest`. `:shared:test` no ejecutable en esta máquina (sin SDK de Android).
 - `./scripts/verify_apple_builds.sh`: iOS Simulator y macOS compilados.

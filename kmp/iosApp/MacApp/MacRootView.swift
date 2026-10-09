@@ -231,13 +231,13 @@ struct MacRootView: View {
         if !usesShellInspector(selectedFeature) || !shouldRenderShellInspector {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
-                .transition(uiFeatureFlags.contentSwitchTransition)
+                .transition(.identity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
         } else {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
-                .transition(uiFeatureFlags.contentSwitchTransition)
+                .transition(.identity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
                 .inspector(isPresented: $isInspectorVisible) {
@@ -466,9 +466,8 @@ struct MacRootView: View {
     ) {
         let feature = normalizedFeature(feature)
         guard selectedFeature != feature || session.selectedFeature != feature else { return }
-        withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.2))) {
-            selectedFeature = feature
-        }
+        // Cambio de pantalla al instante, sin animación (antes un fundido de 0,2 s).
+        selectedFeature = feature
         isInspectorVisible = storedInspectorVisible
         columnVisibility = .all
         guard propagateToSession else { return }

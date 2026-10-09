@@ -24,6 +24,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Cambio de pantalla al instante**: quitado el fundido con zoom (0,2 s) al cambiar de pantalla en iPhone, iPad y Mac, y al cambiar de pestaña en el Planner (`.transition(.identity)`, sin `withAnimation` al elegir pantalla). Borrada `contentSwitchTransition`. Avisos, paneles e inspector siguen animándose.
 - **Planner más fluido (parte 3)**:
   - El `PlannerWorkspaceViewModel` vive en `WorkspaceBridgeStores` (iPhone, iPad y Mac): al volver al Planner se ve al instante lo que había y la semana se refresca por detrás.
   - Los eventos del calendario y los planes de sesión se guardan 30 s y se reutilizan entre semanas y pestañas (Semana, Mes, Secuencia, Evaluación). Se invalidan al volver al Planner, en `reloadAll`, al cerrar la hoja de hitos (también deslizando), al marcar festivos o al sincronizar exámenes.
@@ -46,6 +47,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Cambio de pantalla al instante: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. Sin prueba manual en dispositivo.
 - Planner más fluido (parte 3): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. Sin prueba manual en dispositivo.
 - Planner más fluido (parte 2): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator): BUILD SUCCEEDED (tras liberar espacio en disco; el primer intento falló al enlazar por `errno=28`).
 - Planner más fluido: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED (266 tests, 0 fallos, 4 omitidos), incluido `testCanonicalSessionPlanCheckMatchesRepairCriteria`. `xcodebuild build -scheme MiGestorKMPiOS -destination "generic/platform=iOS Simulator"` → BUILD SUCCEEDED. Sin medición con Instruments ni prueba manual en dispositivo.

@@ -80,11 +80,11 @@ struct MacPlannerView: View {
 
             plannerCenterContent
                 .id(vm.activeSection)
-                .transition(uiFeatureFlags.contentSwitchTransition)
+                // Sin fundido al cambiar de pestaña.
+                .transition(.identity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .background(MacAppStyle.pageBackground)
-        .animation(uiFeatureFlags.interactionAnimation, value: vm.activeSection)
         .animation(uiFeatureFlags.interactionAnimation, value: transientMessage)
         .appOnChange(of: cascadeCoordinator.transientMessage) { newValue in
             guard let newValue else { return }

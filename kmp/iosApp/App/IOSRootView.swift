@@ -243,9 +243,8 @@ struct IOSRootView: View {
     private func selectModule(_ module: AppWorkspaceModule) {
         let module = normalizedModule(module)
         guard activeModule != module else { return }
-        withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.22))) {
-            activeModule = module
-        }
+        // Cambio de pantalla al instante, sin animación (antes un fundido de 0,22 s).
+        activeModule = module
     }
 
     func openModule(_ module: AppWorkspaceModule, classId: Int64? = nil, studentId: Int64? = nil) {
@@ -256,9 +255,8 @@ struct IOSRootView: View {
             SettingsNavigationStore.shared.request(.courses)
         }
         let module = normalizedModule(module)
-        withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.22))) {
-            activeModule = module
-        }
+        // Cambio de pantalla al instante, sin animación (antes un fundido de 0,22 s).
+        activeModule = module
         if classId != nil || studentId != nil {
             let targetClassId = classId ?? selectionStore.selectedClassId
             let targetStudentId = studentId ?? selectionStore.selectedStudentId
@@ -1031,7 +1029,8 @@ struct IOSWorkspaceContent: View {
     var body: some View {
         moduleContent
             .id(activeModule)
-            .transition(uiFeatureFlags.contentSwitchTransition)
+            // `.identity`: sin fundido aunque el cambio llegue dentro de una animación.
+            .transition(.identity)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environmentObject(layoutState)
     }

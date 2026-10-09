@@ -813,12 +813,8 @@ struct AppWorkspaceShell: View {
                     }
                     activeWorkspace
                         .id(activeModule)
-                        .transition(
-                            .asymmetric(
-                                insertion: .opacity.animation(.easeOut(duration: 0.15)),
-                                removal: .opacity.animation(.easeIn(duration: 0.10))
-                            )
-                        )
+                        // Sin fundido: la pantalla nueva aparece al instante.
+                        .transition(.identity)
                         .environmentObject(layoutState)
                 }
                 .background(appPageBackground(for: colorScheme).ignoresSafeArea())

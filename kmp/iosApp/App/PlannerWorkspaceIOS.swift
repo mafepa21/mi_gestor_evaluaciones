@@ -197,7 +197,6 @@ struct PlannerWorkspaceIOS: View {
             .layoutPriority(1)
             plannerSectionContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .animation(uiFeatureFlags.interactionAnimation, value: vm.activeSection)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
@@ -244,7 +243,8 @@ struct PlannerWorkspaceIOS: View {
             }
         }
         .id(vm.activeSection)
-        .transition(uiFeatureFlags.contentSwitchTransition)
+        // Sin fundido al cambiar de pestaña (la barra flotante sí anima su selección).
+        .transition(.identity)
     }
 
     private func configurePlannerToolbar() {

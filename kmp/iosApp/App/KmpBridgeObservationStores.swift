@@ -31,6 +31,11 @@ extension ObservableObject where Self: AnyObject {
 
 @MainActor
 final class NotebookBridgeStore: ObservableObject {
+    /// Vive aquí y no en la vista: al salir del Cuaderno y volver no se rehace
+    /// lo ya preparado. Su caché se invalida por grupo, pestaña y columnas.
+    let gridLayoutModel = NotebookGridLayoutModel()
+    /// Situaciones de aprendizaje ya filtradas por grupo, para pintarlas al volver.
+    var cachedClassSituations: [Int64: [LearningSituation]] = [:]
     @Published private(set) var classes: [SchoolClass] = []
     @Published private(set) var notebookState: NotebookUiState = NotebookUiStateLoading()
     @Published private(set) var notebookStructureState = NotebookStructureState(

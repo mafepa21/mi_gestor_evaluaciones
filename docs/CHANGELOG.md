@@ -13,6 +13,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Changed
+
+- **Cuaderno: volver a la pantalla sin montarlo todo desde cero**: lo preparado de la tabla (columnas, categorías plegadas, filas visibles) vive en `NotebookBridgeStore` y sobrevive al cambio de pantalla; las situaciones de aprendizaje del grupo se pintan desde lo guardado y se refrescan por detrás. Medidas nuevas del montaje en el registro de lentitud.
+- **Entregas web: la lista aparece sin esperar a cargarlo todo**: primero se pinta la lista de tareas y después, por detrás, el detalle que necesita la importación (el botón dice «Preparando importación…» mientras tanto). Los enlaces del alumnado se leen fuera del hilo de la pantalla al pulsar «Enviar enlaces», y los instrumentos publicables al abrir «Nueva tarea web». Medidas nuevas en el registro de lentitud.
+- **Planner: primera carga más rápida**: solo se comprueban y reparan los planes de sesión de la semana visible (antes, los de todo el curso, hasta 14 s al abrir); los de otra semana se piden al ir a ella. El Diario usa el mismo modelo que el Planner, así que la carga ya no se hace dos veces. Medidas por pasos de la carga en el registro de lentitud.
+
 ### Added
 
 - **Registro de lentitud (`PerfLog`)**: apunta en el registro (subsistema `com.migestor.app`, categoría `rendimiento`) lo que supera 150 ms: cambio de pantalla, carga del Planner, cambio de grupo en el Cuaderno y copia de seguridad; Sync LAN a partir de 1 s. En Debug, un vigilante apunta las congelaciones de la pantalla de más de 250 ms. Guía en `docs/REGISTRO_RENDIMIENTO.md`.

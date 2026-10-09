@@ -582,6 +582,7 @@ struct MacRootView: View {
             )
         case .diary:
             DiaryWorkspaceView(
+                vm: workspaceStores.planner,
                 selectedClassId: studentSelection.selectedClassBinding,
                 navigationContext: plannerDiaryContext,
                 onOpenModule: open(module:classId:studentId:),

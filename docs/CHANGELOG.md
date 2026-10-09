@@ -13,6 +13,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Changed
+
+- **Planner: primera carga más rápida**: solo se comprueban y reparan los planes de sesión de la semana visible (antes, los de todo el curso, hasta 14 s al abrir); los de otra semana se piden al ir a ella. El Diario usa el mismo modelo que el Planner, así que la carga ya no se hace dos veces. Medidas por pasos de la carga en el registro de lentitud.
+
 ### Added
 
 - **Registro de lentitud (`PerfLog`)**: apunta en el registro (subsistema `com.migestor.app`, categoría `rendimiento`) lo que supera 150 ms: cambio de pantalla, carga del Planner, cambio de grupo en el Cuaderno y copia de seguridad; Sync LAN a partir de 1 s. En Debug, un vigilante apunta las congelaciones de la pantalla de más de 250 ms. Guía en `docs/REGISTRO_RENDIMIENTO.md`.

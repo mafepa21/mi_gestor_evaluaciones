@@ -77,6 +77,7 @@ extension AppWorkspaceShell {
             .environmentObject(bridge)
         case .diary:
             DiaryWorkspaceView(
+                vm: workspaceStores.planner,
                 selectedClassId: $selectedClassId,
                 navigationContext: resolvedPlannerContext,
                 onOpenModule: open(module:classId:studentId:),

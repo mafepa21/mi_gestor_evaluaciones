@@ -354,15 +354,26 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
     }
 
-    private func reloadSessionPlans() async {
-        guard bridge != nil else { return }
+    /// Solo los planes de las sesiones de la semana: comprobar y reparar todos los del
+    /// curso tardaba hasta 14 s al abrir. Los ya cargados se conservan; con
+    /// `onlyMissing` solo se piden los que faltan (al cambiar de semana).
+    private func reloadSessionPlans(onlyMissing: Bool = false) async {
+        guard let bridge else { return }
+        var ids = Set(sessions.compactMap { $0.learningSituationSessionPlanId?.int64Value })
+        if onlyMissing {
+            ids.subtract(sessionPlansById.keys)
+        }
+        guard !ids.isEmpty else { return }
         do {
-            let plans = try await plannerSessionPlansAll()
-            sessionPlansById = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
+            let plans = try await PerfLog.measure("Planner: paso reparar planes", detail: "\(ids.count) planes", thresholdMs: 100) {
+                try await bridge.learningSituationSessionPlans(ids: ids)
+            }
+            for plan in plans {
+                sessionPlansById[plan.id] = plan
+            }
         } catch {
             // Los metadatos enriquecidos son opcionales: la sesión sigue siendo
             // utilizable con los campos estructurados del PlanningSession.
-            sessionPlansById = [:]
         }
     }
 
@@ -407,6 +418,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             await reloadSelectedJournal()
         } else {
             clearSelection()
+        }
+        // En la primera carga los planes llegan después, sin frenar la semana.
+        if isLoaded {
+            await reloadSessionPlans(onlyMissing: true)
         }
     }
 

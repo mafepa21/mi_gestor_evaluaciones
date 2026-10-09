@@ -6,13 +6,15 @@ struct DiaryWorkspaceView: View {
     @EnvironmentObject var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    /// El mismo modelo que el Planner: así la carga se hace una sola vez y ambas
+    /// pantallas comparten semana y grupo (ya compartían el contexto de navegación).
+    @ObservedObject var vm: PlannerWorkspaceViewModel
     @Binding var selectedClassId: Int64?
     let navigationContext: PlannerNavigationContext
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     let onOpenPlanner: (PlannerNavigationContext) -> Void
     let onNavigationContextChange: (PlannerNavigationContext) -> Void
 
-    @StateObject var vm = PlannerWorkspaceViewModel()
     @State var diaryViewMode: DiaryViewMode = .timeline
     @State var selectedFilter: DiaryStatusFilter = .all
     @State var selectedDayFilter = "Todos"

@@ -1117,6 +1117,7 @@ struct IOSWorkspaceContent: View {
             .environmentObject(bridge)
         case .diary:
             DiaryWorkspaceView(
+                vm: plannerViewModel,
                 selectedClassId: $selectionStore.selectedClassId,
                 navigationContext: resolvedPlannerContext,
                 onOpenModule: onOpenModule,

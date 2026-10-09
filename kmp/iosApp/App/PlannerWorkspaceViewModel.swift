@@ -215,15 +215,27 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         let currentIsoFallback = PlannerCalendar.currentIsoYearWeek
         week = Int(truncating: current.first ?? KotlinInt(value: Int32(currentIsoFallback.week)))
         year = Int(truncating: current.second ?? KotlinInt(value: Int32(currentIsoFallback.year)))
-        timeSlots = bridge.plannerTimeSlots()
-        await reloadPlannerGroups()
-        await reloadScheduleConfiguration(includeForecast: false)
+        // Cada paso se apunta aparte (desde 100 ms) para saber cuál frena la carga.
+        PerfLog.measureSync("Planner: paso franjas", thresholdMs: 100) {
+            timeSlots = bridge.plannerTimeSlots()
+        }
+        await PerfLog.measure("Planner: paso grupos", thresholdMs: 100) {
+            await reloadPlannerGroups()
+        }
+        await PerfLog.measure("Planner: paso horario", thresholdMs: 100) {
+            await reloadScheduleConfiguration(includeForecast: false)
+        }
         await reloadWeekSessions(keepSelection: false)
         isLoaded = true
         lastReappearRefreshAt = Date()
+        PerfLog.finish("Planner: semana visible", start: perfStart)
 
-        await syncExamsIfNeeded()
-        await reloadSessionPlans()
+        await PerfLog.measure("Planner: paso exámenes 1º Bach", thresholdMs: 100) {
+            await syncExamsIfNeeded()
+        }
+        await PerfLog.measure("Planner: paso planes de sesión", thresholdMs: 100) {
+            await reloadSessionPlans()
+        }
     }
 
     /// Al volver al Planner: horario y festivos solo si han pasado unos segundos.
@@ -362,7 +374,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         let perfStart = DispatchTime.now()
         defer { PerfLog.finish("Planner: carga de semana", start: perfStart, detail: "semana \(requestedWeek)/\(requestedYear)") }
         do {
-            try await sessionStore.reload(bridge: bridge, week: week, year: year)
+            try await PerfLog.measure("Planner: paso sesiones de la semana", thresholdMs: 100) {
+                try await sessionStore.reload(bridge: bridge, week: week, year: year)
+            }
         } catch {
             bulkSummary = "No se pudo cargar la semana. Se mantienen las sesiones que ya ves."
             return
@@ -374,8 +388,12 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         // Pintar la semana ya; diarios y festivos la completan después.
         rebuildWeekRenderModel()
         // La rejilla se recalcula una vez más, al final, con diarios y festivos.
-        await reloadJournalSummaries(rebuildsWeek: false)
-        await reloadHolidays(rebuildsWeek: false)
+        await PerfLog.measure("Planner: paso diarios", thresholdMs: 100) {
+            await reloadJournalSummaries(rebuildsWeek: false)
+        }
+        await PerfLog.measure("Planner: paso festivos", thresholdMs: 100) {
+            await reloadHolidays(rebuildsWeek: false)
+        }
         rebuildWeekRenderModel()
         applySearch()
 

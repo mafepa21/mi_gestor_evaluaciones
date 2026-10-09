@@ -574,6 +574,7 @@ struct MacRootView: View {
         case .planner:
             PlannerMacLayout(
                 bridge: session.bridge,
+                viewModel: workspaceStores.planner,
                 selectedSessionId: $selectedPlannerSessionId,
                 inspectorSession: $plannerInspectorSession,
                 onToolbarActionsChange: setPlannerToolbarActions,

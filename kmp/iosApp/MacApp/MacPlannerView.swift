@@ -45,12 +45,13 @@ struct PlannerMacToolbarActions {
 
 struct MacPlannerView: View {
     let bridge: KmpBridge
+    /// Lo guarda `WorkspaceBridgeStores`: sobrevive al salir del Planner.
+    @ObservedObject var vm: PlannerWorkspaceViewModel
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Binding var selectedSessionIdFromRoot: Int64?
     @Binding var inspectorSession: PlanningSession?
     let onToolbarActionsChange: (PlannerMacToolbarActions?) -> Void
     let onOpenDiaryDirect: (PlanningSession) -> Void
-    @StateObject private var vm = PlannerWorkspaceViewModel()
     @State private var showingScheduleSettings = false
     @State private var showingCalendarMilestones = false
     @State private var showingClearSchedulelessWeekConfirmation = false
@@ -133,7 +134,12 @@ struct MacPlannerView: View {
         .sheet(isPresented: $showingCalendarMilestones) {
             SchoolCalendarEventsOverviewSheet(
                 bridge: bridge,
-                onClose: { showingCalendarMilestones = false }
+                onClose: {
+                    showingCalendarMilestones = false
+                    // Puede haber creado o borrado hitos: releer el calendario.
+                    vm.cachedCalendarEvents = nil
+                    Task { await vm.reloadHolidays() }
+                }
             )
         }
         .alert("Limpiar semana sin franjas", isPresented: $showingClearSchedulelessWeekConfirmation) {

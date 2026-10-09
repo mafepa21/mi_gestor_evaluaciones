@@ -279,6 +279,10 @@ final class WorkspaceBridgeStores: ObservableObject {
     let dashboard = DashboardBridgeStore()
     let students = StudentsBridgeStore()
     let attendance = AttendanceBridgeStore()
+    /// El Planner vive aquí y no en su vista: al salir y volver conserva la semana
+    /// cargada y solo se refresca por detrás (`refreshOnReappear`). Se enlaza al
+    /// bridge en su primer `bind`, no en `bind(to:)`.
+    let planner = PlannerWorkspaceViewModel()
 
     func bind(to bridge: KmpBridge) {
         notebook.bind(to: bridge)

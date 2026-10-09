@@ -85,6 +85,13 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     weak var bridge: KmpBridge?
     var lastReappearRefreshAt: Date = .distantPast
+    /// Copias de lecturas caras que varias pestañas repiten. Caducan a los 30 s y se
+    /// invalidan al escribir en el calendario.
+    var cachedCalendarEvents: [CalendarEvent]?
+    var cachedCalendarEventsAt: Date = .distantPast
+    var cachedSessionPlans: [LearningSituationSessionPlan]?
+    var cachedSessionPlansAt: Date = .distantPast
+    static let readCacheInterval: TimeInterval = 30
     static let reappearRefreshInterval: TimeInterval = 30
     var autosaveTask: Task<Void, Never>?
     var isHydratingDraft = false
@@ -213,11 +220,45 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     /// Al volver al Planner: horario y festivos solo si han pasado unos segundos.
     /// Cerrar el asistente de horario sigue recargando todo (`reloadAll`).
+    /// Al volver al Planner se ve al instante lo que ya había; después se refresca
+    /// la semana por detrás (recoge lo guardado en el Diario o llegado por Sync LAN).
     func refreshOnReappear() async {
-        guard isLoaded, Date().timeIntervalSince(lastReappearRefreshAt) > Self.reappearRefreshInterval else { return }
-        lastReappearRefreshAt = Date()
-        await reloadScheduleOnly()
-        await reloadHolidays()
+        guard isLoaded else { return }
+        if Date().timeIntervalSince(lastReappearRefreshAt) > Self.reappearRefreshInterval {
+            lastReappearRefreshAt = Date()
+            invalidateReadCaches()
+            await reloadScheduleOnly()
+        }
+        await reloadWeekSessions(keepSelection: true)
+    }
+
+    func invalidateReadCaches() {
+        cachedCalendarEvents = nil
+        cachedSessionPlans = nil
+    }
+
+    func plannerCalendarEvents() async throws -> [CalendarEvent] {
+        if let cachedCalendarEvents,
+           Date().timeIntervalSince(cachedCalendarEventsAt) < Self.readCacheInterval {
+            return cachedCalendarEvents
+        }
+        guard let bridge else { return [] }
+        let events = try await bridge.plannerAllCalendarEvents()
+        cachedCalendarEvents = events
+        cachedCalendarEventsAt = Date()
+        return events
+    }
+
+    func plannerSessionPlansAll() async throws -> [LearningSituationSessionPlan] {
+        if let cachedSessionPlans,
+           Date().timeIntervalSince(cachedSessionPlansAt) < Self.readCacheInterval {
+            return cachedSessionPlans
+        }
+        guard let bridge else { return [] }
+        let plans = try await bridge.learningSituationSessionPlansAll()
+        cachedSessionPlans = plans
+        cachedSessionPlansAt = Date()
+        return plans
     }
 
     func reloadAll(keepSelection: Bool = true) async {
@@ -280,6 +321,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         guard UserDefaults.standard.string(forKey: defaultsKey) != syncKey else { return }
         do {
             _ = try await SchoolCalendarPreset2026_2027.sync1BachExams(bridge: bridge, groups: groups)
+            cachedCalendarEvents = nil
             UserDefaults.standard.set(syncKey, forKey: defaultsKey)
             // Puede haber creado o borrado exámenes: refrescar los hitos de la semana.
             await reloadHolidays()
@@ -290,9 +332,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     private func reloadSessionPlans() async {
-        guard let bridge else { return }
+        guard bridge != nil else { return }
         do {
-            let plans = try await bridge.learningSituationSessionPlansAll()
+            let plans = try await plannerSessionPlansAll()
             sessionPlansById = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
         } catch {
             // Los metadatos enriquecidos son opcionales: la sesión sigue siendo

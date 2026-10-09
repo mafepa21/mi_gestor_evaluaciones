@@ -46,6 +46,7 @@ struct PlannerMonthCalendarView: View {
                 PlannerCalendarEventSheet(bridge: bridge, draft: draft) { saved in
                     calendarEventDraft = nil
                     if saved {
+                        vm.cachedCalendarEvents = nil
                         Task { await vm.reloadMonthData() }
                     }
                 }

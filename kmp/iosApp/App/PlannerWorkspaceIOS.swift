@@ -9,7 +9,7 @@ struct PlannerWorkspaceIOS: View {
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
-    @StateObject private var vm = PlannerWorkspaceViewModel()
+    @ObservedObject private var vm: PlannerWorkspaceViewModel
     @State private var selectedDetailSession: PlanningSession? = nil
     @State private var selectedWeekCell: PlannerCellKey? = nil
     @State private var selectedWeekDay: Int? = nil
@@ -29,11 +29,13 @@ struct PlannerWorkspaceIOS: View {
     private let onNavigationContextChange: ((PlannerNavigationContext) -> Void)?
 
     init(
+        viewModel: PlannerWorkspaceViewModel,
         initialSection: PlannerWorkspaceSection = .week,
         context: PlannerNavigationContext = PlannerNavigationContext(),
         onOpenDiary: ((PlannerNavigationContext) -> Void)? = nil,
         onNavigationContextChange: ((PlannerNavigationContext) -> Void)? = nil
     ) {
+        self.vm = viewModel
         self.initialSection = initialSection
         self.context = context
         self.onOpenDiary = onOpenDiary
@@ -94,7 +96,12 @@ struct PlannerWorkspaceIOS: View {
         .sheet(isPresented: $showingCalendarMilestones) {
             SchoolCalendarEventsOverviewSheet(
                 bridge: bridge,
-                onClose: { showingCalendarMilestones = false }
+                onClose: {
+                    showingCalendarMilestones = false
+                    // Puede haber creado o borrado hitos: releer el calendario.
+                    vm.cachedCalendarEvents = nil
+                    Task { await vm.reloadHolidays() }
+                }
             )
         }
 

@@ -24,6 +24,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Planner más fluido (parte 3)**:
+  - El `PlannerWorkspaceViewModel` vive en `WorkspaceBridgeStores` (iPhone, iPad y Mac): al volver al Planner se ve al instante lo que había y la semana se refresca por detrás.
+  - Los eventos del calendario y los planes de sesión se guardan 30 s y se reutilizan entre semanas y pestañas (Semana, Mes, Secuencia, Evaluación). Se invalidan al crear o editar hitos, marcar festivos o sincronizar exámenes.
+
 - **Planner más fluido (parte 2)**:
   - Al abrir el Planner ya no se cargan el Mes ni la previsión del curso: el Mes se carga al abrir su pestaña y la previsión no se pinta en el Planner.
   - La rejilla de la semana agrupa las sesiones una sola vez y se recalcula dos veces por carga (antes cuatro, con un recorrido de todas las sesiones por casilla).
@@ -41,6 +45,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Planner más fluido (parte 3): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. Sin prueba manual en dispositivo.
 - Planner más fluido (parte 2): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator): BUILD SUCCEEDED (tras liberar espacio en disco; el primer intento falló al enlazar por `errno=28`).
 - Planner más fluido: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED (266 tests, 0 fallos, 4 omitidos), incluido `testCanonicalSessionPlanCheckMatchesRepairCriteria`. `xcodebuild build -scheme MiGestorKMPiOS -destination "generic/platform=iOS Simulator"` → BUILD SUCCEEDED. Sin medición con Instruments ni prueba manual en dispositivo.
 - `./gradlew :data:desktopTest`: 168 tests OK (incluye `UpgradePathRegressionTest` hasta la 45).

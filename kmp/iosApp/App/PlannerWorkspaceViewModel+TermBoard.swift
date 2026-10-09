@@ -344,7 +344,7 @@ extension PlannerWorkspaceViewModel {
                     let versions = try await bridge.learningSituationSessionSequenceVersionsAll()
                     let sitVersions = versions.filter { $0.learningSituationId == simId }
                     if let latestVersion = sitVersions.max(by: { $0.versionNumber < $1.versionNumber }) {
-                        let allPlans = try await bridge.learningSituationSessionPlansAll()
+                        let allPlans = try await plannerSessionPlansAll()
                         let plans = allPlans
                             .filter { $0.sequenceVersionId == latestVersion.id }
                             .sorted { $0.sessionNumber < $1.sessionNumber }

@@ -127,6 +127,8 @@ public final class AppleBackupService: ObservableObject {
     }
 
     public func createBackup(note: String? = nil) async throws -> AppleBackupDescriptor {
+        let perfStart = DispatchTime.now()
+        defer { PerfLog.finish("Copia de seguridad", start: perfStart) }
         operationState = .creating
         defer { operationState = .idle }
 

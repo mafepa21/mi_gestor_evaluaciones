@@ -4280,6 +4280,8 @@ extension KmpBridge {
     }
 
     func syncNow(reason: String, forceFullPull: Bool, silent: Bool) async {
+        let perfStart = DispatchTime.now()
+        defer { PerfLog.finish("Sync LAN", start: perfStart, detail: reason, thresholdMs: 1_000) }
         // Red de seguridad centralizada: `syncNow` tiene varios puntos de
         // entrada (arranque, primer plano, segundo plano, bucle de
         // auto-sync, listener SSE, helper listo...). Tras un borrado

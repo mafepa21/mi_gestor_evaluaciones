@@ -19,6 +19,11 @@ extension KmpBridge {
         let restoredTabId = restoredSelectedNotebookTab(forClassId: id)
         selectedNotebookTabId = restoredTabId
         notebookViewModel.setSelectedTabId(tabId: restoredTabId)
+        // Solo si cambia de verdad: al reseleccionar el mismo grupo puede no llegar
+        // estado nuevo y la medida quedaría abierta.
+        if currentNotebookClassId != id {
+            PerfLog.begin("Cuaderno: cambio de grupo")
+        }
         notebookViewModel.selectClass(classId: id, force: true)
     }
 

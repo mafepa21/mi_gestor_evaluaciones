@@ -244,6 +244,7 @@ struct IOSRootView: View {
         let module = normalizedModule(module)
         guard activeModule != module else { return }
         // Cambio de pantalla al instante, sin animación (antes un fundido de 0,22 s).
+        PerfLog.markScreenSwitch(to: "\(module)")
         activeModule = module
     }
 
@@ -256,6 +257,7 @@ struct IOSRootView: View {
         }
         let module = normalizedModule(module)
         // Cambio de pantalla al instante, sin animación (antes un fundido de 0,22 s).
+        PerfLog.markScreenSwitch(to: "\(module)")
         activeModule = module
         if classId != nil || studentId != nil {
             let targetClassId = classId ?? selectionStore.selectedClassId

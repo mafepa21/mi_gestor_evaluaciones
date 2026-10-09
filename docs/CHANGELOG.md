@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Registro de lentitud (`PerfLog`)**: apunta en el registro (subsistema `com.migestor.app`, categoría `rendimiento`) lo que supera 150 ms: cambio de pantalla, carga del Planner, cambio de grupo en el Cuaderno y copia de seguridad; Sync LAN a partir de 1 s. En Debug, un vigilante apunta las congelaciones de la pantalla de más de 250 ms. Guía en `docs/REGISTRO_RENDIMIENTO.md`.
 - **Pantalla «Inclusión» (plazos y tareas del alumnado con medidas de nivel III y IV)**:
   - Franja con las 5 fases del Manual de Inclusión 2026-2027, avisos de tareas vencidas y de los próximos 7 días, lista de alumnos y tareas por fase.
   - Tareas generadas solas según la medida (carpeta roja, Doc 1, Doc 2, Doc 4, Doc 7 PAP + PAPACIS, ITACA, Educamos), con fecha del manual editable, marca «editada» y «Restablecer».
@@ -48,6 +49,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Registro de lentitud: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. No se ha arrancado la app para ver los mensajes: necesita usarla a mano (cambiar de pantalla, hacer una copia).
 - Pantallas con datos al volver: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. La medición de pantallas se hizo leyendo el código, no ejecutando la app. Sin prueba manual en dispositivo.
 - Cambio de pantalla al instante: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. Sin prueba manual en dispositivo.
 - Planner más fluido (parte 3): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. Sin prueba manual en dispositivo.

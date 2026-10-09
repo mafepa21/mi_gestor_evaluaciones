@@ -2,7 +2,10 @@ import SwiftUI
 import MiGestorKit
 
 struct PlannerWorkspaceIOS: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: el Planner solo llama a acciones del bridge.
+    /// Con `@EnvironmentObject` se redibujaba con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
@@ -182,6 +185,7 @@ struct PlannerWorkspaceIOS: View {
         VStack(spacing: 0) {
             PlannerToolbar(
                 vm: vm,
+                weekBoard: vm.weekBoard,
                 onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
                 onOpenDiary: openSelectedSessionInDiary,
                 onClearSchedulelessWeek: {
@@ -272,8 +276,13 @@ struct PlannerWorkspaceIOS: View {
 }
 
 struct PlannerToolbar: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: el Planner solo llama a acciones del bridge.
+    /// Con `@EnvironmentObject` se redibujaba con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @ObservedObject var vm: PlannerWorkspaceViewModel
+    /// La cobertura de franjas lee `weekRenderModel`, que `vm` ya no reenvía.
+    @ObservedObject var weekBoard: PlannerWeekBoardStore
     var onUndoCascadeMove: (() -> Void)? = nil
     /// En Mac, la navegación de semana/sección/grupo/búsqueda vive en la toolbar
     /// nativa (ver `PlannerMacToolbarActions`); aquí solo queda la tarjeta de
@@ -476,7 +485,7 @@ struct PlannerToolbar: View {
     /// «X de Y franjas planificadas»: el grid enseña franjas del horario,
     /// y «0 sesiones» contradecía una semana llena de clases.
     private var weekSlotCoverageLabel: String {
-        let cells = vm.weekRenderModel.entriesByCell.values
+        let cells = weekBoard.weekRenderModel.entriesByCell.values
         let lessonCells = cells.filter { entries in
             entries.contains { $0.kind == .session || $0.kind == .scheduledSlot }
         }

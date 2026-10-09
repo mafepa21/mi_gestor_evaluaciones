@@ -22,6 +22,12 @@ El formato sigue una variante practica de Keep a Changelog:
   - Tarea libre asignable a varios alumnos a la vez, en una sola transacción.
   - Entrada en Planificación (iPhone, iPad y Mac). Cabecera en Liquid Glass con fallback de material.
 
+### Changed
+
+- **Planner más fluido**:
+  - `PlannerWorkspaceIOS` y `PlannerToolbar` usan `kmpBridgeReference` en lugar de `@EnvironmentObject`: el Planner ya no se redibuja con cada cambio del Cuaderno, rúbricas o SyncLAN.
+  - `PlannerWorkspaceViewModel` deja de reenviar `weekRenderModel` (se reconstruye varias veces por carga); solo reenvía semana, año, franjas, festivos e hitos cuando cambian de verdad. La toolbar observa `weekBoard` directamente.
+
 ### Data
 
 - Migración `45.sqm` aditiva: tablas `inclusion_tasks` e `inclusion_group_settings` con índices. Sin sincronización SyncLAN todavía.

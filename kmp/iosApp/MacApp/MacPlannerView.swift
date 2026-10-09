@@ -64,6 +64,7 @@ struct MacPlannerView: View {
         VStack(alignment: .leading, spacing: 0) {
             PlannerToolbar(
                 vm: vm,
+                weekBoard: vm.weekBoard,
                 onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
                 showsNavigationControls: false,
                 onShowCalendarMilestones: { showingCalendarMilestones = true }

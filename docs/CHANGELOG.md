@@ -13,6 +13,26 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- **Pantalla «Inclusión» (plazos y tareas del alumnado con medidas de nivel III y IV)**:
+  - Franja con las 5 fases del Manual de Inclusión 2026-2027, avisos de tareas vencidas y de los próximos 7 días, lista de alumnos y tareas por fase.
+  - Tareas generadas solas según la medida (carpeta roja, Doc 1, Doc 2, Doc 4, Doc 7 PAP + PAPACIS, ITACA, Educamos), con fecha del manual editable, marca «editada» y «Restablecer».
+  - La fecha de evaluación inicial por grupo recalcula las tareas dependientes no editadas.
+  - Tarea libre asignable a varios alumnos a la vez, en una sola transacción.
+  - Entrada en Planificación (iPhone, iPad y Mac). Cabecera en Liquid Glass con fallback de material.
+
+### Data
+
+- Migración `45.sqm` aditiva: tablas `inclusion_tasks` e `inclusion_group_settings` con índices. Sin sincronización SyncLAN todavía.
+
+### Verification
+
+- `./gradlew :data:desktopTest`: 168 tests OK (incluye `UpgradePathRegressionTest` hasta la 45).
+- `./gradlew :shared:desktopTest`: OK, con los tests nuevos de `InclusionTasksUseCaseTest`. `:shared:test` no ejecutable en esta máquina (sin SDK de Android).
+- `./scripts/verify_apple_builds.sh`: iOS Simulator y macOS compilados.
+- Revisión visual en dispositivo o simulador: pendiente (sin runtimes de simulador instalados).
+
 ### Changed
 
 - **Barra lateral de macOS más ligera**:

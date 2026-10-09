@@ -165,7 +165,7 @@ extension AppWorkspaceShell {
             return try await bridge.buildPEAIContext(classId: classId)
         case .notebook:
             return bridge.buildNotebookAIContext(classId: classId)
-        case .situations, .webSubmissions, .rubrics, .library, .meetings, .settings, .backups:
+        case .situations, .webSubmissions, .rubrics, .library, .meetings, .inclusion, .settings, .backups:
             return fallbackContext(for: module, classId: classId, studentId: studentId, message: "Esta pantalla todavía no ofrece acciones IA contextuales.")
         }
     }
@@ -247,6 +247,8 @@ extension AppWorkspaceShell {
             return "Cierra una sesión, deja trazabilidad docente y usa el inspector solo cuando necesites contexto secundario."
         case .meetings:
             return "Registra actas de claustros, equipos docentes y CCP, y haz seguimiento de los acuerdos con responsable y fecha."
+        case .inclusion:
+            return "Marca las tareas del Manual de Inclusión, ajusta sus plazos y mira qué vence esta semana."
         case .evaluationHub:
             return "Selecciona un instrumento para revisar peso, rúbrica, vínculos y acceso directo al cuaderno."
         case .webSubmissions:

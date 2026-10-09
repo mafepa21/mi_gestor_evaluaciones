@@ -612,6 +612,11 @@ struct MacRootView: View {
         case .meetings:
             MacMeetingsView(bridge: session.bridge)
                 .environmentObject(session.bridge)
+        case .inclusion:
+            InclusionTrackerView(
+                bridge: session.bridge,
+                selectedClassId: studentSelection.selectedClassBinding
+            )
         case .sync:
             MacSyncView(bridge: session.bridge, commandCenter: commandCenter)
         case .backups:
@@ -1275,6 +1280,7 @@ struct MacRootView: View {
         case .situations: return .indigo
         case .webSubmissions: return .mint
         case .meetings: return .brown
+        case .inclusion: return .teal
         case .students: return .blue
         case .evaluationHub: return .orange
         case .rubrics: return .teal
@@ -1618,6 +1624,8 @@ struct MacRootView: View {
             selectFeature(.diary)
         case .evaluationHub:
             selectFeature(.evaluationHub)
+        case .inclusion:
+            selectFeature(.inclusion)
         default:
             showBanner(
                 "\(module.title) todavía no está disponible en la shell Mac.",

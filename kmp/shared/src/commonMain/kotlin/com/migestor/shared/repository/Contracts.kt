@@ -778,6 +778,63 @@ interface AttendanceRepository {
     suspend fun getAttendanceForClassBetweenDates(classId: Long, startDateMs: Long, endDateMs: Long): List<Attendance>
 }
 
+/**
+ * Tareas y plazos del Manual de Inclusión (migración 45). Fechas en ISO (yyyy-MM-dd).
+ * Todo método lleva @Throws: sin él, un fallo Kotlin mata la app en Swift.
+ */
+interface InclusionTaskRepository {
+    @Throws(Throwable::class)
+    suspend fun listByStudents(studentIds: List<Long>, schoolYear: String): List<com.migestor.shared.inclusion.InclusionTask>
+    @Throws(Throwable::class)
+    suspend fun getById(id: Long): com.migestor.shared.inclusion.InclusionTask?
+    /** `true` si la ha creado; `false` si la plantilla ya existía para ese alumno y curso. */
+    @Throws(Throwable::class)
+    suspend fun insertTemplateIfAbsent(
+        studentId: Long,
+        measureId: Long?,
+        templateKey: String,
+        title: String,
+        phase: com.migestor.shared.inclusion.InclusionPhase,
+        dueDateIso: String,
+        schoolYear: String,
+        nowEpochMs: Long,
+    ): Boolean
+    @Throws(Throwable::class)
+    suspend fun insertFreeTask(
+        studentId: Long,
+        title: String,
+        phase: com.migestor.shared.inclusion.InclusionPhase,
+        dueDateIso: String,
+        notes: String,
+        schoolYear: String,
+        nowEpochMs: Long,
+    ): Long
+    /** Crea una tarea libre por alumno en una sola transacción: o entran todas o ninguna. */
+    @Throws(Throwable::class)
+    suspend fun insertFreeTasks(
+        studentIds: List<Long>,
+        title: String,
+        phase: com.migestor.shared.inclusion.InclusionPhase,
+        dueDateIso: String,
+        notes: String,
+        schoolYear: String,
+        nowEpochMs: Long,
+    ): List<Long>
+    @Throws(Throwable::class)
+    suspend fun setDone(id: Long, doneAtIso: String?, nowEpochMs: Long)
+    @Throws(Throwable::class)
+    suspend fun setDue(id: Long, dueDateIso: String, isCustom: Boolean, nowEpochMs: Long)
+    /** `true` si la ha movido; nunca toca tareas con fecha editada a mano. */
+    @Throws(Throwable::class)
+    suspend fun updateDueIfNotCustom(id: Long, dueDateIso: String, nowEpochMs: Long): Boolean
+    @Throws(Throwable::class)
+    suspend fun delete(id: Long)
+    @Throws(Throwable::class)
+    suspend fun getInitialEvaluationDate(classId: Long, schoolYear: String): String?
+    @Throws(Throwable::class)
+    suspend fun setInitialEvaluationDate(classId: Long, schoolYear: String, dateIso: String)
+}
+
 interface StudentSupportMeasureRepository {
     @Throws(Throwable::class)
     suspend fun listByStudent(studentId: Long): List<StudentSupportMeasure>

@@ -90,6 +90,8 @@ extension AppWorkspaceShell {
         case .meetings:
             MeetingsWorkspaceView(bridge: bridge)
                 .environmentObject(bridge)
+        case .inclusion:
+            InclusionTrackerView(bridge: bridge, selectedClassId: $selectedClassId)
         case .evaluationHub:
             EvaluationHubView(
                 selectedClassId: $selectedClassId,

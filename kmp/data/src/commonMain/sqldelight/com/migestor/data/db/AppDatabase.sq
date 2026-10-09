@@ -246,6 +246,41 @@ CREATE TABLE IF NOT EXISTS student_tutoring_sessions (
 CREATE INDEX IF NOT EXISTS idx_tutoring_sessions_student ON student_tutoring_sessions(student_id, date_iso DESC);
 CREATE INDEX IF NOT EXISTS idx_tutoring_sessions_review ON student_tutoring_sessions(review_due_iso) WHERE is_closed = 0;
 
+-- Plazos y tareas del Manual de Inclusión (curso escolar).
+-- Cuelga del alumno global pero se separa por school_year ('2026-2027'): cada curso
+-- genera su propia lista y la del curso anterior queda como histórico.
+-- template_key NULL = tarea libre del docente. Con clave, la UNIQUE impide duplicar
+-- una plantilla del manual al regenerar (en SQLite los NULL no chocan entre sí).
+CREATE TABLE IF NOT EXISTS inclusion_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    measure_id INTEGER,
+    template_key TEXT,
+    title TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    due_date_iso TEXT NOT NULL,
+    due_is_custom INTEGER NOT NULL DEFAULT 0,
+    done_at_iso TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    school_year TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(student_id, template_key, school_year),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (measure_id) REFERENCES student_support_measures(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_inclusion_tasks_student ON inclusion_tasks(student_id, school_year);
+CREATE INDEX IF NOT EXISTS idx_inclusion_tasks_due ON inclusion_tasks(due_date_iso);
+
+-- Fecha de evaluación inicial por grupo y curso: mueve las tareas que dependen de ella.
+CREATE TABLE IF NOT EXISTS inclusion_group_settings (
+    class_id INTEGER NOT NULL,
+    school_year TEXT NOT NULL,
+    initial_eval_date_iso TEXT NOT NULL,
+    PRIMARY KEY (class_id, school_year),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS backup_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     path TEXT NOT NULL,
@@ -2946,3 +2981,49 @@ upsertWebSubmissionLedgerEntry:
 INSERT OR REPLACE INTO web_submission_ledger(submission_id, form_instance_id, alias, student_id,
     status, reject_reason, answer_count, client_submitted_at_epoch_ms, imported_at_epoch_ms)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Manual de Inclusión: tareas por alumno y curso escolar.
+selectInclusionTasksByStudents:
+SELECT id, student_id, measure_id, template_key, title, phase, due_date_iso, due_is_custom, done_at_iso, notes, school_year, created_at, updated_at
+FROM inclusion_tasks
+WHERE student_id IN ? AND school_year = ?
+ORDER BY due_date_iso ASC, id ASC;
+
+selectInclusionTaskById:
+SELECT id, student_id, measure_id, template_key, title, phase, due_date_iso, due_is_custom, done_at_iso, notes, school_year, created_at, updated_at
+FROM inclusion_tasks
+WHERE id = ?;
+
+-- OR IGNORE + UNIQUE(student_id, template_key, school_year): regenerar es idempotente
+-- y nunca pisa lo que el docente ya marcó o editó.
+insertInclusionTemplateTaskIfAbsent:
+INSERT OR IGNORE INTO inclusion_tasks(student_id, measure_id, template_key, title, phase, due_date_iso, due_is_custom, done_at_iso, notes, school_year, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, 0, NULL, '', ?, ?, ?);
+
+insertInclusionFreeTask:
+INSERT INTO inclusion_tasks(student_id, measure_id, template_key, title, phase, due_date_iso, due_is_custom, done_at_iso, notes, school_year, created_at, updated_at)
+VALUES (?, NULL, NULL, ?, ?, ?, 0, NULL, ?, ?, ?, ?);
+
+setInclusionTaskDone:
+UPDATE inclusion_tasks SET done_at_iso = ?, updated_at = ? WHERE id = ?;
+
+setInclusionTaskDue:
+UPDATE inclusion_tasks SET due_date_iso = ?, due_is_custom = ?, updated_at = ? WHERE id = ?;
+
+-- Recalcular por evaluación inicial: nunca toca fechas editadas a mano.
+updateInclusionTaskDueIfNotCustom:
+UPDATE inclusion_tasks SET due_date_iso = ?, updated_at = ? WHERE id = ? AND due_is_custom = 0;
+
+deleteInclusionTask:
+DELETE FROM inclusion_tasks WHERE id = ?;
+
+-- Filas tocadas por la última escritura de esta conexión (usar dentro de transacción).
+inclusionChanges:
+SELECT changes();
+
+selectInclusionGroupInitialEval:
+SELECT initial_eval_date_iso FROM inclusion_group_settings WHERE class_id = ? AND school_year = ?;
+
+upsertInclusionGroupInitialEval:
+INSERT OR REPLACE INTO inclusion_group_settings(class_id, school_year, initial_eval_date_iso)
+VALUES (?, ?, ?);

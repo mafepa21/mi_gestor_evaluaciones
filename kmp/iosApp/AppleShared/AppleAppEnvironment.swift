@@ -133,17 +133,6 @@ struct UiFeatureFlags {
     var bannerTransition: AnyTransition {
         reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
     }
-
-    // MARK: Cambio de módulo/workspace (contenido principal)
-
-    var contentSwitchTransition: AnyTransition {
-        reduceMotion
-            ? .opacity
-            : .asymmetric(
-                insertion: .opacity.combined(with: .scale(scale: 0.98)),
-                removal: .opacity
-            )
-    }
 }
 
 @MainActor

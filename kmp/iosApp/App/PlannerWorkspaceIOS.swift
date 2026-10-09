@@ -2,11 +2,14 @@ import SwiftUI
 import MiGestorKit
 
 struct PlannerWorkspaceIOS: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: el Planner solo llama a acciones del bridge.
+    /// Con `@EnvironmentObject` se redibujaba con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
-    @StateObject private var vm = PlannerWorkspaceViewModel()
+    @ObservedObject private var vm: PlannerWorkspaceViewModel
     @State private var selectedDetailSession: PlanningSession? = nil
     @State private var selectedWeekCell: PlannerCellKey? = nil
     @State private var selectedWeekDay: Int? = nil
@@ -26,11 +29,13 @@ struct PlannerWorkspaceIOS: View {
     private let onNavigationContextChange: ((PlannerNavigationContext) -> Void)?
 
     init(
+        viewModel: PlannerWorkspaceViewModel,
         initialSection: PlannerWorkspaceSection = .week,
         context: PlannerNavigationContext = PlannerNavigationContext(),
         onOpenDiary: ((PlannerNavigationContext) -> Void)? = nil,
         onNavigationContextChange: ((PlannerNavigationContext) -> Void)? = nil
     ) {
+        self.vm = viewModel
         self.initialSection = initialSection
         self.context = context
         self.onOpenDiary = onOpenDiary
@@ -53,12 +58,7 @@ struct PlannerWorkspaceIOS: View {
         }
         .onAppear {
             configurePlannerToolbar()
-            if vm.isLoaded {
-                Task {
-                    await vm.reloadScheduleOnly()
-                    await vm.reloadHolidays()
-                }
-            }
+            Task { await vm.refreshOnReappear() }
         }
 
         .appOnChange(of: context) { newValue in
@@ -93,7 +93,11 @@ struct PlannerWorkspaceIOS: View {
                 onClose: { showingScheduleSettings = false }
             )
         }
-        .sheet(isPresented: $showingCalendarMilestones) {
+        .sheet(isPresented: $showingCalendarMilestones, onDismiss: {
+            // También al cerrar deslizando: puede haber creado o borrado hitos.
+            vm.cachedCalendarEvents = nil
+            Task { await vm.reloadHolidays() }
+        }) {
             SchoolCalendarEventsOverviewSheet(
                 bridge: bridge,
                 onClose: { showingCalendarMilestones = false }
@@ -182,6 +186,7 @@ struct PlannerWorkspaceIOS: View {
         VStack(spacing: 0) {
             PlannerToolbar(
                 vm: vm,
+                weekBoard: vm.weekBoard,
                 onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
                 onOpenDiary: openSelectedSessionInDiary,
                 onClearSchedulelessWeek: {
@@ -192,7 +197,6 @@ struct PlannerWorkspaceIOS: View {
             .layoutPriority(1)
             plannerSectionContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .animation(uiFeatureFlags.interactionAnimation, value: vm.activeSection)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
@@ -239,7 +243,8 @@ struct PlannerWorkspaceIOS: View {
             }
         }
         .id(vm.activeSection)
-        .transition(uiFeatureFlags.contentSwitchTransition)
+        // Sin fundido al cambiar de pestaña (la barra flotante sí anima su selección).
+        .transition(.identity)
     }
 
     private func configurePlannerToolbar() {
@@ -272,8 +277,13 @@ struct PlannerWorkspaceIOS: View {
 }
 
 struct PlannerToolbar: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: el Planner solo llama a acciones del bridge.
+    /// Con `@EnvironmentObject` se redibujaba con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @ObservedObject var vm: PlannerWorkspaceViewModel
+    /// La cobertura de franjas lee `weekRenderModel`, que `vm` ya no reenvía.
+    @ObservedObject var weekBoard: PlannerWeekBoardStore
     var onUndoCascadeMove: (() -> Void)? = nil
     /// En Mac, la navegación de semana/sección/grupo/búsqueda vive en la toolbar
     /// nativa (ver `PlannerMacToolbarActions`); aquí solo queda la tarjeta de
@@ -476,7 +486,7 @@ struct PlannerToolbar: View {
     /// «X de Y franjas planificadas»: el grid enseña franjas del horario,
     /// y «0 sesiones» contradecía una semana llena de clases.
     private var weekSlotCoverageLabel: String {
-        let cells = vm.weekRenderModel.entriesByCell.values
+        let cells = weekBoard.weekRenderModel.entriesByCell.values
         let lessonCells = cells.filter { entries in
             entries.contains { $0.kind == .session || $0.kind == .scheduledSlot }
         }
@@ -753,481 +763,6 @@ private struct PlannerProgressMetric: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-}
-
-private struct PlannerWeekBoard: View {
-    @ObservedObject var vm: PlannerWorkspaceViewModel
-    let onOpenDiary: (PlanningSession) -> Void
-
-    private var columnWidth: CGFloat { vm.density == .compact ? 200 : 248 }
-    private var timeAxisWidth: CGFloat { vm.density == .compact ? 96 : 112 }
-
-    var body: some View {
-        ScrollView([.horizontal, .vertical]) {
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    cellHeader("Franja", width: timeAxisWidth)
-                    ForEach(vm.weekRenderModel.visibleDays, id: \.self) { day in
-                        let isHoliday = vm.holidayDays.contains(day)
-                        cellHeader(vm.dayHeaderLabel(for: day), width: columnWidth)
-                            .foregroundStyle(isHoliday ? EvaluationDesign.danger : Color.primary)
-                            .overlay(alignment: .trailing) {
-                                if isHoliday {
-                                    Image(systemName: "calendar.badge.minus")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundStyle(EvaluationDesign.danger)
-                                        .padding(.trailing, 8)
-                                }
-                            }
-                            .contextMenu {
-                                Button {
-                                    Task { await vm.toggleHoliday(for: day) }
-                                } label: {
-                                    Label(
-                                        isHoliday ? "Marcar como lectivo" : "Marcar como festivo",
-                                        systemImage: isHoliday ? "calendar.badge.plus" : "calendar.badge.minus"
-                                    )
-                                }
-                            }
-                    }
-                }
-
-                ForEach(vm.weekRenderModel.visibleSlots, id: \.period) { slot in
-                    let rowHeight = rowHeight(for: slot)
-                    HStack(spacing: 0) {
-                        VStack(spacing: 4) {
-                            Text(slot.period > 9 ? "Fx" : "P\(slot.period)")
-                                .font(.caption.bold())
-                            Text(slot.label)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(width: timeAxisWidth, height: rowHeight)
-                        .background(EvaluationDesign.surfaceSoft)
-
-                        ForEach(vm.weekRenderModel.visibleDays, id: \.self) { day in
-                            PlannerWeekCellCard(
-                                entries: vm.weekRenderModel.entriesByCell[PlannerCellKey(day: day, period: Int(slot.period))] ?? [],
-                                isHoliday: vm.holidayDays.contains(day),
-                                isCompact: vm.density == .compact,
-                                cellWidth: columnWidth,
-                                cellHeight: rowHeight,
-                                onCreate: {
-                                    vm.openComposer(day: day, period: Int(slot.period))
-                                },
-                                onOpenEntry: { entry in
-                                    if let sessionId = entry.sessionId,
-                                       let session = vm.sessions.first(where: { $0.id == sessionId }) {
-                                        if vm.selectionMode {
-                                            vm.toggleSelection(sessionId: session.id)
-                                        } else {
-                                            onOpenDiary(session)
-                                        }
-                                    } else {
-                                        vm.selectGroup(entry.classId)
-                                        vm.openComposer(day: day, period: Int(slot.period))
-                                        vm.composerDraft.groupId = entry.classId
-                                    }
-                                },
-                                onEditEntry: { entry in
-                                    guard let sessionId = entry.sessionId,
-                                          let session = vm.sessions.first(where: { $0.id == sessionId }) else { return }
-                                    vm.openComposer(for: session)
-                                },
-                                onDuplicateEntry: { entry in
-                                    guard let sessionId = entry.sessionId else { return }
-                                    vm.selectedSessionIds = [sessionId]
-                                    Task { await vm.bulkCopyToNextWeek() }
-                                },
-                                onCompleteEntry: { entry in
-                                    guard let sessionId = entry.sessionId,
-                                          let session = vm.sessions.first(where: { $0.id == sessionId }) else { return }
-                                    Task { await vm.markCompleted(session) }
-                                },
-                                onOpenDiaryEntry: { entry in
-                                    guard let sessionId = entry.sessionId,
-                                          let session = vm.sessions.first(where: { $0.id == sessionId }) else { return }
-                                    onOpenDiary(session)
-                                }
-                            )
-                            .equatable()
-                        }
-                    }
-                }
-            }
-            .padding(EvaluationDesign.screenPadding)
-        }
-    }
-
-    private func cellHeader(_ title: String, width: CGFloat) -> some View {
-        Text(title)
-            .font(.caption.bold())
-            .frame(width: width, height: 42)
-            .background(EvaluationDesign.surfaceSoft)
-    }
-
-    private func rowHeight(for slot: PlannerVisibleSlot) -> CGFloat {
-        guard let start = minutes(from: slot.startTime), let end = minutes(from: slot.endTime), end > start else {
-            return vm.density == .compact ? 112 : 144
-        }
-        let duration = end - start
-        let base = vm.density == .compact ? 104.0 : 136.0
-        let extra = CGFloat(max(duration - 55, 0)) * (vm.density == .compact ? 0.7 : 0.9)
-        return min(max(base + extra, base), vm.density == .compact ? 176 : 232)
-    }
-
-    private func minutes(from value: String) -> Int? {
-        let parts = value.split(separator: ":")
-        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return nil }
-        return hour * 60 + minute
-    }
-}
-
-private struct PlannerWeekCellCard: View, Equatable {
-    let entries: [PlannerWeekCellEntry]
-    let isHoliday: Bool
-    let isCompact: Bool
-    let cellWidth: CGFloat
-    let cellHeight: CGFloat
-    let onCreate: () -> Void
-    let onOpenEntry: (PlannerWeekCellEntry) -> Void
-    let onEditEntry: (PlannerWeekCellEntry) -> Void
-    let onDuplicateEntry: (PlannerWeekCellEntry) -> Void
-    let onCompleteEntry: (PlannerWeekCellEntry) -> Void
-    let onOpenDiaryEntry: (PlannerWeekCellEntry) -> Void
-
-    static func == (lhs: PlannerWeekCellCard, rhs: PlannerWeekCellCard) -> Bool {
-        lhs.isHoliday == rhs.isHoliday &&
-        lhs.entries == rhs.entries &&
-        lhs.isCompact == rhs.isCompact &&
-        lhs.cellWidth == rhs.cellWidth &&
-        lhs.cellHeight == rhs.cellHeight
-    }
-
-    var body: some View {
-        let singleRichEntry = entries.count == 1 && entries.first?.kind == .session && !isCompact
-        VStack(alignment: .leading, spacing: 8) {
-            if isHoliday {
-                ZStack {
-                    if !entries.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(entries.prefix(singleRichEntry ? 1 : 3)) { entry in
-                                PlannerWeekEntryCard(
-                                    entry: entry,
-                                    fillsCell: singleRichEntry,
-                                    onTap: {},
-                                    onEdit: {},
-                                    onDuplicate: {},
-                                    onComplete: {},
-                                    onOpenDiary: {}
-                                )
-                            }
-                        }
-                        .opacity(0.2)
-                        .disabled(true)
-                    }
-                    VStack(spacing: 4) {
-                        Image(systemName: "umbrella.fill")
-                            .font(.title2)
-                            .foregroundStyle(EvaluationDesign.danger.opacity(0.7))
-                        Text("No lectivo")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            } else if entries.isEmpty {
-                Button(action: onCreate) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Image(systemName: "plus.circle")
-                            .font(.subheadline.weight(.semibold))
-                        Text("Sin concretar")
-                            .font(.caption.weight(.bold))
-                        Text("Añadir sesión")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }
-                .buttonStyle(.plain)
-            } else {
-                ForEach(entries.prefix(singleRichEntry ? 1 : 3)) { entry in
-                    if singleRichEntry {
-                        PlannerWeekEntryCard(
-                            entry: entry,
-                            fillsCell: true,
-                            onTap: { onOpenEntry(entry) },
-                            onEdit: { onEditEntry(entry) },
-                            onDuplicate: { onDuplicateEntry(entry) },
-                            onComplete: { onCompleteEntry(entry) },
-                            onOpenDiary: { onOpenDiaryEntry(entry) }
-                        )
-                    } else {
-                        PlannerWeekCompactEntryRow(
-                            entry: entry,
-                            onTap: { onOpenEntry(entry) },
-                            onEdit: { onEditEntry(entry) },
-                            onDuplicate: { onDuplicateEntry(entry) },
-                            onComplete: { onCompleteEntry(entry) },
-                            onOpenDiary: { onOpenDiaryEntry(entry) }
-                        )
-                    }
-                }
-                if !singleRichEntry && entries.count > 3 {
-                    Text("+\(entries.count - 3) más")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
-                }
-            }
-        }
-        .frame(width: cellWidth, height: cellHeight, alignment: .topLeading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(isHoliday ? EvaluationDesign.surfaceSoft.opacity(0.5) : EvaluationDesign.surfaceSoft)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(
-                    isHoliday ? EvaluationDesign.danger.opacity(0.15) : EvaluationDesign.border,
-                    style: StrokeStyle(lineWidth: 1, dash: entries.isEmpty && !isHoliday ? [6, 5] : [])
-                )
-        )
-    }
-}
-
-private struct PlannerWeekCompactEntryRow: View {
-    let entry: PlannerWeekCellEntry
-    let onTap: () -> Void
-    let onEdit: () -> Void
-    let onDuplicate: () -> Void
-    let onComplete: () -> Void
-    let onOpenDiary: () -> Void
-
-    private var tint: Color { Color(hex: entry.classColorHex) }
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 8) {
-                Capsule()
-                    .fill(tint)
-                    .frame(width: 5, height: 28)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(entry.className) · \(entry.title)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(stateLabel)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(stateTint)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                Image(systemName: stateIcon)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(stateTint)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(tint.opacity(entry.kind == .session ? 0.10 : 0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            if entry.sessionId != nil {
-                Button("Abrir ficha", action: onTap)
-                Button("Completar diario", action: onOpenDiary)
-                Button("Editar", action: onEdit)
-                Button("Duplicar próxima semana", action: onDuplicate)
-                Button("Marcar impartida", action: onComplete)
-            }
-        }
-    }
-
-    private var stateLabel: String {
-        if entry.kind == .scheduledSlot { return "Sin concretar" }
-        if entry.kind == .blockedSlot { return "Bloqueado" }
-        if entry.journalStatus == .completed { return "Diario cerrado" }
-        if entry.journalStatus == .draft { return "Diario pendiente" }
-        if entry.sessionStatus == .completed { return "Impartida" }
-        return "Planificada"
-    }
-
-    private var stateIcon: String {
-        if entry.kind == .scheduledSlot { return "plus.circle.fill" }
-        if entry.kind == .blockedSlot { return "lock.fill" }
-        if entry.journalStatus == .completed { return "checkmark.seal.fill" }
-        if entry.journalStatus == .draft { return "doc.text.fill" }
-        if entry.sessionStatus == .completed { return "checkmark.circle.fill" }
-        return "circle"
-    }
-
-    private var stateTint: Color {
-        if entry.kind == .scheduledSlot { return tint }
-        if entry.kind == .blockedSlot { return Color.indigo }
-        if entry.journalStatus == .completed { return EvaluationDesign.success }
-        if entry.journalStatus == .draft || entry.sessionStatus == .completed { return IOSAppStyle.warning }
-        return .secondary
-    }
-}
-
-private struct PlannerWeekEntryCard: View {
-    let entry: PlannerWeekCellEntry
-    let fillsCell: Bool
-    let onTap: () -> Void
-    let onEdit: () -> Void
-    let onDuplicate: () -> Void
-    let onComplete: () -> Void
-    let onOpenDiary: () -> Void
-
-    private var tint: Color { Color(hex: entry.classColorHex) }
-
-    var body: some View {
-        Button(action: {
-            if entry.kind != .blockedSlot {
-                onTap()
-            }
-        }) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Capsule()
-                        .fill(entry.kind == .blockedSlot ? Color.indigo : tint)
-                        .frame(width: 8, height: 32)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(entry.title)
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(2)
-                        Text(entry.className)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 4)
-                }
-
-                HStack(spacing: 6) {
-                    Image(systemName: stateIcon)
-                        .font(.caption.weight(.bold))
-                    Text(stateLabel)
-                        .font(.caption2.weight(.bold))
-                }
-                .foregroundStyle(stateTint)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Capsule(style: .continuous).fill(stateTint.opacity(0.12)))
-
-                Text(entry.preview)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(fillsCell ? 4 : 2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(backgroundFill)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(borderColor, lineWidth: entry.isCompleted ? 1.4 : 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            if entry.sessionId != nil {
-                Button("Abrir diario", action: onOpenDiary)
-                Button("Edición rápida", action: onEdit)
-                Button("Duplicar próxima semana", action: onDuplicate)
-                Button("Marcar impartida", action: onComplete)
-            }
-        }
-    }
-
-    private var stateLabel: String {
-        if entry.kind == .scheduledSlot { return "Crear sesión" }
-        if entry.kind == .blockedSlot { return "Bloqueado" }
-        if entry.journalStatus == .completed { return "Cerrada" }
-        if entry.journalStatus == .draft { return "Borrador" }
-        if entry.sessionStatus == .completed { return "Diario pendiente" }
-        return "Planificada"
-    }
-
-    private var stateIcon: String {
-        if entry.kind == .scheduledSlot { return "plus.circle.fill" }
-        if entry.kind == .blockedSlot { return "lock.fill" }
-        if entry.journalStatus == .completed { return "checkmark.seal.fill" }
-        if entry.journalStatus == .draft { return "doc.text.fill" }
-        if entry.sessionStatus == .completed { return "checkmark.circle.fill" }
-        return "calendar"
-    }
-
-    private var stateTint: Color {
-        if entry.kind == .scheduledSlot { return tint }
-        if entry.kind == .blockedSlot { return Color.indigo }
-        if entry.journalStatus == .completed { return EvaluationDesign.success }
-        if entry.journalStatus == .draft { return EvaluationDesign.accent }
-        if entry.sessionStatus == .completed { return IOSAppStyle.warning }
-        return tint.opacity(0.9)
-    }
-
-    private var backgroundFill: Color {
-        switch entry.kind {
-        case .scheduledSlot:
-            return tint.opacity(0.10)
-        case .blockedSlot:
-            return Color.indigo.opacity(0.12)
-        case .session:
-            return entry.isCompleted ? tint.opacity(0.24) : tint.opacity(0.14)
-        }
-    }
-
-    private var borderColor: Color {
-        switch entry.kind {
-        case .scheduledSlot:
-            return tint.opacity(0.35)
-        case .blockedSlot:
-            return Color.indigo.opacity(0.5)
-        case .session:
-            return entry.isCompleted ? tint.opacity(0.8) : tint.opacity(0.45)
-        }
-    }
-
-}
-
-private struct PlannerStatusPill: View {
-    let status: SessionJournalStatus
-
-    var body: some View {
-        Text(label)
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Capsule(style: .continuous).fill(tint.opacity(0.12)))
-    }
-
-    private var label: String {
-        switch status {
-        case .empty: return "Vacío"
-        case .draft: return "Borrador"
-        case .completed: return "Cerrado"
-        default: return "Borrador"
-        }
-    }
-
-    private var tint: Color {
-        switch status {
-        case .empty: return .secondary
-        case .draft: return EvaluationDesign.accent
-        case .completed: return EvaluationDesign.success
-        default: return EvaluationDesign.accent
-        }
     }
 }
 

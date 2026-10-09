@@ -31,6 +31,11 @@ extension ObservableObject where Self: AnyObject {
 
 @MainActor
 final class NotebookBridgeStore: ObservableObject {
+    /// Vive aquí y no en la vista: al salir del Cuaderno y volver no se rehace
+    /// lo ya preparado. Su caché se invalida por grupo, pestaña y columnas.
+    let gridLayoutModel = NotebookGridLayoutModel()
+    /// Situaciones de aprendizaje ya filtradas por grupo, para pintarlas al volver.
+    var cachedClassSituations: [Int64: [LearningSituation]] = [:]
     @Published private(set) var classes: [SchoolClass] = []
     @Published private(set) var notebookState: NotebookUiState = NotebookUiStateLoading()
     @Published private(set) var notebookStructureState = NotebookStructureState(
@@ -112,6 +117,12 @@ final class NotebookBridgeStore: ObservableObject {
         bridgeSink(bridge.$notebookState, \.notebookState, into: &cancellables) {
             ($0 as AnyObject).isEqual($1 as AnyObject)
         }
+        // Fin de la medida "Cuaderno: cambio de grupo" (empieza en `selectClass`).
+        bridge.$notebookState
+            .filter { $0 is NotebookUiStateData }
+            // 400 ms: el estado llega tras un debounce fijo de 150 ms en el bridge.
+            .sink { _ in PerfLog.end("Cuaderno: cambio de grupo", thresholdMs: 400) }
+            .store(in: &cancellables)
         bridgeSink(bridge.$notebookStructureState, \.notebookStructureState, into: &cancellables)
         bridgeSink(bridge.$notebookRowsState, \.notebookRowsState, into: &cancellables)
         bridgeSink(bridge.$notebookSelectionState, \.notebookSelectionState, into: &cancellables)
@@ -279,6 +290,10 @@ final class WorkspaceBridgeStores: ObservableObject {
     let dashboard = DashboardBridgeStore()
     let students = StudentsBridgeStore()
     let attendance = AttendanceBridgeStore()
+    /// El Planner vive aquí y no en su vista: al salir y volver conserva la semana
+    /// cargada y solo se refresca por detrás (`refreshOnReappear`). Se enlaza al
+    /// bridge en su primer `bind`, no en `bind(to:)`.
+    let planner = PlannerWorkspaceViewModel()
 
     func bind(to bridge: KmpBridge) {
         notebook.bind(to: bridge)
@@ -298,5 +313,46 @@ extension EnvironmentValues {
     var kmpBridgeReference: KmpBridge? {
         get { self[KmpBridgeReferenceKey.self] }
         set { self[KmpBridgeReferenceKey.self] = newValue }
+    }
+}
+
+/// Lo último que enseñó cada pantalla que guarda sus datos en `@State`. Al cambiar
+/// de pantalla, la vista se destruye (`.id(activeModule)`); al volver arranca con
+/// esto y refresca por detrás, sin pantalla vacía ni ruedita. Va ligada a una
+/// instancia de bridge (se vacía si cambia). Tras borrar o restaurar datos la app
+/// pide reiniciar, así que no se llegan a ver datos borrados.
+/// Supone una sola ventana por bridge: el store de Inclusión es compartido.
+@MainActor
+final class WorkspaceScreenMemory {
+    static let shared = WorkspaceScreenMemory()
+
+    private weak var owner: KmpBridge?
+    private var values: [String: Any] = [:]
+    private var inclusionStore: InclusionTrackerStore?
+
+    private func adopt(_ bridge: KmpBridge) {
+        guard owner !== bridge else { return }
+        owner = bridge
+        values = [:]
+        inclusionStore = nil
+    }
+
+    func value<T>(_ key: String, bridge: KmpBridge) -> T? {
+        adopt(bridge)
+        return values[key] as? T
+    }
+
+    func store<T>(_ value: T, _ key: String, bridge: KmpBridge) {
+        adopt(bridge)
+        values[key] = value
+    }
+
+    /// El store de Inclusión ya conserva su tablero si el grupo no cambia.
+    func inclusion(bridge: KmpBridge) -> InclusionTrackerStore {
+        adopt(bridge)
+        if let inclusionStore { return inclusionStore }
+        let created = InclusionTrackerStore()
+        inclusionStore = created
+        return created
     }
 }

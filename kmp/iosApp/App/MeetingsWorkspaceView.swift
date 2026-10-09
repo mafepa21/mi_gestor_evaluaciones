@@ -8,6 +8,17 @@ import MiGestorKit
 struct MeetingsWorkspaceView: View {
     let bridge: KmpBridge
 
+    private static let memoryKey = "meetings.list"
+
+    init(bridge: KmpBridge) {
+        self.bridge = bridge
+        // Lo último que se vio: al volver no se enseña la pantalla vacía.
+        let remembered: [MeetingRow]? = WorkspaceScreenMemory.shared.value(Self.memoryKey, bridge: bridge)
+        _meetings = State(initialValue: remembered ?? [])
+        // La primera vez no hay nada que enseñar: carga en vez de "sin reuniones".
+        _isLoading = State(initialValue: remembered == nil)
+    }
+
     @State private var meetings: [MeetingRow] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -175,6 +186,7 @@ struct MeetingsWorkspaceView: View {
         defer { isLoading = false }
         do {
             meetings = try await bridge.meetings().map { $0.asRow }
+            WorkspaceScreenMemory.shared.store(meetings, Self.memoryKey, bridge: bridge)
             errorMessage = nil
         } catch {
             errorMessage = "No se pudieron cargar las reuniones: \(error.localizedDescription)"

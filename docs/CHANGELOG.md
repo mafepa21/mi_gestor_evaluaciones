@@ -13,8 +13,72 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Changed
+
+- **Cuaderno: volver a la pantalla sin montarlo todo desde cero**: lo preparado de la tabla (columnas, categorías plegadas, filas visibles) vive en `NotebookBridgeStore` y sobrevive al cambio de pantalla; las situaciones de aprendizaje del grupo se pintan desde lo guardado y se refrescan por detrás. Medidas nuevas del montaje en el registro de lentitud.
+- **Entregas web: la lista aparece sin esperar a cargarlo todo**: primero se pinta la lista de tareas y después, por detrás, el detalle que necesita la importación (el botón dice «Preparando importación…» mientras tanto). Los enlaces del alumnado se leen fuera del hilo de la pantalla al pulsar «Enviar enlaces», y los instrumentos publicables al abrir «Nueva tarea web». Medidas nuevas en el registro de lentitud.
+- **Planner: primera carga más rápida**: solo se comprueban y reparan los planes de sesión de la semana visible (antes, los de todo el curso, hasta 14 s al abrir); los de otra semana se piden al ir a ella. El Diario usa el mismo modelo que el Planner, así que la carga ya no se hace dos veces. Medidas por pasos de la carga en el registro de lentitud.
+
+### Added
+
+- **Registro de lentitud (`PerfLog`)**: apunta en el registro (subsistema `com.migestor.app`, categoría `rendimiento`) lo que supera 150 ms: cambio de pantalla, carga del Planner, cambio de grupo en el Cuaderno y copia de seguridad; Sync LAN a partir de 1 s. En Debug, un vigilante apunta las congelaciones de la pantalla de más de 250 ms. Guía en `docs/REGISTRO_RENDIMIENTO.md`.
+- **Pantalla «Inclusión» (plazos y tareas del alumnado con medidas de nivel III y IV)**:
+  - Franja con las 5 fases del Manual de Inclusión 2026-2027, avisos de tareas vencidas y de los próximos 7 días, lista de alumnos y tareas por fase.
+  - Tareas generadas solas según la medida (carpeta roja, Doc 1, Doc 2, Doc 4, Doc 7 PAP + PAPACIS, ITACA, Educamos), con fecha del manual editable, marca «editada» y «Restablecer».
+  - La fecha de evaluación inicial por grupo recalcula las tareas dependientes no editadas.
+  - Tarea libre asignable a varios alumnos a la vez, en una sola transacción.
+  - Entrada en Planificación (iPhone, iPad y Mac). Cabecera en Liquid Glass con fallback de material.
+
+### Changed
+
+- **Pantallas con datos al volver**: Situaciones de aprendizaje, Reuniones e Inclusión enseñan al instante lo último que se vio y refrescan por detrás, sin pantalla vacía ni esqueleto. Nuevo `WorkspaceScreenMemory` (ligado al bridge; se vacía si este se recrea). En Reuniones, la primera carga ya no enseña «sin reuniones» mientras carga.
+- **Cambio de pantalla al instante**: quitado el fundido con zoom (0,2 s) al cambiar de pantalla en iPhone, iPad y Mac, y al cambiar de pestaña en el Planner (`.transition(.identity)`, sin `withAnimation` al elegir pantalla). Borrada `contentSwitchTransition`. Avisos, paneles e inspector siguen animándose.
+- **Planner más fluido (parte 3)**:
+  - El `PlannerWorkspaceViewModel` vive en `WorkspaceBridgeStores` (iPhone, iPad y Mac): al volver al Planner se ve al instante lo que había y la semana se refresca por detrás.
+  - Los eventos del calendario y los planes de sesión se guardan 30 s y se reutilizan entre semanas y pestañas (Semana, Mes, Secuencia, Evaluación). Se invalidan al volver al Planner, en `reloadAll`, al cerrar la hoja de hitos (también deslizando), al marcar festivos o al sincronizar exámenes.
+  - Al volver también se recargan los planes de SA, una carga de semana antigua no pisa a la nueva, y si el bridge se recrea el Planner se vuelve a cargar entero.
+
+- **Planner más fluido (parte 2)**:
+  - Al abrir el Planner ya no se cargan el Mes ni la previsión del curso: el Mes se carga al abrir su pestaña y la previsión no se pinta en el Planner.
+  - La rejilla de la semana agrupa las sesiones una sola vez y se recalcula dos veces por carga (antes cuatro, con un recorrido de todas las sesiones por casilla).
+  - Al volver al Planner, horario y festivos solo se recargan si han pasado más de 30 segundos. Cerrar el asistente de horario sigue recargando todo.
+  - Borrada la rejilla antigua sin uso (`PlannerWeekBoard` y sus tarjetas) de `PlannerWorkspaceIOS.swift`.
+
+- **Planner más fluido**:
+  - `PlannerWorkspaceIOS` y `PlannerToolbar` usan `kmpBridgeReference` en lugar de `@EnvironmentObject`: el Planner ya no se redibuja con cada cambio del Cuaderno, rúbricas o SyncLAN.
+  - `PlannerWorkspaceViewModel` deja de reenviar `weekRenderModel` (se reconstruye varias veces por carga); solo reenvía semana, año, franjas, festivos e hitos cuando cambian de verdad. La toolbar observa `weekBoard` directamente.
+  - `learningSituationSessionPlansAll()` pide las versiones de secuencia en una sola consulta y comprueba los planes fuera del hilo principal (`isCanonicalSessionPlanJSON`). La reparación de planes antiguos no cambia.
+
+### Data
+
+- Migración `45.sqm` aditiva: tablas `inclusion_tasks` e `inclusion_group_settings` con índices. Sin sincronización SyncLAN todavía.
+
+### Verification
+
+- Registro de lentitud: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. No se ha arrancado la app para ver los mensajes: necesita usarla a mano (cambiar de pantalla, hacer una copia).
+- Pantallas con datos al volver: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. La medición de pantallas se hizo leyendo el código, no ejecutando la app. Sin prueba manual en dispositivo.
+- Cambio de pantalla al instante: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. Sin prueba manual en dispositivo.
+- Planner más fluido (parte 3): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. Sin prueba manual en dispositivo.
+- Planner más fluido (parte 2): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator): BUILD SUCCEEDED (tras liberar espacio en disco; el primer intento falló al enlazar por `errno=28`).
+- Planner más fluido: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED (266 tests, 0 fallos, 4 omitidos), incluido `testCanonicalSessionPlanCheckMatchesRepairCriteria`. `xcodebuild build -scheme MiGestorKMPiOS -destination "generic/platform=iOS Simulator"` → BUILD SUCCEEDED. Sin medición con Instruments ni prueba manual en dispositivo.
+- `./gradlew :data:desktopTest`: 168 tests OK (incluye `UpgradePathRegressionTest` hasta la 45).
+- `./gradlew :shared:desktopTest`: OK, con los tests nuevos de `InclusionTasksUseCaseTest`. `:shared:test` no ejecutable en esta máquina (sin SDK de Android).
+- `./scripts/verify_apple_builds.sh`: iOS Simulator y macOS compilados.
+- Revisión visual en dispositivo o simulador: pendiente (sin runtimes de simulador instalados).
+
+### Changed
+
+- **Barra lateral de macOS más ligera**:
+  - Se quitan Evaluación, Mediciones y baremos, Sync LAN y Backups de la barra lateral.
+  - Siguen accesibles: Evaluación desde el inspector del Cuaderno, Rúbricas y la barra de herramientas; Sync LAN y Backups desde el menú Archivo (⌘⇧S, ⌘B) y Ajustes.
+  - Nuevo comando Navegación → Ir a Mediciones (⌘4), en macOS y en iPad con teclado, porque Mediciones no tenía otra entrada.
+  - Sin efecto en rendimiento: el detalle solo construye la pantalla seleccionada.
+  - Archivos: `MacApp/MacFeatureRegistry.swift`, `MacApp/MacRootView.swift`, `AppleShared/AppleAppCommands.swift`, `App/IPadWorkspaceShell.swift`.
+  - Verificación: `xcodebuild` de `MiGestorKMPMac` (macOS) y `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED. Prueba manual del menú y la barra: pendiente.
+
 ### Fixed
 
+- **Planner**: la app se cerraba al abrir el Planner en Mac. `learningSituationSessionPlansAll()` llamaba a KMP desde un `async let`, fuera del hilo principal; ahora encadena las dos consultas.
 - **Copias de seguridad bloqueadas por referencias huérfanas**:
   - La base activa acumula filas que apuntan a grupos, alumnos o situaciones ya borrados (3.423 en la base real del docente). `PRAGMA foreign_key_check` hacía fallar toda copia con «referencias rotas … another row available».
   - Ahora las huérfanas se cuentan y se registran como aviso (`NSLog`); la copia y la restauración siguen adelante. `integrity_check` sigue bloqueando bases dañadas.

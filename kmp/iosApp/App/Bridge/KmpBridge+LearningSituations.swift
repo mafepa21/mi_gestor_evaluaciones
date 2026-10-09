@@ -136,12 +136,50 @@ extension KmpBridge {
     }
 
     /// Bulk read used by Planner sequence enrichment to avoid one query per session plan.
+    /// Las versiones se piden una sola vez y la comprobación de cada plan (leer su JSON)
+    /// corre fuera del hilo principal: antes eran una consulta y una lectura por plan
+    /// en el hilo principal, cada vez que se abría el Planner.
     func learningSituationSessionPlansAll() async throws -> [LearningSituationSessionPlan] {
-        let plans = try await container.learningSituationsRepository.listAllSessionPlans()
+        try await learningSituationSessionPlans(matching: nil)
+    }
+
+    /// Solo los planes pedidos (p. ej. los de la semana del Planner). La tabla se lee
+    /// entera, que es rápido; lo lento es comprobar y reparar cada plan, y eso se hace
+    /// solo con estos.
+    func learningSituationSessionPlans(ids: Set<Int64>) async throws -> [LearningSituationSessionPlan] {
+        guard !ids.isEmpty else { return [] }
+        return try await learningSituationSessionPlans(matching: ids)
+    }
+
+    private func learningSituationSessionPlans(matching ids: Set<Int64>?) async throws -> [LearningSituationSessionPlan] {
+        // Seguidas y no con `async let`: Kotlin solo admite llamadas suspend desde el
+        // hilo principal, y un `async let` las lanza fuera de él (cierre de la app).
+        var plans = try await container.learningSituationsRepository.listAllSessionPlans()
+        if let ids {
+            plans = plans.filter { ids.contains($0.id) }
+        }
+        let versions = try await container.learningSituationsRepository.listAllSessionSequenceVersions()
+        let versionById = Dictionary(versions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let matchedVersions: [LearningSituationSessionSequenceVersion?] = plans.map { plan in
+            guard let version = versionById[plan.sequenceVersionId],
+                  version.learningSituationId == plan.learningSituationId else { return nil }
+            return version
+        }
+        let checks = zip(plans, matchedVersions).map { plan, version in
+            (developmentJson: plan.developmentJson, expectedHash: Self.trimmedVersionHash(version))
+        }
+        let canonicalFlags = await Task.detached(priority: .userInitiated) {
+            checks.map { Self.isCanonicalSessionPlanJSON($0.developmentJson, expectedHash: $0.expectedHash) }
+        }.value
+
         var repaired: [LearningSituationSessionPlan] = []
         repaired.reserveCapacity(plans.count)
-        for plan in plans {
-            repaired.append(try await repairPersistedSessionPlanIfNeeded(plan))
+        for (index, plan) in plans.enumerated() {
+            if canonicalFlags[index] {
+                repaired.append(plan)
+            } else {
+                repaired.append(try await repairSessionPlan(plan, version: matchedVersions[index]))
+            }
         }
         return repaired
     }
@@ -157,20 +195,39 @@ extension KmpBridge {
         let versions = try await container.learningSituationsRepository
             .listSessionSequenceVersions(learningSituationId: plan.learningSituationId)
         let version = versions.first { $0.id == plan.sequenceVersionId }
-        let payload = LearningSituationSessionDevelopmentPayload.decode(from: plan.developmentJson)
-        let expectedHash = version?.sha256.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !Self.isCanonicalSessionPlanJSON(
+            plan.developmentJson,
+            expectedHash: Self.trimmedVersionHash(version)
+        ) else { return plan }
+        return try await repairSessionPlan(plan, version: version)
+    }
+
+    private nonisolated static func trimmedVersionHash(_ version: LearningSituationSessionSequenceVersion?) -> String {
+        version?.sha256.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// `true` si el plan ya está guardado en el formato v2 completo y con el sello del
+    /// documento actual, así que no hace falta repararlo. Sin estado: puede correr fuera
+    /// del hilo principal.
+    nonisolated static func isCanonicalSessionPlanJSON(_ developmentJson: String, expectedHash: String) -> Bool {
+        let payload = LearningSituationSessionDevelopmentPayload.decode(from: developmentJson)
         let storedHash = payload?.sourceDocumentSHA256?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let hasSyntheticProjection = payload?.activities.contains { activity in
             let key = activity.activityKey.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
             return key.hasPrefix("LEGACY-") || key.hasPrefix("ACTIVIDAD ")
         } ?? false
-        let alreadyCanonical = payload?.schema == "session-plan-v2"
-            && plan.developmentJson.contains("\"prepares\":")
-            && plan.developmentJson.contains("\"consolidates\":")
+        return payload?.schema == "session-plan-v2"
+            && developmentJson.contains("\"prepares\":")
+            && developmentJson.contains("\"consolidates\":")
             && !hasSyntheticProjection
             && (expectedHash.isEmpty || storedHash == expectedHash)
-        guard !alreadyCanonical else { return plan }
+    }
 
+    private func repairSessionPlan(
+        _ plan: LearningSituationSessionPlan,
+        version: LearningSituationSessionSequenceVersion?
+    ) async throws -> LearningSituationSessionPlan {
+        let expectedHash = Self.trimmedVersionHash(version)
         if let sourceURL = await ensureLearningSituationSessionSequenceDocument(version: version),
            let repairedJSON = await canonicalDevelopmentJSON(
                from: sourceURL,

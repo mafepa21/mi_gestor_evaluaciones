@@ -46,7 +46,7 @@ extension PlannerWorkspaceViewModel {
         }
 
         do {
-            let allEvents = try await bridge.plannerAllCalendarEvents()
+            let allEvents = try await plannerCalendarEvents()
             let rangeStartMs = Int64(calendar.startOfDay(for: start).timeIntervalSince1970 * 1000)
             let endOfVisibleDay = calendar.date(
                 bySettingHour: 23,

@@ -84,6 +84,15 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var isApplyingSimulation = false
 
     weak var bridge: KmpBridge?
+    var lastReappearRefreshAt: Date = .distantPast
+    /// Copias de lecturas caras que varias pestañas repiten. Caducan a los 30 s y se
+    /// invalidan al escribir en el calendario.
+    var cachedCalendarEvents: [CalendarEvent]?
+    var cachedCalendarEventsAt: Date = .distantPast
+    var cachedSessionPlans: [LearningSituationSessionPlan]?
+    var cachedSessionPlansAt: Date = .distantPast
+    static let readCacheInterval: TimeInterval = 30
+    static let reappearRefreshInterval: TimeInterval = 30
     var autosaveTask: Task<Void, Never>?
     var isHydratingDraft = false
     var loadedAggregate: SessionJournalAggregate?
@@ -122,7 +131,22 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
 
     init() {
-        weekBoard.objectWillChange
+        // Solo se reenvían los datos de la semana que leen otras pestañas, y solo
+        // si cambian de verdad. `weekRenderModel` no se reenvía: se reconstruye
+        // varias veces por carga y antes redibujaba el Planner entero cada vez.
+        // Las vistas que lo pintan observan `weekBoard` directamente.
+        forwardWeekBoardChange(weekBoard.$week)
+        forwardWeekBoardChange(weekBoard.$year)
+        forwardWeekBoardChange(weekBoard.$visibleSlots)
+        forwardWeekBoardChange(weekBoard.$timeSlots)
+        forwardWeekBoardChange(weekBoard.$holidayDays)
+        forwardWeekBoardChange(weekBoard.$dayMilestones)
+    }
+
+    private func forwardWeekBoardChange<Value: Equatable>(_ publisher: Published<Value>.Publisher) {
+        publisher
+            .removeDuplicates()
+            .dropFirst()
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
     }
@@ -172,9 +196,18 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     /// Primera carga en dos fases: primero lo que pinta la semana (grupos, horario,
     /// sesiones) y se marca `isLoaded`; después, sin bloquear el grid, lo que solo
-    /// enriquece (previsión del curso, exámenes de 1º Bach, planes de SA, mes).
+    /// enriquece (exámenes de 1º Bach y planes de SA). El Mes se carga al abrir su
+    /// pestaña (`PlannerMonthCalendarView`) y la previsión no se pinta en el Planner.
     func bind(bridge: KmpBridge) async {
+        // El VM sobrevive a la vista: si el bridge se ha recreado (p. ej. tras
+        // restaurar una copia), se vuelve a cargar todo con el nuevo.
+        if isLoaded, self.bridge !== bridge {
+            isLoaded = false
+            invalidateReadCaches()
+        }
         guard !isLoaded, !isBinding else { return }
+        let perfStart = DispatchTime.now()
+        defer { PerfLog.finish("Planner: primera carga", start: perfStart) }
         isBinding = true
         defer { isBinding = false }
         self.bridge = bridge
@@ -182,19 +215,76 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         let currentIsoFallback = PlannerCalendar.currentIsoYearWeek
         week = Int(truncating: current.first ?? KotlinInt(value: Int32(currentIsoFallback.week)))
         year = Int(truncating: current.second ?? KotlinInt(value: Int32(currentIsoFallback.year)))
-        timeSlots = bridge.plannerTimeSlots()
-        await reloadPlannerGroups()
-        await reloadScheduleConfiguration(includeForecast: false)
+        // Cada paso se apunta aparte (desde 100 ms) para saber cuál frena la carga.
+        PerfLog.measureSync("Planner: paso franjas", thresholdMs: 100) {
+            timeSlots = bridge.plannerTimeSlots()
+        }
+        await PerfLog.measure("Planner: paso grupos", thresholdMs: 100) {
+            await reloadPlannerGroups()
+        }
+        await PerfLog.measure("Planner: paso horario", thresholdMs: 100) {
+            await reloadScheduleConfiguration(includeForecast: false)
+        }
         await reloadWeekSessions(keepSelection: false)
         isLoaded = true
+        lastReappearRefreshAt = Date()
+        PerfLog.finish("Planner: semana visible", start: perfStart)
 
-        await reloadForecast()
-        await syncExamsIfNeeded()
+        await PerfLog.measure("Planner: paso exámenes 1º Bach", thresholdMs: 100) {
+            await syncExamsIfNeeded()
+        }
+        await PerfLog.measure("Planner: paso planes de sesión", thresholdMs: 100) {
+            await reloadSessionPlans()
+        }
+    }
+
+    /// Al volver al Planner: horario y festivos solo si han pasado unos segundos.
+    /// Cerrar el asistente de horario sigue recargando todo (`reloadAll`).
+    /// Al volver al Planner se ve al instante lo que ya había; después se refresca
+    /// la semana por detrás (recoge lo guardado en el Diario o llegado por Sync LAN).
+    func refreshOnReappear() async {
+        guard isLoaded else { return }
+        // Fuera del Planner se pudo editar el calendario o una SA (o llegar por Sync LAN).
+        invalidateReadCaches()
+        if Date().timeIntervalSince(lastReappearRefreshAt) > Self.reappearRefreshInterval {
+            lastReappearRefreshAt = Date()
+            await reloadScheduleOnly()
+        }
+        await reloadWeekSessions(keepSelection: true)
         await reloadSessionPlans()
-        await reloadMonthData()
+    }
+
+    func invalidateReadCaches() {
+        cachedCalendarEvents = nil
+        cachedSessionPlans = nil
+    }
+
+    func plannerCalendarEvents() async throws -> [CalendarEvent] {
+        if let cachedCalendarEvents,
+           Date().timeIntervalSince(cachedCalendarEventsAt) < Self.readCacheInterval {
+            return cachedCalendarEvents
+        }
+        guard let bridge else { return [] }
+        let events = try await bridge.plannerAllCalendarEvents()
+        cachedCalendarEvents = events
+        cachedCalendarEventsAt = Date()
+        return events
+    }
+
+    func plannerSessionPlansAll() async throws -> [LearningSituationSessionPlan] {
+        if let cachedSessionPlans,
+           Date().timeIntervalSince(cachedSessionPlansAt) < Self.readCacheInterval {
+            return cachedSessionPlans
+        }
+        guard let bridge else { return [] }
+        let plans = try await bridge.learningSituationSessionPlansAll()
+        cachedSessionPlans = plans
+        cachedSessionPlansAt = Date()
+        return plans
     }
 
     func reloadAll(keepSelection: Bool = true) async {
+        invalidateReadCaches()
         // Grupos/planes y horario no dependen entre sí: se cargan a la vez.
         // Las sesiones van después porque necesitan el horario.
         async let bootstrap: Void = reloadPlannerBootstrap()
@@ -208,7 +298,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             await reloadScheduleOnly()
         }
         await reloadWeekSessions(keepSelection: keepSelection)
-        await reloadMonthData()
+        // El Mes se recarga solo si está a la vista; al abrirlo se carga de nuevo.
+        if activeSection == .month {
+            await reloadMonthData()
+        }
     }
 
     func reloadScheduleOnly() async {
@@ -251,6 +344,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         guard UserDefaults.standard.string(forKey: defaultsKey) != syncKey else { return }
         do {
             _ = try await SchoolCalendarPreset2026_2027.sync1BachExams(bridge: bridge, groups: groups)
+            cachedCalendarEvents = nil
             UserDefaults.standard.set(syncKey, forKey: defaultsKey)
             // Puede haber creado o borrado exámenes: refrescar los hitos de la semana.
             await reloadHolidays()
@@ -260,33 +354,57 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
     }
 
-    private func reloadSessionPlans() async {
+    /// Solo los planes de las sesiones de la semana: comprobar y reparar todos los del
+    /// curso tardaba hasta 14 s al abrir. Los ya cargados se conservan; con
+    /// `onlyMissing` solo se piden los que faltan (al cambiar de semana).
+    private func reloadSessionPlans(onlyMissing: Bool = false) async {
         guard let bridge else { return }
+        var ids = Set(sessions.compactMap { $0.learningSituationSessionPlanId?.int64Value })
+        if onlyMissing {
+            ids.subtract(sessionPlansById.keys)
+        }
+        guard !ids.isEmpty else { return }
         do {
-            let plans = try await bridge.learningSituationSessionPlansAll()
-            sessionPlansById = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
+            let plans = try await PerfLog.measure("Planner: paso reparar planes", detail: "\(ids.count) planes", thresholdMs: 100) {
+                try await bridge.learningSituationSessionPlans(ids: ids)
+            }
+            for plan in plans {
+                sessionPlansById[plan.id] = plan
+            }
         } catch {
             // Los metadatos enriquecidos son opcionales: la sesión sigue siendo
             // utilizable con los campos estructurados del PlanningSession.
-            sessionPlansById = [:]
         }
     }
 
 
     func reloadWeekSessions(keepSelection: Bool = true) async {
         guard let bridge else { return }
+        let requestedWeek = week
+        let requestedYear = year
+        let perfStart = DispatchTime.now()
+        defer { PerfLog.finish("Planner: carga de semana", start: perfStart, detail: "semana \(requestedWeek)/\(requestedYear)") }
         do {
-            try await sessionStore.reload(bridge: bridge, week: week, year: year)
+            try await PerfLog.measure("Planner: paso sesiones de la semana", thresholdMs: 100) {
+                try await sessionStore.reload(bridge: bridge, week: week, year: year)
+            }
         } catch {
             bulkSummary = "No se pudo cargar la semana. Se mantienen las sesiones que ya ves."
             return
         }
+        // Si mientras tanto se cambió de semana, esta carga ya no vale: la nueva la pinta.
+        guard week == requestedWeek, year == requestedYear else { return }
         sessions = sessionStore.sessions
         rebuildVisiblePlannerStructure()
         // Pintar la semana ya; diarios y festivos la completan después.
         rebuildWeekRenderModel()
-        await reloadJournalSummaries()
-        await reloadHolidays()
+        // La rejilla se recalcula una vez más, al final, con diarios y festivos.
+        await PerfLog.measure("Planner: paso diarios", thresholdMs: 100) {
+            await reloadJournalSummaries(rebuildsWeek: false)
+        }
+        await PerfLog.measure("Planner: paso festivos", thresholdMs: 100) {
+            await reloadHolidays(rebuildsWeek: false)
+        }
         rebuildWeekRenderModel()
         applySearch()
 
@@ -301,16 +419,22 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         } else {
             clearSelection()
         }
+        // En la primera carga los planes llegan después, sin frenar la semana.
+        if isLoaded {
+            await reloadSessionPlans(onlyMissing: true)
+        }
     }
 
-    func reloadJournalSummaries() async {
+    func reloadJournalSummaries(rebuildsWeek: Bool = true) async {
         guard let bridge else { return }
         let loadedJournals = await journalStore.reloadSummaries(bridge: bridge, sessionIds: sessions.map(\.id))
         journalSummaryBySessionId = journalStore.journalSummaryBySessionId
         if !loadedJournals {
             bulkSummary = "No se pudieron cargar los diarios de la semana. Se mantienen los que ya ves."
         }
-        rebuildWeekRenderModel()
+        if rebuildsWeek {
+            rebuildWeekRenderModel()
+        }
     }
 
     private func reloadSelectedJournal() async {

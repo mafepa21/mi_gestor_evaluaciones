@@ -22,6 +22,9 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var manifestJSONByFormInstanceId: [String: Data] = [:]
     @State private var linksByFormInstanceId: [String: [WebPublishedStudentLink]] = [:]
     @State private var loading = false
+    /// El detalle de cada tarea (para importar) llega después de pintar la lista.
+    @State private var detailsLoading = false
+    @State private var reloadGeneration = 0
     @State private var errorMessage: String?
     @State private var importSummary: String?
     @State private var importing = false
@@ -67,7 +70,10 @@ struct WebSubmissionsWorkspaceView: View {
             }
             await reload()
         }
-        .task(id: creationClassId) {
+        // Revisar las columnas publicables es una consulta por columna: solo se hace
+        // al abrir la hoja de publicar, no al entrar en la pantalla.
+        .task(id: showingPublish ? creationClassId : nil) {
+            guard showingPublish else { return }
             await reloadCreationInstruments()
         }
         .sheet(isPresented: $showingPublish) {
@@ -202,7 +208,13 @@ struct WebSubmissionsWorkspaceView: View {
             }
             .pickerStyle(.menu)
 
-            if !tasks.isEmpty || !manifests.isEmpty {
+            if detailsLoading && manifests.isEmpty && !tasks.isEmpty {
+                Button {} label: {
+                    Label("Preparando importación…", systemImage: "tray.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
+                .disabled(true)
+            } else if !tasks.isEmpty || !manifests.isEmpty {
                 WebSubmissionBatchImportButton(
                     taskInfoByFormInstanceId: Dictionary(uniqueKeysWithValues: tasks.map { ($0.formInstanceId, $0) }),
                     manifestsByFormInstanceId: manifests,
@@ -217,7 +229,7 @@ struct WebSubmissionsWorkspaceView: View {
                     }
                 )
                 .buttonStyle(.bordered)
-                .disabled(importing || manifests.isEmpty)
+                .disabled(importing || detailsLoading || manifests.isEmpty)
             }
 
             Button {
@@ -468,7 +480,10 @@ struct WebSubmissionsWorkspaceView: View {
         HStack(spacing: 8) {
             if task.status == .active && !task.isArchived {
                 Button {
-                    emailTask = task
+                    Task {
+                        await loadLinks(for: task)
+                        emailTask = task
+                    }
                 } label: {
                     Label("Enviar enlaces", systemImage: "envelope")
                 }
@@ -527,41 +542,75 @@ struct WebSubmissionsWorkspaceView: View {
         bridge.classes.first(where: { $0.id == creationClassId })?.name ?? "Grupo"
     }
 
+    /// Primero la lista (pocas consultas) y se pinta; después, por detrás, el detalle
+    /// de cada tarea, que solo hace falta para importar. Si llega otra recarga
+    /// mientras tanto, esta se descarta.
     private func reload() async {
+        reloadGeneration += 1
+        let generation = reloadGeneration
         loading = true
-        defer { loading = false }
-        tasks = await bridge.listWebSubmissionTasks()
+        let loadedTasks = await PerfLog.measure("Entregas web: lista") {
+            await bridge.listWebSubmissionTasks()
+        }
+        guard generation == reloadGeneration else { return }
+        tasks = loadedTasks
         selectedTaskIDs.formIntersection(Set(tasks.map(\.id)))
+        loading = false
 
+        detailsLoading = true
+        defer { if generation == reloadGeneration { detailsLoading = false } }
         var loadedSnapshots: [String: WebSubmissionSnapshot] = [:]
         var loadedManifests: [String: WebFormManifest] = [:]
         var loadedManifestJSON: [String: Data] = [:]
-        var loadedLinks: [String: [WebPublishedStudentLink]] = [:]
-        for classId in Set(tasks.map(\.classId)) {
-            guard let instances = try? await bridge.listWebFormInstances(classId: classId) else { continue }
-            for instance in instances {
-                let rawManifest = Data(instance.manifestJson.utf8)
-                guard let snapshot = await bridge.loadWebSubmissionSnapshot(
-                    formInstanceId: instance.formInstanceId
-                ),
-                let manifest = try? JSONDecoder().decode(
-                    WebFormManifest.self,
-                    from: rawManifest
-                ) else { continue }
-                loadedSnapshots[instance.formInstanceId] = snapshot
-                loadedManifests[instance.formInstanceId] = manifest
-                loadedManifestJSON[instance.formInstanceId] = rawManifest
-                loadedLinks[instance.formInstanceId] = WebSubmissionPrivateLinksStore.readLinks(
-                    formInstanceId: instance.formInstanceId,
-                    snapshot: snapshot,
-                    students: bridge.allStudents
-                )
+        await PerfLog.measure("Entregas web: detalle", detail: "\(loadedTasks.count) tareas") {
+            for classId in Set(loadedTasks.map(\.classId)) {
+                guard let instances = try? await bridge.listWebFormInstances(classId: classId) else { continue }
+                for instance in instances {
+                    let rawManifest = Data(instance.manifestJson.utf8)
+                    guard let snapshot = await bridge.loadWebSubmissionSnapshot(
+                        formInstanceId: instance.formInstanceId
+                    ),
+                    let manifest = try? JSONDecoder().decode(
+                        WebFormManifest.self,
+                        from: rawManifest
+                    ) else { continue }
+                    loadedSnapshots[instance.formInstanceId] = snapshot
+                    loadedManifests[instance.formInstanceId] = manifest
+                    loadedManifestJSON[instance.formInstanceId] = rawManifest
+                }
             }
         }
+        guard generation == reloadGeneration else { return }
         snapshots = loadedSnapshots
         manifests = loadedManifests
         manifestJSONByFormInstanceId = loadedManifestJSON
-        linksByFormInstanceId = loadedLinks
+        // Los enlaces se vuelven a leer al abrir el correo de cada tarea.
+        linksByFormInstanceId = [:]
+    }
+
+    /// Lee el archivo de enlaces de una tarea (en Documentos, que puede estar en
+    /// iCloud) fuera del hilo de la pantalla, justo antes de abrir su correo.
+    private func loadLinks(for task: WebSubmissionTaskInfo) async {
+        let formInstanceId = task.formInstanceId
+        if linksByFormInstanceId[formInstanceId] != nil { return }
+        let snapshot: WebSubmissionSnapshot?
+        if let cached = snapshots[formInstanceId] {
+            snapshot = cached
+        } else {
+            snapshot = await bridge.loadWebSubmissionSnapshot(formInstanceId: formInstanceId)
+        }
+        guard let snapshot else { return }
+        let students = bridge.allStudents
+        let links = await PerfLog.measure("Entregas web: enlaces") {
+            await Task.detached(priority: .userInitiated) {
+                WebSubmissionPrivateLinksStore.readLinks(
+                    formInstanceId: formInstanceId,
+                    snapshot: snapshot,
+                    students: students
+                )
+            }.value
+        }
+        linksByFormInstanceId[formInstanceId] = links
     }
 
     private func reloadCreationInstruments() async {
@@ -569,7 +618,9 @@ struct WebSubmissionsWorkspaceView: View {
             creationInstruments = []
             return
         }
-        creationInstruments = await bridge.listPublishableWebForms(classId: classId)
+        creationInstruments = await PerfLog.measure("Entregas web: instrumentos publicables") {
+            await bridge.listPublishableWebForms(classId: classId)
+        }
     }
 
     private func publish(

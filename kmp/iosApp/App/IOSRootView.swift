@@ -80,6 +80,7 @@ struct IOSRootView: View {
                     dashboardStore: dashboardStore,
                     studentsBridgeStore: studentsBridgeStore,
                     attendanceStore: attendanceStore,
+                    plannerViewModel: workspaceStores.planner,
                     plannerContext: plannerContext,
                     activeSheet: $activeSheet,
                     showingRubricBuilder: $showingRubricBuilder,
@@ -242,9 +243,9 @@ struct IOSRootView: View {
     private func selectModule(_ module: AppWorkspaceModule) {
         let module = normalizedModule(module)
         guard activeModule != module else { return }
-        withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.22))) {
-            activeModule = module
-        }
+        // Cambio de pantalla al instante, sin animación (antes un fundido de 0,22 s).
+        PerfLog.markScreenSwitch(to: "\(module)")
+        activeModule = module
     }
 
     func openModule(_ module: AppWorkspaceModule, classId: Int64? = nil, studentId: Int64? = nil) {
@@ -255,9 +256,9 @@ struct IOSRootView: View {
             SettingsNavigationStore.shared.request(.courses)
         }
         let module = normalizedModule(module)
-        withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.22))) {
-            activeModule = module
-        }
+        // Cambio de pantalla al instante, sin animación (antes un fundido de 0,22 s).
+        PerfLog.markScreenSwitch(to: "\(module)")
+        activeModule = module
         if classId != nil || studentId != nil {
             let targetClassId = classId ?? selectionStore.selectedClassId
             let targetStudentId = studentId ?? selectionStore.selectedStudentId
@@ -991,7 +992,7 @@ private enum IOSWorkspaceSidebarSection: String, CaseIterable, Identifiable {
         case .evaluation:
             return [.notebook, .attendance, .evaluationHub, .rubrics, .webSubmissions, .peTests, .peRubrics]
         case .planning:
-            return [.planner, .diary, .situations, .meetings, .students, .peSessions]
+            return [.planner, .diary, .situations, .meetings, .inclusion, .students, .peSessions]
         case .system:
             return [.reports, .library, .peIncidents, .peMaterial, .peTournaments, .settings, .backups]
         }
@@ -1017,6 +1018,8 @@ struct IOSWorkspaceContent: View {
     @ObservedObject var dashboardStore: DashboardBridgeStore
     @ObservedObject var studentsBridgeStore: StudentsBridgeStore
     @ObservedObject var attendanceStore: AttendanceBridgeStore
+    /// Sin observar: solo se pasa al Planner, que lo observa él.
+    let plannerViewModel: PlannerWorkspaceViewModel
     var plannerContext: PlannerNavigationContext
     @Binding var activeSheet: ActiveWorkspaceSheet?
     @Binding var showingRubricBuilder: Bool
@@ -1028,7 +1031,8 @@ struct IOSWorkspaceContent: View {
     var body: some View {
         moduleContent
             .id(activeModule)
-            .transition(uiFeatureFlags.contentSwitchTransition)
+            // `.identity`: sin fundido aunque el cambio llegue dentro de una animación.
+            .transition(.identity)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environmentObject(layoutState)
     }
@@ -1037,7 +1041,7 @@ struct IOSWorkspaceContent: View {
     private var moduleContent: some View {
         switch activeModule {
         case .dashboard, .courses, .students, .teacherRadar, .notebook,
-             .attendance, .planner, .situations, .diary, .meetings, .evaluationHub:
+             .attendance, .planner, .situations, .diary, .meetings, .inclusion, .evaluationHub:
             academicContent
         default:
             evaluationAndPEContent
@@ -1099,6 +1103,7 @@ struct IOSWorkspaceContent: View {
             )
         case .planner:
             PlannerWorkspaceIOS(
+                viewModel: plannerViewModel,
                 context: resolvedPlannerContext,
                 onOpenDiary: { ctx in onOpenModule(.diary, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
                 onNavigationContextChange: onUpdatePlannerContext
@@ -1112,6 +1117,7 @@ struct IOSWorkspaceContent: View {
             .environmentObject(bridge)
         case .diary:
             DiaryWorkspaceView(
+                vm: plannerViewModel,
                 selectedClassId: $selectionStore.selectedClassId,
                 navigationContext: resolvedPlannerContext,
                 onOpenModule: onOpenModule,
@@ -1129,6 +1135,8 @@ struct IOSWorkspaceContent: View {
         case .meetings:
             MeetingsWorkspaceView(bridge: bridge)
                 .environmentObject(bridge)
+        case .inclusion:
+            InclusionTrackerView(bridge: bridge, selectedClassId: $selectionStore.selectedClassId)
         default:
             EmptyView()
         }

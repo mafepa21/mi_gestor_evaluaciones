@@ -506,6 +506,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
     case situations
     case diary
     case meetings
+    case inclusion
     case evaluationHub
     case webSubmissions
     case rubrics
@@ -534,6 +535,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .situations: return "Situaciones"
         case .diary: return "Diario de aula"
         case .meetings: return "Reuniones"
+        case .inclusion: return "Inclusión"
         case .evaluationHub: return "Evaluación"
         case .webSubmissions: return "Entregas web"
         case .rubrics: return "Rúbricas"
@@ -562,6 +564,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .situations: return "Programación curricular"
         case .diary: return "Trazabilidad de sesión"
         case .meetings: return "Actas de centro y acuerdos"
+        case .inclusion: return "Plazos del manual"
         case .evaluationHub: return "Instrumentos y calendario"
         case .webSubmissions: return "Publicar e importar desde el Mac"
         case .rubrics: return "Banco de rúbricas"
@@ -590,6 +593,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .situations: return "doc.text.magnifyingglass"
         case .diary: return "doc.text.fill"
         case .meetings: return "person.3.fill"
+        case .inclusion: return "person.2.badge.gearshape"
         case .evaluationHub: return "chart.bar.doc.horizontal"
         case .webSubmissions: return "paperplane.circle.fill"
         case .rubrics: return "checklist"
@@ -610,7 +614,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard, .courses, .students, .teacherRadar, .notebook:
             return .academic
-        case .attendance, .planner, .situations, .diary, .meetings:
+        case .attendance, .planner, .situations, .diary, .meetings, .inclusion:
             return .operations
         case .evaluationHub, .webSubmissions, .rubrics, .reports, .library:
             return .evaluation
@@ -809,12 +813,8 @@ struct AppWorkspaceShell: View {
                     }
                     activeWorkspace
                         .id(activeModule)
-                        .transition(
-                            .asymmetric(
-                                insertion: .opacity.animation(.easeOut(duration: 0.15)),
-                                removal: .opacity.animation(.easeIn(duration: 0.10))
-                            )
-                        )
+                        // Sin fundido: la pantalla nueva aparece al instante.
+                        .transition(.identity)
                         .environmentObject(layoutState)
                 }
                 .background(appPageBackground(for: colorScheme).ignoresSafeArea())
@@ -1051,6 +1051,8 @@ struct AppWorkspaceShell: View {
             activeModule = .attendance
         case .planner:
             activeModule = .planner
+        case .physicalTests:
+            activeModule = .peTests
         }
     }
 

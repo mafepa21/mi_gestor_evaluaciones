@@ -35,6 +35,7 @@ struct AppleAppRootView: View {
             .environment(\.appleCommandCenterState, commandCenterState)
             .preferredColorScheme(themeMode.colorSchemeOverride)
             .task {
+                MainThreadHangWatchdog.startIfDebug()
                 await bridge.bootstrap()
                 bridge.onAppDidBecomeActive()
                 if lifecycleObserver == nil {
@@ -52,6 +53,7 @@ struct AppleAppRootView: View {
             .environment(\.appleCommandCenterState, commandCenterState)
             .preferredColorScheme(themeMode.colorSchemeOverride)
             .task {
+                MainThreadHangWatchdog.startIfDebug()
                 rescueService.checkForPendingRescue()
                 await bridge.bootstrap()
                 bridge.onAppDidBecomeActive()

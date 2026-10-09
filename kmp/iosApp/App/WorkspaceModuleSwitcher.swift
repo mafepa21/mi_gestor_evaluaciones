@@ -59,6 +59,7 @@ extension AppWorkspaceShell {
             )
         case .planner:
             PlannerWorkspaceIOS(
+                viewModel: workspaceStores.planner,
                 context: resolvedPlannerContext,
                 onOpenDiary: { context in
                     openDiary(context: context)
@@ -76,6 +77,7 @@ extension AppWorkspaceShell {
             .environmentObject(bridge)
         case .diary:
             DiaryWorkspaceView(
+                vm: workspaceStores.planner,
                 selectedClassId: $selectedClassId,
                 navigationContext: resolvedPlannerContext,
                 onOpenModule: open(module:classId:studentId:),
@@ -90,6 +92,8 @@ extension AppWorkspaceShell {
         case .meetings:
             MeetingsWorkspaceView(bridge: bridge)
                 .environmentObject(bridge)
+        case .inclusion:
+            InclusionTrackerView(bridge: bridge, selectedClassId: $selectedClassId)
         case .evaluationHub:
             EvaluationHubView(
                 selectedClassId: $selectedClassId,

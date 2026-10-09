@@ -1,0 +1,46 @@
+# Registro de lentitud
+
+La app apunta lo que tarda demasiado con `PerfLog` (`kmp/iosApp/AppleShared/PerfLog.swift`). Solo se apunta lo que supera el límite, así que si no hay nada lento no sale nada.
+
+## Qué se apunta
+
+| Mensaje | Cuándo | Límite |
+|---|---|---|
+| `Lento: cambio de pantalla a <pantalla> N ms` | Al elegir otra pantalla (iPhone, iPad, Mac) | 150 ms |
+| `Lento: Planner: primera carga N ms` | Primera vez que se abre el Planner | 150 ms |
+| `Lento: Planner: carga de semana N ms semana S/A` | Cada carga de semana del Planner | 150 ms |
+| `Lento: Planner: semana visible N ms` | Primera carga, hasta que la semana ya se ve | 150 ms |
+| `Lento: Planner: paso <nombre> N ms` | Cada paso de la carga (franjas, grupos, horario, sesiones de la semana, diarios, festivos, exámenes 1º Bach, planes de sesión, reparar planes) | 100 ms |
+| `Lento: Cuaderno: cambio de grupo N ms` | Desde elegir otro grupo hasta que llegan sus datos (incluye una espera fija de 150 ms) | 400 ms |
+| `Lento: Entregas web: lista N ms` | Al entrar en Entregas web, hasta tener la lista | 150 ms |
+| `Lento: Entregas web: detalle N ms K tareas` | Detalle de las tareas para importar (por detrás, tras pintar la lista) | 150 ms |
+| `Lento: Entregas web: enlaces N ms` | Leer los enlaces del alumnado al pulsar «Enviar enlaces» | 150 ms |
+| `Lento: Entregas web: instrumentos publicables N ms` | Al abrir la hoja «Nueva tarea web» | 150 ms |
+| `Lento: Cuaderno: preparar columnas N ms` | Construir el dibujo de columnas (solo si no estaba ya preparado) | 30 ms |
+| `Lento: Cuaderno: navegación de celdas N ms` | Cálculo que se rehace en cada dibujo de la tabla | 30 ms |
+| `Lento: Cuaderno: situaciones de aprendizaje N ms` | Leer las SA del grupo (por detrás) | 30 ms |
+| `Lento: Cuaderno: barra de herramientas N ms` | Ajustar la barra de herramientas | 30 ms |
+| `Lento: Copia de seguridad N ms` | Cada copia creada | 150 ms |
+| `Lento: Sync LAN N ms <motivo>` | Cada sincronización | 1 s |
+| `Pantalla congelada N ms` | El hilo de la pantalla no responde (solo versiones Debug) | 250 ms |
+
+## Cómo verlo
+
+- **Xcode:** en la consola, escribe `rendimiento` o `Lento` en el filtro.
+- **App Consola de macOS:** elige el dispositivo y busca `subsystem:com.migestor.app category:rendimiento`.
+- **Terminal (Mac):**
+
+```bash
+log stream --level info --predicate 'subsystem == "com.migestor.app" AND category == "rendimiento"'
+```
+
+- **Instruments:** las mismas operaciones salen como intervalos (`os_signpost`) en la plantilla *Logging* o *Time Profiler*.
+
+## Añadir una medida
+
+```swift
+let start = DispatchTime.now()
+defer { PerfLog.finish("Nombre corto", start: start) }
+```
+
+O, para un bloque: `try await PerfLog.measure("Nombre corto") { ... }`.

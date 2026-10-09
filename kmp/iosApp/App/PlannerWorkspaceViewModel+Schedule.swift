@@ -245,7 +245,9 @@ extension PlannerWorkspaceViewModel {
         forecastRows = scheduleStore.forecastRows
     }
 
-    func reloadScheduleConfiguration(includeForecast: Bool = true) async {
+    /// La previsión del curso no la pinta ninguna pestaña del Planner (Ajustes de
+    /// horario carga la suya): solo se pide cuando alguien lo indica.
+    func reloadScheduleConfiguration(includeForecast: Bool = false) async {
         guard let bridge else { return }
         scheduleFormGroupId = await scheduleStore.reload(bridge: bridge, groups: groups, scheduleFormGroupId: scheduleFormGroupId)
         teacherSchedule = scheduleStore.teacherSchedule

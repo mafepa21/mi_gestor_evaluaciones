@@ -231,13 +231,13 @@ struct MacRootView: View {
         if !usesShellInspector(selectedFeature) || !shouldRenderShellInspector {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
-                .transition(uiFeatureFlags.contentSwitchTransition)
+                .transition(.identity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
         } else {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
-                .transition(uiFeatureFlags.contentSwitchTransition)
+                .transition(.identity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
                 .inspector(isPresented: $isInspectorVisible) {
@@ -466,9 +466,9 @@ struct MacRootView: View {
     ) {
         let feature = normalizedFeature(feature)
         guard selectedFeature != feature || session.selectedFeature != feature else { return }
-        withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.2))) {
-            selectedFeature = feature
-        }
+        // Cambio de pantalla al instante, sin animación (antes un fundido de 0,2 s).
+        PerfLog.markScreenSwitch(to: "\(feature)")
+        selectedFeature = feature
         isInspectorVisible = storedInspectorVisible
         columnVisibility = .all
         guard propagateToSession else { return }
@@ -574,6 +574,7 @@ struct MacRootView: View {
         case .planner:
             PlannerMacLayout(
                 bridge: session.bridge,
+                viewModel: workspaceStores.planner,
                 selectedSessionId: $selectedPlannerSessionId,
                 inspectorSession: $plannerInspectorSession,
                 onToolbarActionsChange: setPlannerToolbarActions,
@@ -581,6 +582,7 @@ struct MacRootView: View {
             )
         case .diary:
             DiaryWorkspaceView(
+                vm: workspaceStores.planner,
                 selectedClassId: studentSelection.selectedClassBinding,
                 navigationContext: plannerDiaryContext,
                 onOpenModule: open(module:classId:studentId:),
@@ -612,6 +614,11 @@ struct MacRootView: View {
         case .meetings:
             MacMeetingsView(bridge: session.bridge)
                 .environmentObject(session.bridge)
+        case .inclusion:
+            InclusionTrackerView(
+                bridge: session.bridge,
+                selectedClassId: studentSelection.selectedClassBinding
+            )
         case .sync:
             MacSyncView(bridge: session.bridge, commandCenter: commandCenter)
         case .backups:
@@ -1275,6 +1282,7 @@ struct MacRootView: View {
         case .situations: return .indigo
         case .webSubmissions: return .mint
         case .meetings: return .brown
+        case .inclusion: return .teal
         case .students: return .blue
         case .evaluationHub: return .orange
         case .rubrics: return .teal
@@ -1523,6 +1531,9 @@ struct MacRootView: View {
             selectFeature(.attendance)
         case .planner:
             selectFeature(.planner)
+        case .physicalTests:
+            // Mediciones ya no está en la barra lateral: se abre desde el menú.
+            selectFeature(.physicalTests)
         }
     }
 
@@ -1615,6 +1626,8 @@ struct MacRootView: View {
             selectFeature(.diary)
         case .evaluationHub:
             selectFeature(.evaluationHub)
+        case .inclusion:
+            selectFeature(.inclusion)
         default:
             showBanner(
                 "\(module.title) todavía no está disponible en la shell Mac.",

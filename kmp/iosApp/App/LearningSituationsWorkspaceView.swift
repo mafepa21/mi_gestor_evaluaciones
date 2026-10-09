@@ -729,6 +729,7 @@ struct LearningSituationsWorkspaceView: View {
             guard abs(containerWidth - newWidth) > 1 else { return }
             containerWidth = newWidth
         }
+        .onAppear(perform: restoreRememberedList)
         .task { await reload() }
         .appOnChange(of: selectedSituationId) { _ in
             Task { await reloadDetail() }
@@ -910,6 +911,11 @@ struct LearningSituationsWorkspaceView: View {
             let updatedClassIds = Dictionary(grouping: links, by: \.learningSituationId)
                 .mapValues { Set($0.map(\.classId)) }
             classIdsBySituation = updatedClassIds
+            WorkspaceScreenMemory.shared.store(
+                RememberedSituationList(situations: situations, classIdsBySituation: updatedClassIds),
+                Self.listMemoryKey,
+                bridge: bridge
+            )
             listErrorMessage = nil
             // Se elige entre las que la lista enseña (las archivadas van ocultas por defecto).
             if selectedSituationId == nil { selectedSituationId = filteredSituations.first?.id }
@@ -918,6 +924,24 @@ struct LearningSituationsWorkspaceView: View {
             // Aviso en línea: se mantiene la lista que ya se ve.
             listErrorMessage = "No se pudo actualizar la lista. Se mantiene lo que ya ves."
         }
+    }
+
+    static let listMemoryKey = "learningSituations.list"
+
+    struct RememberedSituationList {
+        let situations: [LearningSituation]
+        let classIdsBySituation: [Int64: Set<Int64>]
+    }
+
+    /// Al volver a la pantalla se enseña la lista anterior al instante (sin esqueleto);
+    /// `reload()` la refresca por detrás.
+    func restoreRememberedList() {
+        guard situations.isEmpty,
+              let remembered: RememberedSituationList = WorkspaceScreenMemory.shared.value(Self.listMemoryKey, bridge: bridge)
+        else { return }
+        situations = remembered.situations
+        classIdsBySituation = remembered.classIdsBySituation
+        isLoadingList = false
     }
 
     @MainActor

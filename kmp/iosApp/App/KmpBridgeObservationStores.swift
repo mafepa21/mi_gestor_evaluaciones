@@ -304,3 +304,44 @@ extension EnvironmentValues {
         set { self[KmpBridgeReferenceKey.self] = newValue }
     }
 }
+
+/// Lo último que enseñó cada pantalla que guarda sus datos en `@State`. Al cambiar
+/// de pantalla, la vista se destruye (`.id(activeModule)`); al volver arranca con
+/// esto y refresca por detrás, sin pantalla vacía ni ruedita. Va ligada a una
+/// instancia de bridge (se vacía si cambia). Tras borrar o restaurar datos la app
+/// pide reiniciar, así que no se llegan a ver datos borrados.
+/// Supone una sola ventana por bridge: el store de Inclusión es compartido.
+@MainActor
+final class WorkspaceScreenMemory {
+    static let shared = WorkspaceScreenMemory()
+
+    private weak var owner: KmpBridge?
+    private var values: [String: Any] = [:]
+    private var inclusionStore: InclusionTrackerStore?
+
+    private func adopt(_ bridge: KmpBridge) {
+        guard owner !== bridge else { return }
+        owner = bridge
+        values = [:]
+        inclusionStore = nil
+    }
+
+    func value<T>(_ key: String, bridge: KmpBridge) -> T? {
+        adopt(bridge)
+        return values[key] as? T
+    }
+
+    func store<T>(_ value: T, _ key: String, bridge: KmpBridge) {
+        adopt(bridge)
+        values[key] = value
+    }
+
+    /// El store de Inclusión ya conserva su tablero si el grupo no cambia.
+    func inclusion(bridge: KmpBridge) -> InclusionTrackerStore {
+        adopt(bridge)
+        if let inclusionStore { return inclusionStore }
+        let created = InclusionTrackerStore()
+        inclusionStore = created
+        return created
+    }
+}

@@ -24,6 +24,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Pantallas con datos al volver**: Situaciones de aprendizaje, Reuniones e Inclusión enseñan al instante lo último que se vio y refrescan por detrás, sin pantalla vacía ni esqueleto. Nuevo `WorkspaceScreenMemory` (ligado al bridge; se vacía si este se recrea). En Reuniones, la primera carga ya no enseña «sin reuniones» mientras carga.
 - **Cambio de pantalla al instante**: quitado el fundido con zoom (0,2 s) al cambiar de pantalla en iPhone, iPad y Mac, y al cambiar de pestaña en el Planner (`.transition(.identity)`, sin `withAnimation` al elegir pantalla). Borrada `contentSwitchTransition`. Avisos, paneles e inspector siguen animándose.
 - **Planner más fluido (parte 3)**:
   - El `PlannerWorkspaceViewModel` vive en `WorkspaceBridgeStores` (iPhone, iPad y Mac): al volver al Planner se ve al instante lo que había y la semana se refresca por detrás.
@@ -47,6 +48,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Pantallas con datos al volver: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. La medición de pantallas se hizo leyendo el código, no ejecutando la app. Sin prueba manual en dispositivo.
 - Cambio de pantalla al instante: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. Sin prueba manual en dispositivo.
 - Planner más fluido (parte 3): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. Sin prueba manual en dispositivo.
 - Planner más fluido (parte 2): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator): BUILD SUCCEEDED (tras liberar espacio en disco; el primer intento falló al enlazar por `errno=28`).

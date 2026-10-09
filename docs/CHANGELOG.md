@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Entregas web: la lista aparece sin esperar a cargarlo todo**: primero se pinta la lista de tareas y después, por detrás, el detalle que necesita la importación (el botón dice «Preparando importación…» mientras tanto). Los enlaces del alumnado se leen fuera del hilo de la pantalla al pulsar «Enviar enlaces», y los instrumentos publicables al abrir «Nueva tarea web». Medidas nuevas en el registro de lentitud.
 - **Planner: primera carga más rápida**: solo se comprueban y reparan los planes de sesión de la semana visible (antes, los de todo el curso, hasta 14 s al abrir); los de otra semana se piden al ir a ella. El Diario usa el mismo modelo que el Planner, así que la carga ya no se hace dos veces. Medidas por pasos de la carga en el registro de lentitud.
 
 ### Added

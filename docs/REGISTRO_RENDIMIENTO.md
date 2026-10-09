@@ -9,7 +9,7 @@ La app apunta lo que tarda demasiado con `PerfLog` (`kmp/iosApp/AppleShared/Perf
 | `Lento: cambio de pantalla a <pantalla> N ms` | Al elegir otra pantalla (iPhone, iPad, Mac) | 150 ms |
 | `Lento: Planner: primera carga N ms` | Primera vez que se abre el Planner | 150 ms |
 | `Lento: Planner: carga de semana N ms semana S/A` | Cada carga de semana del Planner | 150 ms |
-| `Lento: Cuaderno: cambio de grupo N ms` | Desde elegir grupo hasta que llegan sus datos | 150 ms |
+| `Lento: Cuaderno: cambio de grupo N ms` | Desde elegir otro grupo hasta que llegan sus datos (incluye una espera fija de 150 ms) | 400 ms |
 | `Lento: Copia de seguridad N ms` | Cada copia creada | 150 ms |
 | `Lento: Sync LAN N ms <motivo>` | Cada sincronización | 1 s |
 | `Pantalla congelada N ms` | El hilo de la pantalla no responde (solo versiones Debug) | 250 ms |

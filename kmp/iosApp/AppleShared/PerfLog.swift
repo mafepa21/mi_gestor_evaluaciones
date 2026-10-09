@@ -66,11 +66,14 @@ enum PerfLog {
         pendingStarts[key] = DispatchTime.now()
     }
 
+    /// `thresholdMs`: límite propio (p. ej. si hay una espera fija por medio).
+    /// Una medida de más de `maxAgeMs` se descarta: su fin no llegó y otro evento
+    /// la cerraría con un tiempo falso.
     @MainActor
-    static func end(_ key: String) {
+    static func end(_ key: String, thresholdMs: Double = defaultThresholdMs, maxAgeMs: Double = 10_000) {
         guard let start = pendingStarts.removeValue(forKey: key) else { return }
         let ms = elapsedMs(since: start)
-        guard ms >= defaultThresholdMs else { return }
+        guard ms >= thresholdMs, ms <= maxAgeMs else { return }
         logger.notice("Lento: \(key, privacy: .public) \(Int(ms), privacy: .public) ms")
     }
 

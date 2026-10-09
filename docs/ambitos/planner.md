@@ -34,3 +34,7 @@
 - Los hitos de la semana llegan duplicados (uno por grupo): contar por fecha + título.
 - La cabecera grande de SA (`expandedProgressHeader`) solo se pinta en Resumen.
 - Celdas de la Semana (`PlannerWeekMiniatureGrid`): la materia más repetida del horario (`dominantSubject`) no se pinta; solo se etiqueta la de otra materia (p. ej. Tutoría). En franjas sin sesión, `entry.preview` es la materia y `entry.title` repite la materia si no hay bloque: entonces se muestra "Sin planificar".
+- `PlannerWorkspaceIOS` y `PlannerToolbar` usan `@Environment(\.kmpBridgeReference)`, no `@EnvironmentObject`: no volver a observar el bridge entero (redibuja el Planner con cada cambio del Cuaderno o de SyncLAN).
+- `PlannerWorkspaceViewModel` no reenvía `weekBoard.weekRenderModel`. Una vista nueva que pinte la rejilla o la cobertura de la semana debe observar `vm.weekBoard` (`@ObservedObject var weekBoard`), no leerlo solo a través de `vm`.
+- `learningSituationSessionPlansAll()` busca la versión por id en `listAllSessionSequenceVersions()` y exige el mismo `learningSituationId`. La regla "plan ya canónico" vive en `KmpBridge.isCanonicalSessionPlanJSON` (sin estado, testeada); cambiarla solo ahí.
+- Nunca llamar a funciones `suspend` de KMP dentro de `async let`, `Task.detached` o `TaskGroup`: Kotlin exige el hilo principal y la app se cierra ("Calling Kotlin suspend functions from Swift/Objective-C is currently supported only on main thread"). Encadenar `try await` en el `@MainActor`; el repositorio ya salta a `Dispatchers.Default`.

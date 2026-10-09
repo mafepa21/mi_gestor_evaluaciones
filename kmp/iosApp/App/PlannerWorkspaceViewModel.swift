@@ -122,7 +122,22 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
 
     init() {
-        weekBoard.objectWillChange
+        // Solo se reenvían los datos de la semana que leen otras pestañas, y solo
+        // si cambian de verdad. `weekRenderModel` no se reenvía: se reconstruye
+        // varias veces por carga y antes redibujaba el Planner entero cada vez.
+        // Las vistas que lo pintan observan `weekBoard` directamente.
+        forwardWeekBoardChange(weekBoard.$week)
+        forwardWeekBoardChange(weekBoard.$year)
+        forwardWeekBoardChange(weekBoard.$visibleSlots)
+        forwardWeekBoardChange(weekBoard.$timeSlots)
+        forwardWeekBoardChange(weekBoard.$holidayDays)
+        forwardWeekBoardChange(weekBoard.$dayMilestones)
+    }
+
+    private func forwardWeekBoardChange<Value: Equatable>(_ publisher: Published<Value>.Publisher) {
+        publisher
+            .removeDuplicates()
+            .dropFirst()
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
     }

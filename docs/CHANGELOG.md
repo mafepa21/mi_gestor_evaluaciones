@@ -22,12 +22,20 @@ El formato sigue una variante practica de Keep a Changelog:
   - Tarea libre asignable a varios alumnos a la vez, en una sola transacción.
   - Entrada en Planificación (iPhone, iPad y Mac). Cabecera en Liquid Glass con fallback de material.
 
+### Changed
+
+- **Planner más fluido**:
+  - `PlannerWorkspaceIOS` y `PlannerToolbar` usan `kmpBridgeReference` en lugar de `@EnvironmentObject`: el Planner ya no se redibuja con cada cambio del Cuaderno, rúbricas o SyncLAN.
+  - `PlannerWorkspaceViewModel` deja de reenviar `weekRenderModel` (se reconstruye varias veces por carga); solo reenvía semana, año, franjas, festivos e hitos cuando cambian de verdad. La toolbar observa `weekBoard` directamente.
+  - `learningSituationSessionPlansAll()` pide las versiones de secuencia en una sola consulta y comprueba los planes fuera del hilo principal (`isCanonicalSessionPlanJSON`). La reparación de planes antiguos no cambia.
+
 ### Data
 
 - Migración `45.sqm` aditiva: tablas `inclusion_tasks` e `inclusion_group_settings` con índices. Sin sincronización SyncLAN todavía.
 
 ### Verification
 
+- Planner más fluido: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED (266 tests, 0 fallos, 4 omitidos), incluido `testCanonicalSessionPlanCheckMatchesRepairCriteria`. `xcodebuild build -scheme MiGestorKMPiOS -destination "generic/platform=iOS Simulator"` → BUILD SUCCEEDED. Sin medición con Instruments ni prueba manual en dispositivo.
 - `./gradlew :data:desktopTest`: 168 tests OK (incluye `UpgradePathRegressionTest` hasta la 45).
 - `./gradlew :shared:desktopTest`: OK, con los tests nuevos de `InclusionTasksUseCaseTest`. `:shared:test` no ejecutable en esta máquina (sin SDK de Android).
 - `./scripts/verify_apple_builds.sh`: iOS Simulator y macOS compilados.
@@ -35,6 +43,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Planner**: la app se cerraba al abrir el Planner en Mac. `learningSituationSessionPlansAll()` llamaba a KMP desde un `async let`, fuera del hilo principal; ahora encadena las dos consultas.
 - **Copias de seguridad bloqueadas por referencias huérfanas**:
   - La base activa acumula filas que apuntan a grupos, alumnos o situaciones ya borrados (3.423 en la base real del docente). `PRAGMA foreign_key_check` hacía fallar toda copia con «referencias rotas … another row available».
   - Ahora las huérfanas se cuentan y se registran como aviso (`NSLog`); la copia y la restauración siguen adelante. `integrity_check` sigue bloqueando bases dañadas.

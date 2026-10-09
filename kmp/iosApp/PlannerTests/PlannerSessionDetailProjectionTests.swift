@@ -427,6 +427,32 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
         XCTAssertTrue(projection.setupBullets.isEmpty)
     }
 
+    /// La comprobación que decide si un plan guardado necesita reparación corre ahora
+    /// fuera del hilo principal; debe seguir dando el mismo resultado que antes.
+    func testCanonicalSessionPlanCheckMatchesRepairCriteria() throws {
+        func json(activityKey: String = "A1", sha: String? = "abc") throws -> String {
+            let payload = LearningSituationSessionDevelopmentPayload(
+                sections: [],
+                activities: [
+                    LearningSituationSessionActivityDraft(activityKey: activityKey, timeLabel: "10 min", activity: "Calentamiento")
+                ],
+                sourceDocumentSHA256: sha
+            )
+            return String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        }
+
+        // v2 completo con el sello del documento actual: no se repara.
+        XCTAssertTrue(KmpBridge.isCanonicalSessionPlanJSON(try json(), expectedHash: "abc"))
+        // Sin versión conocida, el sello no se exige.
+        XCTAssertTrue(KmpBridge.isCanonicalSessionPlanJSON(try json(sha: nil), expectedHash: ""))
+        // El documento ha cambiado: hay que repararlo.
+        XCTAssertFalse(KmpBridge.isCanonicalSessionPlanJSON(try json(), expectedHash: "otro"))
+        // Proyección sintética de un plan antiguo: hay que repararlo.
+        XCTAssertFalse(KmpBridge.isCanonicalSessionPlanJSON(try json(activityKey: "LEGACY-1"), expectedHash: "abc"))
+        // Formato antiguo (lista de secciones): hay que repararlo.
+        XCTAssertFalse(KmpBridge.isCanonicalSessionPlanJSON("[]", expectedHash: ""))
+    }
+
     private func makePlan(
         material: String,
         criteria: [String],

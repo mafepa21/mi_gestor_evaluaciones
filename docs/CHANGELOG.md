@@ -41,7 +41,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
-- Planner más fluido (parte 2): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator): compila el código Swift pero el enlazado falla por disco lleno (`errno=28 No space left on device`); pendiente de repetir.
+- Planner más fluido (parte 2): `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED. `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator): BUILD SUCCEEDED (tras liberar espacio en disco; el primer intento falló al enlazar por `errno=28`).
 - Planner más fluido: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED (266 tests, 0 fallos, 4 omitidos), incluido `testCanonicalSessionPlanCheckMatchesRepairCriteria`. `xcodebuild build -scheme MiGestorKMPiOS -destination "generic/platform=iOS Simulator"` → BUILD SUCCEEDED. Sin medición con Instruments ni prueba manual en dispositivo.
 - `./gradlew :data:desktopTest`: 168 tests OK (incluye `UpgradePathRegressionTest` hasta la 45).
 - `./gradlew :shared:desktopTest`: OK, con los tests nuevos de `InclusionTasksUseCaseTest`. `:shared:test` no ejecutable en esta máquina (sin SDK de Android).

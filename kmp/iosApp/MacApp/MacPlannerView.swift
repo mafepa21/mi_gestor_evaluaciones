@@ -90,12 +90,7 @@ struct MacPlannerView: View {
             transientMessage = newValue
         }
         .onAppear {
-            if vm.isLoaded {
-                Task {
-                    await vm.reloadScheduleOnly()
-                    await vm.reloadHolidays()
-                }
-            }
+            Task { await vm.refreshOnReappear() }
         }
 
         .task {

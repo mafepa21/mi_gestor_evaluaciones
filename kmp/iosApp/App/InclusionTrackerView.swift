@@ -128,7 +128,14 @@ struct InclusionTrackerView: View {
     let bridge: KmpBridge
     @Binding var selectedClassId: Int64?
 
-    @StateObject private var store = InclusionTrackerStore()
+    init(bridge: KmpBridge, selectedClassId: Binding<Int64?>) {
+        self.bridge = bridge
+        self._selectedClassId = selectedClassId
+        self._store = ObservedObject(wrappedValue: WorkspaceScreenMemory.shared.inclusion(bridge: bridge))
+    }
+
+    /// Vive en `WorkspaceScreenMemory`: al volver se ve el tablero anterior al instante.
+    @ObservedObject private var store: InclusionTrackerStore
     @State private var selection: Int64?
     @State private var showingAddTask = false
     #if os(iOS)

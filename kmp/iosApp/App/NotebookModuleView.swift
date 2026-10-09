@@ -50,7 +50,9 @@ struct NotebookModuleView: View {
     let toolbarMode: NotebookToolbarMode
     let macToolbarActions: NotebookMacToolbarActions?
     @StateObject var inspectorState: NotebookMacInspectorState
-    @StateObject var gridLayoutModel = NotebookGridLayoutModel()
+    /// Para el Cuaderno principal vive en `NotebookBridgeStore`: al salir y volver
+    /// conserva lo ya preparado (columnas, categorías plegadas, filas visibles).
+    @StateObject var gridLayoutModel: NotebookGridLayoutModel
     let macPresentation: NotebookMacPresentation
     @State var addColumnContext: NotebookAddColumnContext? = nil
     @State var searchText = ""
@@ -190,6 +192,10 @@ struct NotebookModuleView: View {
         self.macToolbarActions = macToolbarActions
         self.macPresentation = macPresentation
         self._inspectorState = StateObject(wrappedValue: macInspectorState ?? NotebookMacInspectorState())
+        // El inspector suelto del Mac tiene el suyo, para no pisar la caché de la tabla.
+        self._gridLayoutModel = StateObject(
+            wrappedValue: macPresentation == .inspector ? NotebookGridLayoutModel() : notebookStore.gridLayoutModel
+        )
     }
 
     var navigationDirection: NotebookNavigationDirection {
@@ -565,15 +571,17 @@ struct NotebookModuleView: View {
         let trailingPaddingCompensation = NotebookStyle.outerPadding * 2
         let shouldShowFolderLane = renderModel.hasGroupedHeaders
 
-        let _ = gridNavigationContext.update(
-            rows: rows,
-            segments: renderModel.scrollableSegments,
-            categoryTintById: Dictionary(
-                data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
-                uniquingKeysWith: { first, _ in first }
-            ),
-            selectedCellRange: selectedCellRange
-        )
+        let _ = PerfLog.measureSync("Cuaderno: navegación de celdas", thresholdMs: 30) {
+            gridNavigationContext.update(
+                rows: rows,
+                segments: renderModel.scrollableSegments,
+                categoryTintById: Dictionary(
+                    data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
+                    uniquingKeysWith: { first, _ in first }
+                ),
+                selectedCellRange: selectedCellRange
+            )
+        }
 
         NotebookGridContent(
             rows: rows,
@@ -767,7 +775,13 @@ struct NotebookModuleView: View {
  
     func loadClassLearningSituations(classId: Int64) {
         learningSituationsTask?.cancel()
+        // Al volver al mismo grupo se pinta lo guardado y se refresca por detrás.
+        if let cached = notebookStore.cachedClassSituations[classId] {
+            classSituations = cached
+        }
         learningSituationsTask = Task {
+            let perfStart = DispatchTime.now()
+            defer { PerfLog.finish("Cuaderno: situaciones de aprendizaje", start: perfStart, thresholdMs: 30) }
             do {
                 let situations = try await bridge.learningSituations()
                 let links = (try? await bridge.learningSituationClassLinksAll()) ?? []
@@ -803,7 +817,10 @@ struct NotebookModuleView: View {
                     // Si el usuario cambió de clase mientras cargaba, no se pisa el estado nuevo.
                     let currentId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value
                     guard !Task.isCancelled, currentId == nil || currentId == classId else { return }
-                    self.classSituations = finalFiltered
+                    notebookStore.cachedClassSituations[classId] = finalFiltered
+                    if self.classSituations.map(\.id) != finalFiltered.map(\.id) {
+                        self.classSituations = finalFiltered
+                    }
                 }
             } catch {
                 // ignore

@@ -16,6 +16,10 @@ La app apunta lo que tarda demasiado con `PerfLog` (`kmp/iosApp/AppleShared/Perf
 | `Lento: Entregas web: detalle N ms K tareas` | Detalle de las tareas para importar (por detrás, tras pintar la lista) | 150 ms |
 | `Lento: Entregas web: enlaces N ms` | Leer los enlaces del alumnado al pulsar «Enviar enlaces» | 150 ms |
 | `Lento: Entregas web: instrumentos publicables N ms` | Al abrir la hoja «Nueva tarea web» | 150 ms |
+| `Lento: Cuaderno: preparar columnas N ms` | Construir el dibujo de columnas (solo si no estaba ya preparado) | 30 ms |
+| `Lento: Cuaderno: navegación de celdas N ms` | Cálculo que se rehace en cada dibujo de la tabla | 30 ms |
+| `Lento: Cuaderno: situaciones de aprendizaje N ms` | Leer las SA del grupo (por detrás) | 30 ms |
+| `Lento: Cuaderno: barra de herramientas N ms` | Ajustar la barra de herramientas | 30 ms |
 | `Lento: Copia de seguridad N ms` | Cada copia creada | 150 ms |
 | `Lento: Sync LAN N ms <motivo>` | Cada sincronización | 1 s |
 | `Pantalla congelada N ms` | El hilo de la pantalla no responde (solo versiones Debug) | 250 ms |

@@ -363,7 +363,9 @@ extension NotebookModuleView {
             guard !Task.isCancelled else { return }
 
             lastToolbarStateKey = nextKey
-            syncToolbarState(data: data)
+            PerfLog.measureSync("Cuaderno: barra de herramientas", thresholdMs: 30) {
+                syncToolbarState(data: data)
+            }
         }
     }
 

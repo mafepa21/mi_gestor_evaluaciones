@@ -138,6 +138,8 @@ final class NotebookGridLayoutModel: ObservableObject {
             NotebookGridPerformanceDebug.event("renderModel hit")
             return renderCache
         }
+        let perfStart = DispatchTime.now()
+        defer { PerfLog.finish("Cuaderno: preparar columnas", start: perfStart, thresholdMs: 30) }
 
         let segments = NotebookGridPerformanceDebug.measure("renderModel build") {
             displaySegments(data: data, activeTabId: activeTabId, viewPreset: viewPreset)

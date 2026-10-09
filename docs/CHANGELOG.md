@@ -26,7 +26,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - **Planner más fluido (parte 3)**:
   - El `PlannerWorkspaceViewModel` vive en `WorkspaceBridgeStores` (iPhone, iPad y Mac): al volver al Planner se ve al instante lo que había y la semana se refresca por detrás.
-  - Los eventos del calendario y los planes de sesión se guardan 30 s y se reutilizan entre semanas y pestañas (Semana, Mes, Secuencia, Evaluación). Se invalidan al crear o editar hitos, marcar festivos o sincronizar exámenes.
+  - Los eventos del calendario y los planes de sesión se guardan 30 s y se reutilizan entre semanas y pestañas (Semana, Mes, Secuencia, Evaluación). Se invalidan al volver al Planner, en `reloadAll`, al cerrar la hoja de hitos (también deslizando), al marcar festivos o al sincronizar exámenes.
+  - Al volver también se recargan los planes de SA, una carga de semana antigua no pisa a la nueva, y si el bridge se recrea el Planner se vuelve a cargar entero.
 
 - **Planner más fluido (parte 2)**:
   - Al abrir el Planner ya no se cargan el Mes ni la previsión del curso: el Mes se carga al abrir su pestaña y la previsión no se pinta en el Planner.

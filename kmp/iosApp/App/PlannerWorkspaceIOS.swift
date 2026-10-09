@@ -93,15 +93,14 @@ struct PlannerWorkspaceIOS: View {
                 onClose: { showingScheduleSettings = false }
             )
         }
-        .sheet(isPresented: $showingCalendarMilestones) {
+        .sheet(isPresented: $showingCalendarMilestones, onDismiss: {
+            // También al cerrar deslizando: puede haber creado o borrado hitos.
+            vm.cachedCalendarEvents = nil
+            Task { await vm.reloadHolidays() }
+        }) {
             SchoolCalendarEventsOverviewSheet(
                 bridge: bridge,
-                onClose: {
-                    showingCalendarMilestones = false
-                    // Puede haber creado o borrado hitos: releer el calendario.
-                    vm.cachedCalendarEvents = nil
-                    Task { await vm.reloadHolidays() }
-                }
+                onClose: { showingCalendarMilestones = false }
             )
         }
 

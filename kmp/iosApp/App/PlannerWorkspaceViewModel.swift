@@ -199,6 +199,12 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     /// enriquece (exámenes de 1º Bach y planes de SA). El Mes se carga al abrir su
     /// pestaña (`PlannerMonthCalendarView`) y la previsión no se pinta en el Planner.
     func bind(bridge: KmpBridge) async {
+        // El VM sobrevive a la vista: si el bridge se ha recreado (p. ej. tras
+        // restaurar una copia), se vuelve a cargar todo con el nuevo.
+        if isLoaded, self.bridge !== bridge {
+            isLoaded = false
+            invalidateReadCaches()
+        }
         guard !isLoaded, !isBinding else { return }
         isBinding = true
         defer { isBinding = false }
@@ -224,12 +230,14 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     /// la semana por detrás (recoge lo guardado en el Diario o llegado por Sync LAN).
     func refreshOnReappear() async {
         guard isLoaded else { return }
+        // Fuera del Planner se pudo editar el calendario o una SA (o llegar por Sync LAN).
+        invalidateReadCaches()
         if Date().timeIntervalSince(lastReappearRefreshAt) > Self.reappearRefreshInterval {
             lastReappearRefreshAt = Date()
-            invalidateReadCaches()
             await reloadScheduleOnly()
         }
         await reloadWeekSessions(keepSelection: true)
+        await reloadSessionPlans()
     }
 
     func invalidateReadCaches() {
@@ -262,6 +270,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     func reloadAll(keepSelection: Bool = true) async {
+        invalidateReadCaches()
         // Grupos/planes y horario no dependen entre sí: se cargan a la vez.
         // Las sesiones van después porque necesitan el horario.
         async let bootstrap: Void = reloadPlannerBootstrap()
@@ -346,12 +355,16 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func reloadWeekSessions(keepSelection: Bool = true) async {
         guard let bridge else { return }
+        let requestedWeek = week
+        let requestedYear = year
         do {
             try await sessionStore.reload(bridge: bridge, week: week, year: year)
         } catch {
             bulkSummary = "No se pudo cargar la semana. Se mantienen las sesiones que ya ves."
             return
         }
+        // Si mientras tanto se cambió de semana, esta carga ya no vale: la nueva la pinta.
+        guard week == requestedWeek, year == requestedYear else { return }
         sessions = sessionStore.sessions
         rebuildVisiblePlannerStructure()
         // Pintar la semana ya; diarios y festivos la completan después.

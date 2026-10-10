@@ -26,6 +26,7 @@ final class PlannerSessionDetailLayoutTests: XCTestCase {
     func testLongSessionBlocksGoSideBySideOnlyWhenBothFit() {
         XCTAssertEqual(PlannerSessionDetailLayoutPolicy.guideColumnCount(blockCount: 2, guideWidth: 1_000), 2)
         XCTAssertEqual(PlannerSessionDetailLayoutPolicy.guideColumnCount(blockCount: 2, guideWidth: 800), 1)
+        XCTAssertEqual(PlannerSessionDetailLayoutPolicy.guideColumnCount(blockCount: 2, guideWidth: 840), 2)
         XCTAssertEqual(PlannerSessionDetailLayoutPolicy.guideColumnCount(blockCount: 1, guideWidth: 1_400), 1)
         XCTAssertEqual(PlannerSessionDetailLayoutPolicy.guideColumnCount(blockCount: 3, guideWidth: 1_400), 1)
     }

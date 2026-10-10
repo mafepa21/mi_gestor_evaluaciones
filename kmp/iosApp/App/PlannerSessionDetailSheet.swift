@@ -35,9 +35,9 @@ struct PlannerSessionDetailLayoutPolicy {
     /// (objetivo, montaje, atención) y guion a la derecha.
     static let wideMinimumWidth: CGFloat = 900
     /// Ancho del carril izquierdo en el repaso ancho.
-    static let railWidth: CGFloat = 340
+    static let railWidth: CGFloat = 320
     /// Ancho mínimo de cada columna de bloque cuando van en paralelo.
-    static let blockColumnMinimumWidth: CGFloat = 440
+    static let blockColumnMinimumWidth: CGFloat = 400
 
     static func usesWideReview(for width: CGFloat) -> Bool {
         width >= wideMinimumWidth
@@ -246,7 +246,6 @@ struct PlannerSessionDetailSheet: View {
                     guideContent(projection, columns: columns, isWide: true)
                     annexesDisclosure
                 }
-                .frame(maxWidth: columns == 2 ? .infinity : 900, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .padding(24)
             }

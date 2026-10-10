@@ -11,6 +11,9 @@
 
 ## Trampas
 
+- Repaso ancho (hoja ≥ 1100 pt, solo `.sheet` y con plan cargado): `wideReviewContent` en vez de `reviewScrollContent`. Umbrales en `PlannerSessionDetailLayoutPolicy` (`wideMinimumWidth`, `railWidth`, `guideColumnCount`). Lo que se añada a `loadedBody` hay que añadirlo también al repaso ancho.
+- `PlannerDocxWebView` solo recarga si cambia el HTML (coordinador): no volver a `loadHTMLString` en cada `update`.
+- Avisos y montaje se deduplican sin el prefijo de unidad (`withoutUnitPrefix`): «U10 · X» y «X» cuentan como el mismo.
 - El target de tests `MiGestorPlannerTests` es macOS y usa el scheme `MiGestorPlannerTests`; `Frameworks/` (MiGestorKit) no está en git: un worktree nuevo necesita enlazarlo desde el checkout principal antes de compilar.
 - Archivo Swift nuevo => `xcodegen --spec kmp/iosApp/project.yml` y commitear el `project.pbxproj`.
 - `PlannerSessionReviewStep.startOffsetMinutes` es acumulado sin contar el descanso; las recogidas (`isCollection`) no tienen hora ni avanzan el acumulado. Sin minutos conocidos, no hay hora.

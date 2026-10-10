@@ -129,6 +129,8 @@ struct PlannerReviewStepRow: View {
     let tint: Color
     /// HTML del diagrama de la actividad (solo se pasa al paso principal).
     let visualHTML: String?
+    /// Repaso ancho: texto completo sin «Ver más» y diagrama en miniatura.
+    var isWide: Bool = false
     let onEnlargeVisual: (String) -> Void
 
     @State private var isExpanded = false
@@ -199,7 +201,7 @@ struct PlannerReviewStepRow: View {
                 .font(.headline)
                 .fixedSize(horizontal: false, vertical: true)
             if !step.detail.isEmpty {
-                PlannerReviewExpandableText(text: step.detail, isExpanded: isExpanded, isTruncated: $isTruncated)
+                PlannerReviewExpandableText(text: step.detail, isExpanded: isExpanded || isWide, isTruncated: $isTruncated)
             }
             if let clil = step.clil, !clil.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -225,11 +227,32 @@ struct PlannerReviewStepRow: View {
                 }
             }
             if let visualHTML {
-                PlannerDocxWebView(html: visualHTML, minHeight: 160, idealHeight: 200, maxHeight: 240)
-                    .accessibilityHidden(true)
+                if isWide {
+                    visualThumbnail(visualHTML)
+                } else {
+                    PlannerDocxWebView(html: visualHTML, minHeight: 160, idealHeight: 200, maxHeight: 240)
+                        .accessibilityHidden(true)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Diagrama reducido (zoom 0,45) que se amplía al pulsarlo.
+    private func visualThumbnail(_ html: String) -> some View {
+        PlannerDocxWebView(html: html, minHeight: 170, idealHeight: 170, maxHeight: 170, pageZoom: 0.45)
+            .frame(maxWidth: 320, alignment: .leading)
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+            }
+            .overlay {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { onEnlargeVisual(html) }
+            }
+            .help("Ampliar diagrama")
+            .accessibilityHidden(true)
     }
 
     private var accessibilityDescription: String {

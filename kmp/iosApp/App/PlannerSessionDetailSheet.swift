@@ -30,6 +30,24 @@ struct PlannerSessionDetailLayoutPolicy {
     static func layout(for width: CGFloat) -> PlannerSessionDetailLayout {
         width >= regularMinimumWidth ? .regular : .compact
     }
+
+    /// Desde este ancho la hoja pasa a «repaso ancho»: carril fijo a la izquierda
+    /// (objetivo, montaje, atención) y guion a la derecha.
+    static let wideMinimumWidth: CGFloat = 1_100
+    /// Ancho del carril izquierdo en el repaso ancho.
+    static let railWidth: CGFloat = 340
+    /// Ancho mínimo de cada columna de bloque cuando van en paralelo.
+    static let blockColumnMinimumWidth: CGFloat = 440
+
+    static func usesWideReview(for width: CGFloat) -> Bool {
+        width >= wideMinimumWidth
+    }
+
+    /// Columnas del guion: los dos bloques de una sesión LONG en paralelo si caben.
+    static func guideColumnCount(blockCount: Int, guideWidth: CGFloat) -> Int {
+        guard blockCount == 2 else { return 1 }
+        return guideWidth >= blockColumnMinimumWidth * 2 + 32 ? 2 : 1
+    }
 }
 
 enum PlannerSessionDetailSessionType {
@@ -130,7 +148,7 @@ struct PlannerSessionDetailSheet: View {
             case .sheet:
                 detailContent
                 #if os(macOS)
-                .frame(minWidth: 900, idealWidth: 1_080, minHeight: 640, idealHeight: 800)
+                .frame(minWidth: 900, idealWidth: 1_400, minHeight: 640, idealHeight: 960)
                 #else
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 #endif
@@ -164,20 +182,77 @@ struct PlannerSessionDetailSheet: View {
         switch presentation {
         case .sheet:
             GeometryReader { proxy in
-                sheetContent(layout: PlannerSessionDetailLayoutPolicy.layout(for: proxy.size.width))
+                sheetContent(
+                    layout: PlannerSessionDetailLayoutPolicy.layout(for: proxy.size.width),
+                    width: proxy.size.width
+                )
             }
         case .inspector:
-            sheetContent(layout: .compact)
+            sheetContent(layout: .compact, width: 0)
         }
     }
 
-    private func sheetContent(layout: PlannerSessionDetailLayout) -> some View {
+    private func sheetContent(layout: PlannerSessionDetailLayout, width: CGFloat) -> some View {
         VStack(spacing: 0) {
             sessionHeader(layout: layout)
-            reviewScrollContent
+            if presentation == .sheet,
+               PlannerSessionDetailLayoutPolicy.usesWideReview(for: width),
+               loadState == .loaded,
+               let projection = reviewProjection {
+                wideReviewContent(projection, width: width)
+            } else {
+                reviewScrollContent
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+        .sheet(item: $enlargedVisual) { visual in
+            PlannerEnlargedVisualSheet(visual: visual)
+        }
+    }
+
+    /// Repaso ancho (Mac e iPad grande): carril izquierdo con su propio scroll y
+    /// guion a la derecha; en una sesión LONG, los dos bloques en paralelo.
+    private func wideReviewContent(_ projection: PlannerSessionDetailProjection, width: CGFloat) -> some View {
+        let railWidth = PlannerSessionDetailLayoutPolicy.railWidth
+        let guideWidth = width - railWidth - 48
+        let columns = PlannerSessionDetailLayoutPolicy.guideColumnCount(
+            blockCount: projection.guideBlocks.count,
+            guideWidth: guideWidth
+        )
+        return HStack(alignment: .top, spacing: 0) {
+            ScrollView {
+                PlannerReviewBrief(
+                    objective: projection.reviewObjective,
+                    setup: projection.setupBullets,
+                    attention: projection.attentionNotes,
+                    tint: tint
+                )
+                .padding(24)
+            }
+            .frame(width: railWidth)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 32) {
+                    if !projection.guideBlocks.isEmpty {
+                        PlannerSessionTimelineBar(
+                            activities: projection.activities,
+                            tint: tint,
+                            effectiveMinutes: Int(detailedPlan?.effectiveMinutes ?? 0)
+                        )
+                    }
+                    guideContent(projection, columns: columns, isWide: true)
+                    annexesDisclosure
+                }
+                .frame(maxWidth: columns == 2 ? .infinity : 900, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(24)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var reviewScrollContent: some View {
@@ -189,9 +264,6 @@ struct PlannerSessionDetailSheet: View {
                 .padding(.vertical, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(item: $enlargedVisual) { visual in
-            PlannerEnlargedVisualSheet(visual: visual)
-        }
     }
 
     @ViewBuilder
@@ -239,25 +311,45 @@ struct PlannerSessionDetailSheet: View {
 
     // MARK: Guion por bloques
 
-    private func guideContent(_ projection: PlannerSessionDetailProjection) -> some View {
-        VStack(alignment: .leading, spacing: 32) {
-            ForEach(Array(projection.guideBlocks.enumerated()), id: \.element.id) { index, block in
-                VStack(alignment: .leading, spacing: 16) {
-                    if block.precededByBreak {
-                        PlannerReviewBreakRow()
-                    }
-                    if let title = blockTitle(block, index: index, total: projection.guideBlocks.count) {
-                        PlannerReviewBlockHeader(title: title, tint: tint)
-                    }
-                    ForEach(block.steps) { step in
-                        PlannerReviewStepRow(
-                            step: step,
-                            tint: tint,
-                            visualHTML: step.isMain ? mainVisualHTML(for: step) : nil
-                        ) { html in
-                            enlargedVisual = PlannerEnlargedVisual(title: step.title, html: html)
-                        }
-                    }
+    @ViewBuilder
+    private func guideContent(
+        _ projection: PlannerSessionDetailProjection,
+        columns: Int = 1,
+        isWide: Bool = false
+    ) -> some View {
+        let blocks = Array(projection.guideBlocks.enumerated())
+        if columns == 2 {
+            HStack(alignment: .top, spacing: 32) {
+                ForEach(blocks, id: \.element.id) { index, block in
+                    guideBlock(block, index: index, total: blocks.count, isWide: isWide)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 32) {
+                ForEach(blocks, id: \.element.id) { index, block in
+                    guideBlock(block, index: index, total: blocks.count, isWide: isWide)
+                }
+            }
+        }
+    }
+
+    private func guideBlock(_ block: PlannerSessionReviewBlock, index: Int, total: Int, isWide: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if block.precededByBreak {
+                PlannerReviewBreakRow()
+            }
+            if let title = blockTitle(block, index: index, total: total) {
+                PlannerReviewBlockHeader(title: title, tint: tint)
+            }
+            ForEach(block.steps) { step in
+                PlannerReviewStepRow(
+                    step: step,
+                    tint: tint,
+                    visualHTML: step.isMain ? mainVisualHTML(for: step) : nil,
+                    isWide: isWide
+                ) { html in
+                    enlargedVisual = PlannerEnlargedVisual(title: step.title, html: html)
                 }
             }
         }
@@ -305,6 +397,7 @@ struct PlannerSessionDetailSheet: View {
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+                .help(detailedPlan?.title ?? session.teachingUnitName)
             Text(headerMetaLine)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)

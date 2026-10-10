@@ -408,6 +408,26 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
         XCTAssertEqual(capped.attentionAll.count, 5)
     }
 
+    func testAttentionRepeatedPerUnitAppearsOnce() throws {
+        let first = reviewActivity(
+            "W01-L-01", segment: "U10", minutes: 4, phase: "Explicación", title: "A",
+            adaptations: "Burbuja de raqueta: un brazo de distancia"
+        )
+        let second = reviewActivity(
+            "W01-L-02", segment: "U11", minutes: 4, phase: "Explicación", title: "B",
+            adaptations: "U11 · Burbuja de raqueta: un brazo de distancia"
+        )
+        let third = reviewActivity(
+            "W01-L-03", segment: "U10", minutes: 4, phase: "Explicación", title: "C",
+            adaptations: "U10 · burbuja de raqueta: un brazo de distancia"
+        )
+        let projection = PlannerSessionDetailProjection(plan: try makeReviewPlan(activities: [first, second, third]))
+
+        XCTAssertEqual(projection.attentionNotes, ["Analista de datos", "Burbuja de raqueta: un brazo de distancia"])
+        XCTAssertEqual(PlannerSessionReviewBuilder.withoutUnitPrefix("U01 · Pistas"), "Pistas")
+        XCTAssertEqual(PlannerSessionReviewBuilder.withoutUnitPrefix("Pistas: 12 parejas"), "Pistas: 12 parejas")
+    }
+
     func testReviewObjectiveFallsBackToFirstActivityPurpose() throws {
         let activity = reviewActivity(
             "W01-L-01", segment: "U01", minutes: 4, phase: "Explicación", title: "A",

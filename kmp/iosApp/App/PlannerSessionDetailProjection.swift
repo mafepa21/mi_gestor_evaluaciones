@@ -879,9 +879,19 @@ struct PlannerSessionReviewBuilder {
         return cut.trimmingCharacters(in: .whitespaces) + "…"
     }
 
+    /// Quita duplicados. El prefijo de unidad («U10 · ») no cuenta: el mismo aviso
+    /// repetido por unidad sale una sola vez.
     private static func unique(_ values: [String]) -> [String] {
         var seen = Set<String>()
-        return values.filter { seen.insert(normalized($0)).inserted }
+        return values.filter { seen.insert(normalized(withoutUnitPrefix($0))).inserted }
+    }
+
+    static func withoutUnitPrefix(_ value: String) -> String {
+        value.replacingOccurrences(
+            of: #"^\s*[A-Za-z]{1,3}\d{1,3}\s*[·:\-–—]\s*"#,
+            with: "",
+            options: .regularExpression
+        )
     }
 
     private static func normalized(_ value: String) -> String {

@@ -31,9 +31,9 @@ struct PlannerSessionDetailLayoutPolicy {
         width >= regularMinimumWidth ? .regular : .compact
     }
 
-    /// Desde este ancho la hoja pasa a «repaso ancho»: carril fijo a la izquierda
+    /// Desde este ancho (900 pt, el de la hoja en una ventana de Mac normal) la hoja pasa a «repaso ancho»: carril fijo a la izquierda
     /// (objetivo, montaje, atención) y guion a la derecha.
-    static let wideMinimumWidth: CGFloat = 1_100
+    static let wideMinimumWidth: CGFloat = 900
     /// Ancho del carril izquierdo en el repaso ancho.
     static let railWidth: CGFloat = 340
     /// Ancho mínimo de cada columna de bloque cuando van en paralelo.

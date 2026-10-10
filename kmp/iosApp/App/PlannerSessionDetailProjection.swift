@@ -625,6 +625,58 @@ struct PlannerSessionReviewStep: Identifiable, Equatable {
     }
 }
 
+extension PlannerSessionReviewStep {
+    /// Quita la línea «Tactical diagram: …» / «Diagrama táctico: …» cuando el diagrama ya se ve.
+    static func removingDiagramCaption(from text: String) -> String {
+        text.components(separatedBy: .newlines)
+            .filter {
+                $0.range(
+                    of: #"^\s*(?:tactical\s+diagram|diagrama(?:\s+t[aá]ctico)?)\s*:"#,
+                    options: [.regularExpression, .caseInsensitive]
+                ) == nil
+            }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Dónde va la sesión ahora mismo, según los minutos desde su hora de inicio.
+enum PlannerSessionLiveProgress: Equatable {
+    case notRunning
+    case rest
+    case step(String)
+
+    static let restMinutes = 15
+
+    /// Los minutos del guion no cuentan el descanso: aquí se suma al llegar al bloque que lo lleva.
+    static func state(blocks: [PlannerSessionReviewBlock], elapsedMinutes: Int) -> PlannerSessionLiveProgress {
+        guard elapsedMinutes >= 0 else { return .notRunning }
+        var restAdded = 0
+        for block in blocks {
+            if block.precededByBreak, let firstOffset = block.steps.compactMap(\.startOffsetMinutes).first {
+                let restStart = firstOffset + restAdded
+                if elapsedMinutes >= restStart && elapsedMinutes < restStart + restMinutes {
+                    return .rest
+                }
+                restAdded += restMinutes
+            }
+            for step in block.steps {
+                guard let offset = step.startOffsetMinutes, let minutes = step.minutes, minutes > 0 else { continue }
+                let start = offset + restAdded
+                if elapsedMinutes >= start && elapsedMinutes < start + minutes {
+                    return .step(step.id)
+                }
+            }
+        }
+        return .notRunning
+    }
+
+    var currentStepId: String? {
+        if case .step(let id) = self { return id }
+        return nil
+    }
+}
+
 /// Un bloque del guion (una unidad `U01`, `U02`…). En una sesión LONG el segundo va tras el descanso legal.
 struct PlannerSessionReviewBlock: Identifiable, Equatable {
     let id: String
@@ -742,9 +794,10 @@ struct PlannerSessionReviewBuilder {
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n")
-            let detail = teacherText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let rawDetail = teacherText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? studentText
                 : teacherText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let detail = reviewDetail(rawDetail, title: title)
 
             var startOffset: Int?
             if !isCollection, let minutes {
@@ -756,7 +809,7 @@ struct PlannerSessionReviewBuilder {
                 ("Propósito", purpose.objective),
                 ("Organización", [activity.organisation, activity.setup].filter { !$0.isEmpty }.joined(separator: "\n")),
                 ("Material", activity.materials),
-                ("Alumnado", detail == studentText ? "" : studentText),
+                ("Alumnado", rawDetail == studentText ? "" : studentText),
                 ("Temporización", activity.timingBreakdown),
                 ("Evidencia", activity.evidence),
                 ("Si el grupo va lento", activity.slowGroupPlan),
@@ -877,6 +930,27 @@ struct PlannerSessionReviewBuilder {
         let head = String(text.prefix(limit))
         let cut = head.lastIndex(of: " ").map { String(head[..<$0]) } ?? head
         return cut.trimmingCharacters(in: .whitespaces) + "…"
+    }
+
+    /// Texto del paso para leer de un vistazo: sin el prefijo de unidad («U01 · »), sin el
+    /// título repetido entre comillas al principio («Keep-Up Trail»: …) y con las listas
+    /// en línea («: - A - B», «. 1. A 2. B») partidas en una línea por elemento.
+    static func reviewDetail(_ text: String, title: String) -> String {
+        var value = withoutUnitPrefix(text)
+        if let range = value.range(of: #"^\s*[«"“]([^»"”]+)[»"”]\s*:?\s*"#, options: .regularExpression) {
+            let quoted = String(value[range])
+                .trimmingCharacters(in: CharacterSet(charactersIn: "«»\"“”:").union(.whitespacesAndNewlines))
+            if normalized(quoted) == normalized(title) {
+                value.removeSubrange(range)
+            }
+        }
+        value = value.replacingOccurrences(
+            of: #"(?<=[.:;!?»”)])[ \t]+(?=(?:\d{1,2}\.|[-•])[ \t]+\S)"#,
+            with: "\n",
+            options: .regularExpression
+        )
+        value = value.replacingOccurrences(of: #"(?m)^[-•][ \t]+"#, with: "• ", options: .regularExpression)
+        return value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Quita duplicados. El prefijo de unidad («U10 · ») no cuenta: el mismo aviso

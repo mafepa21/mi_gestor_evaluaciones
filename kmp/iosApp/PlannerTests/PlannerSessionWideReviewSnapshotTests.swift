@@ -46,8 +46,7 @@ final class PlannerSessionWideReviewSnapshotTests: XCTestCase {
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 VStack(alignment: .leading, spacing: 16) {
-                    PlannerReviewBreakRow()
-                    PlannerReviewBlockHeader(title: "U11 · Level finals · 40 min", tint: tint)
+                    PlannerReviewBlockHeader(title: "U11 · Level finals · 40 min · tras descanso 15'", tint: tint)
                     ForEach(second) { PlannerReviewStepRow(step: $0, tint: tint, visualHTML: nil, isWide: true) { _ in } }
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)

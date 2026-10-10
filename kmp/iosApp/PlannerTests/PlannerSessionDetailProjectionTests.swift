@@ -408,6 +408,62 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
         XCTAssertEqual(capped.attentionAll.count, 5)
     }
 
+    func testReviewDetailDropsUnitPrefixAndRepeatedTitleAndSplitsLists() {
+        let detail = PlannerSessionReviewBuilder.reviewDetail(
+            "U10 · «Decisive Pool Matches»: - Play the remaining matches. - Referee pairs add points.",
+            title: "Decisive Pool Matches"
+        )
+        XCTAssertEqual(detail, "• Play the remaining matches.\n• Referee pairs add points.")
+
+        let numbered = PlannerSessionReviewBuilder.reviewDetail(
+            "U01 · Pairs move every 3 minutes: 1. Challenge 1: 10 touches. 2. Challenge 2: 20 touches.",
+            title: "Control Ladder"
+        )
+        XCTAssertEqual(numbered, "Pairs move every 3 minutes:\n1. Challenge 1: 10 touches.\n2. Challenge 2: 20 touches.")
+
+        // Un título entre comillas distinto del paso se queda.
+        XCTAssertEqual(
+            PlannerSessionReviewBuilder.reviewDetail("«Freeze!» means stop.", title: "Explicación inicial"),
+            "«Freeze!» means stop."
+        )
+    }
+
+    func testInlineCLILConsignaIsRemovedUpToEndOfLine() {
+        let text = "Quick demo of the grips. Consigna CLIL: “V-shape for forehand”.\nSecond line stays."
+        XCTAssertEqual(
+            PlannerSessionPresentationHelper.removingCLILConsigna(from: text),
+            "Quick demo of the grips.\nSecond line stays."
+        )
+    }
+
+    func testDiagramCaptionLineIsRemoved() {
+        let text = "Challenge 4: walk a square.\nTactical diagram: U01 Free Zones"
+        XCTAssertEqual(PlannerSessionReviewStep.removingDiagramCaption(from: text), "Challenge 4: walk a square.")
+        XCTAssertEqual(PlannerSessionReviewStep.removingDiagramCaption(from: "Diagrama táctico: pistas"), "")
+    }
+
+    func testLiveProgressFindsCurrentStepAndRest() {
+        func step(_ id: String, _ offset: Int, _ minutes: Int) -> PlannerSessionReviewStep {
+            PlannerSessionReviewStep(
+                activityKey: id, minutes: minutes, startOffsetMinutes: offset, phase: "", title: id,
+                detail: "", clil: nil, isMain: false, isCollection: false, extras: []
+            )
+        }
+        let blocks = [
+            PlannerSessionReviewBlock(id: "U01", label: "U01", totalMinutes: 40, precededByBreak: false,
+                                      steps: [step("a", 0, 10), step("b", 10, 30)]),
+            PlannerSessionReviewBlock(id: "U02", label: "U02", totalMinutes: 40, precededByBreak: true,
+                                      steps: [step("c", 40, 40)]),
+        ]
+        XCTAssertEqual(PlannerSessionLiveProgress.state(blocks: blocks, elapsedMinutes: -1), .notRunning)
+        XCTAssertEqual(PlannerSessionLiveProgress.state(blocks: blocks, elapsedMinutes: 5), .step("a"))
+        XCTAssertEqual(PlannerSessionLiveProgress.state(blocks: blocks, elapsedMinutes: 39), .step("b"))
+        XCTAssertEqual(PlannerSessionLiveProgress.state(blocks: blocks, elapsedMinutes: 45), .rest)
+        // Tras el descanso de 15 min, el minuto 55 de reloj es el 40 del guion.
+        XCTAssertEqual(PlannerSessionLiveProgress.state(blocks: blocks, elapsedMinutes: 55), .step("c"))
+        XCTAssertEqual(PlannerSessionLiveProgress.state(blocks: blocks, elapsedMinutes: 95), .notRunning)
+    }
+
     func testAttentionRepeatedPerUnitAppearsOnce() throws {
         let first = reviewActivity(
             "W01-L-01", segment: "U10", minutes: 4, phase: "Explicación", title: "A",

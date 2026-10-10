@@ -30,6 +30,24 @@ struct PlannerSessionDetailLayoutPolicy {
     static func layout(for width: CGFloat) -> PlannerSessionDetailLayout {
         width >= regularMinimumWidth ? .regular : .compact
     }
+
+    /// Desde este ancho (900 pt, el de la hoja en una ventana de Mac normal) la hoja pasa a «repaso ancho»: carril fijo a la izquierda
+    /// (objetivo, montaje, atención) y guion a la derecha.
+    static let wideMinimumWidth: CGFloat = 900
+    /// Ancho del carril izquierdo en el repaso ancho.
+    static let railWidth: CGFloat = 320
+    /// Ancho mínimo de cada columna de bloque cuando van en paralelo.
+    static let blockColumnMinimumWidth: CGFloat = 400
+
+    static func usesWideReview(for width: CGFloat) -> Bool {
+        width >= wideMinimumWidth
+    }
+
+    /// Columnas del guion: los dos bloques de una sesión LONG en paralelo si caben.
+    static func guideColumnCount(blockCount: Int, guideWidth: CGFloat) -> Int {
+        guard blockCount == 2 else { return 1 }
+        return guideWidth >= blockColumnMinimumWidth * 2 + 32 ? 2 : 1
+    }
 }
 
 enum PlannerSessionDetailSessionType {
@@ -98,6 +116,10 @@ struct PlannerSessionDetailSheet: View {
     /// Proyección de repaso rápido: se calcula una sola vez al cargar el plan.
     @State private var reviewProjection: PlannerSessionDetailProjection?
     @State private var loadState: LoadState
+    /// Hora actual para la marca «Ahora»; solo avanza si la sesión es de hoy.
+    @State private var now = Date()
+    /// Al abrir una sesión en curso se baja una vez al paso que toca.
+    @State private var didScrollToCurrentStep = false
 
     enum LoadState: Equatable {
         case loading
@@ -130,7 +152,7 @@ struct PlannerSessionDetailSheet: View {
             case .sheet:
                 detailContent
                 #if os(macOS)
-                .frame(minWidth: 900, idealWidth: 1_080, minHeight: 640, idealHeight: 800)
+                .frame(minWidth: 900, idealWidth: 1_400, minHeight: 640, idealHeight: 960)
                 #else
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 #endif
@@ -139,7 +161,15 @@ struct PlannerSessionDetailSheet: View {
             }
         }
         .task(id: session.id) {
+            guard let start = sessionStartDate, Calendar.current.isDateInToday(start) else { return }
+            while !Task.isCancelled {
+                now = Date()
+                try? await Task.sleep(for: .seconds(30))
+            }
+        }
+        .task(id: session.id) {
             isAnnexesExpanded = false
+            didScrollToCurrentStep = false
             await loadDetailedPlan()
             await loadLinkedInstruments()
         }
@@ -164,38 +194,137 @@ struct PlannerSessionDetailSheet: View {
         switch presentation {
         case .sheet:
             GeometryReader { proxy in
-                sheetContent(layout: PlannerSessionDetailLayoutPolicy.layout(for: proxy.size.width))
+                sheetContent(
+                    layout: PlannerSessionDetailLayoutPolicy.layout(for: proxy.size.width),
+                    width: proxy.size.width
+                )
             }
         case .inspector:
-            sheetContent(layout: .compact)
+            sheetContent(layout: .compact, width: 0)
         }
     }
 
-    private func sheetContent(layout: PlannerSessionDetailLayout) -> some View {
+    private func sheetContent(layout: PlannerSessionDetailLayout, width: CGFloat) -> some View {
         VStack(spacing: 0) {
             sessionHeader(layout: layout)
-            reviewScrollContent
+            if presentation == .sheet,
+               PlannerSessionDetailLayoutPolicy.usesWideReview(for: width),
+               loadState == .loaded,
+               let projection = reviewProjection {
+                wideReviewContent(projection, width: width)
+            } else {
+                reviewScrollContent
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
-    }
-
-    private var reviewScrollContent: some View {
-        ScrollView {
-            reviewBody
-                .frame(maxWidth: 820, alignment: .topLeading)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, presentation == .inspector ? 16 : 24)
-                .padding(.vertical, 24)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $enlargedVisual) { visual in
             PlannerEnlargedVisualSheet(visual: visual)
         }
     }
 
+    /// Repaso ancho (Mac e iPad grande): carril izquierdo con su propio scroll y
+    /// guion a la derecha; en una sesión LONG, los dos bloques en paralelo.
+    private func wideReviewContent(_ projection: PlannerSessionDetailProjection, width: CGFloat) -> some View {
+        let railWidth = PlannerSessionDetailLayoutPolicy.railWidth
+        let guideWidth = width - railWidth - 48
+        let columns = PlannerSessionDetailLayoutPolicy.guideColumnCount(
+            blockCount: projection.guideBlocks.count,
+            guideWidth: guideWidth
+        )
+        return HStack(alignment: .top, spacing: 0) {
+            ScrollView {
+                // Con el carril hay sitio: montaje y atención completos, sin recortar.
+                PlannerReviewBrief(
+                    objective: projection.reviewObjective,
+                    setup: projection.setupAll,
+                    attention: projection.attentionAll,
+                    tint: tint
+                )
+                .padding(24)
+            }
+            .frame(width: railWidth)
+
+            Divider()
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 32) {
+                        if !projection.guideBlocks.isEmpty {
+                            timelineBar(projection, proxy: proxy)
+                        }
+                        guideContent(projection, columns: columns, isWide: true)
+                        annexesDisclosure
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(24)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear { scrollToCurrentStepOnce(projection, proxy: proxy) }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var reviewScrollContent: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                reviewBody(proxy: proxy)
+                    .frame(maxWidth: 820, alignment: .topLeading)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, presentation == .inspector ? 16 : 24)
+                    .padding(.vertical, 24)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .appOnChange(of: loadState) { state in
+                guard state == .loaded, let projection = reviewProjection else { return }
+                scrollToCurrentStepOnce(projection, proxy: proxy)
+            }
+        }
+    }
+
+    // MARK: Sesión en curso
+
+    /// Fecha y hora de inicio de la franja (`startTime` «HH:mm»). `nil` si no hay hora.
+    private var sessionStartDate: Date? {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .iso8601)
+        components.yearForWeekOfYear = Int(session.year)
+        components.weekOfYear = Int(session.weekNumber)
+        components.weekday = Int(session.dayOfWeek) + 1
+        guard let day = components.date,
+              let startTime = session.startTime else { return nil }
+        let parts = startTime.split(separator: ":").compactMap { Int($0) }
+        guard parts.count >= 2 else { return nil }
+        return Calendar.current.date(bySettingHour: parts[0], minute: parts[1], second: 0, of: day)
+    }
+
+    private func liveProgress(_ projection: PlannerSessionDetailProjection) -> PlannerSessionLiveProgress {
+        guard let start = sessionStartDate, Calendar.current.isDate(start, inSameDayAs: now) else { return .notRunning }
+        let elapsed = Int(now.timeIntervalSince(start) / 60)
+        return PlannerSessionLiveProgress.state(blocks: projection.guideBlocks, elapsedMinutes: elapsed)
+    }
+
+    private func timelineBar(_ projection: PlannerSessionDetailProjection, proxy: ScrollViewProxy) -> some View {
+        PlannerSessionTimelineBar(
+            activities: projection.activities,
+            tint: tint,
+            effectiveMinutes: Int(detailedPlan?.effectiveMinutes ?? 0),
+            currentActivityKey: liveProgress(projection).currentStepId,
+            onSelectActivity: { key in
+                withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(key, anchor: .top) }
+            }
+        )
+    }
+
+    private func scrollToCurrentStepOnce(_ projection: PlannerSessionDetailProjection, proxy: ScrollViewProxy) {
+        guard !didScrollToCurrentStep, let id = liveProgress(projection).currentStepId else { return }
+        didScrollToCurrentStep = true
+        DispatchQueue.main.async { proxy.scrollTo(id, anchor: .top) }
+    }
+
     @ViewBuilder
-    private var reviewBody: some View {
+    private func reviewBody(proxy: ScrollViewProxy) -> some View {
         switch loadState {
         case .loading:
             PlannerReviewSkeleton()
@@ -205,19 +334,15 @@ struct PlannerSessionDetailSheet: View {
                 Task { await loadDetailedPlan() }
             }
         case .loaded, .empty:
-            loadedBody
+            loadedBody(proxy: proxy)
         }
     }
 
-    private var loadedBody: some View {
+    private func loadedBody(proxy: ScrollViewProxy) -> some View {
         VStack(alignment: .leading, spacing: 32) {
             if let projection = reviewProjection {
                 if !projection.guideBlocks.isEmpty {
-                    PlannerSessionTimelineBar(
-                        activities: projection.activities,
-                        tint: tint,
-                        effectiveMinutes: Int(detailedPlan?.effectiveMinutes ?? 0)
-                    )
+                    timelineBar(projection, proxy: proxy)
                 }
                 PlannerReviewBrief(
                     objective: projection.reviewObjective,
@@ -239,26 +364,61 @@ struct PlannerSessionDetailSheet: View {
 
     // MARK: Guion por bloques
 
-    private func guideContent(_ projection: PlannerSessionDetailProjection) -> some View {
-        VStack(alignment: .leading, spacing: 32) {
-            ForEach(Array(projection.guideBlocks.enumerated()), id: \.element.id) { index, block in
-                VStack(alignment: .leading, spacing: 16) {
-                    if block.precededByBreak {
-                        PlannerReviewBreakRow()
-                    }
-                    if let title = blockTitle(block, index: index, total: projection.guideBlocks.count) {
-                        PlannerReviewBlockHeader(title: title, tint: tint)
-                    }
-                    ForEach(block.steps) { step in
-                        PlannerReviewStepRow(
-                            step: step,
-                            tint: tint,
-                            visualHTML: step.isMain ? mainVisualHTML(for: step) : nil
-                        ) { html in
-                            enlargedVisual = PlannerEnlargedVisual(title: step.title, html: html)
-                        }
-                    }
+    @ViewBuilder
+    private func guideContent(
+        _ projection: PlannerSessionDetailProjection,
+        columns: Int = 1,
+        isWide: Bool = false
+    ) -> some View {
+        let blocks = Array(projection.guideBlocks.enumerated())
+        let live = liveProgress(projection)
+        if columns == 2 {
+            HStack(alignment: .top, spacing: 32) {
+                ForEach(blocks, id: \.element.id) { index, block in
+                    guideBlock(block, index: index, total: blocks.count, isWide: isWide, inColumns: true, live: live)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 32) {
+                ForEach(blocks, id: \.element.id) { index, block in
+                    guideBlock(block, index: index, total: blocks.count, isWide: isWide, inColumns: false, live: live)
+                }
+            }
+        }
+    }
+
+    /// En columnas el descanso va en el título del bloque («tras descanso 15'»), no en una
+    /// fila propia: así los pasos de las dos columnas empiezan a la misma altura.
+    private func guideBlock(
+        _ block: PlannerSessionReviewBlock,
+        index: Int,
+        total: Int,
+        isWide: Bool,
+        inColumns: Bool,
+        live: PlannerSessionLiveProgress
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if block.precededByBreak && (!inColumns || live == .rest) {
+                PlannerReviewBreakRow(isCurrent: live == .rest)
+            }
+            if let title = blockTitle(block, index: index, total: total) {
+                PlannerReviewBlockHeader(
+                    title: inColumns && block.precededByBreak ? "\(title) · tras descanso 15'" : title,
+                    tint: tint
+                )
+            }
+            ForEach(block.steps) { step in
+                PlannerReviewStepRow(
+                    step: step,
+                    tint: tint,
+                    visualHTML: step.isMain ? mainVisualHTML(for: step) : nil,
+                    isWide: isWide,
+                    isCurrent: live.currentStepId == step.id
+                ) { html in
+                    enlargedVisual = PlannerEnlargedVisual(title: step.title, html: html)
+                }
+                .id(step.id)
             }
         }
     }
@@ -305,6 +465,7 @@ struct PlannerSessionDetailSheet: View {
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+                .help(detailedPlan?.title ?? session.teachingUnitName)
             Text(headerMetaLine)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)

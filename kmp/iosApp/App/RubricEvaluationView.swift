@@ -16,6 +16,19 @@ struct RubricEvaluationView: View {
     /// en cada redibujado.
     @State private var resolvedCriteria: [LomloeCriterionDefinition] = []
     @FocusState private var keysFocused: Bool
+    /// Celdas de la tabla sin descriptor (solo número y nivel). Se recuerda entre rúbricas.
+    @AppStorage("rubricEvaluation.hidesLevelDescriptions") private var hidesLevelDescriptions = false
+    /// Ancho disponible para decidir entre tabla y tarjetas.
+    @State private var availableWidth: CGFloat = 0
+
+    private func usesMatrix(_ rubric: RubricDetail) -> Bool {
+        RubricMatrixView.fits(rubric.criteria, in: availableWidth)
+    }
+
+    /// Ancho máximo del contenido: la tabla aprovecha la ventana; las tarjetas, columna legible.
+    private func contentMaxWidth(_ rubric: RubricDetail) -> CGFloat {
+        usesMatrix(rubric) ? 1_320 : 760
+    }
 
     private var currentLevels: [Int64: Int64] {
         Self.levelsById(state.selectedLevels)
@@ -77,9 +90,10 @@ struct RubricEvaluationView: View {
                             criteriaPanel(rubric: rubric)
                         }
                         .padding(EvaluationDesign.screenPadding)
-                        .frame(maxWidth: 760)
+                        .frame(maxWidth: contentMaxWidth(rubric))
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
                     .focusable()
                     .focused($keysFocused)
                     .focusEffectDisabled()
@@ -101,7 +115,7 @@ struct RubricEvaluationView: View {
                     }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         saveSection(rubric: rubric, score: selectedScore)
-                            .frame(maxWidth: 760)
+                            .frame(maxWidth: contentMaxWidth(rubric))
                             .padding(.horizontal, EvaluationDesign.screenPadding)
                             .padding(.bottom, 8)
                     }
@@ -571,18 +585,19 @@ struct RubricEvaluationView: View {
         let totalCriteria = rubric.criteria.count
         let answeredCriteria = rubric.criteria.filter { state.selectedLevels[KotlinLong(value: $0.criterion.id)] != nil }.count
         let isComplete = totalCriteria > 0 && answeredCriteria >= totalCriteria
+        let showsToggle = usesMatrix(rubric)
 
         return InstrumentEvaluationChromeSurface(role: .action, padding: 12) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 16) {
                     saveStatus(rubric: rubric, answeredCriteria: answeredCriteria, isComplete: isComplete)
                     Spacer(minLength: 8)
-                    actionButtons(isComplete: isComplete)
+                    actionButtons(isComplete: isComplete, showsDescriptionToggle: showsToggle)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
                     saveStatus(rubric: rubric, answeredCriteria: answeredCriteria, isComplete: isComplete)
-                    actionButtons(isComplete: isComplete)
+                    actionButtons(isComplete: isComplete, showsDescriptionToggle: showsToggle)
                 }
             }
         }
@@ -621,11 +636,29 @@ struct RubricEvaluationView: View {
         .accessibilityValue("\(answeredCriteria) de \(rubric.criteria.count) criterios")
     }
 
-    private func actionButtons(isComplete: Bool) -> some View {
+    private func actionButtons(isComplete: Bool, showsDescriptionToggle: Bool) -> some View {
         HStack(spacing: 8) {
             if state.isSaving {
                 ProgressView()
                     .controlSize(.small)
+            }
+
+            if showsDescriptionToggle {
+                Button {
+                    hidesLevelDescriptions.toggle()
+                } label: {
+                    Label(
+                        hidesLevelDescriptions ? "Mostrar textos" : "Ocultar textos",
+                        systemImage: hidesLevelDescriptions ? "text.alignleft" : "eye.slash"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(hidesLevelDescriptions ? "Mostrar la descripción de cada nivel" : "Ver solo el número y el nombre de cada nivel")
             }
 
             Button(action: saveOnly) {
@@ -669,26 +702,44 @@ struct RubricEvaluationView: View {
 
     // MARK: - Criteria Panel
 
+    @ViewBuilder
     private func criteriaPanel(rubric: RubricDetail) -> some View {
         // El peso es relativo (la nota se calcula sobre el total), así que el
         // porcentaje se saca del total y vale igual con pesos 0,4 o 40.
         let totalWeight = rubric.criteria.reduce(0.0) { $0 + max($1.criterion.weight, 0) }
-        return VStack(alignment: .leading, spacing: 8) {
-            ForEach(rubric.criteria, id: \.criterion.id) { criterion in
-                RubricCriterionRow(
-                    item: criterion,
-                    totalWeight: totalWeight,
-                    selectedLevelId: state.selectedLevels[KotlinLong(value: criterion.criterion.id)]?.int64Value,
-                    isActive: activeCriterionId == criterion.criterion.id,
-                    onActivate: {
-                        activeCriterionId = criterion.criterion.id
-                        keysFocused = true
-                    },
-                    onSelectLevel: { levelId in
-                        selectLevel(levelId, for: criterion, rubric: rubric)
-                    }
-                )
-                .id(criterion.criterion.id)
+        if usesMatrix(rubric) {
+            RubricMatrixView(
+                criteria: rubric.criteria,
+                totalWeight: totalWeight,
+                selectedLevelIds: currentLevels,
+                activeCriterionId: activeCriterionId,
+                hidesDescriptions: hidesLevelDescriptions,
+                onActivate: { id in
+                    activeCriterionId = id
+                    keysFocused = true
+                },
+                onSelectLevel: { criterion, levelId in
+                    selectLevel(levelId, for: criterion, rubric: rubric)
+                }
+            )
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(rubric.criteria, id: \.criterion.id) { criterion in
+                    RubricCriterionRow(
+                        item: criterion,
+                        totalWeight: totalWeight,
+                        selectedLevelId: state.selectedLevels[KotlinLong(value: criterion.criterion.id)]?.int64Value,
+                        isActive: activeCriterionId == criterion.criterion.id,
+                        onActivate: {
+                            activeCriterionId = criterion.criterion.id
+                            keysFocused = true
+                        },
+                        onSelectLevel: { levelId in
+                            selectLevel(levelId, for: criterion, rubric: rubric)
+                        }
+                    )
+                    .id(criterion.criterion.id)
+                }
             }
         }
     }
@@ -941,5 +992,244 @@ struct RubricCriterionRow: View {
             description: level.description_,
             position: position
         )
+    }
+}
+
+/// Rúbrica en tabla: criterios en filas y niveles en columnas, con la cabecera
+/// de niveles una sola vez. Cabe una rúbrica de 3 × 4 sin scroll en Mac. Solo
+/// se usa si todos los criterios tienen el mismo número de niveles
+/// (`isEligible`) y hay ancho; si no, `RubricCriterionRow` (tarjetas).
+struct RubricMatrixView: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @Environment(\.colorScheme) private var colorScheme
+    let criteria: [RubricCriterionWithLevels]
+    let totalWeight: Double
+    let selectedLevelIds: [Int64: Int64]
+    let activeCriterionId: Int64?
+    /// Celdas con solo número y nombre de nivel (rúbricas que se conocen de memoria).
+    let hidesDescriptions: Bool
+    let onActivate: (Int64) -> Void
+    let onSelectLevel: (RubricCriterionWithLevels, Int64) -> Void
+
+    @State private var selectionTick = 0
+
+    private let criterionColumnWidth: CGFloat = 200
+    private let spacing: CGFloat = 8
+    private let rowPadding: CGFloat = 8
+
+    /// Mismo número de niveles (2-6) en todos los criterios.
+    static func isEligible(_ criteria: [RubricCriterionWithLevels]) -> Bool {
+        guard let count = criteria.first?.levels.count, (2...6).contains(count) else { return false }
+        return criteria.allSatisfy { $0.levels.count == count }
+    }
+
+    /// Puntos de la columna si todos los criterios coinciden; si no, `nil`.
+    private func sharedPoints(at index: Int) -> Double? {
+        let values = Set(criteria.map { Double($0.levels[index].points) })
+        return values.count == 1 ? values.first : nil
+    }
+
+    /// Hay sitio para la tabla si cada columna de nivel tiene al menos 140 pt
+    /// (márgenes de pantalla incluidos). En iPad vertical se quedan las tarjetas.
+    static func fits(_ criteria: [RubricCriterionWithLevels], in width: CGFloat) -> Bool {
+        guard isEligible(criteria), let count = criteria.first?.levels.count else { return false }
+        let needed: CGFloat = 200 + 16 + CGFloat(count) * 148 + 48
+        return width >= needed
+    }
+
+    private var maxSharedPoints: Double {
+        Double(criteria.first?.levels.map(\.points).max() ?? 0)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            headerRow
+            ForEach(criteria, id: \.criterion.id) { item in
+                criterionRow(item)
+                    .id(item.criterion.id)
+            }
+        }
+        .animation(uiFeatureFlags.interactionAnimation, value: selectedLevelIds)
+        .animation(uiFeatureFlags.interactionAnimation, value: activeCriterionId)
+        .sensoryFeedback(.selection, trigger: selectionTick)
+    }
+
+    // MARK: Cabecera de niveles
+
+    private var headerRow: some View {
+        RubricMatrixRowLayout(leadingWidth: criterionColumnWidth, spacing: spacing) {
+            Color.clear.frame(height: 1)
+            if let first = criteria.first {
+                ForEach(Array(first.levels.enumerated()), id: \.offset) { index, level in
+                    levelHeader(level, position: index + 1, points: sharedPoints(at: index))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                }
+            }
+        }
+        .padding(.horizontal, rowPadding)
+        .accessibilityHidden(true)
+    }
+
+    private func levelHeader(_ level: RubricLevel, position: Int, points: Double?) -> some View {
+        let color = RubricsStyle.levelColor(points: Double(level.points), maxPoints: maxSharedPoints)
+        let textColor = RubricsStyle.levelTextColor(points: Double(level.points), maxPoints: maxSharedPoints, scheme: colorScheme)
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(position)")
+                .font(.caption.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(textColor)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(color.opacity(0.16)))
+            VStack(alignment: .leading, spacing: 0) {
+                Text(RubricsStyle.cleanLevelTitle(level.name))
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if let points {
+                    Text(RubricsStyle.pointsText(points))
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    // MARK: Fila de criterio
+
+    private func criterionRow(_ item: RubricCriterionWithLevels) -> some View {
+        let isActive = activeCriterionId == item.criterion.id
+        let maxPoints = Double(item.levels.map(\.points).max() ?? 0)
+        let shape = RoundedRectangle(cornerRadius: RubricsStyle.cardRadius, style: .continuous)
+        return RubricMatrixRowLayout(leadingWidth: criterionColumnWidth, spacing: spacing) {
+            criterionLabel(item, maxPoints: maxPoints)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .contentShape(Rectangle())
+                .onTapGesture { onActivate(item.criterion.id) }
+            ForEach(Array(item.levels.enumerated()), id: \.element.id) { index, level in
+                levelCell(item, level: level, position: index + 1, maxPoints: maxPoints)
+            }
+        }
+        .padding(rowPadding)
+        .overlay {
+            shape.stroke(isActive ? EvaluationDesign.accent : Color.clear, lineWidth: 2)
+        }
+    }
+
+    private func criterionLabel(_ item: RubricCriterionWithLevels, maxPoints: Double) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(item.criterion.description_)
+                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            if let percent = weightPercent(item) {
+                Text("\(percent)%")
+                    .font(.caption.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.secondary.opacity(0.12)))
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private func weightPercent(_ item: RubricCriterionWithLevels) -> Int? {
+        guard item.criterion.weight > 0, totalWeight > 0 else { return nil }
+        let value = Int((item.criterion.weight / totalWeight * 100).rounded())
+        return value > 0 ? value : nil
+    }
+
+    // MARK: Celda de nivel
+
+    private func levelCell(
+        _ item: RubricCriterionWithLevels,
+        level: RubricLevel,
+        position: Int,
+        maxPoints: Double
+    ) -> some View {
+        let isSelected = selectedLevelIds[item.criterion.id] == level.id
+        let points = Double(level.points)
+        let color = RubricsStyle.levelColor(points: points, maxPoints: maxPoints)
+        let textColor = RubricsStyle.levelTextColor(points: points, maxPoints: maxPoints, scheme: colorScheme)
+        let title = RubricsStyle.cleanLevelTitle(level.name)
+        let description = (level.description_ ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let showsDescription = !hidesDescriptions && !description.isEmpty
+        let shape = RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
+
+        return Button {
+            selectionTick += 1
+            onSelectLevel(item, level.id)
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                if showsDescription {
+                    Text(description)
+                        .font(.subheadline)
+                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("\(position) · \(title)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isSelected ? textColor : Color.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isSelected ? textColor : Color.secondary.opacity(0.5))
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: showsDescription ? .topLeading : .leading)
+            .frame(minHeight: 44)
+            .background(shape.fill(isSelected ? color.opacity(0.14) : Color.primary.opacity(0.04)))
+            .overlay {
+                shape.stroke(isSelected ? color : RubricsStyle.hairline, lineWidth: isSelected ? 2 : 1)
+            }
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .help(description.isEmpty ? "\(title) · \(RubricsStyle.pointsText(points))" : description)
+        .accessibilityLabel("\(item.criterion.description_): \(title), \(RubricsStyle.pointsText(points))")
+        .accessibilityHint(description)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+/// Fila de la tabla de rúbrica: primera columna de ancho fijo y el resto a
+/// partes iguales; todas las celdas con la altura de la más alta.
+struct RubricMatrixRowLayout: Layout {
+    var leadingWidth: CGFloat
+    var spacing: CGFloat
+
+    func columnWidths(total: CGFloat, count: Int) -> [CGFloat] {
+        guard count > 0 else { return [] }
+        guard count > 1 else { return [total] }
+        let rest = max(total - leadingWidth - spacing * CGFloat(count - 1), 0) / CGFloat(count - 1)
+        return [leadingWidth] + Array(repeating: rest, count: count - 1)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let total = proposal.width ?? (leadingWidth + CGFloat(max(subviews.count - 1, 0)) * (200 + spacing))
+        let widths = columnWidths(total: total, count: subviews.count)
+        let height = zip(subviews, widths)
+            .map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }
+            .max() ?? 0
+        return CGSize(width: total, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        for (subview, width) in zip(subviews, columnWidths(total: bounds.width, count: subviews.count)) {
+            subview.place(
+                at: CGPoint(x: x, y: bounds.minY),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: width, height: bounds.height)
+            )
+            x += width + spacing
+        }
     }
 }

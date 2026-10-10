@@ -314,10 +314,18 @@ enum PlannerSessionPresentationHelper {
         return (objective, material, attention)
     }
 
-    /// Quita del texto docente la línea «Consigna CLIL: …» cuando esa consigna ya se muestra en su banner.
+    /// Quita del texto docente la «Consigna CLIL: …» cuando esa consigna ya se muestra en su banner:
+    /// la línea entera si empieza por ella, o desde «Consigna CLIL:» hasta el final de la línea.
     static func removingCLILConsigna(from text: String) -> String {
         text.components(separatedBy: .newlines)
             .filter { !normalize($0).hasPrefix("consigna clil") }
+            .map {
+                $0.replacingOccurrences(
+                    of: #"\s*(?:Consigna\s+CLIL|CLIL\s+consigna)\s*:.*$"#,
+                    with: "",
+                    options: [.regularExpression, .caseInsensitive]
+                )
+            }
             .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -342,6 +350,10 @@ struct PlannerSessionTimelineBar: View {
     let activities: [LearningSituationSessionActivityDraft]
     let tint: Color
     let effectiveMinutes: Int
+    /// Actividad en curso (sesión de hoy a su hora): tramo resaltado con «Ahora».
+    var currentActivityKey: String? = nil
+    /// Si se pasa, cada tramo es un botón que lleva a su paso del guion.
+    var onSelectActivity: ((String) -> Void)? = nil
 
     private enum Item {
         case activity(Int)
@@ -409,12 +421,13 @@ struct PlannerSessionTimelineBar: View {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                         switch item {
                         case .activity(let index):
-                            segmentView(activities[index], width: max(usable * CGFloat(minutes(activities[index])) / CGFloat(sum), 16))
+                            segment(activities[index], width: max(usable * CGFloat(minutes(activities[index])) / CGFloat(sum), 16))
                         case .rest:
                             VStack(spacing: 4) {
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                                     .fill(Color.secondary.opacity(0.18))
                                     .frame(height: 8)
+                                    .frame(height: 12, alignment: .bottom)
                                 Text("15'")
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(.secondary)
@@ -438,14 +451,32 @@ struct PlannerSessionTimelineBar: View {
         .accessibilityLabel(summaryLabel)
     }
 
+    @ViewBuilder
+    private func segment(_ activity: LearningSituationSessionActivityDraft, width: CGFloat) -> some View {
+        if let onSelectActivity, !activity.activityKey.isEmpty {
+            Button {
+                onSelectActivity(activity.activityKey)
+            } label: {
+                segmentView(activity, width: width)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Ir a \(PlannerSessionPresentationHelper.displayTitle(for: activity))")
+        } else {
+            segmentView(activity, width: width)
+        }
+    }
+
     private func segmentView(_ activity: LearningSituationSessionActivityDraft, width: CGFloat) -> some View {
-        VStack(spacing: 4) {
+        let isCurrent = currentActivityKey != nil && activity.activityKey == currentActivityKey
+        return VStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(barColor(for: activity))
-                .frame(height: 8)
-            Text("\(minutes(activity))'")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .fill(isCurrent ? tint : barColor(for: activity))
+                .frame(height: isCurrent ? 12 : 8)
+                .frame(height: 12, alignment: .bottom)
+            Text(isCurrent ? "Ahora" : "\(minutes(activity))'")
+                .font(isCurrent ? .caption2.weight(.bold) : .caption2.monospacedDigit())
+                .foregroundStyle(isCurrent ? tint : .secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }

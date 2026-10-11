@@ -113,10 +113,13 @@ struct PlannerReviewBlockHeader: View {
 
 /// Descanso legal entre los dos bloques de una sesión LONG.
 struct PlannerReviewBreakRow: View {
+    /// La sesión está ahora en el descanso.
+    var isCurrent: Bool = false
+
     var body: some View {
-        Label("Descanso legal · 15 min", systemImage: "cup.and.saucer.fill")
+        Label(isCurrent ? "Ahora · Descanso legal · 15 min" : "Descanso legal · 15 min", systemImage: "cup.and.saucer.fill")
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(isCurrent ? Color.primary : Color.secondary)
             .frame(maxWidth: .infinity, minHeight: 44)
             .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .accessibilityElement(children: .combine)
@@ -129,6 +132,10 @@ struct PlannerReviewStepRow: View {
     let tint: Color
     /// HTML del diagrama de la actividad (solo se pasa al paso principal).
     let visualHTML: String?
+    /// Repaso ancho: texto completo sin «Ver más» y diagrama en miniatura.
+    var isWide: Bool = false
+    /// Paso en curso (sesión de hoy a su hora): borde de color y «Ahora».
+    var isCurrent: Bool = false
     let onEnlargeVisual: (String) -> Void
 
     @State private var isExpanded = false
@@ -140,21 +147,32 @@ struct PlannerReviewStepRow: View {
     private var stacksVertically: Bool { dynamicTypeSize.isAccessibilitySize }
     private var canExpand: Bool { isExpanded || isTruncated || !step.extras.isEmpty }
 
+    /// Con el diagrama a la vista, su pie («Tactical diagram: …») sobra.
+    private var detailText: String {
+        visualHTML == nil ? step.detail : PlannerSessionReviewStep.removingDiagramCaption(from: step.detail)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             summary
             controls
         }
-        .padding(.vertical, step.isMain ? 16 : 0)
-        .padding(.horizontal, step.isMain ? 16 : 0)
+        .padding(.vertical, step.isMain || isCurrent ? 16 : 0)
+        .padding(.horizontal, step.isMain || isCurrent ? 16 : 0)
         .background {
             if step.isMain {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(tint.opacity(0.10))
             }
         }
+        .overlay {
+            if isCurrent {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(tint, lineWidth: 2)
+            }
+        }
         // El fondo del paso principal sobresale un poco para que el texto siga alineado.
-        .padding(.horizontal, step.isMain ? -16 : 0)
+        .padding(.horizontal, step.isMain || isCurrent ? -16 : 0)
     }
 
     // MARK: Resumen (un solo elemento de accesibilidad)
@@ -173,6 +191,14 @@ struct PlannerReviewStepRow: View {
 
     private var timeColumn: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if isCurrent {
+                Text("Ahora")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(tint))
+            }
             if let minutes = step.minutes {
                 Text("\(minutes)'")
                     .font(.title3.weight(.bold).monospacedDigit())
@@ -195,11 +221,19 @@ struct PlannerReviewStepRow: View {
 
     private var textColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(step.title)
-                .font(.headline)
-                .fixedSize(horizontal: false, vertical: true)
-            if !step.detail.isEmpty {
-                PlannerReviewExpandableText(text: step.detail, isExpanded: isExpanded, isTruncated: $isTruncated)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(step.title)
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                if isWide && canExpand {
+                    Spacer(minLength: 8)
+                    expandButton
+                        // Zona de toque de 44 pt sin empujar el texto de debajo.
+                        .padding(.vertical, -12)
+                }
+            }
+            if !detailText.isEmpty {
+                PlannerReviewExpandableText(text: detailText, isExpanded: isExpanded || isWide, isTruncated: $isTruncated)
             }
             if let clil = step.clil, !clil.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -225,11 +259,46 @@ struct PlannerReviewStepRow: View {
                 }
             }
             if let visualHTML {
-                PlannerDocxWebView(html: visualHTML, minHeight: 160, idealHeight: 200, maxHeight: 240)
-                    .accessibilityHidden(true)
+                if isWide {
+                    visualThumbnail(visualHTML)
+                } else {
+                    PlannerDocxWebView(html: visualHTML, minHeight: 160, idealHeight: 200, maxHeight: 240)
+                        .accessibilityHidden(true)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var expandButton: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { isExpanded.toggle() }
+        } label: {
+            Text(isExpanded ? "Ver menos" : "Ver más")
+                .font(.subheadline.weight(.semibold))
+                .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(tint)
+        .accessibilityLabel(isExpanded ? "Ver menos de \(step.title)" : "Ver más de \(step.title)")
+    }
+
+    /// Diagrama reducido (zoom 0,45) que se amplía al pulsarlo.
+    private func visualThumbnail(_ html: String) -> some View {
+        PlannerDocxWebView(html: html, minHeight: 170, idealHeight: 170, maxHeight: 170, pageZoom: 0.45)
+            .frame(maxWidth: 320, alignment: .leading)
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+            }
+            .overlay {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { onEnlargeVisual(html) }
+            }
+            .help("Ampliar diagrama")
+            .accessibilityHidden(true)
     }
 
     private var accessibilityDescription: String {
@@ -242,7 +311,7 @@ struct PlannerReviewStepRow: View {
             parts.append("desde \(PlannerSessionReviewStep.offsetLabel(offset))")
         }
         parts.append(step.title)
-        if !step.detail.isEmpty { parts.append(step.detail) }
+        if !detailText.isEmpty { parts.append(detailText) }
         if let clil = step.clil, !clil.isEmpty { parts.append("Consigna en inglés: \(clil)") }
         if isExpanded {
             parts.append(contentsOf: step.extras.map { "\($0.label): \($0.text)" })
@@ -254,7 +323,8 @@ struct PlannerReviewStepRow: View {
 
     @ViewBuilder
     private var controls: some View {
-        if canExpand || visualHTML != nil {
+        // En el repaso ancho «Ver más» va junto al título y el diagrama se amplía pulsándolo.
+        if !isWide, canExpand || visualHTML != nil {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 16) { controlButtons }
                 VStack(alignment: .leading, spacing: 0) { controlButtons }
@@ -268,17 +338,7 @@ struct PlannerReviewStepRow: View {
     private var controlButtons: some View {
         Group {
             if canExpand {
-                Button {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { isExpanded.toggle() }
-                } label: {
-                    Text(isExpanded ? "Ver menos" : "Ver más")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minWidth: 44, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(tint)
-                .accessibilityLabel(isExpanded ? "Ver menos de \(step.title)" : "Ver más de \(step.title)")
+                expandButton
             }
             if let visualHTML {
                 Button {

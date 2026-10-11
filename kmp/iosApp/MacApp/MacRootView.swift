@@ -30,6 +30,8 @@ struct MacRootView: View {
     @AppStorage("diagnostics.quarantine.acknowledged") private var acknowledgedQuarantineId = ""
     @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
+    /// Tamaño de la ventana: la hoja de sesión del Planner lo usa para ocuparla casi entera.
+    @State private var windowSize: CGSize = .zero
     @State private var isAttendanceFilterPopoverPresented = false
     @AppStorage("dashboard_mode_preference") private var dashboardModeRaw = DashboardModePreference.auto.rawValue
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
@@ -347,6 +349,7 @@ struct MacRootView: View {
             guard newFeature != .notebook else { return }
             isNotebookSearchFocused = false
         }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { windowSize = $0 }
         .sheet(isPresented: isPlannerInspectorSessionPresented, onDismiss: presentPendingPlannerDiarySession) {
             plannerInspectorSheetContent
         }
@@ -407,6 +410,12 @@ struct MacRootView: View {
                 presentation: .sheet
             )
             .environmentObject(session.bridge)
+            // Casi toda la ventana (32 pt de margen por lado): una hoja de Mac no
+            // crece sola más allá de su tamaño ideal.
+            .frame(
+                width: windowSize.width > 0 ? max(900, windowSize.width - 64) : nil,
+                height: windowSize.height > 0 ? max(640, windowSize.height - 64) : nil
+            )
         }
     }
 

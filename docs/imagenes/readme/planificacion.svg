@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif">
+<title>Planificación semanal en Mac (datos de ejemplo)</title>
+<rect width="1600" height="1000" rx="22" fill="#FFFFFF" stroke="#D5D8DE"/>
+<path d="M22 0 H330 V1000 H22 A22 22 0 0 1 0 978 V22 A22 22 0 0 1 22 0 Z" fill="#EFF0F3"/>
+<circle cx="26" cy="26" r="7" fill="#FF5F57"/>
+<circle cx="48" cy="26" r="7" fill="#FEBC2E"/>
+<circle cx="70" cy="26" r="7" fill="#28C840"/>
+<text x="18" y="80" font-size="14" font-weight="600" fill="#8E9199">Hoy</text>
+<rect x="24" y="112" width="20" height="17" rx="5" fill="#1752EB"/><rect x="28" y="117" width="5" height="7" rx="1" fill="#fff"/><rect x="35" y="117" width="5" height="3" rx="1" fill="#fff"/>
+<text x="70" y="119" font-size="17" fill="#1F2937">Hoy</text><text x="70" y="139" font-size="13" fill="#6B7280">Dashboard y radar docente</text>
+<text x="18" y="180" font-size="14" font-weight="600" fill="#8E9199">Evaluación</text>
+<g fill="#A21CAF"><rect x="24" y="214" width="9" height="6" rx="1.5"/><rect x="35" y="214" width="9" height="6" rx="1.5"/><rect x="24" y="222" width="9" height="6" rx="1.5"/><rect x="35" y="222" width="9" height="6" rx="1.5"/></g>
+<text x="70" y="219" font-size="17" fill="#1F2937">Cuaderno</text><text x="70" y="239" font-size="13" fill="#6B7280">Vista de clase, edición y guardado</text>
+<g><circle cx="28" cy="277" r="4" fill="#22A447"/><circle cx="28" cy="286" r="4" fill="#22A447"/><rect x="35" y="276" width="10" height="2" fill="#22A447"/><rect x="35" y="285" width="10" height="2" fill="#22A447"/></g>
+<text x="70" y="279" font-size="17" fill="#1F2937">Asistencia</text><text x="70" y="299" font-size="13" fill="#6B7280">Pase e historial</text>
+<g><circle cx="28" cy="337" r="4" fill="#0E9FB8"/><circle cx="28" cy="346" r="4" fill="#0E9FB8"/><rect x="35" y="336" width="10" height="2" fill="#0E9FB8"/><rect x="35" y="345" width="10" height="2" fill="#0E9FB8"/></g>
+<text x="70" y="339" font-size="17" fill="#1F2937">Rúbricas</text><text x="70" y="359" font-size="13" fill="#6B7280">Banco de evaluación y edición</text>
+<circle cx="34" cy="401" r="10" fill="#12B39A"/><path d="M29 401 L39 396 L35 407 Z" fill="#fff"/>
+<text x="70" y="399" font-size="17" fill="#1F2937">Entregas web</text><text x="70" y="419" font-size="13" fill="#6B7280">Publicar formularios</text>
+<text x="18" y="460" font-size="14" font-weight="600" fill="#8E9199">Planificación</text>
+<rect x="10" y="474" width="310" height="56" rx="12" fill="#E3E4E8"/>
+<rect x="24" y="492" width="20" height="18" rx="4" fill="none" stroke="#F07A13" stroke-width="2.5"/><circle cx="41" cy="508" r="5" fill="#F07A13"/>
+<text x="70" y="499" font-size="17" fill="#1F2937">Planificación</text><text x="70" y="519" font-size="13" fill="#6B7280">Sesiones, unidades y agenda</text>
+<path d="M26 552 H37 L43 558 V572 H26 Z" fill="#E11D48"/><rect x="30" y="562" width="9" height="2" fill="#fff"/><rect x="30" y="566" width="9" height="2" fill="#fff"/>
+<text x="70" y="559" font-size="17" fill="#1F2937">Diario de aula</text><text x="70" y="579" font-size="13" fill="#6B7280">Trazabilidad de sesión</text>
+<g fill="#1E6FE8"><circle cx="28" cy="618" r="4"/><circle cx="36" cy="618" r="4"/><circle cx="44" cy="618" r="4"/><rect x="22" y="623" width="28" height="7" rx="3.5"/></g>
+<text x="70" y="619" font-size="17" fill="#1F2937">Alumnado</text><text x="70" y="639" font-size="13" fill="#6B7280">Directorio y seguimiento rápido</text>
+<text x="18" y="680" font-size="14" font-weight="600" fill="#8E9199">Sistema</text>
+<g fill="none" stroke="#6B7280" stroke-width="3"><circle cx="31" cy="719" r="4"/><circle cx="40" cy="726" r="3.5"/></g>
+<text x="70" y="719" font-size="17" fill="#1F2937">Ajustes</text><text x="70" y="739" font-size="13" fill="#6B7280">Preferencias</text>
+<text x="354" y="60" font-size="26" font-weight="700" fill="#111827">Planificación</text>
+<rect x="830" y="30" width="230" height="46" rx="23" fill="#F4F5F7" stroke="#E2E4E8"/>
+<g fill="#1752EB"><rect x="852" y="42" width="5" height="22" rx="1"/><rect x="859" y="42" width="5" height="22" rx="1"/><rect x="866" y="44" width="5" height="20" rx="1" transform="rotate(-10 868 54)"/></g>
+<text x="884" y="60" font-size="17" fill="#374151">1º ESO A · 1ª ▾</text>
+<rect x="1072" y="30" width="430" height="46" rx="23" fill="#F4F5F7" stroke="#E2E4E8"/>
+<rect x="1094" y="44" width="26" height="18" rx="4" fill="none" stroke="#8E9199" stroke-width="2"/><rect x="1136" y="44" width="22" height="18" rx="4" fill="none" stroke="#8E9199" stroke-width="2"/><text x="1147" y="58" font-size="16" text-anchor="middle" fill="#8E9199">+</text>
+<circle cx="1186" cy="51" r="8" fill="none" stroke="#6B7280" stroke-width="2.2"/><line x1="1192" y1="57" x2="1198" y2="63" stroke="#6B7280" stroke-width="2.2"/><text x="1210" y="60" font-size="18" fill="#6B7280">Buscar</text>
+<rect x="1514" y="30" width="62" height="46" rx="23" fill="#F4F5F7" stroke="#E2E4E8"/><text x="1545" y="58" font-size="18" text-anchor="middle" fill="#6B7280">···</text>
+<rect x="354" y="100" width="44" height="40" rx="20" fill="#F4F5F7" stroke="#E2E4E8"/><text x="376" y="127" font-size="18" text-anchor="middle" fill="#374151">‹</text>
+<text x="418" y="128" font-size="20" font-weight="700" fill="#111827">Semana del 19 al 23 de octubre</text>
+<rect x="754" y="100" width="44" height="40" rx="20" fill="#F4F5F7" stroke="#E2E4E8"/><text x="776" y="127" font-size="18" text-anchor="middle" fill="#374151">›</text>
+<rect x="810" y="100" width="70" height="40" rx="20" fill="#F4F5F7" stroke="#E2E4E8"/><text x="845" y="126" font-size="15" text-anchor="middle" fill="#374151">Hoy</text>
+<rect x="1396" y="100" width="180" height="40" rx="20" fill="#1752EB"/><text x="1486" y="126" font-size="15" font-weight="600" text-anchor="middle" fill="#FFFFFF">+ Nueva sesión</text>
+<rect x="354" y="160" width="1222" height="815" rx="18" fill="#FFFFFF" stroke="#E5E7EB"/>
+<text x="526.6" y="196" font-size="15" font-weight="600" text-anchor="middle" fill="#374151">Lun 19</text>
+<line x1="410.0" y1="214" x2="410.0" y2="974" stroke="#EEF0F2"/>
+<text x="759.8000000000001" y="196" font-size="15" font-weight="600" text-anchor="middle" fill="#374151">Mar 20</text>
+<line x1="643.2" y1="214" x2="643.2" y2="974" stroke="#EEF0F2"/>
+<rect x="876.4" y="161" width="233.2" height="813" fill="#1752EB" fill-opacity="0.04"/>
+<text x="993.0" y="196" font-size="15" font-weight="700" text-anchor="middle" fill="#1752EB">Mié 21 · Hoy</text>
+<line x1="876.4" y1="214" x2="876.4" y2="974" stroke="#EEF0F2"/>
+<text x="1226.1999999999998" y="196" font-size="15" font-weight="600" text-anchor="middle" fill="#374151">Jue 22</text>
+<line x1="1109.6" y1="214" x2="1109.6" y2="974" stroke="#EEF0F2"/>
+<text x="1459.3999999999999" y="196" font-size="15" font-weight="600" text-anchor="middle" fill="#374151">Vie 23</text>
+<line x1="1342.8" y1="214" x2="1342.8" y2="974" stroke="#EEF0F2"/>
+<text x="382" y="246" font-size="14" font-weight="600" text-anchor="middle" fill="#9CA3AF">P1</text>
+<line x1="354" y1="220" x2="1576" y2="220" stroke="#EEF0F2"/>
+<text x="382" y="371" font-size="14" font-weight="600" text-anchor="middle" fill="#9CA3AF">P2</text>
+<line x1="354" y1="345" x2="1576" y2="345" stroke="#EEF0F2"/>
+<text x="382" y="496" font-size="14" font-weight="600" text-anchor="middle" fill="#9CA3AF">P3</text>
+<line x1="354" y1="470" x2="1576" y2="470" stroke="#EEF0F2"/>
+<text x="382" y="621" font-size="14" font-weight="600" text-anchor="middle" fill="#9CA3AF">P4</text>
+<line x1="354" y1="595" x2="1576" y2="595" stroke="#EEF0F2"/>
+<text x="382" y="746" font-size="14" font-weight="600" text-anchor="middle" fill="#9CA3AF">P5</text>
+<line x1="354" y1="720" x2="1576" y2="720" stroke="#EEF0F2"/>
+<text x="382" y="871" font-size="14" font-weight="600" text-anchor="middle" fill="#9CA3AF">P6</text>
+<line x1="354" y1="845" x2="1576" y2="845" stroke="#EEF0F2"/>
+<rect x="418.0" y="228" width="217.2" height="109" rx="12" fill="#2563EB" fill-opacity="0.10" stroke="#2563EB" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="418.0" y="240" width="4" height="85" rx="2" fill="#2563EB"/>
+<text x="434.0" y="256" font-size="13" font-weight="700" fill="#2563EB">1º ESO A</text><text x="434.0" y="280" font-size="15" fill="#111827">S4 · Recepción y pase</text>
+<rect x="434.0" y="294" width="80" height="24" rx="12" fill="#E6F4EE"/><text x="474.0" y="311" font-size="12" font-weight="600" text-anchor="middle" fill="#177A57">Impartida</text>
+<rect x="418.0" y="478" width="217.2" height="109" rx="12" fill="#0F766E" fill-opacity="0.10" stroke="#0F766E" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="418.0" y="490" width="4" height="85" rx="2" fill="#0F766E"/>
+<text x="434.0" y="506" font-size="13" font-weight="700" fill="#0F766E">2º ESO B</text><text x="434.0" y="530" font-size="15" fill="#111827">S2 · Ritmo y pulso</text>
+<rect x="434.0" y="544" width="80" height="24" rx="12" fill="#E6F4EE"/><text x="474.0" y="561" font-size="12" font-weight="600" text-anchor="middle" fill="#177A57">Impartida</text>
+<rect x="418.0" y="728" width="217.2" height="109" rx="12" fill="#EA580C" fill-opacity="0.10" stroke="#EA580C" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="418.0" y="740" width="4" height="85" rx="2" fill="#EA580C"/>
+<text x="434.0" y="756" font-size="13" font-weight="700" fill="#EA580C">1º BACH</text><text x="434.0" y="780" font-size="15" fill="#111827">S6 · Plan de entrenamiento</text>
+<rect x="434.0" y="794" width="80" height="24" rx="12" fill="#E6F4EE"/><text x="474.0" y="811" font-size="12" font-weight="600" text-anchor="middle" fill="#177A57">Impartida</text>
+<rect x="651.2" y="353" width="217.2" height="109" rx="12" fill="#7C3AED" fill-opacity="0.10" stroke="#7C3AED" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="651.2" y="365" width="4" height="85" rx="2" fill="#7C3AED"/>
+<text x="667.2" y="381" font-size="13" font-weight="700" fill="#7C3AED">3º ESO C</text><text x="667.2" y="405" font-size="15" fill="#111827">S3 · Mapa y brújula</text>
+<rect x="667.2" y="419" width="80" height="24" rx="12" fill="#E6F4EE"/><text x="707.2" y="436" font-size="12" font-weight="600" text-anchor="middle" fill="#177A57">Impartida</text>
+<rect x="651.2" y="603" width="217.2" height="109" rx="12" fill="#2563EB" fill-opacity="0.10" stroke="#2563EB" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="651.2" y="615" width="4" height="85" rx="2" fill="#2563EB"/>
+<text x="667.2" y="631" font-size="13" font-weight="700" fill="#2563EB">1º ESO A</text><text x="667.2" y="655" font-size="15" fill="#111827">S5 · Saque dirigido</text>
+<rect x="667.2" y="669" width="80" height="24" rx="12" fill="#E6F4EE"/><text x="707.2" y="686" font-size="12" font-weight="600" text-anchor="middle" fill="#177A57">Impartida</text>
+<rect x="884.4" y="228" width="217.2" height="109" rx="12" fill="#0F766E" fill-opacity="0.10" stroke="#0F766E" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="884.4" y="240" width="4" height="85" rx="2" fill="#0F766E"/>
+<text x="900.4" y="256" font-size="13" font-weight="700" fill="#0F766E">2º ESO B</text><text x="900.4" y="280" font-size="15" fill="#111827">S3 · Coreografía en grupo</text>
+<rect x="900.4" y="294" width="80" height="24" rx="12" fill="#E6F4EE"/><text x="940.4" y="311" font-size="12" font-weight="600" text-anchor="middle" fill="#177A57">Impartida</text>
+<rect x="884.4" y="478" width="217.2" height="109" rx="12" fill="#2563EB" fill-opacity="0.10" stroke="#2563EB" stroke-opacity="0.9" stroke-width="2.5"/>
+<rect x="884.4" y="490" width="4" height="85" rx="2" fill="#2563EB"/>
+<text x="900.4" y="506" font-size="13" font-weight="700" fill="#2563EB">1º ESO A</text><text x="900.4" y="530" font-size="15" fill="#111827">S6 · Partido reducido</text>
+<rect x="900.4" y="544" width="62" height="24" rx="12" fill="#1752EB"/><text x="931.4" y="561" font-size="12" font-weight="600" text-anchor="middle" fill="#FFFFFF">Ahora</text>
+<rect x="884.4" y="853" width="217.2" height="109" rx="12" fill="#7C3AED" fill-opacity="0.10" stroke="#7C3AED" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="884.4" y="865" width="4" height="85" rx="2" fill="#7C3AED"/>
+<text x="900.4" y="881" font-size="13" font-weight="700" fill="#7C3AED">3º ESO C</text><text x="900.4" y="905" font-size="15" fill="#111827">S4 · Carrera de orientación</text>
+<rect x="1117.6" y="353" width="217.2" height="109" rx="12" fill="#EA580C" fill-opacity="0.10" stroke="#EA580C" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="1117.6" y="365" width="4" height="85" rx="2" fill="#EA580C"/>
+<text x="1133.6" y="381" font-size="13" font-weight="700" fill="#EA580C">1º BACH</text><text x="1133.6" y="405" font-size="15" fill="#111827">S7 · Test de condición física</text>
+<rect x="1117.6" y="603" width="217.2" height="109" rx="12" fill="#0F766E" fill-opacity="0.10" stroke="#0F766E" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="1117.6" y="615" width="4" height="85" rx="2" fill="#0F766E"/>
+<text x="1133.6" y="631" font-size="13" font-weight="700" fill="#0F766E">2º ESO B</text><text x="1133.6" y="655" font-size="15" fill="#111827">S4 · Ensayo final</text>
+<rect x="1350.8" y="228" width="217.2" height="109" rx="12" fill="#7C3AED" fill-opacity="0.10" stroke="#7C3AED" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="1350.8" y="240" width="4" height="85" rx="2" fill="#7C3AED"/>
+<text x="1366.8" y="256" font-size="13" font-weight="700" fill="#7C3AED">3º ESO C</text><text x="1366.8" y="280" font-size="15" fill="#111827">S5 · Orientación en el patio</text>
+<rect x="1350.8" y="478" width="217.2" height="109" rx="12" fill="#2563EB" fill-opacity="0.10" stroke="#2563EB" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="1350.8" y="490" width="4" height="85" rx="2" fill="#2563EB"/>
+<text x="1366.8" y="506" font-size="13" font-weight="700" fill="#2563EB">1º ESO A</text><text x="1366.8" y="530" font-size="15" fill="#111827">S7 · Minitorneo</text>
+<rect x="1350.8" y="728" width="217.2" height="109" rx="12" fill="#EA580C" fill-opacity="0.10" stroke="#EA580C" stroke-opacity="0.25" stroke-width="1"/>
+<rect x="1350.8" y="740" width="4" height="85" rx="2" fill="#EA580C"/>
+<text x="1366.8" y="756" font-size="13" font-weight="700" fill="#EA580C">1º BACH</text><text x="1366.8" y="780" font-size="15" fill="#111827">S8 · Evaluación práctica</text>
+</svg>

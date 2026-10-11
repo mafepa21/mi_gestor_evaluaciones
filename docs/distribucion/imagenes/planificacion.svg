@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif">
+<title>Planificación semanal en Mac (datos de ejemplo)</title>
+<rect width="1600" height="1100" rx="22" fill="#FFFFFF" stroke="#D5D8DE"/>
+<text x="30" y="44" font-size="20" font-weight="600" fill="#6B7280">MiGestor</text>
+<rect x="226" y="10" width="630" height="50" rx="25" fill="#F7F7F8" stroke="#E2E4E8"/>
+<text x="278" y="42" font-size="17" text-anchor="middle" fill="#111827">Mes</text>
+<rect x="333" y="15" width="100" height="40" rx="20" fill="#E9E9EC"/>
+<text x="383" y="42" font-size="17" text-anchor="middle" fill="#111827">Semana</text>
+<text x="488" y="42" font-size="17" text-anchor="middle" fill="#111827">Día</text>
+<text x="593" y="42" font-size="17" text-anchor="middle" fill="#111827">Secuencia</text>
+<text x="698" y="42" font-size="17" text-anchor="middle" fill="#111827">Huecos</text>
+<text x="803" y="42" font-size="17" text-anchor="middle" fill="#111827">Resumen</text>
+<rect x="868.0" y="12" width="48" height="46" rx="23" fill="#F7F7F8" stroke="#E2E4E8"/><text x="892" y="44" font-size="24" text-anchor="middle" fill="#374151">‹</text>
+<rect x="924.0" y="12" width="52" height="46" rx="23" fill="#F7F7F8" stroke="#E2E4E8"/><text x="950" y="42" font-size="17" text-anchor="middle" fill="#374151">Hoy</text>
+<rect x="986.0" y="12" width="48" height="46" rx="23" fill="#F7F7F8" stroke="#E2E4E8"/><text x="1010" y="44" font-size="24" text-anchor="middle" fill="#374151">›</text>
+<rect x="1046" y="12" width="210" height="46" rx="23" fill="#F7F7F8" stroke="#E2E4E8"/><text x="1128" y="42" font-size="17" text-anchor="middle" fill="#111827">Todos</text><text x="1190" y="42" font-size="14" fill="#374151">⌃⌄</text>
+<circle cx="1572" cy="35" r="24" fill="#F7F7F8" stroke="#E2E4E8"/><text x="1572" y="43" font-size="20" text-anchor="middle" fill="#111827">»</text>
+<rect x="36" y="76" width="1528" height="42" rx="21" fill="#F9FAFB"/>
+<text x="52" y="104" font-size="19" font-weight="700" fill="#111827">Semana 43, 2026</text><text x="218" y="104" font-size="14" fill="#6B7280">19/10 - 23/10</text>
+<rect x="318" y="86" width="86" height="26" rx="13" fill="#FEF3EA"/><text x="361" y="104" font-size="13" font-weight="700" text-anchor="middle" fill="#EA580C">1 hito</text>
+<text x="1300" y="104" font-size="14" font-weight="600" text-anchor="end" fill="#6B7280">9 de 22 franjas planificadas ›</text>
+<rect x="1340" y="91" width="18" height="14" rx="3" fill="none" stroke="#9CA3AF" stroke-width="1.6"/><text x="1368" y="104" font-size="15" fill="#6B7280">Mostrar detalle</text>
+<rect x="36" y="132" width="1528" height="952" rx="22" fill="#F7F7F8"/>
+<text x="104.0" y="190" font-size="14" font-weight="600" text-anchor="middle" fill="#8E9199">Franja</text>
+<rect x="167.0" y="154" width="270.8" height="66" rx="10" fill="#FFFFFF"/>
+<text x="302.4" y="192" font-size="14" text-anchor="middle" fill="#111827"><tspan font-weight="700">Lun</tspan><tspan fill="#8E9199" font-size="13"> 19/10</tspan></text>
+<rect x="443.8" y="154" width="270.8" height="66" rx="10" fill="#FFFFFF"/>
+<text x="579.2" y="192" font-size="14" text-anchor="middle" fill="#111827"><tspan font-weight="700">Mar</tspan><tspan fill="#8E9199" font-size="13"> 20/10</tspan></text>
+<rect x="720.6" y="154" width="270.8" height="66" rx="10" fill="#FFFFFF"/>
+<text x="856.0" y="192" font-size="14" text-anchor="middle" fill="#111827"><tspan font-weight="700">Mié</tspan><tspan fill="#8E9199" font-size="13"> 21/10</tspan></text>
+<rect x="997.4000000000001" y="154" width="270.8" height="66" rx="10" fill="#FFFFFF"/>
+<text x="1132.8000000000002" y="180" font-size="14" text-anchor="middle" fill="#111827"><tspan font-weight="700">Jue</tspan><tspan fill="#8E9199" font-size="13"> 22/10</tspan></text>
+<rect x="1012.4000000000001" y="190" width="240.8" height="20" rx="6" fill="#EDE9FE"/><text x="1132.8000000000002" y="205" font-size="11.5" font-weight="700" text-anchor="middle" fill="#6D28D9">Salida al parque · 2º ESO B</text>
+<rect x="1274.2" y="154" width="270.8" height="66" rx="10" fill="#FFFFFF"/>
+<text x="1409.6000000000001" y="192" font-size="14" text-anchor="middle" fill="#111827"><tspan font-weight="700">Vie</tspan><tspan fill="#8E9199" font-size="13"> 23/10</tspan></text>
+<text x="104.0" y="272" font-size="15" font-weight="700" text-anchor="middle" fill="#111827">08:05</text><text x="104.0" y="294" font-size="14" text-anchor="middle" fill="#6B7280">09:00</text>
+<rect x="167.0" y="234" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="179.0" y="248" width="5" height="60" rx="2.5" fill="#EA580C"/>
+<text x="196.0" y="268" font-size="19" font-weight="700" fill="#111827">3º ESO A</text>
+<text x="196.0" y="296" font-size="16" fill="#1F2937">S4 · Recepción y pase</text>
+<rect x="443.8" y="234" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="720.6" y="234" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="732.6" y="248" width="5" height="60" rx="2.5" fill="#65A30D"/>
+<text x="749.6" y="268" font-size="19" font-weight="700" fill="#111827">4º ESO A</text>
+<text x="749.6" y="296" font-size="16" fill="#1F2937">S3 · Mapa y brújula</text>
+<rect x="997.4000000000001" y="234" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="1274.2" y="234" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="1286.2" y="248" width="5" height="60" rx="2.5" fill="#EA580C"/>
+<text x="1303.2" y="268" font-size="19" font-weight="700" fill="#111827">3º ESO A</text>
+<text x="1303.2" y="296" font-size="16" font-style="italic" fill="#9CA3AF">Sin planificar</text>
+<text x="104.0" y="368" font-size="15" font-weight="700" text-anchor="middle" fill="#111827">09:00</text><text x="104.0" y="390" font-size="14" text-anchor="middle" fill="#6B7280">10:00</text>
+<rect x="167.0" y="330" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="179.0" y="344" width="5" height="60" rx="2.5" fill="#0891B2"/>
+<text x="196.0" y="364" font-size="19" font-weight="700" fill="#111827">3º ESO B</text>
+<text x="196.0" y="392" font-size="16" font-style="italic" fill="#9CA3AF">Sin planificar</text>
+<rect x="443.8" y="330" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="720.6" y="330" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="997.4000000000001" y="330" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="1274.2" y="330" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="1286.2" y="344" width="5" height="60" rx="2.5" fill="#0891B2"/>
+<text x="1303.2" y="364" font-size="19" font-weight="700" fill="#111827">3º ESO B</text>
+<text x="1303.2" y="392" font-size="16" fill="#1F2937">S5 · Orientación en el patio</text>
+<text x="104.0" y="464" font-size="15" font-weight="700" text-anchor="middle" fill="#111827">10:00</text><text x="104.0" y="486" font-size="14" text-anchor="middle" fill="#6B7280">11:00</text>
+<rect x="167.0" y="426" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="179.0" y="440" width="5" height="60" rx="2.5" fill="#DC2626"/>
+<text x="196.0" y="460" font-size="19" font-weight="700" fill="#111827">1º ESO A</text>
+<text x="196.0" y="488" font-size="16" fill="#1F2937">Tutoría de grupo</text>
+<rect x="358.8" y="442" width="64" height="22" rx="6" fill="#FFFFFF" stroke="#E5E7EB"/><text x="390.8" y="458" font-size="12" text-anchor="middle" fill="#6B7280">Tutoría</text>
+<rect x="443.8" y="426" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="720.6" y="426" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="997.4000000000001" y="426" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="1274.2" y="426" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<text x="104.0" y="560" font-size="15" font-weight="700" text-anchor="middle" fill="#111827">11:00</text><text x="104.0" y="582" font-size="14" text-anchor="middle" fill="#6B7280">12:00</text>
+<rect x="167.0" y="522" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="443.8" y="522" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="455.8" y="536" width="5" height="60" rx="2.5" fill="#7C3AED"/>
+<text x="472.8" y="556" font-size="19" font-weight="700" fill="#111827">2º ESO B</text>
+<text x="472.8" y="584" font-size="16" fill="#1F2937">S3 · Coreografía en grupo</text>
+<rect x="720.6" y="522" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="997.4000000000001" y="522" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="1009.4000000000001" y="536" width="5" height="60" rx="2.5" fill="#DC2626"/>
+<text x="1026.4" y="556" font-size="19" font-weight="700" fill="#111827">1º ESO A</text>
+<text x="1026.4" y="584" font-size="16" fill="#1F2937">S5 · Saque dirigido</text>
+<rect x="1274.2" y="522" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="50" y="618" width="104" height="88" rx="12" fill="#DCE5FD"/>
+<text x="104.0" y="656" font-size="15" font-weight="700" text-anchor="middle" fill="#1752EB">11:25</text><text x="104.0" y="678" font-size="14" text-anchor="middle" fill="#1752EB">12:20</text>
+<rect x="167.0" y="618" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="179.0" y="632" width="5" height="60" rx="2.5" fill="#65A30D"/>
+<text x="196.0" y="652" font-size="19" font-weight="700" fill="#111827">4º ESO A</text>
+<text x="196.0" y="680" font-size="16" fill="#1F2937">S2 · Ritmo y pulso</text>
+<rect x="443.8" y="618" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="720.6" y="618" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="997.4000000000001" y="618" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="1274.2" y="618" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<text x="104.0" y="752" font-size="15" font-weight="700" text-anchor="middle" fill="#111827">12:20</text><text x="104.0" y="774" font-size="14" text-anchor="middle" fill="#6B7280">13:15</text>
+<rect x="167.0" y="714" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="443.8" y="714" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="455.8" y="728" width="5" height="60" rx="2.5" fill="#7C3AED"/>
+<text x="472.8" y="748" font-size="19" font-weight="700" fill="#111827">2º ESO B</text>
+<text x="472.8" y="776" font-size="16" font-style="italic" fill="#9CA3AF">Sin planificar</text>
+<rect x="720.6" y="714" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="732.6" y="728" width="5" height="60" rx="2.5" fill="#2563EB"/>
+<text x="749.6" y="748" font-size="19" font-weight="700" fill="#111827">1º BAC A</text>
+<text x="749.6" y="776" font-size="16" fill="#1F2937">S7 · Test de condición física</text>
+<rect x="997.4000000000001" y="714" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="1009.4000000000001" y="728" width="5" height="60" rx="2.5" fill="#DC2626"/>
+<text x="1026.4" y="748" font-size="19" font-weight="700" fill="#111827">1º ESO A</text>
+<text x="1026.4" y="776" font-size="16" font-style="italic" fill="#9CA3AF">Sin planificar</text>
+<rect x="1274.2" y="714" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="1286.2" y="728" width="5" height="60" rx="2.5" fill="#2563EB"/>
+<text x="1303.2" y="748" font-size="19" font-weight="700" fill="#111827">1º BAC A</text>
+<text x="1303.2" y="776" font-size="16" font-style="italic" fill="#9CA3AF">Sin planificar</text>
+<text x="104.0" y="848" font-size="15" font-weight="700" text-anchor="middle" fill="#111827">13:15</text><text x="104.0" y="870" font-size="14" text-anchor="middle" fill="#6B7280">14:10</text>
+<rect x="167.0" y="810" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="179.0" y="824" width="5" height="60" rx="2.5" fill="#2563EB"/>
+<text x="196.0" y="844" font-size="19" font-weight="700" fill="#111827">1º BAC A</text>
+<text x="196.0" y="872" font-size="16" fill="#1F2937">S6 · Plan de entrenamiento</text>
+<rect x="443.8" y="810" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="720.6" y="810" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="732.6" y="824" width="5" height="60" rx="2.5" fill="#7C3AED"/>
+<text x="749.6" y="844" font-size="19" font-weight="700" fill="#111827">2º ESO B</text>
+<text x="749.6" y="872" font-size="16" font-style="italic" fill="#9CA3AF">Sin planificar</text>
+<rect x="997.4000000000001" y="810" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="1274.2" y="810" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="1286.2" y="824" width="5" height="60" rx="2.5" fill="#2563EB"/>
+<text x="1303.2" y="844" font-size="19" font-weight="700" fill="#111827">1º BAC A</text>
+<text x="1303.2" y="872" font-size="16" font-style="italic" fill="#9CA3AF">Sin planificar</text>
+<text x="104.0" y="944" font-size="15" font-weight="700" text-anchor="middle" fill="#111827">14:25</text><text x="104.0" y="966" font-size="14" text-anchor="middle" fill="#6B7280">15:20</text>
+<rect x="167.0" y="906" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="443.8" y="906" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="720.6" y="906" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="997.4000000000001" y="906" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="1274.2" y="906" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<text x="104.0" y="1040" font-size="15" font-weight="700" text-anchor="middle" fill="#111827">15:05</text><text x="104.0" y="1062" font-size="14" text-anchor="middle" fill="#6B7280">16:00</text>
+<rect x="167.0" y="1002" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="443.8" y="1002" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="455.8" y="1016" width="5" height="60" rx="2.5" fill="#65A30D"/>
+<text x="472.8" y="1036" font-size="19" font-weight="700" fill="#111827">4º ESO A</text>
+<text x="472.8" y="1064" font-size="16" font-style="italic" fill="#9CA3AF">Sin planificar</text>
+<rect x="720.6" y="1002" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+<rect x="997.4000000000001" y="1002" width="270.8" height="88" rx="10" fill="#FFFFFF" stroke="#EEEEF0"/><rect x="1009.4000000000001" y="1016" width="5" height="60" rx="2.5" fill="#EA580C"/>
+<text x="1026.4" y="1036" font-size="19" font-weight="700" fill="#111827">3º ESO A</text>
+<text x="1026.4" y="1064" font-size="16" font-style="italic" fill="#9CA3AF">Sin planificar</text>
+<rect x="1274.2" y="1002" width="270.8" height="88" rx="10" fill="#ECECEE"/>
+</svg>

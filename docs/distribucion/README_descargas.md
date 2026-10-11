@@ -1,6 +1,24 @@
 # Cuaderno Vivo
 
+<p align="center"><img src="imagenes/portada.svg" alt="Cuaderno Vivo: icono, nombre y apartados principales" width="100%"></p>
+
 **Tu cuaderno de profe para Mac.** Notas, rúbricas, asistencia, planificación e informes en un solo sitio, con tus datos guardados en tu propio ordenador.
+
+## Así es la app
+
+Imágenes de ejemplo con datos inventados: ningún alumno ni nota es real.
+
+**Cuaderno.** La tabla de notas de cada grupo, con columnas por instrumento, su tipo y su peso, y la media ponderada siempre a la vista.
+
+<img src="imagenes/cuaderno.svg" alt="Cuaderno con columnas de rúbrica, observación y evaluación, y media ponderada" width="100%">
+
+**Rúbricas.** Toda la clase de una vez: un toque por criterio, el nivel se colorea de inicial a avanzado y la nota se calcula sola.
+
+<img src="imagenes/rubrica.svg" alt="Evaluación con rúbrica: cada estudiante en una fila, niveles del 1 al 4 por criterio y nota calculada" width="100%">
+
+**Planificación.** La semana por franjas horarias: cada grupo con su color, lo que falta por planificar, los hitos del curso y la franja en curso resaltada.
+
+<img src="imagenes/planificacion.svg" alt="Planificación semanal con sesiones de varios grupos por franja horaria" width="100%">
 
 ## Descargar
 

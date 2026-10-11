@@ -5,7 +5,7 @@ Cómo publicar una versión nueva de la app de Mac para que cualquiera pueda des
 ## Dónde se publica
 
 - El código sigue en el repositorio privado `mafepa21/mi_gestor_evaluaciones`.
-- Las descargas van a un repositorio **público** aparte que solo contiene un README y los Releases con el `.dmg`.
+- Las descargas van a un repositorio **público** aparte, [`mafepa21/cuaderno-vivo`](https://github.com/mafepa21/cuaderno-vivo), que solo contiene un README y los Releases con el `.dmg`.
 - El README público vive versionado aquí: [`README_descargas.md`](README_descargas.md). Si cambia, se copia al repositorio público.
 
 ## Por qué firma ad hoc
@@ -29,7 +29,7 @@ Cómo publicar una versión nueva de la app de Mac para que cualquiera pueda des
 4. Publica el Release en el repositorio público:
 
    ```bash
-   gh release create v<versión> build/release-mac/CuadernoVivo-<versión>.dmg build/release-mac/CuadernoVivo-<versión>.dmg.sha256 --repo mafepa21/<repositorio-público> --title "Cuaderno Vivo <versión>" --notes "Novedades de esta versión..."
+   gh release create v<versión> build/release-mac/CuadernoVivo-<versión>.dmg build/release-mac/CuadernoVivo-<versión>.dmg.sha256 --repo mafepa21/cuaderno-vivo --title "Cuaderno Vivo <versión>" --notes "Novedades de esta versión..."
    ```
 
 ## Límites conocidos

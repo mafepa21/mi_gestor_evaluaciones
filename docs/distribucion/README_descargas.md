@@ -4,7 +4,7 @@
 
 ## Descargar
 
-1. Ve a [**Releases**](../../releases/latest).
+1. Ve a [**Releases**](https://github.com/mafepa21/cuaderno-vivo/releases/latest).
 2. Descarga el archivo `CuadernoVivo-<versión>.dmg`.
 
 Necesitas un Mac con chip Apple (M1 o posterior) y macOS 26 o posterior.
@@ -48,4 +48,4 @@ El número que sale debe ser igual al del archivo `.sha256`.
 
 ## Problemas o ideas
 
-Abre un aviso en [**Issues**](../../issues). Cuenta qué hiciste y qué pasó. Nunca pegues datos reales de alumnos.
+Abre un aviso en [**Issues**](https://github.com/mafepa21/cuaderno-vivo/issues). Cuenta qué hiciste y qué pasó. Nunca pegues datos reales de alumnos.

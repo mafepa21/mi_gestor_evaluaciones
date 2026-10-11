@@ -55,3 +55,7 @@ El número que sale debe ser igual al del archivo `.sha256`.
 ## Problemas o ideas
 
 Abre un aviso en [**Issues**](https://github.com/mafepa21/cuaderno-vivo/issues). Cuenta qué hiciste y qué pasó. Nunca pegues datos reales de alumnos.
+
+## Licencia
+
+Cuaderno Vivo es gratis para uso personal y docente. No se puede vender ni modificar, y se ofrece sin garantía. Condiciones completas en [LICENSE](LICENSE). La guía de importación se puede compartir citando la fuente (CC BY 4.0).

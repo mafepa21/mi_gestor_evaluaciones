@@ -1,40 +1,47 @@
 {
-  "fill" : "system-light",
+  "fill-specializations" : [
+    {
+      "value" : {
+        "solid" : "srgb:0.22745,0.30980,0.85098,1.00000"
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "solid" : "srgb:0.08627,0.10588,0.20000,1.00000"
+      }
+    }
+  ],
   "groups" : [
     {
-      "blur-material" : null,
       "layers" : [
         {
-          "blend-mode-specializations" : [
-            {
-              "appearance" : "dark",
-              "value" : "normal"
-            }
-          ],
-          "glass" : false,
-          "hidden" : false,
-          "image-name-specializations" : [
-            {
-              "value" : "AppIcon-1024.png"
-            },
-            {
-              "appearance" : "dark",
-              "value" : "AppIcon-1024-dark.png"
-            }
-          ],
-          "name" : "MiGestor",
-          "position" : {
-            "scale" : 1,
-            "translation-in-points" : [
-              0,
-              0
-            ]
-          }
+          "glass" : true,
+          "image-name" : "CeldaViva.svg",
+          "name" : "CeldaViva"
         }
       ],
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "Rejilla.svg",
+          "name" : "Rejilla"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.3
       },
       "specular" : false,
       "translucency" : {

@@ -1996,6 +1996,21 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-10-11 - Rúbrica en tabla y hoja de sesión ancha (menos scroll en el día a día)
+
+Resumen:
+- Rúbrica (`RubricEvaluationView.swift`): con ancho suficiente, criterios en filas y niveles en columnas (`RubricMatrixView` + `RubricMatrixRowLayout`), cabecera de niveles única y botón «Ocultar textos» (`@AppStorage`). Una rúbrica 3 × 4 cabe sin scroll en Mac. Solo si todos los criterios tienen igual número de niveles y cada columna ≥ 140 pt; si no, tarjetas de siempre (iPhone, iPad vertical).
+- Hoja de sesión del Planner: en Mac ocupa casi toda la ventana (`MacRootView` mide la ventana y fija el tamaño de la hoja). Desde 900 pt, repaso ancho: carril fijo (objetivo, montaje y atención completos) + guion con los dos bloques de una sesión LONG en paralelo; sesión simple a todo el ancho. Umbrales en `PlannerSessionDetailLayoutPolicy`.
+- Guion limpio (`PlannerSessionReviewBuilder.reviewDetail`): sin «U01 · », sin título repetido, sin consigna CLIL duplicada (también en mitad de línea), listas una por línea, sin pie «Tactical diagram» si el diagrama se ve, avisos repetidos por unidad una sola vez. Diagrama en miniatura ampliable; `PlannerDocxWebView` ya no recarga el HTML en cada actualización.
+- Marca «Ahora» (`PlannerSessionLiveProgress`): sesión de hoy a su hora resalta paso y tramo de la barra y baja hasta él; pulsar un tramo de la barra lleva a su paso.
+- PRs #312 y #313, llevados a `main` con #319.
+- Validación: `xcodebuild test -scheme MiGestorPlannerTests` → 277 tests sin fallos; build iOS genérico correcto; QA manual del docente correcta.
+
+Notas para futuras conversaciones:
+- Lo que se añada a `loadedBody` del visor debe añadirse también a `wideReviewContent`.
+- «Ahora» sigue los minutos del plan, no la franja del horario (una LONG de 80 min ocupa una franja de 55).
+- Cada worktree crea su propio `kmp/.gradle` (~1,6 GB) y el disco llegó a llenarse: compilar con `GRADLE_USER_HOME` apuntando al `kmp/.gradle` del checkout principal.
+
 ### 2026-09-28 - El panel no se cierra al cargar en el iPad
 
 Resumen:

@@ -6,7 +6,8 @@ Cómo publicar una versión nueva de la app de Mac para que cualquiera pueda des
 
 - El código sigue en el repositorio privado `mafepa21/mi_gestor_evaluaciones`.
 - Las descargas van a un repositorio **público** aparte, [`mafepa21/cuaderno-vivo`](https://github.com/mafepa21/cuaderno-vivo), que solo contiene un README y los Releases con el `.dmg`.
-- El README público vive versionado aquí: [`README_descargas.md`](README_descargas.md). Si cambia, se copia al repositorio público.
+- El README público y la guía de importación viven versionados aquí: [`README_descargas.md`](README_descargas.md) y [`GUIA_IMPORTACION.md`](GUIA_IMPORTACION.md). Si cambian, se copian al repositorio público.
+- Si cambia un importador (horario, alumnado, SA, sesiones, instrumentos), revisa la guía: sus reglas salen del código de `kmp/iosApp/AppleShared/*Import*.swift` y de `docs/importacion_documentos_sa.md`.
 
 ## Por qué firma ad hoc
 

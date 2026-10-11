@@ -26,7 +26,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
-- **Descarga pública para Mac**: `scripts/package_mac_release.sh` compila en Release (arm64), firma en modo ad hoc y crea `build/release-mac/CuadernoVivo-<versión>.dmg` con su `.sha256`. Guía en `docs/distribucion/mac.md` y README para el repositorio público de descargas en `docs/distribucion/README_descargas.md`.
+- **Descarga pública para Mac**: `scripts/package_mac_release.sh` compila en Release (arm64), firma en modo ad hoc y crea `build/release-mac/CuadernoVivo-<versión>.dmg` con su `.sha256`. Guía en `docs/distribucion/mac.md` y README para el repositorio público de descargas en `docs/distribucion/README_descargas.md`. Guía de importación para el público (`docs/distribucion/GUIA_IMPORTACION.md`): estructura de horario, alumnado, correos, SA, sesiones e instrumentos, con un prompt por documento para adaptarlo con IA.
 - **Registro de lentitud (`PerfLog`)**: apunta en el registro (subsistema `com.migestor.app`, categoría `rendimiento`) lo que supera 150 ms: cambio de pantalla, carga del Planner, cambio de grupo en el Cuaderno y copia de seguridad; Sync LAN a partir de 1 s. En Debug, un vigilante apunta las congelaciones de la pantalla de más de 250 ms. Guía en `docs/REGISTRO_RENDIMIENTO.md`.
 - **Pantalla «Inclusión» (plazos y tareas del alumnado con medidas de nivel III y IV)**:
   - Franja con las 5 fases del Manual de Inclusión 2026-2027, avisos de tareas vencidas y de los próximos 7 días, lista de alumnos y tareas por fase.

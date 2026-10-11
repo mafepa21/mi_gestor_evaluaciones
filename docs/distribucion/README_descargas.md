@@ -26,6 +26,12 @@ Cuaderno Vivo es un proyecto personal y no está firmado con una cuenta de pago 
 
 Solo hay que hacerlo una vez por cada versión nueva.
 
+## Importar tus documentos
+
+La app puede leer tu horario, tus listas de alumnado y tus situaciones de aprendizaje (con sus sesiones e instrumentos de evaluación). Cada documento necesita una estructura concreta.
+
+En la [**guía de importación**](GUIA_IMPORTACION.md) tienes la estructura de cada uno, un ejemplo y un **prompt listo para copiar** en ChatGPT, Claude o Gemini para que la IA adapte tus documentos.
+
 ## Actualizar
 
 Descarga el `.dmg` nuevo y arrastra la app a Aplicaciones otra vez. Pulsa **Reemplazar**. Tus datos no se borran: se guardan aparte de la app.

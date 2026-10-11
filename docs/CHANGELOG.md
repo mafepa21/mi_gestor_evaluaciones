@@ -54,6 +54,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - Migración `45.sqm` aditiva: tablas `inclusion_tasks` e `inclusion_group_settings` con índices. Sin sincronización SyncLAN todavía.
 
+### Docs
+
+- ADR `ADR-2026-08-17-app-icon-composer-variants.md` actualizado con el icono «Cuadrícula de notas»: capas SVG, fondo en `icon.json`, Liquid Glass en la celda viva y cómo validarlo.
+
 ### Verification
 
 - Icono «Cuadrícula de notas»: `ictool` (Icon Composer) renderiza las variantes iOS Default, Dark, ClearLight, TintedDark y macOS Default sin errores y con la celda viva por encima de la rejilla; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED, con PNG de reserva generados para iOS 17; `xcodebuild build -scheme MiGestorKMPMac -destination 'platform=macOS,arch=arm64'` → BUILD SUCCEEDED con `AppIcon.icns`. Con `generic/platform=macOS` falla el enlazado en x86_64 porque `MiGestorKit.framework` solo trae arm64 (ajeno al icono). Sin captura en simulador ni en el Dock: el Mac no tiene simuladores instalados (`simctl list` vacío) y la app no se instaló.

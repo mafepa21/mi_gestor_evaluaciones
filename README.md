@@ -12,9 +12,9 @@ Imágenes diseñadas con datos inventados: no son capturas de un cuaderno real.
 
 <img src="docs/imagenes/readme/cuaderno.svg" alt="Cuaderno en Mac con columnas de rúbrica, observación y evaluación, y media ponderada" width="100%">
 
-**Rúbricas.** Criterios en filas y niveles en columnas: se evalúa a cada estudiante de un vistazo, sin desplazarse.
+**Rúbricas.** Toda la clase de una vez: un toque por criterio, el nivel se colorea de inicial a avanzado y la nota se calcula sola.
 
-<img src="docs/imagenes/readme/rubrica.svg" alt="Evaluación con rúbrica en Mac: lista de estudiantes y tabla de criterios por niveles" width="100%">
+<img src="docs/imagenes/readme/rubrica.svg" alt="Evaluación con rúbrica en Mac: cada estudiante en una fila, niveles del 1 al 4 por criterio y nota calculada" width="100%">
 
 **Planificación.** La semana por franjas, con las sesiones de cada grupo, las ya impartidas y la que toca ahora.
 

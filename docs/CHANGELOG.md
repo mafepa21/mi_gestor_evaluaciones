@@ -56,6 +56,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- README: sección «Así es la app» con portada e imágenes del Cuaderno, Rúbricas, Planificación y Asistencia en iPhone (`docs/imagenes/readme/`). Son dibujos SVG con datos inventados, no capturas.
 - ADR `ADR-2026-08-17-app-icon-composer-variants.md` actualizado con el icono «Cuadrícula de notas»: capas SVG, fondo en `icon.json`, Liquid Glass en la celda viva y cómo validarlo.
 
 ### Verification

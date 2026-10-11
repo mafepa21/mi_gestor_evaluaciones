@@ -2,6 +2,30 @@
 
 App educativa para gestion docente diaria: cuaderno, rubricas, asistencia, alumnado, planificacion, informes, sincronizacion, backups y modulos especificos de Educacion Fisica.
 
+<p align="center"><img src="docs/imagenes/readme/portada.svg" alt="Mi Gestor Evaluaciones: icono, nombre y apartados principales" width="100%"></p>
+
+## Así es la app
+
+Imágenes diseñadas con datos inventados: no son capturas de un cuaderno real.
+
+**Cuaderno.** La tabla de notas de cada grupo, con columnas por instrumento, su tipo y su peso, y la media ponderada siempre a la vista.
+
+<img src="docs/imagenes/readme/cuaderno.svg" alt="Cuaderno en Mac con columnas de rúbrica, observación y evaluación, y media ponderada" width="100%">
+
+**Rúbricas.** Toda la clase de una vez: un toque por criterio, el nivel se colorea de inicial a avanzado y la nota se calcula sola.
+
+<img src="docs/imagenes/readme/rubrica.svg" alt="Evaluación con rúbrica en Mac: cada estudiante en una fila, niveles del 1 al 4 por criterio y nota calculada" width="100%">
+
+**Planificación.** La semana por franjas, con las sesiones de cada grupo, las ya impartidas y la que toca ahora.
+
+<img src="docs/imagenes/readme/planificacion.svg" alt="Planificación semanal en Mac con sesiones de varios grupos" width="100%">
+
+**Asistencia en iPhone.** Pasar lista en segundos: todos presentes de una vez y solo marcar las excepciones.
+
+<p align="center"><img src="docs/imagenes/readme/asistencia.svg" alt="Pase de asistencia en iPhone con presentes, retrasos y faltas" width="320"></p>
+
+## El proyecto
+
 El proyecto empezo como app Flutter y esta evolucionando hacia una arquitectura KMP + SwiftUI:
 
 - `kmp/shared/`: logica de negocio Kotlin Multiplatform.

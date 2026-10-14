@@ -92,7 +92,7 @@ enum class WipeCategory(
         tableNames = listOf(
             "learning_situations", "learning_situation_versions", "learning_situation_classes",
             "learning_situation_links", "learning_situation_sequence_versions",
-            "learning_situation_session_plans", "units", "sessions"
+            "learning_situation_session_plans", "learning_situation_tournaments", "units", "sessions"
         )
     ),
     TEACHER_SCHEDULE(

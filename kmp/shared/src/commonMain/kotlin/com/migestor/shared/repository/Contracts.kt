@@ -1089,6 +1089,16 @@ interface LearningSituationsRepository {
     @Throws(Throwable::class)
     suspend fun getSessionPlan(id: Long): LearningSituationSessionPlan?
     @Throws(Throwable::class)
+    suspend fun saveTournament(tournament: LearningSituationTournament)
+    @Throws(Throwable::class)
+    suspend fun listTournaments(learningSituationId: Long): List<LearningSituationTournament>
+    @Throws(Throwable::class)
+    suspend fun listAllTournaments(): List<LearningSituationTournament>
+    @Throws(Throwable::class)
+    suspend fun getTournament(id: String): LearningSituationTournament?
+    @Throws(Throwable::class)
+    suspend fun deleteTournament(id: String)
+    @Throws(Throwable::class)
     suspend fun replaceClassLinks(learningSituationId: Long, classIds: List<Long>)
     @Throws(Throwable::class)
     suspend fun listClassLinks(learningSituationId: Long): List<LearningSituationClassLink>

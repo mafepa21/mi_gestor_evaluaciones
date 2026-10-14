@@ -91,6 +91,9 @@ enum LegacyTournamentStore {
         var tournaments: [LegacyTournamentState]
         /// Elementos del array que no se pudieron leer (se cuentan, no se pierden en silencio).
         var undecodableCount: Int
+        /// `true` si hay datos guardados pero el JSON entero no se pudo decodificar como lista.
+        /// En ese caso no hay que dar la migración por hecha: los datos siguen en la clave antigua.
+        var fileUnreadable = false
     }
 
     /// Lee elemento a elemento: un torneo corrupto no impide migrar los demás.
@@ -103,7 +106,7 @@ enum LegacyTournamentStore {
 
     static func decode(_ data: Data) -> LoadResult {
         guard let items = try? JSONDecoder().decode([Lossy<LegacyTournamentState>].self, from: data) else {
-            return LoadResult(tournaments: [], undecodableCount: 0)
+            return LoadResult(tournaments: [], undecodableCount: 0, fileUnreadable: true)
         }
         return LoadResult(
             tournaments: items.compactMap(\.value),
@@ -423,16 +426,34 @@ extension KmpBridge {
         if loaded.undecodableCount > 0 {
             logger.error("Torneos antiguos ilegibles: \(loaded.undecodableCount). Se conservan en la clave antigua sin migrar.")
         }
+        if loaded.fileUnreadable {
+            // No se pone la marca: los datos siguen en la clave antigua y se reintenta al siguiente arranque.
+            logger.error("Los torneos antiguos no se pudieron leer (JSON no válido). No se marca la migración como terminada.")
+            return
+        }
         guard !loaded.tournaments.isEmpty else {
             defaults.set(true, forKey: LegacyTournamentStore.migrationFlagKey)
             return
         }
 
-        await ensureClassesLoaded()
-        let knownClassIds = Set(classes.map(\.id))
+        // Se pregunta directamente al repositorio: `ensureClassesLoaded()` traga los errores y,
+        // si los cursos aún no han llegado, se descartarían todos los torneos por error.
+        let knownClassIds: Set<Int64>
+        do {
+            knownClassIds = Set(try await container.classesRepository.listClasses().map(\.id))
+        } catch {
+            logger.error("No se pudieron cargar los cursos para migrar los torneos antiguos: \(error.localizedDescription). Se reintenta en el siguiente arranque.")
+            return
+        }
+        guard !knownClassIds.isEmpty else {
+            // Sin cursos no se puede saber si un torneo es huérfano o si los cursos aún no han llegado (p. ej. por sync).
+            logger.notice("Hay \(loaded.tournaments.count) torneos antiguos pero todavía no hay cursos. Se reintenta en el siguiente arranque.")
+            return
+        }
         var failures = 0
         var migrated = 0
         for legacy in loaded.tournaments {
+            // Con la lista de cursos cargada y no vacía, un curso inexistente es un descarte definitivo.
             guard knownClassIds.contains(legacy.classId) else {
                 logger.notice("Torneo «\(legacy.name)» omitido: su curso \(legacy.classId) ya no existe.")
                 continue

@@ -207,6 +207,9 @@ final class LegacyTournamentMigratorTests: XCTestCase {
         XCTAssertEqual(loaded.undecodableCount, 1)
         XCTAssertEqual(loaded.tournaments.first?.template, .roundRobin)
         XCTAssertEqual(LegacyTournamentStore.decode(Data("basura".utf8)).tournaments.count, 0)
+        // Un JSON entero ilegible se distingue de "no hay datos": no debe dar la migración por hecha.
+        XCTAssertTrue(LegacyTournamentStore.decode(Data("basura".utf8)).fileUnreadable)
+        XCTAssertFalse(LegacyTournamentStore.decode(Data("[]".utf8)).fileUnreadable)
     }
 
     func testOldTemplateAndStatusRawValuesAreTheOnesPersistedByTheOldModule() {

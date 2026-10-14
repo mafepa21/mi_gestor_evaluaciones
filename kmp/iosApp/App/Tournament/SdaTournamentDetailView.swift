@@ -1,0 +1,448 @@
+import SwiftUI
+import MiGestorKit
+
+/// Detalle de un torneo de la SdA: calendario por rondas, clasificación o cuadro, resultados,
+/// estado, exportar y borrar. Se muestra dentro de una hoja con su propia pila de navegación
+/// (el modo directo se apila encima).
+struct SdaTournamentDetailView: View {
+    @StateObject private var store: SdaTournamentStore
+    let currentTeams: [TournamentWorkGroupTeam]
+    let className: String
+    let onDeleted: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedTab: Tab = .calendar
+    @State private var scoreTarget: SdaScoreTarget?
+    @State private var isConfirmingDelete = false
+    @State private var isConfirmingRefresh = false
+    @State private var actionError: String?
+
+    private enum Tab: String, Identifiable {
+        case calendar, standings, groups, bracket
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .calendar: return "Calendario"
+            case .standings: return "Clasificación"
+            case .groups: return "Grupos"
+            case .bracket: return "Cuadro"
+            }
+        }
+    }
+
+    private struct SdaScoreTarget: Identifiable {
+        let id: UUID
+    }
+
+    init(
+        record: TournamentRecord,
+        plan: TournamentPlan,
+        bridge: KmpBridge,
+        currentTeams: [TournamentWorkGroupTeam],
+        className: String,
+        onSaved: @escaping (TournamentRecord) -> Void,
+        onDeleted: @escaping () -> Void
+    ) {
+        let store = SdaTournamentStore(record: record, plan: plan, bridge: bridge)
+        store.onSaved = onSaved
+        _store = StateObject(wrappedValue: store)
+        self.currentTeams = currentTeams
+        self.className = className
+        self.onDeleted = onDeleted
+    }
+
+    private var plan: TournamentPlan { store.plan }
+
+    private var tabs: [Tab] {
+        switch plan.format {
+        case .roundRobin, .rotation: return [.calendar, .standings]
+        case .knockout: return [.calendar, .bracket]
+        case .groupStageKnockout: return [.calendar, .groups, .bracket]
+        }
+    }
+
+    private var groupsChanged: Bool {
+        SdaTournamentTeams.hasChanged(
+            snapshot: plan.teams,
+            current: currentTeams.filter { $0.classId == store.record.classId }
+        )
+    }
+
+    // MARK: Cuerpo
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    summaryCard
+                    notices
+                    if plan.savedSchedule.isEmpty {
+                        LearningSituationInlineNotice(
+                            kind: .warning,
+                            message: "Este torneo no tiene calendario. Actualiza los equipos para generarlo.",
+                            actionTitle: groupsChanged ? "Actualizar equipos" : nil
+                        ) {
+                            isConfirmingRefresh = true
+                        }
+                    } else {
+                        if tabs.count > 1 {
+                            Picker("Vista", selection: $selectedTab) {
+                                ForEach(tabs) { tab in
+                                    Text(tab.title).tag(tab)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .accessibilityLabel("Vista del torneo")
+                        }
+                        content
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: 760, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .navigationTitle(plan.name)
+            .appInlineNavigationBarTitleDisplayMode()
+            .toolbar { toolbarContent }
+            .sheet(item: $scoreTarget) { target in
+                scoreSheet(for: target)
+            }
+            .confirmationDialog(
+                "¿Borrar «\(plan.name)»?",
+                isPresented: $isConfirmingDelete,
+                titleVisibility: .visible
+            ) {
+                Button("Borrar", role: .destructive) { Task { await deleteTournament() } }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text("Se borran el calendario y los resultados en todos tus dispositivos.")
+            }
+            .confirmationDialog(
+                "¿Actualizar los equipos?",
+                isPresented: $isConfirmingRefresh,
+                titleVisibility: .visible
+            ) {
+                Button("Actualizar y borrar resultados", role: .destructive) { refreshTeams() }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text("Se borran el calendario y los resultados, y se crea un calendario nuevo con los grupos de hoy.")
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 560, minHeight: 640)
+        #else
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        #endif
+        .onChange(of: tabs) { _, newTabs in
+            if !newTabs.contains(selectedTab) { selectedTab = .calendar }
+        }
+    }
+
+    // MARK: Cabecera
+
+    private var summaryCard: some View {
+        LearningSituationCard(title: nil) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: plan.format.symbolName)
+                        .font(.title2)
+                        .foregroundStyle(EvaluationDesign.accent)
+                        .accessibilityHidden(true)
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    statusMenu
+                }
+                if plan.totalMatchCount > 0 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\(plan.completedMatchCount) de \(sdaPlural(plan.totalMatchCount, "partido", "partidos")) con resultado")
+                            .font(.subheadline)
+                        ProgressView(
+                            value: Double(plan.completedMatchCount),
+                            total: Double(max(plan.totalMatchCount, 1))
+                        )
+                        .accessibilityHidden(true)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                DatePicker(
+                    "Empieza",
+                    selection: Binding(
+                        get: { store.plan.startDate },
+                        set: { newValue in store.mutate { $0.startDate = newValue } }
+                    ),
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .frame(minHeight: 44)
+                if !plan.savedSchedule.isEmpty {
+                    NavigationLink {
+                        SdaTournamentLiveView(store: store)
+                    } label: {
+                        Label("Modo directo", systemImage: "play.circle.fill")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .accessibilityHint("Abre el temporizador y los marcadores grandes de la ronda actual.")
+                }
+            }
+        }
+    }
+
+    private var subtitle: String {
+        [
+            className,
+            plan.format.shortTitle,
+            sdaPlural(plan.teamCount, "equipo", "equipos"),
+            sdaPlural(plan.venueCount, "pista", "pistas"),
+            "\(plan.matchDurationMinutes) min por partido"
+        ].joined(separator: " · ")
+    }
+
+    private var statusMenu: some View {
+        Menu {
+            ForEach([TournamentPlanStatus.draft, .scheduled, .live, .finished], id: \.self) { status in
+                Button {
+                    store.mutate { $0.status = status }
+                } label: {
+                    if status == plan.status {
+                        Label(status.title, systemImage: "checkmark")
+                    } else {
+                        Text(status.title)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                SdaStatusBadge(status: plan.status)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Cambiar estado")
+        .accessibilityValue(plan.status.title)
+    }
+
+    @ViewBuilder
+    private var notices: some View {
+        if store.saveFailed {
+            LearningSituationInlineNotice(
+                kind: .error,
+                message: "No se pudo guardar el último cambio.",
+                actionTitle: "Reintentar"
+            ) {
+                store.retrySave()
+            }
+        }
+        if let actionError {
+            LearningSituationInlineNotice(kind: .error, message: actionError)
+        }
+        if groupsChanged, !plan.savedSchedule.isEmpty {
+            LearningSituationInlineNotice(
+                kind: .warning,
+                message: "Los grupos han cambiado desde que creaste este torneo.",
+                actionTitle: "Actualizar equipos"
+            ) {
+                isConfirmingRefresh = true
+            }
+        }
+    }
+
+    // MARK: Barra
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Cerrar") { dismiss() }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            ShareLink(item: plan.exportText, subject: Text(plan.name)) {
+                Label("Compartir", systemImage: "square.and.arrow.up")
+            }
+            .disabled(plan.savedSchedule.isEmpty)
+            .accessibilityLabel("Compartir calendario y resultados")
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button(role: .destructive) {
+                    isConfirmingDelete = true
+                } label: {
+                    Label("Borrar torneo…", systemImage: "trash")
+                }
+            } label: {
+                Label("Más acciones", systemImage: "ellipsis.circle")
+            }
+            .accessibilityLabel("Más acciones")
+        }
+    }
+
+    // MARK: Contenido
+
+    @ViewBuilder
+    private var content: some View {
+        switch selectedTab {
+        case .calendar: calendarContent
+        case .standings: standingsContent
+        case .groups: groupsContent
+        case .bracket: bracketContent
+        }
+    }
+
+    private var calendarContent: some View {
+        let slots = plan.slots
+        let slotsByRound = Dictionary(grouping: slots, by: \.roundNumber)
+        return VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(plan.savedSchedule.enumerated()), id: \.element.id) { index, round in
+                let roundSlots = (slotsByRound[round.number] ?? []).sorted { $0.venueNumber < $1.venueNumber }
+                let showsStage = index == 0 || plan.savedSchedule[index - 1].stage != round.stage
+                VStack(alignment: .leading, spacing: 8) {
+                    if showsStage, let stageTitle = round.stage.sdaTitle {
+                        Text(stageTitle)
+                            .font(.title3.weight(.semibold))
+                            .accessibilityAddTraits(.isHeader)
+                            .padding(.top, index == 0 ? 0 : 8)
+                    }
+                    LearningSituationCard(title: nil) {
+                        roundHeader(round, startDate: roundSlots.first?.startDate)
+                        ForEach(Array(roundSlots.enumerated()), id: \.element.id) { matchIndex, slot in
+                            if matchIndex > 0 { Divider() }
+                            matchRow(slot)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func roundHeader(_ round: ScheduledRound, startDate: Date?) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("Ronda \(round.number)")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 8)
+            if let startDate {
+                Text(startDate.formatted(date: .omitted, time: .shortened))
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func matchRow(_ slot: ScheduledMatchSlot) -> some View {
+        let names = plan.displayTeams(for: slot)
+        return SdaMatchRow(
+            venue: slot.venueNumber,
+            home: names.home,
+            away: names.away,
+            score: plan.result(for: slot),
+            isEnabled: plan.canScore(slot)
+        ) {
+            scoreTarget = SdaScoreTarget(id: slot.id)
+        }
+    }
+
+    private var standingsContent: some View {
+        LearningSituationCard(title: "Clasificación") {
+            if plan.savedResults.isEmpty {
+                Text("Aún no hay resultados. La tabla se llena al anotarlos en el calendario.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            SdaStandingsTable(standings: plan.leagueStandings)
+        }
+    }
+
+    private var groupsContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(plan.groupStandings.enumerated()), id: \.offset) { _, group in
+                LearningSituationCard(title: group.name) {
+                    SdaStandingsTable(standings: group.standings)
+                }
+            }
+        }
+    }
+
+    private var bracketContent: some View {
+        let slotsByID = Dictionary(plan.slots.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let stages = KnockoutBracketResolver.stages(in: plan.savedSchedule)
+        return VStack(alignment: .leading, spacing: 16) {
+            if let champion = plan.champion {
+                Label("Campeón: \(champion)", systemImage: "trophy.fill")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(IOSAppStyle.success)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+            }
+            if plan.format == .groupStageKnockout, !plan.groupStageIsComplete {
+                LearningSituationInlineNotice(
+                    kind: .info,
+                    message: "Los cruces se abren cuando terminan todos los partidos de la fase de grupos."
+                )
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
+                ForEach(stages) { stage in
+                    LearningSituationCard(title: stage.title) {
+                        ForEach(Array(stage.matches.enumerated()), id: \.element.id) { index, match in
+                            if index > 0 { Divider() }
+                            if let slot = slotsByID[match.id] {
+                                matchRow(slot)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Hoja de resultado
+
+    @ViewBuilder
+    private func scoreSheet(for target: SdaScoreTarget) -> some View {
+        if let slot = store.plan.slots.first(where: { $0.id == target.id }) {
+            let names = store.plan.displayTeams(for: slot)
+            SdaMatchScoreSheet(
+                home: names.home,
+                away: names.away,
+                venue: slot.venueNumber,
+                requiresWinner: store.plan.isKnockoutSlot(slot),
+                initialScore: store.plan.result(for: slot),
+                onSave: { home, away in
+                    store.mutate { $0.setScore(for: slot, home: home, away: away) }
+                },
+                onClear: {
+                    store.mutate { $0.clearScore(for: slot) }
+                }
+            )
+        }
+    }
+
+    // MARK: Acciones
+
+    private func refreshTeams() {
+        actionError = nil
+        do {
+            try store.mutateThrowing { try $0.updateTeams(from: currentTeams.filter { $0.classId == store.record.classId }) }
+        } catch {
+            actionError = "No se pudo actualizar. Hacen falta al menos dos grupos en el curso."
+        }
+    }
+
+    private func deleteTournament() async {
+        actionError = nil
+        do {
+            try await store.delete()
+            onDeleted()
+            dismiss()
+        } catch {
+            actionError = "No se pudo borrar el torneo. Inténtalo de nuevo."
+        }
+    }
+}

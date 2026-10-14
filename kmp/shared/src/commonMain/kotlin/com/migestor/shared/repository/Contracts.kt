@@ -1234,6 +1234,9 @@ interface WeeklyTemplateRepository {
 interface TeacherScheduleRepository {
     @Throws(Throwable::class)
     suspend fun getOrCreatePrimarySchedule(): TeacherSchedule
+    /** Horario más reciente ya guardado, o `null`. Solo lectura: no crea profesor, curso académico ni horario. */
+    @Throws(Throwable::class)
+    suspend fun findExistingSchedule(): TeacherSchedule?
     @Throws(Throwable::class)
     suspend fun saveSchedule(schedule: TeacherSchedule): Long
     @Throws(Throwable::class)

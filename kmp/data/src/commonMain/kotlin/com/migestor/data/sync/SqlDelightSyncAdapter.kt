@@ -2028,7 +2028,7 @@ class SqlDelightSyncAdapter(
                         if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs) {
                             return@forEach
                         }
-                        container.learningSituationsRepository.saveTournament(
+                        container.learningSituationsRepository.saveTournamentFromSync(
                             LearningSituationTournament(
                                 id = tournamentId,
                                 learningSituationId = situationId,

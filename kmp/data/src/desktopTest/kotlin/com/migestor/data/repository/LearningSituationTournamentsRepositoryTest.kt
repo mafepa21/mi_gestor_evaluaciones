@@ -4,7 +4,9 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.migestor.data.db.AppDatabase
 import com.migestor.shared.domain.LearningSituation
 import com.migestor.shared.domain.LearningSituationTournament
+import com.migestor.shared.domain.AuditTrace
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -130,6 +132,50 @@ class LearningSituationTournamentsRepositoryTest {
         // Borrar la situacion no toca los torneos de solo curso.
         repo.deleteSituation(sda)
         assertEquals(setOf("solo-curso", "otro-curso"), repo.listAllTournaments().map { it.id }.toSet())
+    }
+
+    @Test
+    fun `el guardado de sync conserva updatedAt y createdAt entrantes y el local usa ahora`() = runTest {
+        val (_, repo, classes) = nuevoEntorno()
+        val clase = classes.saveClass(name = "2 ESO B", course = 2, description = "EF")
+        val creado = Instant.fromEpochMilliseconds(1_000_000)
+        val remoto = Instant.fromEpochMilliseconds(2_000_000)
+
+        repo.saveTournamentFromSync(
+            LearningSituationTournament(
+                id = "sync-1", classId = clase, name = "Remoto", format = "league",
+                trace = AuditTrace(createdAt = creado, updatedAt = remoto, deviceId = "otro", syncVersion = 1),
+            )
+        )
+        val guardado = assertNotNull(repo.getTournament("sync-1"))
+        assertEquals(2_000_000L, guardado.trace.updatedAt.toEpochMilliseconds())
+        assertEquals(1_000_000L, guardado.trace.createdAt.toEpochMilliseconds())
+
+        // Un segundo cambio de sync mantiene la creacion original y fija el nuevo updatedAt.
+        repo.saveTournamentFromSync(
+            LearningSituationTournament(
+                id = "sync-1", classId = clase, name = "Remoto 2", format = "league",
+                trace = AuditTrace(createdAt = remoto, updatedAt = Instant.fromEpochMilliseconds(3_000_000)),
+            )
+        )
+        val segundo = assertNotNull(repo.getTournament("sync-1"))
+        assertEquals(3_000_000L, segundo.trace.updatedAt.toEpochMilliseconds())
+        assertEquals(1_000_000L, segundo.trace.createdAt.toEpochMilliseconds())
+
+        // Guardado local: updatedAt es "ahora" (muy posterior a 3_000_000) y se respeta createdAt.
+        repo.saveTournament(segundo.copy(name = "Local"))
+        val local = assertNotNull(repo.getTournament("sync-1"))
+        assertTrue(local.trace.updatedAt.toEpochMilliseconds() > 3_000_000L)
+        assertEquals(1_000_000L, local.trace.createdAt.toEpochMilliseconds())
+
+        // Un torneo nuevo guardado en local usa el createdAt recibido (p. ej. migrado).
+        repo.saveTournament(
+            LearningSituationTournament(
+                id = "migrado", classId = clase, name = "Migrado", format = "league",
+                trace = AuditTrace(createdAt = creado, updatedAt = creado),
+            )
+        )
+        assertEquals(1_000_000L, assertNotNull(repo.getTournament("migrado")).trace.createdAt.toEpochMilliseconds())
     }
 
     @Test

@@ -1090,6 +1090,9 @@ interface LearningSituationsRepository {
     suspend fun getSessionPlan(id: Long): LearningSituationSessionPlan?
     @Throws(Throwable::class)
     suspend fun saveTournament(tournament: LearningSituationTournament)
+    /** Aplicación de un cambio de SyncLAN: conserva `trace.updatedAt` entrante (última escritura gana). */
+    @Throws(Throwable::class)
+    suspend fun saveTournamentFromSync(tournament: LearningSituationTournament)
     @Throws(Throwable::class)
     suspend fun listTournaments(learningSituationId: Long): List<LearningSituationTournament>
     @Throws(Throwable::class)

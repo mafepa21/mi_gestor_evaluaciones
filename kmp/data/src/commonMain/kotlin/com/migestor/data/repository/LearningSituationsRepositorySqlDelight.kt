@@ -186,13 +186,28 @@ class LearningSituationsRepositorySqlDelight(
         db.appDatabaseQueries.selectLearningSituationSessionPlanById(id).executeAsOneOrNull()?.let(::toSessionPlan)
     }
 
-    override suspend fun saveTournament(tournament: LearningSituationTournament) = withContext(Dispatchers.Default) {
+    override suspend fun saveTournament(tournament: LearningSituationTournament) =
+        guardarTorneo(tournament, conservarMarcasDeTiempo = false)
+
+    override suspend fun saveTournamentFromSync(tournament: LearningSituationTournament) =
+        guardarTorneo(tournament, conservarMarcasDeTiempo = true)
+
+    /**
+     * Guardado local: `updated_at` = ahora. Guardado de sync: conserva el `updatedAt` entrante
+     * para que la última escritura gana de verdad entre dispositivos.
+     * En ambos casos la fecha de creación original se respeta si el torneo ya existía; si es nuevo
+     * se usa la recibida en `trace.createdAt` (p. ej. torneo migrado).
+     */
+    private suspend fun guardarTorneo(
+        tournament: LearningSituationTournament,
+        conservarMarcasDeTiempo: Boolean,
+    ) = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
         db.transaction {
-            // Se conserva la fecha de creación original si el torneo ya existía.
             val createdAt = db.appDatabaseQueries.selectLearningSituationTournamentById(tournament.id)
                 .executeAsOneOrNull()?.created_at_epoch_ms
-                ?: now
+                ?: tournament.trace.createdAt.toEpochMilliseconds()
+            val updatedAt = if (conservarMarcasDeTiempo) tournament.trace.updatedAt.toEpochMilliseconds() else now
             db.appDatabaseQueries.upsertLearningSituationTournament(
                 tournament.id,
                 tournament.learningSituationId,
@@ -207,7 +222,7 @@ class LearningSituationsRepositorySqlDelight(
                 tournament.resultsJson,
                 tournament.knockoutResultsJson,
                 createdAt,
-                now,
+                updatedAt,
                 tournament.trace.deviceId,
                 tournament.trace.syncVersion,
             )

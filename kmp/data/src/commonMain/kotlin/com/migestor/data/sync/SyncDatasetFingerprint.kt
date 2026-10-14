@@ -146,6 +146,13 @@ data class SyncDatasetFingerprint(
                 records.add("learning_situation:${situation.id}:${situation.trace.updatedAt.toEpochMilliseconds()}")
             }
 
+            // 8. torneos (con o sin SdA)
+            val tournaments = container.learningSituationsRepository.listAllTournaments()
+            counts["learning_situation_tournament"] = tournaments.size
+            tournaments.forEach { tournament ->
+                records.add("learning_situation_tournament:${tournament.id}:${tournament.trace.updatedAt.toEpochMilliseconds()}")
+            }
+
             val digest = computeDigest(records)
             val schemaVersion = AppDatabase.Schema.version
 

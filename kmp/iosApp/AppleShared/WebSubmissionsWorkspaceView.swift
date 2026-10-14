@@ -13,7 +13,7 @@ import AppKit
 struct WebSubmissionsWorkspaceView: View {
     @EnvironmentObject private var bridge: KmpBridge
 
-    @AppStorage("webSubmissions.baseURL") private var baseURL = "https://entregas-alumnado.vercel.app"
+    @AppStorage("webSubmissions.baseURL") private var baseURL = "https://projectosef.alwaysdata.net"
     @AppStorage("webSubmissions.deliveryEmail") private var deliveryEmail = ""
 
     @State private var tasks: [WebSubmissionTaskInfo] = []

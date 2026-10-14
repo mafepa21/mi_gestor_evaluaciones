@@ -460,7 +460,7 @@ let publicado = try WebSubmissionPublisher.publish(
         .init(id: 43, name: "Bruno Gil"),
         .init(id: 44, name: "Carmen Ruiz"),
     ],
-    baseURL: "https://entregas-alumnado.vercel.app/",
+    baseURL: "https://projectosef.alwaysdata.net/",
     deliveryEmail: "mario.fernandez@scorazon.hhdc.net",
     expiresAtEpochMs: 1_900_000_000_000
 )
@@ -572,7 +572,7 @@ let publicadoPeer = try WebSubmissionPublisher.publish(
         WebSubmissionPublisher.StudentToPublish(id: 43, name: "Bruno Gil"),
         WebSubmissionPublisher.StudentToPublish(id: 44, name: "Carmen Ruiz"), // Sin grupo -> autoevaluación normal
     ],
-    baseURL: "https://entregas-alumnado.vercel.app",
+    baseURL: "https://projectosef.alwaysdata.net",
     deliveryEmail: "docente@centro.es",
     expiresAtEpochMs: 4_000_000_000_000,
     mode: "peer",
@@ -796,7 +796,7 @@ let publicadoGrande = try WebSubmissionPublisher.publish(
     sections: [],
     items: [.init(itemId: "x", title: "Casilla", type: .check, required: true, options: [], helpText: nil, scaleLabels: nil, sectionId: nil)],
     students: [.init(id: 1, name: "Ana"), .init(id: 2, name: "Bruno")],
-    baseURL: "https://entregas-alumnado.vercel.app",
+    baseURL: "https://projectosef.alwaysdata.net",
     deliveryEmail: nil,
     expiresAtEpochMs: 1_900_000_000_000
 )

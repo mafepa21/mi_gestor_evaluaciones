@@ -64,9 +64,40 @@ struct PlannerDaySheetEntry: Equatable {
             .filter { !$0.isCollection }
             .prefix(Self.maxSteps)
             .map { Step(minutes: $0.minutes, title: $0.title, detail: Step.shortDetail($0.detail)) }
-        let materials = projection.materials.isEmpty ? projection.setupBullets : projection.materials
-        self.materials = Array(materials.prefix(Self.maxListItems))
+        let materials = Self.materialItems(plan.material)
+        self.materials = Array((materials.isEmpty ? projection.setupBullets : materials).prefix(Self.maxListItems))
         self.attention = Array(projection.attentionNotes.prefix(Self.maxListItems))
+    }
+
+    /// Parte el material por líneas y «;», nunca por comas ni dentro de paréntesis,
+    /// para que «Court group (12 pairs, 2 pairs per court)» quede entero.
+    /// El visor usa `splitList` (por comas); aquí se respeta la frase completa.
+    static func materialItems(_ material: String) -> [String] {
+        var text = material
+        if let marker = text.range(of: "— Saberes básicos:", options: [.caseInsensitive, .diacriticInsensitive]) {
+            text = String(text[..<marker.lowerBound])
+        }
+        var items: [String] = []
+        var current = ""
+        var depth = 0
+        func flush() {
+            let item = current
+                .replacingOccurrences(of: #"^[\s\-\u2022*]+"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+            if !item.isEmpty && !items.contains(item) { items.append(item) }
+            current = ""
+        }
+        for character in text {
+            switch character {
+            case "(", "[": depth += 1; current.append(character)
+            case ")", "]": depth = max(depth - 1, 0); current.append(character)
+            case _ where character == ";" || character.isNewline:
+                if depth == 0 { flush() } else { current.append(character == ";" ? ";" : " ") }
+            default: current.append(character)
+            }
+        }
+        flush()
+        return items
     }
 
     init(time: String, group: String, title: String, objective: String, steps: [Step], materials: [String], attention: [String]) {

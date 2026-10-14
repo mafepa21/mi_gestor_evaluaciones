@@ -57,6 +57,14 @@ final class PlannerDaySheetPDFRendererTests: XCTestCase {
         XCTAssertEqual(PlannerDaySheetEntry.Step.shortDetail("Uno\nDos"), "Uno Dos")
     }
 
+    func testMaterialKeepsCommasAndParenthesesTogether() {
+        let material = "Cones, one racket per student (courts included). Court group (12 pairs; 2 pairs per court)\nWhistle — Saberes básicos: grips"
+        XCTAssertEqual(PlannerDaySheetEntry.materialItems(material), [
+            "Cones, one racket per student (courts included). Court group (12 pairs; 2 pairs per court)",
+            "Whistle"
+        ])
+    }
+
     func testEmptyDayProducesNoPDF() {
         XCTAssertNil(PlannerDaySheetPDFRenderer.render(entries: [], dayLabel: "Vacío"))
     }

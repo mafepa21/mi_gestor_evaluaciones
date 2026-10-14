@@ -12,7 +12,12 @@ struct SdaTournamentDetailView: View {
     /// Se llama con el nombre del torneo si al cerrar no se pudieron guardar los últimos cambios.
     let onSaveFailedAtClose: (String) -> Void
 
+    @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
+    @State private var rosterPhase: RosterPhase = .loading
+    @State private var students: [(id: String, name: String)] = []
+    @State private var situationTitle: String?
+    @State private var teamsPDFURL: URL?
     @State private var selectedTab: Tab = .calendar
     @State private var scoreTarget: SdaScoreTarget?
     @State private var isConfirmingDelete = false
@@ -20,7 +25,7 @@ struct SdaTournamentDetailView: View {
     @State private var actionError: String?
 
     private enum Tab: String, Identifiable {
-        case calendar, standings, groups, bracket
+        case calendar, standings, groups, bracket, teams
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -28,8 +33,13 @@ struct SdaTournamentDetailView: View {
             case .standings: return "Clasificación"
             case .groups: return "Grupos"
             case .bracket: return "Cuadro"
+            case .teams: return "Equipos"
             }
         }
+    }
+
+    private enum RosterPhase {
+        case loading, failed, ready
     }
 
     private struct SdaScoreTarget: Identifiable {
@@ -59,9 +69,9 @@ struct SdaTournamentDetailView: View {
 
     private var tabs: [Tab] {
         switch plan.format {
-        case .roundRobin, .rotation: return [.calendar, .standings]
-        case .knockout: return [.calendar, .bracket]
-        case .groupStageKnockout: return [.calendar, .groups, .bracket]
+        case .roundRobin, .rotation: return [.calendar, .standings, .teams]
+        case .knockout: return [.calendar, .bracket, .teams]
+        case .groupStageKnockout: return [.calendar, .groups, .bracket, .teams]
         }
     }
 
@@ -153,6 +163,8 @@ struct SdaTournamentDetailView: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         #endif
+        .task { await loadRoster() }
+        .task(id: teamsSheetContent) { regenerateTeamsPDF() }
         .onChange(of: tabs) { _, newTabs in
             if !newTabs.contains(selectedTab) { selectedTab = .calendar }
         }
@@ -311,6 +323,7 @@ struct SdaTournamentDetailView: View {
         case .standings: standingsContent
         case .groups: groupsContent
         case .bracket: bracketContent
+        case .teams: teamsContent
         }
     }
 
@@ -418,6 +431,126 @@ struct SdaTournamentDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: Equipos
+
+    private var resolvedTeams: [SdaResolvedTeam] {
+        SdaTournamentRoster.resolve(teams: plan.teams, students: students)
+    }
+
+    /// Contenido de la hoja imprimible; `nil` mientras no se conocen los nombres.
+    private var teamsSheetContent: SdaTeamsSheetContent? {
+        guard rosterPhase == .ready else { return nil }
+        return SdaTeamsSheetContent.make(
+            plan: plan,
+            situationTitle: situationTitle,
+            className: className,
+            teams: resolvedTeams
+        )
+    }
+
+    @ViewBuilder
+    private var teamsContent: some View {
+        switch rosterPhase {
+        case .loading:
+            LearningSituationSkeletonBlock(lines: 4)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Cargando equipos")
+        case .failed:
+            LearningSituationInlineNotice(
+                kind: .error,
+                message: "No se pudieron cargar los nombres de los alumnos.",
+                actionTitle: "Reintentar"
+            ) {
+                Task { await loadRoster() }
+            }
+        case .ready:
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(resolvedTeams) { team in
+                    LearningSituationCard(title: nil) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(team.name)
+                                .font(.headline)
+                                .accessibilityAddTraits(.isHeader)
+                            Spacer(minLength: 8)
+                            Text(team.countText)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        if team.memberNames.isEmpty {
+                            Text("Sin alumnos. Añádelos en el Cuaderno.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(Array(team.memberNames.enumerated()), id: \.offset) { _, name in
+                                    Text(name)
+                                        .font(.subheadline)
+                                        .italic(name == SdaResolvedTeam.missingStudentName)
+                                        .foregroundStyle(name == SdaResolvedTeam.missingStudentName ? .secondary : .primary)
+                                }
+                            }
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                printButton
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var printButton: some View {
+        if let teamsPDFURL {
+            #if os(macOS)
+            Button {
+                SdaTeamsSheetPrinter.printPDF(at: teamsPDFURL)
+            } label: {
+                Label("Imprimir equipos", systemImage: "printer")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            #else
+            ShareLink(item: teamsPDFURL, preview: SharePreview("Equipos de \(plan.name)")) {
+                Label("Imprimir equipos", systemImage: "printer")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .accessibilityHint("Abre la hoja de compartir con el PDF. Elige Imprimir.")
+            #endif
+        } else {
+            Label("Imprimir equipos", systemImage: "printer")
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .foregroundStyle(.secondary)
+                .accessibilityHint("Preparando el PDF.")
+        }
+    }
+
+    private func loadRoster() async {
+        rosterPhase = .loading
+        do {
+            let classStudents = try await bridge.students(forClassId: store.record.classId)
+            students = classStudents.map { (id: String($0.id), name: $0.fullName) }
+            if let situationId = store.record.learningSituationId {
+                situationTitle = try? await bridge.learningSituations().first(where: { $0.id == situationId })?.title
+            }
+            rosterPhase = .ready
+        } catch {
+            rosterPhase = .failed
+        }
+    }
+
+    private func regenerateTeamsPDF() {
+        let old = teamsPDFURL
+        guard let content = teamsSheetContent else {
+            teamsPDFURL = nil
+            return
+        }
+        teamsPDFURL = SdaTeamsSheetPDF.writeToTemporaryFile(content)
+        if let old { try? FileManager.default.removeItem(at: old) }
     }
 
     // MARK: Hoja de resultado

@@ -17,6 +17,7 @@ struct SdaNewTournamentSheet: View {
     @State private var format: TournamentFormat = .roundRobin
     @State private var classId: Int64
     @State private var excludedGroupIds = Set<Int64>()
+    @State private var membersPopoverGroupId: Int64?
     @State private var venueCount = 2
     @State private var matchMinutes = 8
     @State private var transitionMinutes = 2
@@ -242,7 +243,11 @@ struct SdaNewTournamentSheet: View {
         } header: {
             Text("Equipos")
         } footer: {
-            Text("Toca un grupo para dejarlo fuera de este torneo.")
+            #if os(macOS)
+            Text("Toca un grupo para dejarlo fuera de este torneo. Pasa el ratón por encima para ver quién está.")
+            #else
+            Text("Toca un grupo para dejarlo fuera de este torneo. Mantén pulsado para ver quién está.")
+            #endif
         }
     }
 
@@ -270,9 +275,57 @@ struct SdaNewTournamentSheet: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.borderless)
+        .contextMenu {
+            Button {
+                membersPopoverGroupId = team.groupId
+            } label: {
+                Label("Ver integrantes", systemImage: "person.2")
+            }
+        }
+        .popover(
+            isPresented: Binding(
+                get: { membersPopoverGroupId == team.groupId },
+                set: { if !$0, membersPopoverGroupId == team.groupId { membersPopoverGroupId = nil } }
+            )
+        ) {
+            membersPopover(team)
+        }
+        .help(SdaTournamentRoster.summary(of: team.members.map(\.fullName)))
         .accessibilityLabel(team.name)
-        .accessibilityValue(isIncluded ? "Incluido" : "Fuera del torneo")
+        .accessibilityValue("\(isIncluded ? "Incluido" : "Fuera del torneo"). \(membersCountText(team))")
         .accessibilityHint(isIncluded ? "Toca para dejarlo fuera." : "Toca para incluirlo.")
+        .accessibilityAction(named: "Ver integrantes") {
+            membersPopoverGroupId = team.groupId
+        }
+    }
+
+    private func membersCountText(_ team: TournamentWorkGroupTeam) -> String {
+        switch team.members.count {
+        case 0: return "Sin alumnos"
+        case 1: return "1 alumno"
+        default: return "\(team.members.count) alumnos"
+        }
+    }
+
+    private func membersPopover(_ team: TournamentWorkGroupTeam) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(team.name)
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            if team.members.isEmpty {
+                Text("Sin alumnos. Añádelos en el Cuaderno.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(team.members) { member in
+                    Text(member.fullName)
+                        .font(.subheadline)
+                }
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 220, alignment: .leading)
+        .presentationCompactAdaptation(.popover)
     }
 
     private var settingsSection: some View {

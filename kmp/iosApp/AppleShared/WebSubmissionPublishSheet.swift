@@ -583,7 +583,7 @@ struct WebSubmissionPublishSheet: View {
 
 #if DEBUG
 struct WebSubmissionPublishSheet_Previews: PreviewProvider {
-    @State private static var url = "https://entregas-alumnado.vercel.app"
+    @State private static var url = "https://projectosef.alwaysdata.net"
 
     static var previews: some View {
         Group {
@@ -616,7 +616,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                         blockingIssue: "«Mi error elegido» es de elección y no tiene opciones. Edita el instrumento y añádelas."
                     ),
                 ],
-                baseURL: .constant("https://entregas-alumnado.vercel.app"),
+                baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
                 onPublish: { _, _, _, _, _ in },
@@ -628,7 +628,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 classId: 7,
                 className: "1º Bachillerato A",
                 instruments: [],
-                baseURL: .constant("https://entregas-alumnado.vercel.app"),
+                baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
                 onPublish: { _, _, _, _, _ in },
@@ -639,8 +639,8 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                     linksPath: "/Users/tu/Documents/EntregasWeb/1111…/enlaces-alumnado.txt",
                     folderPath: "/Users/tu/Documents/EntregasWeb/1111…",
                     links: [
-                        WebPublishedLink(studentId: 42, studentName: "Ana Ferrer", url: "https://entregas-alumnado.vercel.app/#a=QragffpD_hfwuYPbQ5X1ZQ"),
-                        WebPublishedLink(studentId: 43, studentName: "Bruno Gil", url: "https://entregas-alumnado.vercel.app/#a=0uX2-1WH-OyGLIiiPQjPfw"),
+                        WebPublishedLink(studentId: 42, studentName: "Ana Ferrer", url: "https://projectosef.alwaysdata.net/#a=QragffpD_hfwuYPbQ5X1ZQ"),
+                        WebPublishedLink(studentId: 43, studentName: "Bruno Gil", url: "https://projectosef.alwaysdata.net/#a=0uX2-1WH-OyGLIiiPQjPfw"),
                     ],
                     linksText: "Ana Ferrer  https://…"
                 )
@@ -651,7 +651,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 classId: 7,
                 className: "1º Bachillerato B",
                 instruments: [],
-                baseURL: .constant("https://entregas-alumnado.vercel.app"),
+                baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
                 onPublish: { _, _, _, _, _ in },

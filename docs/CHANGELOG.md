@@ -13,6 +13,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- **Planner: hoja del día para imprimir (A3 apaisado, 3 sesiones por hoja)**: botón «Hoja del día» en la vista Día. Genera un PDF con un esquema por sesión: hora y grupo, título, objetivo, pasos con minutos y un detalle breve de cada actividad, material, atención y líneas para notas a mano. Más de 3 sesiones = otra hoja. El material no se parte por comas ni dentro de paréntesis. Se abre el menú del sistema para imprimir o compartir.
+
 ## [0.3.1] - 2026-10-14
 
 ### Changed

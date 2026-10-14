@@ -15,6 +15,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Entregas web: servidor europeo en Alwaysdata (UE)**: la URL base por defecto de la PWA de entregas del alumnado pasa a `https://projectosef.alwaysdata.net`, alojada en París (Francia) bajo normativa estricta RGPD/CNIL, sustituyendo la referencia anterior a Vercel. Se actualizan las vistas de publicación y las pruebas de interoperabilidad.
+
 - **La app de Mac se llama «Cuaderno Vivo»**: cambia el nombre visible y el del `.app`, a juego con el icono de cuadrícula. El módulo Swift, el identificador `com.migestor.mac` y la carpeta de datos no cambian, así que los datos se conservan.
 - **Rúbrica: evaluar sin scroll en Mac y iPad horizontal**: los criterios van en filas y los niveles en columnas, con el nombre y los puntos de cada nivel una sola vez arriba. Una rúbrica de 3 × 4 cabe entera en pantalla. Nuevo botón «Ocultar textos» (se recuerda) para dejar solo número y nivel. Si los criterios tienen distinto número de niveles o no hay ancho (iPhone, iPad vertical), se mantienen las tarjetas. Teclas 1-4, flechas y ⌘↩ sin cambios.
 - **Planner: guion de sesión más limpio y con «Ahora»**: sin la consigna CLIL repetida dentro del texto, sin el «U01 ·» ni el título repetido al empezar cada paso y sin el pie «Tactical diagram» cuando el diagrama ya se ve. Las listas en línea («- A - B», «1. … 2. …») salen una por línea. En columnas, el descanso va en el título del segundo bloque y los pasos empiezan a la misma altura; «Ver más» va junto al título del paso. El carril muestra el montaje y la atención completos. Si la sesión es de hoy a su hora, la barra y el paso en curso se marcan con «Ahora» y la hoja baja hasta él; pulsar un tramo de la barra lleva a su paso.

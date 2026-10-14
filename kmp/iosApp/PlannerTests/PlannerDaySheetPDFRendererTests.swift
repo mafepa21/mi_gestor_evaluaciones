@@ -11,7 +11,7 @@ final class PlannerDaySheetPDFRendererTests: XCTestCase {
             objective: "Practicar la cooperación en pequeños grupos con reglas sencillas.",
             steps: [
                 .init(minutes: 10, title: "Calentamiento por parejas"),
-                .init(minutes: 25, title: "Circuito cooperativo en cuatro estaciones"),
+                .init(minutes: 25, title: "Circuito cooperativo en cuatro estaciones", detail: "Grupos de cuatro rotan cada seis minutos. Cada estación tiene una tarjeta con la consigna y una variante más difícil."),
                 .init(minutes: 15, title: "Juego final con todo el grupo"),
                 .init(minutes: nil, title: "Vuelta a la calma y reflexión")
             ],
@@ -47,6 +47,14 @@ final class PlannerDaySheetPDFRendererTests: XCTestCase {
         if let output = ProcessInfo.processInfo.environment["PLANNER_DAY_SHEET_SAMPLE"] {
             try data.write(to: URL(fileURLWithPath: output))
         }
+    }
+
+    func testShortDetailCutsLongTextAtAWord() {
+        let long = String(repeating: "palabra ", count: 60)
+        let short = PlannerDaySheetEntry.Step.shortDetail(long)
+        XCTAssertLessThanOrEqual(short.count, PlannerDaySheetEntry.Step.maxDetailLength + 1)
+        XCTAssertTrue(short.hasSuffix("palabra…"))
+        XCTAssertEqual(PlannerDaySheetEntry.Step.shortDetail("Uno\nDos"), "Uno Dos")
     }
 
     func testEmptyDayProducesNoPDF() {

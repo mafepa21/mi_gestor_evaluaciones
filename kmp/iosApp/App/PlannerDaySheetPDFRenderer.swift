@@ -8,6 +8,21 @@ struct PlannerDaySheetEntry: Equatable {
     struct Step: Equatable {
         let minutes: Int?
         let title: String
+        var detail: String = ""
+
+        static let maxDetailLength = 170
+
+        /// Primera parte del texto docente, en una o dos líneas.
+        static func shortDetail(_ text: String) -> String {
+            let flat = text.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            guard flat.count > maxDetailLength else { return flat }
+            let cut = flat.prefix(maxDetailLength)
+            let end = cut.lastIndex(of: " ") ?? cut.endIndex
+            return String(cut[..<end]) + "…"
+        }
     }
 
     let time: String
@@ -48,7 +63,7 @@ struct PlannerDaySheetEntry: Equatable {
             .flatMap(\.steps)
             .filter { !$0.isCollection }
             .prefix(Self.maxSteps)
-            .map { Step(minutes: $0.minutes, title: $0.title) }
+            .map { Step(minutes: $0.minutes, title: $0.title, detail: Step.shortDetail($0.detail)) }
         let materials = projection.materials.isEmpty ? projection.setupBullets : projection.materials
         self.materials = Array(materials.prefix(Self.maxListItems))
         self.attention = Array(projection.attentionNotes.prefix(Self.maxListItems))
@@ -212,6 +227,11 @@ enum PlannerDaySheetPDFRenderer {
                 let prefix = step.minutes.map { "\($0)′  " } ?? "•  "
                 let row = NSMutableAttributedString(string: prefix, attributes: attributes(size: 13, bold: true))
                 row.append(NSAttributedString(string: step.title + "\n", attributes: attributes(size: 13)))
+                if !step.detail.isEmpty {
+                    var detailAttributes = attributes(size: 11.5, gray: 0.3)
+                    detailAttributes[NSAttributedString.Key(kCTParagraphStyleAttributeName as String)] = indentedStyle
+                    row.append(NSAttributedString(string: step.detail + "\n", attributes: detailAttributes))
+                }
                 text.append(row)
             }
         }
@@ -228,6 +248,22 @@ enum PlannerDaySheetPDFRenderer {
         }
         return text
     }
+
+    /// Sangría del detalle de cada paso, alineada con el título del paso.
+    private static let indentedStyle: CTParagraphStyle = {
+        var indent: CGFloat = 26
+        var spacing: CGFloat = 3
+        return withUnsafeBytes(of: &indent) { indentBytes in
+            withUnsafeBytes(of: &spacing) { spacingBytes in
+                let settings = [
+                    CTParagraphStyleSetting(spec: .firstLineHeadIndent, valueSize: MemoryLayout<CGFloat>.size, value: indentBytes.baseAddress!),
+                    CTParagraphStyleSetting(spec: .headIndent, valueSize: MemoryLayout<CGFloat>.size, value: indentBytes.baseAddress!),
+                    CTParagraphStyleSetting(spec: .paragraphSpacing, valueSize: MemoryLayout<CGFloat>.size, value: spacingBytes.baseAddress!)
+                ]
+                return CTParagraphStyleCreate(settings, settings.count)
+            }
+        }
+    }()
 
     /// Dibuja el texto en el rectángulo. Devuelve `false` si no cupo entero.
     @discardableResult

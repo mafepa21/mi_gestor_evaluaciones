@@ -1,5 +1,6 @@
 import XCTest
 import PDFKit
+import SwiftUI
 @testable import MiGestorKMPMac
 
 /// Integrantes de los equipos del torneo y hoja imprimible A4.
@@ -77,5 +78,49 @@ final class SdaTournamentTeamsSheetTests: XCTestCase {
         let first = try XCTUnwrap(plan.firstRoundSummary)
         XCTAssertEqual(first.title, "Primera ronda de grupos")
         XCTAssertFalse(first.matches.isEmpty)
+    }
+
+    func testNombreLargoOcupaDosLineasYElCortoUna() {
+        XCTAssertEqual(SdaTeamsSheetLayout.lineCount(for: "Ana"), 1)
+        let largo = "María de los Ángeles Fernández-Villaverde de la Concepción Rodríguez"
+        XCTAssertEqual(SdaTeamsSheetLayout.lineCount(for: largo), 2)
+    }
+
+    func testLaTarjetaDibujadaNoSuperaLaAlturaCalculada() {
+        let nombres = [
+            "Ana García", "María de los Ángeles Fernández-Villaverde Rodríguez",
+            "Bruno López Sánchez", "Carla Ruiz de Alarcón y Mendoza Pérez",
+            "Dani Sanz", "Elena Mora Castillo"
+        ]
+        let team = SdaResolvedTeam(id: "t", name: "Halcones", memberNames: nombres)
+        let content = SdaTeamsSheetContent(title: "Liga", subtitle: "1º ESO A", teams: [team], firstRound: nil)
+        let page = SdaTeamsSheetLayout.paginate(teams: [team], firstRound: nil)[0]
+        let renderer = ImageRenderer(content: SdaTeamsSheetPageView(content: content, page: page, pageNumber: 1, pageCount: 1))
+        renderer.proposedSize = ProposedViewSize(SdaTeamsSheetLayout.pageSize)
+        XCTAssertNotNil(renderer.cgImage)
+        // Con espaciado entre nombres la altura real superaba a la calculada y las tarjetas se pisaban.
+        let esperado = SdaTeamsSheetLayout.cardPadding * 2 + SdaTeamsSheetLayout.cardTitleHeight
+            + SdaTeamsSheetLayout.cardTitleGap
+            + SdaTeamsSheetLayout.lineHeight * CGFloat(nombres.map(SdaTeamsSheetLayout.lineCount(for:)).reduce(0, +))
+        XCTAssertTrue(nombres.contains { SdaTeamsSheetLayout.lineCount(for: $0) == 2 })
+        XCTAssertEqual(SdaTeamsSheetLayout.cardHeight(for: team), esperado, accuracy: 0.5)
+    }
+
+    func testOchoEquiposConNombresLargosNoDesbordanLaPagina() {
+        let largo = "María de los Ángeles Fernández-Villaverde Rodríguez"
+        let teams = (1...8).map { SdaResolvedTeam(id: "\($0)", name: "Equipo \($0)", memberNames: Array(repeating: largo, count: 6)) }
+        let pages = SdaTeamsSheetLayout.paginate(teams: teams, firstRound: round([("A", "B"), ("C", "D")]))
+        for page in pages {
+            let header = page.isFirst ? SdaTeamsSheetLayout.firstPageHeaderHeight : SdaTeamsSheetLayout.nextPageHeaderHeight
+            let rows = page.rows.map(SdaTeamsSheetLayout.rowHeight).reduce(0, +)
+            let gaps = SdaTeamsSheetLayout.rowGap * CGFloat(max(0, page.rows.count - 1))
+            XCTAssertLessThanOrEqual(header + rows + gaps, SdaTeamsSheetLayout.contentHeight)
+        }
+        XCTAssertGreaterThan(pages.count, 1)
+        // Vista previa para revisión manual (no forma parte de la aserción).
+        let content = SdaTeamsSheetContent(title: "Liga de voleibol", subtitle: "SdA «Juegos de red» · 1º ESO A · 14/10/2026", teams: teams, firstRound: round([("Equipo 1", "Equipo 2"), ("Equipo 3", "Equipo 4")]))
+        if let data = SdaTeamsSheetPDF.render(content) {
+            try? data.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("sda_equipos_preview.pdf"))
+        }
     }
 }

@@ -3,6 +3,8 @@ import CoreGraphics
 #if os(macOS)
 import AppKit
 import PDFKit
+#else
+import UIKit
 #endif
 
 // Hoja imprimible de equipos de un torneo (A4): título, tarjetas por equipo en dos columnas y
@@ -70,8 +72,33 @@ enum SdaTeamsSheetLayout {
         var isFirst = false
     }
 
+    static let memberFontSize: CGFloat = 12
+    /// Un nombre largo pasa a dos líneas; nunca más, para que la tarjeta sea predecible.
+    static let maxLinesPerMember = 2
+
+    static var memberTextWidth: CGFloat { cardWidth - cardPadding * 2 }
+
+    /// Líneas que ocupa un nombre con la fuente de la tarjeta (1 o 2).
+    static func lineCount(for name: String) -> Int {
+        #if os(macOS)
+        let font = NSFont.systemFont(ofSize: memberFontSize)
+        #else
+        let font = UIFont.systemFont(ofSize: memberFontSize)
+        #endif
+        let width = (name as NSString).size(withAttributes: [.font: font]).width
+        // Margen del 4 % para no rozar el borde (la medida real de SwiftUI puede variar algo).
+        let lines = Int((width * 1.04 / memberTextWidth).rounded(.up))
+        return min(max(1, lines), maxLinesPerMember)
+    }
+
+    static func memberLinesHeight(for team: SdaResolvedTeam) -> CGFloat {
+        guard !team.memberNames.isEmpty else { return lineHeight }
+        let lines = team.memberNames.reduce(0) { $0 + lineCount(for: $1) }
+        return lineHeight * CGFloat(lines)
+    }
+
     static func cardHeight(for team: SdaResolvedTeam) -> CGFloat {
-        cardPadding * 2 + cardTitleHeight + cardTitleGap + lineHeight * CGFloat(max(1, team.memberNames.count))
+        cardPadding * 2 + cardTitleHeight + cardTitleGap + memberLinesHeight(for: team)
     }
 
     static func rowHeight(_ row: [SdaResolvedTeam]) -> CGFloat {
@@ -189,23 +216,33 @@ struct SdaTeamsSheetPageView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .frame(height: L.cardTitleHeight, alignment: .leading)
-            if team.memberNames.isEmpty {
-                Text("Sin alumnos")
-                    .font(.system(size: 12).italic())
-                    .foregroundColor(Color(white: 0.4))
-                    .frame(height: L.lineHeight, alignment: .leading)
-            } else {
-                ForEach(Array(team.memberNames.enumerated()), id: \.offset) { _, name in
-                    Text(name)
-                        .font(.system(size: 12))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+            // Sin espaciado entre nombres: la altura calculada en `cardHeight` es exacta.
+            VStack(alignment: .leading, spacing: 0) {
+                if team.memberNames.isEmpty {
+                    Text("Sin alumnos")
+                        .font(.system(size: L.memberFontSize).italic())
+                        .foregroundColor(Color(white: 0.4))
                         .frame(height: L.lineHeight, alignment: .leading)
+                } else {
+                    ForEach(Array(team.memberNames.enumerated()), id: \.offset) { _, name in
+                        let lines = L.lineCount(for: name)
+                        Text(name)
+                            .font(.system(size: L.memberFontSize))
+                            .lineLimit(lines)
+                            .minimumScaleFactor(0.8)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(
+                                width: L.memberTextWidth,
+                                height: L.lineHeight * CGFloat(lines),
+                                alignment: .topLeading
+                            )
+                    }
                 }
             }
         }
         .padding(L.cardPadding)
         .frame(width: L.cardWidth, height: height, alignment: .topLeading)
+        .clipped()
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.07), lineWidth: 2))
     }
 

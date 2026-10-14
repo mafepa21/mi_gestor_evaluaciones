@@ -22,6 +22,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - **El módulo antiguo de Torneos de EF se sustituye**: la pantalla de EF lista los torneos del curso y los abre con el detalle nuevo. Los torneos antiguos (UserDefaults) se migran al arrancar, una sola vez; la clave antigua se conserva como copia. Se pierden: partidos contra «BYE», 0-0 reales sin marca de jugado y el texto libre de pista (queda el número). Los puntos personalizados se conservan para la clasificación.
 
+### Fixed
+
+- **Torneos: el PDF de equipos ya no pisa tarjetas ni corta nombres**: la altura de cada tarjeta se calculaba sin el espacio entre alumnos, así que se montaba sobre la de abajo. Los nombres largos pasan a dos líneas en lugar de cortarse.
+
 ### Data
 
 - Tabla `learning_situation_tournaments` (migración `46.sqm`, no destructiva) con configuración, equipos, calendario y resultados en JSON; `learning_situation_id` opcional para torneos solo de curso. Integrada en SyncLAN (Kotlin y Swift, last-write-wins con `updatedAt` entrante), huella de sync, borrado total y borrado de SdA (tombstones).
@@ -31,7 +35,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - `./gradlew :data:desktopTest :shared:desktopTest`: BUILD SUCCESSFUL. `:shared:test` no ejecutado (falta Android SDK en local).
 - `xcodebuild` `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED.
-- `xcodebuild test` `MiGestorPlannerTests` (macOS): 350 tests, 0 fallos, 4 omitidos.
+- `xcodebuild test` `MiGestorPlannerTests` (macOS): 353 tests, 0 fallos, 4 omitidos.
 - Prueba manual del usuario en iPad: sección visible, integrantes e imprimible. No hecha: QA con VoiceOver real, sync entre dispositivos de torneos y migración con datos reales.
 
 ## [0.3.1] - 2026-10-14

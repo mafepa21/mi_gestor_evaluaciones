@@ -13,6 +13,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+## [0.3.1] - 2026-10-14
+
 ### Changed
 
 - **Entregas web: servidor europeo en Alwaysdata (UE)**: la URL base por defecto de la PWA de entregas del alumnado pasa a `https://projectosef.alwaysdata.net`, alojada en París (Francia) bajo normativa estricta RGPD/CNIL, sustituyendo la referencia anterior a Vercel. Se actualizan las vistas de publicación y las pruebas de interoperabilidad.

@@ -422,3 +422,83 @@ func sdaTypicalSessionMinutes(startEndTimes: [(start: String, end: String)]) -> 
         lhs.value != rhs.value ? lhs.value < rhs.value : lhs.key > rhs.key
     }?.key
 }
+
+// MARK: - Integrantes de los equipos (desde el torneo, no desde los grupos de hoy)
+
+/// Equipo del torneo con los nombres de sus alumnos ya resueltos.
+struct SdaResolvedTeam: Identifiable, Equatable {
+    static let missingStudentName = "Alumno no encontrado"
+
+    var id: String
+    var name: String
+    /// Por nombre; los alumnos que ya no están en el curso van al final como «Alumno no encontrado».
+    var memberNames: [String]
+    var studentCount: Int { memberNames.count }
+
+    /// «Sin alumnos», «1 alumno», «4 alumnos».
+    var countText: String {
+        switch memberNames.count {
+        case 0: return "Sin alumnos"
+        case 1: return "1 alumno"
+        default: return "\(memberNames.count) alumnos"
+        }
+    }
+}
+
+enum SdaTournamentRoster {
+    /// Resuelve los integrantes con `studentIDs` del torneo y los alumnos del curso del torneo.
+    /// Un id que ya no está en el curso se enseña como «Alumno no encontrado».
+    static func resolve(teams: [TournamentPlanTeam], students: [(id: String, name: String)]) -> [SdaResolvedTeam] {
+        let namesById = Dictionary(students.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        return teams.map { team in
+            var found: [String] = []
+            var missing = 0
+            for studentID in Set(team.studentIDs) {
+                if let name = namesById[studentID], !name.trimmingCharacters(in: .whitespaces).isEmpty {
+                    found.append(name)
+                } else {
+                    missing += 1
+                }
+            }
+            found.sort { $0.localizedStandardCompare($1) == .orderedAscending }
+            let names = found + Array(repeating: SdaResolvedTeam.missingStudentName, count: missing)
+            return SdaResolvedTeam(id: team.id, name: team.name, memberNames: names)
+        }
+    }
+
+    /// Texto corto con los integrantes de un grupo (ayuda al pasar el ratón y lectores de pantalla).
+    static func summary(of memberNames: [String]) -> String {
+        memberNames.isEmpty ? "Sin alumnos" : memberNames.joined(separator: ", ")
+    }
+}
+
+// MARK: - Primera ronda
+
+/// Primera ronda para la hoja imprimible: pista y enfrentamiento, y quién descansa.
+struct SdaFirstRound: Equatable {
+    struct Match: Equatable {
+        var venue: Int
+        var text: String
+    }
+
+    var title: String
+    var matches: [Match]
+    var resting: [String]
+}
+
+extension TournamentPlan {
+    /// `nil` si el torneo aún no tiene calendario. En liguilla + cruces es la primera ronda de grupos.
+    var firstRoundSummary: SdaFirstRound? {
+        guard let round = savedSchedule.first, !round.matches.isEmpty else { return nil }
+        let matches = round.matches
+            .sorted { $0.venueNumber < $1.venueNumber }
+            .map { SdaFirstRound.Match(venue: $0.venueNumber, text: "\($0.homeTeam) – \($0.awayTeam)") }
+        let playing = Set(round.matches.flatMap { [$0.homeTeam, $0.awayTeam] })
+        let resting = teamNames.filter { !playing.contains($0) }
+        return SdaFirstRound(
+            title: round.stage == .groupStage ? "Primera ronda de grupos" : "Primera ronda",
+            matches: matches,
+            resting: resting
+        )
+    }
+}

@@ -2926,7 +2926,7 @@ extension KmpBridge {
                 // Última escritura gana: un cambio más antiguo que lo local no pisa el torneo.
                 if let existing, existing.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs { continue }
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
-                try await container.learningSituationsRepository.saveTournament(
+                try await container.learningSituationsRepository.saveTournamentFromSync(
                     tournament: LearningSituationTournament(
                         id: tournamentId,
                         learningSituationId: situationId.map { KotlinLong(value: $0) },

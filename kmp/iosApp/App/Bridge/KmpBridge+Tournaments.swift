@@ -106,7 +106,8 @@ extension KmpBridge {
         let now = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
         let trace = AuditTrace(
             authorUserId: nil,
-            createdAt: existing?.trace.createdAt ?? now,
+            createdAt: existing?.trace.createdAt
+                ?? Instant.companion.fromEpochMilliseconds(epochMilliseconds: Int64(record.createdAt.timeIntervalSince1970 * 1000)),
             updatedAt: now,
             associatedGroupId: nil,
             deviceId: localDeviceId,
@@ -150,6 +151,12 @@ extension KmpBridge {
         )
         guard let saved = try await repository.getTournament(id: record.id) else { return record }
         return Self.tournamentRecord(from: saved)
+    }
+
+    /// Horario docente ya guardado, o `nil`. Solo lectura: a diferencia de `plannerTeacherSchedule()`
+    /// no crea profesor, curso académico ni horario vacío como efecto secundario.
+    func existingTeacherSchedule() async throws -> TeacherSchedule? {
+        try await container.teacherScheduleRepository.findExistingSchedule()
     }
 
     /// Borra un torneo y propaga el borrado por SyncLAN.

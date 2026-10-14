@@ -865,7 +865,8 @@ data class LearningSituationSessionPlan(
  */
 data class LearningSituationTournament(
     val id: String,
-    val learningSituationId: Long,
+    /** `null` si el torneo pertenece solo a un curso (p. ej. migrado del módulo antiguo de EF). */
+    val learningSituationId: Long? = null,
     val classId: Long,
     val tabId: String? = null,
     val name: String,

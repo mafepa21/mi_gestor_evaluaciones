@@ -14,7 +14,8 @@ import MiGestorKit
 struct TournamentRecord: Identifiable, Equatable, Sendable {
     /// UUID en texto, generado por quien crea el torneo (no choca entre dispositivos).
     var id: String
-    var learningSituationId: Int64
+    /// `nil` si el torneo es solo de un curso (p. ej. migrado del módulo antiguo de EF).
+    var learningSituationId: Int64?
     var classId: Int64
     var tabId: String?
     var name: String
@@ -32,7 +33,7 @@ struct TournamentRecord: Identifiable, Equatable, Sendable {
 
     init(
         id: String = UUID().uuidString,
-        learningSituationId: Int64,
+        learningSituationId: Int64? = nil,
         classId: Int64,
         tabId: String? = nil,
         name: String,
@@ -89,6 +90,13 @@ extension KmpBridge {
             .map(Self.tournamentRecord(from:))
     }
 
+    /// Torneos de un curso, con o sin SdA, del más antiguo al más reciente.
+    func tournaments(forClassId classId: Int64) async throws -> [TournamentRecord] {
+        try await container.learningSituationsRepository
+            .listTournamentsByClass(classId: classId)
+            .map(Self.tournamentRecord(from:))
+    }
+
     /// Crea o actualiza un torneo y lo encola para SyncLAN. Devuelve el registro tal como quedó guardado.
     @discardableResult
     func saveTournament(_ record: TournamentRecord) async throws -> TournamentRecord {
@@ -107,7 +115,7 @@ extension KmpBridge {
         try await repository.saveTournament(
             tournament: LearningSituationTournament(
                 id: record.id,
-                learningSituationId: record.learningSituationId,
+                learningSituationId: record.learningSituationId.map { KotlinLong(value: $0) },
                 classId: record.classId,
                 tabId: record.tabId,
                 name: record.name,
@@ -127,7 +135,7 @@ extension KmpBridge {
             updatedAtEpochMs: nowMs,
             payload: [
                 "id": record.id,
-                "learningSituationId": record.learningSituationId,
+                "learningSituationId": record.learningSituationId ?? NSNull(),
                 "classId": record.classId,
                 "tabId": record.tabId ?? NSNull(),
                 "name": record.name,
@@ -197,7 +205,7 @@ extension KmpBridge {
     private static func tournamentRecord(from row: LearningSituationTournament) -> TournamentRecord {
         TournamentRecord(
             id: row.id,
-            learningSituationId: row.learningSituationId,
+            learningSituationId: row.learningSituationId?.int64Value,
             classId: row.classId,
             tabId: row.tabId,
             name: row.name,

@@ -1,10 +1,11 @@
 -- Migración 46: torneos dentro de la Situación de Aprendizaje. Solo aditiva.
 
--- Torneo de una SdA (cuelga de la situación y del grupo; se borra con cualquiera de los dos).
+-- Torneo de una SdA o solo de un curso (learning_situation_id NULL: torneos migrados del módulo antiguo de EF).
+-- Se borra con el curso y, si tiene SdA, también con la situación.
 -- El motor del torneo vive en Swift: aquí solo se guardan los JSON tal cual.
 CREATE TABLE IF NOT EXISTS learning_situation_tournaments (
     id TEXT PRIMARY KEY NOT NULL,
-    learning_situation_id INTEGER NOT NULL,
+    learning_situation_id INTEGER,
     class_id INTEGER NOT NULL,
     tab_id TEXT,
     name TEXT NOT NULL,
@@ -23,3 +24,4 @@ CREATE TABLE IF NOT EXISTS learning_situation_tournaments (
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_learning_situation_tournaments_situation ON learning_situation_tournaments(learning_situation_id, created_at_epoch_ms);
+CREATE INDEX IF NOT EXISTS idx_learning_situation_tournaments_class ON learning_situation_tournaments(class_id, created_at_epoch_ms);

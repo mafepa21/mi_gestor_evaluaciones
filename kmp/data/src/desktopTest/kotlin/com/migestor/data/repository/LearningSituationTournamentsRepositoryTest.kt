@@ -101,6 +101,38 @@ class LearningSituationTournamentsRepositoryTest {
     }
 
     @Test
+    fun `un torneo puede ser solo de un curso, sin situacion`() = runTest {
+        val (_, repo, classes) = nuevoEntorno()
+        val claseB = classes.saveClass(name = "2 ESO B", course = 2, description = "EF")
+        val claseC = classes.saveClass(name = "2 ESO C", course = 2, description = "EF")
+        val sda = repo.saveSituation(situacion("SdA con torneo"))
+
+        repo.saveTournament(
+            LearningSituationTournament(id = "solo-curso", classId = claseB, name = "Torneo antiguo", format = "league")
+        )
+        repo.saveTournament(
+            LearningSituationTournament(
+                id = "con-sda", learningSituationId = sda, classId = claseB, name = "Torneo SdA", format = "knockout",
+            )
+        )
+        repo.saveTournament(
+            LearningSituationTournament(id = "otro-curso", classId = claseC, name = "Torneo C", format = "league")
+        )
+
+        val sinSda = assertNotNull(repo.getTournament("solo-curso"))
+        assertNull(sinSda.learningSituationId)
+        assertEquals(setOf("solo-curso", "con-sda"), repo.listTournamentsByClass(claseB).map { it.id }.toSet())
+        assertEquals(listOf("otro-curso"), repo.listTournamentsByClass(claseC).map { it.id })
+        assertEquals(setOf("solo-curso", "otro-curso"), repo.listTournamentsWithoutSituation().map { it.id }.toSet())
+        // Las consultas por situacion no devuelven los torneos sin situacion.
+        assertEquals(listOf("con-sda"), repo.listTournaments(sda).map { it.id })
+
+        // Borrar la situacion no toca los torneos de solo curso.
+        repo.deleteSituation(sda)
+        assertEquals(setOf("solo-curso", "otro-curso"), repo.listAllTournaments().map { it.id }.toSet())
+    }
+
+    @Test
     fun `la migracion 46 crea la tabla de torneos de forma idempotente`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AppDatabase.Schema.create(driver)

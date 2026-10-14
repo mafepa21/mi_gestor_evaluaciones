@@ -1094,7 +1094,7 @@ class SqlDelightSyncAdapter(
                         deviceId = tournament.trace.deviceId ?: localDeviceId,
                         payload = buildJsonObject {
                             put("id", JsonPrimitive(tournament.id))
-                            put("learningSituationId", JsonPrimitive(tournament.learningSituationId))
+                            put("learningSituationId", tournament.learningSituationId?.let { JsonPrimitive(it) } ?: JsonNull)
                             put("classId", JsonPrimitive(tournament.classId))
                             put("tabId", tournament.tabId?.let { JsonPrimitive(it) } ?: JsonNull)
                             put("name", JsonPrimitive(tournament.name))
@@ -1141,6 +1141,33 @@ class SqlDelightSyncAdapter(
                         }.toString(),
                     )
                 }
+            }
+        }
+
+        // Torneos de solo curso (sin SdA): no cuelgan de ninguna situación, así que se emiten aparte.
+        container.learningSituationsRepository.listTournamentsWithoutSituation().forEach { tournament ->
+            val tournamentUpdatedAt = tournament.trace.updatedAt.toEpochMilliseconds()
+            if (sinceEpochMs == 0L || tournamentUpdatedAt > sinceEpochMs) {
+                changes += SyncChange(
+                    entity = "learning_situation_tournament",
+                    id = tournament.id,
+                    updatedAtEpochMs = tournamentUpdatedAt,
+                    deviceId = tournament.trace.deviceId ?: localDeviceId,
+                    payload = buildJsonObject {
+                        put("id", JsonPrimitive(tournament.id))
+                        put("learningSituationId", JsonNull)
+                        put("classId", JsonPrimitive(tournament.classId))
+                        put("tabId", tournament.tabId?.let { JsonPrimitive(it) } ?: JsonNull)
+                        put("name", JsonPrimitive(tournament.name))
+                        put("format", JsonPrimitive(tournament.format))
+                        put("status", JsonPrimitive(tournament.status))
+                        put("configJson", JsonPrimitive(tournament.configJson))
+                        put("teamSnapshotJson", JsonPrimitive(tournament.teamSnapshotJson))
+                        put("scheduleJson", JsonPrimitive(tournament.scheduleJson))
+                        put("resultsJson", JsonPrimitive(tournament.resultsJson))
+                        put("knockoutResultsJson", JsonPrimitive(tournament.knockoutResultsJson))
+                    }.toString(),
+                )
             }
         }
 
@@ -1990,7 +2017,8 @@ class SqlDelightSyncAdapter(
 
                     "learning_situation_tournament" -> {
                         val tournamentId = payload.string("id") ?: change.id.takeIf { it.isNotBlank() } ?: return@forEach
-                        val situationId = payload.long("learningSituationId") ?: return@forEach
+                        // learningSituationId nulo = torneo solo de curso (válido).
+                        val situationId = payload.long("learningSituationId")
                         val classId = payload.long("classId") ?: return@forEach
                         val name = payload.string("name") ?: return@forEach
                         val format = payload.string("format") ?: return@forEach

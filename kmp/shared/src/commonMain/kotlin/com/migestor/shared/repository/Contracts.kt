@@ -1093,6 +1093,10 @@ interface LearningSituationsRepository {
     @Throws(Throwable::class)
     suspend fun listTournaments(learningSituationId: Long): List<LearningSituationTournament>
     @Throws(Throwable::class)
+    suspend fun listTournamentsByClass(classId: Long): List<LearningSituationTournament>
+    @Throws(Throwable::class)
+    suspend fun listTournamentsWithoutSituation(): List<LearningSituationTournament>
+    @Throws(Throwable::class)
     suspend fun listAllTournaments(): List<LearningSituationTournament>
     @Throws(Throwable::class)
     suspend fun getTournament(id: String): LearningSituationTournament?

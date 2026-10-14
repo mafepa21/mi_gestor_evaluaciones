@@ -680,7 +680,7 @@ CREATE INDEX IF NOT EXISTS idx_learning_situation_session_plans_sequence ON lear
 
 CREATE TABLE IF NOT EXISTS learning_situation_tournaments (
     id TEXT PRIMARY KEY NOT NULL,
-    learning_situation_id INTEGER NOT NULL,
+    learning_situation_id INTEGER,
     class_id INTEGER NOT NULL,
     tab_id TEXT,
     name TEXT NOT NULL,
@@ -699,6 +699,7 @@ CREATE TABLE IF NOT EXISTS learning_situation_tournaments (
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_learning_situation_tournaments_situation ON learning_situation_tournaments(learning_situation_id, created_at_epoch_ms);
+CREATE INDEX IF NOT EXISTS idx_learning_situation_tournaments_class ON learning_situation_tournaments(class_id, created_at_epoch_ms);
 
 CREATE TABLE IF NOT EXISTS notebook_cell_entries (
     class_id INTEGER NOT NULL,
@@ -1865,6 +1866,18 @@ selectLearningSituationTournamentById:
 SELECT id, learning_situation_id, class_id, tab_id, name, format, status, config_json, team_snapshot_json, schedule_json, results_json, knockout_results_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 FROM learning_situation_tournaments
 WHERE id = ?;
+
+selectLearningSituationTournamentsByClass:
+SELECT id, learning_situation_id, class_id, tab_id, name, format, status, config_json, team_snapshot_json, schedule_json, results_json, knockout_results_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_tournaments
+WHERE class_id = ?
+ORDER BY created_at_epoch_ms, id;
+
+selectLearningSituationTournamentsWithoutSituation:
+SELECT id, learning_situation_id, class_id, tab_id, name, format, status, config_json, team_snapshot_json, schedule_json, results_json, knockout_results_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_tournaments
+WHERE learning_situation_id IS NULL
+ORDER BY class_id, created_at_epoch_ms, id;
 
 deleteLearningSituationTournament:
 DELETE FROM learning_situation_tournaments WHERE id = ?;

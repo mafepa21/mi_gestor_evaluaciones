@@ -2912,10 +2912,11 @@ extension KmpBridge {
 
             case "learning_situation_tournament":
                 guard let tournamentId = (payloadObject["id"] as? String) ?? (change.id.isEmpty ? nil : change.id),
-                      let situationId = int64Value(payloadObject["learningSituationId"]),
                       let classId = int64Value(payloadObject["classId"]),
                       let name = payloadObject["name"] as? String,
                       let format = payloadObject["format"] as? String else { continue }
+                // learningSituationId nulo = torneo solo de curso (válido).
+                let situationId = int64Value(payloadObject["learningSituationId"])
                 let existing: LearningSituationTournament?
                 do {
                     existing = try await container.learningSituationsRepository.getTournament(id: tournamentId)
@@ -2928,7 +2929,7 @@ extension KmpBridge {
                 try await container.learningSituationsRepository.saveTournament(
                     tournament: LearningSituationTournament(
                         id: tournamentId,
-                        learningSituationId: situationId,
+                        learningSituationId: situationId.map { KotlinLong(value: $0) },
                         classId: classId,
                         tabId: payloadObject.keys.contains("tabId") ? (payloadObject["tabId"] as? String) : existing?.tabId,
                         name: name,

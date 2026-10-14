@@ -219,6 +219,16 @@ class LearningSituationsRepositorySqlDelight(
             db.appDatabaseQueries.selectLearningSituationTournaments(learningSituationId).executeAsList().map(::toTournament)
         }
 
+    override suspend fun listTournamentsByClass(classId: Long): List<LearningSituationTournament> =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.selectLearningSituationTournamentsByClass(classId).executeAsList().map(::toTournament)
+        }
+
+    override suspend fun listTournamentsWithoutSituation(): List<LearningSituationTournament> =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.selectLearningSituationTournamentsWithoutSituation().executeAsList().map(::toTournament)
+        }
+
     override suspend fun listAllTournaments(): List<LearningSituationTournament> = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.selectAllLearningSituationTournaments().executeAsList().map(::toTournament)
     }

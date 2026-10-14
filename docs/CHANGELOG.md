@@ -24,7 +24,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
-- **Torneos: el PDF de equipos ya no pisa tarjetas ni corta nombres**: la altura de cada tarjeta se calculaba sin el espacio entre alumnos, así que se montaba sobre la de abajo. Los nombres largos pasan a dos líneas en lugar de cortarse.
+- **Torneos: el PDF de equipos ya no pisa tarjetas ni corta nombres**: la altura de cada tarjeta se calculaba sin el espacio entre alumnos, así que se montaba sobre la de abajo. Los nombres largos pasan a dos líneas en lugar de cortarse, y cada alumno lleva una viñeta (•) para distinguirlos.
 
 ### Data
 

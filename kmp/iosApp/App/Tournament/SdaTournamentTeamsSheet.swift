@@ -76,7 +76,10 @@ enum SdaTeamsSheetLayout {
     /// Un nombre largo pasa a dos líneas; nunca más, para que la tarjeta sea predecible.
     static let maxLinesPerMember = 2
 
-    static var memberTextWidth: CGFloat { cardWidth - cardPadding * 2 }
+    /// Hueco de la viñeta «•»: la segunda línea de un nombre largo queda alineada con la primera.
+    static let bulletWidth: CGFloat = 10
+
+    static var memberTextWidth: CGFloat { cardWidth - cardPadding * 2 - bulletWidth }
 
     /// Líneas que ocupa un nombre con la fuente de la tarjeta (1 o 2).
     static func lineCount(for name: String) -> Int {
@@ -226,16 +229,18 @@ struct SdaTeamsSheetPageView: View {
                 } else {
                     ForEach(Array(team.memberNames.enumerated()), id: \.offset) { _, name in
                         let lines = L.lineCount(for: name)
-                        Text(name)
-                            .font(.system(size: L.memberFontSize))
-                            .lineLimit(lines)
-                            .minimumScaleFactor(0.8)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(
-                                width: L.memberTextWidth,
-                                height: L.lineHeight * CGFloat(lines),
-                                alignment: .topLeading
-                            )
+                        HStack(alignment: .firstTextBaseline, spacing: 0) {
+                            Text("•")
+                                .font(.system(size: L.memberFontSize, weight: .bold))
+                                .frame(width: L.bulletWidth, alignment: .leading)
+                            Text(name)
+                                .font(.system(size: L.memberFontSize))
+                                .lineLimit(lines)
+                                .minimumScaleFactor(0.8)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(width: L.memberTextWidth, alignment: .topLeading)
+                        }
+                        .frame(height: L.lineHeight * CGFloat(lines), alignment: .topLeading)
                     }
                 }
             }

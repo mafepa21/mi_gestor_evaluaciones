@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Torneos en la SdA</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1c1c1e;--mut:#6e6e73;--line:#e5e5ea;--acc:#0a84ff;--ok:#30a14e;--warn:#c47f00;--err:#d70015;--chip:#eef4ff}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--chip:#0a2a4d}}
+:root[data-theme="dark"]{--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--chip:#0a2a4d}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{padding:24px 16px 8px;max-width:1100px;margin:auto}
+header h1{margin:0;font-size:24px}header p{margin:4px 0 0;color:var(--mut)}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;padding:16px;max-width:1100px;margin:auto}
+.state{background:var(--card);border-radius:16px;padding:16px;border:1px solid var(--line)}
+.state>h2{margin:0 0 4px;font-size:12px;letter-spacing:.06em;color:var(--mut);text-transform:uppercase}
+.state>.note{margin:0 0 12px;font-size:13px;color:var(--mut)}
+.sec{display:flex;justify-content:space-between;align-items:center;margin:8px 0}
+.sec h3{margin:0;font-size:17px}
+.row{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.ico{width:36px;height:36px;border-radius:10px;background:var(--chip);display:grid;place-items:center;font-size:18px;flex:none}
+.grow{flex:1;min-width:0}.t{font-weight:600}.s{font-size:13px;color:var(--mut)}
+.badge{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--line);color:var(--mut);white-space:nowrap}
+.badge.live{background:#e3f7e8;color:var(--ok)}.badge.sch{background:var(--chip);color:var(--acc)}
+button{min-height:44px;padding:0 16px;border-radius:12px;border:0;background:var(--line);color:var(--fg);font:inherit;font-weight:600;cursor:pointer}
+button.p{background:var(--acc);color:#fff}button.l{background:none;color:var(--acc);padding:0 4px}
+.sk{height:14px;margin:10px 0;border-radius:6px;background:var(--line);animation:p 1.2s infinite alternate}@keyframes p{to{opacity:.4}}
+.empty{text-align:center;padding:20px 8px}.empty .big{font-size:34px}.empty p{color:var(--mut);margin:6px 0 14px}
+.warn{background:#fff6e0;color:#7a5000;border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:8px}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .warn{background:#3a2c00;color:#ffd77a}}
+.err{color:var(--err)}
+.i{font-size:12px;color:var(--mut);cursor:help;border-bottom:1px dotted var(--mut)}
+dialog{border:0;border-radius:20px;padding:0;width:min(520px,calc(100% - 32px));background:var(--card);color:var(--fg)}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.dh{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+.db{padding:16px;max-height:70vh;overflow:auto}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 16px}
+.seg label{border:1px solid var(--line);border-radius:12px;padding:10px;cursor:pointer}
+.seg input{margin-right:6px}.seg small{display:block;color:var(--mut)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 16px}
+.chip{background:var(--chip);color:var(--acc);border-radius:99px;padding:6px 12px;font-size:13px}
+.chip.off{background:var(--line);color:var(--mut);text-decoration:line-through}
+.step{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.stepper{display:flex;align-items:center;gap:10px}.stepper button{min-height:36px;width:36px;padding:0}
+.sum{background:var(--bg);border-radius:12px;padding:12px;margin-top:12px;font-size:14px}
+.live-match{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:14px;margin:8px 0}
+.live-match .sc{font-size:28px;font-weight:700;text-align:center;min-width:90px}
+.live-match .n{font-weight:600}.live-match .n.r{text-align:right}
+.timer{font-size:40px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+@media(max-width:400px){.seg{grid-template-columns:1fr}}
+</style></head><body>
+<header><h1>Torneos en la Situación de Aprendizaje</h1>
+<p>Maqueta. Sección nueva dentro del detalle de la SdA. Los equipos son los grupos de trabajo vinculados.</p></header>
+<main>
+
+<section class="state"><h2>1 · Con datos</h2><p class="note">Sección «Torneos» en el detalle de la SdA.</p>
+<div class="sec"><h3>Torneos</h3><button class="l" onclick="nuevo.showModal()">＋ Nuevo</button></div>
+<div class="row"><div class="ico">🏆</div><div class="grow"><div class="t">Liga de voleibol</div><div class="s">1º ESO A · 6 equipos · 3 pistas</div></div><span class="badge live">En curso</span></div>
+<div class="row"><div class="ico">⚔️</div><div class="grow"><div class="t">Copa final</div><div class="s">1º ESO A · Eliminatoria · 8 equipos</div></div><span class="badge sch">Planificado</span></div>
+<div class="row"><div class="ico">🔁</div><div class="grow"><div class="t">Rotaciones calentamiento</div><div class="s">1º ESO B · 4 equipos</div></div><span class="badge">Finalizado</span></div>
+</section>
+
+<section class="state"><h2>2 · Cargando</h2><p class="note">Mientras se leen grupos y torneos.</p>
+<div class="sec"><h3>Torneos</h3></div><div class="sk"></div><div class="sk" style="width:70%"></div><div class="sk" style="width:85%"></div></section>
+
+<section class="state"><h2>3 · Vacío: sin grupos</h2><p class="note">La SdA no tiene grupos de trabajo. No se puede crear torneo.</p>
+<div class="empty"><div class="big">👥</div><div class="t">Primero, crea los grupos</div><p>Los equipos del torneo salen de los grupos de trabajo de esta situación.</p><button class="p">Crear grupos</button></div></section>
+
+<section class="state"><h2>4 · Vacío: con grupos</h2><p class="note">Hay grupos, aún no hay torneos.</p>
+<div class="empty"><div class="big">🏆</div><div class="t">Sin torneos todavía</div><p>Tienes 6 grupos listos para jugar.</p><button class="p" onclick="nuevo.showModal()">Crear torneo</button></div></section>
+
+<section class="state"><h2>5 · Error al cargar</h2><p class="note">Fallo de lectura de la base de datos.</p>
+<p class="err">No se pudieron cargar los torneos.</p><button>Reintentar</button></section>
+
+<section class="state"><h2>6 · Grupos cambiados</h2><p class="note">Los grupos se editaron tras crear el torneo.</p>
+<div class="warn">Los grupos han cambiado desde que creaste este torneo. <button class="l">Actualizar equipos</button></div>
+<div class="s">Actualizar borra el calendario y los resultados. Se pide confirmación.</div></section>
+
+<section class="state"><h2>7 · Modales</h2><p class="note">Crear torneo y jugar en directo.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="p" onclick="nuevo.showModal()">Crear torneo</button><button onclick="vivo.showModal()">Modo directo</button><button onclick="borrar.showModal()">Borrar torneo</button></div></section>
+
+</main>
+
+<dialog id="nuevo"><div class="dh"><button class="l" onclick="nuevo.close()">Cancelar</button><b>Nuevo torneo</b><button class="l" onclick="nuevo.close()">Crear</button></div>
+<div class="db">
+<div class="s">Nombre</div><div style="padding:10px 0;font-weight:600">Liga de voleibol</div>
+<div class="s">Formato</div>
+<div class="seg">
+<label><input type="radio" name="f" checked>Liga<small>Todos contra todos</small></label>
+<label><input type="radio" name="f">Eliminatoria<small>Quien pierde, fuera</small></label>
+<label><input type="radio" name="f">Liguilla + cruces<small>Grupos y final</small></label>
+<label><input type="radio" name="f">Rotaciones<small>Rondas rápidas</small></label></div>
+<div class="s">Equipos <span class="i" title="Toca un grupo para dejarlo fuera de este torneo">(i)</span></div>
+<div class="chips"><span class="chip">Halcones</span><span class="chip">Linces</span><span class="chip">Orcas</span><span class="chip">Pumas</span><span class="chip off">Zorros</span><span class="chip">Águilas</span></div>
+<div class="step"><span>Pistas</span><span class="stepper"><button>−</button>3<button>＋</button></span></div>
+<div class="step"><span>Minutos por partido</span><span class="stepper"><button>−</button>8<button>＋</button></span></div>
+<div class="step"><span>Cambio entre partidos</span><span class="stepper"><button>−</button>2<button>＋</button></span></div>
+<div class="sum">5 equipos · 10 partidos · 4 rondas · <b>unos 40 min</b><br><span class="s">Cabe en una sesión de 55 min.</span></div>
+</div></dialog>
+
+<dialog id="vivo"><div class="dh"><button class="l" onclick="vivo.close()">Cerrar</button><b>Ronda 2 de 4</b><button class="l">Siguiente</button></div>
+<div class="db"><div class="timer">06:12</div>
+<div class="live-match"><span class="n r">Halcones</span><span class="sc">2 – 1</span><span class="n">Linces</span></div><div class="s">Pista 1</div>
+<div class="live-match"><span class="n r">Orcas</span><span class="sc">0 – 0</span><span class="n">Pumas</span></div><div class="s">Pista 2</div>
+<div class="live-match"><span class="n r">Águilas</span><span class="sc">—</span><span class="n">Descansa</span></div><div class="s">Pista 3</div>
+</div></dialog>
+
+<dialog id="borrar"><div class="db"><b>¿Borrar «Liga de voleibol»?</b><p class="s">Se borran el calendario y los resultados en todos tus dispositivos.</p>
+<div style="display:flex;gap:8px;justify-content:flex-end"><button onclick="borrar.close()">Cancelar</button><button class="p" style="background:var(--err)" onclick="borrar.close()">Borrar</button></div></div></dialog>
+</body></html>

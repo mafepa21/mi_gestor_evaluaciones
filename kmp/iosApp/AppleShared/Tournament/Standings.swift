@@ -37,7 +37,14 @@ struct Standing: Identifiable, Hashable {
 }
 
 struct StandingsCalculator {
-    static func calculate(teamNames: [String], results: [MatchResult]) -> [Standing] {
+    /// `pointsWin/Draw/Loss` por defecto 3/1/0; los torneos migrados pueden traer su propia regla.
+    static func calculate(
+        teamNames: [String],
+        results: [MatchResult],
+        pointsWin: Int = 3,
+        pointsDraw: Int = 1,
+        pointsLoss: Int = 0
+    ) -> [Standing] {
         var standings = Dictionary(
             uniqueKeysWithValues: teamNames.map { ($0, Standing(teamName: $0)) }
         )
@@ -52,17 +59,19 @@ struct StandingsCalculator {
 
             if result.homeScore > result.awayScore {
                 home.wins += 1
-                home.points += 3
+                home.points += pointsWin
                 away.losses += 1
+                away.points += pointsLoss
             } else if result.homeScore < result.awayScore {
                 away.wins += 1
-                away.points += 3
+                away.points += pointsWin
                 home.losses += 1
+                home.points += pointsLoss
             } else {
                 home.draws += 1
                 away.draws += 1
-                home.points += 1
-                away.points += 1
+                home.points += pointsDraw
+                away.points += pointsDraw
             }
 
             standings[result.homeTeam] = home

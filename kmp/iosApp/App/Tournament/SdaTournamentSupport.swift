@@ -273,8 +273,21 @@ extension TournamentPlan {
 
     // MARK: Clasificaciones
 
+    /// Puntos por victoria/empate/derrota: los del torneo migrado si los trae; si no, 3/1/0 del motor.
+    private var standingPoints: (win: Int, draw: Int, loss: Int) {
+        guard let extras = legacyExtras else { return (3, 1, 0) }
+        return (extras.pointsWin, extras.pointsDraw, extras.pointsLoss)
+    }
+
     var leagueStandings: [Standing] {
-        StandingsCalculator.calculate(teamNames: teamNames, results: savedResults)
+        let points = standingPoints
+        return StandingsCalculator.calculate(
+            teamNames: teamNames,
+            results: savedResults,
+            pointsWin: points.win,
+            pointsDraw: points.draw,
+            pointsLoss: points.loss
+        )
     }
 
     /// Una clasificación por grupo de la liguilla.
@@ -284,7 +297,13 @@ extension TournamentPlan {
         return groups.enumerated().map { index, names in
             (
                 "Grupo \(GroupStageConfiguration.groupName(index: index))",
-                StandingsCalculator.calculate(teamNames: names, results: savedResults)
+                StandingsCalculator.calculate(
+                    teamNames: names,
+                    results: savedResults,
+                    pointsWin: standingPoints.win,
+                    pointsDraw: standingPoints.draw,
+                    pointsLoss: standingPoints.loss
+                )
             )
         }
     }

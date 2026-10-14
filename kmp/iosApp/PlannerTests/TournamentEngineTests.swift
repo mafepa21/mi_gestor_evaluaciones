@@ -481,6 +481,26 @@ final class TournamentTests: XCTestCase {
         XCTAssertEqual(standings[2].draws, 1)
     }
 
+    func testStandingsUseCustomPointsRule() {
+        let results = [
+            MatchResult(homeTeam: "A", awayTeam: "B", homeScore: 3, awayScore: 1),
+            MatchResult(homeTeam: "B", awayTeam: "C", homeScore: 2, awayScore: 2)
+        ]
+
+        // Regla propia: victoria 2, empate 1, derrota 1.
+        let standings = StandingsCalculator.calculate(
+            teamNames: ["A", "B", "C"],
+            results: results,
+            pointsWin: 2,
+            pointsDraw: 1,
+            pointsLoss: 1
+        )
+        let pointsByTeam = Dictionary(uniqueKeysWithValues: standings.map { ($0.teamName, $0.points) })
+        XCTAssertEqual(pointsByTeam["A"], 2)
+        XCTAssertEqual(pointsByTeam["B"], 2) // derrota (1) + empate (1)
+        XCTAssertEqual(pointsByTeam["C"], 1)
+    }
+
     func testTournamentPersistsScheduleAndResults() throws {
         var tournament = TournamentPlan(
             name: "Torneo persistente",

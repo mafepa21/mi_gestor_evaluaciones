@@ -23,8 +23,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.migestor.ios
         PRODUCT_NAME: MiGestorKMPiOS
-        CURRENT_PROJECT_VERSION: 1
-        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: 2
+        MARKETING_VERSION: "0.3.1"
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: C8JCMT4298
@@ -91,8 +91,8 @@ targets:
         # Nombre público. El módulo Swift conserva el nombre interno para no tocar los tests.
         PRODUCT_NAME: "Cuaderno Vivo"
         PRODUCT_MODULE_NAME: MiGestorKMPMac
-        CURRENT_PROJECT_VERSION: 1
-        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: 2
+        MARKETING_VERSION: "0.3.1"
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: C8JCMT4298

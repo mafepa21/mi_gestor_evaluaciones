@@ -108,6 +108,8 @@ struct TournamentPlan: Identifiable, Equatable, Codable, Sendable {
     var savedResults: [MatchResult] = []
     /// Resultados de eliminatoria. Se rellenan con `persistKnockoutResults`.
     var savedKnockoutResults: [KnockoutMatchResult] = []
+    /// Datos que solo tienen los torneos migrados del módulo antiguo de EF. Se conservan al guardar.
+    var legacyExtras: TournamentLegacyExtras?
 
     init(
         id: UUID = UUID(),

@@ -37,6 +37,7 @@ struct AppleAppRootView: View {
             .task {
                 MainThreadHangWatchdog.startIfDebug()
                 await bridge.bootstrap()
+                await bridge.migrateLegacyTournamentsIfNeeded()
                 bridge.onAppDidBecomeActive()
                 if lifecycleObserver == nil {
                     lifecycleObserver = AppleLifecycleBridgeObserver(bridge: bridge)
@@ -56,6 +57,7 @@ struct AppleAppRootView: View {
                 MainThreadHangWatchdog.startIfDebug()
                 rescueService.checkForPendingRescue()
                 await bridge.bootstrap()
+                await bridge.migrateLegacyTournamentsIfNeeded()
                 bridge.onAppDidBecomeActive()
                 if lifecycleObserver == nil {
                     lifecycleObserver = AppleLifecycleBridgeObserver(bridge: bridge)

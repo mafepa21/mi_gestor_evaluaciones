@@ -10,6 +10,8 @@ struct TournamentPlanConfigSnapshot: Equatable, Codable, Sendable {
     var matchDurationMinutes: Int
     var transitionMinutes: Int
     var status: TournamentPlanStatus
+    /// Solo en torneos migrados del módulo antiguo de EF; los demás la omiten.
+    var legacyExtras: TournamentLegacyExtras?
 }
 
 /// Las cinco columnas JSON de `learning_situation_tournaments` más id y nombre.
@@ -54,7 +56,8 @@ extension TournamentPlan {
             venueCount: venueCount,
             matchDurationMinutes: matchDurationMinutes,
             transitionMinutes: transitionMinutes,
-            status: status
+            status: status,
+            legacyExtras: legacyExtras
         )
     }
 
@@ -113,6 +116,7 @@ extension TournamentPlan {
         )
         // El init normaliza groupCount; se respeta el valor guardado tal cual.
         self.groupCount = config.groupCount
+        self.legacyExtras = config.legacyExtras
         self.savedSchedule = try TournamentPlanJSON.decode([ScheduledRound].self, from: columns.scheduleJSON, fallback: [])
         self.savedResults = try TournamentPlanJSON.decode([MatchResult].self, from: columns.resultsJSON, fallback: [])
         self.savedKnockoutResults = try TournamentPlanJSON.decode(

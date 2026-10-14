@@ -29,6 +29,12 @@ struct LearningSituationTournamentsSection: View {
         _model = StateObject(wrappedValue: SdaTournamentsListModel(learningSituationId: situationId))
     }
 
+    /// Un torneo es de un solo curso: hace falta algún curso con al menos dos grupos.
+    /// Contar todos los grupos juntos engañaba cuando estaban repartidos en cursos distintos.
+    private var hasPlayableClass: Bool {
+        Dictionary(grouping: model.teams, by: \.classId).values.contains { $0.count >= 2 }
+    }
+
     private func className(_ id: Int64) -> String {
         bridge.classes.first(where: { $0.id == id })?.name ?? "Curso"
     }
@@ -71,8 +77,18 @@ struct LearningSituationTournamentsSection: View {
             .environmentObject(bridge)
         }
         .sheet(item: $openTarget) { target in
-            SdaTournamentSheetHost(target: target, model: model, className: className)
-                .environmentObject(bridge)
+            let record = model.record(id: target.id)
+            SdaTournamentSheetHost(
+                record: record,
+                currentTeams: model.teams,
+                className: record.map { className($0.classId) } ?? "",
+                onSaved: { model.upsert($0) },
+                onDeleted: { model.remove(id: target.id) },
+                onSaveFailedAtClose: { name in
+                    errorMessage = "No se guardaron los últimos cambios de «\(name)». Ábrelo de nuevo y revisa los resultados."
+                }
+            )
+            .environmentObject(bridge)
         }
         .confirmationDialog(
             deleteTitle,
@@ -119,7 +135,7 @@ struct LearningSituationTournamentsSection: View {
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
-            if model.phase == .ready, !model.rows.isEmpty, model.teams.count >= 2 {
+            if model.phase == .ready, !model.rows.isEmpty, hasPlayableClass {
                 Button {
                     isCreating = true
                 } label: {
@@ -138,7 +154,7 @@ struct LearningSituationTournamentsSection: View {
     @ViewBuilder
     private var readyContent: some View {
         if model.rows.isEmpty {
-            if model.teams.count < 2 {
+            if !hasPlayableClass {
                 emptyWithoutGroups
             } else {
                 emptyWithGroups
@@ -164,7 +180,9 @@ struct LearningSituationTournamentsSection: View {
                 .font(.headline)
             Text(model.teams.isEmpty
                 ? "Los equipos del torneo salen de los grupos de trabajo de esta situación."
-                : "Con un solo grupo no hay torneo. Crea al menos dos grupos de trabajo en esta situación.")
+                : model.teams.count >= 2
+                    ? "Tus grupos están en cursos distintos y un torneo es de un solo curso. Crea otro grupo en el mismo curso que alguno de ellos."
+                    : "Con un solo grupo no hay torneo. Crea al menos dos grupos de trabajo en esta situación.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -304,62 +322,6 @@ struct LearningSituationTournamentsSection: View {
             model.upsert(saved)
         } catch {
             errorMessage = "No se pudieron actualizar los equipos de «\(row.record.name)». Hacen falta al menos dos grupos."
-        }
-    }
-}
-
-/// Contenido de la hoja de un torneo. Lee el registro una sola vez al abrirse, así borrarlo
-/// no deja ver un estado intermedio mientras la hoja se cierra.
-private struct SdaTournamentSheetHost: View {
-    let target: SdaTournamentTarget
-    @ObservedObject var model: SdaTournamentsListModel
-    let className: (Int64) -> String
-    @EnvironmentObject private var bridge: KmpBridge
-    @Environment(\.dismiss) private var dismiss
-    @State private var loaded: Loaded?
-
-    private struct Loaded {
-        let record: TournamentRecord
-        let plan: TournamentPlan
-    }
-
-    init(target: SdaTournamentTarget, model: SdaTournamentsListModel, className: @escaping (Int64) -> String) {
-        self.target = target
-        self.model = model
-        self.className = className
-        let loaded = model.record(id: target.id).flatMap { record in
-            (try? record.plan()).map { Loaded(record: record, plan: $0) }
-        }
-        _loaded = State(initialValue: loaded)
-    }
-
-    var body: some View {
-        if let loaded {
-            SdaTournamentDetailView(
-                record: loaded.record,
-                plan: loaded.plan,
-                bridge: bridge,
-                currentTeams: model.teams,
-                className: className(loaded.record.classId),
-                onSaved: { model.upsert($0) },
-                onDeleted: { model.remove(id: target.id) }
-            )
-        } else {
-            NavigationStack {
-                ContentUnavailableView(
-                    "No se pudo abrir el torneo",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text("Su contenido guardado no se puede leer.")
-                )
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cerrar") { dismiss() }
-                    }
-                }
-            }
-            #if os(macOS)
-            .frame(minWidth: 420, minHeight: 320)
-            #endif
         }
     }
 }

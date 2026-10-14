@@ -106,7 +106,7 @@ final class SdaTournamentStore: ObservableObject {
 
     private let bridge: KmpBridge
     private var isDirty = false
-    private var isDeleted = false
+    private(set) var isDeleted = false
     private var saveTask: Task<Void, Never>?
     /// Se llama tras cada guardado correcto (para refrescar la lista de la SdA).
     var onSaved: ((TournamentRecord) -> Void)?
@@ -154,6 +154,7 @@ final class SdaTournamentStore: ObservableObject {
         isDirty = false
         try await bridge.deleteTournament(id: record.id)
         isDeleted = true
+        saveFailed = false
     }
 
     private func startSaving() {

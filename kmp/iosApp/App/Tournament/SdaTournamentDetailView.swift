@@ -9,6 +9,8 @@ struct SdaTournamentDetailView: View {
     let currentTeams: [TournamentWorkGroupTeam]
     let className: String
     let onDeleted: () -> Void
+    /// Se llama con el nombre del torneo si al cerrar no se pudieron guardar los últimos cambios.
+    let onSaveFailedAtClose: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: Tab = .calendar
@@ -41,7 +43,8 @@ struct SdaTournamentDetailView: View {
         currentTeams: [TournamentWorkGroupTeam],
         className: String,
         onSaved: @escaping (TournamentRecord) -> Void,
-        onDeleted: @escaping () -> Void
+        onDeleted: @escaping () -> Void,
+        onSaveFailedAtClose: @escaping (String) -> Void = { _ in }
     ) {
         let store = SdaTournamentStore(record: record, plan: plan, bridge: bridge)
         store.onSaved = onSaved
@@ -49,6 +52,7 @@ struct SdaTournamentDetailView: View {
         self.currentTeams = currentTeams
         self.className = className
         self.onDeleted = onDeleted
+        self.onSaveFailedAtClose = onSaveFailedAtClose
     }
 
     private var plan: TournamentPlan { store.plan }
@@ -62,7 +66,9 @@ struct SdaTournamentDetailView: View {
     }
 
     private var groupsChanged: Bool {
-        SdaTournamentTeams.hasChanged(
+        // Los torneos migrados (sin SdA) no tienen grupos de trabajo que releer.
+        guard store.record.learningSituationId != nil else { return false }
+        return SdaTournamentTeams.hasChanged(
             snapshot: plan.teams,
             current: currentTeams.filter { $0.classId == store.record.classId }
         )
@@ -79,7 +85,9 @@ struct SdaTournamentDetailView: View {
                     if plan.savedSchedule.isEmpty {
                         LearningSituationInlineNotice(
                             kind: .warning,
-                            message: "Este torneo no tiene calendario. Actualiza los equipos para generarlo.",
+                            message: store.record.learningSituationId == nil
+                                ? "Este torneo no tiene calendario."
+                                : "Este torneo no tiene calendario. Actualiza los equipos para generarlo.",
                             actionTitle: groupsChanged ? "Actualizar equipos" : nil
                         ) {
                             isConfirmingRefresh = true
@@ -127,6 +135,16 @@ struct SdaTournamentDetailView: View {
                 Button("Cancelar", role: .cancel) {}
             } message: {
                 Text("Se borran el calendario y los resultados, y se crea un calendario nuevo con los grupos de hoy.")
+            }
+        }
+        // Al cerrar la hoja (también arrastrando) se termina el guardado en curso. La tarea retiene
+        // el store, así que acaba aunque la vista ya no exista; si falla, se avisa en la pantalla de origen.
+        .onDisappear {
+            let store = store
+            let notify = onSaveFailedAtClose
+            Task {
+                await store.flush()
+                if store.saveFailed, !store.isDeleted { notify(store.plan.name) }
             }
         }
         #if os(macOS)
@@ -443,6 +461,74 @@ struct SdaTournamentDetailView: View {
             dismiss()
         } catch {
             actionError = "No se pudo borrar el torneo. Inténtalo de nuevo."
+        }
+    }
+}
+
+/// Contenido de la hoja de un torneo (dentro de una SdA o migrado, solo de curso). Lee el registro
+/// una sola vez al abrirse, así borrarlo no deja ver un estado intermedio mientras la hoja se cierra.
+struct SdaTournamentSheetHost: View {
+    let currentTeams: [TournamentWorkGroupTeam]
+    let className: String
+    let onSaved: (TournamentRecord) -> Void
+    let onDeleted: () -> Void
+    let onSaveFailedAtClose: (String) -> Void
+    @EnvironmentObject private var bridge: KmpBridge
+    @Environment(\.dismiss) private var dismiss
+    @State private var loaded: Loaded?
+
+    private struct Loaded {
+        let record: TournamentRecord
+        let plan: TournamentPlan
+    }
+
+    init(
+        record: TournamentRecord?,
+        currentTeams: [TournamentWorkGroupTeam],
+        className: String,
+        onSaved: @escaping (TournamentRecord) -> Void,
+        onDeleted: @escaping () -> Void,
+        onSaveFailedAtClose: @escaping (String) -> Void
+    ) {
+        self.currentTeams = currentTeams
+        self.className = className
+        self.onSaved = onSaved
+        self.onDeleted = onDeleted
+        self.onSaveFailedAtClose = onSaveFailedAtClose
+        let loaded = record.flatMap { record in
+            (try? record.plan()).map { Loaded(record: record, plan: $0) }
+        }
+        _loaded = State(initialValue: loaded)
+    }
+
+    var body: some View {
+        if let loaded {
+            SdaTournamentDetailView(
+                record: loaded.record,
+                plan: loaded.plan,
+                bridge: bridge,
+                currentTeams: currentTeams,
+                className: className,
+                onSaved: onSaved,
+                onDeleted: onDeleted,
+                onSaveFailedAtClose: onSaveFailedAtClose
+            )
+        } else {
+            NavigationStack {
+                ContentUnavailableView(
+                    "No se pudo abrir el torneo",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text("Su contenido guardado no se puede leer.")
+                )
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cerrar") { dismiss() }
+                    }
+                }
+            }
+            #if os(macOS)
+            .frame(minWidth: 420, minHeight: 320)
+            #endif
         }
     }
 }

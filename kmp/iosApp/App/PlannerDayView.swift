@@ -50,6 +50,8 @@ struct PlannerDayView: View {
     @State private var quickNoteError: String?
     @State private var dragTranslation: CGFloat = 0
     @State private var showingQuickJournal = false
+    @State private var daySheetURL: URL?
+    @State private var isBuildingDaySheet = false
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     private var sessions: [PlanningSession] { vm.daySessions() }
@@ -67,6 +69,7 @@ struct PlannerDayView: View {
         }
         .simultaneousGesture(daySwipeGesture)
         .onAppear { timeTick.start() }
+        .onChange(of: vm.selectedDayForDayView) { _, _ in daySheetURL = nil }
         .onDisappear { timeTick.stop() }
         .sheet(
             isPresented: Binding(
@@ -123,6 +126,60 @@ struct PlannerDayView: View {
         }
     }
 
+    /// Hoja A3 con tres sesiones por página para imprimir.
+    @ViewBuilder
+    private var daySheetButton: some View {
+        if let daySheetURL {
+            ShareLink(item: daySheetURL) {
+                Label("Imprimir hoja", systemImage: "printer")
+            }
+            .buttonStyle(.bordered)
+        } else {
+            Button {
+                Task { await buildDaySheet() }
+            } label: {
+                if isBuildingDaySheet {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Label("Hoja del día", systemImage: "doc.richtext")
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(sessions.isEmpty || isBuildingDaySheet)
+            .help("Crea un PDF A3 apaisado con tres sesiones por hoja")
+        }
+    }
+
+    @MainActor
+    private func buildDaySheet() async {
+        isBuildingDaySheet = true
+        defer { isBuildingDaySheet = false }
+        let day = vm.selectedDayForDayView
+        let ordered = sessions.sorted {
+            ($0.startTime ?? vm.timeLabel(for: Int($0.period))) < ($1.startTime ?? vm.timeLabel(for: Int($1.period)))
+        }
+        var entries: [PlannerDaySheetEntry] = []
+        for session in ordered {
+            // Las funciones suspend de KMP van en serie en el hilo principal.
+            var plan = vm.sessionPlan(for: session)
+            if plan == nil, let planId = session.learningSituationSessionPlanId?.int64Value {
+                plan = try? await vm.bridge?.learningSituationSessionPlan(id: planId)
+            }
+            entries.append(PlannerDaySheetEntry(
+                session: session,
+                plan: plan,
+                timeLabel: session.startTime ?? vm.timeLabel(for: Int(session.period))
+            ))
+        }
+        let label = vm.dayHeaderLabel(for: day)
+        guard day == vm.selectedDayForDayView else { return }
+        daySheetURL = PlannerDaySheetPDFRenderer.writeToTemporaryFile(
+            entries: entries,
+            dayLabel: label,
+            suggestedName: "sesiones-\(label)"
+        )
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
@@ -134,6 +191,7 @@ struct PlannerDayView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                daySheetButton
                 if showsInlinePrimaryAction {
                     Button {
                         vm.openComposer(day: vm.selectedDayForDayView, period: vm.visibleSlots.first?.period ?? 1)

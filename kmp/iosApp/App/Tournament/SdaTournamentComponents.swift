@@ -19,13 +19,22 @@ struct SdaStatusBadge: View {
     let status: TournamentPlanStatus
 
     var body: some View {
-        Text(status.title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(status.sdaTint)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(status.sdaTint.opacity(0.14), in: Capsule())
-            .accessibilityLabel("Estado: \(status.title)")
+        // El texto va en color de sistema (contraste suficiente en claro y oscuro); el color
+        // del estado solo lo lleva el punto, que además es decorativo.
+        HStack(spacing: 6) {
+            Circle()
+                .fill(status.sdaTint)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text(status.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(status == .finished || status == .draft ? Color.secondary : Color.primary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(status.sdaTint.opacity(0.14), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Estado: \(status.title)")
     }
 }
 
@@ -71,16 +80,20 @@ struct SdaStepperRow: View {
         HStack(spacing: 8) {
             Button { change(by: -1) } label: {
                 Image(systemName: "minus")
-                    .frame(minWidth: tapSize - 16, minHeight: tapSize - 16)
+                    .frame(minWidth: tapSize, minHeight: tapSize)
+                    .contentShape(Rectangle())
             }
+            .accessibilityHidden(true)
             .disabled(value <= range.lowerBound)
             Text("\(value)")
                 .font(.body.weight(.semibold).monospacedDigit())
                 .frame(minWidth: 32)
             Button { change(by: 1) } label: {
                 Image(systemName: "plus")
-                    .frame(minWidth: tapSize - 16, minHeight: tapSize - 16)
+                    .frame(minWidth: tapSize, minHeight: tapSize)
+                    .contentShape(Rectangle())
             }
+            .accessibilityHidden(true)
             .disabled(value >= range.upperBound)
         }
         .buttonStyle(.bordered)

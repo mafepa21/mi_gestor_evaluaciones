@@ -11,8 +11,9 @@ struct SdaTournamentLiveView: View {
     @State private var pausedRemaining: Int?
     @State private var isRunning = false
     @State private var timeIsUp = false
-    @ScaledMetric(relativeTo: .largeTitle) private var timerSize: CGFloat = 56
-    @ScaledMetric(relativeTo: .largeTitle) private var scoreSize: CGFloat = 56
+    // Pensado para leerse a varios metros en el pabellón: marcador y reloj muy grandes.
+    @ScaledMetric(relativeTo: .largeTitle) private var timerSize: CGFloat = 96
+    @ScaledMetric(relativeTo: .largeTitle) private var scoreSize: CGFloat = 88
     @ScaledMetric(relativeTo: .body) private var tapSize: CGFloat = 44
 
     init(store: SdaTournamentStore) {
@@ -76,15 +77,6 @@ struct SdaTournamentLiveView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                if store.saveFailed {
-                    LearningSituationInlineNotice(
-                        kind: .error,
-                        message: "No se pudo guardar el último cambio.",
-                        actionTitle: "Reintentar"
-                    ) {
-                        store.retrySave()
-                    }
-                }
                 timerCard
                 if currentRound == nil {
                     LearningSituationInlineNotice(kind: .warning, message: "Este torneo no tiene rondas.")
@@ -94,8 +86,9 @@ struct SdaTournamentLiveView: View {
                 }
                 if !restingTeams.isEmpty {
                     Label("Descansan: \(restingTeams.joined(separator: ", "))", systemImage: "pause.circle")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.title3.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityElement(children: .combine)
                 }
@@ -115,6 +108,14 @@ struct SdaTournamentLiveView: View {
         .appInlineNavigationBarTitleDisplayMode()
         .sensoryFeedback(.warning, trigger: timeIsUp)
         .task(id: timerEnd) { await watchTimer() }
+        // El modo directo se usa con el torneo en marcha: un gesto sin querer no debe cerrar la hoja.
+        .interactiveDismissDisabled()
+        .onChange(of: store.saveFailed) { _, failed in
+            if failed {
+                AccessibilityNotification.Announcement("No se pudo guardar el último cambio. Hay un botón para reintentar.").post()
+            }
+        }
+        .onDisappear { Task { await store.flush() } }
         #if os(iOS)
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
@@ -145,14 +146,27 @@ struct SdaTournamentLiveView: View {
             VStack(spacing: 16) {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let seconds = remainingSeconds(at: context.date)
-                    Text(clock(seconds))
-                        .font(.system(size: timerSize, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(seconds == 0 ? Color.red : Color.primary)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Temporizador")
-                        .accessibilityValue(spoken(seconds))
-                        .accessibilityAddTraits(.updatesFrequently)
+                    VStack(spacing: 4) {
+                        if timeIsUp {
+                            Text("¡Tiempo!")
+                                .font(.system(size: timerSize * 0.6, weight: .heavy, design: .rounded))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
+                        }
+                        Text(clock(seconds))
+                            .font(.system(size: timerSize, weight: .bold, design: .rounded).monospacedDigit())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                    }
+                    .foregroundStyle(timeIsUp ? Color.white : Color.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, timeIsUp ? 12 : 0)
+                    // Fin de tiempo: cambio visual muy fuerte además del aviso háptico y de VoiceOver.
+                    .background(timeIsUp ? Color.red : Color.clear, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Temporizador")
+                    .accessibilityValue(timeIsUp ? "¡Tiempo! \(spoken(seconds))" : spoken(seconds))
+                    .accessibilityAddTraits(.updatesFrequently)
                 }
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) { timerButtons }
@@ -253,6 +267,7 @@ struct SdaTournamentLiveView: View {
                     }
                     .buttonStyle(.bordered)
                     .frame(minHeight: tapSize)
+                    .accessibilityLabel("Registrar 0 a 0")
                 }
             }
         }
@@ -262,54 +277,80 @@ struct SdaTournamentLiveView: View {
         VStack(spacing: 8) {
             VStack(spacing: 4) {
                 Text(name)
-                    .font(.title3.weight(.semibold))
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.5)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                 Text(score.map(String.init) ?? "–")
                     .font(.system(size: scoreSize, weight: .bold, design: .rounded).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                     .foregroundStyle(score == nil ? Color.secondary : Color.primary)
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(name)
-            .accessibilityValue(score.map { sdaPlural($0, "punto", "puntos") } ?? "Sin empezar")
-            HStack(spacing: 12) {
+            HStack(spacing: 28) {
                 Button {
-                    adjust(slot, isHome: isHome, by: -1)
+                    adjust(slot, name: name, isHome: isHome, by: -1)
                 } label: {
                     Image(systemName: "minus")
                         .font(.title2.weight(.bold))
                         .frame(minWidth: tapSize + 12, minHeight: tapSize + 12)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.bordered)
                 .disabled(!enabled || (score ?? 0) == 0)
-                .accessibilityLabel("Restar un punto a \(name)")
                 Button {
-                    adjust(slot, isHome: isHome, by: 1)
+                    adjust(slot, name: name, isHome: isHome, by: 1)
                 } label: {
                     Image(systemName: "plus")
                         .font(.title2.weight(.bold))
                         .frame(minWidth: tapSize + 12, minHeight: tapSize + 12)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!enabled)
-                .accessibilityLabel("Sumar un punto a \(name)")
             }
         }
         .frame(maxWidth: .infinity)
+        // Para VoiceOver el equipo es un único control ajustable (deslizar arriba/abajo suma o resta).
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityValue(score.map { sdaPlural($0, "punto", "puntos") } ?? "Sin empezar")
+        .accessibilityHint(enabled ? "Desliza hacia arriba para sumar un punto y hacia abajo para restarlo." : "")
+        .accessibilityAdjustableAction { direction in
+            guard enabled else { return }
+            switch direction {
+            case .increment: adjust(slot, name: name, isHome: isHome, by: 1)
+            case .decrement: adjust(slot, name: name, isHome: isHome, by: -1)
+            @unknown default: break
+            }
+        }
+        .sensoryFeedback(.impact, trigger: score) { old, new in (new ?? 0) > (old ?? 0) }
     }
 
-    private func adjust(_ slot: ScheduledMatchSlot, isHome: Bool, by delta: Int) {
+    private func adjust(_ slot: ScheduledMatchSlot, name: String, isHome: Bool, by delta: Int) {
         let current = plan.result(for: slot)
         var home = current?.homeScore ?? 0
         var away = current?.awayScore ?? 0
         if isHome { home = max(0, home + delta) } else { away = max(0, away + delta) }
         store.mutate { $0.setScore(for: slot, home: home, away: away) }
+        // Los cambios con +/- no mueven el foco de VoiceOver: se anuncia el valor nuevo.
+        AccessibilityNotification.Announcement("\(name): \(sdaPlural(isHome ? home : away, "punto", "puntos"))").post()
     }
 
     // MARK: Barra inferior
 
     private var bottomBar: some View {
         VStack(spacing: 8) {
+            if store.saveFailed {
+                LearningSituationInlineNotice(
+                    kind: .error,
+                    message: "No se pudo guardar el último cambio.",
+                    actionTitle: "Reintentar"
+                ) {
+                    store.retrySave()
+                }
+            }
             if pendingCount > 0 {
                 Text(sdaPlural(pendingCount, "partido sin resultado", "partidos sin resultado"))
                     .font(.subheadline)

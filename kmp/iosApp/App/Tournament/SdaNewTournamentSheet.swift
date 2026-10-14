@@ -251,10 +251,16 @@ struct SdaNewTournamentSheet: View {
         return Button {
             if isIncluded { excludedGroupIds.insert(team.groupId) } else { excludedGroupIds.remove(team.groupId) }
         } label: {
-            Text(team.name)
+            // El estado no depende solo del color: icono + tachado, y texto en color de sistema (contraste).
+            HStack(spacing: 6) {
+                Image(systemName: isIncluded ? "checkmark.circle.fill" : "xmark.circle")
+                    .foregroundStyle(isIncluded ? EvaluationDesign.accent : Color.secondary)
+                    .accessibilityHidden(true)
+                Text(team.name)
+                    .strikethrough(!isIncluded)
+                    .foregroundStyle(isIncluded ? Color.primary : Color.secondary)
+            }
                 .font(.subheadline)
-                .strikethrough(!isIncluded)
-                .foregroundStyle(isIncluded ? EvaluationDesign.accent : Color.secondary)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 44)
                 .background(
@@ -318,7 +324,7 @@ struct SdaNewTournamentSheet: View {
     private func loadSessionMinutes() async {
         sessionMinutes = nil
         let targetClass = classId
-        guard let schedule = try? await bridge.plannerTeacherSchedule(),
+        guard let schedule = (try? await bridge.existingTeacherSchedule()) ?? nil,
               let slots = try? await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id),
               targetClass == classId
         else { return }

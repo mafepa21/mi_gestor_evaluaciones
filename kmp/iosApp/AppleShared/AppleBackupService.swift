@@ -279,7 +279,7 @@ public final class AppleBackupService: ObservableObject {
                 checksumMap["learning-situations/\(relativePath)"] = try calculateSHA256(for: fileURL)
             }
             let libretaFolderURL = LibretaBackupPackager.folderURL(in: packageURL)
-            for relativePath in try getRelativeFiles(in: libretaFolderURL) {
+            for relativePath in try LibretaBackupPackager.regularFileRelativePaths(in: libretaFolderURL, fileManager: fileManager) {
                 let fileURL = libretaFolderURL.appendingPathComponent(relativePath)
                 checksumMap["\(LibretaBackupPackager.folderName)/\(relativePath)"] = try calculateSHA256(for: fileURL)
             }
@@ -394,6 +394,19 @@ public final class AppleBackupService: ObservableObject {
                 let emergencyCopy = try await createBackup(note: emergencyNote)
                 self.latestEmergencyBackupUrl = emergencyCopy.url
             } catch {
+                // Sin red de seguridad no se sustituyen unas libretas que existen:
+                // a diferencia de la base principal, aquí sí hay algo que proteger.
+                let packageBringsLibreta = (try? loadChecksumKeys(in: packageURL))?
+                    .contains(LibretaBackupPackager.databaseChecksumKey) == true
+                if LibretaStorage.isSupportedOnThisPlatform,
+                   packageBringsLibreta,
+                   fileManager.fileExists(atPath: libretaStorage.storeURL.path) {
+                    throw NSError(
+                        domain: "AppleBackupService",
+                        code: 409,
+                        userInfo: [NSLocalizedDescriptionKey: "No se pudo hacer la copia de emergencia de tus libretas, así que no se ha restaurado nada. \(error.localizedDescription)"]
+                    )
+                }
                 self.latestEmergencyBackupUrl = nil
                 print("[AppleBackupService] Sin copia de emergencia previa a restaurar: \(error.localizedDescription)")
             }

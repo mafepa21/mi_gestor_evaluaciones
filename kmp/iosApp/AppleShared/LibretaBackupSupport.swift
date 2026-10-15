@@ -1,5 +1,8 @@
 import Foundation
 import SQLite3
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Dónde guarda la Libreta (solo iPad) su base SwiftData.
 ///
@@ -22,10 +25,10 @@ struct LibretaStorage {
         return LibretaStorage(directoryURL: base)
     }
 
-    /// Solo el iPad tiene Libreta: el Mac ni guarda ni restaura libretas.
+    /// Solo el iPad tiene Libreta: ni el Mac ni el iPhone guardan o restauran libretas.
     static var isSupportedOnThisPlatform: Bool {
-        #if os(iOS)
-        return true
+        #if canImport(UIKit)
+        return UIDevice.current.userInterfaceIdiom == .pad
         #else
         return false
         #endif
@@ -66,17 +69,36 @@ enum LibretaBackupPackager {
         guard fileManager.fileExists(atPath: storage.storeURL.path) else { return false }
         let folder = folderURL(in: packageURL)
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
-        let destination = databaseURL(in: packageURL)
-        try AppleSQLiteBackupValidator.materializeSnapshot(from: storage.storeURL, to: destination)
-        try AppleSQLiteBackupValidator.validateDatabase(at: destination)
 
+        // Primero los dibujos e imágenes y después la base: si se guarda algo entre medias,
+        // la base no puede citar un fichero que no se haya copiado (como mucho sobra uno).
         let support = supportURL(in: packageURL)
         if fileManager.fileExists(atPath: storage.supportURL.path) {
             try fileManager.copyItem(at: storage.supportURL, to: support)
         } else {
             try fileManager.createDirectory(at: support, withIntermediateDirectories: true)
         }
+
+        let destination = databaseURL(in: packageURL)
+        try AppleSQLiteBackupValidator.materializeSnapshot(from: storage.storeURL, to: destination)
+        try AppleSQLiteBackupValidator.validateDatabase(at: destination)
         return true
+    }
+
+    /// Ficheros normales (no carpetas) bajo `libreta/`, ocultos incluidos, relativos a `root`.
+    /// Son los que entran en `checksums.json`: una carpeta no tiene suma de control.
+    static func regularFileRelativePaths(in root: URL, fileManager: FileManager = .default) throws -> [String] {
+        guard fileManager.fileExists(atPath: root.path) else { return [] }
+        let rootPath = root.resolvingSymlinksInPath().standardizedFileURL.path + "/"
+        var paths: [String] = []
+        let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey])
+        while let url = enumerator?.nextObject() as? URL {
+            guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else { continue }
+            let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+            guard path.hasPrefix(rootPath) else { continue }
+            paths.append(String(path.dropFirst(rootPath.count)))
+        }
+        return paths.sorted()
     }
 
     /// Número de libretas en una base de la Libreta (tabla `ZNOTEBOOK` de Core Data).

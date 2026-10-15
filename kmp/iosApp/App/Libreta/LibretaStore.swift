@@ -64,6 +64,8 @@ final class LibretaStore: ObservableObject {
         } catch {
             // Sin fatalError: el archivo sigue ahí y se puede reintentar.
             state = .failed
+            // Que una petición de abrir no se dispare más tarde, en otra visita.
+            classOpenRequest = nil
         }
     }
 }

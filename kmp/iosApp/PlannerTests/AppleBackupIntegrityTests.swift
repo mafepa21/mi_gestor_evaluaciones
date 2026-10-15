@@ -116,6 +116,27 @@ final class AppleBackupIntegrityTests: XCTestCase {
         staged.stagedURLs.forEach { XCTAssertFalse(fm.fileExists(atPath: $0.path)) }
     }
 
+    func testLibretaChecksumListHasOnlyFilesAndKeepsHiddenOnes() throws {
+        let fm = FileManager.default
+        let live = LibretaStorage(directoryURL: workDirectory.appendingPathComponent("live", isDirectory: true))
+        let package = workDirectory.appendingPathComponent("backup.migestorbackup", isDirectory: true)
+        try fm.createDirectory(at: live.directoryURL, withIntermediateDirectories: true)
+        try fm.createDirectory(at: package, withIntermediateDirectories: true)
+        try createLibretaStore(at: live.storeURL, notebooks: 1)
+        let external = live.supportURL.appendingPathComponent("_EXTERNAL_DATA", isDirectory: true)
+        try writeMarker("dibujo", in: external)
+        try Data("oculto".utf8).write(to: external.appendingPathComponent(".oculto"))
+
+        XCTAssertTrue(try LibretaBackupPackager.package(from: live, into: package))
+        let paths = try LibretaBackupPackager.regularFileRelativePaths(in: LibretaBackupPackager.folderURL(in: package))
+
+        XCTAssertEqual(paths, [
+            "Libreta.sqlite",
+            "support/_EXTERNAL_DATA/.oculto",
+            "support/_EXTERNAL_DATA/marker.txt",
+        ])
+    }
+
     func testLibretaIsNotPackagedWhenThereIsNoStore() throws {
         let live = LibretaStorage(directoryURL: workDirectory.appendingPathComponent("empty", isDirectory: true))
         let package = workDirectory.appendingPathComponent("backup.migestorbackup", isDirectory: true)

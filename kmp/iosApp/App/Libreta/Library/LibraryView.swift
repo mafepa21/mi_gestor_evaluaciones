@@ -191,7 +191,11 @@ struct LibraryView: View {
         context.insert(notebook)
         notebook.pages = [Page(index: 0), Page(index: 1)]
         classWithoutLibreta = nil
-        open(notebook, page: nil)
+        // Espera a que la alerta acabe de cerrarse: si no, SwiftUI puede descartar el lector.
+        notebook.lastOpenedAt = Date()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            openTarget = ReaderTarget(notebook: notebook, page: nil)
+        }
     }
 
     private var header: LibraryHeader {

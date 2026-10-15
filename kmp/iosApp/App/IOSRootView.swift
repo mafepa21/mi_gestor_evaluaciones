@@ -1047,7 +1047,8 @@ struct IOSWorkspaceContent: View {
         return { classId in
             let name = shellStore.classes.first { $0.id == classId }?.name ?? "Clase"
             LibretaStore.shared.openForClass(id: classId, name: name)
-            onOpenModule(.libreta, classId, nil)
+            // Sin clase: abrir la libreta no debe cambiar la clase activa del resto de la app.
+            onOpenModule(.libreta, nil, nil)
         }
         #else
         return nil

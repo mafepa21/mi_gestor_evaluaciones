@@ -325,7 +325,9 @@ struct BackupRestorePreviewSheet: View {
     
     /// La fila «Libretas» solo sale si alguna de las dos bases tiene Libreta (iPad).
     private func showsLibretas(_ current: AppleBackupSummary) -> Bool {
-        current.libretaCount != nil || backup.manifest.summary.libretaCount != nil
+        // En el Mac (y el iPhone) la Libreta no se restaura: no se promete nada.
+        LibretaStorage.isSupportedOnThisPlatform
+            && (current.libretaCount != nil || backup.manifest.summary.libretaCount != nil)
     }
 
     private func quitApp() {

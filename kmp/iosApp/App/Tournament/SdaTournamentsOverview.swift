@@ -122,6 +122,23 @@ enum SdaTournamentsOverview {
         return result
     }
 
+    /// Mete o reemplaza un registro en la lista del curso cargado. Un guardado tardío de otro curso
+    /// (se cambió de curso mientras se guardaba) se ignora para no colarlo en la lista nueva.
+    static func upserting(
+        _ record: TournamentRecord,
+        into records: [TournamentRecord],
+        loadedClassId: Int64?
+    ) -> [TournamentRecord] {
+        guard record.classId == loadedClassId else { return records }
+        var result = records
+        if let index = result.firstIndex(where: { $0.id == record.id }) {
+            result[index] = record
+        } else {
+            result.append(record)
+        }
+        return result
+    }
+
     /// Opciones del selector: una por situación enlazada al curso, con su número de grupos
     /// en ese curso. Mantiene el orden recibido.
     static func situationChoices(

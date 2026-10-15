@@ -21,6 +21,7 @@ struct SdaTournamentDetailView: View {
     let onSaveFailedAtClose: (String) -> Void
     /// Avisa de que el modo directo se abre o se cierra (la pantalla «Torneos» oculta su lista).
     let onLiveModeChange: (Bool) -> Void
+    let deleteRequest: SdaTournamentDeleteRequest?
 
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
@@ -71,10 +72,12 @@ struct SdaTournamentDetailView: View {
         onDeleted: @escaping () -> Void,
         presentation: Presentation = .sheet,
         onSaveFailedAtClose: @escaping (String) -> Void = { _ in },
-        onLiveModeChange: @escaping (Bool) -> Void = { _ in }
+        onLiveModeChange: @escaping (Bool) -> Void = { _ in },
+        deleteRequest: SdaTournamentDeleteRequest? = nil
     ) {
         self.presentation = presentation
         self.onLiveModeChange = onLiveModeChange
+        self.deleteRequest = deleteRequest
         let store = SdaTournamentStore(record: record, plan: plan, bridge: bridge)
         store.onSaved = onSaved
         _store = StateObject(wrappedValue: store)
@@ -157,6 +160,11 @@ struct SdaTournamentDetailView: View {
             }
         })
         .onChange(of: isLive) { _, live in onLiveModeChange(live) }
+        .onChange(of: deleteRequest) { _, request in
+            if let request, request.tournamentId == store.record.id {
+                Task { await deleteTournament() }
+            }
+        }
         // Al cerrar la pantalla (también arrastrando una hoja) se termina el guardado en curso. La tarea
         // retiene el store, así que acaba aunque la vista ya no exista; si falla, se avisa en la pantalla de origen.
         .onDisappear {
@@ -715,6 +723,13 @@ struct SdaTournamentDetailView: View {
     }
 }
 
+/// Petición de borrar el torneo mostrado, hecha desde fuera (menú contextual de la lista). La atiende
+/// el propio detalle para que el borrado espere al guardado en curso. `nonce` permite repetirla.
+struct SdaTournamentDeleteRequest: Equatable {
+    let tournamentId: String
+    let nonce = UUID()
+}
+
 /// Contenido de un torneo (dentro de una SdA o migrado, solo de curso), en hoja o embebido. Lee el
 /// registro una sola vez al abrirse, así borrarlo no deja ver un estado intermedio mientras se cierra.
 /// Quien lo embebe debe darle `.id(record.id)` para que cambiar de torneo lo recargue.
@@ -726,9 +741,14 @@ struct SdaTournamentSheetHost: View {
     let onDeleted: () -> Void
     let onSaveFailedAtClose: (String) -> Void
     let onLiveModeChange: (Bool) -> Void
+    let deleteRequest: SdaTournamentDeleteRequest?
+    private let recordId: String?
+    private let recordName: String
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @State private var loaded: Loaded?
+    @State private var isConfirmingUnreadableDelete = false
+    @State private var unreadableDeleteError: String?
 
     private struct Loaded {
         let record: TournamentRecord
@@ -743,10 +763,14 @@ struct SdaTournamentSheetHost: View {
         onDeleted: @escaping () -> Void,
         presentation: SdaTournamentDetailView.Presentation = .sheet,
         onSaveFailedAtClose: @escaping (String) -> Void,
-        onLiveModeChange: @escaping (Bool) -> Void = { _ in }
+        onLiveModeChange: @escaping (Bool) -> Void = { _ in },
+        deleteRequest: SdaTournamentDeleteRequest? = nil
     ) {
         self.presentation = presentation
         self.onLiveModeChange = onLiveModeChange
+        self.deleteRequest = deleteRequest
+        self.recordId = record?.id
+        self.recordName = record?.name ?? "este torneo"
         self.currentTeams = currentTeams
         self.className = className
         self.onSaved = onSaved
@@ -770,14 +794,45 @@ struct SdaTournamentSheetHost: View {
                 onDeleted: onDeleted,
                 presentation: presentation,
                 onSaveFailedAtClose: onSaveFailedAtClose,
-                onLiveModeChange: onLiveModeChange
+                onLiveModeChange: onLiveModeChange,
+                deleteRequest: deleteRequest
             )
         } else if presentation == .embedded {
-            ContentUnavailableView(
-                "No se pudo abrir el torneo",
-                systemImage: "exclamationmark.triangle",
-                description: Text("Su contenido guardado no se puede leer.")
-            )
+            VStack(spacing: 16) {
+                ContentUnavailableView(
+                    "No se pudo abrir el torneo",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text("Su contenido guardado no se puede leer. Puedes borrarlo.")
+                )
+                if let unreadableDeleteError {
+                    LearningSituationInlineNotice(kind: .error, message: unreadableDeleteError)
+                        .padding(.horizontal, 16)
+                }
+                Button(role: .destructive) {
+                    isConfirmingUnreadableDelete = true
+                } label: {
+                    Label("Borrar torneo…", systemImage: "trash")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(recordId == nil)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .confirmationDialog(
+                "¿Borrar «\(recordName)»?",
+                isPresented: $isConfirmingUnreadableDelete,
+                titleVisibility: .visible
+            ) {
+                Button("Borrar", role: .destructive) { Task { await deleteUnreadable() } }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text("Se borran el calendario y los resultados en todos tus dispositivos.")
+            }
+            .onChange(of: deleteRequest) { _, request in
+                if let request, request.tournamentId == recordId {
+                    Task { await deleteUnreadable() }
+                }
+            }
         } else {
             NavigationStack {
                 ContentUnavailableView(
@@ -794,6 +849,19 @@ struct SdaTournamentSheetHost: View {
             #if os(macOS)
             .frame(minWidth: 420, minHeight: 320)
             #endif
+        }
+    }
+}
+
+extension SdaTournamentSheetHost {
+    /// Borra un torneo cuyo contenido no se puede leer (no hay store: se borra directo).
+    fileprivate func deleteUnreadable() async {
+        guard let recordId else { return }
+        do {
+            try await bridge.deleteTournament(id: recordId)
+            onDeleted()
+        } catch {
+            unreadableDeleteError = "No se pudo borrar el torneo. Inténtalo de nuevo."
         }
     }
 }
@@ -832,7 +900,10 @@ private struct SdaLiveModePresentation<Live: View>: ViewModifier {
 
     func body(content: Content) -> some View {
         #if os(macOS)
-        content.overlay {
+        content
+            .accessibilityHidden(isPresented)
+            .disabled(isPresented)
+            .overlay {
             if isPresented {
                 live()
                     .background(.background)

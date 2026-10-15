@@ -39,6 +39,7 @@ final class SdaTournamentsHubModel: ObservableObject {
         if loadedClassId != classId {
             records = []
             teamsBySituation = [:]
+            loadedClassId = nil
             phase = .loading
         } else if phase != .ready {
             phase = .loading
@@ -63,11 +64,7 @@ final class SdaTournamentsHubModel: ObservableObject {
     }
 
     func upsert(_ record: TournamentRecord) {
-        if let index = records.firstIndex(where: { $0.id == record.id }) {
-            records[index] = record
-        } else {
-            records.append(record)
-        }
+        records = SdaTournamentsOverview.upserting(record, into: records, loadedClassId: loadedClassId)
     }
 
     func remove(id: String) {

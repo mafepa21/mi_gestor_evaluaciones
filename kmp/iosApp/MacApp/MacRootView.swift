@@ -42,6 +42,9 @@ struct MacRootView: View {
     @StateObject private var plannerDiaryLayoutState = WorkspaceLayoutState()
     @State private var studentsReloadToken = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    /// Modo directo de Torneos: oculta la barra lateral y la devuelve como estaba al salir.
+    @ObservedObject private var tournamentNavigation = SdaTournamentNavigationStore.shared
+    @State private var columnVisibilityBeforeLiveMode: NavigationSplitViewVisibility?
     @State private var windowWidth: CGFloat = 0
     @State private var isInspectorVisible = true
     @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
@@ -120,6 +123,15 @@ struct MacRootView: View {
         .appOnChange(of: columnVisibility.macRootStoredValue) { newValue in
             guard session.bootstrapState == .ready else { return }
             storedColumnVisibility = newValue
+        }
+        .appOnChange(of: tournamentNavigation.isLiveModeActive) { active in
+            if active {
+                if columnVisibilityBeforeLiveMode == nil { columnVisibilityBeforeLiveMode = columnVisibility }
+                columnVisibility = .detailOnly
+            } else if let previous = columnVisibilityBeforeLiveMode {
+                columnVisibility = previous
+                columnVisibilityBeforeLiveMode = nil
+            }
         }
         .appOnChange(of: isInspectorVisible) { newValue in
             storedInspectorVisible = newValue

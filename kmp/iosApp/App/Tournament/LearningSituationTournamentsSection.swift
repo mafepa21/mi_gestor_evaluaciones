@@ -14,6 +14,8 @@ struct LearningSituationTournamentsSection: View {
     @StateObject private var model: SdaTournamentsListModel
     @State private var isCreating = false
     @State private var refreshTarget: SdaTournamentTarget?
+    @State private var deleteTarget: SdaTournamentTarget?
+    @ObservedObject private var navigation = SdaTournamentNavigationStore.shared
     @State private var errorMessage: String?
     @ScaledMetric(relativeTo: .body) private var tapSize: CGFloat = 44
 
@@ -55,6 +57,15 @@ struct LearningSituationTournamentsSection: View {
             case .ready:
                 readyContent
             }
+            if let warning = navigation.saveWarning {
+                LearningSituationInlineNotice(
+                    kind: .error,
+                    message: warning,
+                    actionTitle: "Entendido"
+                ) {
+                    navigation.dismissSaveWarning()
+                }
+            }
             if let errorMessage {
                 LearningSituationInlineNotice(kind: .error, message: errorMessage)
             }
@@ -70,6 +81,22 @@ struct LearningSituationTournamentsSection: View {
                 model.upsert(created)
             }
             .environmentObject(bridge)
+        }
+        .confirmationDialog(
+            "¿Borrar «\(deleteTarget.flatMap { model.record(id: $0.id)?.name } ?? "este torneo")»?",
+            isPresented: Binding(
+                get: { deleteTarget != nil },
+                set: { if !$0 { deleteTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Borrar", role: .destructive) {
+                if let target = deleteTarget { Task { await delete(target) } }
+                deleteTarget = nil
+            }
+            Button("Cancelar", role: .cancel) { deleteTarget = nil }
+        } message: {
+            Text("Se borran el calendario y los resultados en todos tus dispositivos.")
         }
         .confirmationDialog(
             "¿Actualizar los equipos?",
@@ -216,6 +243,13 @@ struct LearningSituationTournamentsSection: View {
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
             .accessibilityHint("Abre el torneo en la pantalla Torneos.")
+            .contextMenu {
+                Button(role: .destructive) {
+                    deleteTarget = SdaTournamentTarget(id: row.id)
+                } label: {
+                    Label("Borrar…", systemImage: "trash")
+                }
+            }
 
             if row.groupsChanged {
                 LearningSituationInlineNotice(
@@ -230,6 +264,16 @@ struct LearningSituationTournamentsSection: View {
     }
 
     // MARK: Acciones
+
+    private func delete(_ target: SdaTournamentTarget) async {
+        errorMessage = nil
+        do {
+            try await bridge.deleteTournament(id: target.id)
+            model.remove(id: target.id)
+        } catch {
+            errorMessage = "No se pudo borrar el torneo. Inténtalo de nuevo."
+        }
+    }
 
     /// Deja el torneo pedido y cambia al módulo Torneos, en el curso del torneo.
     private func open(_ row: SdaTournamentRow) {

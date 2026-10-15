@@ -16,6 +16,11 @@ final class SdaTournamentNavigationStore: ObservableObject {
     static let shared = SdaTournamentNavigationStore()
 
     @Published private(set) var pending: SdaTournamentOpenRequest?
+    /// Aviso de que al salir de un torneo no se guardaron los últimos cambios. Vive aquí (y no en la
+    /// pantalla) para no perderse si se cambia de módulo; se muestra en Torneos y en la SdA hasta que se descarta.
+    @Published private(set) var saveWarning: String?
+    /// `true` mientras el modo directo ocupa la pantalla (el Mac oculta su barra lateral).
+    @Published private(set) var isLiveModeActive = false
 
     private init() {}
 
@@ -25,5 +30,18 @@ final class SdaTournamentNavigationStore: ObservableObject {
 
     func consume() {
         pending = nil
+    }
+
+    func reportSaveFailure(tournamentName: String) {
+        saveWarning = "No se guardaron los últimos cambios de «\(tournamentName)». Ábrelo de nuevo y revisa los resultados."
+    }
+
+    func dismissSaveWarning() {
+        saveWarning = nil
+    }
+
+    func setLiveModeActive(_ active: Bool) {
+        guard isLiveModeActive != active else { return }
+        isLiveModeActive = active
     }
 }

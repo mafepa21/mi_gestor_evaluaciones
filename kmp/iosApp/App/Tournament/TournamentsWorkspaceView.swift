@@ -28,7 +28,9 @@ struct TournamentsWorkspaceView: View {
     @State private var isPickingSituation = false
     @State private var pendingTarget: SdaNewTournamentTarget?
     @State private var newTournament: SdaNewTournamentTarget?
-    @State private var closeWarning: String?
+    @State private var deleteTargetId: String?
+    @State private var detailDeleteRequest: SdaTournamentDeleteRequest?
+    @State private var deleteError: String?
 
     /// Por debajo de este ancho se usa la pila lista -> detalle.
     private static let compactLayoutThreshold: CGFloat = 700
@@ -65,16 +67,20 @@ struct TournamentsWorkspaceView: View {
         #endif
     }
 
+    /// En compacto el detalle sustituye a la lista. Con el modo directo en marcha se mantiene aunque
+    /// cambie el ancho (girar el iPad), para no destruir el torneo ni cerrar el modo directo.
+    private var showsDetail: Bool {
+        !usesCompactLayout || isLiveMode || (isCompactDetailVisible && displayedRecord != nil)
+    }
+
+    private var showsList: Bool {
+        usesCompactLayout ? !showsDetail : !hidesListForLiveMode
+    }
+
     // MARK: Cuerpo
 
     var body: some View {
-        Group {
-            if usesCompactLayout {
-                compactLayout
-            } else {
-                regularLayout
-            }
-        }
+        layout
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(appPageBackground(for: colorScheme))
         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -90,7 +96,27 @@ struct TournamentsWorkspaceView: View {
         .onChange(of: selectedClassId) {
             selectedId = nil
             isCompactDetailVisible = false
-            closeWarning = nil
+        }
+        .onDisappear {
+            // Una petición que no llegó a atenderse no debe quedar pegada para la próxima vez.
+            navigation.consume()
+            navigation.setLiveModeActive(false)
+        }
+        .confirmationDialog(
+            "¿Borrar «\(model.record(id: deleteTargetId)?.name ?? "este torneo")»?",
+            isPresented: Binding(
+                get: { deleteTargetId != nil },
+                set: { if !$0 { deleteTargetId = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Borrar", role: .destructive) {
+                if let id = deleteTargetId { confirmDelete(id) }
+                deleteTargetId = nil
+            }
+            Button("Cancelar", role: .cancel) { deleteTargetId = nil }
+        } message: {
+            Text("Se borran el calendario y los resultados en todos tus dispositivos.")
         }
         .onChange(of: navigation.pending) {
             applyPendingRequest()
@@ -126,33 +152,25 @@ struct TournamentsWorkspaceView: View {
 
     // MARK: Disposición adaptativa
 
-    /// iPad y Mac: lista y detalle lado a lado. La vista ya vive dentro de la columna de detalle
-    /// del `NavigationSplitView` del shell, así que no se anida otro split view.
-    private var regularLayout: some View {
+    /// iPad y Mac: lista y detalle lado a lado. En compacto (iPhone o ventana estrecha) solo uno de los
+    /// dos. Es siempre el mismo `HStack` con el detalle en el mismo hueco: cambiar de ancho no recrea el
+    /// detalle (ni su store ni el modo directo). La vista ya vive dentro de la columna de detalle del
+    /// `NavigationSplitView` del shell, así que no se anida otro split view.
+    private var layout: some View {
         HStack(alignment: .top, spacing: 0) {
-            if !hidesListForLiveMode {
-                listColumn(showsEmptyState: false)
-                    .frame(width: listColumnWidth)
+            if showsList {
+                listColumn(showsEmptyState: usesCompactLayout)
+                    .frame(
+                        minWidth: usesCompactLayout ? 0 : listColumnWidth,
+                        maxWidth: usesCompactLayout ? .infinity : listColumnWidth
+                    )
                     .frame(maxHeight: .infinity, alignment: .top)
-                Divider()
+                if !usesCompactLayout { Divider() }
             }
-            detailColumn
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-    }
-
-    /// iPhone o ventana estrecha: pila. La fila abre el torneo y «Torneos» vuelve a la lista.
-    @ViewBuilder
-    private var compactLayout: some View {
-        if isCompactDetailVisible, displayedRecord != nil {
-            VStack(spacing: 0) {
-                if !isLiveMode { compactDetailBar }
+            if showsDetail {
                 detailColumn
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .transition(.move(edge: .trailing))
-        } else {
-            listColumn(showsEmptyState: true)
-                .transition(.move(edge: .leading))
         }
     }
 
@@ -349,6 +367,20 @@ struct TournamentsWorkspaceView: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityHint("Abre el torneo.")
+        .contextMenu {
+            if item.status != nil {
+                Button {
+                    select(item.id)
+                } label: {
+                    Label("Abrir", systemImage: "arrow.up.forward.square")
+                }
+            }
+            Button(role: .destructive) {
+                deleteTargetId = item.id
+            } label: {
+                Label("Borrar…", systemImage: "trash")
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -365,8 +397,20 @@ struct TournamentsWorkspaceView: View {
 
     private var detailColumn: some View {
         VStack(spacing: 0) {
-            if let closeWarning {
-                LearningSituationInlineNotice(kind: .error, message: closeWarning)
+            if usesCompactLayout, !isLiveMode { compactDetailBar }
+            if let warning = navigation.saveWarning {
+                LearningSituationInlineNotice(
+                    kind: .error,
+                    message: warning,
+                    actionTitle: "Entendido"
+                ) {
+                    navigation.dismissSaveWarning()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+            if let deleteError {
+                LearningSituationInlineNotice(kind: .error, message: deleteError)
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
             }
@@ -382,10 +426,13 @@ struct TournamentsWorkspaceView: View {
                         isCompactDetailVisible = false
                     },
                     presentation: .embedded,
-                    onSaveFailedAtClose: { name in
-                        closeWarning = "No se guardaron los últimos cambios de «\(name)». Ábrelo de nuevo y revisa los resultados."
+                    onSaveFailedAtClose: { navigation.reportSaveFailure(tournamentName: $0) },
+                    onLiveModeChange: { live in
+                        if live { selectedId = displayedId }
+                        isLiveMode = live
+                        navigation.setLiveModeActive(live)
                     },
-                    onLiveModeChange: { isLiveMode = $0 }
+                    deleteRequest: detailDeleteRequest
                 )
                 .id(record.id)
                 .environmentObject(bridge)
@@ -413,11 +460,30 @@ struct TournamentsWorkspaceView: View {
 
     // MARK: Acciones
 
+    /// Siempre marca el detalle como visible: en compacto lo abre, y si el ancho aún no se ha medido
+    /// (primer pintado en iPhone) la intención se guarda y se aplica al pasar a compacto.
     private func select(_ id: String) {
-        closeWarning = nil
         selectedId = id
-        if usesCompactLayout {
-            withAnimation(.snappy) { isCompactDetailVisible = true }
+        withAnimation(.snappy) { isCompactDetailVisible = true }
+    }
+
+    /// Borra desde el menú de la lista. Si es el torneo abierto, lo hace su propio detalle para esperar a
+    /// su guardado en curso; si no está abierto no hay guardado pendiente y se borra directo.
+    private func confirmDelete(_ id: String) {
+        deleteError = nil
+        let isOpenAndReadable = id == displayedId && displayedRecord.flatMap { try? $0.plan() } != nil
+        if isOpenAndReadable {
+            detailDeleteRequest = SdaTournamentDeleteRequest(tournamentId: id)
+            return
+        }
+        Task {
+            do {
+                try await bridge.deleteTournament(id: id)
+                model.remove(id: id)
+                if selectedId == id { selectedId = nil }
+            } catch {
+                deleteError = "No se pudo borrar el torneo. Inténtalo de nuevo."
+            }
         }
     }
 
@@ -447,6 +513,11 @@ struct TournamentsWorkspaceView: View {
         guard let request = navigation.pending else { return }
         if let classId = request.classId, classId != selectedClassId {
             selectedClassId = classId
+            return
+        }
+        if model.phase == .failed {
+            // Sin datos no se puede atender: se descarta para que no quede pegada.
+            navigation.consume()
             return
         }
         guard model.phase == .ready, model.loadedClassId == selectedClassId else { return }

@@ -73,4 +73,24 @@ final class SdaTournamentsOverviewTests: XCTestCase {
         XCTAssertEqual(choices.map(\.isAvailable), [true, false, false])
         XCTAssertEqual(choices.map(\.detailText), ["4 grupos", "1 grupo (hacen falta 2)", "Sin grupos"])
     }
+
+    func testUpsertIgnoresLateSaveFromAnotherClass() throws {
+        let current = try record("Torneo 1", situation: 10)
+        var late = try record("Del curso viejo", situation: 10)
+        late.classId = 2
+        let result = SdaTournamentsOverview.upserting(late, into: [current], loadedClassId: 1)
+        XCTAssertEqual(result.map(\.name), ["Torneo 1"])
+        let noClass = SdaTournamentsOverview.upserting(current, into: [], loadedClassId: nil)
+        XCTAssertTrue(noClass.isEmpty, "Mientras carga otro curso no se acepta nada")
+    }
+
+    func testUpsertReplacesExistingAndAppendsNew() throws {
+        var first = try record("Torneo 1", situation: 10)
+        let second = try record("Torneo 2", situation: 10)
+        var list = SdaTournamentsOverview.upserting(first, into: [], loadedClassId: 1)
+        list = SdaTournamentsOverview.upserting(second, into: list, loadedClassId: 1)
+        first.name = "Renombrado"
+        list = SdaTournamentsOverview.upserting(first, into: list, loadedClassId: 1)
+        XCTAssertEqual(list.map(\.name), ["Renombrado", "Torneo 2"])
+    }
 }

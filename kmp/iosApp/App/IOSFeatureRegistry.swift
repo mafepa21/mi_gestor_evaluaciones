@@ -45,7 +45,7 @@ enum IOSFeatureRegistry {
         .init(module: .peRubrics, title: "Rúbricas por área", subtitle: "Criterios específicos", systemImage: "figure.cooldown", priority: .tools, visibleInDailyMode: false),
         .init(module: .peIncidents, title: "Incidencias y seguridad", subtitle: "Seguimiento operativo", systemImage: "cross.case", priority: .tools, visibleInDailyMode: false),
         .init(module: .peMaterial, title: "Recursos y material", subtitle: "Inventario rápido", systemImage: "shippingbox", priority: .tools, visibleInDailyMode: false),
-                .init(module: .settings, title: "Ajustes", subtitle: "Configuración", systemImage: "gearshape", priority: .settings, visibleInDailyMode: false),
+        .init(module: .settings, title: "Ajustes", subtitle: "Configuración", systemImage: "gearshape", priority: .settings, visibleInDailyMode: false),
         .init(module: .backups, title: "Seguridad", subtitle: "Copias y restauración", systemImage: "lock.shield", priority: .settings, visibleInDailyMode: false)
     ]
 

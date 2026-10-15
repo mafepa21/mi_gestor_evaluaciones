@@ -857,6 +857,29 @@ data class LearningSituationSessionPlan(
     val trace: AuditTrace = AuditTrace(),
 )
 
+/**
+ * Torneo asociado a una Situación de Aprendizaje. El motor (calendario, clasificación, cuadro)
+ * vive en Swift: aquí los bloques de datos se guardan como JSON opaco para que sincronicen
+ * y entren en las copias de seguridad sin que KMP conozca su forma.
+ * `id` es un UUID generado por quien crea el torneo (no autoincremental, para no chocar entre dispositivos).
+ */
+data class LearningSituationTournament(
+    val id: String,
+    /** `null` si el torneo pertenece solo a un curso (p. ej. migrado del módulo antiguo de EF). */
+    val learningSituationId: Long? = null,
+    val classId: Long,
+    val tabId: String? = null,
+    val name: String,
+    val format: String,
+    val status: String = "draft",
+    val configJson: String = "{}",
+    val teamSnapshotJson: String = "[]",
+    val scheduleJson: String = "[]",
+    val resultsJson: String = "{}",
+    val knockoutResultsJson: String = "{}",
+    val trace: AuditTrace = AuditTrace(),
+)
+
 data class LearningSituationClassLink(
     val learningSituationId: Long,
     val classId: Long,

@@ -26,6 +26,13 @@ extension KmpBridge {
     }
 
     func deleteLearningSituation(id: Int64) async throws {
+        // Las claves foráneas no están activas en la app: los torneos hijos se borran a mano,
+        // con su tombstone de sync, para que no queden huérfanos ni resuciten en otro dispositivo.
+        let childTournaments = try await container.learningSituationsRepository
+            .listTournaments(learningSituationId: id)
+        for tournament in childTournaments {
+            try await deleteTournament(id: tournament.id)
+        }
         try await container.learningSituationsRepository.deleteSituation(id: id)
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         enqueueLocalChange(

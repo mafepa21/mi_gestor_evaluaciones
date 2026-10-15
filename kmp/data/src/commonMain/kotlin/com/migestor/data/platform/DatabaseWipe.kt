@@ -68,7 +68,9 @@ enum class WipeCategory(
             "attendance", "incidents", "notebook_tabs", "notebook_columns",
             "notebook_column_categories", "notebook_work_groups", "notebook_cell_entries",
             "notebook_instrument_templates", "notebook_instrument_items", "notebook_instrument_responses",
-            "inclusion_group_settings"
+            "inclusion_group_settings",
+            // Los torneos cuelgan de un curso (con o sin SdA): sin esto quedarían huérfanos al borrar cursos.
+            "learning_situation_tournaments"
         )
     ),
     STUDENTS(
@@ -92,7 +94,7 @@ enum class WipeCategory(
         tableNames = listOf(
             "learning_situations", "learning_situation_versions", "learning_situation_classes",
             "learning_situation_links", "learning_situation_sequence_versions",
-            "learning_situation_session_plans", "units", "sessions"
+            "learning_situation_session_plans", "learning_situation_tournaments", "units", "sessions"
         )
     ),
     TEACHER_SCHEDULE(

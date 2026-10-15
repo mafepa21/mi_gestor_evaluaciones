@@ -25,6 +25,7 @@ public final class AppleBackupService: ObservableObject {
     public let attachmentsURL: URL
     public let learningSituationsURL: URL
     private let retentionLimit = 5
+    private let libretaStorage = LibretaStorage.standard
 
     public static let shared = AppleBackupService()
 
@@ -186,6 +187,13 @@ public final class AppleBackupService: ObservableObject {
                 try copyDirectoryContents(from: learningSituationsURL, to: destinationLearningSituationsURL)
             }
             
+            // 2b. Libreta (solo iPad): base SwiftData + dibujos e imágenes.
+            var libretaCount: Int? = nil
+            if LibretaStorage.isSupportedOnThisPlatform,
+               try LibretaBackupPackager.package(from: libretaStorage, into: packageURL, fileManager: fileManager) {
+                libretaCount = LibretaBackupPackager.notebookCount(in: LibretaBackupPackager.databaseURL(in: packageURL)) ?? 0
+            }
+
             // 3. Compute stats
             let classCount = countRows(in: databaseURL.path, table: "classes")
             let studentCount = countRows(in: databaseURL.path, table: "students")
@@ -198,7 +206,8 @@ public final class AppleBackupService: ObservableObject {
                 studentCount: studentCount,
                 notebookColumnCount: notebookColumnCount,
                 rubricCount: rubricCount,
-                attendanceRecordCount: attendanceRecordCount
+                attendanceRecordCount: attendanceRecordCount,
+                libretaCount: libretaCount
             )
             
             // 4. Compute schema and database size
@@ -269,6 +278,11 @@ public final class AppleBackupService: ObservableObject {
                 let fileURL = destinationLearningSituationsURL.appendingPathComponent(relativePath)
                 checksumMap["learning-situations/\(relativePath)"] = try calculateSHA256(for: fileURL)
             }
+            let libretaFolderURL = LibretaBackupPackager.folderURL(in: packageURL)
+            for relativePath in try getRelativeFiles(in: libretaFolderURL) {
+                let fileURL = libretaFolderURL.appendingPathComponent(relativePath)
+                checksumMap["\(LibretaBackupPackager.folderName)/\(relativePath)"] = try calculateSHA256(for: fileURL)
+            }
             
             let checksumsData = try encoder.encode(checksumMap)
             try checksumsData.write(to: packageURL.appendingPathComponent("checksums.json"), options: .atomic)
@@ -333,6 +347,9 @@ public final class AppleBackupService: ObservableObject {
             let databaseURL = packageURL.appendingPathComponent("database.sqlite")
             try validateUsableDatabase(at: databaseURL, context: "la base incluida en la copia")
             try AppleSQLiteBackupValidator.validateDatabase(at: databaseURL)
+            if checksumMap[LibretaBackupPackager.databaseChecksumKey] != nil {
+                try AppleSQLiteBackupValidator.validateDatabase(at: LibretaBackupPackager.databaseURL(in: packageURL))
+            }
             
             verifiedDescriptor.isVerified = true
             verifiedDescriptor.verificationError = nil
@@ -394,8 +411,9 @@ public final class AppleBackupService: ObservableObject {
                 .deletingLastPathComponent()
                 .appendingPathComponent(".restore-\(transactionID)-learning-situations", isDirectory: true)
             let stagedURLs = [stagedDatabaseURL, stagedAttachmentsURL, stagedLearningSituationsURL]
+            var libretaStagedURLs: [URL] = []
             defer {
-                stagedURLs.forEach { url in
+                (stagedURLs + libretaStagedURLs).forEach { url in
                     if fileManager.fileExists(atPath: url.path) {
                         try? fileManager.removeItem(at: url)
                     }
@@ -408,6 +426,22 @@ public final class AppleBackupService: ObservableObject {
             try stageDirectory(from: packageAttachments, to: stagedAttachmentsURL)
             try stageDirectory(from: packageLearningSituations, to: stagedLearningSituationsURL)
 
+            // Libreta (solo iPad): si la copia no la trae, las libretas actuales no se tocan.
+            var libretaOperations: [AppleBackupRestoreOperation] = []
+            if LibretaStorage.isSupportedOnThisPlatform {
+                let checksumKeys = Set(try loadChecksumKeys(in: packageURL))
+                if let staged = try LibretaBackupPackager.stageRestore(
+                    from: packageURL,
+                    checksumKeys: checksumKeys,
+                    to: libretaStorage,
+                    transactionID: transactionID,
+                    fileManager: fileManager
+                ) {
+                    libretaOperations = staged.operations
+                    libretaStagedURLs = staged.stagedURLs
+                }
+            }
+
             // 5. Instalar base + dos árboles como una sola transacción de filesystem.
             // Si cualquier paso falla, el helper revierte en orden inverso.
             let activeWalURL = URL(fileURLWithPath: databaseURL.path + "-wal")
@@ -418,7 +452,7 @@ public final class AppleBackupService: ObservableObject {
                 .remove(destinationURL: activeShmURL),
                 .replace(stagedURL: stagedAttachmentsURL, destinationURL: attachmentsURL),
                 .replace(stagedURL: stagedLearningSituationsURL, destinationURL: learningSituationsURL),
-            ])
+            ] + libretaOperations)
             
             // 6. Trigger restart requirements flag
             self.needsRestart = true
@@ -608,13 +642,17 @@ public final class AppleBackupService: ObservableObject {
         let notebookColumnCount = countRows(in: databaseURL.path, table: "notebook_columns")
         let rubricCount = countRows(in: databaseURL.path, table: "rubrics")
         let attendanceRecordCount = countRows(in: databaseURL.path, table: "attendance")
+        let libretaCount: Int? = LibretaStorage.isSupportedOnThisPlatform
+            ? LibretaBackupPackager.notebookCount(in: libretaStorage.storeURL)
+            : nil
         
         return AppleBackupSummary(
             classCount: classCount,
             studentCount: studentCount,
             notebookColumnCount: notebookColumnCount,
             rubricCount: rubricCount,
-            attendanceRecordCount: attendanceRecordCount
+            attendanceRecordCount: attendanceRecordCount,
+            libretaCount: libretaCount
         )
     }
 
@@ -725,6 +763,11 @@ public final class AppleBackupService: ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: "\(context.prefix(1).uppercased())\(context.dropFirst()) no es una base de datos SQLite válida. Operación cancelada."]
             )
         }
+    }
+
+    private func loadChecksumKeys(in packageURL: URL) throws -> [String] {
+        let data = try Data(contentsOf: packageURL.appendingPathComponent("checksums.json"))
+        return Array(try JSONDecoder().decode([String: String].self, from: data).keys)
     }
 
     private func validatedPackageFileURL(relativePath: String, packageURL: URL) throws -> URL {

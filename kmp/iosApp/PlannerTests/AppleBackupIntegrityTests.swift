@@ -83,6 +83,85 @@ final class AppleBackupIntegrityTests: XCTestCase {
         XCTAssertEqual(try readMarker(in: liveLearning), "old-learning")
     }
 
+    // MARK: - Libreta en la copia
+
+    func testLibretaRoundTripRestoresStoreAndSupportFolder() throws {
+        let fm = FileManager.default
+        let live = LibretaStorage(directoryURL: workDirectory.appendingPathComponent("live", isDirectory: true))
+        let package = workDirectory.appendingPathComponent("backup.migestorbackup", isDirectory: true)
+        try fm.createDirectory(at: live.directoryURL, withIntermediateDirectories: true)
+        try fm.createDirectory(at: package, withIntermediateDirectories: true)
+        try createLibretaStore(at: live.storeURL, notebooks: 3)
+        try writeMarker("dibujo-original", in: live.supportURL)
+
+        XCTAssertTrue(try LibretaBackupPackager.package(from: live, into: package))
+        XCTAssertEqual(LibretaBackupPackager.notebookCount(in: LibretaBackupPackager.databaseURL(in: package)), 3)
+        XCTAssertEqual(try readMarker(in: LibretaBackupPackager.supportURL(in: package)), "dibujo-original")
+
+        // Cambia la Libreta activa después de la copia.
+        try fm.removeItem(at: live.storeURL)
+        try createLibretaStore(at: live.storeURL, notebooks: 7)
+        try writeMarker("dibujo-nuevo", in: live.supportURL)
+
+        let staged = try XCTUnwrap(LibretaBackupPackager.stageRestore(
+            from: package,
+            checksumKeys: [LibretaBackupPackager.databaseChecksumKey],
+            to: live,
+            transactionID: "test"
+        ))
+        try AppleBackupRestoreTransaction().commit(staged.operations)
+
+        XCTAssertEqual(LibretaBackupPackager.notebookCount(in: live.storeURL), 3)
+        XCTAssertEqual(try readMarker(in: live.supportURL), "dibujo-original")
+        staged.stagedURLs.forEach { XCTAssertFalse(fm.fileExists(atPath: $0.path)) }
+    }
+
+    func testLibretaIsNotPackagedWhenThereIsNoStore() throws {
+        let live = LibretaStorage(directoryURL: workDirectory.appendingPathComponent("empty", isDirectory: true))
+        let package = workDirectory.appendingPathComponent("backup.migestorbackup", isDirectory: true)
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+
+        XCTAssertFalse(try LibretaBackupPackager.package(from: live, into: package))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: LibretaBackupPackager.folderURL(in: package).path))
+    }
+
+    func testRestoreWithoutLibretaLeavesCurrentLibretaUntouched() throws {
+        let live = LibretaStorage(directoryURL: workDirectory.appendingPathComponent("live", isDirectory: true))
+        let package = workDirectory.appendingPathComponent("old.migestorbackup", isDirectory: true)
+        try FileManager.default.createDirectory(at: live.directoryURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        try createLibretaStore(at: live.storeURL, notebooks: 5)
+
+        let staged = try LibretaBackupPackager.stageRestore(
+            from: package,
+            checksumKeys: ["database.sqlite", "manifest.json"],
+            to: live,
+            transactionID: "test"
+        )
+
+        XCTAssertNil(staged)
+        XCTAssertEqual(LibretaBackupPackager.notebookCount(in: live.storeURL), 5)
+    }
+
+    func testOldSummaryWithoutLibretaCountStillDecodes() throws {
+        let json = #"{"classCount":1,"studentCount":2,"notebookColumnCount":3,"rubricCount":4,"attendanceRecordCount":5}"#
+        let summary = try JSONDecoder().decode(AppleBackupSummary.self, from: Data(json.utf8))
+        XCTAssertNil(summary.libretaCount)
+        XCTAssertEqual(summary.studentCount, 2)
+    }
+
+    /// Base con la forma mínima de Core Data: tabla `ZNOTEBOOK`.
+    private func createLibretaStore(at url: URL, notebooks: Int) throws {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &database), SQLITE_OK)
+        guard let database else { throw NSError(domain: "test", code: 2) }
+        defer { sqlite3_close(database) }
+        try execute("CREATE TABLE ZNOTEBOOK (Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT);", database: database)
+        for index in 0..<notebooks {
+            try execute("INSERT INTO ZNOTEBOOK(ZTITLE) VALUES ('Libreta \(index)');", database: database)
+        }
+    }
+
     private func createDatabase(at url: URL, withBrokenForeignKey: Bool) throws {
         var database: OpaquePointer?
         XCTAssertEqual(sqlite3_open(url.path, &database), SQLITE_OK)

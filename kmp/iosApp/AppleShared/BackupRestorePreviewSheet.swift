@@ -91,24 +91,34 @@ struct BackupRestorePreviewSheet: View {
             if let current = currentSummary {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) {
-                        ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false)
+                        ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false, showsLibretas: showsLibretas(current))
 
                         Image(systemName: "arrow.right.circle.fill")
                             .font(.title2)
                             .foregroundStyle(AppleDesignSystem.accent)
 
-                        ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true)
+                        ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true, showsLibretas: showsLibretas(current))
                     }
 
                     VStack(spacing: 12) {
-                        ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false)
+                        ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false, showsLibretas: showsLibretas(current))
 
                         Image(systemName: "arrow.down.circle.fill")
                             .font(.title2)
                             .foregroundStyle(AppleDesignSystem.accent)
 
-                        ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true)
+                        ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true, showsLibretas: showsLibretas(current))
                     }
+                }
+                if showsLibretas(current) {
+                    Label(
+                        backup.manifest.summary.libretaCount != nil
+                            ? "Las libretas volverán a como estaban en la copia."
+                            : "Esta copia no trae libretas: las de ahora se quedan como están.",
+                        systemImage: "info.circle"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
             } else {
                 HStack {
@@ -313,6 +323,11 @@ struct BackupRestorePreviewSheet: View {
         }
     }
     
+    /// La fila «Libretas» solo sale si alguna de las dos bases tiene Libreta (iPad).
+    private func showsLibretas(_ current: AppleBackupSummary) -> Bool {
+        current.libretaCount != nil || backup.manifest.summary.libretaCount != nil
+    }
+
     private func quitApp() {
         #if os(macOS)
         NSApplication.shared.terminate(nil)
@@ -327,6 +342,7 @@ struct ComparisonCard: View {
     let title: String
     let summary: AppleBackupSummary
     let isBackup: Bool
+    var showsLibretas: Bool = false
     
     @Environment(\.colorScheme) private var colorScheme
     
@@ -343,6 +359,15 @@ struct ComparisonCard: View {
                 StatCompareRow(label: "Columnas", value: summary.notebookColumnCount)
                 StatCompareRow(label: "Rúbricas", value: summary.rubricCount)
                 StatCompareRow(label: "Asistencias", value: summary.attendanceRecordCount)
+                if showsLibretas {
+                    HStack {
+                        Text("Libretas").font(.footnote).foregroundStyle(.secondary)
+                        Spacer()
+                        Text(summary.libretaCount.map(String.init) ?? "—")
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .accessibilityElement(children: .combine)
+                }
             }
             .padding(10)
             .background(

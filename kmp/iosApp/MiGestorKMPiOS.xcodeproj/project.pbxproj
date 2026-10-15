@@ -137,6 +137,7 @@
 		327304EC3CF948D6CC9F049D /* PlannerReportPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A792A5460048557CD8302A4F /* PlannerReportPDFRenderer.swift */; };
 		32A684E233C071A09BA05BC1 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 415D2E4C8B6049D6F3E88EAD /* ZIPFoundation */; };
 		33AA5901647F3CA173723782 /* TextSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = B143A7609D4A09F1A6FFF3CE /* TextSearch.swift */; };
+		33D52D126FA5E4F47E1E01DD /* LibretaBackupSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84291C9A4DCC028D0F46ACA1 /* LibretaBackupSupport.swift */; };
 		341900F495B701EF31C24EC0 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54EE01F341615331ECBF0041 /* Theme.swift */; };
 		3433239DDE5DF8DCB8F79FF5 /* ScheduleGridPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B18D4606AA037B05A26A0280 /* ScheduleGridPDFRenderer.swift */; };
 		3476F2AB7F19E3F96DCD28F5 /* StudentEmailImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86256209C2C4B3F9C7924AF8 /* StudentEmailImportSheet.swift */; };
@@ -237,6 +238,7 @@
 		53ED6E82BAE4E0A5C2715425 /* WebSubmissionsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219075A940430441ED71DF42 /* WebSubmissionsWorkspaceView.swift */; };
 		540623C2D775B2E7CE0A5AD5 /* PlannerSessionComposerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB48C7B33C7EB638C18CEF5 /* PlannerSessionComposerSheet.swift */; };
 		541330321B3E26376DF94E13 /* MacAttendanceDayRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB9B92354A1345110A45747 /* MacAttendanceDayRow.swift */; };
+		541F40EA2EF7E5189F2F508E /* LibretaClasses.swift in Sources */ = {isa = PBXBuildFile; fileRef = B900EE1BF3873E4C2B676F10 /* LibretaClasses.swift */; };
 		55881333E8EF00D0F018B1B8 /* NotebookFormulaEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9967D38B9A879C71B174CAE6 /* NotebookFormulaEditorSheet.swift */; };
 		55BC740588BFC9C4D12C7A55 /* PlannerSessionAIAssistantSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0243BF8C00C29271B58D894B /* PlannerSessionAIAssistantSheet.swift */; };
 		56234DAACC18188F7C681066 /* AppleLifecycleNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */; };
@@ -282,6 +284,7 @@
 		620D07C339E42E89597D4757 /* StudentImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964764E602D3B6EF684BD755 /* StudentImportSheet.swift */; };
 		6223F74014B27371E0B98FF2 /* NotebookWorkGroupImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D74476D5561462609506B631 /* NotebookWorkGroupImportService.swift */; };
 		6236C365C8D7A3C7E5F7A204 /* MeetingsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B0B097D45446340980CA846 /* MeetingsWorkspaceView.swift */; };
+		62A42222FAFC6FB9D4BB6FAE /* LibretaBackupSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84291C9A4DCC028D0F46ACA1 /* LibretaBackupSupport.swift */; };
 		63048F5F7A2AAF7E5EC868F0 /* DiaryClassPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A85F9CF28068A080599D71 /* DiaryClassPDFRenderer.swift */; };
 		636BFAF254D3F3711AE5CF10 /* MacAppStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57AA10D4F5A9A3199288A4C /* MacAppStyle.swift */; };
 		63782CDFBA5AA2E6E0BA6048 /* WebSubmissionImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19FA9C3E34A9BAD4C5C9A446 /* WebSubmissionImportSheet.swift */; };
@@ -986,6 +989,7 @@
 		82F349363D7DF9A0AD8CAD85 /* NotebookFormulaEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookFormulaEvaluator.swift; sourceTree = "<group>"; };
 		831A193F350D0D1EF8FA3BF6 /* KmpBridge+Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+Dashboard.swift"; sourceTree = "<group>"; };
 		834354958EC7B5CE22A3BA07 /* NotebookSupportViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookSupportViews.swift; sourceTree = "<group>"; };
+		84291C9A4DCC028D0F46ACA1 /* LibretaBackupSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibretaBackupSupport.swift; sourceTree = "<group>"; };
 		843AF96A09D81C7848F791DD /* CalendarDuplicatePlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarDuplicatePlannerTests.swift; sourceTree = "<group>"; };
 		8457F6307147064BDBB54971 /* NotebookModuleGridCells.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleGridCells.swift; sourceTree = "<group>"; };
 		854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InclusionTrackerMockView.swift; sourceTree = "<group>"; };
@@ -1082,6 +1086,7 @@
 		B819027ADD26559CC96B1BDB /* KmpBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KmpBridge.swift; sourceTree = "<group>"; };
 		B8AD3A2E943A41407A974460 /* EvaluationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationSettingsView.swift; sourceTree = "<group>"; };
 		B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentProfilesWorkspaceView.swift; sourceTree = "<group>"; };
+		B900EE1BF3873E4C2B676F10 /* LibretaClasses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibretaClasses.swift; sourceTree = "<group>"; };
 		B928B856CB84C9E4660F8B34 /* MacPhysicalTestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPhysicalTestsView.swift; sourceTree = "<group>"; };
 		B9C2E7C1B3A5F4520E560349 /* WebSubmissionTestBench.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionTestBench.swift; sourceTree = "<group>"; };
 		B9E628D0904D069E276C888E /* AppleSpreadsheetReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpreadsheetReader.swift; sourceTree = "<group>"; };
@@ -1389,6 +1394,7 @@
 				854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */,
 				E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */,
 				61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */,
+				84291C9A4DCC028D0F46ACA1 /* LibretaBackupSupport.swift */,
 				365A0156DBB041D3F8FD72CC /* MacTrackpadSwipeHelper.swift */,
 				6ED32EAFF51BE275270F5F2A /* MeetingActaPDF.swift */,
 				1DFC26768A94C315D01AF726 /* MeetingsShared.swift */,
@@ -1525,6 +1531,7 @@
 		AB5A4EFD5E1AD63FC7440E6A /* Libreta */ = {
 			isa = PBXGroup;
 			children = (
+				B900EE1BF3873E4C2B676F10 /* LibretaClasses.swift */,
 				184F5F99594B70E287DD11F3 /* LibretaModuleView.swift */,
 				74A032241176234889A5279C /* LibretaStore.swift */,
 				4CEF804C2362E6B2EF0ED142 /* Design */,
@@ -1756,21 +1763,28 @@
 			path = App;
 			sourceTree = "<group>";
 		};
-		"TEMP_3102CA50-53E9-4047-85BD-84EED79DBC45" /* .claude */ = {
+		"TEMP_13EE22B0-D0A9-4445-932D-221AC026DAA9" /* .claude */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = .claude;
 			sourceTree = "<group>";
 		};
-		"TEMP_4B6EABE4-2ECC-45BB-B001-743EE6FD608F" /* .claude */ = {
+		"TEMP_16ECDBBC-142A-4E31-87BE-7FB80BF170F2" /* .claude */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = .claude;
 			sourceTree = "<group>";
 		};
-		"TEMP_D532A8AF-848D-46AD-8F8F-8803B95D30B8" /* .claude */ = {
+		"TEMP_9783C52D-A0A0-43FD-A0F8-169ED1D45C55" /* .claude */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = .claude;
+			sourceTree = "<group>";
+		};
+		"TEMP_C93FAA79-1618-468F-8A33-88E156D247EA" /* .claude */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -2166,6 +2180,7 @@
 				E3382835C791036E28705CDB /* LearningSituationsListColumn.swift in Sources */,
 				A8C1A2062C3815D1FAC4C4BE /* LearningSituationsWorkspaceView.swift in Sources */,
 				AD204E79F58440E3B5FEAB9B /* LibraryAndPEWorkspaceViews.swift in Sources */,
+				62A42222FAFC6FB9D4BB6FAE /* LibretaBackupSupport.swift in Sources */,
 				E9954D003354CCEF68E08F88 /* LomloeCriteriaCatalog.swift in Sources */,
 				F1D09F5DF977701D749A19AD /* MacAppSessionController.swift in Sources */,
 				636BFAF254D3F3711AE5CF10 /* MacAppStyle.swift in Sources */,
@@ -2521,6 +2536,8 @@
 				0230F89B204872CC089E8B47 /* LibraryAndPEWorkspaceViews.swift in Sources */,
 				DC35FF5AFA5C13C3A59D97CE /* LibraryShared.swift in Sources */,
 				CF773AC74335C28BD427802B /* LibraryView.swift in Sources */,
+				33D52D126FA5E4F47E1E01DD /* LibretaBackupSupport.swift in Sources */,
+				541F40EA2EF7E5189F2F508E /* LibretaClasses.swift in Sources */,
 				35722B2C649F0B0D58C83552 /* LibretaModuleView.swift in Sources */,
 				9C7673B2979FFCA1859AE289 /* LibretaStore.swift in Sources */,
 				FE44A49751896CE5F073F18F /* LomloeCriteriaCatalog.swift in Sources */,

@@ -4,6 +4,9 @@ import SwiftUI
 /// Cada toque se guarda al momento a través del `SdaTournamentStore`.
 struct SdaTournamentLiveView: View {
     @ObservedObject var store: SdaTournamentStore
+    /// Cuando el modo directo ocupa toda la pantalla, quien lo presenta da aquí cómo cerrarlo
+    /// y se muestra un botón «Salir» explícito. Sin él (uso apilado) se vuelve con «Atrás».
+    var onExit: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     @State private var roundIndex: Int
@@ -16,8 +19,9 @@ struct SdaTournamentLiveView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var scoreSize: CGFloat = 88
     @ScaledMetric(relativeTo: .body) private var tapSize: CGFloat = 44
 
-    init(store: SdaTournamentStore) {
+    init(store: SdaTournamentStore, onExit: (() -> Void)? = nil) {
         self.store = store
+        self.onExit = onExit
         _roundIndex = State(initialValue: Self.firstPendingRoundIndex(store.plan))
     }
 
@@ -106,6 +110,18 @@ struct SdaTournamentLiveView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         .navigationTitle(currentRound.map { "Ronda \($0.number) de \(rounds.count)" } ?? "En directo")
         .appInlineNavigationBarTitleDisplayMode()
+        .toolbar {
+            if onExit != nil {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        leave()
+                    } label: {
+                        Label("Salir", systemImage: "xmark")
+                    }
+                    .accessibilityHint("Sale del modo directo y guarda los cambios.")
+                }
+            }
+        }
         .sensoryFeedback(.warning, trigger: timeIsUp)
         .task(id: timerEnd) { await watchTimer() }
         // El modo directo se usa con el torneo en marcha: un gesto sin querer no debe cerrar la hoja.
@@ -399,10 +415,18 @@ struct SdaTournamentLiveView: View {
         roundIndex = target
     }
 
+    private func leave() {
+        if let onExit {
+            onExit()
+        } else {
+            dismiss()
+        }
+    }
+
     private func advance() {
         if isLastRound {
             store.mutate { $0.status = .finished }
-            dismiss()
+            leave()
         } else {
             move(by: 1)
         }

@@ -36,6 +36,28 @@ class TeacherScheduleRepositorySqlDelight(
 
     override suspend fun getOrCreatePrimarySchedule(): TeacherSchedule = withContext(Dispatchers.Default) { getOrCreatePrimaryScheduleBlocking() }
 
+    override suspend fun findExistingSchedule(): TeacherSchedule? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllTeacherSchedules().executeAsList().firstOrNull()?.let { row ->
+            TeacherSchedule(
+                id = row.id,
+                ownerUserId = row.owner_user_id,
+                academicYearId = row.academic_year_id,
+                name = row.name,
+                startDateIso = row.start_date,
+                endDateIso = row.end_date,
+                activeWeekdaysCsv = row.active_weekdays,
+                trace = AuditTrace(
+                    authorUserId = row.author_user_id,
+                    createdAt = Instant.fromEpochMilliseconds(row.created_at_epoch_ms),
+                    updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
+                    associatedGroupId = row.associated_group_id,
+                    deviceId = row.device_id,
+                    syncVersion = row.sync_version
+                )
+            )
+        }
+    }
+
     private suspend fun getOrCreatePrimaryScheduleBlocking(): TeacherSchedule {
         return runCatching {
             val teacher = ensureTeacher()

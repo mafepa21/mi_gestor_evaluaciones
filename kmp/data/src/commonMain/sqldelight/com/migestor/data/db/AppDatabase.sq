@@ -678,6 +678,29 @@ CREATE TABLE IF NOT EXISTS learning_situation_session_plans (
 );
 CREATE INDEX IF NOT EXISTS idx_learning_situation_session_plans_sequence ON learning_situation_session_plans(sequence_version_id, session_number);
 
+CREATE TABLE IF NOT EXISTS learning_situation_tournaments (
+    id TEXT PRIMARY KEY NOT NULL,
+    learning_situation_id INTEGER,
+    class_id INTEGER NOT NULL,
+    tab_id TEXT,
+    name TEXT NOT NULL,
+    format TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    config_json TEXT NOT NULL DEFAULT '{}',
+    team_snapshot_json TEXT NOT NULL DEFAULT '[]',
+    schedule_json TEXT NOT NULL DEFAULT '[]',
+    results_json TEXT NOT NULL DEFAULT '{}',
+    knockout_results_json TEXT NOT NULL DEFAULT '{}',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_learning_situation_tournaments_situation ON learning_situation_tournaments(learning_situation_id, created_at_epoch_ms);
+CREATE INDEX IF NOT EXISTS idx_learning_situation_tournaments_class ON learning_situation_tournaments(class_id, created_at_epoch_ms);
+
 CREATE TABLE IF NOT EXISTS notebook_cell_entries (
     class_id INTEGER NOT NULL,
     student_id INTEGER NOT NULL,
@@ -1821,6 +1844,43 @@ selectLearningSituationSessionPlanById:
 SELECT id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 FROM learning_situation_session_plans
 WHERE id = ?;
+
+upsertLearningSituationTournament:
+INSERT OR REPLACE INTO learning_situation_tournaments(
+    id, learning_situation_id, class_id, tab_id, name, format, status, config_json, team_snapshot_json, schedule_json, results_json, knockout_results_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLearningSituationTournaments:
+SELECT id, learning_situation_id, class_id, tab_id, name, format, status, config_json, team_snapshot_json, schedule_json, results_json, knockout_results_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_tournaments
+WHERE learning_situation_id = ?
+ORDER BY created_at_epoch_ms, id;
+
+selectAllLearningSituationTournaments:
+SELECT id, learning_situation_id, class_id, tab_id, name, format, status, config_json, team_snapshot_json, schedule_json, results_json, knockout_results_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_tournaments
+ORDER BY learning_situation_id, created_at_epoch_ms, id;
+
+selectLearningSituationTournamentById:
+SELECT id, learning_situation_id, class_id, tab_id, name, format, status, config_json, team_snapshot_json, schedule_json, results_json, knockout_results_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_tournaments
+WHERE id = ?;
+
+selectLearningSituationTournamentsByClass:
+SELECT id, learning_situation_id, class_id, tab_id, name, format, status, config_json, team_snapshot_json, schedule_json, results_json, knockout_results_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_tournaments
+WHERE class_id = ?
+ORDER BY created_at_epoch_ms, id;
+
+selectLearningSituationTournamentsWithoutSituation:
+SELECT id, learning_situation_id, class_id, tab_id, name, format, status, config_json, team_snapshot_json, schedule_json, results_json, knockout_results_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_tournaments
+WHERE learning_situation_id IS NULL
+ORDER BY class_id, created_at_epoch_ms, id;
+
+deleteLearningSituationTournament:
+DELETE FROM learning_situation_tournaments WHERE id = ?;
 
 deleteLearningSituationClassLinks:
 DELETE FROM learning_situation_classes WHERE learning_situation_id = ?;

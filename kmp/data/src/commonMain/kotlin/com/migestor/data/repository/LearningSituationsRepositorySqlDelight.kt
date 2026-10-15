@@ -12,6 +12,7 @@ import com.migestor.shared.domain.LearningSituationResourceKind
 import com.migestor.shared.domain.LearningSituationSessionPlan
 import com.migestor.shared.domain.LearningSituationSessionSequenceVersion
 import com.migestor.shared.domain.LearningSituationStatus
+import com.migestor.shared.domain.LearningSituationTournament
 import com.migestor.shared.domain.LearningSituationVersion
 import com.migestor.shared.repository.LearningSituationsRepository
 import kotlinx.coroutines.Dispatchers
@@ -185,6 +186,76 @@ class LearningSituationsRepositorySqlDelight(
         db.appDatabaseQueries.selectLearningSituationSessionPlanById(id).executeAsOneOrNull()?.let(::toSessionPlan)
     }
 
+    override suspend fun saveTournament(tournament: LearningSituationTournament) =
+        guardarTorneo(tournament, conservarMarcasDeTiempo = false)
+
+    override suspend fun saveTournamentFromSync(tournament: LearningSituationTournament) =
+        guardarTorneo(tournament, conservarMarcasDeTiempo = true)
+
+    /**
+     * Guardado local: `updated_at` = ahora. Guardado de sync: conserva el `updatedAt` entrante
+     * para que la última escritura gana de verdad entre dispositivos.
+     * En ambos casos la fecha de creación original se respeta si el torneo ya existía; si es nuevo
+     * se usa la recibida en `trace.createdAt` (p. ej. torneo migrado).
+     */
+    private suspend fun guardarTorneo(
+        tournament: LearningSituationTournament,
+        conservarMarcasDeTiempo: Boolean,
+    ) = withContext(Dispatchers.Default) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        db.transaction {
+            val createdAt = db.appDatabaseQueries.selectLearningSituationTournamentById(tournament.id)
+                .executeAsOneOrNull()?.created_at_epoch_ms
+                ?: tournament.trace.createdAt.toEpochMilliseconds()
+            val updatedAt = if (conservarMarcasDeTiempo) tournament.trace.updatedAt.toEpochMilliseconds() else now
+            db.appDatabaseQueries.upsertLearningSituationTournament(
+                tournament.id,
+                tournament.learningSituationId,
+                tournament.classId,
+                tournament.tabId,
+                tournament.name,
+                tournament.format,
+                tournament.status,
+                tournament.configJson,
+                tournament.teamSnapshotJson,
+                tournament.scheduleJson,
+                tournament.resultsJson,
+                tournament.knockoutResultsJson,
+                createdAt,
+                updatedAt,
+                tournament.trace.deviceId,
+                tournament.trace.syncVersion,
+            )
+        }
+    }
+
+    override suspend fun listTournaments(learningSituationId: Long): List<LearningSituationTournament> =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.selectLearningSituationTournaments(learningSituationId).executeAsList().map(::toTournament)
+        }
+
+    override suspend fun listTournamentsByClass(classId: Long): List<LearningSituationTournament> =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.selectLearningSituationTournamentsByClass(classId).executeAsList().map(::toTournament)
+        }
+
+    override suspend fun listTournamentsWithoutSituation(): List<LearningSituationTournament> =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.selectLearningSituationTournamentsWithoutSituation().executeAsList().map(::toTournament)
+        }
+
+    override suspend fun listAllTournaments(): List<LearningSituationTournament> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllLearningSituationTournaments().executeAsList().map(::toTournament)
+    }
+
+    override suspend fun getTournament(id: String): LearningSituationTournament? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectLearningSituationTournamentById(id).executeAsOneOrNull()?.let(::toTournament)
+    }
+
+    override suspend fun deleteTournament(id: String) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteLearningSituationTournament(id)
+    }
+
     override suspend fun replaceClassLinks(learningSituationId: Long, classIds: List<Long>) = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
         db.transaction {
@@ -308,6 +379,23 @@ class LearningSituationsRepositorySqlDelight(
             material = row.material,
             developmentJson = row.development_json,
             adaptationsJson = row.adaptations_json,
+            trace = trace(row.created_at_epoch_ms, row.updated_at_epoch_ms, row.device_id, row.sync_version),
+        )
+
+    private fun toTournament(row: com.migestor.data.db.Learning_situation_tournaments): LearningSituationTournament =
+        LearningSituationTournament(
+            id = row.id,
+            learningSituationId = row.learning_situation_id,
+            classId = row.class_id,
+            tabId = row.tab_id,
+            name = row.name,
+            format = row.format,
+            status = row.status,
+            configJson = row.config_json,
+            teamSnapshotJson = row.team_snapshot_json,
+            scheduleJson = row.schedule_json,
+            resultsJson = row.results_json,
+            knockoutResultsJson = row.knockout_results_json,
             trace = trace(row.created_at_epoch_ms, row.updated_at_epoch_ms, row.device_id, row.sync_version),
         )
 

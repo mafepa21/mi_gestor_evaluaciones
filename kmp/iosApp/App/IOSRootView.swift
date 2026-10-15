@@ -994,9 +994,9 @@ private enum IOSWorkspaceSidebarSection: String, CaseIterable, Identifiable {
         case .evaluation:
             return [.notebook, .attendance, .evaluationHub, .rubrics, .webSubmissions, .peTests, .peRubrics]
         case .planning:
-            return [.planner, .diary, .libreta, .situations, .meetings, .inclusion, .students, .peSessions]
+            return [.planner, .diary, .libreta, .situations, .peTournaments, .meetings, .inclusion, .students, .peSessions]
         case .system:
-            return [.reports, .library, .peIncidents, .peMaterial, .peTournaments, .settings, .backups]
+            return [.reports, .library, .peIncidents, .peMaterial, .settings, .backups]
         }
     }
 }
@@ -1228,8 +1228,11 @@ struct IOSWorkspaceContent: View {
             )
             .environmentObject(bridge)
         case .peTournaments:
-            PETournamentsWorkspaceView(selectedClassId: $selectionStore.selectedClassId)
-                .environmentObject(bridge)
+            TournamentsWorkspaceView(
+                selectedClassId: $selectionStore.selectedClassId,
+                onOpenModule: onOpenModule
+            )
+            .environmentObject(bridge)
         case .settings:
             SettingsWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,

@@ -38,6 +38,13 @@ extension LearningSituationsWorkspaceView {
                         }
                     }
                     curriculumSection(for: situation)
+                    // `.id` reinicia la sección (y su esqueleto) al cambiar de situación.
+                    LearningSituationTournamentsSection(
+                        situationId: situation.id,
+                        groupsClassId: classLinks.first?.classId ?? selectedClassId,
+                        onOpenModule: onOpenModule
+                    )
+                    .id(situation.id)
                     if isLoadingDetail {
                         LearningSituationCard(title: "Lo que se creó") {
                             LearningSituationSkeletonBlock(lines: 2)

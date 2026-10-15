@@ -34,6 +34,30 @@ El formato sigue una variante practica de Keep a Changelog:
 - `xcodebuild` `MiGestorKMPiOS` para `generic/platform=iOS Simulator`: compila.
 - `xcodebuild` `MiGestorKMPMac` para `arm64`: compila. Para `x86_64` falla al enlazar porque el `MiGestorKit` local solo trae arm64 (fallo del entorno, no del código de este cambio; no se comprobó en `main`).
 - No se ha abierto la app: este Mac no tiene ningún simulador de iOS instalado. Falta la QA en iPad (simulador o real) y la prueba con Apple Pencil.
+- **Torneos dentro de la Situación de Aprendizaje**: nueva sección «Torneos» en el detalle de cada SdA. Los equipos son los grupos de trabajo vinculados a la SdA. Formatos: liga, eliminatoria, liguilla + cruces y rotaciones. Incluye estimación de duración («cabe en una sesión»), calendario por pistas, clasificación, cuadro, modo directo para el pabellón (marcador grande, temporizador con aviso «¡Tiempo!», VoiceOver) y aviso si los grupos cambian después de crear el torneo. Motor portado del proyecto TourneyFlow a `AppleShared/Tournament/`.
+- **Torneos: integrantes y hoja imprimible**: pestaña «Equipos» con los alumnos de cada equipo, integrantes visibles al crear el torneo y PDF A4 con una tarjeta por equipo y la primera ronda.
+
+### Changed
+
+- **El módulo antiguo de Torneos de EF se sustituye**: la pantalla de EF lista los torneos del curso y los abre con el detalle nuevo. Los torneos antiguos (UserDefaults) se migran al arrancar, una sola vez; la clave antigua se conserva como copia. Se pierden: partidos contra «BYE», 0-0 reales sin marca de jugado y el texto libre de pista (queda el número). Los puntos personalizados se conservan para la clasificación.
+
+- **Torneos pasa al menú lateral, a pantalla completa**: «Retos y torneos» (EF) se renombra «Torneos» y sale del bloque de EF; ahora está en Planificación, justo después de Situaciones, en iPad y Mac (en iPhone sigue en «Más»). Lista del curso agrupada por Situación (y «Sin situación» para los migrados) y el torneo ocupa el resto, sin hoja. En ancho grande, Calendario y Clasificación van lado a lado. El modo directo se abre a pantalla completa con «Salir» explícito. «＋ Nuevo» pregunta primero la situación (con su número de grupos). La sección de la SdA queda en lista + «＋ Nuevo» y cada fila abre el torneo en «Torneos». Maqueta: `docs/maquetas/torneos_menu_lateral_2026-10-15.html`.
+
+### Fixed
+
+- **Torneos: el PDF de equipos ya no pisa tarjetas ni corta nombres**: la altura de cada tarjeta se calculaba sin el espacio entre alumnos, así que se montaba sobre la de abajo. Los nombres largos pasan a dos líneas en lugar de cortarse, y cada alumno lleva una viñeta (•) para distinguirlos. En iPad/iPhone, «Imprimir equipos» abría la hoja de compartir vacía: el PDF se preparaba de antemano y el fichero podía borrarse; ahora se genera al pulsar.
+
+### Data
+
+- Tabla `learning_situation_tournaments` (migración `46.sqm`, no destructiva) con configuración, equipos, calendario y resultados en JSON; `learning_situation_id` opcional para torneos solo de curso. Integrada en SyncLAN (Kotlin y Swift, last-write-wins con `updatedAt` entrante), huella de sync, borrado total y borrado de SdA (tombstones).
+- `TeacherScheduleRepository.findExistingSchedule()`: lectura del horario sin crear uno vacío.
+
+### Verification
+
+- `./gradlew :data:desktopTest :shared:desktopTest`: BUILD SUCCESSFUL. `:shared:test` no ejecutado (falta Android SDK en local).
+- `xcodebuild` `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED.
+- `xcodebuild test` `MiGestorPlannerTests` (macOS): 353 tests, 0 fallos, 4 omitidos.
+- Prueba manual del usuario en iPad: sección visible, integrantes e imprimible. No hecha: QA con VoiceOver real, sync entre dispositivos de torneos y migración con datos reales.
 
 ## [0.3.1] - 2026-10-14
 

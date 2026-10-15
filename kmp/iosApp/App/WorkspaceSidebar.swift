@@ -69,7 +69,7 @@ private enum WorkspaceSidebarSection: String, CaseIterable, Identifiable {
         case .evaluation:
             return [.notebook, .attendance, .evaluationHub, .rubrics, .webSubmissions, .peTests, .peRubrics]
         case .planning:
-            return [.planner, .diary, .situations, .meetings, .students, .peSessions]
+            return [.planner, .diary, .libreta, .situations, .meetings, .students, .peSessions]
         case .system:
             return [.reports, .library, .peIncidents, .peMaterial, .peTournaments, .settings, .backups]
         }

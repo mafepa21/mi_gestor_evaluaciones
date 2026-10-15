@@ -64,7 +64,7 @@ struct IOSRootView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
         } detail: {
             VStack(spacing: 0) {
-                if activeModule != .notebook && activeModule != .planner && !(activeModule == .attendance && horizontalSizeClass == .regular) {
+                if activeModule != .notebook && activeModule != .planner && activeModule != .libreta && !(activeModule == .attendance && horizontalSizeClass == .regular) {
                     IOSGlobalContextRow(
                         activeModule: activeModule,
                         layoutState: layoutState,
@@ -94,7 +94,8 @@ struct IOSRootView: View {
                     notebookToolbarItems
                 } else if activeModule == .attendance && horizontalSizeClass == .regular {
                     attendanceToolbarItems
-                } else {
+                } else if activeModule != .libreta {
+                    // La Libreta pone su propia barra (vista, buscar, Nueva libreta).
                     IOSContextualToolbar(
                         activeModule: activeModule,
                         layoutState: layoutState,
@@ -217,6 +218,7 @@ struct IOSRootView: View {
         // Un módulo `.courses` restaurado de una versión anterior dejaría la
         // barra lateral sin nada marcado: ahora vive dentro de Ajustes.
         if module == .courses { return .settings }
+        if !module.isAvailableOnThisDevice { return .dashboard }
         if module.requiresPhysicalEducationProfile {
             let enabledProfiles = TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw)
             if !enabledProfiles.contains(.physicalEducation) { return .dashboard }
@@ -992,7 +994,7 @@ private enum IOSWorkspaceSidebarSection: String, CaseIterable, Identifiable {
         case .evaluation:
             return [.notebook, .attendance, .evaluationHub, .rubrics, .webSubmissions, .peTests, .peRubrics]
         case .planning:
-            return [.planner, .diary, .situations, .meetings, .inclusion, .students, .peSessions]
+            return [.planner, .diary, .libreta, .situations, .meetings, .inclusion, .students, .peSessions]
         case .system:
             return [.reports, .library, .peIncidents, .peMaterial, .peTournaments, .settings, .backups]
         }
@@ -1041,7 +1043,7 @@ struct IOSWorkspaceContent: View {
     private var moduleContent: some View {
         switch activeModule {
         case .dashboard, .courses, .students, .teacherRadar, .notebook,
-             .attendance, .planner, .situations, .diary, .meetings, .inclusion, .evaluationHub:
+             .attendance, .planner, .situations, .diary, .libreta, .meetings, .inclusion, .evaluationHub:
             academicContent
         default:
             evaluationAndPEContent
@@ -1132,6 +1134,12 @@ struct IOSWorkspaceContent: View {
                 onCreateEvaluation: { activeSheet = .create(.evaluation) }
             )
             .environmentObject(bridge)
+        case .libreta:
+            #if os(iOS)
+            LibretaModuleView()
+            #else
+            EmptyView()
+            #endif
         case .meetings:
             MeetingsWorkspaceView(bridge: bridge)
                 .environmentObject(bridge)

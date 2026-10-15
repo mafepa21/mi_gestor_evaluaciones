@@ -14,6 +14,8 @@ struct DiaryWorkspaceView: View {
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     let onOpenPlanner: (PlannerNavigationContext) -> Void
     let onNavigationContextChange: (PlannerNavigationContext) -> Void
+    /// Solo iPad: abre la libreta de una clase (por su número). `nil` = no se muestra.
+    var onOpenLibreta: ((Int64) -> Void)? = nil
 
     @State var diaryViewMode: DiaryViewMode = .timeline
     @State var selectedFilter: DiaryStatusFilter = .all
@@ -309,7 +311,8 @@ struct DiaryWorkspaceView: View {
             },
             onOpenStudents: {
                 onOpenModule(.students, session.groupId, nil)
-            }
+            },
+            onOpenLibreta: onOpenLibreta.map { open in { open(session.groupId) } }
         )
         .background(appMutedCardBackground(for: colorScheme).opacity(0.22))
     }
@@ -624,6 +627,7 @@ struct DiaryInspectorPanel: View {
     let onOpenAttendance: () -> Void
     let onOpenNotebook: () -> Void
     let onOpenStudents: () -> Void
+    var onOpenLibreta: (() -> Void)? = nil
 
     var body: some View {
         ScrollView {
@@ -682,6 +686,9 @@ struct DiaryInspectorPanel: View {
                 VStack(spacing: 10) {
                     WorkspaceActionRow(title: "Ir a asistencia", systemImage: "checklist.checked", action: onOpenAttendance)
                     WorkspaceActionRow(title: "Abrir cuaderno", systemImage: "square.grid.3x3.fill", action: onOpenNotebook)
+                    if let onOpenLibreta {
+                        WorkspaceActionRow(title: "Abrir libreta", systemImage: "pencil.and.scribble", action: onOpenLibreta)
+                    }
                     WorkspaceActionRow(title: "Ver alumnado", systemImage: "person.3.fill", action: onOpenStudents)
                 }
             }

@@ -64,7 +64,7 @@ struct IOSRootView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
         } detail: {
             VStack(spacing: 0) {
-                if activeModule != .notebook && activeModule != .planner && !(activeModule == .attendance && horizontalSizeClass == .regular) {
+                if activeModule != .notebook && activeModule != .planner && activeModule != .libreta && !(activeModule == .attendance && horizontalSizeClass == .regular) {
                     IOSGlobalContextRow(
                         activeModule: activeModule,
                         layoutState: layoutState,
@@ -94,7 +94,8 @@ struct IOSRootView: View {
                     notebookToolbarItems
                 } else if activeModule == .attendance && horizontalSizeClass == .regular {
                     attendanceToolbarItems
-                } else {
+                } else if activeModule != .libreta {
+                    // La Libreta pone su propia barra (vista, buscar, Nueva libreta).
                     IOSContextualToolbar(
                         activeModule: activeModule,
                         layoutState: layoutState,
@@ -217,6 +218,7 @@ struct IOSRootView: View {
         // Un módulo `.courses` restaurado de una versión anterior dejaría la
         // barra lateral sin nada marcado: ahora vive dentro de Ajustes.
         if module == .courses { return .settings }
+        if !module.isAvailableOnThisDevice { return .dashboard }
         if module.requiresPhysicalEducationProfile {
             let enabledProfiles = TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw)
             if !enabledProfiles.contains(.physicalEducation) { return .dashboard }
@@ -992,7 +994,7 @@ private enum IOSWorkspaceSidebarSection: String, CaseIterable, Identifiable {
         case .evaluation:
             return [.notebook, .attendance, .evaluationHub, .rubrics, .webSubmissions, .peTests, .peRubrics]
         case .planning:
-            return [.planner, .diary, .situations, .meetings, .inclusion, .students, .peSessions]
+            return [.planner, .diary, .libreta, .situations, .meetings, .inclusion, .students, .peSessions]
         case .system:
             return [.reports, .library, .peIncidents, .peMaterial, .peTournaments, .settings, .backups]
         }
@@ -1007,6 +1009,7 @@ struct IOSWorkspaceContent: View {
     private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @EnvironmentObject private var shellStore: ShellBridgeStore
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -1037,11 +1040,26 @@ struct IOSWorkspaceContent: View {
             .environmentObject(layoutState)
     }
 
+    /// Solo iPad: abre la libreta de una clase desde el Diario o el Planner.
+    private var libretaOpener: ((Int64) -> Void)? {
+        #if os(iOS)
+        guard AppWorkspaceModule.libreta.isAvailableOnThisDevice else { return nil }
+        return { classId in
+            let name = shellStore.classes.first { $0.id == classId }?.name ?? "Clase"
+            LibretaStore.shared.openForClass(id: classId, name: name)
+            // Sin clase: abrir la libreta no debe cambiar la clase activa del resto de la app.
+            onOpenModule(.libreta, nil, nil)
+        }
+        #else
+        return nil
+        #endif
+    }
+
     @ViewBuilder
     private var moduleContent: some View {
         switch activeModule {
         case .dashboard, .courses, .students, .teacherRadar, .notebook,
-             .attendance, .planner, .situations, .diary, .meetings, .inclusion, .evaluationHub:
+             .attendance, .planner, .situations, .diary, .libreta, .meetings, .inclusion, .evaluationHub:
             academicContent
         default:
             evaluationAndPEContent
@@ -1106,7 +1124,8 @@ struct IOSWorkspaceContent: View {
                 viewModel: plannerViewModel,
                 context: resolvedPlannerContext,
                 onOpenDiary: { ctx in onOpenModule(.diary, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
-                onNavigationContextChange: onUpdatePlannerContext
+                onNavigationContextChange: onUpdatePlannerContext,
+                onOpenLibreta: libretaOpener
             )
             .environmentObject(bridge)
         case .situations:
@@ -1122,7 +1141,8 @@ struct IOSWorkspaceContent: View {
                 navigationContext: resolvedPlannerContext,
                 onOpenModule: onOpenModule,
                 onOpenPlanner: { ctx in onOpenModule(.planner, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
-                onNavigationContextChange: onUpdatePlannerContext
+                onNavigationContextChange: onUpdatePlannerContext,
+                onOpenLibreta: libretaOpener
             )
             .environmentObject(bridge)
         case .evaluationHub:
@@ -1132,6 +1152,13 @@ struct IOSWorkspaceContent: View {
                 onCreateEvaluation: { activeSheet = .create(.evaluation) }
             )
             .environmentObject(bridge)
+        case .libreta:
+            #if os(iOS)
+            LibretaModuleView()
+                .environment(\.libretaClasses, shellStore.classes.map { LibretaClassOption(id: $0.id, name: $0.name) })
+            #else
+            EmptyView()
+            #endif
         case .meetings:
             MeetingsWorkspaceView(bridge: bridge)
                 .environmentObject(bridge)

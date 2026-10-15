@@ -85,6 +85,8 @@ targets:
       - path: App
         excludes:
           - MiGestorKMPiOSApp.swift
+          # Libreta usa UIKit y PencilKit: solo iPad.
+          - "Libreta/**"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.migestor.mac

@@ -73,8 +73,8 @@
 		15B5532C3730939CF3945119 /* SettingsDangerZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0998A4D4BC5E85BB92250336 /* SettingsDangerZoneView.swift */; };
 		15B5C7443B2944C59942F07A /* TeacherRadarStudentInsightRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AD45ACA95D963773FDADD4C /* TeacherRadarStudentInsightRow.swift */; };
 		1680A7159701320DC112E710 /* MacPhysicalTestsToolbarActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 418B317080940EE2A662D215 /* MacPhysicalTestsToolbarActions.swift */; };
+		168F6C7928081E49CBA0773F /* SdaTournamentsHubModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8DE6ADD66A71F981C50848 /* SdaTournamentsHubModel.swift */; };
 		16A0E5A9486A6222634E9645 /* NotebookQuickKeypadDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 879D485471F6F7037D782483 /* NotebookQuickKeypadDock.swift */; };
-		16E5B798AC5B6975E8B47C96 /* PETournamentsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CD9BC7B3D3EE4F69F9EF93 /* PETournamentsWorkspaceView.swift */; };
 		17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
 		183BC57A71CD453F65D09EEE /* IOSRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF2D2638711055DB9781524 /* IOSRootView.swift */; };
 		185CA4B3283C02D01A4C2C8B /* DashboardPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7389502A71F39BD4088F39 /* DashboardPresentation.swift */; };
@@ -88,6 +88,7 @@
 		1B2C7DAD7AEEF4FA93C4382C /* GroupStageConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D88D6FBF96890E3E226DC10 /* GroupStageConfiguration.swift */; };
 		1B4B792C95F53A22C93321C5 /* SchoolCalendarPresetSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AD7E95B759E25696F69EE87 /* SchoolCalendarPresetSheet.swift */; };
 		1BB5B1294E60AD563A8AB901 /* WebSubmissionImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF82345E1A34DF613A018608 /* WebSubmissionImportTests.swift */; };
+		1BE418013AE187C52A1C4B4D /* SdaSituationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68E09552D03E6F4A5A8FDD5D /* SdaSituationPickerSheet.swift */; };
 		1CB0C6C869915B2E832E376F /* PhysicalTestCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FB4440A1EC9C54F45F11BC /* PhysicalTestCaptureView.swift */; };
 		1CE2E6B16C6F676B65D50109 /* RubricEvaluationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A866C1384FDBACD5D7ED109B /* RubricEvaluationView.swift */; };
 		1D1917CF929A91AF0CF4C5C2 /* RoundRobinScheduleGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80FEFA5A4D29C8ABD4D46784 /* RoundRobinScheduleGenerator.swift */; };
@@ -151,6 +152,7 @@
 		35CE08146C413A10B6E6B72A /* NotebookCellStampCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06247DBCEF5FCAED33273150 /* NotebookCellStampCatalog.swift */; };
 		35E4CB3140B5AC23435486FE /* DashboardDispatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCF119E0DE892DBACD7073A3 /* DashboardDispatchView.swift */; };
 		36BAB911C91FE8E529E29FE4 /* MacBackupsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320C2ED322845177EEDADD11 /* MacBackupsView.swift */; };
+		3711F5724155435831A41F98 /* SdaSituationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68E09552D03E6F4A5A8FDD5D /* SdaSituationPickerSheet.swift */; };
 		37C80CD1189B20DD6AF1AC1F /* InclusionTrackerMockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */; };
 		37F6AA5AB648A3885DEB6A1B /* PhysicalTestsImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F2744A2DF80ACFD0C00A1B /* PhysicalTestsImportPreviewSheet.swift */; };
 		380C5B0861247861C8158E36 /* LearningSituationDocumentImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */; };
@@ -207,6 +209,7 @@
 		4A5932D5157D5B56166B9246 /* LearningSituationAssessmentInstrumentsImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */; };
 		4A94FBA079B366485372AFC6 /* AppleFoundationAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */; };
 		4AC1771E6AF8DC56F9B16D82 /* PlannerWorkspaceViewModel+AutoStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 666F9AAA1EB484C6A9C66752 /* PlannerWorkspaceViewModel+AutoStatus.swift */; };
+		4ACE9DD2250D2D877FFF474C /* SdaTournamentsOverviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5C8730605D67F558646673D /* SdaTournamentsOverviewTests.swift */; };
 		4B6BC59B1BB1FD90B2E7C525 /* SdaTournamentLiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E872368F9FF913D1CF75FFC /* SdaTournamentLiveView.swift */; };
 		4C3D5628A5A4E5CC5BD4AC97 /* AppleBackupIntegrityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E507A59A000F4DE5BCE342F9 /* AppleBackupIntegrityTests.swift */; };
 		4C82A920DFE3D14AF5222276 /* AttendanceMatrixStatsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08243F19E14DB7BCAC9CADA /* AttendanceMatrixStatsTests.swift */; };
@@ -301,8 +304,10 @@
 		64ED5CF4B69A2A8645CA448C /* NotebookStudentInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 152F4A693C9E37077F51E2F8 /* NotebookStudentInspector.swift */; };
 		653E907AB58B1C68DBB62638 /* WebSubmissionFixtureConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = C18473DBCC65D84DAB60649B /* WebSubmissionFixtureConstants.swift */; };
 		6551733DC8091EED1D575364 /* DashboardProactiveInsight.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1C7AE3703AF328A706E700 /* DashboardProactiveInsight.swift */; };
+		659147506DFA1BEF634DD6DF /* SdaTournamentNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17BA8CC7918FCB513C76DFF /* SdaTournamentNavigation.swift */; };
 		66082F66DD58F363D38D2AC8 /* PhysicalNotebookColumnMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C5CD32E3DCC1B6E976B4C0A /* PhysicalNotebookColumnMode.swift */; };
 		66137EE3AEAF61EA1750C083 /* TournamentPlanEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96D315F8AD91123E61E2BAC9 /* TournamentPlanEstimator.swift */; };
+		66193EC5E5B7B88E8E6A1500 /* TournamentsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5271364D8F83E4653AA75C0E /* TournamentsWorkspaceView.swift */; };
 		6669D2E57DFF465030F853CB /* DiaryTimelineProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 379959F6774F930B1BDBD791 /* DiaryTimelineProjectionTests.swift */; };
 		66CF6F61A89B48BE7660BA19 /* AppSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863347F9ECD4F8B4496AA0AD /* AppSettingsStore.swift */; };
 		66D1856D79472CD9836FE1C9 /* WorkspaceSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */; };
@@ -365,6 +370,7 @@
 		7B2B3F0FAECD2F64112D76B2 /* IOSAppStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12FE78CDE41ADDC94B9D4A83 /* IOSAppStyle.swift */; };
 		7BAD82D627EAEE3090330844 /* PhysicalNotebookColumnMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C5CD32E3DCC1B6E976B4C0A /* PhysicalNotebookColumnMode.swift */; };
 		7BD5D86B7064BFED1422706E /* SettingsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66C430BD4F07BF647679F179 /* SettingsWorkspaceView.swift */; };
+		7C1C9DC8B66727F3C8CF4AC7 /* SdaTournamentsOverview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCAEEFF1AB489082ECFC406 /* SdaTournamentsOverview.swift */; };
 		7C8A09B92EA16B1E83C6BA09 /* NotebookFormulaEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82F349363D7DF9A0AD8CAD85 /* NotebookFormulaEvaluator.swift */; };
 		7CCD8EFEAE4AB1D2C53B0EA6 /* PlannerWorkspaceViewModel+AutoStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 666F9AAA1EB484C6A9C66752 /* PlannerWorkspaceViewModel+AutoStatus.swift */; };
 		7D7930532D7E69853456609C /* LanSyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A721D85250D04A5EF2F4512 /* LanSyncClient.swift */; };
@@ -411,6 +417,7 @@
 		8A83E0FD7E5A964AAB5A36A1 /* StudentProfilesWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */; };
 		8AA3DDE585E022AFB825FA31 /* PlannerCalendarEventSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2535907CB33BFE4DDB88FDCA /* PlannerCalendarEventSheet.swift */; };
 		8AC28CAFF66DAB9852851AE0 /* AttendanceCompactRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F99E44F276471576EF94C95E /* AttendanceCompactRow.swift */; };
+		8C03F7F17A2A423D60495D43 /* TournamentsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5271364D8F83E4653AA75C0E /* TournamentsWorkspaceView.swift */; };
 		8C4327B93009C00C61F6D012 /* PlannerWorkspaceViewModel+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 392F272D8882F34CB518A60C /* PlannerWorkspaceViewModel+Presentation.swift */; };
 		8CDF2E982B870BD83D430A83 /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF85B72D878968E171D9F9C /* GeneralSettingsView.swift */; };
 		8D217F12675F5964F2925ECE /* PlannerSessionWideReviewSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 782C83C6C8916D9B53526BAE /* PlannerSessionWideReviewSnapshotTests.swift */; };
@@ -425,6 +432,7 @@
 		901C7CD23263A71A3D9090D9 /* AppleAppCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3608E02A0A212158D57BB063 /* AppleAppCommands.swift */; };
 		901DC426138E80A3B0578F4E /* NotebookFormulaDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3716454133E66DF1346826BF /* NotebookFormulaDisplay.swift */; };
 		9061345C3F3EA74011DB2B7C /* PlannerDayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A82B65C635417DCFDEB7318 /* PlannerDayView.swift */; };
+		907990BFEA6664485F458693 /* SdaTournamentsOverview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCAEEFF1AB489082ECFC406 /* SdaTournamentsOverview.swift */; };
 		9148CE60DF95AAE5D950221A /* SchoolCalendarPresetSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AD7E95B759E25696F69EE87 /* SchoolCalendarPresetSheet.swift */; };
 		9206FCEECFE0C3548F722120 /* PhysicalScaleCatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F35C9D8B845906EBBC39C56 /* PhysicalScaleCatalogView.swift */; };
 		9235E133FE9104842E5C69F7 /* SdaTournamentComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17F26C351FECC360A2DAF1E /* SdaTournamentComponents.swift */; };
@@ -447,7 +455,6 @@
 		96D1470DC455935FA3D0954A /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9892E60A7CF035F7B78B081 /* QRCodeView.swift */; };
 		96D392BD979115709F2490D6 /* WebSubmissionLinkEmailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB79EE8F7050ABE5BF09C0BD /* WebSubmissionLinkEmailSheet.swift */; };
 		96DE82FA5E9D76C477DCFDC4 /* RubricTemplateCatalogSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542F962EB91CBB9EBA611DAA /* RubricTemplateCatalogSheet.swift */; };
-		978BD4B198B8B3251E4DAE1F /* PETournamentsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CD9BC7B3D3EE4F69F9EF93 /* PETournamentsWorkspaceView.swift */; };
 		97CF6435F3EC9CA884109BA7 /* PlannerTermBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7826DCC50DEBF31C00E18623 /* PlannerTermBoardView.swift */; };
 		97E4B67D1C0B09F690E91469 /* StudentEmailImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32F5467D9298571486C6B47E /* StudentEmailImportService.swift */; };
 		98067CCD9F1ED097B9C60692 /* NotebookFocusMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3042AD483C9D7A9B0BCE80F8 /* NotebookFocusMode.swift */; };
@@ -627,6 +634,7 @@
 		D31FB5A5B223A3DB72D8D173 /* LearningSituationAssessmentReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAB1539F8A3A628062B20999 /* LearningSituationAssessmentReviewView.swift */; };
 		D361AF85734491324E76B258 /* NotebookModuleTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D342F2953510BDA01694A6 /* NotebookModuleTypes.swift */; };
 		D3EBA1E1A169F964D3CA7654 /* NotebookModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */; };
+		D3F494B58DFA6D00F0A52A2B /* SdaTournamentNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17BA8CC7918FCB513C76DFF /* SdaTournamentNavigation.swift */; };
 		D405DE0B7F0CC1DA78AFDD8A /* KnockoutScheduleGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFEEB9E4788C83CF6A77718 /* KnockoutScheduleGenerator.swift */; };
 		D4204AAC77731E167A424B05 /* SchoolCalendarEventsOverviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6E850F1ED39803C5EB2E6A /* SchoolCalendarEventsOverviewSheet.swift */; };
 		D49A13F7696C3B6DCA0D99EC /* DiaryTimelineModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531AE7FED19377A844BC1165 /* DiaryTimelineModels.swift */; };
@@ -693,6 +701,7 @@
 		EA158B52B3D624457F236702 /* PlannerWorkspaceViewModel+Sequences.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBE8AD35C6410CC79F4CB876 /* PlannerWorkspaceViewModel+Sequences.swift */; };
 		EA5A98F4E0DDCA4302284B10 /* NotebookModuleDisplayFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A9F5C3A35823EC9555F412 /* NotebookModuleDisplayFormatting.swift */; };
 		EA9818838B677599835AC4FB /* LanSyncModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA5A45FD868FC55FC21CA2AD /* LanSyncModels.swift */; };
+		EB021FABB320CC2E3CBD3725 /* SdaTournamentsHubModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8DE6ADD66A71F981C50848 /* SdaTournamentsHubModel.swift */; };
 		EB0DA30115D7B0863E94E1D1 /* TutoringShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = D332467A125C50215481D20B /* TutoringShared.swift */; };
 		EB7827AACBA2CF2BEA30154C /* CalendarDuplicatePlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 843AF96A09D81C7848F791DD /* CalendarDuplicatePlannerTests.swift */; };
 		EB8692353B0AC344E01C9875 /* PlannerSessionDetailLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F3CFF561EADCCA10B3E865F /* PlannerSessionDetailLayoutTests.swift */; };
@@ -849,6 +858,7 @@
 		19FA9C3E34A9BAD4C5C9A446 /* WebSubmissionImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionImportSheet.swift; sourceTree = "<group>"; };
 		1AD45ACA95D963773FDADD4C /* TeacherRadarStudentInsightRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherRadarStudentInsightRow.swift; sourceTree = "<group>"; };
 		1B21089C9E75FAA31F54E8B3 /* BalancedScheduleGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalancedScheduleGenerator.swift; sourceTree = "<group>"; };
+		1BCAEEFF1AB489082ECFC406 /* SdaTournamentsOverview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaTournamentsOverview.swift; sourceTree = "<group>"; };
 		1BD759479FF5E71467F7276D /* NotebookGridContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookGridContent.swift; sourceTree = "<group>"; };
 		1C2007F7621C210CCA9762CF /* WebSubmissionBulkMailer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionBulkMailer.swift; sourceTree = "<group>"; };
 		1C204C96BEAF51A14E6B410E /* PhysicalTestsMacInspectorState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestsMacInspectorState.swift; sourceTree = "<group>"; };
@@ -932,6 +942,7 @@
 		4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryWorkspaceView.swift; sourceTree = "<group>"; };
 		515D5694AA82CA792EE56E33 /* NotebookSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookSettingsView.swift; sourceTree = "<group>"; };
 		51882E52C46262210355378A /* AppleEncryptedBackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleEncryptedBackupTests.swift; sourceTree = "<group>"; };
+		5271364D8F83E4653AA75C0E /* TournamentsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TournamentsWorkspaceView.swift; sourceTree = "<group>"; };
 		531AE7FED19377A844BC1165 /* DiaryTimelineModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryTimelineModels.swift; sourceTree = "<group>"; };
 		5333C1A2F380B75E03914FC6 /* CalendarDuplicatePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarDuplicatePlanner.swift; sourceTree = "<group>"; };
 		53D5C192E36FCFC177FCB496 /* RubricBulkEvaluationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricBulkEvaluationSheet.swift; sourceTree = "<group>"; };
@@ -969,6 +980,7 @@
 		666F9AAA1EB484C6A9C66752 /* PlannerWorkspaceViewModel+AutoStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+AutoStatus.swift"; sourceTree = "<group>"; };
 		66C430BD4F07BF647679F179 /* SettingsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWorkspaceView.swift; sourceTree = "<group>"; };
 		6747E520F87525FAA142D595 /* ScheduleTimelineLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleTimelineLayout.swift; sourceTree = "<group>"; };
+		68E09552D03E6F4A5A8FDD5D /* SdaSituationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaSituationPickerSheet.swift; sourceTree = "<group>"; };
 		69A305DF1545D94374103F78 /* PlannerSessionDocxRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionDocxRenderer.swift; sourceTree = "<group>"; };
 		6AB9B92354A1345110A45747 /* MacAttendanceDayRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAttendanceDayRow.swift; sourceTree = "<group>"; };
 		6AD7E95B759E25696F69EE87 /* SchoolCalendarPresetSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchoolCalendarPresetSheet.swift; sourceTree = "<group>"; };
@@ -1068,7 +1080,6 @@
 		9FA4D40A51F6DA104CCFFE1E /* NotebookStructuredInstrumentSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookStructuredInstrumentSupport.swift; sourceTree = "<group>"; };
 		A000A844E2F1245DA5956673 /* NotebookViewModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookViewModifiers.swift; sourceTree = "<group>"; };
 		A0774A7DE7911EED2EC152DD /* TournamentEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TournamentEngineTests.swift; sourceTree = "<group>"; };
-		A0CD9BC7B3D3EE4F69F9EF93 /* PETournamentsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PETournamentsWorkspaceView.swift; sourceTree = "<group>"; };
 		A1BA1A353C3D0548CC0C2E8A /* NotebookColumnOrganizerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookColumnOrganizerSheet.swift; sourceTree = "<group>"; };
 		A2C577C58E87983763516A38 /* DashboardClassroomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardClassroomView.swift; sourceTree = "<group>"; };
 		A3057B2018B4E6F6DEF2AD9F /* PlannerWorkspaceViewModel+Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Composer.swift"; sourceTree = "<group>"; };
@@ -1126,6 +1137,7 @@
 		BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookDataGrid.swift; sourceTree = "<group>"; };
 		BEBB2CA87CBCB3E4059CF73F /* KmpBridge+Planner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+Planner.swift"; sourceTree = "<group>"; };
 		C10B8BD2DBAD5F50708C3A47 /* PlannerTermBoardComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerTermBoardComponents.swift; sourceTree = "<group>"; };
+		C17BA8CC7918FCB513C76DFF /* SdaTournamentNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaTournamentNavigation.swift; sourceTree = "<group>"; };
 		C18473DBCC65D84DAB60649B /* WebSubmissionFixtureConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionFixtureConstants.swift; sourceTree = "<group>"; };
 		C20918D0AFE00F50C0378076 /* MiGestorKMPiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiGestorKMPiOSApp.swift; sourceTree = "<group>"; };
 		C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationAnalyticsService.swift; sourceTree = "<group>"; };
@@ -1135,6 +1147,7 @@
 		C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBridgeBootstrap.swift; sourceTree = "<group>"; };
 		C520758F3BD01731CA8DD507 /* WebSubmissionPublishSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionPublishSheet.swift; sourceTree = "<group>"; };
 		C5BB221D33601136CB3F7F0F /* NotebookSeatingPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookSeatingPlanView.swift; sourceTree = "<group>"; };
+		C5C8730605D67F558646673D /* SdaTournamentsOverviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaTournamentsOverviewTests.swift; sourceTree = "<group>"; };
 		C66F3C885EB6EAF74EACD0D6 /* MacAppSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppSessionController.swift; sourceTree = "<group>"; };
 		C680A5ECE29A5E0CA5322A5A /* DataSecuritySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataSecuritySettingsView.swift; sourceTree = "<group>"; };
 		C6A13EB373B0EE87E425E97C /* ScheduleExcelImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleExcelImportService.swift; sourceTree = "<group>"; };
@@ -1205,6 +1218,7 @@
 		F820A9794C4DB242A462CC03 /* WebSubmissionSharingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionSharingTests.swift; sourceTree = "<group>"; };
 		F99E44F276471576EF94C95E /* AttendanceCompactRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceCompactRow.swift; sourceTree = "<group>"; };
 		FA4C02C9A27EECEB3EFDABCB /* KmpBridge+Inclusion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KmpBridge+Inclusion.swift"; sourceTree = "<group>"; };
+		FA8DE6ADD66A71F981C50848 /* SdaTournamentsHubModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaTournamentsHubModel.swift; sourceTree = "<group>"; };
 		FAB655B4792B2C5FBB76245E /* SyncSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncSettingsView.swift; sourceTree = "<group>"; };
 		FAC46319C44007155F43DDDB /* NotebookAverageExplanationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAverageExplanationView.swift; sourceTree = "<group>"; };
 		FAF7BFD4EFF6709ADBEF1A34 /* PlannerSessionDetailProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionDetailProjection.swift; sourceTree = "<group>"; };
@@ -1312,6 +1326,7 @@
 				EE833FAF7AFEF3300C335970 /* RubricFamilyPDFAndCatalogTests.swift */,
 				C4C1E1B76E5DBB44F345571D /* RubricMatrixLayoutTests.swift */,
 				09BF8CB77031070DE6567B1A /* ScheduleImportTests.swift */,
+				C5C8730605D67F558646673D /* SdaTournamentsOverviewTests.swift */,
 				AEDFA4E9C6FE2D6737FE3983 /* SdaTournamentSupportTests.swift */,
 				63A890708755850506B3A003 /* SdaTournamentTeamsSheetTests.swift */,
 				A0774A7DE7911EED2EC152DD /* TournamentEngineTests.swift */,
@@ -1514,14 +1529,18 @@
 			children = (
 				27A7050C291F1E799E29B31D /* LearningSituationTournamentsSection.swift */,
 				CCAB174750998EB8EB5FE49B /* LegacyTournamentMigrator.swift */,
-				A0CD9BC7B3D3EE4F69F9EF93 /* PETournamentsWorkspaceView.swift */,
 				6354802ACAF166CE8C35EF9D /* SdaNewTournamentSheet.swift */,
+				68E09552D03E6F4A5A8FDD5D /* SdaSituationPickerSheet.swift */,
 				E17F26C351FECC360A2DAF1E /* SdaTournamentComponents.swift */,
 				DDA3CC9C6F097EE0C2FF8D8D /* SdaTournamentDetailView.swift */,
 				6E872368F9FF913D1CF75FFC /* SdaTournamentLiveView.swift */,
 				2BEF0E010E58D2913808C04F /* SdaTournamentModels.swift */,
+				C17BA8CC7918FCB513C76DFF /* SdaTournamentNavigation.swift */,
+				FA8DE6ADD66A71F981C50848 /* SdaTournamentsHubModel.swift */,
+				1BCAEEFF1AB489082ECFC406 /* SdaTournamentsOverview.swift */,
 				B8288407296DBF9EF13DFEFC /* SdaTournamentSupport.swift */,
 				080817A14B7DE8F7F3A3F59F /* SdaTournamentTeamsSheet.swift */,
+				5271364D8F83E4653AA75C0E /* TournamentsWorkspaceView.swift */,
 			);
 			path = Tournament;
 			sourceTree = "<group>";
@@ -2011,6 +2030,7 @@
 				0D60392666E83A2589CCA65A /* ScheduleImportTests.swift in Sources */,
 				A0CEF9130D5147816B3021C2 /* SdaTournamentSupportTests.swift in Sources */,
 				704638B2E91290DA9C7D9685 /* SdaTournamentTeamsSheetTests.swift in Sources */,
+				4ACE9DD2250D2D877FFF474C /* SdaTournamentsOverviewTests.swift in Sources */,
 				94F00CA3BF7BD2D188CA7630 /* TournamentEngineTests.swift in Sources */,
 				56B948961FB1B6041C2051DE /* TournamentPlanEstimatorTests.swift in Sources */,
 				BCBB3510BB55A0F1F8DAE90C /* WebSubmissionBulkMailTests.swift in Sources */,
@@ -2246,7 +2266,6 @@
 				D1975ADCD4FB230CCCE7042F /* OnboardingModels.swift in Sources */,
 				CC8AEDA5D4D172631A66F545 /* OnboardingStudentsSheet.swift in Sources */,
 				6AC60723A6667FC8BB3DA923 /* OnboardingWelcomeSheet.swift in Sources */,
-				978BD4B198B8B3251E4DAE1F /* PETournamentsWorkspaceView.swift in Sources */,
 				7DF64DC9D0222959C8B3ED8D /* PedagogicalMLCalibrationService.swift in Sources */,
 				3C174718E1D1C8F7AFA23C0E /* PendingEvaluationPickerSheet.swift in Sources */,
 				E4E286CB567B34AA28030F21 /* PerfLog.swift in Sources */,
@@ -2332,12 +2351,16 @@
 				5368C5D696B1347D349B1E4B /* SchoolCalendarPreset2026_2027.swift in Sources */,
 				9148CE60DF95AAE5D950221A /* SchoolCalendarPresetSheet.swift in Sources */,
 				003BC3024200A9AFE1DC4D8F /* SdaNewTournamentSheet.swift in Sources */,
+				1BE418013AE187C52A1C4B4D /* SdaSituationPickerSheet.swift in Sources */,
 				9647906DDBD058B19165DA49 /* SdaTournamentComponents.swift in Sources */,
 				31DF5DC7DCA725DE877E5816 /* SdaTournamentDetailView.swift in Sources */,
 				AB925DBCF504B8A8F086E6A1 /* SdaTournamentLiveView.swift in Sources */,
 				E8786635F3A32BC180DC2A8E /* SdaTournamentModels.swift in Sources */,
+				659147506DFA1BEF634DD6DF /* SdaTournamentNavigation.swift in Sources */,
 				F09101449FAA29BB641A1DA7 /* SdaTournamentSupport.swift in Sources */,
 				21E0B2C77C3EE6DACA4F0DC3 /* SdaTournamentTeamsSheet.swift in Sources */,
+				168F6C7928081E49CBA0773F /* SdaTournamentsHubModel.swift in Sources */,
+				907990BFEA6664485F458693 /* SdaTournamentsOverview.swift in Sources */,
 				EE585AABD4D49886E85298C0 /* SelectiveWipeSheet.swift in Sources */,
 				15B5532C3730939CF3945119 /* SettingsDangerZoneView.swift in Sources */,
 				3A7321203FAD5FDC7FA37FAB /* SettingsDiagnosticsView.swift in Sources */,
@@ -2376,6 +2399,7 @@
 				40E6D1955EA2A307FD721BB1 /* TournamentPlanJSON.swift in Sources */,
 				CB41FB0AE2F7A38BEA39C862 /* TournamentPlanPersistence.swift in Sources */,
 				67BBDCDA410E648994B4A77C /* TournamentScheduleGenerator.swift in Sources */,
+				66193EC5E5B7B88E8E6A1500 /* TournamentsWorkspaceView.swift in Sources */,
 				EB0DA30115D7B0863E94E1D1 /* TutoringShared.swift in Sources */,
 				7A8AEA68ECB8F7DA671506F4 /* WebSubmissionBulkMailer.swift in Sources */,
 				653E907AB58B1C68DBB62638 /* WebSubmissionFixtureConstants.swift in Sources */,
@@ -2598,7 +2622,6 @@
 				354BB6C805B6D3C6D26BB358 /* OnboardingModels.swift in Sources */,
 				EB95D68513C49C45CD4C381E /* OnboardingStudentsSheet.swift in Sources */,
 				5E6CD2D94DA2CE137B5113D0 /* OnboardingWelcomeSheet.swift in Sources */,
-				16E5B798AC5B6975E8B47C96 /* PETournamentsWorkspaceView.swift in Sources */,
 				73CAE2B775F2F417B5CFCB49 /* PedagogicalMLCalibrationService.swift in Sources */,
 				5C66DE9508311795F6FE0DF8 /* PendingEvaluationPickerSheet.swift in Sources */,
 				22A0A3DC73CB669DF9914A08 /* PerfLog.swift in Sources */,
@@ -2682,12 +2705,16 @@
 				49E95C4D5249C7672428EB00 /* SchoolCalendarPreset2026_2027.swift in Sources */,
 				1B4B792C95F53A22C93321C5 /* SchoolCalendarPresetSheet.swift in Sources */,
 				F20EBF32A940576EC6B5F24B /* SdaNewTournamentSheet.swift in Sources */,
+				3711F5724155435831A41F98 /* SdaSituationPickerSheet.swift in Sources */,
 				9235E133FE9104842E5C69F7 /* SdaTournamentComponents.swift in Sources */,
 				CA1140A0512F05AE47F6FC51 /* SdaTournamentDetailView.swift in Sources */,
 				4B6BC59B1BB1FD90B2E7C525 /* SdaTournamentLiveView.swift in Sources */,
 				F1393D2E7CC3E77911E8D28C /* SdaTournamentModels.swift in Sources */,
+				D3F494B58DFA6D00F0A52A2B /* SdaTournamentNavigation.swift in Sources */,
 				645C99178F343DBFDBBF3631 /* SdaTournamentSupport.swift in Sources */,
 				25F85F9EA68E938FCBEB388E /* SdaTournamentTeamsSheet.swift in Sources */,
+				EB021FABB320CC2E3CBD3725 /* SdaTournamentsHubModel.swift in Sources */,
+				7C1C9DC8B66727F3C8CF4AC7 /* SdaTournamentsOverview.swift in Sources */,
 				9431E05EA810B154003DED20 /* SelectiveWipeSheet.swift in Sources */,
 				0B33E01BA1D995654A80EA9C /* SettingsDangerZoneView.swift in Sources */,
 				B01252AA878F99C736D23E0B /* SettingsDiagnosticsView.swift in Sources */,
@@ -2726,6 +2753,7 @@
 				7671B0EBE83289E3F6AE366A /* TournamentPlanJSON.swift in Sources */,
 				A16434678D9FBCAFCDAC8861 /* TournamentPlanPersistence.swift in Sources */,
 				39B7A69D8C14C512BCA5F869 /* TournamentScheduleGenerator.swift in Sources */,
+				8C03F7F17A2A423D60495D43 /* TournamentsWorkspaceView.swift in Sources */,
 				1DD64E29F1E15C07CF123EA7 /* TutoringShared.swift in Sources */,
 				A10C466E3F7F0E54DCFA2ADA /* WebSubmissionBulkMailer.swift in Sources */,
 				04FB8CBA0284913CF5515464 /* WebSubmissionFixtureConstants.swift in Sources */,

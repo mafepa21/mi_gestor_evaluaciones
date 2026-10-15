@@ -22,6 +22,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - **El módulo antiguo de Torneos de EF se sustituye**: la pantalla de EF lista los torneos del curso y los abre con el detalle nuevo. Los torneos antiguos (UserDefaults) se migran al arrancar, una sola vez; la clave antigua se conserva como copia. Se pierden: partidos contra «BYE», 0-0 reales sin marca de jugado y el texto libre de pista (queda el número). Los puntos personalizados se conservan para la clasificación.
 
+- **Torneos pasa al menú lateral, a pantalla completa**: «Retos y torneos» (EF) se renombra «Torneos» y sale del bloque de EF; ahora está en Planificación, justo después de Situaciones, en iPad y Mac (en iPhone sigue en «Más»). Lista del curso agrupada por Situación (y «Sin situación» para los migrados) y el torneo ocupa el resto, sin hoja. En ancho grande, Calendario y Clasificación van lado a lado. El modo directo se abre a pantalla completa con «Salir» explícito. «＋ Nuevo» pregunta primero la situación (con su número de grupos). La sección de la SdA queda en lista + «＋ Nuevo» y cada fila abre el torneo en «Torneos». Maqueta: `docs/maquetas/torneos_menu_lateral_2026-10-15.html`.
+
 ### Fixed
 
 - **Torneos: el PDF de equipos ya no pisa tarjetas ni corta nombres**: la altura de cada tarjeta se calculaba sin el espacio entre alumnos, así que se montaba sobre la de abajo. Los nombres largos pasan a dos líneas en lugar de cortarse, y cada alumno lleva una viñeta (•) para distinguirlos.

@@ -546,7 +546,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .peRubrics: return "Rúbricas por área"
         case .peIncidents: return "Incidencias y seguridad"
         case .peMaterial: return "Recursos y material"
-        case .peTournaments: return "Retos y torneos"
+        case .peTournaments: return "Torneos"
         case .settings: return "Ajustes"
         case .backups: return "Seguridad"
         }
@@ -575,7 +575,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .peRubrics: return "Criterios específicos"
         case .peIncidents: return "Seguimiento operativo"
         case .peMaterial: return "Inventario rápido"
-        case .peTournaments: return "Competición y resultados"
+        case .peTournaments: return "Equipos, calendario y resultados"
         case .settings: return "Configuración"
         case .backups: return "Copias y restauración"
         }
@@ -614,11 +614,11 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard, .courses, .students, .teacherRadar, .notebook:
             return .academic
-        case .attendance, .planner, .situations, .diary, .meetings, .inclusion:
+        case .attendance, .planner, .situations, .peTournaments, .diary, .meetings, .inclusion:
             return .operations
         case .evaluationHub, .webSubmissions, .rubrics, .reports, .library:
             return .evaluation
-        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
+        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial:
             return .domainModules
         case .settings, .backups:
             return .system
@@ -627,7 +627,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
 
     var requiresPhysicalEducationProfile: Bool {
         switch self {
-        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
+        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial:
             return true
         default:
             return false

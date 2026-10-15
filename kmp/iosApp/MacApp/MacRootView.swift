@@ -612,6 +612,12 @@ struct MacRootView: View {
                 onOpenModule: open(module:classId:studentId:)
             )
             .environmentObject(session.bridge)
+        case .tournaments:
+            TournamentsWorkspaceView(
+                selectedClassId: studentSelection.selectedClassBinding,
+                onOpenModule: open(module:classId:studentId:)
+            )
+            .environmentObject(session.bridge)
         case .webSubmissions:
             // Módulo propio en la barra lateral: es trabajo diario, no soporte.
             // Antes vivía aparcado en Ajustes → Diagnóstico.
@@ -1289,6 +1295,7 @@ struct MacRootView: View {
         case .planner: return .orange
         case .diary: return .pink
         case .situations: return .indigo
+        case .tournaments: return .yellow
         case .webSubmissions: return .mint
         case .meetings: return .brown
         case .inclusion: return .teal
@@ -1631,6 +1638,8 @@ struct MacRootView: View {
             selectFeature(.physicalTests)
         case .situations:
             selectFeature(.situations)
+        case .peTournaments:
+            selectFeature(.tournaments)
         case .diary:
             selectFeature(.diary)
         case .evaluationHub:

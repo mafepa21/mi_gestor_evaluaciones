@@ -1,8 +1,9 @@
 import SwiftUI
 import MiGestorKit
 
-/// Sección «Torneos» del detalle de la Situación de Aprendizaje.
-/// Los equipos son los grupos de trabajo vinculados a la situación.
+/// Sección «Torneos» del detalle de la Situación de Aprendizaje: lista breve y «＋ Nuevo».
+/// Los equipos son los grupos de trabajo vinculados a la situación. Tocar una fila abre el torneo
+/// en la pantalla «Torneos» del menú lateral, donde se juega, se imprime y se borra.
 struct LearningSituationTournamentsSection: View {
     let situationId: Int64
     /// Curso al que lleva «Crear grupos» (el primero vinculado o el seleccionado).
@@ -12,8 +13,6 @@ struct LearningSituationTournamentsSection: View {
     @EnvironmentObject private var bridge: KmpBridge
     @StateObject private var model: SdaTournamentsListModel
     @State private var isCreating = false
-    @State private var openTarget: SdaTournamentTarget?
-    @State private var deleteTarget: SdaTournamentTarget?
     @State private var refreshTarget: SdaTournamentTarget?
     @State private var errorMessage: String?
     @ScaledMetric(relativeTo: .body) private var tapSize: CGFloat = 44
@@ -33,10 +32,6 @@ struct LearningSituationTournamentsSection: View {
     /// Contar todos los grupos juntos engañaba cuando estaban repartidos en cursos distintos.
     private var hasPlayableClass: Bool {
         Dictionary(grouping: model.teams, by: \.classId).values.contains { $0.count >= 2 }
-    }
-
-    private func className(_ id: Int64) -> String {
-        bridge.classes.first(where: { $0.id == id })?.name ?? "Curso"
     }
 
     // MARK: Cuerpo
@@ -76,36 +71,6 @@ struct LearningSituationTournamentsSection: View {
             }
             .environmentObject(bridge)
         }
-        .sheet(item: $openTarget) { target in
-            let record = model.record(id: target.id)
-            SdaTournamentSheetHost(
-                record: record,
-                currentTeams: model.teams,
-                className: record.map { className($0.classId) } ?? "",
-                onSaved: { model.upsert($0) },
-                onDeleted: { model.remove(id: target.id) },
-                onSaveFailedAtClose: { name in
-                    errorMessage = "No se guardaron los últimos cambios de «\(name)». Ábrelo de nuevo y revisa los resultados."
-                }
-            )
-            .environmentObject(bridge)
-        }
-        .confirmationDialog(
-            deleteTitle,
-            isPresented: Binding(
-                get: { deleteTarget != nil },
-                set: { if !$0 { deleteTarget = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Borrar", role: .destructive) {
-                if let target = deleteTarget { Task { await delete(target) } }
-                deleteTarget = nil
-            }
-            Button("Cancelar", role: .cancel) { deleteTarget = nil }
-        } message: {
-            Text("Se borran el calendario y los resultados en todos tus dispositivos.")
-        }
         .confirmationDialog(
             "¿Actualizar los equipos?",
             isPresented: Binding(
@@ -122,11 +87,6 @@ struct LearningSituationTournamentsSection: View {
         } message: {
             Text("Se borran el calendario y los resultados, y se crea un calendario nuevo con los grupos de hoy.")
         }
-    }
-
-    private var deleteTitle: String {
-        let name = deleteTarget.flatMap { model.record(id: $0.id)?.name } ?? "este torneo"
-        return "¿Borrar «\(name)»?"
     }
 
     private var header: some View {
@@ -230,37 +190,32 @@ struct LearningSituationTournamentsSection: View {
     private func rowView(_ row: SdaTournamentRow) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                openTarget = SdaTournamentTarget(id: row.id)
+                open(row)
             } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: row.summary?.format.symbolName ?? "exclamationmark.triangle")
-                        .font(.body)
-                        .foregroundStyle(EvaluationDesign.accent)
-                        .frame(width: 36, height: 36)
-                        .background(EvaluationDesign.accentSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(row.record.name)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.leading)
-                        Text(subtitle(for: row))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.leading)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 8) {
+                    Text(row.record.name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     if let summary = row.summary {
                         SdaStatusBadge(status: summary.status)
+                    } else {
+                        Text("No se pudo leer")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
                 .frame(maxWidth: .infinity, minHeight: tapSize, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(row.summary == nil)
             .accessibilityElement(children: .combine)
-            .accessibilityHint(row.summary == nil ? "" : "Abre el torneo.")
+            .accessibilityHint("Abre el torneo en la pantalla Torneos.")
 
             if row.groupsChanged {
                 LearningSituationInlineNotice(
@@ -272,42 +227,14 @@ struct LearningSituationTournamentsSection: View {
                 }
             }
         }
-        .contextMenu {
-            if row.summary != nil {
-                Button {
-                    openTarget = SdaTournamentTarget(id: row.id)
-                } label: {
-                    Label("Abrir", systemImage: "arrow.up.forward.square")
-                }
-            }
-            Button(role: .destructive) {
-                deleteTarget = SdaTournamentTarget(id: row.id)
-            } label: {
-                Label("Borrar…", systemImage: "trash")
-            }
-        }
-    }
-
-    private func subtitle(for row: SdaTournamentRow) -> String {
-        guard let summary = row.summary else { return "No se pudo leer este torneo." }
-        return [
-            className(row.record.classId),
-            summary.format.shortTitle,
-            sdaPlural(summary.teamCount, "equipo", "equipos"),
-            sdaPlural(summary.venueCount, "pista", "pistas")
-        ].joined(separator: " · ")
     }
 
     // MARK: Acciones
 
-    private func delete(_ target: SdaTournamentTarget) async {
-        errorMessage = nil
-        do {
-            try await bridge.deleteTournament(id: target.id)
-            model.remove(id: target.id)
-        } catch {
-            errorMessage = "No se pudo borrar el torneo. Inténtalo de nuevo."
-        }
+    /// Deja el torneo pedido y cambia al módulo Torneos, en el curso del torneo.
+    private func open(_ row: SdaTournamentRow) {
+        SdaTournamentNavigationStore.shared.request(tournamentId: row.id, classId: row.record.classId)
+        onOpenModule(.peTournaments, row.record.classId, nil)
     }
 
     private func refresh(_ target: SdaTournamentTarget) async {

@@ -270,7 +270,7 @@ extension AppWorkspaceShell {
         case .peMaterial:
             return "Gestiona preparación, uso y estado del material vinculado a sesiones EF."
         case .peTournaments:
-            return "Los torneos viven en cada Situación de Aprendizaje; aquí ves los del curso."
+            return "Los torneos del curso, agrupados por Situación de Aprendizaje: calendario, resultados y modo directo."
         case .settings:
             return "Configura agenda docente, calendario lectivo, sincronización y preferencias globales del workspace."
         case .backups:

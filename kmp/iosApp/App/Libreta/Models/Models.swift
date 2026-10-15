@@ -41,7 +41,7 @@ enum PaperStyle: String, CaseIterable, Identifiable, Codable {
 @Model
 final class Notebook {
     var id: UUID = UUID()
-    var title: String = "Cuaderno"
+    var title: String = "Libreta"
     /// `CoverColor.rawValue` (definido en Design/).
     var coverColorRaw: String = "blue"
     var paperStyleRaw: String = PaperStyle.ruled.rawValue

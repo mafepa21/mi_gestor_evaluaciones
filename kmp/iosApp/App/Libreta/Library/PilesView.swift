@@ -48,7 +48,7 @@ struct PilesView: View {
                             }
                             newGroupSlot(coverSize)
                         }
-                        Text("Sueltos")
+                        Text("Sin grupo")
                             .font(Theme.Fonts.title)
                             .foregroundStyle(Theme.ink)
                             .accessibilityAddTraits(.isHeader)
@@ -193,8 +193,8 @@ private struct PileCell: View {
     private var countText: String {
         switch section.notebooks.count {
         case 0: "Vacío"
-        case 1: "1 cuaderno"
-        default: "\(section.notebooks.count) cuadernos"
+        case 1: "1 libreta"
+        default: "\(section.notebooks.count) libretas"
         }
     }
 

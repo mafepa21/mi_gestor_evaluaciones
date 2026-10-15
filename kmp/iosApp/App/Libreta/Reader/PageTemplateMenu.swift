@@ -13,7 +13,7 @@ struct PageTemplateMenu: View {
     var body: some View {
         Menu {
             Picker("Plantilla de esta hoja", selection: selection) {
-                Label("Como el cuaderno (\(notebookStyle.label))", systemImage: "book.closed")
+                Label("Como la libreta (\(notebookStyle.label))", systemImage: "book.closed")
                     .tag("")
                 ForEach(PaperStyle.allCases) { style in
                     Label(style.label, systemImage: style.systemImage)

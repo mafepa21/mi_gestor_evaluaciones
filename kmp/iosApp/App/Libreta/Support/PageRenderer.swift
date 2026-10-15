@@ -74,7 +74,7 @@ enum PageRenderer {
         let bad = CharacterSet(charactersIn: "/\\:?*\"<>|")
         let cleaned = name.components(separatedBy: bad).joined(separator: "-")
             .trimmingCharacters(in: .whitespaces)
-        return cleaned.isEmpty ? "Cuaderno" : cleaned
+        return cleaned.isEmpty ? "Libreta" : cleaned
     }
 }
 

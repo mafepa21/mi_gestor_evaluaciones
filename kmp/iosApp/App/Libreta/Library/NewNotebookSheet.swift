@@ -30,7 +30,7 @@ struct NewNotebookSheet: View {
                 HStack(alignment: .top, spacing: 44) {
                     // Vista previa: el cuaderno tal como quedará en la mesa.
                     VStack(spacing: 14) {
-                        NotebookCoverView(title: title.isEmpty ? "Cuaderno" : title,
+                        NotebookCoverView(title: title.isEmpty ? "Libreta" : title,
                                           color: color,
                                           size: CGSize(width: coverWidth, height: coverWidth / Theme.coverAspect))
                             .animation(.easeInOut(duration: 0.2), value: color)
@@ -41,7 +41,7 @@ struct NewNotebookSheet: View {
 
                     VStack(alignment: .leading, spacing: 28) {
                         field("Título") {
-                            TextField("Cuaderno", text: $title)
+                            TextField("Libreta", text: $title)
                                 .font(Theme.Fonts.serif(22))
                                 .foregroundStyle(Theme.ink)
                                 .focused($titleFocused)
@@ -103,13 +103,13 @@ struct NewNotebookSheet: View {
             .toolbarBackground(Theme.desk, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("Nuevo cuaderno").font(Theme.Fonts.headline).foregroundStyle(Theme.ink)
+                    Text("Nueva libreta").font(Theme.Fonts.headline).foregroundStyle(Theme.ink)
                 }
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Crear") {
                         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                        onCreate(Notebook(title: t.isEmpty ? "Cuaderno" : t,
+                        onCreate(Notebook(title: t.isEmpty ? "Libreta" : t,
                                           coverColorRaw: color.rawValue,
                                           paperStyle: paper),
                                  groups.first { $0.id == groupID })

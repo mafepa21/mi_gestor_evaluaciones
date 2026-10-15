@@ -40,7 +40,7 @@ struct PileFanView: View {
     private var items: [Item] { section.notebooks.map { Item.notebook($0) } + [Item.add] }
 
     private var countText: String {
-        section.notebooks.count == 1 ? "1 cuaderno" : "\(section.notebooks.count) cuadernos"
+        section.notebooks.count == 1 ? "1 libreta" : "\(section.notebooks.count) libretas"
     }
 
     var body: some View {
@@ -115,7 +115,7 @@ struct PileFanView: View {
                 NewNotebookCoverView(size: layout.coverSize)
             }
             .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel("Nuevo cuaderno en este grupo")
+            .accessibilityLabel("Nueva libreta en este grupo")
             .scaleEffect(collapsed ? pileScale * 0.8 : 1)
             .position(collapsed ? pileCenter : target)
             .opacity(fanned ? 1 : 0)
@@ -169,7 +169,7 @@ struct PileFanView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("Nuevo cuaderno en este grupo")
+                .accessibilityLabel("Nueva libreta en este grupo")
                 if let group = section.group {
                     Menu {
                         GroupMenuItems(group: group, groups: groups, actions: actions,

@@ -28,7 +28,7 @@ struct LibrarySection: Identifiable {
     let notebooks: [Notebook]
 
     var id: String { group?.id.uuidString ?? "sueltos" }
-    var title: String { group?.displayName ?? "Sueltos" }
+    var title: String { group?.displayName ?? "Sin grupo" }
 }
 
 // MARK: - Acciones
@@ -110,7 +110,7 @@ struct NotebookMenuItems: View {
         }
         Button("Exportar…", systemImage: "square.and.arrow.up") { actions.export(notebook) }
         Divider()
-        Button("Eliminar cuaderno", systemImage: "trash", role: .destructive) { actions.delete(notebook) }
+        Button("Eliminar libreta", systemImage: "trash", role: .destructive) { actions.delete(notebook) }
     }
 }
 
@@ -125,7 +125,7 @@ struct GroupMenuItems: View {
 
     var body: some View {
         let index = groups.firstIndex { $0.id == group.id }
-        Button("Nuevo cuaderno aquí", systemImage: "plus") { actions.newNotebook(group) }
+        Button("Nueva libreta aquí", systemImage: "plus") { actions.newNotebook(group) }
         Button("Renombrar grupo", systemImage: "pencil") { actions.renameGroup(group) }
         if let index, index > 0 {
             Button(moveLabels.earlier, systemImage: "arrow.up") { actions.moveGroup(group, -1) }
@@ -140,17 +140,14 @@ struct GroupMenuItems: View {
 
 // MARK: - Cabecera
 
-/// Cabecera sobre la mesa: título serif grande y un recuento discreto.
+/// Cabecera sobre la mesa: un recuento discreto.
 struct LibraryHeader: View {
     let notebookCount: Int
     let groupCount: Int
 
     var body: some View {
+        // El título «Libreta» ya está en la barra de la app: aquí solo el recuento.
         VStack(alignment: .leading, spacing: 4) {
-            Text("Mis cuadernos")
-                .font(Theme.Fonts.largeTitle)
-                .foregroundStyle(Theme.ink)
-                .accessibilityAddTraits(.isHeader)
             Text(verbatim: subtitle)
                 .font(Theme.Fonts.caption)
                 .foregroundStyle(Theme.inkSecondary)
@@ -158,8 +155,8 @@ struct LibraryHeader: View {
     }
 
     private var subtitle: String {
-        if notebookCount == 0 && groupCount == 0 { return "Empieza tu primer cuaderno" }
-        let nbs = notebookCount == 1 ? "1 cuaderno" : "\(notebookCount) cuadernos"
+        if notebookCount == 0 && groupCount == 0 { return "Empieza tu primera libreta" }
+        let nbs = notebookCount == 1 ? "1 libreta" : "\(notebookCount) libretas"
         switch groupCount {
         case 0: return nbs
         case 1: return "\(nbs) · 1 grupo"

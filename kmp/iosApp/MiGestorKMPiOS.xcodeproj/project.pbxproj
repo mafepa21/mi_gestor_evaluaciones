@@ -141,6 +141,7 @@
 		3433239DDE5DF8DCB8F79FF5 /* ScheduleGridPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B18D4606AA037B05A26A0280 /* ScheduleGridPDFRenderer.swift */; };
 		3476F2AB7F19E3F96DCD28F5 /* StudentEmailImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86256209C2C4B3F9C7924AF8 /* StudentEmailImportSheet.swift */; };
 		354BB6C805B6D3C6D26BB358 /* OnboardingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A92D241217A257758C98B290 /* OnboardingModels.swift */; };
+		35722B2C649F0B0D58C83552 /* LibretaModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 184F5F99594B70E287DD11F3 /* LibretaModuleView.swift */; };
 		35AF2B7E59ACB518BD851B4F /* NotebookCompactCommandBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B06388784ADA4E7EFF4FDB4 /* NotebookCompactCommandBar.swift */; };
 		35CE08146C413A10B6E6B72A /* NotebookCellStampCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06247DBCEF5FCAED33273150 /* NotebookCellStampCatalog.swift */; };
 		35E4CB3140B5AC23435486FE /* DashboardDispatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCF119E0DE892DBACD7073A3 /* DashboardDispatchView.swift */; };
@@ -812,6 +813,7 @@
 		16E3DD63D6D3D2C2C4A53366 /* LearningSituationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSituationDetailView.swift; sourceTree = "<group>"; };
 		176AD8D600DA329A94E245C4 /* PageGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageGeometry.swift; sourceTree = "<group>"; };
 		17DC815694CD18046E1FE41A /* CooperativeGroupGeneratorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CooperativeGroupGeneratorSheet.swift; sourceTree = "<group>"; };
+		184F5F99594B70E287DD11F3 /* LibretaModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibretaModuleView.swift; sourceTree = "<group>"; };
 		1867CC94618A27E645618888 /* PlannerSummaryDashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSummaryDashboard.swift; sourceTree = "<group>"; };
 		19FA9C3E34A9BAD4C5C9A446 /* WebSubmissionImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionImportSheet.swift; sourceTree = "<group>"; };
 		1AD45ACA95D963773FDADD4C /* TeacherRadarStudentInsightRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherRadarStudentInsightRow.swift; sourceTree = "<group>"; };
@@ -1521,6 +1523,7 @@
 		AB5A4EFD5E1AD63FC7440E6A /* Libreta */ = {
 			isa = PBXGroup;
 			children = (
+				184F5F99594B70E287DD11F3 /* LibretaModuleView.swift */,
 				4CEF804C2362E6B2EF0ED142 /* Design */,
 				7E21C933E9BEBF05304ED898 /* Library */,
 				5CB4F934E298C37E785DD71F /* Models */,
@@ -1750,7 +1753,21 @@
 			path = App;
 			sourceTree = "<group>";
 		};
-		"TEMP_D42CE0AC-C012-4202-BF36-76FA60CDB104" /* .claude */ = {
+		"TEMP_77CAD9DE-507B-4E3D-9A41-87835A966AAF" /* .claude */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = .claude;
+			sourceTree = "<group>";
+		};
+		"TEMP_9E9B1184-EC78-4936-81F5-A701A83B4052" /* .claude */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = .claude;
+			sourceTree = "<group>";
+		};
+		"TEMP_E957F228-F5BA-4190-AB64-AFC657E45666" /* .claude */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -2501,6 +2518,7 @@
 				0230F89B204872CC089E8B47 /* LibraryAndPEWorkspaceViews.swift in Sources */,
 				DC35FF5AFA5C13C3A59D97CE /* LibraryShared.swift in Sources */,
 				CF773AC74335C28BD427802B /* LibraryView.swift in Sources */,
+				35722B2C649F0B0D58C83552 /* LibretaModuleView.swift in Sources */,
 				FE44A49751896CE5F073F18F /* LomloeCriteriaCatalog.swift in Sources */,
 				D307D469B599F0AFFF1A01A5 /* MacTrackpadSwipeHelper.swift in Sources */,
 				89CFFF0BE042923FABF74C79 /* MeetingActaPDF.swift in Sources */,

@@ -20,7 +20,7 @@ struct ShelfView: View {
     static let spineMaxHeight: CGFloat = 188
     /// Margen interior de la balda (los lomos no llegan al borde).
     static let plankInset: CGFloat = 18
-    static let spineSpacing: CGFloat = 3
+    static let spineSpacing: CGFloat = 8
     private let margin: CGFloat = 48
 
     var body: some View {
@@ -71,7 +71,7 @@ struct ShelfView: View {
                 .dashedSlot(cornerRadius: 8)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.98))
-        .accessibilityHint("Crea una balda nueva para reunir cuadernos de un mismo tema")
+        .accessibilityHint("Crea una balda nueva para reunir libretas de un mismo tema")
     }
 }
 
@@ -82,7 +82,8 @@ enum SpineMetrics {
     static func size(for notebook: Notebook, maxHeight: CGFloat) -> CGSize {
         var r = StableRandom(notebook.id)
         let sheets = CGFloat(min(notebook.pageList.count, 160))
-        let width = 26 + sheets * 0.14 + r.unit() * 10
+        // Mínimo 36 pt + 4 pt de toque a cada lado = 44 pt (HIG).
+        let width = 36 + sheets * 0.12 + r.unit() * 8
         let height = maxHeight * (0.84 + r.unit() * 0.16)
         return CGSize(width: width.rounded(), height: height.rounded())
     }
@@ -205,7 +206,7 @@ private struct ShelfSectionView: View {
         }
         .buttonStyle(PressableButtonStyle(scale: 0.94))
         .padding(.leading, 6)
-        .accessibilityLabel(section.group.map { "Nuevo cuaderno en \($0.displayName)" } ?? "Nuevo cuaderno")
+        .accessibilityLabel(section.group.map { "Nueva libreta en \($0.displayName)" } ?? "Nueva libreta")
     }
 
     /// Rótulo de papel clavado en el frente de la balda. En un grupo es un menú.
@@ -259,12 +260,12 @@ private struct ShelfSectionView: View {
     }
 
     private var emptyHint: String {
-        if section.group != nil { return "Arrastra aquí cuadernos o crea uno nuevo" }
-        return groups.isEmpty ? "Empieza tu primer cuaderno" : "Suelta aquí un cuaderno para sacarlo de su grupo"
+        if section.group != nil { return "Arrastra aquí libretas o crea una nueva" }
+        return groups.isEmpty ? "Empieza tu primera libreta" : "Suelta aquí una libreta para sacarla de su grupo"
     }
 
     private var countText: String {
-        section.notebooks.count == 1 ? "1 cuaderno" : "\(section.notebooks.count) cuadernos"
+        section.notebooks.count == 1 ? "1 libreta" : "\(section.notebooks.count) libretas"
     }
 }
 
@@ -289,6 +290,7 @@ private struct ShelfSpine: View {
             actions.open(notebook)
         } label: {
             NotebookSpineView(title: notebook.title, color: color, size: size)
+                .contentShape(Rectangle().inset(by: -4))
         }
         .buttonStyle(PressableButtonStyle())
         // "Sacar" el cuaderno de la balda: sube y proyecta más sombra.
@@ -319,7 +321,7 @@ private struct ShelfSpine: View {
                 .background(Theme.desk)
         }
         .zIndex(isHovered ? 1 : 0)
-        .accessibilityLabel(Text(verbatim: "Cuaderno \(notebook.title.isEmpty ? "Sin título" : notebook.title)"))
+        .accessibilityLabel(Text(verbatim: "Libreta \(notebook.title.isEmpty ? "Sin título" : notebook.title)"))
         .accessibilityValue(Text(verbatim: notebook.libraryCaption))
         .accessibilityHint("Mantén pulsado para ver la portada y más opciones")
     }

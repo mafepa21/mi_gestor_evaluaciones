@@ -74,14 +74,15 @@ enum Theme {
     static let paperAccent = color(0xA4532F)
     /// Texto impreso sobre papel (siempre oscuro, el papel siempre es claro).
     static let paperInk = color(0x2B2622)
-    static let paperInkSecondary = color(0x8A7F72)
+    static let paperInkSecondary = color(0x6E6458)
 
     // MARK: - Texto de interfaz y acento
 
     static let ink = adaptive(light: 0x2B2622, dark: 0xEFE8DC)
-    static let inkSecondary = adaptive(light: 0x7B7064, dark: 0xA89E91)
-    /// Único acento: terracota (botones principales, selección).
-    static let accent = adaptive(light: 0xA4532F, dark: 0xD9875F)
+    static let inkSecondary = adaptive(light: 0x6B6054, dark: 0xA89E91)
+    /// Acento de los controles: el de Mi Gestor, para que la Libreta no parezca otra app.
+    /// El terracota impreso en el papel es `paperAccent` y no cambia.
+    static let accent = Color.accentColor
 
     // MARK: - Lector
 

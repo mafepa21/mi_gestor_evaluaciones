@@ -10,7 +10,7 @@ struct LibraryView: View {
     @Query(sort: \Notebook.lastOpenedAt, order: .reverse) private var notebooks: [Notebook]
     @Query(sort: [SortDescriptor(\NotebookGroup.sortOrder), SortDescriptor(\NotebookGroup.createdAt)])
     private var groups: [NotebookGroup]
-    @AppStorage("libraryLayout") private var layout: LibraryLayout = .shelf
+    @AppStorage("libreta.libraryLayout") private var layout: LibraryLayout = .shelf
 
     @State private var openTarget: ReaderTarget?
     @State private var query = ""
@@ -25,64 +25,55 @@ struct LibraryView: View {
     @State private var groupDialog = GroupDialogState()
 
     private var isSearching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var isEmptyLibrary: Bool { notebooks.isEmpty && groups.isEmpty }
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Mis cuadernos")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(Theme.desk, for: .navigationBar)
-                .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic),
-                            prompt: "Buscar en tus notas")
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Picker("Vista", selection: $layout) {
-                            ForEach(LibraryLayout.allCases) { mode in
-                                Text(mode.label).tag(mode)
-                            }
+        // Va dentro del panel de detalle de Mi Gestor: sin NavigationStack propio.
+        // La barra y la búsqueda se suman a la barra superior de la app.
+        content
+            .navigationTitle(isSearching ? "Resultados" : "Libreta")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic),
+                        prompt: "Buscar en tus notas")
+            .toolbar {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Picker("Vista", selection: $layout) {
+                        ForEach(LibraryLayout.allCases) { mode in
+                            Text(mode.label).tag(mode)
                         }
-                        .pickerStyle(.segmented)
-                        .frame(width: 230)
-                        .disabled(isSearching)
-                        .accessibilityLabel("Vista de la biblioteca")
                     }
-                    ToolbarItem(placement: .principal) {
-                        // El título grande va en la propia mesa; aquí solo reaparece al buscar.
-                        Text(isSearching ? "Resultados" : "")
-                            .font(Theme.Fonts.headline)
-                            .foregroundStyle(Theme.ink)
-                    }
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        Menu {
-                            Button("Nuevo cuaderno", systemImage: "book.closed") {
-                                newNotebook = NewNotebookRequest(groupID: nil)
-                            }
-                            Button("Nuevo grupo", systemImage: "square.stack.3d.up") {
-                                groupDialog.beginCreate(with: nil)
-                            }
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 19, weight: .regular))
-                                .foregroundStyle(Theme.ink)
-                        }
-                        .accessibilityLabel("Crear")
+                    .pickerStyle(.segmented)
+                    .frame(width: 230)
+                    .disabled(isSearching || isEmptyLibrary)
+                    .accessibilityLabel("Vista de la biblioteca")
 
-                        Menu {
-                            Button("Copia de seguridad de la biblioteca…", systemImage: "archivebox") {
-                                showingExport = .library(notebooks, groups: groups)
-                            }
-                            Button("Restaurar copia de seguridad…", systemImage: "square.and.arrow.down") {
-                                showingImporter = true
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                                .font(.system(size: 19, weight: .regular))
-                                .foregroundStyle(Theme.ink)
+                    Menu {
+                        Button("Nuevo grupo", systemImage: "square.stack.3d.up") {
+                            groupDialog.beginCreate(with: nil)
                         }
-                        .accessibilityLabel("Más opciones")
+                        Divider()
+                        Button("Copia de seguridad de la biblioteca…", systemImage: "archivebox") {
+                            showingExport = .library(notebooks, groups: groups)
+                        }
+                        Button("Restaurar o traer de Cuadernos…", systemImage: "square.and.arrow.down") {
+                            showingImporter = true
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("Más opciones")
+
+                    if !isEmptyLibrary {
+                        Button {
+                            newNotebook = NewNotebookRequest(groupID: nil)
+                        } label: {
+                            Label("Nueva libreta", systemImage: "plus")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
                 }
-        }
+            }
         .tint(Theme.accent)
         .sheet(item: Binding(get: { exportingNotebook.map { ExportItem(notebook: $0) } },
                              set: { if $0 == nil { exportingNotebook = nil } })) { item in
@@ -91,7 +82,7 @@ struct LibraryView: View {
         .sheet(isPresented: Binding(get: { showingExport != nil }, set: { if !$0 { showingExport = nil } })) {
             if let scope = showingExport { ExportSheet(scope: scope) }
         }
-        .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { result in
+        .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json, .data]) { result in
             restore(result)
         }
         .alert("Copia de seguridad", isPresented: Binding(get: { importMessage != nil },
@@ -102,7 +93,12 @@ struct LibraryView: View {
 
     private var content: some View {
         Group {
-            if isSearching {
+            if isEmptyLibrary && !isSearching {
+                LibretaEmptyView(
+                    onNew: { newNotebook = NewNotebookRequest(groupID: nil) },
+                    onImport: { showingImporter = true }
+                )
+            } else if isSearching {
                 ScrollView {
                     PageSearchList(notebooks: notebooks, query: query, showNotebookTitle: true) { nb, index in
                         open(nb, page: index)
@@ -135,7 +131,7 @@ struct LibraryView: View {
         .fullScreenCover(item: $openTarget) { target in
             NotebookReaderView(notebook: target.notebook, startPage: target.page)
         }
-        .alert("Renombrar cuaderno", isPresented: Binding(get: { renaming != nil },
+        .alert("Renombrar libreta", isPresented: Binding(get: { renaming != nil },
                                                           set: { if !$0 { renaming = nil } })) {
             TextField("Título", text: $renameText)
             Button("Guardar") {
@@ -145,11 +141,11 @@ struct LibraryView: View {
             }
             Button("Cancelar", role: .cancel) { renaming = nil }
         }
-        .confirmationDialog("¿Eliminar este cuaderno y todas sus páginas?",
+        .confirmationDialog("¿Eliminar esta libreta y todas sus hojas?",
                             isPresented: Binding(get: { deleting != nil },
                                                  set: { if !$0 { deleting = nil } }),
                             titleVisibility: .visible) {
-            Button("Eliminar cuaderno", role: .destructive) {
+            Button("Eliminar libreta", role: .destructive) {
                 if let nb = deleting { context.delete(nb) }
                 deleting = nil
             }
@@ -231,10 +227,10 @@ struct LibraryView: View {
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             let added = try Backup.restore(try Data(contentsOf: url), into: context)
             switch (added.notebooks, added.groups) {
-            case (0, 0): importMessage = "No había cuadernos nuevos que añadir."
-            case (let n, 0): importMessage = "Se han añadido \(n) cuaderno(s)."
+            case (0, 0): importMessage = "No había libretas nuevas que añadir."
+            case (let n, 0): importMessage = "Se han añadido \(n) libreta(s)."
             case (0, let g): importMessage = "Se han añadido \(g) grupo(s)."
-            case (let n, let g): importMessage = "Se han añadido \(n) cuaderno(s) y \(g) grupo(s)."
+            case (let n, let g): importMessage = "Se han añadido \(n) libreta(s) y \(g) grupo(s)."
             }
         } catch {
             importMessage = "No se pudo leer el archivo: \(error.localizedDescription)"

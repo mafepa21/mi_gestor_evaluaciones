@@ -39,7 +39,7 @@ struct GroupDialogs: ViewModifier {
                 if let nb = state.pendingNotebook {
                     Text(verbatim: "«\(nb.title.isEmpty ? "Sin título" : nb.title)» se guardará en el grupo nuevo.")
                 } else {
-                    Text("Reúne cuadernos de un mismo tema en una balda o un montón.")
+                    Text("Reúne libretas de un mismo tema en una balda o un montón.")
                 }
             }
             .alert("Renombrar grupo", isPresented: Binding(get: { state.renaming != nil },
@@ -62,7 +62,7 @@ struct GroupDialogs: ViewModifier {
                 }
                 Button("Cancelar", role: .cancel) { state.deleting = nil }
             } message: {
-                Text("Los cuadernos no se borran: pasan a «Sueltos».")
+                Text("Las libretas no se borran: pasan a «Sin grupo».")
             }
     }
 

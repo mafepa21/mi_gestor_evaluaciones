@@ -237,8 +237,10 @@ struct NotebookReaderView: View {
         let isBookmarked = page(at: focusedPage)?.isBookmarked == true
         return HStack(alignment: .center, spacing: 12) {
             FloatingBar {
-                Button { dismiss() } label: { Image(systemName: "chevron.left") }
-                    .accessibilityLabel("Biblioteca")
+                Button { dismiss() } label: { Label("Estantería", systemImage: "chevron.left") }
+                    .buttonStyle(ToolbarLabelButtonStyle())
+                    .accessibilityLabel("Volver a la estantería")
+                    .keyboardShortcut(.cancelAction)
                 Text(notebook.title.isEmpty ? "Sin título" : notebook.title)
                     .font(Theme.Fonts.headline)
                     .foregroundStyle(Theme.ink)

@@ -58,7 +58,7 @@ struct NotebookCoverView: View {
         .shadow(color: Theme.shadow, radius: size.width * 0.035, x: size.width * 0.01, y: size.width * 0.025)
         .shadow(color: Theme.shadow, radius: 0.8, x: 0, y: 0.5)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Cuaderno \(title)"))
+        .accessibilityLabel(Text("Libreta \(title)"))
     }
 
     // MARK: Piezas
@@ -219,7 +219,7 @@ struct NewNotebookCoverView: View {
             VStack(spacing: size.width * 0.05) {
                 Image(systemName: "plus")
                     .font(.system(size: max(14, size.width * 0.16), weight: .light))
-                Text("Nuevo cuaderno")
+                Text("Nueva libreta")
                     .font(Theme.Fonts.serif(max(11, size.width * 0.085)))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -231,7 +231,7 @@ struct NewNotebookCoverView: View {
         .frame(width: size.width, height: size.height)
         .contentShape(shape)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Nuevo cuaderno"))
+        .accessibilityLabel(Text("Nueva libreta"))
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -265,7 +265,7 @@ struct NewNotebookCoverView: View {
     .background(ShelfBackground())
 }
 
-#Preview("Nuevo cuaderno") {
+#Preview("Nueva libreta") {
     NewNotebookCoverView(size: CGSize(width: 170, height: 236))
         .padding(40)
         .background(ShelfBackground())

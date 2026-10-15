@@ -23,7 +23,7 @@ struct ExportSheet: View {
                     switch scope {
                     case .notebook(let nb, let current):
                         Button { makePDF(nb, pages: nb.sortedPages, name: nb.title) } label: {
-                            ExportRow(title: "PDF del cuaderno completo",
+                            ExportRow(title: "PDF de la libreta completa",
                                       detail: nb.pageList.count == 1 ? "1 hoja" : "\(nb.pageList.count) hojas, lista para imprimir o enviar",
                                       systemImage: "doc.richtext")
                         }
@@ -35,12 +35,12 @@ struct ExportSheet: View {
                             }
                         }
                         Button { makeBackup([nb], name: "\(nb.title).cuaderno") } label: {
-                            ExportRow(title: "Copia de seguridad del cuaderno",
+                            ExportRow(title: "Copia de seguridad de la libreta",
                                       detail: "Archivo que se puede restaurar desde la biblioteca",
                                       systemImage: "archivebox")
                         }
                     case .library(let all, let groups):
-                        Button { makeBackup(all, groups: groups, name: "Cuadernos-\(Date.now.formatted(.iso8601.year().month().day()))") } label: {
+                        Button { makeBackup(all, groups: groups, name: "Libretas-\(Date.now.formatted(.iso8601.year().month().day()))") } label: {
                             ExportRow(title: "Copia de seguridad de la biblioteca",
                                       detail: libraryDetail(notebooks: all.count, groups: groups.count),
                                       systemImage: "archivebox")
@@ -118,7 +118,7 @@ struct ExportSheet: View {
     }
 
     private func libraryDetail(notebooks: Int, groups: Int) -> String {
-        let nbs = notebooks == 1 ? "1 cuaderno" : "\(notebooks) cuadernos"
+        let nbs = notebooks == 1 ? "1 libreta" : "\(notebooks) libretas"
         switch groups {
         case 0: return notebooks == 1 ? nbs : "\(nbs), con tinta y objetos"
         case 1: return "\(nbs) y 1 grupo, con tinta y objetos"

@@ -4,7 +4,7 @@
 - **Rama:** `codex/libreta-integrada` (worktree `.worktrees/libreta-integrada`, desde `origin/main` en `cba6611a`).
 - **Maqueta aprobada:** `docs/mockups/libreta/mockup/index.html` (aprobada por el usuario el 2026-10-15).
 - **Origen del código:** repo `mafepa21/Notebook-`, commit `237e847` (2026-09-29), carpeta `Cuadernos.swiftpm/Sources`.
-- **Estado:** pendiente de «APROBADO».
+- **Estado:** aprobado el 2026-10-15 y ejecutado en la rama. Falta QA en iPad.
 
 ## 1. Objetivo y contexto
 
@@ -80,7 +80,7 @@ Llevar la app Cuadernos (libretas de papel para iPad con Apple Pencil) dentro de
   - `normalizedModule`: `.libreta` fuera de iPad vuelve a `.dashboard`.
 - `WorkspaceSidebar.swift`: `.libreta` en Planificación, tras `.diary`.
 - `WorkspaceModuleSwitcher.swift` y `WorkspaceLayoutState+Extensions.swift`: añadir el caso.
-- `MacApp/MacRootView.swift`: `.libreta` en los dos `switch` (vista vacía y color). `MacFeatureRegistry` no lo lista.
+- `MacApp/MacRootView.swift`: sin cambios al final (usa `MacFeature` y `default`). `MacFeatureRegistry` no lo lista.
 
 ### Fase D · Registro
 

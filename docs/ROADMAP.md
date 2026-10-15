@@ -93,6 +93,9 @@ Prioridad: alta.
   Avance: el inspector presenta `EarlyWarning` como señal preventiva revisable y no como diagnóstico, con confianza cualitativa y procedencia visible.
 - Agentes educativos internos: agrupar capacidades de Tutor, Evaluador y EF sin interfaz de chat.
   Avance: `AppleAIOrchestrator` completa el router tipado con catálogo de capacidades, trazabilidad y consumo desde Cuaderno/EF sobre servicios estructurados ya implementados.
+- Libreta (iPad): notas a mano con Apple Pencil dentro de la app.
+  Avance: la app Cuadernos entra como módulo «Libreta» en Planificación, con datos propios en SwiftData (ver `ADR-2026-10-15-libreta-swiftdata-propia.md`).
+  Pendiente fase 2: ligar libreta a grupo («Abrir libreta del grupo» desde Diario o Planner) y meter las libretas en las copias de Seguridad.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.
   Avance P1: foco, IA y recargas dejan de competir con la acción principal en la toolbar iPad y pasan a divulgación progresiva; el Dashboard concentra el peso visual en "Acción principal".

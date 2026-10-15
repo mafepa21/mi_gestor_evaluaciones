@@ -13,6 +13,24 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- **Libreta: libretas a mano con Apple Pencil dentro de la app (solo iPad)**: la app Cuadernos entra como módulo «Libreta», en Planificación, justo debajo de «Diario de aula». Estantería y montones van dentro del panel, con la barra lateral y la barra de la app. Al tocar una libreta, el lector se abre a pantalla completa; «Estantería» vuelve. Se conserva todo lo de Cuadernos: escritura con PencilKit, paso de hoja, miniaturas, marcapáginas, objetos, plantillas de hoja, búsqueda de manuscrito, PDF y copia JSON. Botones y menús usan el azul de la app; papel, tapas y madera no cambian. Estado vacío con «Traer de Cuadernos» para importar la copia de la app antigua. En iPhone y Mac el módulo no aparece.
+
+### Data
+
+- **Libreta con base de datos propia**: SwiftData en su propio archivo (`Libreta.store`), sin iCloud y fuera de KMP/SQLDelight. Se abre al entrar en el módulo, no al arrancar la app. Si falla, aviso con «Reintentar», sin borrar nada. Ver `ADR-2026-10-15-libreta-swiftdata-propia.md`.
+
+### Docs
+
+- Maqueta aprobada (`docs/mockups/libreta/mockup/index.html`), ticket (`docs/planes/ticket_libreta_integrada_2026-10-15.md`) y ámbito (`docs/ambitos/libreta.md`) de la Libreta.
+
+### Verification
+
+- `xcodebuild` `MiGestorKMPiOS` para `generic/platform=iOS Simulator`: compila.
+- `xcodebuild` `MiGestorKMPMac` para `arm64`: compila. Para `x86_64` falla al enlazar porque el `MiGestorKit` local solo trae arm64 (fallo del entorno, no del código de este cambio; no se comprobó en `main`).
+- No se ha abierto la app: este Mac no tiene ningún simulador de iOS instalado. Falta la QA en iPad (simulador o real) y la prueba con Apple Pencil.
+
 ## [0.3.1] - 2026-10-14
 
 ### Changed

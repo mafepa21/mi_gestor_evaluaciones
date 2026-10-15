@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta viva: Libreta fase 2</title>
+<style>
+:root{
+  --s1:.5rem;--s2:1rem;--s3:1.5rem;--s4:2rem;
+  --bg:#f2f2f7;--card:#fff;--card2:#f7f7fa;--fg:#1c1c1e;--mut:#5b5b62;--line:rgba(60,60,67,.18);
+  --acc:#0060df;--acc-fg:#fff;--acc-bg:rgba(0,96,223,.10);--red:#c4231a;--grn:#1d7a3a;--grn-bg:rgba(29,122,58,.11);
+  --glass:rgba(255,255,255,.62);--glass-b:rgba(255,255,255,.8);--glass-s:rgba(0,0,0,.10);
+  --desk:#EDE6DA;--paper:#FBF8F1;--ink:#2B2622;--ink2:#6B6054;--rule:#8FA8C2;--reader:#E4DCCD;
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#000;--card:#1c1c1e;--card2:#242427;--fg:#f5f5f7;--mut:#a5a5ad;--line:rgba(235,235,245,.18);
+  --acc:#4da3ff;--acc-fg:#001a33;--acc-bg:rgba(77,163,255,.16);--red:#ff7b73;--grn:#5fd07f;--grn-bg:rgba(95,208,127,.15);
+  --glass:rgba(60,60,67,.6);--glass-b:rgba(255,255,255,.22);--glass-s:rgba(0,0,0,.5);
+  --desk:#1D1A17;--paper:#E9E3D5;--ink:#EFE8DC;--ink2:#A89E91;--reader:#151311;}}
+:root[data-theme=dark]{
+  --bg:#000;--card:#1c1c1e;--card2:#242427;--fg:#f5f5f7;--mut:#a5a5ad;--line:rgba(235,235,245,.18);
+  --acc:#4da3ff;--acc-fg:#001a33;--acc-bg:rgba(77,163,255,.16);--red:#ff7b73;--grn:#5fd07f;--grn-bg:rgba(95,208,127,.15);
+  --glass:rgba(60,60,67,.6);--glass-b:rgba(255,255,255,.22);--glass-s:rgba(0,0,0,.5);
+  --desk:#1D1A17;--paper:#E9E3D5;--ink:#EFE8DC;--ink2:#A89E91;--reader:#151311;}
+*{box-sizing:border-box}
+body{margin:0;font:.9375rem/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:.125rem solid var(--acc);outline-offset:.125rem}
+h1,h2,h3,p{margin:0}
+.serif{font-family:"New York",ui-serif,Georgia,serif}
+.mut{color:var(--mut)}
+.lab{position:sticky;top:0;z-index:5;display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;padding:var(--s1) var(--s2);background:var(--card);border-bottom:1px solid var(--line)}
+.lab h1{font-size:1.0625rem;flex:1}
+.chip{min-height:2.75rem;padding:0 var(--s2);border-radius:999px;border:1px solid var(--line);background:var(--card2)}
+.chip[aria-pressed=true]{background:var(--acc);color:var(--acc-fg);border-color:transparent;font-weight:600}
+main{max-width:76rem;margin:0 auto;padding:var(--s3) var(--s2) var(--s4);display:grid;grid-template-columns:repeat(auto-fit,minmax(21rem,1fr));gap:var(--s3)}
+.panel{display:grid;gap:var(--s1);align-content:start}
+.panel>h2{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
+.panel>p.why{font-size:.8125rem;color:var(--mut)}
+.stage{position:relative;border-radius:1.25rem;overflow:hidden;border:1px solid var(--line);min-height:19rem;padding:var(--s2)}
+.desk{background:var(--desk)}
+.reader{background:var(--reader)}
+.app{background:var(--bg)}
+.glass{background:var(--glass);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid var(--glass-b);box-shadow:0 2px 10px var(--glass-s)}
+.menu{position:absolute;min-width:15rem;padding:.5rem;border-radius:1.125rem}
+.menu button,.menu .it{display:flex;width:100%;align-items:center;gap:var(--s1);min-height:2.75rem;padding:0 var(--s1);border:0;background:none;border-radius:.625rem;text-align:left}
+.menu .it:hover,.menu button:hover{background:var(--acc-bg)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:.25rem 0}
+.menu .sel::after{content:"✓";margin-left:auto;color:var(--acc);font-weight:700}
+.menu .sub::after{content:"›";margin-left:auto;color:var(--mut)}
+.menu .on{background:var(--acc-bg)}
+.menu .danger{color:var(--red)}
+.ic{width:1.125rem;text-align:center;color:var(--mut)}
+.spine{position:absolute;bottom:2.75rem;width:2.5rem;border-radius:.1875rem .1875rem 0 0;display:grid;place-items:center}
+.spine span{writing-mode:vertical-rl;transform:rotate(180deg);color:#fff;font-size:.8125rem}
+.plank{position:absolute;left:0;right:0;bottom:1.5rem;height:1.25rem;background:linear-gradient(#D4AD84 0 .375rem,#B88A5F .375rem)}
+.sheet{background:var(--bg);border-radius:1.25rem;box-shadow:0 1rem 3rem rgba(0,0,0,.2);overflow:hidden}
+.sheet header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:.25rem var(--s1);border-bottom:1px solid var(--line)}
+.sheet header h3{font-size:1.0625rem}
+.lnk{min-height:2.75rem;padding:0 var(--s2);border:0;background:none;color:var(--acc)}
+.lnk.b{font-weight:600;justify-self:end}
+.body{padding:var(--s2);display:grid;gap:var(--s2)}
+.fh{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:0 0 .375rem var(--s2)}
+.group{background:var(--card);border-radius:.875rem;overflow:hidden}
+.row{display:flex;align-items:center;gap:var(--s2);min-height:2.75rem;padding:0 var(--s2)}
+.row+.row{border-top:1px solid var(--line)}
+.row .v{margin-left:auto;color:var(--mut)}
+.row .v.acc{color:var(--acc)}
+.foot{font-size:.8125rem;color:var(--mut);margin:.375rem var(--s2) 0}
+.rbar{display:flex;align-items:center;gap:var(--s1);padding:.375rem;border-radius:1.375rem}
+.btn{min-height:2.75rem;min-width:2.75rem;padding:0 var(--s2);border-radius:.875rem;border:0;background:none;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:.375rem}
+.btn.primary{background:var(--acc);color:var(--acc-fg)}
+.btn.quiet{border:1px solid var(--line)}
+.title{flex:1;text-align:center;display:grid;line-height:1.2}
+.title b{font-size:1.0625rem}
+.pill{justify-self:center;display:inline-flex;align-items:center;gap:.25rem;margin-top:.125rem;padding:.125rem .5rem;border-radius:999px;background:var(--acc-bg);color:var(--acc);font-size:.75rem;font-weight:600}
+.page{margin:var(--s2) auto 0;width:70%;aspect-ratio:.72;max-height:13rem;background:repeating-linear-gradient(transparent 0 1.1rem,var(--rule) 1.1rem calc(1.1rem + 1px)) 0 2.2rem/100% 100% no-repeat,var(--paper);border-radius:.25rem}
+.insp{background:var(--card);border-radius:1rem;padding:var(--s2);display:grid;gap:var(--s1)}
+.insp h3{font-size:1.0625rem}
+.act{display:flex;align-items:center;gap:var(--s1);min-height:2.75rem;padding:0 var(--s1);border-radius:.625rem;border:0;background:var(--card2);text-align:left;width:100%}
+.act.new{outline:1.5px solid var(--acc)}
+.act .ic{color:var(--acc)}
+.tag{margin-left:auto;font-size:.6875rem;font-weight:700;color:var(--acc)}
+.alert{width:17.5rem;margin:var(--s3) auto 0;background:var(--card);border-radius:1.25rem;text-align:center;overflow:hidden;box-shadow:0 1rem 3rem rgba(0,0,0,.2)}
+.alert .tx{padding:var(--s3) var(--s2) var(--s2);display:grid;gap:.375rem}
+.alert .tx p{font-size:.8125rem;color:var(--mut)}
+.alert .ab{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+.alert .ab button{min-height:2.75rem;border:0;background:none;color:var(--acc)}
+.alert .ab button+button{border-left:1px solid var(--line);font-weight:600}
+.pills{display:flex;flex-wrap:wrap;gap:.375rem}
+.cp{display:inline-flex;gap:.25rem;align-items:center;padding:.25rem .5rem;border-radius:999px;background:var(--card2);font-size:.75rem}
+.cp.new{background:var(--acc-bg);color:var(--acc);font-weight:600}
+.cmp{display:grid;grid-template-columns:1fr auto auto;gap:.25rem var(--s2);font-size:.8125rem}
+.cmp b{font-weight:600}
+.note{display:flex;gap:var(--s1);padding:var(--s1) var(--s2);border-radius:.75rem;background:var(--acc-bg);font-size:.8125rem}
+.notes{max-width:76rem;margin:0 auto;padding:0 var(--s2) var(--s4)}
+.notes section{background:var(--card);border-radius:1.25rem;padding:var(--s3)}
+.notes ul{margin:var(--s1) 0 0;padding-left:var(--s3);display:grid;gap:.25rem}
+</style></head>
+<body>
+<div class="lab"><h1>Libreta fase 2 · clase y copias</h1>
+  <button class="chip" data-t="auto" aria-pressed="true">Auto</button>
+  <button class="chip" data-t="light" aria-pressed="false">Claro</button>
+  <button class="chip" data-t="dark" aria-pressed="false">Oscuro</button>
+</div>
+
+<main>
+  <!-- 1 -->
+  <section class="panel">
+    <h2>1 · Ligar una libreta a una clase</h2>
+    <div class="stage desk">
+      <div class="spine" style="left:1.5rem;height:10rem;background:#2F4C78"><span class="serif">Sesiones voleibol</span></div>
+      <div class="spine" style="left:4.5rem;height:9rem;background:#A3383A"><span class="serif">Tutoría 2º B</span></div>
+      <div class="plank"></div>
+      <div class="menu glass" style="left:6.5rem;top:1rem;min-width:13rem" role="menu">
+        <div class="it"><span class="ic">📖</span>Abrir</div>
+        <div class="it"><span class="ic">✎</span>Renombrar</div>
+        <div class="it sub"><span class="ic">▤</span>Mover a grupo…</div>
+        <div class="it sub on"><span class="ic">👥</span>Clase: 2º ESO B</div>
+        <div class="it"><span class="ic">⇪</span>Exportar</div>
+        <hr><div class="it danger"><span class="ic">🗑</span>Eliminar</div>
+      </div>
+      <div class="menu glass" style="right:.75rem;top:8.5rem;min-width:10rem" role="menu" aria-label="Clase">
+        <div class="it">Ninguna</div><hr>
+        <div class="it">1º ESO A</div>
+        <div class="it sel">2º ESO B</div>
+        <div class="it">3º ESO C</div>
+      </div>
+    </div>
+    <p class="why">«Grupo» sigue siendo la balda de la Libreta. La clase de Mi Gestor se llama «Clase» para no confundirlas.</p>
+  </section>
+
+  <!-- 2 -->
+  <section class="panel">
+    <h2>2 · Nueva libreta con clase</h2>
+    <div class="stage app" style="padding:var(--s2) var(--s3)">
+      <div class="sheet">
+        <header><button class="lnk">Cancelar</button><h3>Nueva libreta</h3><button class="lnk b">Crear</button></header>
+        <div class="body">
+          <div><p class="fh">Libreta</p><div class="group">
+            <div class="row">Tutoría 2º B</div>
+            <div class="row">Grupo<span class="v">Tutoría y centro</span></div>
+            <div class="row">Clase<span class="v acc">2º ESO B ▾</span></div>
+          </div><p class="foot">Opcional. Desde el Diario y el Planner de esa clase podrás abrirla.</p></div>
+        </div>
+      </div>
+    </div>
+    <p class="why">Al crearla desde el Diario o el Planner, la clase ya viene puesta y el título es el de la clase.</p>
+  </section>
+
+  <!-- 3 -->
+  <section class="panel">
+    <h2>3 · Lector: se ve la clase</h2>
+    <div class="stage reader">
+      <div class="rbar glass">
+        <button class="btn">‹ Estantería</button>
+        <div class="title"><b class="serif">Tutoría 2º B</b><span class="pill">2º ESO B</span></div>
+        <button class="btn" aria-label="Más">•••</button>
+      </div>
+      <div class="page"></div>
+    </div>
+    <p class="why">Una etiqueta pequeña bajo el título. Sin clase, no sale nada.</p>
+  </section>
+
+  <!-- 4 -->
+  <section class="panel">
+    <h2>4 · Diario de aula: abrir la libreta</h2>
+    <div class="stage app">
+      <div class="insp">
+        <h3>Voleibol · Sesión 4</h3>
+        <p class="mut">2º ESO B · Martes · 10:00</p>
+        <button class="act"><span class="ic">✓</span>Ir a asistencia</button>
+        <button class="act"><span class="ic">▦</span>Abrir cuaderno</button>
+        <button class="act new"><span class="ic">✎</span>Abrir libreta<span class="tag">Nuevo</span></button>
+        <button class="act"><span class="ic">👥</span>Ver alumnado</button>
+      </div>
+    </div>
+    <p class="why">Abre a pantalla completa la última libreta usada de esa clase. Solo en iPad.</p>
+  </section>
+
+  <!-- 5 -->
+  <section class="panel">
+    <h2>5 · Planner: menú de la sesión</h2>
+    <div class="stage app">
+      <div style="display:flex;gap:var(--s1);justify-content:flex-end">
+        <button class="btn primary">▶ Abrir ejecución</button>
+        <button class="btn quiet" aria-label="Más acciones">•••</button>
+      </div>
+      <div class="menu glass" style="right:1rem;top:4.25rem" role="menu">
+        <div class="it"><span class="ic">✎</span>Editar</div>
+        <div class="it"><span class="ic">⧉</span>Duplicar</div>
+        <div class="it on"><span class="ic">📓</span>Abrir libreta de la clase</div>
+        <hr><div class="it danger"><span class="ic">🗑</span>Eliminar</div>
+      </div>
+    </div>
+    <p class="why">Va dentro de «•••»: no compite con «Abrir ejecución», que sigue siendo la acción principal.</p>
+  </section>
+
+  <!-- 6 -->
+  <section class="panel">
+    <h2>6 · La clase aún no tiene libreta</h2>
+    <div class="stage app" style="background:rgba(0,0,0,.18)">
+      <div class="alert" role="alertdialog">
+        <div class="tx"><h3>2º ESO B no tiene libreta</h3><p>Crea una ligada a esta clase. Podrás escribir en ella enseguida.</p></div>
+        <div class="ab"><button>Cancelar</button><button>Crear libreta</button></div>
+      </div>
+    </div>
+    <p class="why">«Crear libreta» la crea con el nombre de la clase y la abre a pantalla completa.</p>
+  </section>
+
+  <!-- 7 -->
+  <section class="panel">
+    <h2>7 · Copias de Seguridad: historial</h2>
+    <div class="stage app">
+      <div class="insp">
+        <h3>Copia del 15 oct, 18:42</h3>
+        <p class="mut">iPad · 42 MB</p>
+        <div class="pills">
+          <span class="cp">📁 Clases 6</span><span class="cp">👥 Alumnos 142</span><span class="cp">▦ Columnas 88</span>
+          <span class="cp new">📓 Libretas 12</span>
+        </div>
+      </div>
+    </div>
+    <p class="why">La copia del iPad guarda también las libretas. Una copia hecha en el Mac no las lleva y no sale la etiqueta.</p>
+  </section>
+
+  <!-- 8 -->
+  <section class="panel">
+    <h2>8 · Restaurar: qué pasa con las libretas</h2>
+    <div class="stage app">
+      <div class="insp">
+        <h3>Antes de restaurar</h3>
+        <div class="cmp"><span></span><b>Ahora</b><b>Copia</b>
+          <span>Clases</span><span>6</span><span>6</span>
+          <span>Libretas</span><span>14</span><span>12</span></div>
+        <div class="note"><span>ℹ︎</span><span>Las libretas volverán a como estaban en la copia. Si la copia no trae libretas, las de ahora se quedan como están.</span></div>
+      </div>
+    </div>
+    <p class="why">Antes de restaurar se hace una copia de emergencia, como ahora, que también incluye las libretas.</p>
+  </section>
+</main>
+
+<div class="notes"><section>
+  <h2>Decisiones</h2>
+  <ul>
+    <li>La libreta guarda solo el número de la clase. El nombre se lee de Mi Gestor cada vez.</li>
+    <li>Si se borra la clase, la libreta se queda sin clase y no se borra nada.</li>
+    <li>Una clase puede tener varias libretas. «Abrir libreta» abre la última que se usó.</li>
+    <li>Copias: se guarda la base de la Libreta y sus dibujos e imágenes. Restaurar la sustituye entera y pide reiniciar, igual que el resto.</li>
+    <li>Todo esto es solo iPad. En iPhone y Mac no aparece ningún botón nuevo.</li>
+  </ul>
+</section></div>
+<script>
+document.querySelectorAll('.lab .chip').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.lab .chip').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  if(b.dataset.t==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.dataset.theme=b.dataset.t;
+});
+</script>
+</body></html>

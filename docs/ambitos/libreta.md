@@ -6,7 +6,7 @@
 - Origen: app Cuadernos (`mafepa21/Notebook-`, commit `237e847`). Copiada tal cual; solo cambia el chrome (barra de la app, acento azul, textos «libreta»).
 - Solo iPad, en Planificación tras «Diario de aula». No aparece en iPhone ni en Mac.
 - Compila en iOS simulador y en Mac arm64. Sin QA en ejecución todavía (no hay simuladores instalados) ni prueba con Apple Pencil.
-- Fase 2 (fuera del ticket): ligar libreta a grupo y meterla en las copias de Seguridad.
+- Fase 2 (`codex/libreta-fase2`, ticket `docs/planes/ticket_libreta_fase2_2026-10-15.md`): libretas ligadas a una clase y abiertas desde el Diario y el Planner; Libreta dentro de las copias de Seguridad del iPad. Sin probar en ejecución.
 
 ## Terreno de juego
 
@@ -15,6 +15,8 @@
   - `IPadWorkspaceShell.swift` (solo el enum `AppWorkspaceModule`);
   - `IOSFeatureRegistry.swift`, `IOSRootView.swift`, `WorkspaceSidebar.swift`;
   - `WorkspaceModuleSwitcher.swift`, `WorkspaceLayoutState+Extensions.swift`.
+  - Fase 2: `DiaryWorkspaceView.swift` (inspector), `PlannerSessionDetailSheet.swift` y `PlannerWorkspaceIOS.swift` (`onOpenLibreta` opcional).
+  - Copias: `AppleShared/LibretaBackupSupport.swift`, `AppleBackupService.swift`, `AppleBackupModels.swift`, `BackupHistoryList.swift`, `BackupRestorePreviewSheet.swift`.
   - `MacApp/` no necesita cambios: usa su propio `MacFeature` y sus `switch` sobre el módulo tienen `default`.
 - `kmp/iosApp/project.yml`: exclusión `Libreta/**` en el target `MiGestorKMPMac`.
 
@@ -37,3 +39,8 @@
 - El target de Mac para `x86_64` no enlaza en local: el `MiGestorKit` de `Frameworks/macos` solo trae arm64. Compilar con `-destination 'platform=macOS,arch=arm64' ARCHS=arm64`.
 - En este Mac no hay simuladores de iOS instalados (`xcrun simctl list runtimes` vacío): solo se puede compilar con `generic/platform=iOS Simulator`.
 - `xcodegen` y `xcodebuild` necesitan salir del sandbox (escriben en la carpeta temporal del sistema).
+- «Grupo» en la Libreta es la balda (`NotebookGroup`). La clase de Mi Gestor es «Clase» (`linkedClassId`). No mezclar los nombres en la interfaz.
+- Las clases llegan a la Libreta por el entorno (`\.libretaClasses`, puesto en `IOSRootView`). Fuera de ahí la lista está vacía y el menú «Clase» no sale.
+- Abrir desde Diario o Planner pasa por `LibretaStore.openForClass`; la petición la atiende `LibraryView` al aparecer o al cambiar. Si se añade otra entrada, usar el mismo camino.
+- Copias: la Libreta solo se restaura si `checksums.json` tiene `libreta/Libreta.sqlite`. Nunca quitar esa condición, o una copia del Mac borraría las libretas del iPad.
+- `getRelativeFiles` salta los ficheros ocultos: por eso `.Libreta_SUPPORT` se guarda en el paquete como `libreta/support`.

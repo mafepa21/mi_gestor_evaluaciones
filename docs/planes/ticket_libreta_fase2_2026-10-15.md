@@ -3,7 +3,7 @@
 - **Tamaño:** L (toca copias de Seguridad, cambia el modelo SwiftData y engancha tres módulos).
 - **Rama:** `codex/libreta-fase2` (worktree `.worktrees/libreta-fase2`), cortada de `codex/libreta-integrada` (`98a21d49`), porque la fase 1 aún no está en `main`. Su PR va después del de la fase 1.
 - **Maqueta:** `docs/mockups/libreta-fase2/mockup/index.html`.
-- **Estado:** pendiente de «APROBADO».
+- **Estado:** aprobado el 2026-10-15 y ejecutado en la rama. Falta QA en iPad.
 
 ## 1. Objetivo y contexto
 
@@ -47,7 +47,7 @@ Nombres: en la Libreta, «Grupo» sigue siendo la balda. La clase de Mi Gestor s
 - **SwiftData (`Notebook`):** `var linkedClassId: Int64? = nil`. Atributo opcional nuevo: SwiftData lo migra solo (migración ligera), sin perder datos.
 - **Clases:** solo se guarda el número. El nombre se lee de Mi Gestor (`shellStore.classes`) cada vez. Si la clase ya no existe, la libreta se trata como «sin clase». No se borra nada.
 - **Ruta de la base:** `LibretaStorage.storeURL` fija la ruta (Application Support/`Libreta.store`, la misma que hoy usa SwiftData por defecto). La usan la Libreta y el servicio de copias.
-- **Paquete de copia:** carpeta nueva `libreta/` con `Libreta.sqlite` y `_SUPPORT/` (copia de `.Libreta_SUPPORT`). Claves nuevas en `checksums.json`: `libreta/...`.
+- **Paquete de copia:** carpeta nueva `libreta/` con `Libreta.sqlite` y `support/` (copia de `.Libreta_SUPPORT`). Claves nuevas en `checksums.json`: `libreta/...`.
 - **Manifiesto:** `AppleBackupSummary.libretaCount: Int?` (opcional: las copias viejas se siguen leyendo). Se cuenta en la tabla `ZNOTEBOOK` de la instantánea.
 
 ## 5. Plan

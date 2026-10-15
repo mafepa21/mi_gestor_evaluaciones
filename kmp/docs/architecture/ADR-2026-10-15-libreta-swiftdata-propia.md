@@ -22,6 +22,13 @@ Los dibujos e imágenes son datos binarios grandes que solo usa iPad. Ningún ot
 ## Consecuencias
 
 - La Libreta solo existe en iPad. El target de Mac excluye `App/Libreta/**`.
-- Las libretas no viajan por SyncLAN y no entran en las copias de Seguridad de Mi Gestor. Hasta la fase 2, su copia es la propia JSON del módulo.
-- Ligar una libreta a un grupo de Mi Gestor (fase 2) exigirá guardar un identificador de grupo en SwiftData, sin relación real con SQLDelight.
+- Las libretas no viajan por SyncLAN.
 - Si en el futuro se quisiera sincronizar o respaldar junto al resto, habrá que decidir entre exportar a la copia de Mi Gestor o pasar a iCloud (CloudKit). El esquema ya es compatible con CloudKit.
+
+## Ampliación fase 2 (2026-10-15)
+
+- **Clase:** `Notebook.linkedClassId: Int64?` guarda solo el número de la clase de Mi Gestor. El nombre se lee cada vez de `shellStore.classes`; si la clase ya no existe, la libreta se trata como «sin clase». No hay relación real con SQLDelight.
+- **Ruta fija:** `LibretaStorage` (AppleShared) fija `Application Support/Libreta.store`, la misma ruta que SwiftData usaba por defecto. La comparten la Libreta y el servicio de copias.
+- **Copias:** el paquete `.migestorbackup` del iPad lleva `libreta/Libreta.sqlite` (instantánea con la API de copia de SQLite) y `libreta/support/` (copia de `.Libreta_SUPPORT`, donde Core Data guarda los datos grandes). Todo entra en `checksums.json`. Restaurar solo instala la Libreta si `checksums.json` tiene `libreta/Libreta.sqlite`, y lo hace en la misma `AppleBackupRestoreTransaction`. Sin esa clave, la Libreta activa no se toca.
+- **Compatibilidad:** `AppleBackupSummary.libretaCount` es opcional: las copias antiguas se siguen leyendo. El Mac (`isSupportedOnThisPlatform == false`) ni guarda ni restaura libretas.
+- **Riesgo aceptado:** el nombre `.Libreta_SUPPORT` es interno de Core Data. Si cambiara, las copias perderían dibujos e imágenes grandes. Hay que comprobarlo en un iPad real.

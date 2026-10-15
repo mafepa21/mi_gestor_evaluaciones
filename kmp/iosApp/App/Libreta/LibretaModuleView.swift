@@ -1,49 +1,6 @@
 import SwiftUI
 import SwiftData
 
-/// Base de datos de la Libreta: SwiftData en su propio archivo (`Libreta.store`),
-/// separada de la base de KMP/SQLDelight. Se abre la primera vez que se entra en el
-/// módulo, así no frena el arranque de la app.
-@MainActor
-final class LibretaStore: ObservableObject {
-    static let shared = LibretaStore()
-
-    enum State {
-        case loading
-        case ready(ModelContainer)
-        case failed
-    }
-
-    @Published private(set) var state: State = .loading
-
-    private init() {}
-
-    func loadIfNeeded() {
-        if case .ready = state { return }
-        load()
-    }
-
-    func retry() {
-        state = .loading
-        // Un respiro para que se vea que se está reintentando.
-        Task {
-            try? await Task.sleep(for: .milliseconds(300))
-            load()
-        }
-    }
-
-    private func load() {
-        let schema = Schema([Notebook.self, NotebookGroup.self, Page.self, PageElement.self])
-        let config = ModelConfiguration("Libreta", schema: schema)
-        do {
-            state = .ready(try ModelContainer(for: schema, configurations: config))
-        } catch {
-            // Sin fatalError: el archivo sigue ahí y se puede reintentar.
-            state = .failed
-        }
-    }
-}
-
 /// Módulo «Libreta» de Mi Gestor: la estantería de Cuadernos dentro del panel de detalle.
 /// El lector se abre a pantalla completa desde `LibraryView`.
 struct LibretaModuleView: View {

@@ -45,14 +45,14 @@ struct LibraryView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 230)
                     .disabled(isSearching || isEmptyLibrary)
-                    .accessibilityLabel("Vista de la biblioteca")
+                    .accessibilityLabel("Vista de la estantería")
 
                     Menu {
                         Button("Nuevo grupo", systemImage: "square.stack.3d.up") {
                             groupDialog.beginCreate(with: nil)
                         }
                         Divider()
-                        Button("Copia de seguridad de la biblioteca…", systemImage: "archivebox") {
+                        Button("Copia de seguridad de todas las libretas…", systemImage: "archivebox") {
                             showingExport = .library(notebooks, groups: groups)
                         }
                         Button("Restaurar o traer de Cuadernos…", systemImage: "square.and.arrow.down") {

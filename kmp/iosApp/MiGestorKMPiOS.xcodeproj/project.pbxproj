@@ -448,6 +448,7 @@
 		9B35E3F2A1902328316396AA /* ScheduleImportModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85AD42D18AFCD452127D549 /* ScheduleImportModels.swift */; };
 		9B9E77209733E8409CF0EA12 /* PhysicalTestScaleEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEAFA7B950CAE267617F3C4 /* PhysicalTestScaleEditor.swift */; };
 		9C0A4239D7D82AD24E2E476C /* PlannerWorkspaceViewModel+Report.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16469D20A02679E669EF5AFE /* PlannerWorkspaceViewModel+Report.swift */; };
+		9C7673B2979FFCA1859AE289 /* LibretaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74A032241176234889A5279C /* LibretaStore.swift */; };
 		9D01F457DE02D070677CF7CC /* AppleSharedBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */; };
 		9DBAC0638928BB61794F3584 /* NotebookModuleQuickKeypad.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC4FA91E783D30DECEFCF17B /* NotebookModuleQuickKeypad.swift */; };
 		9E58C9D4FBE1D8D5C15718AB /* EducationalPatternsClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = 2FF82C9CFA92B54E8B91CEDB /* EducationalPatternsClassifier.mlmodel */; };
@@ -959,6 +960,7 @@
 		72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingEvaluationPickerSheet.swift; sourceTree = "<group>"; };
 		731B64EEED706F209FBB0774 /* NotebookCellStampPickerPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookCellStampPickerPopover.swift; sourceTree = "<group>"; };
 		73E80A05F8F203CF9F01667C /* PlannerFloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerFloatingTabBar.swift; sourceTree = "<group>"; };
+		74A032241176234889A5279C /* LibretaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibretaStore.swift; sourceTree = "<group>"; };
 		74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadWorkspaceShell.swift; sourceTree = "<group>"; };
 		7584348C117723D12BC316D2 /* DashboardHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHeaderView.swift; sourceTree = "<group>"; };
 		75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacCommandCenterCoordinator.swift; sourceTree = "<group>"; };
@@ -1524,6 +1526,7 @@
 			isa = PBXGroup;
 			children = (
 				184F5F99594B70E287DD11F3 /* LibretaModuleView.swift */,
+				74A032241176234889A5279C /* LibretaStore.swift */,
 				4CEF804C2362E6B2EF0ED142 /* Design */,
 				7E21C933E9BEBF05304ED898 /* Library */,
 				5CB4F934E298C37E785DD71F /* Models */,
@@ -1753,21 +1756,21 @@
 			path = App;
 			sourceTree = "<group>";
 		};
-		"TEMP_77CAD9DE-507B-4E3D-9A41-87835A966AAF" /* .claude */ = {
+		"TEMP_3102CA50-53E9-4047-85BD-84EED79DBC45" /* .claude */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = .claude;
 			sourceTree = "<group>";
 		};
-		"TEMP_9E9B1184-EC78-4936-81F5-A701A83B4052" /* .claude */ = {
+		"TEMP_4B6EABE4-2ECC-45BB-B001-743EE6FD608F" /* .claude */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = .claude;
 			sourceTree = "<group>";
 		};
-		"TEMP_E957F228-F5BA-4190-AB64-AFC657E45666" /* .claude */ = {
+		"TEMP_D532A8AF-848D-46AD-8F8F-8803B95D30B8" /* .claude */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -2519,6 +2522,7 @@
 				DC35FF5AFA5C13C3A59D97CE /* LibraryShared.swift in Sources */,
 				CF773AC74335C28BD427802B /* LibraryView.swift in Sources */,
 				35722B2C649F0B0D58C83552 /* LibretaModuleView.swift in Sources */,
+				9C7673B2979FFCA1859AE289 /* LibretaStore.swift in Sources */,
 				FE44A49751896CE5F073F18F /* LomloeCriteriaCatalog.swift in Sources */,
 				D307D469B599F0AFFF1A01A5 /* MacTrackpadSwipeHelper.swift in Sources */,
 				89CFFF0BE042923FABF74C79 /* MeetingActaPDF.swift in Sources */,

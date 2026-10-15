@@ -34,14 +34,14 @@ struct ExportSheet: View {
                                           systemImage: "doc")
                             }
                         }
-                        Button { makeBackup([nb], name: "\(nb.title).cuaderno") } label: {
+                        Button { makeBackup([nb], name: "\(nb.title)") } label: {
                             ExportRow(title: "Copia de seguridad de la libreta",
-                                      detail: "Archivo que se puede restaurar desde la biblioteca",
+                                      detail: "Archivo que se puede restaurar desde la Libreta",
                                       systemImage: "archivebox")
                         }
                     case .library(let all, let groups):
                         Button { makeBackup(all, groups: groups, name: "Libretas-\(Date.now.formatted(.iso8601.year().month().day()))") } label: {
-                            ExportRow(title: "Copia de seguridad de la biblioteca",
+                            ExportRow(title: "Copia de seguridad de todas las libretas",
                                       detail: libraryDetail(notebooks: all.count, groups: groups.count),
                                       systemImage: "archivebox")
                         }

@@ -49,6 +49,9 @@ final class Notebook {
     var lastOpenedAt: Date = Date()
     /// Última hoja (índice 0-based) en la que se estaba.
     var lastPageIndex: Int = 0
+    /// Clase de Mi Gestor a la que está ligada (solo su número). `nil` = sin clase.
+    /// Opcional: SwiftData lo añade solo a las bases de la fase 1.
+    var linkedClassId: Int64? = nil
     /// Grupo (montón / balda) al que pertenece. `nil` = cuaderno suelto.
     var group: NotebookGroup?
     @Relationship(deleteRule: .cascade, inverse: \Page.notebook)

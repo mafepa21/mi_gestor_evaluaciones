@@ -23,6 +23,9 @@ struct LibraryView: View {
     @State private var renameText = ""
     @State private var deleting: Notebook?
     @State private var groupDialog = GroupDialogState()
+    @ObservedObject private var libretaStore = LibretaStore.shared
+    /// Clase que se quiso abrir desde el Diario o el Planner y aún no tiene libreta.
+    @State private var classWithoutLibreta: LibretaStore.ClassOpenRequest?
 
     private var isSearching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
     private var isEmptyLibrary: Bool { notebooks.isEmpty && groups.isEmpty }
@@ -152,6 +155,43 @@ struct LibraryView: View {
             Button("Cancelar", role: .cancel) { deleting = nil }
         }
         .modifier(GroupDialogs(state: $groupDialog, groups: groups))
+        .alert(
+            "\(classWithoutLibreta?.className ?? "Esta clase") no tiene libreta",
+            isPresented: Binding(get: { classWithoutLibreta != nil },
+                                 set: { if !$0 { classWithoutLibreta = nil } }),
+            presenting: classWithoutLibreta
+        ) { request in
+            Button("Cancelar", role: .cancel) { classWithoutLibreta = nil }
+            Button("Crear libreta") { createLibreta(for: request) }
+                .keyboardShortcut(.defaultAction)
+        } message: { _ in
+            Text("Crea una ligada a esta clase. Podrás escribir en ella enseguida.")
+        }
+        .onAppear { handleClassOpenRequest() }
+        .onChange(of: libretaStore.classOpenRequest) { _, _ in handleClassOpenRequest() }
+    }
+
+    /// Abre la libreta de la clase usada más recientemente o, si no hay, ofrece crearla.
+    private func handleClassOpenRequest() {
+        guard let request = libretaStore.classOpenRequest else { return }
+        libretaStore.classOpenRequest = nil
+        let candidates = notebooks.filter { $0.linkedClassId == request.classId }
+        if let latest = candidates.max(by: { $0.lastOpenedAt < $1.lastOpenedAt }) {
+            open(latest, page: nil)
+        } else {
+            classWithoutLibreta = request
+        }
+    }
+
+    private func createLibreta(for request: LibretaStore.ClassOpenRequest) {
+        let notebook = Notebook(title: request.className,
+                                coverColorRaw: CoverColor.defaultColor.rawValue,
+                                paperStyle: .ruled)
+        notebook.linkedClassId = request.classId
+        context.insert(notebook)
+        notebook.pages = [Page(index: 0), Page(index: 1)]
+        classWithoutLibreta = nil
+        open(notebook, page: nil)
     }
 
     private var header: LibraryHeader {

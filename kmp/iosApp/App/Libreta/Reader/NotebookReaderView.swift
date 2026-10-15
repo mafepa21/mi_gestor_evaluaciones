@@ -10,6 +10,7 @@ struct NotebookReaderView: View {
     @Bindable var notebook: Notebook
     var startPage: Int? = nil
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.libretaClasses) private var libretaClasses
 
     @State private var isReady = false
     @State private var firstVisiblePage = 0
@@ -241,11 +242,23 @@ struct NotebookReaderView: View {
                     .buttonStyle(ToolbarLabelButtonStyle())
                     .accessibilityLabel("Volver a la estantería")
                     .keyboardShortcut(.cancelAction)
-                Text(notebook.title.isEmpty ? "Sin título" : notebook.title)
-                    .font(Theme.Fonts.headline)
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(1)
-                    .padding(.trailing, 14)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(notebook.title.isEmpty ? "Sin título" : notebook.title)
+                        .font(Theme.Fonts.headline)
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                    if let className = libretaClasses.name(for: notebook.linkedClassId) {
+                        Text(className)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Theme.accent.opacity(0.12), in: Capsule())
+                            .lineLimit(1)
+                            .accessibilityLabel("Clase \(className)")
+                    }
+                }
+                .padding(.trailing, 14)
             }
             .frame(maxWidth: 380, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)

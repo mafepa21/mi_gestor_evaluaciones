@@ -83,6 +83,7 @@ struct NotebookMenuItems: View {
     let notebook: Notebook
     let groups: [NotebookGroup]
     let actions: LibraryActions
+    @Environment(\.libretaClasses) private var classes
 
     var body: some View {
         Button("Abrir", systemImage: "book") { actions.open(notebook) }
@@ -108,9 +109,40 @@ struct NotebookMenuItems: View {
         } label: {
             Label("Mover a grupo…", systemImage: "folder")
         }
+        if !classes.isEmpty {
+            classMenu
+        }
         Button("Exportar…", systemImage: "square.and.arrow.up") { actions.export(notebook) }
         Divider()
         Button("Eliminar libreta", systemImage: "trash", role: .destructive) { actions.delete(notebook) }
+    }
+}
+
+extension NotebookMenuItems {
+    /// «Clase»: la clase de Mi Gestor a la que se liga la libreta (no la balda).
+    private var classMenu: some View {
+        let current = classes.name(for: notebook.linkedClassId)
+        return Menu {
+            Button {
+                notebook.linkedClassId = nil
+            } label: {
+                if current == nil { Label("Ninguna", systemImage: "checkmark") } else { Text("Ninguna") }
+            }
+            Divider()
+            ForEach(classes) { option in
+                Button {
+                    notebook.linkedClassId = option.id
+                } label: {
+                    if notebook.linkedClassId == option.id {
+                        Label(option.name, systemImage: "checkmark")
+                    } else {
+                        Text(option.name)
+                    }
+                }
+            }
+        } label: {
+            Label(current.map { "Clase: \($0)" } ?? "Clase", systemImage: "person.2")
+        }
     }
 }
 

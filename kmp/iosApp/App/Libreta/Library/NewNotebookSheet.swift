@@ -12,12 +12,18 @@ struct NewNotebookSheet: View {
     @State private var color: CoverColor = .defaultColor
     @State private var paper: PaperStyle = .ruled
     @State private var groupID: UUID?
+    @State private var classID: Int64?
     @FocusState private var titleFocused: Bool
+    @Environment(\.libretaClasses) private var classes
 
     /// `initialGroupID`: grupo preseleccionado (al crear desde una balda o un montón).
-    init(initialGroupID: UUID? = nil, onCreate: @escaping (Notebook, NotebookGroup?) -> Void) {
+    /// `initialClassID`: clase de Mi Gestor preseleccionada (al crear desde el Diario o el Planner).
+    init(initialGroupID: UUID? = nil, initialClassID: Int64? = nil, initialTitle: String = "",
+         onCreate: @escaping (Notebook, NotebookGroup?) -> Void) {
         self.onCreate = onCreate
         _groupID = State(initialValue: initialGroupID)
+        _classID = State(initialValue: initialClassID)
+        _title = State(initialValue: initialTitle)
     }
 
     private let coverWidth: CGFloat = 200
@@ -81,6 +87,24 @@ struct NewNotebookSheet: View {
                             }
                         }
 
+                        if !classes.isEmpty {
+                            field("Clase") {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Picker("Clase", selection: $classID) {
+                                        Text("Ninguna").tag(Int64?.none)
+                                        ForEach(classes) { option in
+                                            Text(option.name).tag(Int64?.some(option.id))
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .labelsHidden()
+                                    Text("Opcional. Desde el Diario y el Planner de esa clase podrás abrirla.")
+                                        .font(Theme.Fonts.caption)
+                                        .foregroundStyle(Theme.inkSecondary)
+                                }
+                            }
+                        }
+
                         field("Papel") {
                             // Dos filas de cuatro: papeles básicos arriba, plantillas abajo.
                             LazyVGrid(columns: Array(repeating: GridItem(.fixed(paperTileWidth), spacing: 8), count: 4),
@@ -109,10 +133,11 @@ struct NewNotebookSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Crear") {
                         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                        onCreate(Notebook(title: t.isEmpty ? "Libreta" : t,
-                                          coverColorRaw: color.rawValue,
-                                          paperStyle: paper),
-                                 groups.first { $0.id == groupID })
+                        let notebook = Notebook(title: t.isEmpty ? "Libreta" : t,
+                                                coverColorRaw: color.rawValue,
+                                                paperStyle: paper)
+                        notebook.linkedClassId = classID
+                        onCreate(notebook, groups.first { $0.id == groupID })
                         dismiss()
                     }
                     .fontWeight(.semibold)

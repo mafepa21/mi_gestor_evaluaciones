@@ -27,19 +27,23 @@ struct PlannerWorkspaceIOS: View {
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
     private let onNavigationContextChange: ((PlannerNavigationContext) -> Void)?
+    /// Solo iPad: abre la libreta de una clase (por su número).
+    private let onOpenLibreta: ((Int64) -> Void)?
 
     init(
         viewModel: PlannerWorkspaceViewModel,
         initialSection: PlannerWorkspaceSection = .week,
         context: PlannerNavigationContext = PlannerNavigationContext(),
         onOpenDiary: ((PlannerNavigationContext) -> Void)? = nil,
-        onNavigationContextChange: ((PlannerNavigationContext) -> Void)? = nil
+        onNavigationContextChange: ((PlannerNavigationContext) -> Void)? = nil,
+        onOpenLibreta: ((Int64) -> Void)? = nil
     ) {
         self.vm = viewModel
         self.initialSection = initialSection
         self.context = context
         self.onOpenDiary = onOpenDiary
         self.onNavigationContextChange = onNavigationContextChange
+        self.onOpenLibreta = onOpenLibreta
     }
 
     var body: some View {
@@ -135,6 +139,12 @@ struct PlannerWorkspaceIOS: View {
                     onCopyToNextWeek: {
                         selectedDetailSession = nil
                         Task { await vm.copySessionToNextWeek(session) }
+                    },
+                    onOpenLibreta: onOpenLibreta.map { open in
+                        {
+                            selectedDetailSession = nil
+                            open(session.groupId)
+                        }
                     }
                 )
                 .environmentObject(bridge)

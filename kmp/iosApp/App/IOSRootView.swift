@@ -1009,6 +1009,7 @@ struct IOSWorkspaceContent: View {
     private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @EnvironmentObject private var shellStore: ShellBridgeStore
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -1037,6 +1038,20 @@ struct IOSWorkspaceContent: View {
             .transition(.identity)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environmentObject(layoutState)
+    }
+
+    /// Solo iPad: abre la libreta de una clase desde el Diario o el Planner.
+    private var libretaOpener: ((Int64) -> Void)? {
+        #if os(iOS)
+        guard AppWorkspaceModule.libreta.isAvailableOnThisDevice else { return nil }
+        return { classId in
+            let name = shellStore.classes.first { $0.id == classId }?.name ?? "Clase"
+            LibretaStore.shared.openForClass(id: classId, name: name)
+            onOpenModule(.libreta, classId, nil)
+        }
+        #else
+        return nil
+        #endif
     }
 
     @ViewBuilder
@@ -1108,7 +1123,8 @@ struct IOSWorkspaceContent: View {
                 viewModel: plannerViewModel,
                 context: resolvedPlannerContext,
                 onOpenDiary: { ctx in onOpenModule(.diary, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
-                onNavigationContextChange: onUpdatePlannerContext
+                onNavigationContextChange: onUpdatePlannerContext,
+                onOpenLibreta: libretaOpener
             )
             .environmentObject(bridge)
         case .situations:
@@ -1124,7 +1140,8 @@ struct IOSWorkspaceContent: View {
                 navigationContext: resolvedPlannerContext,
                 onOpenModule: onOpenModule,
                 onOpenPlanner: { ctx in onOpenModule(.planner, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
-                onNavigationContextChange: onUpdatePlannerContext
+                onNavigationContextChange: onUpdatePlannerContext,
+                onOpenLibreta: libretaOpener
             )
             .environmentObject(bridge)
         case .evaluationHub:
@@ -1137,6 +1154,7 @@ struct IOSWorkspaceContent: View {
         case .libreta:
             #if os(iOS)
             LibretaModuleView()
+                .environment(\.libretaClasses, shellStore.classes.map { LibretaClassOption(id: $0.id, name: $0.name) })
             #else
             EmptyView()
             #endif

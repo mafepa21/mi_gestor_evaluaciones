@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import CoreGraphics
 #if os(macOS)
 import AppKit
@@ -329,6 +330,36 @@ enum SdaTeamsSheetPDF {
             return url
         } catch {
             return nil
+        }
+    }
+}
+
+// MARK: - Compartir (el PDF se genera al pedirlo)
+
+/// Documento compartible: el PDF se dibuja cuando el sistema lo pide, no antes. Así no hay
+/// fichero temporal que pueda borrarse mientras la hoja de compartir está abierta.
+struct SdaTeamsSheetDocument: Transferable {
+    let content: SdaTeamsSheetContent
+
+    var fileName: String {
+        let safe = content.title
+            .replacingOccurrences(of: "/", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return "Equipos \(safe.isEmpty ? "torneo" : safe).pdf"
+    }
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .pdf) { document in
+            let content = document.content
+            guard let data = await MainActor.run(body: { SdaTeamsSheetPDF.render(content) }) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            let folder = FileManager.default.temporaryDirectory
+                .appendingPathComponent("EquiposTorneo-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let url = folder.appendingPathComponent(document.fileName)
+            try data.write(to: url, options: .atomic)
+            return SentTransferredFile(url)
         }
     }
 }

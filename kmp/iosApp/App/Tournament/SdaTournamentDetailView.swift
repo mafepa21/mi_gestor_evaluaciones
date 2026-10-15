@@ -28,7 +28,6 @@ struct SdaTournamentDetailView: View {
     @State private var rosterPhase: RosterPhase = .loading
     @State private var students: [(id: String, name: String)] = []
     @State private var situationTitle: String?
-    @State private var teamsPDFURL: URL?
     @State private var selectedTab: Tab = .calendar
     @State private var scoreTarget: SdaScoreTarget?
     @State private var isConfirmingDelete = false
@@ -178,7 +177,6 @@ struct SdaTournamentDetailView: View {
         }
         .modifier(SdaSheetChrome(isSheet: !isEmbedded))
         .task { await loadRoster() }
-        .task(id: teamsSheetContent) { regenerateTeamsPDF() }
         .onChange(of: tabs) { _, newTabs in
             if !newTabs.contains(selectedTab) { selectedTab = .calendar }
         }
@@ -627,16 +625,20 @@ struct SdaTournamentDetailView: View {
 
     @ViewBuilder
     private func printButton(prominent: Bool, fillsWidth: Bool) -> some View {
-        if let teamsPDFURL {
+        if let content = teamsSheetContent {
             #if os(macOS)
             Button {
-                SdaTeamsSheetPrinter.printPDF(at: teamsPDFURL)
+                // El PDF se genera al pulsar: nunca hay un fichero viejo o borrado.
+                if let url = SdaTeamsSheetPDF.writeToTemporaryFile(content) {
+                    SdaTeamsSheetPrinter.printPDF(at: url)
+                }
             } label: {
                 printLabel(fillsWidth: fillsWidth)
             }
             .sdaPrintButtonStyle(prominent: prominent)
             #else
-            ShareLink(item: teamsPDFURL, preview: SharePreview("Equipos de \(plan.name)")) {
+            let document = SdaTeamsSheetDocument(content: content)
+            ShareLink(item: document, preview: SharePreview("Equipos de \(plan.name)", image: Image(systemName: "doc.richtext"))) {
                 printLabel(fillsWidth: fillsWidth)
             }
             .sdaPrintButtonStyle(prominent: prominent)
@@ -666,16 +668,6 @@ struct SdaTournamentDetailView: View {
         } catch {
             rosterPhase = .failed
         }
-    }
-
-    private func regenerateTeamsPDF() {
-        let old = teamsPDFURL
-        guard let content = teamsSheetContent else {
-            teamsPDFURL = nil
-            return
-        }
-        teamsPDFURL = SdaTeamsSheetPDF.writeToTemporaryFile(content)
-        if let old { try? FileManager.default.removeItem(at: old) }
     }
 
     // MARK: Hoja de resultado

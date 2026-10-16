@@ -26,10 +26,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- Maqueta del rediseño de copias (`docs/mockups/copias-seguridad/mockup/index.html`), revisada con criterios HIG y de accesibilidad.
 - Maqueta aprobada (`docs/mockups/libreta/mockup/index.html`), ticket (`docs/planes/ticket_libreta_integrada_2026-10-15.md`) y ámbito (`docs/ambitos/libreta.md`) de la Libreta.
 
 ### Verification
 
+- Rediseño de copias: `./scripts/verify_apple_builds.sh` compila macOS (MiGestorKMPMac) e iOS Simulator (MiGestorKMPiOS). Sin QA manual en la app ni capturas.
 - Fase 2 de la Libreta: `xcodebuild` `MiGestorKMPiOS` (iOS simulador genérico) compila. `xcodebuild test` `MiGestorPlannerTests` (Mac arm64): 282 pruebas, 0 fallos y 4 omitidas; incluye 5 nuevas de ida y vuelta de la Libreta en las copias. Sin QA en ejecución (no hay simuladores instalados) ni prueba de restaurar en un iPad real.
 - `xcodebuild` `MiGestorKMPiOS` para `generic/platform=iOS Simulator`: compila.
 - `xcodebuild` `MiGestorKMPMac` para `arm64`: compila. Para `x86_64` falla al enlazar porque el `MiGestorKit` local solo trae arm64 (fallo del entorno, no del código de este cambio; no se comprobó en `main`).
@@ -38,6 +40,8 @@ El formato sigue una variante practica de Keep a Changelog:
 - **Torneos: integrantes y hoja imprimible**: pestaña «Equipos» con los alumnos de cada equipo, integrantes visibles al crear el torneo y PDF A4 con una tarjeta por equipo y la primera ronda.
 
 ### Changed
+
+- **Ajustes › Datos y seguridad y Copias de seguridad, rediseño según HIG**: Ajustes pasa a formulario agrupado con una fila de estado («Tus datos están protegidos · Última copia hace 2 horas») y «Crear copia ahora», secciones «Copias automáticas» e «Historial» con texto de pie, la fila «Copias guardadas» con su número y «Zona de riesgo» separada al final. El centro de copias deja la cabecera grande, los dos botones de crear, la fila de botones que se cortaba y las tres tarjetas de colores: ahora tiene barra de herramientas (Buscar, Importar, Más, Crear copia), un resumen de una línea y una lista nativa agrupada por día. Cada copia muestra hora y nota en vez del nombre de archivo, el contenido en una línea y el tamaño. Solo lleva símbolo si está validada o tiene un problema; «sin validar» ya no parece un aviso. Validar, Exportar y Eliminar pasan al menú «⋯», al clic derecho y a deslizar en iPad; pulsar la copia abre la vista previa de restaurar. Eliminar pide confirmación con la fecha. El estado verde se calcula con la última copia que no esté vacía ni dañada. Etiquetas de VoiceOver por fila, acciones con nombre y texto dinámico.
 
 - **El módulo antiguo de Torneos de EF se sustituye**: la pantalla de EF lista los torneos del curso y los abre con el detalle nuevo. Los torneos antiguos (UserDefaults) se migran al arrancar, una sola vez; la clave antigua se conserva como copia. Se pierden: partidos contra «BYE», 0-0 reales sin marca de jugado y el texto libre de pista (queda el número). Los puntos personalizados se conservan para la clasificación.
 

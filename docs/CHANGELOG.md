@@ -31,6 +31,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Copias automáticas: `./scripts/verify_apple_builds.sh` compila macOS e iOS Simulator; `xcodebuild test` (MiGestorPlannerTests, macOS) pasa `AppleAutomaticBackupScheduleTests` (6) y `AppleBackupRetentionTests` (7). Sin prueba manual en la app.
 - Rediseño de copias: `./scripts/verify_apple_builds.sh` compila macOS (MiGestorKMPMac) e iOS Simulator (MiGestorKMPiOS). Sin QA manual en la app ni capturas.
 - Fase 2 de la Libreta: `xcodebuild` `MiGestorKMPiOS` (iOS simulador genérico) compila. `xcodebuild test` `MiGestorPlannerTests` (Mac arm64): 282 pruebas, 0 fallos y 4 omitidas; incluye 5 nuevas de ida y vuelta de la Libreta en las copias. Sin QA en ejecución (no hay simuladores instalados) ni prueba de restaurar en un iPad real.
 - `xcodebuild` `MiGestorKMPiOS` para `generic/platform=iOS Simulator`: compila.
@@ -49,6 +50,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Las copias automáticas nunca se hacían**: la frecuencia de Ajustes («Diaria», «Semanal») se guardaba pero nada la leía. Ahora la app comprueba si toca al volver a ella (tras 45 s) y al salir (en iPad pide tiempo al sistema para acabar). «Diaria» = una copia por día del calendario; «Semanal» = 7 días desde la última copia válida. «Solo manual» no hace nada. La copia lleva la nota «Copia automática». Si falla, no muestra aviso y no reintenta en una hora. No copia una base vacía.
 - **Copias: restaurar la copia más antigua ya no falla**: al restaurar se crea una copia de emergencia y la retención (5 copias) borraba la más antigua, que podía ser justo la elegida. Ahora la copia que se restaura queda protegida.
 - **Copias: la retención ordena por la fecha real de la copia**: leía mal la fecha del manifiesto y usaba la de la carpeta, así que una copia antigua recién importada contaba como nueva.
 - **Copias: no se restauran ni importan copias de una versión de datos más nueva**: aviso «Esta copia es de una versión más nueva de la app. Actualiza la app para restaurarla». Evita, por ejemplo, abrir en un iPad sin actualizar una copia del Mac.

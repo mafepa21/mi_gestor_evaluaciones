@@ -12,6 +12,7 @@ public final class AppleBackupService: ObservableObject {
     @Published public var lastError: String? = nil
     @Published public var needsRestart: Bool = false
     @Published public var latestEmergencyBackupUrl: URL? = nil
+    var automaticBackupTask: Task<Void, Never>?
 
     /// Bases de datos que el arranque puso en cuarentena porque no pudo abrirlas
     /// (ver `createAppleDriver` en AppleDriver.kt). Cuando esto ocurre la app se abre
@@ -952,6 +953,115 @@ public final class AppleBackupService: ObservableObject {
             return Int(sqlite3_column_int(statement, 0))
         }
         return nil
+    }
+}
+
+// MARK: - Copias automáticas
+
+/// Hasta 2026-10 la frecuencia elegida en Ajustes se guardaba pero nadie la leía:
+/// la app nunca hacía copias por su cuenta. Las únicas copias "automáticas" eran
+/// las de emergencia previas a restaurar.
+extension AppleBackupService {
+    nonisolated static let automaticBackupNote = "Copia automática"
+    nonisolated static let backupFrequencyDefaultsKey = "settings.backupFrequency"
+    nonisolated static let lastAutomaticAttemptDefaultsKey = "backup.automatic.lastAttemptAt"
+    /// Tras un intento fallido no se reintenta en este tiempo, para no repetir el
+    /// mismo error en cada cambio de ventana.
+    nonisolated static let automaticRetryInterval: TimeInterval = 60 * 60
+    /// Margen tras volver a la app antes de copiar, para no competir con la carga inicial.
+    nonisolated static let automaticActivationDelay: Duration = .seconds(45)
+
+    /// ¿Toca una copia automática? Regla pura, sin disco, para poder probarla.
+    nonisolated static func isAutomaticBackupDue(
+        frequency: BackupFrequency,
+        lastBackupAt: Date?,
+        lastAttemptAt: Date?,
+        now: Date,
+        calendar: Calendar = .current
+    ) -> Bool {
+        if frequency == .manual { return false }
+        if let lastAttemptAt, now.timeIntervalSince(lastAttemptAt) < automaticRetryInterval {
+            return false
+        }
+        guard let lastBackupAt else { return true }
+        switch frequency {
+        // Una copia con fecha futura (reloj cambiado, copia importada) no debe
+        // bloquear las copias hasta que el tiempo real la alcance.
+        case .daily:
+            return !calendar.isDate(lastBackupAt, inSameDayAs: now)
+        case .weekly:
+            let elapsed = now.timeIntervalSince(lastBackupAt)
+            return elapsed >= 7 * 86_400 || elapsed < -86_400
+        case .manual:
+            return false
+        }
+    }
+
+    private var configuredFrequency: BackupFrequency {
+        let raw = UserDefaults.standard.string(forKey: Self.backupFrequencyDefaultsKey)
+        return raw.flatMap(BackupFrequency.init(rawValue:)) ?? .weekly
+    }
+
+    /// Llamar desde el cambio de `scenePhase` de cada app.
+    /// - `.active`: comprueba tras un margen (se cancela si la app sale antes).
+    /// - `.background`: comprueba ya; en iOS pide tiempo extra al sistema.
+    public func handleScenePhaseForAutomaticBackup(isActive: Bool) {
+        automaticBackupTask?.cancel()
+        if isActive {
+            automaticBackupTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.automaticActivationDelay)
+                guard !Task.isCancelled else { return }
+                await self?.runAutomaticBackupIfDue()
+            }
+        } else {
+            #if os(iOS)
+            var taskID: UIBackgroundTaskIdentifier = .invalid
+            taskID = UIApplication.shared.beginBackgroundTask(withName: "Copia automática") {
+                UIApplication.shared.endBackgroundTask(taskID)
+                taskID = .invalid
+            }
+            automaticBackupTask = Task { @MainActor [weak self] in
+                await self?.runAutomaticBackupIfDue()
+                if taskID != .invalid { UIApplication.shared.endBackgroundTask(taskID) }
+            }
+            #else
+            automaticBackupTask = Task { @MainActor [weak self] in
+                await self?.runAutomaticBackupIfDue()
+            }
+            #endif
+        }
+    }
+
+    /// Hace la copia si toca. Silenciosa: si falla no muestra aviso, solo deja
+    /// constancia y espera `automaticRetryInterval` antes de volver a probar.
+    @discardableResult
+    func runAutomaticBackupIfDue(now: Date = Date()) async -> Bool {
+        guard operationState == .idle, !needsRestart else { return false }
+        await scanBackups()
+        let lastUsable = backups.first { !$0.hasEmptyDatabase && $0.verificationError == nil }
+        let defaults = UserDefaults.standard
+        let lastAttempt = defaults.object(forKey: Self.lastAutomaticAttemptDefaultsKey) as? Date
+        guard Self.isAutomaticBackupDue(
+            frequency: configuredFrequency,
+            lastBackupAt: lastUsable?.manifest.createdAt,
+            lastAttemptAt: lastAttempt,
+            now: now
+        ) else { return false }
+        // Una instalación nueva o una base vacía no tiene nada que proteger.
+        guard (try? validateUsableDatabase(at: databaseURL, context: "la base de datos activa")) != nil else {
+            return false
+        }
+        guard operationState == .idle, !needsRestart else { return false }
+        defaults.set(now, forKey: Self.lastAutomaticAttemptDefaultsKey)
+        let previousError = lastError
+        do {
+            _ = try await createBackup(note: Self.automaticBackupNote)
+            return true
+        } catch {
+            lastError = previousError
+            print("[AppleBackupService] Copia automática fallida: \(error.localizedDescription)")
+            return false
+        }
     }
 }
 

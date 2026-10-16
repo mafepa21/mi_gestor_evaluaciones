@@ -9,6 +9,8 @@ struct BackupRestorePreviewSheet: View {
     @State private var currentSummary: AppleBackupSummary?
     @State private var restoreStep: RestoreStep = .preview
     @State private var errorMessage: String? = nil
+    @State private var restartCountdown = 3
+    @State private var isRestarting = false
     
     enum RestoreStep {
         case preview
@@ -232,7 +234,7 @@ struct BackupRestorePreviewSheet: View {
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(AppleDesignSystem.warning)
                 
-                Text("Para cargar la nueva base de datos sin corrupción de memoria en KMP, la aplicación debe cerrarse e iniciarse nuevamente.")
+                Text(restartNoticeText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -242,7 +244,7 @@ struct BackupRestorePreviewSheet: View {
             .overlay(RoundedRectangle(cornerRadius: AppleDesignSystem.controlRadius).stroke(AppleDesignSystem.warning.opacity(0.2), lineWidth: 1))
             
             Button(action: quitApp) {
-                Text("Entendido (Cerrar aplicación)")
+                Text(restartButtonTitle)
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(contrastingTextColor(for: AppleDesignSystem.accent))
                     .frame(maxWidth: .infinity)
@@ -253,8 +255,41 @@ struct BackupRestorePreviewSheet: View {
                     )
             }
             .buttonStyle(.plain)
+            .disabled(isRestarting)
         }
+        #if os(macOS)
+        .task { await runRestartCountdown() }
+        #endif
     }
+
+    private var restartNoticeText: String {
+        #if os(macOS)
+        isRestarting
+            ? "Reiniciando la app para cargar los datos restaurados…"
+            : "La app se reiniciará sola en \(restartCountdown) s para cargar los datos restaurados."
+        #else
+        "Para cargar la nueva base de datos sin corrupción de memoria en KMP, la aplicación debe cerrarse e iniciarse nuevamente."
+        #endif
+    }
+
+    private var restartButtonTitle: String {
+        #if os(macOS)
+        "Reiniciar ahora"
+        #else
+        "Entendido (Cerrar aplicación)"
+        #endif
+    }
+
+    #if os(macOS)
+    private func runRestartCountdown() async {
+        while restartCountdown > 0 {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled, !isRestarting else { return }
+            restartCountdown -= 1
+        }
+        quitApp()
+    }
+    #endif
     
     private var failedView: some View {
         VStack(spacing: 20) {
@@ -332,12 +367,35 @@ struct BackupRestorePreviewSheet: View {
 
     private func quitApp() {
         #if os(macOS)
+        guard !isRestarting else { return }
+        isRestarting = true
+        relaunchAfterExit()
         NSApplication.shared.terminate(nil)
+        // Si algo retiene el cierre (p. ej. el helper de sincronización), se fuerza.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { exit(0) }
         #else
         exit(0)
         #endif
     }
 }
+
+#if os(macOS)
+/// Abre la app de nuevo cuando este proceso haya terminado, para que nunca convivan
+/// dos instancias sobre la misma base.
+private func relaunchAfterExit() {
+    let pid = ProcessInfo.processInfo.processIdentifier
+    let bundlePath = Bundle.main.bundlePath
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    process.arguments = [
+        "-c",
+        "while /bin/kill -0 \"$0\" 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open \"$1\"",
+        String(pid),
+        bundlePath,
+    ]
+    try? process.run()
+}
+#endif
 
 // MARK: - ComparisonCard Helper
 struct ComparisonCard: View {

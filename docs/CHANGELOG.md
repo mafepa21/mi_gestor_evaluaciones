@@ -45,6 +45,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Mac: la app se reinicia sola tras restaurar una copia**: antes se quedaba en «¡Restauración Completada!» porque el botón solo pedía cerrar la app y nada comprobaba que se cerrara. Ahora hay cuenta atrás de 3 s y botón «Reiniciar ahora»; la app se vuelve a abrir cuando el proceso anterior ha terminado (nunca dos a la vez) y, si algo retiene el cierre 5 s, se fuerza. En iPad no cambia: iOS no permite que una app se reabra sola.
 - **Copias: restaurar ya no falla con «unable to open database file»**: la instantánea temporal heredaba el modo WAL de la base y, abierta en solo lectura sin fichero `-wal`, SQLite no podía validarla. Afectaba a cualquier restauración desde una base en modo WAL. Ahora la instantánea pasa a modo DELETE antes de validarse; la app vuelve a activar WAL al abrirla.
 - **Copias: restaurar la copia más antigua ya no falla**: al restaurar se crea una copia de emergencia y la retención (5 copias) borraba la más antigua, que podía ser justo la elegida. Ahora la copia que se restaura queda protegida.
 - **Copias: la retención ordena por la fecha real de la copia**: leía mal la fecha del manifiesto y usaba la de la carpeta, así que una copia antigua recién importada contaba como nueva.

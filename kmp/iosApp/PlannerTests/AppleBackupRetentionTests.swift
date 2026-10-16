@@ -3,37 +3,81 @@ import XCTest
 @testable import MiGestorKMPMac
 
 final class AppleBackupRetentionTests: XCTestCase {
-    private func entry(_ name: String, daysAgo: Double) -> (url: URL, createdAt: Date) {
-        (
-            URL(fileURLWithPath: "/tmp/backups/\(name).migestorbackup", isDirectory: true),
-            Date(timeIntervalSince1970: 1_800_000_000 - daysAgo * 86_400)
+    private let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Madrid")!
+        calendar.firstWeekday = 2
+        return calendar
+    }()
+
+    private func entry(_ name: String, daysAgo: Double, emergency: Bool = false) -> AppleBackupService.RetentionEntry {
+        AppleBackupService.RetentionEntry(
+            url: URL(fileURLWithPath: "/tmp/backups/\(name).migestorbackup", isDirectory: true),
+            createdAt: Date(timeIntervalSince1970: 1_800_000_000 - daysAgo * 86_400),
+            note: emergency ? "Copia de seguridad de emergencia previa a restauración de x" : nil
         )
     }
 
-    func testRetentionKeepsNewestAndRemovesOldest() {
-        let entries = (0..<6).map { entry("b\($0)", daysAgo: Double($0)) }
-        let victims = AppleBackupService.retentionVictims(entries: entries, limit: 5, protecting: [])
-        XCTAssertEqual(victims.map(\.lastPathComponent), ["b5.migestorbackup"])
+    private func victims(_ entries: [AppleBackupService.RetentionEntry], protecting: Set<URL> = []) -> [String] {
+        AppleBackupService.retentionVictims(entries: entries, protecting: protecting, calendar: calendar)
+            .map { $0.deletingPathExtension().lastPathComponent }
+    }
+
+    func testKeepsEverythingUnderTheLimits() {
+        let entries = (0..<7).map { entry("d\($0)", daysAgo: Double($0)) }
+        XCTAssertTrue(victims(entries).isEmpty)
+    }
+
+    func testDailyCopiesKeepSevenDaysPlusFourWeeks() {
+        let entries = (0..<60).map { entry("d\($0)", daysAgo: Double($0)) }
+        let removed = Set(victims(entries))
+        let kept = entries.map { $0.url.deletingPathExtension().lastPathComponent }.filter { !removed.contains($0) }
+        XCTAssertEqual(kept.count, 7 + 4)
+        XCTAssertEqual(Array(kept.prefix(7)), (0..<7).map { "d\($0)" })
+        // Las 4 semanales son de semanas distintas y anteriores a las recientes.
+        let weekly = entries.filter { kept.dropFirst(7).contains($0.url.deletingPathExtension().lastPathComponent) }
+        let weeks = Set(weekly.compactMap { calendar.dateInterval(of: .weekOfYear, for: $0.createdAt)?.start })
+        XCTAssertEqual(weeks.count, 4)
+        XCTAssertFalse(kept.contains("d40"))
+    }
+
+    func testEmergencyCopiesDoNotPushOutNormalOnes() {
+        // 7 copias normales y luego 6 restauraciones seguidas.
+        let normals = (0..<7).map { entry("n\($0)", daysAgo: Double($0) + 1) }
+        let emergencies = (0..<6).map { entry("e\($0)", daysAgo: Double($0) * 0.01, emergency: true) }
+        let removed = victims(normals + emergencies)
+        XCTAssertTrue(removed.allSatisfy { $0.hasPrefix("e") }, "Solo salen copias de emergencia")
+        // Se quedan las 5 más recientes (regla antigua), que aquí son todas de emergencia.
+        XCTAssertEqual(Set(removed), ["e5"])
+    }
+
+    func testEmergencyQuotaAppliesOnceTheyAreOlder() {
+        let emergencies = (0..<4).map { entry("e\($0)", daysAgo: 10 + Double($0), emergency: true) }
+        let normals = (0..<7).map { entry("n\($0)", daysAgo: Double($0)) }
+        XCTAssertEqual(Set(victims(normals + emergencies)), ["e2", "e3"])
+    }
+
+    func testNewRuleNeverRemovesWhatTheOldRuleKept() {
+        // El caso real: casi todo eran copias de emergencia.
+        let entries = (0..<5).map { entry("e\($0)", daysAgo: Double($0) * 0.01, emergency: true) }
+            + [entry("n0", daysAgo: 1)]
+        XCTAssertTrue(victims(entries).isEmpty)
     }
 
     func testRetentionNeverRemovesProtectedBackup() {
-        let entries = (0..<6).map { entry("b\($0)", daysAgo: Double($0)) }
-        let restoring = entries[5].url
-        let victims = AppleBackupService.retentionVictims(entries: entries, limit: 5, protecting: [restoring])
-        XCTAssertFalse(victims.contains(restoring))
-        XCTAssertTrue(victims.isEmpty)
+        let entries = (0..<60).map { entry("d\($0)", daysAgo: Double($0)) }
+        let restoring = entries[59].url
+        XCTAssertFalse(victims(entries, protecting: [restoring]).contains("d59"))
     }
 
     func testRetentionOrdersByManifestDateNotFolderOrder() {
-        // Una copia importada hoy pero creada hace 30 días debe ser la primera en salir.
-        var entries = (0..<5).map { entry("b\($0)", daysAgo: Double($0)) }
-        entries.insert(entry("importada", daysAgo: 30), at: 0)
-        let victims = AppleBackupService.retentionVictims(entries: entries, limit: 5, protecting: [])
-        XCTAssertEqual(victims.map(\.lastPathComponent), ["importada.migestorbackup"])
-    }
-
-    func testRetentionLimitIsFive() {
-        XCTAssertEqual(AppleBackupService.retentionLimit, 5)
+        // Una copia importada hoy pero creada hace 3 días cuenta como de hace 3 días.
+        var entries = (0..<7).map { entry("d\($0)", daysAgo: Double($0) * 0.1) }
+        entries.insert(entry("importada", daysAgo: 3), at: 0)
+        entries.append(entry("vieja", daysAgo: 3.5))
+        let removed = victims(entries)
+        XCTAssertTrue(removed.contains("vieja"))
+        XCTAssertFalse(removed.contains("d0"))
     }
 
     func testNewerSchemaIsRejected() {

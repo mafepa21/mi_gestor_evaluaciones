@@ -110,8 +110,10 @@ final class MacBackupStore: ObservableObject {
         }
         return "Protegido"
     }
-    var retentionSummary: String { "10 copias" }
-    var extraCopiesCount: Int { max(0, backups.count - AppleBackupService.retentionLimit) }
+    var retentionSummary: String {
+        "\(AppleBackupService.recentRetentionCount) recientes, \(AppleBackupService.weeklyRetentionCount) semanales y \(AppleBackupService.emergencyRetentionCount) de emergencia"
+    }
+    var extraCopiesCount: Int { service.backupsBeyondRetentionCount }
 
     func loadBackups() async {
         operationState = .loading("Escaneando")
@@ -227,7 +229,8 @@ final class MacBackupStore: ObservableObject {
     }
 
     func deleteBackupsBeyondRetention() async {
-        // Enforced automatically on create, but we scan to reload
+        // Antes solo recargaba la lista: el botón «Aplicar retención» no borraba nada.
+        await service.applyRetentionNow()
         await loadBackups()
     }
 }

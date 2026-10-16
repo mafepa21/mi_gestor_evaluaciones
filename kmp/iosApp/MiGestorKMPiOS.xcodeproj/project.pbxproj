@@ -397,6 +397,7 @@
 		830837B69A6A3773AF05B011 /* LearningSituationDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16E3DD63D6D3D2C2C4A53366 /* LearningSituationDetailView.swift */; };
 		83DB805DBC12FA13994AB6DC /* DataManagementSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */; };
 		850A15F127EFFF7AEBA9E583 /* PlannerGanttProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583959F23A0D26CC96A6ADDD /* PlannerGanttProjectionTests.swift */; };
+		85C14A3146CE690A098DA35F /* AppleBackupRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6792DA4E9E06E76D097D1A9A /* AppleBackupRetentionTests.swift */; };
 		85F084D4F3CFD8C65129C953 /* KnockoutBracketResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E96A35C644DC30CB778C7EE /* KnockoutBracketResolver.swift */; };
 		861AF99A486CC8EA7B8399F8 /* PlannerSessionDetailComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3CA8D09864762412D9ACD81 /* PlannerSessionDetailComponents.swift */; };
 		862649F736706DF92205B83B /* LearningSituationsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0746E64BBDE5A93E303F823 /* LearningSituationsComponents.swift */; };
@@ -980,6 +981,7 @@
 		666F9AAA1EB484C6A9C66752 /* PlannerWorkspaceViewModel+AutoStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+AutoStatus.swift"; sourceTree = "<group>"; };
 		66C430BD4F07BF647679F179 /* SettingsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWorkspaceView.swift; sourceTree = "<group>"; };
 		6747E520F87525FAA142D595 /* ScheduleTimelineLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleTimelineLayout.swift; sourceTree = "<group>"; };
+		6792DA4E9E06E76D097D1A9A /* AppleBackupRetentionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBackupRetentionTests.swift; sourceTree = "<group>"; };
 		68E09552D03E6F4A5A8FDD5D /* SdaSituationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaSituationPickerSheet.swift; sourceTree = "<group>"; };
 		69A305DF1545D94374103F78 /* PlannerSessionDocxRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSessionDocxRenderer.swift; sourceTree = "<group>"; };
 		6AB9B92354A1345110A45747 /* MacAttendanceDayRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAttendanceDayRow.swift; sourceTree = "<group>"; };
@@ -1307,6 +1309,7 @@
 			isa = PBXGroup;
 			children = (
 				E507A59A000F4DE5BCE342F9 /* AppleBackupIntegrityTests.swift */,
+				6792DA4E9E06E76D097D1A9A /* AppleBackupRetentionTests.swift */,
 				1FC693E41E495837C3004E57 /* AppleCalendarReconcilerTests.swift */,
 				51882E52C46262210355378A /* AppleEncryptedBackupTests.swift */,
 				B08243F19E14DB7BCAC9CADA /* AttendanceMatrixStatsTests.swift */,
@@ -2009,6 +2012,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4C3D5628A5A4E5CC5BD4AC97 /* AppleBackupIntegrityTests.swift in Sources */,
+				85C14A3146CE690A098DA35F /* AppleBackupRetentionTests.swift in Sources */,
 				27E1E108F812E349B845DA1A /* AppleCalendarReconcilerTests.swift in Sources */,
 				F27FC07EC1367E7B0B0254AD /* AppleEncryptedBackupTests.swift in Sources */,
 				4C82A920DFE3D14AF5222276 /* AttendanceMatrixStatsTests.swift in Sources */,

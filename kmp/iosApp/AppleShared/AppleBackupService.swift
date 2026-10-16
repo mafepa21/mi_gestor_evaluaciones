@@ -24,7 +24,7 @@ public final class AppleBackupService: ObservableObject {
     public let databaseURL: URL
     public let attachmentsURL: URL
     public let learningSituationsURL: URL
-    private let retentionLimit = 5
+    nonisolated public static let retentionLimit = 5
 
     public static let shared = AppleBackupService()
 
@@ -127,6 +127,11 @@ public final class AppleBackupService: ObservableObject {
     }
 
     public func createBackup(note: String? = nil) async throws -> AppleBackupDescriptor {
+        try await createBackup(note: note, protecting: [])
+    }
+
+    /// `protecting`: copias que la retención no puede borrar (p. ej. la que se está restaurando).
+    private func createBackup(note: String?, protecting protectedURLs: Set<URL>) async throws -> AppleBackupDescriptor {
         let perfStart = DispatchTime.now()
         defer { PerfLog.finish("Copia de seguridad", start: perfStart) }
         operationState = .creating
@@ -281,7 +286,7 @@ public final class AppleBackupService: ObservableObject {
             )
             
             // 8. Enforce retention policy
-            try applyRetentionPolicy()
+            try applyRetentionPolicy(protecting: protectedURLs)
             
             // 9. Re-scan and refresh
             await scanBackups()
@@ -365,6 +370,7 @@ public final class AppleBackupService: ObservableObject {
             // copias borraría los datos actuales y los sustituiría por nada.
             let packageURL = descriptor.url
             let sourceDB = packageURL.appendingPathComponent("database.sqlite")
+            try ensureSchemaCompatible(descriptor.manifest)
             try validateUsableDatabase(at: sourceDB, context: "la copia seleccionada")
             try AppleSQLiteBackupValidator.validateDatabase(at: sourceDB)
 
@@ -374,7 +380,12 @@ public final class AppleBackupService: ObservableObject {
             // restaurar. No lo bloqueamos por no poder hacer una copia de la nada.
             let emergencyNote = "Copia de seguridad de emergencia previa a restauración de \(descriptor.displayName) (\(descriptor.manifest.createdAt.formattedDateText))"
             do {
-                let emergencyCopy = try await createBackup(note: emergencyNote)
+                // La copia elegida queda protegida: si fuese la más antigua, la retención
+                // la borraría justo antes de leerla para restaurar.
+                let emergencyCopy = try await createBackup(
+                    note: emergencyNote,
+                    protecting: [packageURL.standardizedFileURL]
+                )
                 self.latestEmergencyBackupUrl = emergencyCopy.url
             } catch {
                 self.latestEmergencyBackupUrl = nil
@@ -555,6 +566,7 @@ public final class AppleBackupService: ObservableObject {
             }
 
             let stagedDescriptor = try loadBackupDescriptor(at: stagedPackageURL)
+            try ensureSchemaCompatible(stagedDescriptor.manifest)
             let verified = await verifyBackup(stagedDescriptor)
             operationState = .importing
             guard verified.isRestorable else {
@@ -620,31 +632,63 @@ public final class AppleBackupService: ObservableObject {
 
     // MARK: - Retention Policy
 
-    private func applyRetentionPolicy() throws {
+    private func applyRetentionPolicy(protecting protectedURLs: Set<URL> = []) throws {
         let urls = try fileManager.contentsOfDirectory(at: backupsDirectoryURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
         let backupUrls = urls.filter { $0.pathExtension == "migestorbackup" }
-        
-        var loadedDescriptors: [(URL, Date)] = []
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        var entries: [(url: URL, createdAt: Date)] = []
         for url in backupUrls {
             let manifestURL = url.appendingPathComponent("manifest.json")
             if let manifestData = try? Data(contentsOf: manifestURL),
-               let manifest = try? JSONDecoder().decode(AppleBackupManifest.self, from: manifestData) {
-                loadedDescriptors.append((url, manifest.createdAt))
+               let manifest = try? decoder.decode(AppleBackupManifest.self, from: manifestData) {
+                entries.append((url, manifest.createdAt))
             } else {
-                // If corrupted manifest or unreadable, still include it for sorting using file attributes
+                // Manifiesto ilegible: se ordena por la fecha de la carpeta.
                 let attributes = try? fileManager.attributesOfItem(atPath: url.path)
                 let date = (attributes?[.creationDate] as? Date) ?? Date.distantPast
-                loadedDescriptors.append((url, date))
+                entries.append((url, date))
             }
         }
-        
-        // Sort: newest first
-        let sorted = loadedDescriptors.sorted { $0.1 > $1.1 }
-        if sorted.count > retentionLimit {
-            let toDelete = sorted.suffix(sorted.count - retentionLimit)
-            for (url, _) in toDelete {
-                try? fileManager.removeItem(at: url)
-            }
+
+        for url in Self.retentionVictims(entries: entries, limit: Self.retentionLimit, protecting: protectedURLs) {
+            try? fileManager.removeItem(at: url)
+        }
+    }
+
+    /// Copias a borrar: las más antiguas por encima del límite, sin tocar nunca las protegidas.
+    nonisolated static func retentionVictims(
+        entries: [(url: URL, createdAt: Date)],
+        limit: Int,
+        protecting protectedURLs: Set<URL>
+    ) -> [URL] {
+        let protectedPaths = Set(protectedURLs.map { $0.standardizedFileURL.path })
+        let sorted = entries.sorted { $0.createdAt > $1.createdAt }
+        guard sorted.count > limit else { return [] }
+        return sorted.suffix(sorted.count - limit)
+            .map(\.url)
+            .filter { !protectedPaths.contains($0.standardizedFileURL.path) }
+    }
+
+    // MARK: - Schema Compatibility
+
+    /// Una copia de una versión de datos más nueva no se puede abrir con esta app.
+    nonisolated static func isSchemaCompatible(backupSchemaVersion: Int?, currentSchemaVersion: Int?) -> Bool {
+        guard let backupSchemaVersion, let currentSchemaVersion else { return true }
+        return backupSchemaVersion <= currentSchemaVersion
+    }
+
+    private func ensureSchemaCompatible(_ manifest: AppleBackupManifest) throws {
+        guard Self.isSchemaCompatible(
+            backupSchemaVersion: manifest.schemaVersion,
+            currentSchemaVersion: getSchemaVersion(of: databaseURL.path)
+        ) else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 426,
+                userInfo: [NSLocalizedDescriptionKey: "Esta copia es de una versión más nueva de la app. Actualiza la app para restaurarla."]
+            )
         }
     }
 

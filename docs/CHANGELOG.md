@@ -26,6 +26,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- Maqueta del rediseño de copias (`docs/mockups/copias-seguridad/mockup/index.html`), revisada con criterios HIG y de accesibilidad.
 - Maqueta aprobada (`docs/mockups/libreta/mockup/index.html`), ticket (`docs/planes/ticket_libreta_integrada_2026-10-15.md`) y ámbito (`docs/ambitos/libreta.md`) de la Libreta.
 
 ### Verification

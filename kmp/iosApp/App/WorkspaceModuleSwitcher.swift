@@ -89,6 +89,12 @@ extension AppWorkspaceShell {
                 }
             )
             .environmentObject(bridge)
+        case .libreta:
+            #if os(iOS)
+            LibretaModuleView()
+            #else
+            EmptyView()
+            #endif
         case .meetings:
             MeetingsWorkspaceView(bridge: bridge)
                 .environmentObject(bridge)

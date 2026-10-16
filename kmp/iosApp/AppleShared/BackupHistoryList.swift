@@ -181,6 +181,9 @@ struct BackupRowView: View {
                             CountPill(label: "Columnas", count: backup.manifest.summary.notebookColumnCount, systemImage: "tablecells")
                             CountPill(label: "Rúbricas", count: backup.manifest.summary.rubricCount, systemImage: "doc.plaintext")
                             CountPill(label: "Asistencias", count: backup.manifest.summary.attendanceRecordCount, systemImage: "checkmark.circle")
+                            if let libretas = backup.manifest.summary.libretaCount {
+                                CountPill(label: "Libretas", count: libretas, systemImage: "pencil.and.scribble")
+                            }
                         }
                     }
                 }

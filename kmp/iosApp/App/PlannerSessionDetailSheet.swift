@@ -77,6 +77,8 @@ struct PlannerSessionDetailSheet: View {
     let onEdit: () -> Void
     var onDelete: (() -> Void)? = nil
     var onCopyToNextWeek: (() -> Void)? = nil
+    /// Solo iPad: abre la libreta de la clase de la sesión. `nil` = no se muestra.
+    var onOpenLibreta: (() -> Void)? = nil
     var presentation: PlannerSessionDetailPresentation = .sheet
     var onClose: (() -> Void)? = nil
 
@@ -88,6 +90,7 @@ struct PlannerSessionDetailSheet: View {
         onEdit: @escaping () -> Void,
         onDelete: (() -> Void)? = nil,
         onCopyToNextWeek: (() -> Void)? = nil,
+        onOpenLibreta: (() -> Void)? = nil,
         presentation: PlannerSessionDetailPresentation = .sheet,
         onClose: (() -> Void)? = nil
     ) {
@@ -96,6 +99,7 @@ struct PlannerSessionDetailSheet: View {
         self.onEdit = onEdit
         self.onDelete = onDelete
         self.onCopyToNextWeek = onCopyToNextWeek
+        self.onOpenLibreta = onOpenLibreta
         self.presentation = presentation
         self.onClose = onClose
         _attachmentStore = StateObject(wrappedValue: PlannerSessionAttachmentStore(sessionId: session.id))
@@ -535,6 +539,9 @@ struct PlannerSessionDetailSheet: View {
             Button(action: onEdit) { Label("Editar", systemImage: "pencil") }
             if onCopyToNextWeek != nil {
                 Button { onCopyToNextWeek?() } label: { Label("Duplicar", systemImage: "doc.on.doc") }
+            }
+            if let onOpenLibreta {
+                Button(action: onOpenLibreta) { Label("Abrir libreta de la clase", systemImage: "pencil.and.scribble") }
             }
             if sourceDocumentFileURL != nil {
                 Button { openSourceDocumentPreview() } label: { Label("Ver DOCX", systemImage: "doc.text.magnifyingglass") }

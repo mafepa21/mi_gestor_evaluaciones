@@ -505,6 +505,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
     case planner
     case situations
     case diary
+    case libreta
     case meetings
     case inclusion
     case evaluationHub
@@ -534,6 +535,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "Planner"
         case .situations: return "Situaciones"
         case .diary: return "Diario de aula"
+        case .libreta: return "Libreta"
         case .meetings: return "Reuniones"
         case .inclusion: return "Inclusión"
         case .evaluationHub: return "Evaluación"
@@ -563,6 +565,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "Preparación lectiva"
         case .situations: return "Programación curricular"
         case .diary: return "Trazabilidad de sesión"
+        case .libreta: return "Notas a mano con Apple Pencil"
         case .meetings: return "Actas de centro y acuerdos"
         case .inclusion: return "Plazos del manual"
         case .evaluationHub: return "Instrumentos y calendario"
@@ -592,6 +595,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "calendar.badge.clock"
         case .situations: return "doc.text.magnifyingglass"
         case .diary: return "doc.text.fill"
+        case .libreta: return "pencil.and.scribble"
         case .meetings: return "person.3.fill"
         case .inclusion: return "person.2.badge.gearshape"
         case .evaluationHub: return "chart.bar.doc.horizontal"
@@ -614,7 +618,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard, .courses, .students, .teacherRadar, .notebook:
             return .academic
-        case .attendance, .planner, .situations, .peTournaments, .diary, .meetings, .inclusion:
+        case .attendance, .planner, .situations, .peTournaments, .diary, .libreta, .meetings, .inclusion:
             return .operations
         case .evaluationHub, .webSubmissions, .rubrics, .reports, .library:
             return .evaluation
@@ -922,7 +926,7 @@ struct AppWorkspaceShell: View {
             shellStore.bind(to: bridge)
 
             let restoredModule = AppWorkspaceModule(rawValue: persistedActiveModule) ?? .dashboard
-            activeModule = restoredModule == .teacherRadar ? .dashboard : restoredModule
+            activeModule = (restoredModule == .teacherRadar || !restoredModule.isAvailableOnThisDevice) ? .dashboard : restoredModule
             
             await bridge.ensureClassesLoaded()
             try? await bridge.refreshStudentsDirectory()

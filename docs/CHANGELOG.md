@@ -15,6 +15,25 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- **Planner: hoja del día para imprimir (A3 apaisado, 3 sesiones por hoja)**: botón «Hoja del día» en la vista Día. Genera un PDF con un esquema por sesión: hora y grupo, título, objetivo, pasos con minutos y un detalle breve de cada actividad, material, atención y líneas para notas a mano. Más de 3 sesiones = otra hoja. El material no se parte por comas ni dentro de paréntesis. Se abre el menú del sistema para imprimir o compartir.
+- **Libreta ligada a una clase**: cada libreta se puede ligar a una clase de Mi Gestor desde su menú («Clase») o al crearla. El lector muestra la clase bajo el título. En iPad, el inspector del Diario de aula («Abrir libreta») y el menú «•••» de la sesión del Planner («Abrir libreta de la clase») abren a pantalla completa la libreta más reciente de esa clase. Si no hay ninguna, proponen crearla con el nombre de la clase. En la Libreta, «Grupo» sigue siendo la balda.
+- **Las copias de Seguridad del iPad incluyen la Libreta**: base y dibujos e imágenes, con sus sumas de control. Al restaurar, las libretas vuelven a como estaban en la copia, dentro de la misma operación con vuelta atrás que el resto. Una copia sin libretas (antigua o hecha en el Mac) no las toca. El historial muestra «Libretas N» y la vista previa de restaurar, una fila «Libretas» con su aviso.
+- **Libreta: libretas a mano con Apple Pencil dentro de la app (solo iPad)**: la app Cuadernos entra como módulo «Libreta», en Planificación, justo debajo de «Diario de aula». Estantería y montones van dentro del panel, con la barra lateral y la barra de la app. Al tocar una libreta, el lector se abre a pantalla completa; «Estantería» vuelve. Se conserva todo lo de Cuadernos: escritura con PencilKit, paso de hoja, miniaturas, marcapáginas, objetos, plantillas de hoja, búsqueda de manuscrito, PDF y copia JSON. Botones y menús usan el azul de la app; papel, tapas y madera no cambian. Estado vacío con «Traer de Cuadernos» para importar la copia de la app antigua. En iPhone y Mac el módulo no aparece.
+
+### Data
+
+- **Libreta con base de datos propia**: SwiftData en su propio archivo (`Libreta.store`), sin iCloud y fuera de KMP/SQLDelight. Se abre al entrar en el módulo, no al arrancar la app. Si falla, aviso con «Reintentar», sin borrar nada. Ver `ADR-2026-10-15-libreta-swiftdata-propia.md`.
+
+### Docs
+
+- Maqueta aprobada (`docs/mockups/libreta/mockup/index.html`), ticket (`docs/planes/ticket_libreta_integrada_2026-10-15.md`) y ámbito (`docs/ambitos/libreta.md`) de la Libreta.
+
+### Verification
+
+- Fase 2 de la Libreta: `xcodebuild` `MiGestorKMPiOS` (iOS simulador genérico) compila. `xcodebuild test` `MiGestorPlannerTests` (Mac arm64): 282 pruebas, 0 fallos y 4 omitidas; incluye 5 nuevas de ida y vuelta de la Libreta en las copias. Sin QA en ejecución (no hay simuladores instalados) ni prueba de restaurar en un iPad real.
+- `xcodebuild` `MiGestorKMPiOS` para `generic/platform=iOS Simulator`: compila.
+- `xcodebuild` `MiGestorKMPMac` para `arm64`: compila. Para `x86_64` falla al enlazar porque el `MiGestorKit` local solo trae arm64 (fallo del entorno, no del código de este cambio; no se comprobó en `main`).
+- No se ha abierto la app: este Mac no tiene ningún simulador de iOS instalado. Falta la QA en iPad (simulador o real) y la prueba con Apple Pencil.
 - **Torneos dentro de la Situación de Aprendizaje**: nueva sección «Torneos» en el detalle de cada SdA. Los equipos son los grupos de trabajo vinculados a la SdA. Formatos: liga, eliminatoria, liguilla + cruces y rotaciones. Incluye estimación de duración («cabe en una sesión»), calendario por pistas, clasificación, cuadro, modo directo para el pabellón (marcador grande, temporizador con aviso «¡Tiempo!», VoiceOver) y aviso si los grupos cambian después de crear el torneo. Motor portado del proyecto TourneyFlow a `AppleShared/Tournament/`.
 - **Torneos: integrantes y hoja imprimible**: pestaña «Equipos» con los alumnos de cada equipo, integrantes visibles al crear el torneo y PDF A4 con una tarjeta por equipo y la primera ronda.
 

@@ -111,7 +111,7 @@ final class MacBackupStore: ObservableObject {
         return "Protegido"
     }
     var retentionSummary: String { "10 copias" }
-    var extraCopiesCount: Int { max(0, backups.count - 10) }
+    var extraCopiesCount: Int { max(0, backups.count - AppleBackupService.retentionLimit) }
 
     func loadBackups() async {
         operationState = .loading("Escaneando")

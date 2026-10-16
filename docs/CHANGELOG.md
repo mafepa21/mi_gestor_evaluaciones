@@ -45,6 +45,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Copias: restaurar la copia más antigua ya no falla**: al restaurar se crea una copia de emergencia y la retención (5 copias) borraba la más antigua, que podía ser justo la elegida. Ahora la copia que se restaura queda protegida.
+- **Copias: la retención ordena por la fecha real de la copia**: leía mal la fecha del manifiesto y usaba la de la carpeta, así que una copia antigua recién importada contaba como nueva.
+- **Copias: no se restauran ni importan copias de una versión de datos más nueva**: aviso «Esta copia es de una versión más nueva de la app. Actualiza la app para restaurarla». Evita, por ejemplo, abrir en un iPad sin actualizar una copia del Mac.
+- **Mac: el aviso de copias de sobra usa el límite real (5) en vez de 10.**
+- Verificación: `MiGestorPlannerTests` (AppleBackupRetention, AppleBackupIntegrity, AppleEncryptedBackup) 21/21 en macOS; build `MiGestorKMPiOS` para simulador OK. Sin prueba manual con datos de prueba todavía.
+
 - **Torneos: el PDF de equipos ya no pisa tarjetas ni corta nombres**: la altura de cada tarjeta se calculaba sin el espacio entre alumnos, así que se montaba sobre la de abajo. Los nombres largos pasan a dos líneas en lugar de cortarse, y cada alumno lleva una viñeta (•) para distinguirlos. En iPad/iPhone, «Imprimir equipos» abría la hoja de compartir vacía: el PDF se preparaba de antemano y el fichero podía borrarse; ahora se genera al pulsar.
 
 ### Data

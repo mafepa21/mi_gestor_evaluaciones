@@ -395,7 +395,7 @@ public final class AppleBackupService: ObservableObject {
             // Best-effort: si la base activa no es utilizable (vacía o corrupta) no hay nada
             // que proteger, y ese es precisamente el caso en el que el usuario más necesita
             // restaurar. No lo bloqueamos por no poder hacer una copia de la nada.
-            let emergencyNote = "Copia de seguridad de emergencia previa a restauración de \(descriptor.displayName) (\(descriptor.manifest.createdAt.formattedDateText))"
+            let emergencyNote = "\(AppleBackupDescriptor.emergencyNotePrefix) previa a restauración de \(descriptor.displayName) (\(descriptor.manifest.createdAt.formattedDateText))"
             do {
                 // La copia elegida queda protegida: si fuese la más antigua, la retención
                 // la borraría justo antes de leerla para restaurar.

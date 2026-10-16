@@ -109,6 +109,13 @@ extension AppleBackupDescriptor {
     public var isRestorable: Bool {
         isVerified && !hasEmptyDatabase
     }
+
+    /// Copia creada automáticamente justo antes de una restauración.
+    public var isEmergencyBackup: Bool {
+        manifest.note?.hasPrefix(AppleBackupDescriptor.emergencyNotePrefix) == true
+    }
+
+    static let emergencyNotePrefix = "Copia de seguridad de emergencia"
 }
 
 /// Base de datos que el arranque apartó porque no pudo abrirla, renombrándola a

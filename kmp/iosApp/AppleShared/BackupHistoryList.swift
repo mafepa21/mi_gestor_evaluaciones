@@ -121,6 +121,13 @@ struct BackupRowView: View {
                         Text("\(backup.manifest.createdAt.formattedDateText) · \(backup.manifest.platform) (\(backup.manifest.deviceName))")
                             .font(IOSAppStyle.captionText)
                             .foregroundStyle(.secondary)
+
+                        if backup.isEmergencyBackup {
+                            Label("Copia de emergencia · antes de restaurar", systemImage: "lifepreserver")
+                                .font(IOSAppStyle.captionText.weight(.semibold))
+                                .foregroundStyle(IOSAppStyle.warning)
+                                .padding(.top, 2)
+                        }
                     }
                     
                     Spacer()

@@ -44,9 +44,6 @@ public final class AppSettingsStore: ObservableObject {
         set { backupFrequencyRaw = newValue.rawValue }
     }
     
-    @AppStorage("settings.createEmergencyBackupBeforeRestore")
-    public var createEmergencyBackupBeforeRestore: Bool = true
-    
     @AppStorage("settings.syncAutoStart")
     public var syncAutoStart: Bool = true
     

@@ -25,7 +25,15 @@ public final class AppleBackupService: ObservableObject {
     public let databaseURL: URL
     public let attachmentsURL: URL
     public let learningSituationsURL: URL
-    nonisolated public static let retentionLimit = 5
+    /// Retención (ver `retentionVictims`): copias normales recientes, una por semana
+    /// de las anteriores y un cupo propio para las de emergencia previas a restaurar.
+    nonisolated public static let recentRetentionCount = 7
+    nonisolated public static let weeklyRetentionCount = 4
+    nonisolated public static let emergencyRetentionCount = 2
+    /// Regla antigua (las 5 más recientes de cualquier tipo). Se sigue respetando para
+    /// que el cambio de regla no borre ninguna copia que antes se conservaba.
+    nonisolated static let legacyRetentionCount = 5
+    nonisolated static let emergencyNotePrefix = "Copia de seguridad de emergencia"
     private let libretaStorage = LibretaStorage.standard
 
     public static let shared = AppleBackupService()
@@ -690,37 +698,90 @@ public final class AppleBackupService: ObservableObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
-        var entries: [(url: URL, createdAt: Date)] = []
+        var entries: [RetentionEntry] = []
         for url in backupUrls {
             let manifestURL = url.appendingPathComponent("manifest.json")
             if let manifestData = try? Data(contentsOf: manifestURL),
                let manifest = try? decoder.decode(AppleBackupManifest.self, from: manifestData) {
-                entries.append((url, manifest.createdAt))
+                entries.append(RetentionEntry(url: url, createdAt: manifest.createdAt, note: manifest.note))
             } else {
                 // Manifiesto ilegible: se ordena por la fecha de la carpeta.
                 let attributes = try? fileManager.attributesOfItem(atPath: url.path)
                 let date = (attributes?[.creationDate] as? Date) ?? Date.distantPast
-                entries.append((url, date))
+                entries.append(RetentionEntry(url: url, createdAt: date, note: nil))
             }
         }
 
-        for url in Self.retentionVictims(entries: entries, limit: Self.retentionLimit, protecting: protectedURLs) {
+        for url in Self.retentionVictims(entries: entries, protecting: protectedURLs) {
             try? fileManager.removeItem(at: url)
         }
     }
 
-    /// Copias a borrar: las más antiguas por encima del límite, sin tocar nunca las protegidas.
+    /// Aplica la retención ahora (botón «Aplicar retención» del Mac).
+    public func applyRetentionNow() async {
+        do {
+            try applyRetentionPolicy()
+        } catch {
+            lastError = "No se pudo aplicar la retención: \(error.localizedDescription)"
+        }
+        await scanBackups()
+    }
+
+    /// Copias de la lista actual que la retención borraría.
+    public var backupsBeyondRetentionCount: Int {
+        let entries = backups.map {
+            RetentionEntry(url: $0.url, createdAt: $0.manifest.createdAt, note: $0.manifest.note)
+        }
+        return Self.retentionVictims(entries: entries, protecting: []).count
+    }
+
+    struct RetentionEntry {
+        let url: URL
+        let createdAt: Date
+        let isEmergency: Bool
+
+        init(url: URL, createdAt: Date, note: String?) {
+            self.url = url
+            self.createdAt = createdAt
+            self.isEmergency = note?.hasPrefix(AppleBackupService.emergencyNotePrefix) == true
+        }
+    }
+
+    /// Copias a borrar. Se conservan:
+    /// - las `recentRetentionCount` copias normales más recientes;
+    /// - de las normales más antiguas, la más reciente de cada semana aún no
+    ///   representada, hasta `weeklyRetentionCount` semanas;
+    /// - las `emergencyRetentionCount` copias de emergencia más recientes, en cupo
+    ///   aparte, para que restaurar varias veces no eche a las copias normales;
+    /// - las `legacyRetentionCount` más recientes de cualquier tipo (regla anterior);
+    /// - y nunca se borra una copia protegida (p. ej. la que se está restaurando).
     nonisolated static func retentionVictims(
-        entries: [(url: URL, createdAt: Date)],
-        limit: Int,
-        protecting protectedURLs: Set<URL>
+        entries: [RetentionEntry],
+        protecting protectedURLs: Set<URL>,
+        calendar: Calendar = .current
     ) -> [URL] {
-        let protectedPaths = Set(protectedURLs.map { $0.standardizedFileURL.path })
+        func key(_ url: URL) -> String { url.standardizedFileURL.path }
         let sorted = entries.sorted { $0.createdAt > $1.createdAt }
-        guard sorted.count > limit else { return [] }
-        return sorted.suffix(sorted.count - limit)
-            .map(\.url)
-            .filter { !protectedPaths.contains($0.standardizedFileURL.path) }
+        var kept = Set(protectedURLs.map(key))
+
+        sorted.prefix(legacyRetentionCount).forEach { kept.insert(key($0.url)) }
+        sorted.filter(\.isEmergency).prefix(emergencyRetentionCount).forEach { kept.insert(key($0.url)) }
+
+        let normals = sorted.filter { !$0.isEmergency }
+        let recent = normals.prefix(recentRetentionCount)
+        recent.forEach { kept.insert(key($0.url)) }
+
+        func week(_ date: Date) -> Date? { calendar.dateInterval(of: .weekOfYear, for: date)?.start }
+        var coveredWeeks = Set(recent.compactMap { week($0.createdAt) })
+        var weeklyKept = 0
+        for entry in normals.dropFirst(recentRetentionCount) where weeklyKept < weeklyRetentionCount {
+            guard let entryWeek = week(entry.createdAt), !coveredWeeks.contains(entryWeek) else { continue }
+            coveredWeeks.insert(entryWeek)
+            kept.insert(key(entry.url))
+            weeklyKept += 1
+        }
+
+        return sorted.map(\.url).filter { !kept.contains(key($0)) }
     }
 
     // MARK: - Schema Compatibility

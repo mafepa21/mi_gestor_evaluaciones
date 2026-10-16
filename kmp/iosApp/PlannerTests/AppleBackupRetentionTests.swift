@@ -50,3 +50,58 @@ final class AppleBackupRetentionTests: XCTestCase {
         XCTAssertTrue(AppleBackupService.isSchemaCompatible(backupSchemaVersion: 7, currentSchemaVersion: nil))
     }
 }
+
+@MainActor
+final class AppleAutomaticBackupScheduleTests: XCTestCase {
+    private let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Madrid")!
+        return calendar
+    }()
+
+    /// 16 oct 2026, 18:00 en Madrid.
+    private var now: Date {
+        calendar.date(from: DateComponents(year: 2026, month: 10, day: 16, hour: 18))!
+    }
+
+    private func due(_ frequency: BackupFrequency, lastBackupHoursAgo: Double?, lastAttemptMinutesAgo: Double? = nil) -> Bool {
+        AppleBackupService.isAutomaticBackupDue(
+            frequency: frequency,
+            lastBackupAt: lastBackupHoursAgo.map { now.addingTimeInterval(-$0 * 3600) },
+            lastAttemptAt: lastAttemptMinutesAgo.map { now.addingTimeInterval(-$0 * 60) },
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    func testManualNeverRuns() {
+        XCTAssertFalse(due(.manual, lastBackupHoursAgo: nil))
+        XCTAssertFalse(due(.manual, lastBackupHoursAgo: 24 * 30))
+    }
+
+    func testWithoutAnyBackupItRuns() {
+        XCTAssertTrue(due(.daily, lastBackupHoursAgo: nil))
+        XCTAssertTrue(due(.weekly, lastBackupHoursAgo: nil))
+    }
+
+    func testDailyRunsOncePerCalendarDay() {
+        XCTAssertFalse(due(.daily, lastBackupHoursAgo: 2), "Ya hay copia hoy")
+        XCTAssertTrue(due(.daily, lastBackupHoursAgo: 20), "La última es de ayer a las 22:00")
+    }
+
+    func testWeeklyWaitsSevenDays() {
+        XCTAssertFalse(due(.weekly, lastBackupHoursAgo: 24 * 6))
+        XCTAssertTrue(due(.weekly, lastBackupHoursAgo: 24 * 7))
+    }
+
+    func testRecentFailedAttemptIsNotRetried() {
+        XCTAssertFalse(due(.daily, lastBackupHoursAgo: nil, lastAttemptMinutesAgo: 10))
+        XCTAssertTrue(due(.daily, lastBackupHoursAgo: nil, lastAttemptMinutesAgo: 61))
+    }
+
+    func testFutureDatedBackupDoesNotBlockDaily() {
+        // Reloj cambiado o copia importada con fecha futura: no cuenta como "hoy".
+        XCTAssertFalse(due(.daily, lastBackupHoursAgo: -1), "Mismo día aunque sea una hora después")
+        XCTAssertTrue(due(.daily, lastBackupHoursAgo: -30))
+    }
+}

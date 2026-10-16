@@ -25,8 +25,10 @@ struct MiGestorKMPiOSApp: App {
         switch newPhase {
         case .active:
             NotificationCenter.default.post(name: .appleAppDidBecomeActive, object: nil)
+            AppleBackupService.shared.handleScenePhaseForAutomaticBackup(isActive: true)
         case .background:
             NotificationCenter.default.post(name: .appleAppDidEnterBackground, object: nil)
+            AppleBackupService.shared.handleScenePhaseForAutomaticBackup(isActive: false)
         case .inactive:
             break
         @unknown default:

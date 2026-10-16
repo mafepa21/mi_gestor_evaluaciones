@@ -31,6 +31,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Copias automáticas: `./scripts/verify_apple_builds.sh` compila macOS e iOS Simulator; `xcodebuild test` (MiGestorPlannerTests, macOS) pasa `AppleAutomaticBackupScheduleTests` (6) y `AppleBackupRetentionTests` (7). Sin prueba manual en la app.
 - Rediseño de copias: `./scripts/verify_apple_builds.sh` compila macOS (MiGestorKMPMac) e iOS Simulator (MiGestorKMPiOS). Sin QA manual en la app ni capturas.
 - Fase 2 de la Libreta: `xcodebuild` `MiGestorKMPiOS` (iOS simulador genérico) compila. `xcodebuild test` `MiGestorPlannerTests` (Mac arm64): 282 pruebas, 0 fallos y 4 omitidas; incluye 5 nuevas de ida y vuelta de la Libreta en las copias. Sin QA en ejecución (no hay simuladores instalados) ni prueba de restaurar en un iPad real.
 - `xcodebuild` `MiGestorKMPiOS` para `generic/platform=iOS Simulator`: compila.
@@ -41,6 +42,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Ajustes › Datos y seguridad: fuera el interruptor «Copia previa al restaurar»**: no tenía efecto; la app siempre guarda una copia antes de restaurar, y así sigue. El pie de «Copias automáticas» explica ahora cuándo se hace la copia. «Diaria (Al cerrar la app)» pasa a «Diaria».
 - **Ajustes › Datos y seguridad y Copias de seguridad, rediseño según HIG**: Ajustes pasa a formulario agrupado con una fila de estado («Tus datos están protegidos · Última copia hace 2 horas») y «Crear copia ahora», secciones «Copias automáticas» e «Historial» con texto de pie, la fila «Copias guardadas» con su número y «Zona de riesgo» separada al final. El centro de copias deja la cabecera grande, los dos botones de crear, la fila de botones que se cortaba y las tres tarjetas de colores: ahora tiene barra de herramientas (Buscar, Importar, Más, Crear copia), un resumen de una línea y una lista nativa agrupada por día. Cada copia muestra hora y nota en vez del nombre de archivo, el contenido en una línea y el tamaño. Solo lleva símbolo si está validada o tiene un problema; «sin validar» ya no parece un aviso. Validar, Exportar y Eliminar pasan al menú «⋯», al clic derecho y a deslizar en iPad; pulsar la copia abre la vista previa de restaurar. Eliminar pide confirmación con la fecha. El estado verde se calcula con la última copia que no esté vacía ni dañada. Etiquetas de VoiceOver por fila, acciones con nombre y texto dinámico.
 
 - **El módulo antiguo de Torneos de EF se sustituye**: la pantalla de EF lista los torneos del curso y los abre con el detalle nuevo. Los torneos antiguos (UserDefaults) se migran al arrancar, una sola vez; la clave antigua se conserva como copia. Se pierden: partidos contra «BYE», 0-0 reales sin marca de jugado y el texto libre de pista (queda el número). Los puntos personalizados se conservan para la clasificación.
@@ -49,6 +51,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Las copias automáticas nunca se hacían**: la frecuencia de Ajustes («Diaria», «Semanal») se guardaba pero nada la leía. Ahora la app comprueba si toca al volver a ella (tras 45 s) y al salir (en iPad pide tiempo al sistema para acabar). «Diaria» = una copia por día del calendario; «Semanal» = 7 días desde la última copia válida. «Solo manual» no hace nada. La copia lleva la nota «Copia automática». Si falla, no muestra aviso y no reintenta en una hora. No copia una base vacía.
 - **Copias: restaurar la copia más antigua ya no falla**: al restaurar se crea una copia de emergencia y la retención (5 copias) borraba la más antigua, que podía ser justo la elegida. Ahora la copia que se restaura queda protegida.
 - **Copias: la retención ordena por la fecha real de la copia**: leía mal la fecha del manifiesto y usaba la de la carpeta, así que una copia antigua recién importada contaba como nueva.
 - **Copias: no se restauran ni importan copias de una versión de datos más nueva**: aviso «Esta copia es de una versión más nueva de la app. Actualiza la app para restaurarla». Evita, por ejemplo, abrir en un iPad sin actualizar una copia del Mac.

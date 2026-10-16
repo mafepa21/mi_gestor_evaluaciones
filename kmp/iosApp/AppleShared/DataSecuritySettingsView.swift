@@ -26,15 +26,10 @@ struct DataSecuritySettingsView: View {
                         Text(freq.title).tag(freq)
                     }
                 }
-
-                Toggle(isOn: $settings.createEmergencyBackupBeforeRestore) {
-                    Text("Copia previa al restaurar")
-                    Text("Guarda tu estado actual antes de sustituirlo.")
-                }
             } header: {
                 Text("Copias automáticas")
             } footer: {
-                Text("Las copias se guardan en este dispositivo. Para llevarlas a otro sitio, usa Exportar.")
+                Text(automaticFooterText)
             }
 
             Section {
@@ -76,6 +71,16 @@ struct DataSecuritySettingsView: View {
                 _ = try await backupService.createBackup(note: finalNote.isEmpty ? nil : finalNote)
             }
         }
+    }
+
+    private var automaticFooterText: String {
+        let schedule: String
+        switch settings.backupFrequency {
+        case .daily: schedule = "La app hace una copia al día, al abrirla o al salir de ella."
+        case .weekly: schedule = "La app hace una copia cada semana, al abrirla o al salir de ella."
+        case .manual: schedule = "La app no hará copias por su cuenta."
+        }
+        return "\(schedule) Antes de restaurar, siempre guarda una copia de lo que tienes. Las copias se quedan en este dispositivo: para llevarlas a otro sitio, usa Exportar."
     }
 
     private var backupCountText: String {

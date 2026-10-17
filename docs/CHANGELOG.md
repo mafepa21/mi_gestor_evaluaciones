@@ -13,6 +13,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Removed
+
+- **Apple: se quitan `createLocalBackup` y `restoreLocalBackup` de `KmpBridge`**: envolvían el sistema de copias antiguo de KMP (`BackupService`, un único `.sqlite` sin adjuntos ni comprobaciones) y ninguna pantalla los llamaba. iPad y Mac usan solo `AppleBackupService`. El servicio KMP se mantiene porque lo usa la app de escritorio (`desktopApp`). Verificación: build `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador) OK.
+
 ### Added
 
 - **Planner: hoja del día para imprimir (A3 apaisado, 3 sesiones por hoja)**: botón «Hoja del día» en la vista Día. Genera un PDF con un esquema por sesión: hora y grupo, título, objetivo, pasos con minutos y un detalle breve de cada actividad, material, atención y líneas para notas a mano. Más de 3 sesiones = otra hoja. El material no se parte por comas ni dentro de paréntesis. Se abre el menú del sistema para imprimir o compartir.

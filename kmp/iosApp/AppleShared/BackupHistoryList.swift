@@ -145,6 +145,13 @@ struct BackupRowView: View {
                             .font(.subheadline)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
+
+                        if backup.isEmergencyBackup {
+                            Label("Copia de emergencia · antes de restaurar", systemImage: "lifepreserver")
+                                .font(IOSAppStyle.captionText.weight(.semibold))
+                                .foregroundStyle(IOSAppStyle.warning)
+                                .padding(.top, 2)
+                        }
                     }
                 }
                 .contentShape(Rectangle())

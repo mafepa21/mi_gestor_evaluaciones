@@ -95,6 +95,18 @@ enum AppleSQLiteBackupValidator {
             )
         }
 
+        // La API de backup copia también la cabecera, que marca la base en modo WAL.
+        // Abierta en solo lectura y sin fichero -wal, SQLite responde «unable to open
+        // database file». La instantánea pasa a modo DELETE para validarse sin sidecars;
+        // la app vuelve a activar WAL al abrirla.
+        guard sqlite3_exec(destination, "PRAGMA journal_mode = DELETE;", nil, nil, nil) == SQLITE_OK else {
+            throw validationError(
+                code: 500,
+                message: "SQLite no pudo preparar la instantánea temporal de restauración.",
+                database: destination
+            )
+        }
+
         try validateDatabase(at: destinationURL)
     }
 

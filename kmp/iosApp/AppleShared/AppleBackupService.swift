@@ -12,6 +12,7 @@ public final class AppleBackupService: ObservableObject {
     @Published public var lastError: String? = nil
     @Published public var needsRestart: Bool = false
     @Published public var latestEmergencyBackupUrl: URL? = nil
+    var automaticBackupTask: Task<Void, Never>?
 
     /// Bases de datos que el arranque puso en cuarentena porque no pudo abrirlas
     /// (ver `createAppleDriver` en AppleDriver.kt). Cuando esto ocurre la app se abre
@@ -24,7 +25,15 @@ public final class AppleBackupService: ObservableObject {
     public let databaseURL: URL
     public let attachmentsURL: URL
     public let learningSituationsURL: URL
-    nonisolated public static let retentionLimit = 5
+    /// Retención (ver `retentionVictims`): copias normales recientes, una por semana
+    /// de las anteriores y un cupo propio para las de emergencia previas a restaurar.
+    nonisolated public static let recentRetentionCount = 7
+    nonisolated public static let weeklyRetentionCount = 4
+    nonisolated public static let emergencyRetentionCount = 2
+    /// Regla antigua (las 5 más recientes de cualquier tipo). Se sigue respetando para
+    /// que el cambio de regla no borre ninguna copia que antes se conservaba.
+    nonisolated static let legacyRetentionCount = 5
+    nonisolated static let emergencyNotePrefix = "Copia de seguridad de emergencia"
     private let libretaStorage = LibretaStorage.standard
 
     public static let shared = AppleBackupService()
@@ -689,37 +698,90 @@ public final class AppleBackupService: ObservableObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
-        var entries: [(url: URL, createdAt: Date)] = []
+        var entries: [RetentionEntry] = []
         for url in backupUrls {
             let manifestURL = url.appendingPathComponent("manifest.json")
             if let manifestData = try? Data(contentsOf: manifestURL),
                let manifest = try? decoder.decode(AppleBackupManifest.self, from: manifestData) {
-                entries.append((url, manifest.createdAt))
+                entries.append(RetentionEntry(url: url, createdAt: manifest.createdAt, note: manifest.note))
             } else {
                 // Manifiesto ilegible: se ordena por la fecha de la carpeta.
                 let attributes = try? fileManager.attributesOfItem(atPath: url.path)
                 let date = (attributes?[.creationDate] as? Date) ?? Date.distantPast
-                entries.append((url, date))
+                entries.append(RetentionEntry(url: url, createdAt: date, note: nil))
             }
         }
 
-        for url in Self.retentionVictims(entries: entries, limit: Self.retentionLimit, protecting: protectedURLs) {
+        for url in Self.retentionVictims(entries: entries, protecting: protectedURLs) {
             try? fileManager.removeItem(at: url)
         }
     }
 
-    /// Copias a borrar: las más antiguas por encima del límite, sin tocar nunca las protegidas.
+    /// Aplica la retención ahora (botón «Aplicar retención» del Mac).
+    public func applyRetentionNow() async {
+        do {
+            try applyRetentionPolicy()
+        } catch {
+            lastError = "No se pudo aplicar la retención: \(error.localizedDescription)"
+        }
+        await scanBackups()
+    }
+
+    /// Copias de la lista actual que la retención borraría.
+    public var backupsBeyondRetentionCount: Int {
+        let entries = backups.map {
+            RetentionEntry(url: $0.url, createdAt: $0.manifest.createdAt, note: $0.manifest.note)
+        }
+        return Self.retentionVictims(entries: entries, protecting: []).count
+    }
+
+    struct RetentionEntry {
+        let url: URL
+        let createdAt: Date
+        let isEmergency: Bool
+
+        init(url: URL, createdAt: Date, note: String?) {
+            self.url = url
+            self.createdAt = createdAt
+            self.isEmergency = note?.hasPrefix(AppleBackupService.emergencyNotePrefix) == true
+        }
+    }
+
+    /// Copias a borrar. Se conservan:
+    /// - las `recentRetentionCount` copias normales más recientes;
+    /// - de las normales más antiguas, la más reciente de cada semana aún no
+    ///   representada, hasta `weeklyRetentionCount` semanas;
+    /// - las `emergencyRetentionCount` copias de emergencia más recientes, en cupo
+    ///   aparte, para que restaurar varias veces no eche a las copias normales;
+    /// - las `legacyRetentionCount` más recientes de cualquier tipo (regla anterior);
+    /// - y nunca se borra una copia protegida (p. ej. la que se está restaurando).
     nonisolated static func retentionVictims(
-        entries: [(url: URL, createdAt: Date)],
-        limit: Int,
-        protecting protectedURLs: Set<URL>
+        entries: [RetentionEntry],
+        protecting protectedURLs: Set<URL>,
+        calendar: Calendar = .current
     ) -> [URL] {
-        let protectedPaths = Set(protectedURLs.map { $0.standardizedFileURL.path })
+        func key(_ url: URL) -> String { url.standardizedFileURL.path }
         let sorted = entries.sorted { $0.createdAt > $1.createdAt }
-        guard sorted.count > limit else { return [] }
-        return sorted.suffix(sorted.count - limit)
-            .map(\.url)
-            .filter { !protectedPaths.contains($0.standardizedFileURL.path) }
+        var kept = Set(protectedURLs.map(key))
+
+        sorted.prefix(legacyRetentionCount).forEach { kept.insert(key($0.url)) }
+        sorted.filter(\.isEmergency).prefix(emergencyRetentionCount).forEach { kept.insert(key($0.url)) }
+
+        let normals = sorted.filter { !$0.isEmergency }
+        let recent = normals.prefix(recentRetentionCount)
+        recent.forEach { kept.insert(key($0.url)) }
+
+        func week(_ date: Date) -> Date? { calendar.dateInterval(of: .weekOfYear, for: date)?.start }
+        var coveredWeeks = Set(recent.compactMap { week($0.createdAt) })
+        var weeklyKept = 0
+        for entry in normals.dropFirst(recentRetentionCount) where weeklyKept < weeklyRetentionCount {
+            guard let entryWeek = week(entry.createdAt), !coveredWeeks.contains(entryWeek) else { continue }
+            coveredWeeks.insert(entryWeek)
+            kept.insert(key(entry.url))
+            weeklyKept += 1
+        }
+
+        return sorted.map(\.url).filter { !kept.contains(key($0)) }
     }
 
     // MARK: - Schema Compatibility
@@ -952,6 +1014,115 @@ public final class AppleBackupService: ObservableObject {
             return Int(sqlite3_column_int(statement, 0))
         }
         return nil
+    }
+}
+
+// MARK: - Copias automáticas
+
+/// Hasta 2026-10 la frecuencia elegida en Ajustes se guardaba pero nadie la leía:
+/// la app nunca hacía copias por su cuenta. Las únicas copias "automáticas" eran
+/// las de emergencia previas a restaurar.
+extension AppleBackupService {
+    nonisolated static let automaticBackupNote = "Copia automática"
+    nonisolated static let backupFrequencyDefaultsKey = "settings.backupFrequency"
+    nonisolated static let lastAutomaticAttemptDefaultsKey = "backup.automatic.lastAttemptAt"
+    /// Tras un intento fallido no se reintenta en este tiempo, para no repetir el
+    /// mismo error en cada cambio de ventana.
+    nonisolated static let automaticRetryInterval: TimeInterval = 60 * 60
+    /// Margen tras volver a la app antes de copiar, para no competir con la carga inicial.
+    nonisolated static let automaticActivationDelay: Duration = .seconds(45)
+
+    /// ¿Toca una copia automática? Regla pura, sin disco, para poder probarla.
+    nonisolated static func isAutomaticBackupDue(
+        frequency: BackupFrequency,
+        lastBackupAt: Date?,
+        lastAttemptAt: Date?,
+        now: Date,
+        calendar: Calendar = .current
+    ) -> Bool {
+        if frequency == .manual { return false }
+        if let lastAttemptAt, now.timeIntervalSince(lastAttemptAt) < automaticRetryInterval {
+            return false
+        }
+        guard let lastBackupAt else { return true }
+        switch frequency {
+        // Una copia con fecha futura (reloj cambiado, copia importada) no debe
+        // bloquear las copias hasta que el tiempo real la alcance.
+        case .daily:
+            return !calendar.isDate(lastBackupAt, inSameDayAs: now)
+        case .weekly:
+            let elapsed = now.timeIntervalSince(lastBackupAt)
+            return elapsed >= 7 * 86_400 || elapsed < -86_400
+        case .manual:
+            return false
+        }
+    }
+
+    private var configuredFrequency: BackupFrequency {
+        let raw = UserDefaults.standard.string(forKey: Self.backupFrequencyDefaultsKey)
+        return raw.flatMap(BackupFrequency.init(rawValue:)) ?? .weekly
+    }
+
+    /// Llamar desde el cambio de `scenePhase` de cada app.
+    /// - `.active`: comprueba tras un margen (se cancela si la app sale antes).
+    /// - `.background`: comprueba ya; en iOS pide tiempo extra al sistema.
+    public func handleScenePhaseForAutomaticBackup(isActive: Bool) {
+        automaticBackupTask?.cancel()
+        if isActive {
+            automaticBackupTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.automaticActivationDelay)
+                guard !Task.isCancelled else { return }
+                await self?.runAutomaticBackupIfDue()
+            }
+        } else {
+            #if os(iOS)
+            var taskID: UIBackgroundTaskIdentifier = .invalid
+            taskID = UIApplication.shared.beginBackgroundTask(withName: "Copia automática") {
+                UIApplication.shared.endBackgroundTask(taskID)
+                taskID = .invalid
+            }
+            automaticBackupTask = Task { @MainActor [weak self] in
+                await self?.runAutomaticBackupIfDue()
+                if taskID != .invalid { UIApplication.shared.endBackgroundTask(taskID) }
+            }
+            #else
+            automaticBackupTask = Task { @MainActor [weak self] in
+                await self?.runAutomaticBackupIfDue()
+            }
+            #endif
+        }
+    }
+
+    /// Hace la copia si toca. Silenciosa: si falla no muestra aviso, solo deja
+    /// constancia y espera `automaticRetryInterval` antes de volver a probar.
+    @discardableResult
+    func runAutomaticBackupIfDue(now: Date = Date()) async -> Bool {
+        guard operationState == .idle, !needsRestart else { return false }
+        await scanBackups()
+        let lastUsable = backups.first { !$0.hasEmptyDatabase && $0.verificationError == nil }
+        let defaults = UserDefaults.standard
+        let lastAttempt = defaults.object(forKey: Self.lastAutomaticAttemptDefaultsKey) as? Date
+        guard Self.isAutomaticBackupDue(
+            frequency: configuredFrequency,
+            lastBackupAt: lastUsable?.manifest.createdAt,
+            lastAttemptAt: lastAttempt,
+            now: now
+        ) else { return false }
+        // Una instalación nueva o una base vacía no tiene nada que proteger.
+        guard (try? validateUsableDatabase(at: databaseURL, context: "la base de datos activa")) != nil else {
+            return false
+        }
+        guard operationState == .idle, !needsRestart else { return false }
+        defaults.set(now, forKey: Self.lastAutomaticAttemptDefaultsKey)
+        let previousError = lastError
+        do {
+            _ = try await createBackup(note: Self.automaticBackupNote)
+            return true
+        } catch {
+            lastError = previousError
+            print("[AppleBackupService] Copia automática fallida: \(error.localizedDescription)")
+            return false
+        }
     }
 }
 

@@ -3,123 +3,147 @@ import SwiftUI
 import UIKit
 #endif
 
-struct BackupHistoryList: View {
-    @ObservedObject var service: AppleBackupService
-    @Environment(\.colorScheme) private var colorScheme
-    
-    @State private var searchText = ""
-    @State private var selectedBackupForRestore: AppleBackupDescriptor?
-    @State private var backupToExport: AppleBackupDescriptor?
-    @State private var backupToDelete: AppleBackupDescriptor?
-    @State private var showingDeleteAlert = false
-    
-    var filteredBackups: [AppleBackupDescriptor] {
-        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return service.backups
-        }
-        return service.backups.filter { backup in
-            let noteMatch = backup.manifest.note?.localizedCaseInsensitiveContains(searchText) ?? false
-            let deviceMatch = backup.manifest.deviceName.localizedCaseInsensitiveContains(searchText)
-            let platformMatch = backup.manifest.platform.localizedCaseInsensitiveContains(searchText)
-            let dateMatch = backup.manifest.createdAt.formattedDateText.localizedCaseInsensitiveContains(searchText)
-            return noteMatch || deviceMatch || platformMatch || dateMatch
-        }
+// MARK: - Agrupación por día
+
+/// Copias de un mismo día, en el orden en que llegan (más recientes primero).
+struct BackupDayGroup: Identifiable {
+    let day: Date
+    let backups: [AppleBackupDescriptor]
+
+    var id: Date { day }
+
+    var title: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) { return "Hoy" }
+        if calendar.isDateInYesterday(day) { return "Ayer" }
+        let sameYear = calendar.isDate(day, equalTo: Date(), toGranularity: .year)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.setLocalizedDateFormatFromTemplate(sameYear ? "EEEEdMMMM" : "EEEEdMMMMyyyy")
+        return formatter.string(from: day).capitalizedFirstLetter
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Search field
-            IOSSearchField(text: $searchText, placeholder: "Buscar copias…")
-            
-            if filteredBackups.isEmpty {
-                IOSEmptyState(
-                    title: "No se encontraron copias",
-                    subtitle: searchText.isEmpty
-                        ? "Aún no has creado ninguna copia de seguridad local. Tu historial aparecerá aquí."
-                        : "No hay copias que coincidan con la búsqueda.",
-                    systemImage: "doc.text.magnifyingglass"
-                )
-                .frame(height: 240)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(filteredBackups) { backup in
-                            BackupRowView(
-                                backup: backup,
-                                onVerify: {
-                                    Task {
-                                        _ = await service.verifyBackup(backup)
-                                    }
-                                },
-                                onRestore: {
-                                    selectedBackupForRestore = backup
-                                },
-                                onExport: {
-                                    triggerExport(backup)
-                                },
-                                onDelete: {
-                                    backupToDelete = backup
-                                    showingDeleteAlert = true
-                                }
-                            )
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
+    static func groups(from backups: [AppleBackupDescriptor]) -> [BackupDayGroup] {
+        let calendar = Calendar.current
+        var order: [Date] = []
+        var byDay: [Date: [AppleBackupDescriptor]] = [:]
+        for backup in backups {
+            let day = calendar.startOfDay(for: backup.manifest.createdAt)
+            if byDay[day] == nil { order.append(day) }
+            byDay[day, default: []].append(backup)
         }
-        .sheet(item: $selectedBackupForRestore) { backup in
-            BackupRestorePreviewSheet(service: service, backup: backup)
-        }
-        .sheet(item: $backupToExport) { backup in
-            EncryptedBackupExportSheet(backup: backup) { destinationURL, password in
-                try await service.exportEncryptedBackup(backup, to: destinationURL, password: password)
-            }
-        }
-        .alert(isPresented: $showingDeleteAlert) {
-            Alert(
-                title: Text("¿Eliminar copia de seguridad?"),
-                message: Text("Esta acción es irreversible y se perderán los datos contenidos en esta copia de seguridad."),
-                primaryButton: .destructive(Text("Eliminar")) {
-                    if let backup = backupToDelete {
-                        Task {
-                            try? await service.deleteBackup(backup)
-                        }
-                    }
-                },
-                secondaryButton: .cancel(Text("Cancelar"))
-            )
-        }
-    }
-    
-    private func triggerExport(_ backup: AppleBackupDescriptor) {
-        self.backupToExport = backup
+        return order.map { BackupDayGroup(day: $0, backups: byDay[$0] ?? []) }
     }
 }
 
+extension AppleBackupDescriptor {
+    /// Copia que la app crea sola justo antes de restaurar otra
+    /// (ver `AppleBackupService.restoreBackup`).
+    var isPreRestoreBackup: Bool {
+        manifest.note?.hasPrefix("Copia de seguridad de emergencia") == true
+    }
+
+    /// Coincide con la búsqueda por nota, dispositivo, plataforma o fecha.
+    func matches(search text: String) -> Bool {
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        return (manifest.note?.localizedCaseInsensitiveContains(query) ?? false)
+            || manifest.deviceName.localizedCaseInsensitiveContains(query)
+            || manifest.platform.localizedCaseInsensitiveContains(query)
+            || manifest.createdAt.formattedDateText.localizedCaseInsensitiveContains(query)
+    }
+
+    /// Hora más, si la hay, la nota escrita por el docente. Las copias de emergencia
+    /// llevan una nota generada que se sustituye por la etiqueta "Antes de restaurar".
+    var rowTitle: String {
+        let time = manifest.createdAt.formatted(date: .omitted, time: .shortened)
+        guard !isPreRestoreBackup,
+              let note = manifest.note?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !note.isEmpty else { return time }
+        return "\(time) · \(note)"
+    }
+
+    var contentSummaryText: String {
+        let summary = manifest.summary
+        var parts = [
+            "\(summary.classCount) clases",
+            "\(summary.studentCount) alumnos",
+            "\(summary.notebookColumnCount) columnas",
+            "\(summary.rubricCount) rúbricas"
+        ]
+        if let libretas = summary.libretaCount, libretas > 0 {
+            parts.append("\(libretas) libretas")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Problema que impide restaurar, si lo hay.
+    var problemText: String? {
+        if hasEmptyDatabase {
+            // El checksum de un fichero vacío es válido, así que estas copias
+            // se mostraban como "Válida". Restaurarlas borra los datos actuales
+            // y no repone nada.
+            return "Vacía: restaurarla borraría tus datos sin reponer nada."
+        }
+        if isVerified, verificationError != nil {
+            return "Dañada: no se puede restaurar."
+        }
+        return nil
+    }
+
+    var isValidated: Bool { isVerified && verificationError == nil && !hasEmptyDatabase }
+
+    var accessibilityStatusText: String {
+        if let problemText { return problemText }
+        return isValidated ? "Validada" : "Sin validar"
+    }
+
+    var longDateText: String { manifest.createdAt.formattedDateText }
+}
+
 // MARK: - BackupRowView
+
 struct BackupRowView: View {
     let backup: AppleBackupDescriptor
+    var onOpen: () -> Void
     var onVerify: () -> Void
-    var onRestore: () -> Void
     var onExport: () -> Void
     var onDelete: () -> Void
-    
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var isHovered = false
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var statusWidth: CGFloat = 20
 
     var body: some View {
-        PremiumCard.section {
-            VStack(alignment: .leading, spacing: 14) {
-                // Top Header Row
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(backup.displayName)
-                            .font(IOSAppStyle.cardTitle)
-                            .lineLimit(2)
-                        
-                        Text("\(backup.manifest.createdAt.formattedDateText) · \(backup.manifest.platform) (\(backup.manifest.deviceName))")
-                            .font(IOSAppStyle.captionText)
+        HStack(spacing: 12) {
+            Button(action: onOpen) {
+                HStack(spacing: 12) {
+                    statusSymbol
+                        .frame(width: statusWidth)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        titleLine
+                        if let problem = backup.problemText {
+                            Text(problem)
+                                .font(.subheadline)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text(backup.contentSummaryText)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        if dynamicTypeSize.isAccessibilitySize {
+                            Text(backup.sizeText)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        Text(backup.sizeText)
+                            .font(.subheadline)
+                            .monospacedDigit()
                             .foregroundStyle(.secondary)
 
                         if backup.isEmergencyBackup {
@@ -129,146 +153,136 @@ struct BackupRowView: View {
                                 .padding(.top, 2)
                         }
                     }
-                    
-                    Spacer()
-                    
-                    // Verification Status Badge
-                    HStack(spacing: 4) {
-                        if backup.hasEmptyDatabase {
-                            // El checksum de un fichero vacío es válido, así que estas copias
-                            // se mostraban como "Válida". Restaurarlas borra los datos actuales
-                            // y no repone nada.
-                            Image(systemName: "xmark.octagon.fill")
-                                .foregroundStyle(IOSAppStyle.danger)
-                            Text("Vacía")
-                                .font(IOSAppStyle.captionText)
-                                .foregroundStyle(IOSAppStyle.danger)
-                        } else if backup.isVerified {
-                            if backup.verificationError != nil {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(IOSAppStyle.danger)
-                                Text("Corrupta")
-                                    .font(IOSAppStyle.captionText)
-                                    .foregroundStyle(IOSAppStyle.danger)
-                            } else {
-                                Image(systemName: "checkmark.shield.fill")
-                                    .foregroundStyle(IOSAppStyle.success)
-                                Text("Válida")
-                                    .font(IOSAppStyle.captionText)
-                                    .foregroundStyle(IOSAppStyle.success)
-                            }
-                        } else {
-                            Image(systemName: "questionmark.shield")
-                                .foregroundStyle(.secondary)
-                            Text("Sin verificar")
-                                .font(IOSAppStyle.captionText)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(
-                                backup.hasEmptyDatabase
-                                    ? IOSAppStyle.danger.opacity(0.12)
-                                    : (backup.isVerified
-                                        ? (backup.verificationError != nil ? IOSAppStyle.danger.opacity(0.12) : IOSAppStyle.success.opacity(0.12))
-                                        : Color.secondary.opacity(0.12))
-                            )
-                    )
                 }
-                
-                // Summary Counts
-                HStack(spacing: 8) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            CountPill(label: "Clases", count: backup.manifest.summary.classCount, systemImage: "folder")
-                            CountPill(label: "Alumnos", count: backup.manifest.summary.studentCount, systemImage: "person.3")
-                            CountPill(label: "Columnas", count: backup.manifest.summary.notebookColumnCount, systemImage: "tablecells")
-                            CountPill(label: "Rúbricas", count: backup.manifest.summary.rubricCount, systemImage: "doc.plaintext")
-                            CountPill(label: "Asistencias", count: backup.manifest.summary.attendanceRecordCount, systemImage: "checkmark.circle")
-                            if let libretas = backup.manifest.summary.libretaCount {
-                                CountPill(label: "Libretas", count: libretas, systemImage: "pencil.and.scribble")
-                            }
-                        }
-                    }
-                }
-                
-                Divider()
-                
-                // Action Buttons
-                HStack(spacing: 12) {
-                    Text(backup.sizeText)
-                        .font(IOSAppStyle.captionText)
-                        .foregroundStyle(.secondary)
-                    
-                    Spacer()
-                    
-                    Button(action: onVerify) {
-                        Label("Validar", systemImage: "shield.checkerboard")
-                            .font(IOSAppStyle.captionText)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityLabel("Validar copia")
-                    
-                    Button(action: onExport) {
-                        Label("Exportar", systemImage: "square.and.arrow.up")
-                            .font(IOSAppStyle.captionText)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityLabel("Exportar copia")
-                    
-                    Button(action: onRestore) {
-                        Label("Restaurar", systemImage: "arrow.clockwise.to.line")
-                            .font(IOSAppStyle.captionText.weight(.bold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(backup.hasEmptyDatabase)
-                    .accessibilityLabel("Restaurar copia")
-                    .help(backup.hasEmptyDatabase ? "Esta copia no contiene datos: restaurarla borraría los actuales sin reponer nada." : "Restaurar copia")
-                }
+                .contentShape(Rectangle())
             }
-        }
-        .contextMenu {
-            Button(action: onVerify) {
-                Label("Validar Integridad", systemImage: "shield.checkerboard")
-            }
-            Button(action: onExport) {
-                Label("Compartir/Exportar", systemImage: "square.and.arrow.up")
-            }
-            Button(action: onRestore) {
-                Label("Restaurar", systemImage: "arrow.clockwise.to.line")
-            }
+            .buttonStyle(.plain)
             .disabled(backup.hasEmptyDatabase)
-            Divider()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint(backup.hasEmptyDatabase ? "" : "Muestra el contenido de la copia y permite restaurarla")
+
+            actionsMenu
+        }
+        .padding(.vertical, 4)
+        .contextMenu { menuItems }
+        #if os(iOS)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive, action: onDelete) {
                 Label("Eliminar", systemImage: "trash")
             }
+            Button(action: onExport) {
+                Label("Exportar", systemImage: "square.and.arrow.up")
+            }
+            .tint(.accentColor)
         }
+        .swipeActions(edge: .leading) {
+            Button(action: onVerify) {
+                Label("Validar", systemImage: "checkmark.shield")
+            }
+            .tint(.green)
+        }
+        #endif
+        .accessibilityAction(named: "Validar", onVerify)
+        .accessibilityAction(named: "Exportar", onExport)
+        .accessibilityAction(named: "Eliminar", onDelete)
+    }
+
+    private var titleLine: some View {
+        HStack(spacing: 8) {
+            Text(backup.rowTitle)
+                .font(.body)
+                .lineLimit(2)
+            if backup.isPreRestoreBackup {
+                Text("Antes de restaurar")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
+        }
+    }
+
+    /// Solo hay símbolo cuando aporta algo: validada o con un problema. "Sin validar" es
+    /// el estado normal de una copia recién hecha y no debe parecer un aviso.
+    @ViewBuilder
+    private var statusSymbol: some View {
+        if backup.hasEmptyDatabase {
+            Image(systemName: "xmark.octagon.fill")
+                .foregroundStyle(.red)
+        } else if backup.isVerified, backup.verificationError != nil {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+        } else if backup.isVerified {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        } else {
+            Color.clear
+        }
+    }
+
+    private var actionsMenu: some View {
+        Menu {
+            menuItems
+        } label: {
+            Label("Acciones", systemImage: "ellipsis.circle")
+                .labelStyle(.iconOnly)
+                .foregroundStyle(.secondary)
+                #if os(iOS)
+                .frame(minWidth: 44, minHeight: 44)
+                #else
+                .frame(minWidth: 28, minHeight: 28)
+                #endif
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Acciones de la copia")
+    }
+
+    @ViewBuilder
+    private var menuItems: some View {
+        Button(action: onOpen) {
+            Label("Ver contenido y restaurar…", systemImage: "clock.arrow.circlepath")
+        }
+        .disabled(backup.hasEmptyDatabase)
+        Button(action: onVerify) {
+            Label("Validar", systemImage: "checkmark.shield")
+        }
+        Button(action: onExport) {
+            Label("Exportar…", systemImage: "square.and.arrow.up")
+        }
+        Divider()
+        Button(role: .destructive, action: onDelete) {
+            Label("Eliminar…", systemImage: "trash")
+        }
+    }
+
+    private var accessibilityLabel: String {
+        var parts = [backup.longDateText]
+        if let note = backup.manifest.note, !note.isEmpty, !backup.isPreRestoreBackup { parts.append(note) }
+        if backup.isPreRestoreBackup { parts.append("copia antes de restaurar") }
+        parts.append(backup.accessibilityStatusText)
+        parts.append(backup.contentSummaryText)
+        parts.append(backup.sizeText)
+        return parts.joined(separator: ", ")
     }
 }
 
-// MARK: - CountPill
-struct CountPill: View {
-    let label: String
-    let count: Int
-    let systemImage: String
-    
+/// Fila de relleno mientras se escanea la carpeta de copias.
+struct BackupPlaceholderRow: View {
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: systemImage)
-                .font(.system(size: 10))
-            Text("\(count) \(label)")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+        VStack(alignment: .leading, spacing: 2) {
+            Text("00:00 · Copia de seguridad")
+            Text("0 clases · 0 alumnos · 0 columnas · 0 rúbricas")
+                .font(.subheadline)
         }
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(IOSAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .redacted(reason: .placeholder)
+        .accessibilityHidden(true)
     }
 }
 
@@ -294,5 +308,11 @@ extension Date {
         formatter.timeStyle = .short
         formatter.locale = Locale(identifier: "es_ES")
         return formatter.string(from: self)
+    }
+}
+
+extension String {
+    fileprivate var capitalizedFirstLetter: String {
+        prefix(1).uppercased() + dropFirst()
     }
 }

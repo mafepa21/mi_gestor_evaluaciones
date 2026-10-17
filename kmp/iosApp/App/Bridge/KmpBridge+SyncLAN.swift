@@ -556,14 +556,6 @@ extension KmpBridge {
         }
     }
 
-    func createLocalBackup(fileName: String = "mi_gestor_backup.sqlite") async throws -> BackupResult {
-        try await container.backupService.createBackup(fileName: fileName)
-    }
-
-    func restoreLocalBackup(from path: String) async throws -> Bool {
-        try await container.backupService.restoreBackup(backupPath: path).boolValue
-    }
-
     func runLanPushSync() async throws {
         try await performPushSync(silent: false)
     }

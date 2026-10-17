@@ -27,7 +27,7 @@ struct MacRootView: View {
     @StateObject private var studentSelection = StudentSelectionStore()
     @SceneStorage("mac.root.columnVisibility") private var storedColumnVisibility = MacRootColumnVisibilityValue.all
     @SceneStorage("mac.root.inspectorVisible") private var storedInspectorVisible = true
-    @AppStorage("diagnostics.quarantine.acknowledged") private var acknowledgedQuarantineId = ""
+    @AppStorage(AppleDatabaseRescueService.quarantineAcknowledgedUntilKey) private var acknowledgedQuarantineUntil: Double = 0
     @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     /// Tamaño de la ventana: la hoja de sesión del Planner lo usa para ocuparla casi entera.
@@ -57,7 +57,7 @@ struct MacRootView: View {
     private var pendingQuarantinedDatabase: AppleQuarantinedDatabase? {
         guard rescueService.pendingRescue == nil else { return nil }
         return backupService.quarantinedDatabases.first {
-            $0.looksRecoverable && $0.id != acknowledgedQuarantineId
+            $0.looksRecoverable && $0.quarantinedAt.timeIntervalSince1970 > acknowledgedQuarantineUntil
         }
     }
 
@@ -166,11 +166,11 @@ struct MacRootView: View {
             presenting: pendingQuarantinedDatabase
         ) { item in
             Button("Entendido") {
-                acknowledgedQuarantineId = item.id
+                AppleDatabaseRescueService.acknowledgeAllQuarantined(backupService.quarantinedDatabases)
             }
             Button("Mostrar en Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
-                acknowledgedQuarantineId = item.id
+                AppleDatabaseRescueService.acknowledgeAllQuarantined(backupService.quarantinedDatabases)
             }
         } message: { item in
             let counts = item.summary.map {

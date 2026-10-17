@@ -13,6 +13,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Removed
+
+- **Apple: se quitan `createLocalBackup` y `restoreLocalBackup` de `KmpBridge`**: envolvían el sistema de copias antiguo de KMP (`BackupService`, un único `.sqlite` sin adjuntos ni comprobaciones) y ninguna pantalla los llamaba. iPad y Mac usan solo `AppleBackupService`. El servicio KMP se mantiene porque lo usa la app de escritorio (`desktopApp`). Verificación: build `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador) OK.
+
 ### Added
 
 - **Planner: hoja del día para imprimir (A3 apaisado, 3 sesiones por hoja)**: botón «Hoja del día» en la vista Día. Genera un PDF con un esquema por sesión: hora y grupo, título, objetivo, pasos con minutos y un detalle breve de cada actividad, material, atención y líneas para notas a mano. Más de 3 sesiones = otra hoja. El material no se parte por comas ni dentro de paréntesis. Se abre el menú del sistema para imprimir o compartir.
@@ -26,10 +30,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- Maqueta del rediseño de copias (`docs/mockups/copias-seguridad/mockup/index.html`), revisada con criterios HIG y de accesibilidad.
 - Maqueta aprobada (`docs/mockups/libreta/mockup/index.html`), ticket (`docs/planes/ticket_libreta_integrada_2026-10-15.md`) y ámbito (`docs/ambitos/libreta.md`) de la Libreta.
 
 ### Verification
 
+- Retención de copias: `./scripts/verify_apple_builds.sh` compila macOS e iOS Simulator; `xcodebuild test` (MiGestorPlannerTests, macOS) pasa `AppleBackupRetentionTests` (10) y `AppleAutomaticBackupScheduleTests` (6). Sin prueba manual en la app.
+- Copias automáticas: `./scripts/verify_apple_builds.sh` compila macOS e iOS Simulator; `xcodebuild test` (MiGestorPlannerTests, macOS) pasa `AppleAutomaticBackupScheduleTests` (6) y `AppleBackupRetentionTests` (7). Sin prueba manual en la app.
+- Rediseño de copias: `./scripts/verify_apple_builds.sh` compila macOS (MiGestorKMPMac) e iOS Simulator (MiGestorKMPiOS). Sin QA manual en la app ni capturas.
 - Fase 2 de la Libreta: `xcodebuild` `MiGestorKMPiOS` (iOS simulador genérico) compila. `xcodebuild test` `MiGestorPlannerTests` (Mac arm64): 282 pruebas, 0 fallos y 4 omitidas; incluye 5 nuevas de ida y vuelta de la Libreta en las copias. Sin QA en ejecución (no hay simuladores instalados) ni prueba de restaurar en un iPad real.
 - `xcodebuild` `MiGestorKMPiOS` para `generic/platform=iOS Simulator`: compila.
 - `xcodebuild` `MiGestorKMPMac` para `arm64`: compila. Para `x86_64` falla al enlazar porque el `MiGestorKit` local solo trae arm64 (fallo del entorno, no del código de este cambio; no se comprobó en `main`).
@@ -38,6 +46,9 @@ El formato sigue una variante practica de Keep a Changelog:
 - **Torneos: integrantes y hoja imprimible**: pestaña «Equipos» con los alumnos de cada equipo, integrantes visibles al crear el torneo y PDF A4 con una tarjeta por equipo y la primera ronda.
 
 ### Changed
+
+- **Ajustes › Datos y seguridad: fuera el interruptor «Copia previa al restaurar»**: no tenía efecto; la app siempre guarda una copia antes de restaurar, y así sigue. El pie de «Copias automáticas» explica ahora cuándo se hace la copia. «Diaria (Al cerrar la app)» pasa a «Diaria».
+- **Ajustes › Datos y seguridad y Copias de seguridad, rediseño según HIG**: Ajustes pasa a formulario agrupado con una fila de estado («Tus datos están protegidos · Última copia hace 2 horas») y «Crear copia ahora», secciones «Copias automáticas» e «Historial» con texto de pie, la fila «Copias guardadas» con su número y «Zona de riesgo» separada al final. El centro de copias deja la cabecera grande, los dos botones de crear, la fila de botones que se cortaba y las tres tarjetas de colores: ahora tiene barra de herramientas (Buscar, Importar, Más, Crear copia), un resumen de una línea y una lista nativa agrupada por día. Cada copia muestra hora y nota en vez del nombre de archivo, el contenido en una línea y el tamaño. Solo lleva símbolo si está validada o tiene un problema; «sin validar» ya no parece un aviso. Validar, Exportar y Eliminar pasan al menú «⋯», al clic derecho y a deslizar en iPad; pulsar la copia abre la vista previa de restaurar. Eliminar pide confirmación con la fecha. El estado verde se calcula con la última copia que no esté vacía ni dañada. Etiquetas de VoiceOver por fila, acciones con nombre y texto dinámico.
 
 - **El módulo antiguo de Torneos de EF se sustituye**: la pantalla de EF lista los torneos del curso y los abre con el detalle nuevo. Los torneos antiguos (UserDefaults) se migran al arrancar, una sola vez; la clave antigua se conserva como copia. Se pierden: partidos contra «BYE», 0-0 reales sin marca de jugado y el texto libre de pista (queda el número). Los puntos personalizados se conservan para la clasificación.
 
@@ -48,6 +59,8 @@ El formato sigue una variante practica de Keep a Changelog:
 - **Copias: las copias de emergencia se marcan en la lista**: cada restauración crea una copia previa de seguridad y antes no se distinguía de las demás. Ahora lleva la etiqueta «Copia de emergencia · antes de restaurar» (iPad y Mac).
 - **Mac: la app se reinicia sola tras restaurar una copia**: antes se quedaba en «¡Restauración Completada!» porque el botón solo pedía cerrar la app y nada comprobaba que se cerrara. Ahora hay cuenta atrás de 3 s y botón «Reiniciar ahora»; la app se vuelve a abrir cuando el proceso anterior ha terminado (nunca dos a la vez) y, si algo retiene el cierre 5 s, se fuerza. En iPad no cambia: iOS no permite que una app se reabra sola.
 - **Copias: restaurar ya no falla con «unable to open database file»**: la instantánea temporal heredaba el modo WAL de la base y, abierta en solo lectura sin fichero `-wal`, SQLite no podía validarla. Afectaba a cualquier restauración desde una base en modo WAL. Ahora la instantánea pasa a modo DELETE antes de validarse; la app vuelve a activar WAL al abrirla.
+- **Retención de copias: las de emergencia ya no echan a las buenas**: antes se guardaban las 5 más recientes de cualquier tipo, así que cada restauración (que crea una copia de emergencia) borraba una copia normal. Ahora se guardan las 7 copias normales más recientes, la más reciente de cada una de las 4 semanas anteriores y las 2 últimas de emergencia en cupo propio. Por compatibilidad, las 5 más recientes de cualquier tipo nunca se borran, y la copia que se restaura tampoco. En el Mac, el texto «10 copias» pasa a describir la regla real y «Aplicar retención» borra de verdad (antes solo recargaba).
+- **Las copias automáticas nunca se hacían**: la frecuencia de Ajustes («Diaria», «Semanal») se guardaba pero nada la leía. Ahora la app comprueba si toca al volver a ella (tras 45 s) y al salir (en iPad pide tiempo al sistema para acabar). «Diaria» = una copia por día del calendario; «Semanal» = 7 días desde la última copia válida. «Solo manual» no hace nada. La copia lleva la nota «Copia automática». Si falla, no muestra aviso y no reintenta en una hora. No copia una base vacía.
 - **Copias: restaurar la copia más antigua ya no falla**: al restaurar se crea una copia de emergencia y la retención (5 copias) borraba la más antigua, que podía ser justo la elegida. Ahora la copia que se restaura queda protegida.
 - **Copias: la retención ordena por la fecha real de la copia**: leía mal la fecha del manifiesto y usaba la de la carpeta, así que una copia antigua recién importada contaba como nueva.
 - **Copias: no se restauran ni importan copias de una versión de datos más nueva**: aviso «Esta copia es de una versión más nueva de la app. Actualiza la app para restaurarla». Evita, por ejemplo, abrir en un iPad sin actualizar una copia del Mac.

@@ -50,6 +50,26 @@ final class AppleBackupIntegrityTests: XCTestCase {
         XCTAssertNoThrow(try AppleSQLiteBackupValidator.validateDatabase(at: destinationURL))
     }
 
+    func testValidationAndSnapshotWorkForWALDatabaseInReadOnlyFolder() throws {
+        let packageURL = workDirectory.appendingPathComponent("package", isDirectory: true)
+        try FileManager.default.createDirectory(at: packageURL, withIntermediateDirectories: true)
+        let sourceURL = packageURL.appendingPathComponent("database.sqlite")
+        try createDatabase(at: sourceURL, withBrokenForeignKey: false)
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(sourceURL.path, &database), SQLITE_OK)
+        try execute("PRAGMA journal_mode = WAL;", database: database!)
+        sqlite3_close(database)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: packageURL.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: packageURL.path)
+        }
+
+        XCTAssertEqual(try AppleSQLiteBackupValidator.validateDatabase(at: sourceURL), 0)
+        let destinationURL = workDirectory.appendingPathComponent("snapshot-ro.sqlite")
+        XCTAssertNoThrow(try AppleSQLiteBackupValidator.materializeSnapshot(from: sourceURL, to: destinationURL))
+    }
+
     func testRestoreTransactionRollsBackDatabaseAndDocumentsWhenLastStepFails() throws {
         let liveDatabase = workDirectory.appendingPathComponent("live.sqlite")
         let stagedDatabase = workDirectory.appendingPathComponent("staged.sqlite")

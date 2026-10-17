@@ -44,6 +44,10 @@ El formato sigue una variante practica de Keep a Changelog:
 - No se ha abierto la app: este Mac no tiene ningún simulador de iOS instalado. Falta la QA en iPad (simulador o real) y la prueba con Apple Pencil.
 - **Torneos dentro de la Situación de Aprendizaje**: nueva sección «Torneos» en el detalle de cada SdA. Los equipos son los grupos de trabajo vinculados a la SdA. Formatos: liga, eliminatoria, liguilla + cruces y rotaciones. Incluye estimación de duración («cabe en una sesión»), calendario por pistas, clasificación, cuadro, modo directo para el pabellón (marcador grande, temporizador con aviso «¡Tiempo!», VoiceOver) y aviso si los grupos cambian después de crear el torneo. Motor portado del proyecto TourneyFlow a `AppleShared/Tournament/`.
 - **Torneos: integrantes y hoja imprimible**: pestaña «Equipos» con los alumnos de cada equipo, integrantes visibles al crear el torneo y PDF A4 con una tarjeta por equipo y la primera ronda.
+- Restaurar desde carpetas de solo lectura: `xcodebuild test` (esquema `MiGestorPlannerTests`, macOS, `AppleBackupIntegrityTests`): 6 tests OK, incluido el nuevo de base WAL en carpeta de solo lectura (reproducía el error antes del arreglo).
+- Restaurar desde carpetas de solo lectura: `xcodebuild build` (esquema `MiGestorKMPiOS`, iOS Simulator): OK.
+- Restaurar desde carpetas de solo lectura: QA manual del docente: la restauración de la copia que fallaba funciona.
+
 
 ### Changed
 
@@ -56,6 +60,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Restaurar copias guardadas en carpetas sin permiso de escritura** (iCloud, volumen externo, carpeta protegida): la validación fallaba con «PRAGMA integrity_check … unable to open database file» aunque la copia estuviera intacta, porque una base WAL en solo lectura necesita crear `-shm` a su lado. Ahora, ante `SQLITE_CANTOPEN`, la validación y la instantánea se repiten sobre un duplicado temporal; el paquete original no se modifica.
 - **Copias: las copias de emergencia se marcan en la lista**: cada restauración crea una copia previa de seguridad y antes no se distinguía de las demás. Ahora lleva la etiqueta «Copia de emergencia · antes de restaurar» (iPad y Mac).
 - **Mac: la app se reinicia sola tras restaurar una copia**: antes se quedaba en «¡Restauración Completada!» porque el botón solo pedía cerrar la app y nada comprobaba que se cerrara. Ahora hay cuenta atrás de 3 s y botón «Reiniciar ahora»; la app se vuelve a abrir cuando el proceso anterior ha terminado (nunca dos a la vez) y, si algo retiene el cierre 5 s, se fuerza. En iPad no cambia: iOS no permite que una app se reabra sola.
 - **Copias: restaurar ya no falla con «unable to open database file»**: la instantánea temporal heredaba el modo WAL de la base y, abierta en solo lectura sin fichero `-wal`, SQLite no podía validarla. Afectaba a cualquier restauración desde una base en modo WAL. Ahora la instantánea pasa a modo DELETE antes de validarse; la app vuelve a activar WAL al abrirla.

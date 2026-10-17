@@ -1,0 +1,183 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif">
+<title>Evaluación con rúbrica en Mac (datos de ejemplo)</title>
+<rect width="1600" height="1000" rx="22" fill="#FFFFFF" stroke="#D5D8DE"/>
+<path d="M22 0 H330 V1000 H22 A22 22 0 0 1 0 978 V22 A22 22 0 0 1 22 0 Z" fill="#EFF0F3"/>
+<circle cx="26" cy="26" r="7" fill="#FF5F57"/>
+<circle cx="48" cy="26" r="7" fill="#FEBC2E"/>
+<circle cx="70" cy="26" r="7" fill="#28C840"/>
+<text x="18" y="80" font-size="14" font-weight="600" fill="#8E9199">Hoy</text>
+<rect x="24" y="112" width="20" height="17" rx="5" fill="#1752EB"/><rect x="28" y="117" width="5" height="7" rx="1" fill="#fff"/><rect x="35" y="117" width="5" height="3" rx="1" fill="#fff"/>
+<text x="70" y="119" font-size="17" fill="#1F2937">Hoy</text><text x="70" y="139" font-size="13" fill="#6B7280">Dashboard y radar docente</text>
+<text x="18" y="180" font-size="14" font-weight="600" fill="#8E9199">Evaluación</text>
+<g fill="#A21CAF"><rect x="24" y="214" width="9" height="6" rx="1.5"/><rect x="35" y="214" width="9" height="6" rx="1.5"/><rect x="24" y="222" width="9" height="6" rx="1.5"/><rect x="35" y="222" width="9" height="6" rx="1.5"/></g>
+<text x="70" y="219" font-size="17" fill="#1F2937">Cuaderno</text><text x="70" y="239" font-size="13" fill="#6B7280">Vista de clase, edición y guardado</text>
+<g><circle cx="28" cy="277" r="4" fill="#22A447"/><circle cx="28" cy="286" r="4" fill="#22A447"/><rect x="35" y="276" width="10" height="2" fill="#22A447"/><rect x="35" y="285" width="10" height="2" fill="#22A447"/></g>
+<text x="70" y="279" font-size="17" fill="#1F2937">Asistencia</text><text x="70" y="299" font-size="13" fill="#6B7280">Pase e historial</text>
+<rect x="10" y="314" width="310" height="56" rx="12" fill="#E3E4E8"/>
+<g><circle cx="28" cy="337" r="4" fill="#0E9FB8"/><circle cx="28" cy="346" r="4" fill="#0E9FB8"/><rect x="35" y="336" width="10" height="2" fill="#0E9FB8"/><rect x="35" y="345" width="10" height="2" fill="#0E9FB8"/></g>
+<text x="70" y="339" font-size="17" fill="#1F2937">Rúbricas</text><text x="70" y="359" font-size="13" fill="#6B7280">Banco de evaluación y edición</text>
+<circle cx="34" cy="401" r="10" fill="#12B39A"/><path d="M29 401 L39 396 L35 407 Z" fill="#fff"/>
+<text x="70" y="399" font-size="17" fill="#1F2937">Entregas web</text><text x="70" y="419" font-size="13" fill="#6B7280">Publicar formularios</text>
+<text x="18" y="460" font-size="14" font-weight="600" fill="#8E9199">Planificación</text>
+<rect x="24" y="492" width="20" height="18" rx="4" fill="none" stroke="#F07A13" stroke-width="2.5"/><circle cx="41" cy="508" r="5" fill="#F07A13"/>
+<text x="70" y="499" font-size="17" fill="#1F2937">Planificación</text><text x="70" y="519" font-size="13" fill="#6B7280">Sesiones, unidades y agenda</text>
+<path d="M26 552 H37 L43 558 V572 H26 Z" fill="#E11D48"/><rect x="30" y="562" width="9" height="2" fill="#fff"/><rect x="30" y="566" width="9" height="2" fill="#fff"/>
+<text x="70" y="559" font-size="17" fill="#1F2937">Diario de aula</text><text x="70" y="579" font-size="13" fill="#6B7280">Trazabilidad de sesión</text>
+<g fill="#1E6FE8"><circle cx="28" cy="618" r="4"/><circle cx="36" cy="618" r="4"/><circle cx="44" cy="618" r="4"/><rect x="22" y="623" width="28" height="7" rx="3.5"/></g>
+<text x="70" y="619" font-size="17" fill="#1F2937">Alumnado</text><text x="70" y="639" font-size="13" fill="#6B7280">Directorio y seguimiento rápido</text>
+<text x="18" y="680" font-size="14" font-weight="600" fill="#8E9199">Sistema</text>
+<g fill="none" stroke="#6B7280" stroke-width="3"><circle cx="31" cy="719" r="4"/><circle cx="40" cy="726" r="3.5"/></g>
+<text x="70" y="719" font-size="17" fill="#1F2937">Ajustes</text><text x="70" y="739" font-size="13" fill="#6B7280">Preferencias</text>
+<text x="354" y="60" font-size="26" font-weight="700" fill="#111827">Rúbricas</text>
+<rect x="830" y="30" width="230" height="46" rx="23" fill="#F4F5F7" stroke="#E2E4E8"/>
+<g fill="#1752EB"><rect x="852" y="42" width="5" height="22" rx="1"/><rect x="859" y="42" width="5" height="22" rx="1"/><rect x="866" y="44" width="5" height="20" rx="1" transform="rotate(-10 868 54)"/></g>
+<text x="884" y="60" font-size="17" fill="#374151">1º ESO A · 1ª ▾</text>
+<rect x="1072" y="30" width="430" height="46" rx="23" fill="#F4F5F7" stroke="#E2E4E8"/>
+<rect x="1094" y="44" width="26" height="18" rx="4" fill="none" stroke="#8E9199" stroke-width="2"/><rect x="1136" y="44" width="22" height="18" rx="4" fill="none" stroke="#8E9199" stroke-width="2"/><text x="1147" y="58" font-size="16" text-anchor="middle" fill="#8E9199">+</text>
+<circle cx="1186" cy="51" r="8" fill="none" stroke="#6B7280" stroke-width="2.2"/><line x1="1192" y1="57" x2="1198" y2="63" stroke="#6B7280" stroke-width="2.2"/><text x="1210" y="60" font-size="18" fill="#6B7280">Buscar</text>
+<rect x="1514" y="30" width="62" height="46" rx="23" fill="#F4F5F7" stroke="#E2E4E8"/><text x="1545" y="58" font-size="18" text-anchor="middle" fill="#6B7280">···</text>
+<text x="354" y="124" font-size="20" font-weight="700" fill="#111827">Rúbrica de juego · Voleibol</text><text x="354" y="150" font-size="15" fill="#6B7280">1º ESO A · 3 criterios · 4 niveles</text>
+<rect x="354" y="170" width="1222" height="810" rx="18" fill="#FFFFFF" stroke="#E5E7EB"/>
+<text x="374" y="226" font-size="15" font-weight="700" fill="#111827">Estudiante</text>
+<text x="556.0" y="216" font-size="15" font-weight="700" fill="#111827">Saque y puesta</text>
+<text x="556.0" y="238" font-size="15" font-weight="700" fill="#111827">en juego</text>
+<text x="860.0" y="216" font-size="15" font-weight="700" fill="#111827">Recepción y construcción</text>
+<text x="860.0" y="238" font-size="15" font-weight="700" fill="#111827">de la jugada</text>
+<text x="1164.0" y="216" font-size="15" font-weight="700" fill="#111827">Colocación y ayuda</text>
+<text x="1164.0" y="238" font-size="15" font-weight="700" fill="#111827">al equipo</text>
+<text x="1516.0" y="228" font-size="15" font-weight="700" text-anchor="middle" fill="#8E9199">Nota</text>
+<line x1="354" y1="262" x2="1576" y2="262" stroke="#E5E7EB"/>
+<circle cx="390" cy="315.0" r="17" fill="#E3EAFD"/><text x="390" y="320.0" font-size="13" font-weight="600" text-anchor="middle" fill="#1752EB">A1</text><text x="416" y="321.0" font-size="16" fill="#111827">Alumno 01</text>
+<rect x="548.0" y="272.0" width="296.0" height="86.0" rx="16" fill="#EAF2EE"/>
+<rect x="556.0" y="280.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="588.0" y="309.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="628.0" y="280.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="660.0" y="309.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="700.0" y="280.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="732.0" y="309.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="772.0" y="280.0" width="64.0" height="44" rx="10" fill="#2F7A57"/><text x="804.0" y="309.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 4</text>
+<text x="696.0" y="350.0" font-size="14" font-weight="600" text-anchor="middle" fill="#2F7A57">4 — Avanzado</text>
+<rect x="852.0" y="272.0" width="296.0" height="86.0" rx="16" fill="#E6F5F3"/>
+<rect x="860.0" y="280.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="892.0" y="309.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="932.0" y="280.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="964.0" y="309.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1004.0" y="280.0" width="64.0" height="44" rx="10" fill="#0E9488"/><text x="1036.0" y="309.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 3</text>
+<rect x="1076.0" y="280.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1108.0" y="309.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<text x="1000.0" y="350.0" font-size="14" font-weight="600" text-anchor="middle" fill="#0E9488">3 — Adecuado</text>
+<rect x="1156.0" y="272.0" width="296.0" height="86.0" rx="16" fill="#EAF2EE"/>
+<rect x="1164.0" y="280.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1196.0" y="309.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="1236.0" y="280.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1268.0" y="309.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1308.0" y="280.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1340.0" y="309.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="1380.0" y="280.0" width="64.0" height="44" rx="10" fill="#2F7A57"/><text x="1412.0" y="309.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 4</text>
+<text x="1304.0" y="350.0" font-size="14" font-weight="600" text-anchor="middle" fill="#2F7A57">4 — Avanzado</text>
+<text x="1516.0" y="325.0" font-size="28" font-weight="800" text-anchor="middle" fill="#2F7A57">9.2</text>
+<line x1="354" y1="366.0" x2="1576" y2="366.0" stroke="#EEF0F2"/>
+<circle cx="390" cy="417.0" r="17" fill="#E3EAFD"/><text x="390" y="422.0" font-size="13" font-weight="600" text-anchor="middle" fill="#1752EB">A2</text><text x="416" y="423.0" font-size="16" fill="#111827">Alumno 02</text>
+<rect x="548.0" y="374.0" width="296.0" height="86.0" rx="16" fill="#FEF3EA"/>
+<rect x="556.0" y="382.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="588.0" y="411.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="628.0" y="382.0" width="64.0" height="44" rx="10" fill="#EF8A3C"/><text x="660.0" y="411.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 2</text>
+<rect x="700.0" y="382.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="732.0" y="411.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="772.0" y="382.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="804.0" y="411.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<text x="696.0" y="452.0" font-size="14" font-weight="600" text-anchor="middle" fill="#EF8A3C">2 — Básico</text>
+<rect x="852.0" y="374.0" width="296.0" height="86.0" rx="16" fill="#E6F5F3"/>
+<rect x="860.0" y="382.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="892.0" y="411.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="932.0" y="382.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="964.0" y="411.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1004.0" y="382.0" width="64.0" height="44" rx="10" fill="#0E9488"/><text x="1036.0" y="411.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 3</text>
+<rect x="1076.0" y="382.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1108.0" y="411.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<text x="1000.0" y="452.0" font-size="14" font-weight="600" text-anchor="middle" fill="#0E9488">3 — Adecuado</text>
+<rect x="1156.0" y="374.0" width="296.0" height="86.0" rx="16" fill="#E6F5F3"/>
+<rect x="1164.0" y="382.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1196.0" y="411.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="1236.0" y="382.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1268.0" y="411.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1308.0" y="382.0" width="64.0" height="44" rx="10" fill="#0E9488"/><text x="1340.0" y="411.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 3</text>
+<rect x="1380.0" y="382.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1412.0" y="411.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<text x="1304.0" y="452.0" font-size="14" font-weight="600" text-anchor="middle" fill="#0E9488">3 — Adecuado</text>
+<text x="1516.0" y="427.0" font-size="28" font-weight="800" text-anchor="middle" fill="#1F2937">6.7</text>
+<line x1="354" y1="468.0" x2="1576" y2="468.0" stroke="#EEF0F2"/>
+<circle cx="390" cy="519.0" r="17" fill="#E3EAFD"/><text x="390" y="524.0" font-size="13" font-weight="600" text-anchor="middle" fill="#1752EB">A3</text><text x="416" y="525.0" font-size="16" fill="#111827">Alumno 03</text>
+<rect x="548.0" y="476.0" width="296.0" height="86.0" rx="16" fill="#E6F5F3"/>
+<rect x="556.0" y="484.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="588.0" y="513.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="628.0" y="484.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="660.0" y="513.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="700.0" y="484.0" width="64.0" height="44" rx="10" fill="#0E9488"/><text x="732.0" y="513.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 3</text>
+<rect x="772.0" y="484.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="804.0" y="513.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<text x="696.0" y="554.0" font-size="14" font-weight="600" text-anchor="middle" fill="#0E9488">3 — Adecuado</text>
+<rect x="852.0" y="476.0" width="296.0" height="86.0" rx="16" fill="#EAF2EE"/>
+<rect x="860.0" y="484.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="892.0" y="513.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="932.0" y="484.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="964.0" y="513.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1004.0" y="484.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1036.0" y="513.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="1076.0" y="484.0" width="64.0" height="44" rx="10" fill="#2F7A57"/><text x="1108.0" y="513.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 4</text>
+<text x="1000.0" y="554.0" font-size="14" font-weight="600" text-anchor="middle" fill="#2F7A57">4 — Avanzado</text>
+<rect x="1156.0" y="476.0" width="296.0" height="86.0" rx="16" fill="#EAF2EE"/>
+<rect x="1164.0" y="484.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1196.0" y="513.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="1236.0" y="484.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1268.0" y="513.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1308.0" y="484.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1340.0" y="513.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="1380.0" y="484.0" width="64.0" height="44" rx="10" fill="#2F7A57"/><text x="1412.0" y="513.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 4</text>
+<text x="1304.0" y="554.0" font-size="14" font-weight="600" text-anchor="middle" fill="#2F7A57">4 — Avanzado</text>
+<text x="1516.0" y="529.0" font-size="28" font-weight="800" text-anchor="middle" fill="#2F7A57">9.2</text>
+<line x1="354" y1="570.0" x2="1576" y2="570.0" stroke="#EEF0F2"/>
+<circle cx="390" cy="621.0" r="17" fill="#E3EAFD"/><text x="390" y="626.0" font-size="13" font-weight="600" text-anchor="middle" fill="#1752EB">A4</text><text x="416" y="627.0" font-size="16" fill="#111827">Alumno 04</text>
+<rect x="548.0" y="578.0" width="296.0" height="86.0" rx="16" fill="#FDECEC"/>
+<rect x="556.0" y="586.0" width="64.0" height="44" rx="10" fill="#DB3036"/><text x="588.0" y="615.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 1</text>
+<rect x="628.0" y="586.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="660.0" y="615.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="700.0" y="586.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="732.0" y="615.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="772.0" y="586.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="804.0" y="615.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<text x="696.0" y="656.0" font-size="14" font-weight="600" text-anchor="middle" fill="#DB3036">1 — Inicial</text>
+<rect x="852.0" y="578.0" width="296.0" height="86.0" rx="16" fill="#FEF3EA"/>
+<rect x="860.0" y="586.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="892.0" y="615.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="932.0" y="586.0" width="64.0" height="44" rx="10" fill="#EF8A3C"/><text x="964.0" y="615.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 2</text>
+<rect x="1004.0" y="586.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1036.0" y="615.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="1076.0" y="586.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1108.0" y="615.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<text x="1000.0" y="656.0" font-size="14" font-weight="600" text-anchor="middle" fill="#EF8A3C">2 — Básico</text>
+<rect x="1156.0" y="578.0" width="296.0" height="86.0" rx="16" fill="#FEF3EA"/>
+<rect x="1164.0" y="586.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1196.0" y="615.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="1236.0" y="586.0" width="64.0" height="44" rx="10" fill="#EF8A3C"/><text x="1268.0" y="615.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 2</text>
+<rect x="1308.0" y="586.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1340.0" y="615.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="1380.0" y="586.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1412.0" y="615.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<text x="1304.0" y="656.0" font-size="14" font-weight="600" text-anchor="middle" fill="#EF8A3C">2 — Básico</text>
+<text x="1516.0" y="631.0" font-size="28" font-weight="800" text-anchor="middle" fill="#DB3036">4.2</text>
+<line x1="354" y1="672.0" x2="1576" y2="672.0" stroke="#EEF0F2"/>
+<circle cx="390" cy="723.0" r="17" fill="#E3EAFD"/><text x="390" y="728.0" font-size="13" font-weight="600" text-anchor="middle" fill="#1752EB">A5</text><text x="416" y="729.0" font-size="16" fill="#111827">Alumno 05</text>
+<rect x="548.0" y="680.0" width="296.0" height="86.0" rx="16" fill="#E6F5F3"/>
+<rect x="556.0" y="688.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="588.0" y="717.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="628.0" y="688.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="660.0" y="717.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="700.0" y="688.0" width="64.0" height="44" rx="10" fill="#0E9488"/><text x="732.0" y="717.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 3</text>
+<rect x="772.0" y="688.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="804.0" y="717.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<text x="696.0" y="758.0" font-size="14" font-weight="600" text-anchor="middle" fill="#0E9488">3 — Adecuado</text>
+<rect x="852.0" y="680.0" width="296.0" height="86.0" rx="16" fill="#E6F5F3"/>
+<rect x="860.0" y="688.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="892.0" y="717.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="932.0" y="688.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="964.0" y="717.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1004.0" y="688.0" width="64.0" height="44" rx="10" fill="#0E9488"/><text x="1036.0" y="717.0" font-size="17" font-weight="700" text-anchor="middle" fill="#FFFFFF">✓ 3</text>
+<rect x="1076.0" y="688.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="0.6" stroke="#E5E7EB"/><text x="1108.0" y="717.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<text x="1000.0" y="758.0" font-size="14" font-weight="600" text-anchor="middle" fill="#0E9488">3 — Adecuado</text>
+<rect x="1156.0" y="680.0" width="296.0" height="86.0" rx="16" fill="none" stroke="#6D8BF0" stroke-width="2.5"/>
+<rect x="1164.0" y="701.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1196.0" y="730.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="1236.0" y="701.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1268.0" y="730.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1308.0" y="701.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1340.0" y="730.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="1380.0" y="701.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1412.0" y="730.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<rect x="1496.0" y="721.0" width="40" height="5" rx="2.5" fill="#8E9199"/>
+<line x1="354" y1="774.0" x2="1576" y2="774.0" stroke="#EEF0F2"/>
+<circle cx="390" cy="825.0" r="17" fill="#E3EAFD"/><text x="390" y="830.0" font-size="13" font-weight="600" text-anchor="middle" fill="#1752EB">A6</text><text x="416" y="831.0" font-size="16" fill="#111827">Alumno 06</text>
+<rect x="556.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="588.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="628.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="660.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="700.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="732.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="772.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="804.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<rect x="860.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="892.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="932.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="964.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1004.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1036.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="1076.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1108.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<rect x="1164.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1196.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="1236.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1268.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1308.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1340.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="1380.0" y="803.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1412.0" y="832.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<rect x="1496.0" y="823.0" width="40" height="5" rx="2.5" fill="#8E9199"/>
+<line x1="354" y1="876.0" x2="1576" y2="876.0" stroke="#EEF0F2"/>
+<circle cx="390" cy="927.0" r="17" fill="#E3EAFD"/><text x="390" y="932.0" font-size="13" font-weight="600" text-anchor="middle" fill="#1752EB">A7</text><text x="416" y="933.0" font-size="16" fill="#111827">Alumno 07</text>
+<rect x="556.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="588.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="628.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="660.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="700.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="732.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="772.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="804.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<rect x="860.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="892.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="932.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="964.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1004.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1036.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="1076.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1108.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<rect x="1164.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1196.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">1</text>
+<rect x="1236.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1268.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">2</text>
+<rect x="1308.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1340.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">3</text>
+<rect x="1380.0" y="905.0" width="64.0" height="44" rx="10" fill="#FFFFFF" fill-opacity="1" stroke="#E5E7EB"/><text x="1412.0" y="934.0" font-size="17" font-weight="600" text-anchor="middle" fill="#1F2937">4</text>
+<rect x="1496.0" y="925.0" width="40" height="5" rx="2.5" fill="#8E9199"/>
+</svg>

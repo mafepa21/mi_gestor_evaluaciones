@@ -556,14 +556,6 @@ extension KmpBridge {
         }
     }
 
-    func createLocalBackup(fileName: String = "mi_gestor_backup.sqlite") async throws -> BackupResult {
-        try await container.backupService.createBackup(fileName: fileName)
-    }
-
-    func restoreLocalBackup(from path: String) async throws -> Bool {
-        try await container.backupService.restoreBackup(backupPath: path).boolValue
-    }
-
     func runLanPushSync() async throws {
         try await performPushSync(silent: false)
     }
@@ -2910,6 +2902,67 @@ extension KmpBridge {
                     )
                 )
 
+            case "learning_situation_tournament":
+                guard let tournamentId = (payloadObject["id"] as? String) ?? (change.id.isEmpty ? nil : change.id),
+                      let classId = int64Value(payloadObject["classId"]),
+                      let name = payloadObject["name"] as? String,
+                      let format = payloadObject["format"] as? String else { continue }
+                // learningSituationId nulo = torneo solo de curso (válido).
+                let situationId = int64Value(payloadObject["learningSituationId"])
+                let existing: LearningSituationTournament?
+                do {
+                    existing = try await container.learningSituationsRepository.getTournament(id: tournamentId)
+                } catch {
+                    continue
+                }
+                // Última escritura gana: un cambio más antiguo que lo local no pisa el torneo.
+                if let existing, existing.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs { continue }
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                try await container.learningSituationsRepository.saveTournamentFromSync(
+                    tournament: LearningSituationTournament(
+                        id: tournamentId,
+                        learningSituationId: situationId.map { KotlinLong(value: $0) },
+                        classId: classId,
+                        tabId: payloadObject.keys.contains("tabId") ? (payloadObject["tabId"] as? String) : existing?.tabId,
+                        name: name,
+                        format: format,
+                        status: TeachingUnitSyncMerge.text(
+                            previous: existing?.status ?? "draft",
+                            incoming: payloadObject["status"] as? String,
+                            keyPresent: payloadObject.keys.contains("status")
+                        ),
+                        configJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.configJson ?? "{}",
+                            incoming: payloadObject["configJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("configJson")
+                        ),
+                        teamSnapshotJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.teamSnapshotJson ?? "[]",
+                            incoming: payloadObject["teamSnapshotJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("teamSnapshotJson")
+                        ),
+                        scheduleJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.scheduleJson ?? "[]",
+                            incoming: payloadObject["scheduleJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("scheduleJson")
+                        ),
+                        resultsJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.resultsJson ?? "{}",
+                            incoming: payloadObject["resultsJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("resultsJson")
+                        ),
+                        knockoutResultsJson: TeachingUnitSyncMerge.text(
+                            previous: existing?.knockoutResultsJson ?? "{}",
+                            incoming: payloadObject["knockoutResultsJson"] as? String,
+                            keyPresent: payloadObject.keys.contains("knockoutResultsJson")
+                        ),
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
             case "learning_situation_class_link":
                 guard let situationId = int64Value(payloadObject["learningSituationId"]),
                       let classId = int64Value(payloadObject["classId"]) else { continue }
@@ -3670,6 +3723,11 @@ extension KmpBridge {
             let tabId = (payloadObject["id"] as? String) ?? change.id
             if !tabId.isEmpty {
                 try await container.notebookRepository.deleteTab(tabId: tabId)
+            }
+        case "learning_situation_tournament":
+            let tournamentId = (payloadObject["id"] as? String) ?? change.id
+            if !tournamentId.isEmpty {
+                try await container.learningSituationsRepository.deleteTournament(id: tournamentId)
             }
         case "notebook_group":
             let groupId = int64Value(payloadObject["id"]) ?? Int64(change.id.replacingOccurrences(of: "group-", with: "")) ?? 0

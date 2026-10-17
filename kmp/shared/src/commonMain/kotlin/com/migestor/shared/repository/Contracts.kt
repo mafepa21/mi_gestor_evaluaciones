@@ -1089,6 +1089,23 @@ interface LearningSituationsRepository {
     @Throws(Throwable::class)
     suspend fun getSessionPlan(id: Long): LearningSituationSessionPlan?
     @Throws(Throwable::class)
+    suspend fun saveTournament(tournament: LearningSituationTournament)
+    /** Aplicación de un cambio de SyncLAN: conserva `trace.updatedAt` entrante (última escritura gana). */
+    @Throws(Throwable::class)
+    suspend fun saveTournamentFromSync(tournament: LearningSituationTournament)
+    @Throws(Throwable::class)
+    suspend fun listTournaments(learningSituationId: Long): List<LearningSituationTournament>
+    @Throws(Throwable::class)
+    suspend fun listTournamentsByClass(classId: Long): List<LearningSituationTournament>
+    @Throws(Throwable::class)
+    suspend fun listTournamentsWithoutSituation(): List<LearningSituationTournament>
+    @Throws(Throwable::class)
+    suspend fun listAllTournaments(): List<LearningSituationTournament>
+    @Throws(Throwable::class)
+    suspend fun getTournament(id: String): LearningSituationTournament?
+    @Throws(Throwable::class)
+    suspend fun deleteTournament(id: String)
+    @Throws(Throwable::class)
     suspend fun replaceClassLinks(learningSituationId: Long, classIds: List<Long>)
     @Throws(Throwable::class)
     suspend fun listClassLinks(learningSituationId: Long): List<LearningSituationClassLink>
@@ -1217,6 +1234,9 @@ interface WeeklyTemplateRepository {
 interface TeacherScheduleRepository {
     @Throws(Throwable::class)
     suspend fun getOrCreatePrimarySchedule(): TeacherSchedule
+    /** Horario más reciente ya guardado, o `null`. Solo lectura: no crea profesor, curso académico ni horario. */
+    @Throws(Throwable::class)
+    suspend fun findExistingSchedule(): TeacherSchedule?
     @Throws(Throwable::class)
     suspend fun saveSchedule(schedule: TeacherSchedule): Long
     @Throws(Throwable::class)

@@ -11,6 +11,12 @@
 
 ## Trampas
 
+- El texto del paso pasa por `PlannerSessionReviewBuilder.reviewDetail` (quita «U01 · », el título «…»: repetido y parte listas en línea). «Alumnado» en extras compara con el texto sin limpiar (`rawDetail`).
+- «Ahora» usa `PlannerSessionLiveProgress.state`: minutos de reloj desde `startTime`, sumando 15 min de descanso al llegar al bloque `precededByBreak`. La hora de la franja (55 min) puede no coincidir con los minutos del plan (80): se sigue el plan.
+- La barra de tiempos lleva al paso con `proxy.scrollTo(activityKey)`: cada `PlannerReviewStepRow` lleva `.id(step.id)`; si cambia el id del paso, cambiar ambos.
+- Repaso ancho (hoja ≥ 900 pt, solo `.sheet` y con plan cargado): `wideReviewContent` en vez de `reviewScrollContent`. Umbrales en `PlannerSessionDetailLayoutPolicy` (`wideMinimumWidth`, `railWidth`, `guideColumnCount`). Lo que se añada a `loadedBody` hay que añadirlo también al repaso ancho.
+- `PlannerDocxWebView` solo recarga si cambia el HTML (coordinador): no volver a `loadHTMLString` en cada `update`.
+- Avisos y montaje se deduplican sin el prefijo de unidad (`withoutUnitPrefix`): «U10 · X» y «X» cuentan como el mismo.
 - El target de tests `MiGestorPlannerTests` es macOS y usa el scheme `MiGestorPlannerTests`; `Frameworks/` (MiGestorKit) no está en git: un worktree nuevo necesita enlazarlo desde el checkout principal antes de compilar.
 - Archivo Swift nuevo => `xcodegen --spec kmp/iosApp/project.yml` y commitear el `project.pbxproj`.
 - `PlannerSessionReviewStep.startOffsetMinutes` es acumulado sin contar el descanso; las recogidas (`isCollection`) no tienen hora ni avanzan el acumulado. Sin minutos conocidos, no hay hora.

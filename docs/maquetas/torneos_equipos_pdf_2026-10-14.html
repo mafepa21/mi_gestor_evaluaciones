@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Equipos del torneo</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1c1c1e;--mut:#6e6e73;--line:#e5e5ea;--acc:#0a84ff;--chip:#eef4ff}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--chip:#0a2a4d}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{padding:24px 16px 8px;max-width:1100px;margin:auto}header h1{margin:0;font-size:24px}header p{margin:4px 0 0;color:var(--mut)}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;padding:16px;max-width:1100px;margin:auto}
+.state{background:var(--card);border-radius:16px;padding:16px;border:1px solid var(--line)}
+.state>h2{margin:0 0 4px;font-size:12px;letter-spacing:.06em;color:var(--mut);text-transform:uppercase}.note{margin:0 0 12px;font-size:13px;color:var(--mut)}
+.tabs{display:flex;background:var(--bg);border-radius:10px;padding:2px;margin-bottom:12px}.tabs span{flex:1;text-align:center;padding:6px;border-radius:8px;font-size:13px}.tabs .on{background:var(--card);font-weight:600}
+.team{border-top:1px solid var(--line);padding:10px 0}.team:first-of-type{border-top:0}.tn{font-weight:600;display:flex;justify-content:space-between}.tn span{color:var(--mut);font-weight:400;font-size:13px}
+ul{margin:6px 0 0;padding-left:18px;color:var(--mut)}li.miss{font-style:italic}
+button{min-height:44px;padding:0 16px;border-radius:12px;border:0;background:var(--acc);color:#fff;font:inherit;font-weight:600;width:100%;margin-top:8px}
+.chip{display:inline-block;background:var(--chip);color:var(--acc);border-radius:99px;padding:6px 12px;font-size:13px;margin:2px}
+.pop{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;font-size:14px}
+.a4{background:#fff;color:#111;aspect-ratio:210/297;border:1px solid #ccc;padding:6%;font-size:11px;box-shadow:0 2px 10px rgba(0,0,0,.1)}
+.a4 h3{margin:0;font-size:18px}.a4 .sub{color:#555;margin-bottom:10px}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}.card{border:2px solid #111;border-radius:8px;padding:8px}.card b{font-size:15px;display:block;margin-bottom:4px}.card div{font-size:12px;line-height:1.5}
+.r1{margin-top:12px;border-top:2px solid #111;padding-top:8px}.r1 table{width:100%;border-collapse:collapse;font-size:12px}.r1 td{padding:4px;border-bottom:1px solid #ddd}
+</style></head><body>
+<header><h1>Integrantes y hoja imprimible</h1><p>Maqueta. Pestaña «Equipos» del detalle, integrantes al crear y PDF A4.</p></header>
+<main>
+<section class="state"><h2>1 · Pestaña Equipos</h2><p class="note">Detalle del torneo.</p>
+<div class="tabs"><span>Calendario</span><span>Clasificación</span><span class="on">Equipos</span></div>
+<div class="team"><div class="tn">Halcones <span>4 alumnos</span></div><ul><li>Ana García</li><li>Bruno López</li><li>Carla Ruiz</li><li>Dani Sanz</li></ul></div>
+<div class="team"><div class="tn">Linces <span>4 alumnos</span></div><ul><li>Elena Mora</li><li>Félix Pardo</li><li>Gala Ríos</li><li class="miss">Alumno no encontrado</li></ul></div>
+<button>Imprimir equipos</button></section>
+
+<section class="state"><h2>2 · Al crear el torneo</h2><p class="note">Mantén pulsado (o pasa el ratón en Mac) un grupo para ver quién está.</p>
+<span class="chip">✓ Halcones</span><span class="chip">✓ Linces</span><span class="chip">✓ Orcas</span>
+<div class="pop"><b>Halcones</b><br>Ana García · Bruno López · Carla Ruiz · Dani Sanz</div></section>
+
+<section class="state"><h2>3 · Vacío</h2><p class="note">Un equipo sin alumnos.</p>
+<div class="team"><div class="tn">Zorros <span>0 alumnos</span></div><ul><li>Sin alumnos. Añádelos en el Cuaderno.</li></ul></div></section>
+
+<section class="state"><h2>4 · PDF A4</h2><p class="note">Se abre la hoja de imprimir/compartir del sistema.</p>
+<div class="a4"><h3>Liga de voleibol</h3><div class="sub">SdA «Juegos de red» · 1º ESO A · 14/10/2026</div>
+<div class="cards">
+<div class="card"><b>Halcones</b><div>Ana García<br>Bruno López<br>Carla Ruiz<br>Dani Sanz</div></div>
+<div class="card"><b>Linces</b><div>Elena Mora<br>Félix Pardo<br>Gala Ríos<br>Hugo Vera</div></div>
+<div class="card"><b>Orcas</b><div>Irene Gil<br>Jon Ortiz<br>Lara Cano<br>Mario Paz</div></div>
+<div class="card"><b>Pumas</b><div>Nora Díaz<br>Óscar Rey<br>Paula Sáez<br>Quique Mas</div></div>
+</div>
+<div class="r1"><b>Primera ronda</b><table><tr><td>Pista 1</td><td>Halcones – Linces</td></tr><tr><td>Pista 2</td><td>Orcas – Pumas</td></tr></table></div>
+</div></section>
+</main></body></html>

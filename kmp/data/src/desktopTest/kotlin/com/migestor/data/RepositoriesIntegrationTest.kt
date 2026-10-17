@@ -50,6 +50,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RepositoriesIntegrationTest {
@@ -546,6 +547,25 @@ class RepositoriesIntegrationTest {
         assertTrue(schedule.id >= 0L)
         assertEquals("Agenda docente", schedule.name)
         assertEquals("1,2,3,4,5", schedule.activeWeekdaysCsv)
+    }
+
+    @Test
+    fun `findExistingSchedule no crea horario y devuelve el existente`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+        val repository = TeacherScheduleRepositorySqlDelight(
+            db = db,
+            plannerRepository = PlannerRepositorySqlDelight(db),
+            calendarRepository = CalendarRepositorySqlDelight(db),
+            classesRepository = ClassesRepositorySqlDelight(db)
+        )
+
+        assertNull(repository.findExistingSchedule())
+        assertTrue(db.appDatabaseQueries.selectAllTeacherSchedules().executeAsList().isEmpty())
+
+        val creado = repository.getOrCreatePrimarySchedule()
+        assertEquals(creado.id, repository.findExistingSchedule()?.id)
     }
 
     @Test

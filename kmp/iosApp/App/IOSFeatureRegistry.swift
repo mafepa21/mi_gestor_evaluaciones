@@ -1,3 +1,7 @@
+#if canImport(UIKit)
+import UIKit
+#endif
+
 enum IOSFeaturePriority {
     case daily
     case teaching
@@ -31,8 +35,10 @@ enum IOSFeatureRegistry {
     static let secondary: [IOSFeatureDescriptor] = [
         .init(module: .students, title: "Alumnado", subtitle: "Perfiles y seguimiento", systemImage: "person.3", priority: .teaching, visibleInDailyMode: false),
         .init(module: .diary, title: "Diario de aula", subtitle: "Trazabilidad de sesión", systemImage: "doc.text", priority: .teaching, visibleInDailyMode: false),
+        .init(module: .libreta, title: "Libreta", subtitle: "Notas a mano con Apple Pencil", systemImage: "pencil.and.scribble", priority: .teaching, visibleInDailyMode: false),
         .init(module: .evaluationHub, title: "Evaluación", subtitle: "Instrumentos y calendario", systemImage: "chart.bar.doc.horizontal", priority: .teaching, visibleInDailyMode: false),
         .init(module: .situations, title: "Situaciones", subtitle: "Programación e importación", systemImage: "doc.text.magnifyingglass", priority: .teaching, visibleInDailyMode: false),
+        .init(module: .peTournaments, title: "Torneos", subtitle: "Equipos, calendario y resultados", systemImage: "trophy", priority: .teaching, visibleInDailyMode: false),
         .init(module: .webSubmissions, title: "Entregas web", subtitle: "Gestiona desde el Mac; recibe en el Cuaderno", systemImage: "paperplane.circle.fill", priority: .teaching, visibleInDailyMode: false),
         .init(module: .meetings, title: "Reuniones", subtitle: "Actas de centro y acuerdos", systemImage: "person.3", priority: .teaching, visibleInDailyMode: false),
         .init(module: .inclusion, title: "Inclusión", subtitle: "Plazos del manual", systemImage: "person.2.badge.gearshape", priority: .teaching, visibleInDailyMode: false),
@@ -44,7 +50,6 @@ enum IOSFeatureRegistry {
         .init(module: .peRubrics, title: "Rúbricas por área", subtitle: "Criterios específicos", systemImage: "figure.cooldown", priority: .tools, visibleInDailyMode: false),
         .init(module: .peIncidents, title: "Incidencias y seguridad", subtitle: "Seguimiento operativo", systemImage: "cross.case", priority: .tools, visibleInDailyMode: false),
         .init(module: .peMaterial, title: "Recursos y material", subtitle: "Inventario rápido", systemImage: "shippingbox", priority: .tools, visibleInDailyMode: false),
-        .init(module: .peTournaments, title: "Retos y torneos", subtitle: "Competición y resultados", systemImage: "trophy", priority: .tools, visibleInDailyMode: false),
         .init(module: .settings, title: "Ajustes", subtitle: "Configuración", systemImage: "gearshape", priority: .settings, visibleInDailyMode: false),
         .init(module: .backups, title: "Seguridad", subtitle: "Copias y restauración", systemImage: "lock.shield", priority: .settings, visibleInDailyMode: false)
     ]
@@ -53,7 +58,8 @@ enum IOSFeatureRegistry {
 
     static func secondary(enabledProfiles: Set<TeacherSubjectProfile>) -> [IOSFeatureDescriptor] {
         secondary.filter { descriptor in
-            !descriptor.module.requiresPhysicalEducationProfile || enabledProfiles.contains(.physicalEducation)
+            (!descriptor.module.requiresPhysicalEducationProfile || enabledProfiles.contains(.physicalEducation))
+                && descriptor.module.isAvailableOnThisDevice
         }
     }
 
@@ -71,5 +77,17 @@ enum IOSFeatureRegistry {
                 priority: .tools,
                 visibleInDailyMode: false
             )
+    }
+}
+
+extension AppWorkspaceModule {
+    /// La Libreta (Apple Pencil, PencilKit) solo existe en iPad: ni iPhone ni Mac.
+    var isAvailableOnThisDevice: Bool {
+        guard self == .libreta else { return true }
+        #if canImport(UIKit)
+        return UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        return false
+        #endif
     }
 }

@@ -165,7 +165,7 @@ extension AppWorkspaceShell {
             return try await bridge.buildPEAIContext(classId: classId)
         case .notebook:
             return bridge.buildNotebookAIContext(classId: classId)
-        case .situations, .webSubmissions, .rubrics, .library, .meetings, .inclusion, .settings, .backups:
+        case .situations, .webSubmissions, .rubrics, .library, .libreta, .meetings, .inclusion, .settings, .backups:
             return fallbackContext(for: module, classId: classId, studentId: studentId, message: "Esta pantalla todavía no ofrece acciones IA contextuales.")
         }
     }
@@ -245,6 +245,8 @@ extension AppWorkspaceShell {
             return "Importa situaciones, revisa sus datos y crea solo las sesiones e instrumentos que necesites."
         case .diary:
             return "Cierra una sesión, deja trazabilidad docente y usa el inspector solo cuando necesites contexto secundario."
+        case .libreta:
+            return "Escribe a mano con el Apple Pencil. Toca una libreta para abrirla a pantalla completa."
         case .meetings:
             return "Registra actas de claustros, equipos docentes y CCP, y haz seguimiento de los acuerdos con responsable y fecha."
         case .inclusion:
@@ -270,7 +272,7 @@ extension AppWorkspaceShell {
         case .peMaterial:
             return "Gestiona preparación, uso y estado del material vinculado a sesiones EF."
         case .peTournaments:
-            return "Organiza torneos completos con plantillas, equipos, calendario y clasificación."
+            return "Los torneos del curso, agrupados por Situación de Aprendizaje: calendario, resultados y modo directo."
         case .settings:
             return "Configura agenda docente, calendario lectivo, sincronización y preferencias globales del workspace."
         case .backups:

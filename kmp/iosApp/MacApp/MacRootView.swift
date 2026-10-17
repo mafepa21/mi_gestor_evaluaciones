@@ -27,9 +27,11 @@ struct MacRootView: View {
     @StateObject private var studentSelection = StudentSelectionStore()
     @SceneStorage("mac.root.columnVisibility") private var storedColumnVisibility = MacRootColumnVisibilityValue.all
     @SceneStorage("mac.root.inspectorVisible") private var storedInspectorVisible = true
-    @AppStorage("diagnostics.quarantine.acknowledged") private var acknowledgedQuarantineId = ""
+    @AppStorage(AppleDatabaseRescueService.quarantineAcknowledgedUntilKey) private var acknowledgedQuarantineUntil: Double = 0
     @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
+    /// Tamaño de la ventana: la hoja de sesión del Planner lo usa para ocuparla casi entera.
+    @State private var windowSize: CGSize = .zero
     @State private var isAttendanceFilterPopoverPresented = false
     @AppStorage("dashboard_mode_preference") private var dashboardModeRaw = DashboardModePreference.auto.rawValue
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
@@ -40,6 +42,9 @@ struct MacRootView: View {
     @StateObject private var plannerDiaryLayoutState = WorkspaceLayoutState()
     @State private var studentsReloadToken = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    /// Modo directo de Torneos: oculta la barra lateral y la devuelve como estaba al salir.
+    @ObservedObject private var tournamentNavigation = SdaTournamentNavigationStore.shared
+    @State private var columnVisibilityBeforeLiveMode: NavigationSplitViewVisibility?
     @State private var windowWidth: CGFloat = 0
     @State private var isInspectorVisible = true
     @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
@@ -52,7 +57,7 @@ struct MacRootView: View {
     private var pendingQuarantinedDatabase: AppleQuarantinedDatabase? {
         guard rescueService.pendingRescue == nil else { return nil }
         return backupService.quarantinedDatabases.first {
-            $0.looksRecoverable && $0.id != acknowledgedQuarantineId
+            $0.looksRecoverable && $0.quarantinedAt.timeIntervalSince1970 > acknowledgedQuarantineUntil
         }
     }
 
@@ -119,6 +124,15 @@ struct MacRootView: View {
             guard session.bootstrapState == .ready else { return }
             storedColumnVisibility = newValue
         }
+        .appOnChange(of: tournamentNavigation.isLiveModeActive) { active in
+            if active {
+                if columnVisibilityBeforeLiveMode == nil { columnVisibilityBeforeLiveMode = columnVisibility }
+                columnVisibility = .detailOnly
+            } else if let previous = columnVisibilityBeforeLiveMode {
+                columnVisibility = previous
+                columnVisibilityBeforeLiveMode = nil
+            }
+        }
         .appOnChange(of: isInspectorVisible) { newValue in
             storedInspectorVisible = newValue
             session.inspectorVisible = newValue
@@ -152,11 +166,11 @@ struct MacRootView: View {
             presenting: pendingQuarantinedDatabase
         ) { item in
             Button("Entendido") {
-                acknowledgedQuarantineId = item.id
+                AppleDatabaseRescueService.acknowledgeAllQuarantined(backupService.quarantinedDatabases)
             }
             Button("Mostrar en Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
-                acknowledgedQuarantineId = item.id
+                AppleDatabaseRescueService.acknowledgeAllQuarantined(backupService.quarantinedDatabases)
             }
         } message: { item in
             let counts = item.summary.map {
@@ -347,6 +361,7 @@ struct MacRootView: View {
             guard newFeature != .notebook else { return }
             isNotebookSearchFocused = false
         }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { windowSize = $0 }
         .sheet(isPresented: isPlannerInspectorSessionPresented, onDismiss: presentPendingPlannerDiarySession) {
             plannerInspectorSheetContent
         }
@@ -407,6 +422,12 @@ struct MacRootView: View {
                 presentation: .sheet
             )
             .environmentObject(session.bridge)
+            // Casi toda la ventana (32 pt de margen por lado): una hoja de Mac no
+            // crece sola más allá de su tamaño ideal.
+            .frame(
+                width: windowSize.width > 0 ? max(900, windowSize.width - 64) : nil,
+                height: windowSize.height > 0 ? max(640, windowSize.height - 64) : nil
+            )
         }
     }
 
@@ -599,6 +620,12 @@ struct MacRootView: View {
             .environmentObject(plannerDiaryLayoutState)
         case .situations:
             LearningSituationsWorkspaceView(
+                selectedClassId: studentSelection.selectedClassBinding,
+                onOpenModule: open(module:classId:studentId:)
+            )
+            .environmentObject(session.bridge)
+        case .tournaments:
+            TournamentsWorkspaceView(
                 selectedClassId: studentSelection.selectedClassBinding,
                 onOpenModule: open(module:classId:studentId:)
             )
@@ -1280,6 +1307,7 @@ struct MacRootView: View {
         case .planner: return .orange
         case .diary: return .pink
         case .situations: return .indigo
+        case .tournaments: return .yellow
         case .webSubmissions: return .mint
         case .meetings: return .brown
         case .inclusion: return .teal
@@ -1622,6 +1650,8 @@ struct MacRootView: View {
             selectFeature(.physicalTests)
         case .situations:
             selectFeature(.situations)
+        case .peTournaments:
+            selectFeature(.tournaments)
         case .diary:
             selectFeature(.diary)
         case .evaluationHub:

@@ -515,21 +515,25 @@ struct PlannerDocxWebView: View {
     let minHeight: CGFloat
     let idealHeight: CGFloat
     let maxHeight: CGFloat
+    /// Zoom de la página (1 = tamaño real). Menor que 1 para miniaturas.
+    let pageZoom: CGFloat
 
     init(
         html: String,
         minHeight: CGFloat = 420,
         idealHeight: CGFloat = 560,
-        maxHeight: CGFloat = 720
+        maxHeight: CGFloat = 720,
+        pageZoom: CGFloat = 1
     ) {
         self.html = html
         self.minHeight = minHeight
         self.idealHeight = idealHeight
         self.maxHeight = maxHeight
+        self.pageZoom = pageZoom
     }
 
     var body: some View {
-        PlannerDocxWebViewRepresentable(html: html)
+        PlannerDocxWebViewRepresentable(html: html, pageZoom: pageZoom)
             .frame(minHeight: minHeight, idealHeight: idealHeight, maxHeight: maxHeight)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .accessibilityLabel("Contenido enriquecido del documento de sesión")
@@ -539,6 +543,9 @@ struct PlannerDocxWebView: View {
 #if os(iOS)
 private struct PlannerDocxWebViewRepresentable: UIViewRepresentable {
     let html: String
+    let pageZoom: CGFloat
+
+    func makeCoordinator() -> PlannerDocxWebViewCoordinator { PlannerDocxWebViewCoordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
         let webView = WKWebView(frame: .zero)
@@ -549,12 +556,19 @@ private struct PlannerDocxWebViewRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        if webView.pageZoom != pageZoom { webView.pageZoom = pageZoom }
+        // Recargar solo si cambia el HTML: cada recarga parpadea.
+        guard context.coordinator.loadedHTML != html else { return }
+        context.coordinator.loadedHTML = html
         webView.loadHTMLString(html, baseURL: nil)
     }
 }
 #else
 private struct PlannerDocxWebViewRepresentable: NSViewRepresentable {
     let html: String
+    let pageZoom: CGFloat
+
+    func makeCoordinator() -> PlannerDocxWebViewCoordinator { PlannerDocxWebViewCoordinator() }
 
     func makeNSView(context: Context) -> WKWebView {
         let webView = WKWebView(frame: .zero)
@@ -563,7 +577,15 @@ private struct PlannerDocxWebViewRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        if webView.pageZoom != pageZoom { webView.pageZoom = pageZoom }
+        // Recargar solo si cambia el HTML: cada recarga parpadea.
+        guard context.coordinator.loadedHTML != html else { return }
+        context.coordinator.loadedHTML = html
         webView.loadHTMLString(html, baseURL: nil)
     }
 }
 #endif
+
+final class PlannerDocxWebViewCoordinator {
+    var loadedHTML: String?
+}

@@ -12,6 +12,7 @@ public final class AppleBackupService: ObservableObject {
     @Published public var lastError: String? = nil
     @Published public var needsRestart: Bool = false
     @Published public var latestEmergencyBackupUrl: URL? = nil
+    var automaticBackupTask: Task<Void, Never>?
 
     /// Bases de datos que el arranque puso en cuarentena porque no pudo abrirlas
     /// (ver `createAppleDriver` en AppleDriver.kt). Cuando esto ocurre la app se abre
@@ -24,7 +25,16 @@ public final class AppleBackupService: ObservableObject {
     public let databaseURL: URL
     public let attachmentsURL: URL
     public let learningSituationsURL: URL
-    private let retentionLimit = 5
+    /// Retención (ver `retentionVictims`): copias normales recientes, una por semana
+    /// de las anteriores y un cupo propio para las de emergencia previas a restaurar.
+    nonisolated public static let recentRetentionCount = 7
+    nonisolated public static let weeklyRetentionCount = 4
+    nonisolated public static let emergencyRetentionCount = 2
+    /// Regla antigua (las 5 más recientes de cualquier tipo). Se sigue respetando para
+    /// que el cambio de regla no borre ninguna copia que antes se conservaba.
+    nonisolated static let legacyRetentionCount = 5
+    nonisolated static let emergencyNotePrefix = "Copia de seguridad de emergencia"
+    private let libretaStorage = LibretaStorage.standard
 
     public static let shared = AppleBackupService()
 
@@ -127,6 +137,11 @@ public final class AppleBackupService: ObservableObject {
     }
 
     public func createBackup(note: String? = nil) async throws -> AppleBackupDescriptor {
+        try await createBackup(note: note, protecting: [])
+    }
+
+    /// `protecting`: copias que la retención no puede borrar (p. ej. la que se está restaurando).
+    private func createBackup(note: String?, protecting protectedURLs: Set<URL>) async throws -> AppleBackupDescriptor {
         let perfStart = DispatchTime.now()
         defer { PerfLog.finish("Copia de seguridad", start: perfStart) }
         operationState = .creating
@@ -186,6 +201,13 @@ public final class AppleBackupService: ObservableObject {
                 try copyDirectoryContents(from: learningSituationsURL, to: destinationLearningSituationsURL)
             }
             
+            // 2b. Libreta (solo iPad): base SwiftData + dibujos e imágenes.
+            var libretaCount: Int? = nil
+            if LibretaStorage.isSupportedOnThisPlatform,
+               try LibretaBackupPackager.package(from: libretaStorage, into: packageURL, fileManager: fileManager) {
+                libretaCount = LibretaBackupPackager.notebookCount(in: LibretaBackupPackager.databaseURL(in: packageURL)) ?? 0
+            }
+
             // 3. Compute stats
             let classCount = countRows(in: databaseURL.path, table: "classes")
             let studentCount = countRows(in: databaseURL.path, table: "students")
@@ -198,7 +220,8 @@ public final class AppleBackupService: ObservableObject {
                 studentCount: studentCount,
                 notebookColumnCount: notebookColumnCount,
                 rubricCount: rubricCount,
-                attendanceRecordCount: attendanceRecordCount
+                attendanceRecordCount: attendanceRecordCount,
+                libretaCount: libretaCount
             )
             
             // 4. Compute schema and database size
@@ -269,6 +292,11 @@ public final class AppleBackupService: ObservableObject {
                 let fileURL = destinationLearningSituationsURL.appendingPathComponent(relativePath)
                 checksumMap["learning-situations/\(relativePath)"] = try calculateSHA256(for: fileURL)
             }
+            let libretaFolderURL = LibretaBackupPackager.folderURL(in: packageURL)
+            for relativePath in try LibretaBackupPackager.regularFileRelativePaths(in: libretaFolderURL, fileManager: fileManager) {
+                let fileURL = libretaFolderURL.appendingPathComponent(relativePath)
+                checksumMap["\(LibretaBackupPackager.folderName)/\(relativePath)"] = try calculateSHA256(for: fileURL)
+            }
             
             let checksumsData = try encoder.encode(checksumMap)
             try checksumsData.write(to: packageURL.appendingPathComponent("checksums.json"), options: .atomic)
@@ -281,7 +309,7 @@ public final class AppleBackupService: ObservableObject {
             )
             
             // 8. Enforce retention policy
-            try applyRetentionPolicy()
+            try applyRetentionPolicy(protecting: protectedURLs)
             
             // 9. Re-scan and refresh
             await scanBackups()
@@ -333,6 +361,9 @@ public final class AppleBackupService: ObservableObject {
             let databaseURL = packageURL.appendingPathComponent("database.sqlite")
             try validateUsableDatabase(at: databaseURL, context: "la base incluida en la copia")
             try AppleSQLiteBackupValidator.validateDatabase(at: databaseURL)
+            if checksumMap[LibretaBackupPackager.databaseChecksumKey] != nil {
+                try AppleSQLiteBackupValidator.validateDatabase(at: LibretaBackupPackager.databaseURL(in: packageURL))
+            }
             
             verifiedDescriptor.isVerified = true
             verifiedDescriptor.verificationError = nil
@@ -365,6 +396,7 @@ public final class AppleBackupService: ObservableObject {
             // copias borraría los datos actuales y los sustituiría por nada.
             let packageURL = descriptor.url
             let sourceDB = packageURL.appendingPathComponent("database.sqlite")
+            try ensureSchemaCompatible(descriptor.manifest)
             try validateUsableDatabase(at: sourceDB, context: "la copia seleccionada")
             try AppleSQLiteBackupValidator.validateDatabase(at: sourceDB)
 
@@ -374,9 +406,27 @@ public final class AppleBackupService: ObservableObject {
             // restaurar. No lo bloqueamos por no poder hacer una copia de la nada.
             let emergencyNote = "Copia de seguridad de emergencia previa a restauración de \(descriptor.displayName) (\(descriptor.manifest.createdAt.formattedDateText))"
             do {
-                let emergencyCopy = try await createBackup(note: emergencyNote)
+                // La copia elegida queda protegida: si fuese la más antigua, la retención
+                // la borraría justo antes de leerla para restaurar.
+                let emergencyCopy = try await createBackup(
+                    note: emergencyNote,
+                    protecting: [packageURL.standardizedFileURL]
+                )
                 self.latestEmergencyBackupUrl = emergencyCopy.url
             } catch {
+                // Sin red de seguridad no se sustituyen unas libretas que existen:
+                // a diferencia de la base principal, aquí sí hay algo que proteger.
+                let packageBringsLibreta = (try? loadChecksumKeys(in: packageURL))?
+                    .contains(LibretaBackupPackager.databaseChecksumKey) == true
+                if LibretaStorage.isSupportedOnThisPlatform,
+                   packageBringsLibreta,
+                   fileManager.fileExists(atPath: libretaStorage.storeURL.path) {
+                    throw NSError(
+                        domain: "AppleBackupService",
+                        code: 409,
+                        userInfo: [NSLocalizedDescriptionKey: "No se pudo hacer la copia de emergencia de tus libretas, así que no se ha restaurado nada. \(error.localizedDescription)"]
+                    )
+                }
                 self.latestEmergencyBackupUrl = nil
                 print("[AppleBackupService] Sin copia de emergencia previa a restaurar: \(error.localizedDescription)")
             }
@@ -394,8 +444,9 @@ public final class AppleBackupService: ObservableObject {
                 .deletingLastPathComponent()
                 .appendingPathComponent(".restore-\(transactionID)-learning-situations", isDirectory: true)
             let stagedURLs = [stagedDatabaseURL, stagedAttachmentsURL, stagedLearningSituationsURL]
+            var libretaStagedURLs: [URL] = []
             defer {
-                stagedURLs.forEach { url in
+                (stagedURLs + libretaStagedURLs).forEach { url in
                     if fileManager.fileExists(atPath: url.path) {
                         try? fileManager.removeItem(at: url)
                     }
@@ -408,6 +459,22 @@ public final class AppleBackupService: ObservableObject {
             try stageDirectory(from: packageAttachments, to: stagedAttachmentsURL)
             try stageDirectory(from: packageLearningSituations, to: stagedLearningSituationsURL)
 
+            // Libreta (solo iPad): si la copia no la trae, las libretas actuales no se tocan.
+            var libretaOperations: [AppleBackupRestoreOperation] = []
+            if LibretaStorage.isSupportedOnThisPlatform {
+                let checksumKeys = Set(try loadChecksumKeys(in: packageURL))
+                if let staged = try LibretaBackupPackager.stageRestore(
+                    from: packageURL,
+                    checksumKeys: checksumKeys,
+                    to: libretaStorage,
+                    transactionID: transactionID,
+                    fileManager: fileManager
+                ) {
+                    libretaOperations = staged.operations
+                    libretaStagedURLs = staged.stagedURLs
+                }
+            }
+
             // 5. Instalar base + dos árboles como una sola transacción de filesystem.
             // Si cualquier paso falla, el helper revierte en orden inverso.
             let activeWalURL = URL(fileURLWithPath: databaseURL.path + "-wal")
@@ -418,7 +485,7 @@ public final class AppleBackupService: ObservableObject {
                 .remove(destinationURL: activeShmURL),
                 .replace(stagedURL: stagedAttachmentsURL, destinationURL: attachmentsURL),
                 .replace(stagedURL: stagedLearningSituationsURL, destinationURL: learningSituationsURL),
-            ])
+            ] + libretaOperations)
             
             // 6. Trigger restart requirements flag
             self.needsRestart = true
@@ -555,6 +622,7 @@ public final class AppleBackupService: ObservableObject {
             }
 
             let stagedDescriptor = try loadBackupDescriptor(at: stagedPackageURL)
+            try ensureSchemaCompatible(stagedDescriptor.manifest)
             let verified = await verifyBackup(stagedDescriptor)
             operationState = .importing
             guard verified.isRestorable else {
@@ -608,43 +676,132 @@ public final class AppleBackupService: ObservableObject {
         let notebookColumnCount = countRows(in: databaseURL.path, table: "notebook_columns")
         let rubricCount = countRows(in: databaseURL.path, table: "rubrics")
         let attendanceRecordCount = countRows(in: databaseURL.path, table: "attendance")
+        let libretaCount: Int? = LibretaStorage.isSupportedOnThisPlatform
+            ? LibretaBackupPackager.notebookCount(in: libretaStorage.storeURL)
+            : nil
         
         return AppleBackupSummary(
             classCount: classCount,
             studentCount: studentCount,
             notebookColumnCount: notebookColumnCount,
             rubricCount: rubricCount,
-            attendanceRecordCount: attendanceRecordCount
+            attendanceRecordCount: attendanceRecordCount,
+            libretaCount: libretaCount
         )
     }
 
     // MARK: - Retention Policy
 
-    private func applyRetentionPolicy() throws {
+    private func applyRetentionPolicy(protecting protectedURLs: Set<URL> = []) throws {
         let urls = try fileManager.contentsOfDirectory(at: backupsDirectoryURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
         let backupUrls = urls.filter { $0.pathExtension == "migestorbackup" }
-        
-        var loadedDescriptors: [(URL, Date)] = []
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        var entries: [RetentionEntry] = []
         for url in backupUrls {
             let manifestURL = url.appendingPathComponent("manifest.json")
             if let manifestData = try? Data(contentsOf: manifestURL),
-               let manifest = try? JSONDecoder().decode(AppleBackupManifest.self, from: manifestData) {
-                loadedDescriptors.append((url, manifest.createdAt))
+               let manifest = try? decoder.decode(AppleBackupManifest.self, from: manifestData) {
+                entries.append(RetentionEntry(url: url, createdAt: manifest.createdAt, note: manifest.note))
             } else {
-                // If corrupted manifest or unreadable, still include it for sorting using file attributes
+                // Manifiesto ilegible: se ordena por la fecha de la carpeta.
                 let attributes = try? fileManager.attributesOfItem(atPath: url.path)
                 let date = (attributes?[.creationDate] as? Date) ?? Date.distantPast
-                loadedDescriptors.append((url, date))
+                entries.append(RetentionEntry(url: url, createdAt: date, note: nil))
             }
         }
-        
-        // Sort: newest first
-        let sorted = loadedDescriptors.sorted { $0.1 > $1.1 }
-        if sorted.count > retentionLimit {
-            let toDelete = sorted.suffix(sorted.count - retentionLimit)
-            for (url, _) in toDelete {
-                try? fileManager.removeItem(at: url)
-            }
+
+        for url in Self.retentionVictims(entries: entries, protecting: protectedURLs) {
+            try? fileManager.removeItem(at: url)
+        }
+    }
+
+    /// Aplica la retención ahora (botón «Aplicar retención» del Mac).
+    public func applyRetentionNow() async {
+        do {
+            try applyRetentionPolicy()
+        } catch {
+            lastError = "No se pudo aplicar la retención: \(error.localizedDescription)"
+        }
+        await scanBackups()
+    }
+
+    /// Copias de la lista actual que la retención borraría.
+    public var backupsBeyondRetentionCount: Int {
+        let entries = backups.map {
+            RetentionEntry(url: $0.url, createdAt: $0.manifest.createdAt, note: $0.manifest.note)
+        }
+        return Self.retentionVictims(entries: entries, protecting: []).count
+    }
+
+    struct RetentionEntry {
+        let url: URL
+        let createdAt: Date
+        let isEmergency: Bool
+
+        init(url: URL, createdAt: Date, note: String?) {
+            self.url = url
+            self.createdAt = createdAt
+            self.isEmergency = note?.hasPrefix(AppleBackupService.emergencyNotePrefix) == true
+        }
+    }
+
+    /// Copias a borrar. Se conservan:
+    /// - las `recentRetentionCount` copias normales más recientes;
+    /// - de las normales más antiguas, la más reciente de cada semana aún no
+    ///   representada, hasta `weeklyRetentionCount` semanas;
+    /// - las `emergencyRetentionCount` copias de emergencia más recientes, en cupo
+    ///   aparte, para que restaurar varias veces no eche a las copias normales;
+    /// - las `legacyRetentionCount` más recientes de cualquier tipo (regla anterior);
+    /// - y nunca se borra una copia protegida (p. ej. la que se está restaurando).
+    nonisolated static func retentionVictims(
+        entries: [RetentionEntry],
+        protecting protectedURLs: Set<URL>,
+        calendar: Calendar = .current
+    ) -> [URL] {
+        func key(_ url: URL) -> String { url.standardizedFileURL.path }
+        let sorted = entries.sorted { $0.createdAt > $1.createdAt }
+        var kept = Set(protectedURLs.map(key))
+
+        sorted.prefix(legacyRetentionCount).forEach { kept.insert(key($0.url)) }
+        sorted.filter(\.isEmergency).prefix(emergencyRetentionCount).forEach { kept.insert(key($0.url)) }
+
+        let normals = sorted.filter { !$0.isEmergency }
+        let recent = normals.prefix(recentRetentionCount)
+        recent.forEach { kept.insert(key($0.url)) }
+
+        func week(_ date: Date) -> Date? { calendar.dateInterval(of: .weekOfYear, for: date)?.start }
+        var coveredWeeks = Set(recent.compactMap { week($0.createdAt) })
+        var weeklyKept = 0
+        for entry in normals.dropFirst(recentRetentionCount) where weeklyKept < weeklyRetentionCount {
+            guard let entryWeek = week(entry.createdAt), !coveredWeeks.contains(entryWeek) else { continue }
+            coveredWeeks.insert(entryWeek)
+            kept.insert(key(entry.url))
+            weeklyKept += 1
+        }
+
+        return sorted.map(\.url).filter { !kept.contains(key($0)) }
+    }
+
+    // MARK: - Schema Compatibility
+
+    /// Una copia de una versión de datos más nueva no se puede abrir con esta app.
+    nonisolated static func isSchemaCompatible(backupSchemaVersion: Int?, currentSchemaVersion: Int?) -> Bool {
+        guard let backupSchemaVersion, let currentSchemaVersion else { return true }
+        return backupSchemaVersion <= currentSchemaVersion
+    }
+
+    private func ensureSchemaCompatible(_ manifest: AppleBackupManifest) throws {
+        guard Self.isSchemaCompatible(
+            backupSchemaVersion: manifest.schemaVersion,
+            currentSchemaVersion: getSchemaVersion(of: databaseURL.path)
+        ) else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 426,
+                userInfo: [NSLocalizedDescriptionKey: "Esta copia es de una versión más nueva de la app. Actualiza la app para restaurarla."]
+            )
         }
     }
 
@@ -725,6 +882,11 @@ public final class AppleBackupService: ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: "\(context.prefix(1).uppercased())\(context.dropFirst()) no es una base de datos SQLite válida. Operación cancelada."]
             )
         }
+    }
+
+    private func loadChecksumKeys(in packageURL: URL) throws -> [String] {
+        let data = try Data(contentsOf: packageURL.appendingPathComponent("checksums.json"))
+        return Array(try JSONDecoder().decode([String: String].self, from: data).keys)
     }
 
     private func validatedPackageFileURL(relativePath: String, packageURL: URL) throws -> URL {
@@ -852,6 +1014,115 @@ public final class AppleBackupService: ObservableObject {
             return Int(sqlite3_column_int(statement, 0))
         }
         return nil
+    }
+}
+
+// MARK: - Copias automáticas
+
+/// Hasta 2026-10 la frecuencia elegida en Ajustes se guardaba pero nadie la leía:
+/// la app nunca hacía copias por su cuenta. Las únicas copias "automáticas" eran
+/// las de emergencia previas a restaurar.
+extension AppleBackupService {
+    nonisolated static let automaticBackupNote = "Copia automática"
+    nonisolated static let backupFrequencyDefaultsKey = "settings.backupFrequency"
+    nonisolated static let lastAutomaticAttemptDefaultsKey = "backup.automatic.lastAttemptAt"
+    /// Tras un intento fallido no se reintenta en este tiempo, para no repetir el
+    /// mismo error en cada cambio de ventana.
+    nonisolated static let automaticRetryInterval: TimeInterval = 60 * 60
+    /// Margen tras volver a la app antes de copiar, para no competir con la carga inicial.
+    nonisolated static let automaticActivationDelay: Duration = .seconds(45)
+
+    /// ¿Toca una copia automática? Regla pura, sin disco, para poder probarla.
+    nonisolated static func isAutomaticBackupDue(
+        frequency: BackupFrequency,
+        lastBackupAt: Date?,
+        lastAttemptAt: Date?,
+        now: Date,
+        calendar: Calendar = .current
+    ) -> Bool {
+        if frequency == .manual { return false }
+        if let lastAttemptAt, now.timeIntervalSince(lastAttemptAt) < automaticRetryInterval {
+            return false
+        }
+        guard let lastBackupAt else { return true }
+        switch frequency {
+        // Una copia con fecha futura (reloj cambiado, copia importada) no debe
+        // bloquear las copias hasta que el tiempo real la alcance.
+        case .daily:
+            return !calendar.isDate(lastBackupAt, inSameDayAs: now)
+        case .weekly:
+            let elapsed = now.timeIntervalSince(lastBackupAt)
+            return elapsed >= 7 * 86_400 || elapsed < -86_400
+        case .manual:
+            return false
+        }
+    }
+
+    private var configuredFrequency: BackupFrequency {
+        let raw = UserDefaults.standard.string(forKey: Self.backupFrequencyDefaultsKey)
+        return raw.flatMap(BackupFrequency.init(rawValue:)) ?? .weekly
+    }
+
+    /// Llamar desde el cambio de `scenePhase` de cada app.
+    /// - `.active`: comprueba tras un margen (se cancela si la app sale antes).
+    /// - `.background`: comprueba ya; en iOS pide tiempo extra al sistema.
+    public func handleScenePhaseForAutomaticBackup(isActive: Bool) {
+        automaticBackupTask?.cancel()
+        if isActive {
+            automaticBackupTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.automaticActivationDelay)
+                guard !Task.isCancelled else { return }
+                await self?.runAutomaticBackupIfDue()
+            }
+        } else {
+            #if os(iOS)
+            var taskID: UIBackgroundTaskIdentifier = .invalid
+            taskID = UIApplication.shared.beginBackgroundTask(withName: "Copia automática") {
+                UIApplication.shared.endBackgroundTask(taskID)
+                taskID = .invalid
+            }
+            automaticBackupTask = Task { @MainActor [weak self] in
+                await self?.runAutomaticBackupIfDue()
+                if taskID != .invalid { UIApplication.shared.endBackgroundTask(taskID) }
+            }
+            #else
+            automaticBackupTask = Task { @MainActor [weak self] in
+                await self?.runAutomaticBackupIfDue()
+            }
+            #endif
+        }
+    }
+
+    /// Hace la copia si toca. Silenciosa: si falla no muestra aviso, solo deja
+    /// constancia y espera `automaticRetryInterval` antes de volver a probar.
+    @discardableResult
+    func runAutomaticBackupIfDue(now: Date = Date()) async -> Bool {
+        guard operationState == .idle, !needsRestart else { return false }
+        await scanBackups()
+        let lastUsable = backups.first { !$0.hasEmptyDatabase && $0.verificationError == nil }
+        let defaults = UserDefaults.standard
+        let lastAttempt = defaults.object(forKey: Self.lastAutomaticAttemptDefaultsKey) as? Date
+        guard Self.isAutomaticBackupDue(
+            frequency: configuredFrequency,
+            lastBackupAt: lastUsable?.manifest.createdAt,
+            lastAttemptAt: lastAttempt,
+            now: now
+        ) else { return false }
+        // Una instalación nueva o una base vacía no tiene nada que proteger.
+        guard (try? validateUsableDatabase(at: databaseURL, context: "la base de datos activa")) != nil else {
+            return false
+        }
+        guard operationState == .idle, !needsRestart else { return false }
+        defaults.set(now, forKey: Self.lastAutomaticAttemptDefaultsKey)
+        let previousError = lastError
+        do {
+            _ = try await createBackup(note: Self.automaticBackupNote)
+            return true
+        } catch {
+            lastError = previousError
+            print("[AppleBackupService] Copia automática fallida: \(error.localizedDescription)")
+            return false
+        }
     }
 }
 

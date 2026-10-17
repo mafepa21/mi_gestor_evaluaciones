@@ -13,24 +13,94 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
-### Fixed
+### Removed
 
-- **Restaurar copias guardadas en carpetas sin permiso de escritura** (iCloud, volumen externo, carpeta protegida): la validación fallaba con «PRAGMA integrity_check … unable to open database file» aunque la copia estuviera intacta, porque una base WAL en solo lectura necesita crear `-shm` a su lado. Ahora, ante `SQLITE_CANTOPEN`, la validación y la instantánea se repiten sobre un duplicado temporal; el paquete original no se modifica.
+- **Apple: se quitan `createLocalBackup` y `restoreLocalBackup` de `KmpBridge`**: envolvían el sistema de copias antiguo de KMP (`BackupService`, un único `.sqlite` sin adjuntos ni comprobaciones) y ninguna pantalla los llamaba. iPad y Mac usan solo `AppleBackupService`. El servicio KMP se mantiene porque lo usa la app de escritorio (`desktopApp`). Verificación: build `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador) OK.
+
+### Added
+
+- **Planner: hoja del día para imprimir (A3 apaisado, 3 sesiones por hoja)**: botón «Hoja del día» en la vista Día. Genera un PDF con un esquema por sesión: hora y grupo, título, objetivo, pasos con minutos y un detalle breve de cada actividad, material, atención y líneas para notas a mano. Más de 3 sesiones = otra hoja. El material no se parte por comas ni dentro de paréntesis. Se abre el menú del sistema para imprimir o compartir.
+- **Libreta ligada a una clase**: cada libreta se puede ligar a una clase de Mi Gestor desde su menú («Clase») o al crearla. El lector muestra la clase bajo el título. En iPad, el inspector del Diario de aula («Abrir libreta») y el menú «•••» de la sesión del Planner («Abrir libreta de la clase») abren a pantalla completa la libreta más reciente de esa clase. Si no hay ninguna, proponen crearla con el nombre de la clase. En la Libreta, «Grupo» sigue siendo la balda.
+- **Las copias de Seguridad del iPad incluyen la Libreta**: base y dibujos e imágenes, con sus sumas de control. Al restaurar, las libretas vuelven a como estaban en la copia, dentro de la misma operación con vuelta atrás que el resto. Una copia sin libretas (antigua o hecha en el Mac) no las toca. El historial muestra «Libretas N» y la vista previa de restaurar, una fila «Libretas» con su aviso.
+- **Libreta: libretas a mano con Apple Pencil dentro de la app (solo iPad)**: la app Cuadernos entra como módulo «Libreta», en Planificación, justo debajo de «Diario de aula». Estantería y montones van dentro del panel, con la barra lateral y la barra de la app. Al tocar una libreta, el lector se abre a pantalla completa; «Estantería» vuelve. Se conserva todo lo de Cuadernos: escritura con PencilKit, paso de hoja, miniaturas, marcapáginas, objetos, plantillas de hoja, búsqueda de manuscrito, PDF y copia JSON. Botones y menús usan el azul de la app; papel, tapas y madera no cambian. Estado vacío con «Traer de Cuadernos» para importar la copia de la app antigua. En iPhone y Mac el módulo no aparece.
+
+### Data
+
+- **Libreta con base de datos propia**: SwiftData en su propio archivo (`Libreta.store`), sin iCloud y fuera de KMP/SQLDelight. Se abre al entrar en el módulo, no al arrancar la app. Si falla, aviso con «Reintentar», sin borrar nada. Ver `ADR-2026-10-15-libreta-swiftdata-propia.md`.
+
+### Docs
+
+- Maqueta del rediseño de copias (`docs/mockups/copias-seguridad/mockup/index.html`), revisada con criterios HIG y de accesibilidad.
+- Maqueta aprobada (`docs/mockups/libreta/mockup/index.html`), ticket (`docs/planes/ticket_libreta_integrada_2026-10-15.md`) y ámbito (`docs/ambitos/libreta.md`) de la Libreta.
 
 ### Verification
 
-- `xcodebuild test` (esquema `MiGestorPlannerTests`, macOS, `AppleBackupIntegrityTests`): 6 tests OK, incluido el nuevo de base WAL en carpeta de solo lectura (reproducía el error antes del arreglo).
-- `xcodebuild build` (esquema `MiGestorKMPiOS`, iOS Simulator): OK.
-- QA manual del docente: la restauración de la copia que fallaba funciona.
+- Retención de copias: `./scripts/verify_apple_builds.sh` compila macOS e iOS Simulator; `xcodebuild test` (MiGestorPlannerTests, macOS) pasa `AppleBackupRetentionTests` (10) y `AppleAutomaticBackupScheduleTests` (6). Sin prueba manual en la app.
+- Copias automáticas: `./scripts/verify_apple_builds.sh` compila macOS e iOS Simulator; `xcodebuild test` (MiGestorPlannerTests, macOS) pasa `AppleAutomaticBackupScheduleTests` (6) y `AppleBackupRetentionTests` (7). Sin prueba manual en la app.
+- Rediseño de copias: `./scripts/verify_apple_builds.sh` compila macOS (MiGestorKMPMac) e iOS Simulator (MiGestorKMPiOS). Sin QA manual en la app ni capturas.
+- Fase 2 de la Libreta: `xcodebuild` `MiGestorKMPiOS` (iOS simulador genérico) compila. `xcodebuild test` `MiGestorPlannerTests` (Mac arm64): 282 pruebas, 0 fallos y 4 omitidas; incluye 5 nuevas de ida y vuelta de la Libreta en las copias. Sin QA en ejecución (no hay simuladores instalados) ni prueba de restaurar en un iPad real.
+- `xcodebuild` `MiGestorKMPiOS` para `generic/platform=iOS Simulator`: compila.
+- `xcodebuild` `MiGestorKMPMac` para `arm64`: compila. Para `x86_64` falla al enlazar porque el `MiGestorKit` local solo trae arm64 (fallo del entorno, no del código de este cambio; no se comprobó en `main`).
+- No se ha abierto la app: este Mac no tiene ningún simulador de iOS instalado. Falta la QA en iPad (simulador o real) y la prueba con Apple Pencil.
+- **Torneos dentro de la Situación de Aprendizaje**: nueva sección «Torneos» en el detalle de cada SdA. Los equipos son los grupos de trabajo vinculados a la SdA. Formatos: liga, eliminatoria, liguilla + cruces y rotaciones. Incluye estimación de duración («cabe en una sesión»), calendario por pistas, clasificación, cuadro, modo directo para el pabellón (marcador grande, temporizador con aviso «¡Tiempo!», VoiceOver) y aviso si los grupos cambian después de crear el torneo. Motor portado del proyecto TourneyFlow a `AppleShared/Tournament/`.
+- **Torneos: integrantes y hoja imprimible**: pestaña «Equipos» con los alumnos de cada equipo, integrantes visibles al crear el torneo y PDF A4 con una tarjeta por equipo y la primera ronda.
+- Restaurar desde carpetas de solo lectura: `xcodebuild test` (esquema `MiGestorPlannerTests`, macOS, `AppleBackupIntegrityTests`): 6 tests OK, incluido el nuevo de base WAL en carpeta de solo lectura (reproducía el error antes del arreglo).
+- Restaurar desde carpetas de solo lectura: `xcodebuild build` (esquema `MiGestorKMPiOS`, iOS Simulator): OK.
+- Restaurar desde carpetas de solo lectura: QA manual del docente: la restauración de la copia que fallaba funciona.
+
 
 ### Changed
 
+- **Ajustes › Datos y seguridad: fuera el interruptor «Copia previa al restaurar»**: no tenía efecto; la app siempre guarda una copia antes de restaurar, y así sigue. El pie de «Copias automáticas» explica ahora cuándo se hace la copia. «Diaria (Al cerrar la app)» pasa a «Diaria».
+- **Ajustes › Datos y seguridad y Copias de seguridad, rediseño según HIG**: Ajustes pasa a formulario agrupado con una fila de estado («Tus datos están protegidos · Última copia hace 2 horas») y «Crear copia ahora», secciones «Copias automáticas» e «Historial» con texto de pie, la fila «Copias guardadas» con su número y «Zona de riesgo» separada al final. El centro de copias deja la cabecera grande, los dos botones de crear, la fila de botones que se cortaba y las tres tarjetas de colores: ahora tiene barra de herramientas (Buscar, Importar, Más, Crear copia), un resumen de una línea y una lista nativa agrupada por día. Cada copia muestra hora y nota en vez del nombre de archivo, el contenido en una línea y el tamaño. Solo lleva símbolo si está validada o tiene un problema; «sin validar» ya no parece un aviso. Validar, Exportar y Eliminar pasan al menú «⋯», al clic derecho y a deslizar en iPad; pulsar la copia abre la vista previa de restaurar. Eliminar pide confirmación con la fecha. El estado verde se calcula con la última copia que no esté vacía ni dañada. Etiquetas de VoiceOver por fila, acciones con nombre y texto dinámico.
+
+- **El módulo antiguo de Torneos de EF se sustituye**: la pantalla de EF lista los torneos del curso y los abre con el detalle nuevo. Los torneos antiguos (UserDefaults) se migran al arrancar, una sola vez; la clave antigua se conserva como copia. Se pierden: partidos contra «BYE», 0-0 reales sin marca de jugado y el texto libre de pista (queda el número). Los puntos personalizados se conservan para la clasificación.
+
+- **Torneos pasa al menú lateral, a pantalla completa**: «Retos y torneos» (EF) se renombra «Torneos» y sale del bloque de EF; ahora está en Planificación, justo después de Situaciones, en iPad y Mac (en iPhone sigue en «Más»). Lista del curso agrupada por Situación (y «Sin situación» para los migrados) y el torneo ocupa el resto, sin hoja. En ancho grande, Calendario y Clasificación van lado a lado. El modo directo se abre a pantalla completa con «Salir» explícito. «＋ Nuevo» pregunta primero la situación (con su número de grupos). La sección de la SdA queda en lista + «＋ Nuevo» y cada fila abre el torneo en «Torneos». Maqueta: `docs/maquetas/torneos_menu_lateral_2026-10-15.html`.
+
+### Fixed
+
+- **Restaurar copias guardadas en carpetas sin permiso de escritura** (iCloud, volumen externo, carpeta protegida): la validación fallaba con «PRAGMA integrity_check … unable to open database file» aunque la copia estuviera intacta, porque una base WAL en solo lectura necesita crear `-shm` a su lado. Ahora, ante `SQLITE_CANTOPEN`, la validación y la instantánea se repiten sobre un duplicado temporal; el paquete original no se modifica.
+- **Retención de copias: las de emergencia ya no echan a las buenas**: antes se guardaban las 5 más recientes de cualquier tipo, así que cada restauración (que crea una copia de emergencia) borraba una copia normal. Ahora se guardan las 7 copias normales más recientes, la más reciente de cada una de las 4 semanas anteriores y las 2 últimas de emergencia en cupo propio. Por compatibilidad, las 5 más recientes de cualquier tipo nunca se borran, y la copia que se restaura tampoco. En el Mac, el texto «10 copias» pasa a describir la regla real y «Aplicar retención» borra de verdad (antes solo recargaba).
+- **Las copias automáticas nunca se hacían**: la frecuencia de Ajustes («Diaria», «Semanal») se guardaba pero nada la leía. Ahora la app comprueba si toca al volver a ella (tras 45 s) y al salir (en iPad pide tiempo al sistema para acabar). «Diaria» = una copia por día del calendario; «Semanal» = 7 días desde la última copia válida. «Solo manual» no hace nada. La copia lleva la nota «Copia automática». Si falla, no muestra aviso y no reintenta en una hora. No copia una base vacía.
+- **Copias: restaurar la copia más antigua ya no falla**: al restaurar se crea una copia de emergencia y la retención (5 copias) borraba la más antigua, que podía ser justo la elegida. Ahora la copia que se restaura queda protegida.
+- **Copias: la retención ordena por la fecha real de la copia**: leía mal la fecha del manifiesto y usaba la de la carpeta, así que una copia antigua recién importada contaba como nueva.
+- **Copias: no se restauran ni importan copias de una versión de datos más nueva**: aviso «Esta copia es de una versión más nueva de la app. Actualiza la app para restaurarla». Evita, por ejemplo, abrir en un iPad sin actualizar una copia del Mac.
+- **Mac: el aviso de copias de sobra usa el límite real (5) en vez de 10.**
+- Verificación: `MiGestorPlannerTests` (AppleBackupRetention, AppleBackupIntegrity, AppleEncryptedBackup) 21/21 en macOS; build `MiGestorKMPiOS` para simulador OK. Sin prueba manual con datos de prueba todavía.
+
+- **Torneos: el PDF de equipos ya no pisa tarjetas ni corta nombres**: la altura de cada tarjeta se calculaba sin el espacio entre alumnos, así que se montaba sobre la de abajo. Los nombres largos pasan a dos líneas en lugar de cortarse, y cada alumno lleva una viñeta (•) para distinguirlos. En iPad/iPhone, «Imprimir equipos» abría la hoja de compartir vacía: el PDF se preparaba de antemano y el fichero podía borrarse; ahora se genera al pulsar.
+
+### Data
+
+- Tabla `learning_situation_tournaments` (migración `46.sqm`, no destructiva) con configuración, equipos, calendario y resultados en JSON; `learning_situation_id` opcional para torneos solo de curso. Integrada en SyncLAN (Kotlin y Swift, last-write-wins con `updatedAt` entrante), huella de sync, borrado total y borrado de SdA (tombstones).
+- `TeacherScheduleRepository.findExistingSchedule()`: lectura del horario sin crear uno vacío.
+
+### Verification
+
+- `./gradlew :data:desktopTest :shared:desktopTest`: BUILD SUCCESSFUL. `:shared:test` no ejecutado (falta Android SDK en local).
+- `xcodebuild` `MiGestorKMPiOS` (simulador iOS): BUILD SUCCEEDED.
+- `xcodebuild test` `MiGestorPlannerTests` (macOS): 353 tests, 0 fallos, 4 omitidos.
+- Prueba manual del usuario en iPad: sección visible, integrantes e imprimible. No hecha: QA con VoiceOver real, sync entre dispositivos de torneos y migración con datos reales.
+
+## [0.3.1] - 2026-10-14
+
+### Changed
+
+- **Entregas web: servidor europeo en Alwaysdata (UE)**: la URL base por defecto de la PWA de entregas del alumnado pasa a `https://projectosef.alwaysdata.net`, alojada en París (Francia) bajo normativa estricta RGPD/CNIL, sustituyendo la referencia anterior a Vercel. Se actualizan las vistas de publicación y las pruebas de interoperabilidad.
+
+- **La app de Mac se llama «Cuaderno Vivo»**: cambia el nombre visible y el del `.app`, a juego con el icono de cuadrícula. El módulo Swift, el identificador `com.migestor.mac` y la carpeta de datos no cambian, así que los datos se conservan.
+- **Rúbrica: evaluar sin scroll en Mac y iPad horizontal**: los criterios van en filas y los niveles en columnas, con el nombre y los puntos de cada nivel una sola vez arriba. Una rúbrica de 3 × 4 cabe entera en pantalla. Nuevo botón «Ocultar textos» (se recuerda) para dejar solo número y nivel. Si los criterios tienen distinto número de niveles o no hay ancho (iPhone, iPad vertical), se mantienen las tarjetas. Teclas 1-4, flechas y ⌘↩ sin cambios.
+- **Planner: guion de sesión más limpio y con «Ahora»**: sin la consigna CLIL repetida dentro del texto, sin el «U01 ·» ni el título repetido al empezar cada paso y sin el pie «Tactical diagram» cuando el diagrama ya se ve. Las listas en línea («- A - B», «1. … 2. …») salen una por línea. En columnas, el descanso va en el título del segundo bloque y los pasos empiezan a la misma altura; «Ver más» va junto al título del paso. El carril muestra el montaje y la atención completos. Si la sesión es de hoy a su hora, la barra y el paso en curso se marcan con «Ahora» y la hoja baja hasta él; pulsar un tramo de la barra lleva a su paso.
+- **Planner: hoja de sesión ancha para leerla casi sin scroll (Mac e iPad grande)**: la hoja ocupa casi toda la ventana. Objetivo, montaje y atención van en un carril fijo a la izquierda; el guion, a la derecha, con los dos bloques de una sesión larga (U10 y U11) en paralelo. El texto de cada paso sale completo («Ver más» queda para los datos extra) y el diagrama pasa a miniatura que se amplía al pulsarla. El mismo aviso repetido por unidad («U10 · …», «U11 · …») sale una sola vez. iPhone, iPad vertical e inspector sin cambios.
+- **Icono nuevo «Cuadrícula de notas»**: el icono deja la hoja con ✓ (parecía de una app de tareas) y pasa a una tabla de cuaderno: cabecera, columna de nombres, fila del alumno marcada y una celda encendida (la nota que se pone). `AppIcon.icon` usa ahora capas SVG planas (`Rejilla.svg` y `CeldaViva.svg`), fondo de color a sangre (añil en claro, azul noche en oscuro) y Liquid Glass en la celda viva. Se quitan los PNG con esquinas y sombra pintadas, que en iOS 26 podían verse como un cuadrado dentro de otro. Mismo icono para iPhone, iPad y Mac.
 - **Cuaderno: volver a la pantalla sin montarlo todo desde cero**: lo preparado de la tabla (columnas, categorías plegadas, filas visibles) vive en `NotebookBridgeStore` y sobrevive al cambio de pantalla; las situaciones de aprendizaje del grupo se pintan desde lo guardado y se refrescan por detrás. Medidas nuevas del montaje en el registro de lentitud.
 - **Entregas web: la lista aparece sin esperar a cargarlo todo**: primero se pinta la lista de tareas y después, por detrás, el detalle que necesita la importación (el botón dice «Preparando importación…» mientras tanto). Los enlaces del alumnado se leen fuera del hilo de la pantalla al pulsar «Enviar enlaces», y los instrumentos publicables al abrir «Nueva tarea web». Medidas nuevas en el registro de lentitud.
 - **Planner: primera carga más rápida**: solo se comprueban y reparan los planes de sesión de la semana visible (antes, los de todo el curso, hasta 14 s al abrir); los de otra semana se piden al ir a ella. El Diario usa el mismo modelo que el Planner, así que la carga ya no se hace dos veces. Medidas por pasos de la carga en el registro de lentitud.
 
 ### Added
 
+- **Descarga pública para Mac**: `scripts/package_mac_release.sh` compila en Release (arm64), firma en modo ad hoc y crea `build/release-mac/CuadernoVivo-<versión>.dmg` con su `.sha256`. Guía en `docs/distribucion/mac.md` y README para el repositorio público de descargas en `docs/distribucion/README_descargas.md`. Guía de importación para el público (`docs/distribucion/GUIA_IMPORTACION.md`): estructura de horario, alumnado, correos, SA, sesiones e instrumentos, con un prompt por documento para adaptarlo con IA. Licencia de uso gratuito sin garantía para el repositorio público (`docs/distribucion/LICENCIA_descargas.md`), con la documentación en CC BY 4.0.
 - **Registro de lentitud (`PerfLog`)**: apunta en el registro (subsistema `com.migestor.app`, categoría `rendimiento`) lo que supera 150 ms: cambio de pantalla, carga del Planner, cambio de grupo en el Cuaderno y copia de seguridad; Sync LAN a partir de 1 s. En Debug, un vigilante apunta las congelaciones de la pantalla de más de 250 ms. Guía en `docs/REGISTRO_RENDIMIENTO.md`.
 - **Pantalla «Inclusión» (plazos y tareas del alumnado con medidas de nivel III y IV)**:
   - Franja con las 5 fases del Manual de Inclusión 2026-2027, avisos de tareas vencidas y de los próximos 7 días, lista de alumnos y tareas por fase.
@@ -63,8 +133,15 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - Migración `45.sqm` aditiva: tablas `inclusion_tasks` e `inclusion_group_settings` con índices. Sin sincronización SyncLAN todavía.
 
+### Docs
+
+- README: sección «Así es la app» con portada e imágenes del Cuaderno, Rúbricas, Planificación y Asistencia en iPhone (`docs/imagenes/readme/`). Son dibujos SVG con datos inventados, no capturas.
+- ADR `ADR-2026-08-17-app-icon-composer-variants.md` actualizado con el icono «Cuadrícula de notas»: capas SVG, fondo en `icon.json`, Liquid Glass en la celda viva y cómo validarlo.
+
 ### Verification
 
+- Distribución Mac: `xcodebuild build-for-testing` + `test-without-building -scheme MiGestorPlannerTests` (arm64) → 277 tests, 0 fallos; `scripts/package_mac_release.sh` → `CuadernoVivo-0.3.0.dmg` (150 MB), `hdiutil verify` VALID, `codesign --verify --deep --strict` OK, firma `adhoc`, solo arm64; `spctl` la rechaza, como se espera sin notarizar. Rehecho tras fusionar el icono nuevo (PR 314): `AppIcon.icns` con la cuadrícula, 149 MB. Publicado en `mafepa21/cuaderno-vivo` como Release `v0.3.0`; el `.dmg` descargado de GitHub coincide con su `.sha256`. No se ha abierto la app empaquetada (abriría la base de datos real) ni se ha probado en otro Mac.
+- Icono «Cuadrícula de notas»: `ictool` (Icon Composer) renderiza las variantes iOS Default, Dark, ClearLight, TintedDark y macOS Default sin errores y con la celda viva por encima de la rejilla; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED, con PNG de reserva generados para iOS 17; `xcodebuild build -scheme MiGestorKMPMac -destination 'platform=macOS,arch=arm64'` → BUILD SUCCEEDED con `AppIcon.icns`. Con `generic/platform=macOS` falla el enlazado en x86_64 porque `MiGestorKit.framework` solo trae arm64 (ajeno al icono). Sin captura en simulador ni en el Dock: el Mac no tiene simuladores instalados (`simctl list` vacío) y la app no se instaló.
 - Registro de lentitud: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. No se ha arrancado la app para ver los mensajes: necesita usarla a mano (cambiar de pantalla, hacer una copia).
 - Pantallas con datos al volver: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. La medición de pantallas se hizo leyendo el código, no ejecutando la app. Sin prueba manual en dispositivo.
 - Cambio de pantalla al instante: `xcodebuild test -scheme MiGestorPlannerTests -destination platform=macOS` → TEST SUCCEEDED; `xcodebuild build -scheme MiGestorKMPiOS` (iOS Simulator) → BUILD SUCCEEDED. Sin prueba manual en dispositivo.

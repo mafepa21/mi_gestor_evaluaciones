@@ -37,13 +37,14 @@ struct AppleAppRootView: View {
             .task {
                 MainThreadHangWatchdog.startIfDebug()
                 await bridge.bootstrap()
+                await bridge.migrateLegacyTournamentsIfNeeded()
                 bridge.onAppDidBecomeActive()
                 if lifecycleObserver == nil {
                     lifecycleObserver = AppleLifecycleBridgeObserver(bridge: bridge)
                 }
                 backupService.scanQuarantinedDatabases()
             }
-            .quarantinedDataNotice(backupService: backupService)
+            .quarantinedDataNotice(backupService: backupService, rescueService: rescueService)
 #else
         IOSRootView()
             .environmentObject(bridge)
@@ -56,6 +57,7 @@ struct AppleAppRootView: View {
                 MainThreadHangWatchdog.startIfDebug()
                 rescueService.checkForPendingRescue()
                 await bridge.bootstrap()
+                await bridge.migrateLegacyTournamentsIfNeeded()
                 bridge.onAppDidBecomeActive()
                 if lifecycleObserver == nil {
                     lifecycleObserver = AppleLifecycleBridgeObserver(bridge: bridge)
@@ -81,7 +83,7 @@ struct AppleAppRootView: View {
             } message: { marker in
                 Text(marker.displayMessage)
             }
-            .quarantinedDataNotice(backupService: backupService)
+            .quarantinedDataNotice(backupService: backupService, rescueService: rescueService)
 #endif
     }
 }
@@ -92,11 +94,15 @@ struct AppleAppRootView: View {
 /// indistinguible de un borrado real: los datos siguen en disco pero nadie lo dice.
 private struct QuarantinedDataNotice: ViewModifier {
     @ObservedObject var backupService: AppleBackupService
-    @AppStorage("diagnostics.quarantine.acknowledged") private var acknowledgedId: String = ""
+    @ObservedObject var rescueService: AppleDatabaseRescueService
+    @AppStorage(AppleDatabaseRescueService.quarantineAcknowledgedUntilKey) private var acknowledgedUntil: Double = 0
 
     private var pending: AppleQuarantinedDatabase? {
-        backupService.quarantinedDatabases
-            .first { $0.looksRecoverable && $0.id != acknowledgedId }
+        // Mientras sigue abierta la alerta de rescate, este aviso solo la duplicaría.
+        guard rescueService.pendingRescue == nil else { return nil }
+        return backupService.quarantinedDatabases.first {
+            $0.looksRecoverable && $0.quarantinedAt.timeIntervalSince1970 > acknowledgedUntil
+        }
     }
 
     func body(content: Content) -> some View {
@@ -105,11 +111,13 @@ private struct QuarantinedDataNotice: ViewModifier {
             isPresented: .constant(pending != nil),
             presenting: pending
         ) { item in
-            Button("Entendido") { acknowledgedId = item.id }
+            Button("Entendido") {
+                AppleDatabaseRescueService.acknowledgeAllQuarantined(backupService.quarantinedDatabases)
+            }
 #if os(macOS)
             Button("Mostrar en Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
-                acknowledgedId = item.id
+                AppleDatabaseRescueService.acknowledgeAllQuarantined(backupService.quarantinedDatabases)
             }
 #endif
         } message: { item in
@@ -136,8 +144,8 @@ private struct QuarantinedDataNotice: ViewModifier {
 }
 
 private extension View {
-    func quarantinedDataNotice(backupService: AppleBackupService) -> some View {
-        modifier(QuarantinedDataNotice(backupService: backupService))
+    func quarantinedDataNotice(backupService: AppleBackupService, rescueService: AppleDatabaseRescueService) -> some View {
+        modifier(QuarantinedDataNotice(backupService: backupService, rescueService: rescueService))
     }
 }
 

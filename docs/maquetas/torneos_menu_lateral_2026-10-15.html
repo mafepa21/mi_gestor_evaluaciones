@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Torneos en el menú</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1c1c1e;--mut:#6e6e73;--line:#e5e5ea;--acc:#0a84ff;--chip:#eef4ff;--side:#e9e9ee;--ok:#30a14e}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--chip:#0a2a4d;--side:#161618}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{padding:24px 16px 8px;max-width:1200px;margin:auto}header h1{margin:0;font-size:24px}header p{margin:4px 0 0;color:var(--mut)}
+.wrap{max-width:1200px;margin:auto;padding:16px;display:grid;gap:20px}
+.lbl{font-size:12px;letter-spacing:.06em;color:var(--mut);text-transform:uppercase;margin:0 0 6px}
+.ipad{display:grid;grid-template-columns:180px 280px 1fr;border:1px solid var(--line);border-radius:18px;overflow:hidden;min-height:560px;background:var(--card)}
+.side{background:var(--side);padding:12px}.side div{padding:8px 10px;border-radius:10px;font-size:14px;margin:2px 0}.side .on{background:var(--acc);color:#fff;font-weight:600}.side .sep{font-size:11px;color:var(--mut);text-transform:uppercase;padding:12px 10px 2px}
+.list{border-right:1px solid var(--line);padding:12px;overflow:auto}
+.lh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.lh b{font-size:20px}.lh span{color:var(--acc);font-weight:600}
+.course{display:inline-block;background:var(--chip);color:var(--acc);border-radius:99px;padding:4px 10px;font-size:13px;margin-bottom:10px}
+.grp{font-size:12px;color:var(--mut);text-transform:uppercase;margin:14px 0 4px}
+.it{padding:10px;border-radius:12px;margin:2px 0}.it.on{background:var(--chip)}.it .t{font-weight:600}.it .s{font-size:12px;color:var(--mut)}
+.badge{font-size:11px;padding:1px 7px;border-radius:99px;background:#e3f7e8;color:var(--ok);margin-left:6px}
+.detail{padding:20px;overflow:auto}.dh{display:flex;justify-content:space-between;align-items:center}.dh h2{margin:0;font-size:26px}
+.meta{color:var(--mut);font-size:14px;margin:4px 0 14px}
+.btn{display:inline-block;background:var(--acc);color:#fff;border-radius:12px;padding:10px 18px;font-weight:600}
+.btn2{display:inline-block;background:var(--line);border-radius:12px;padding:10px 14px;font-weight:600;margin-left:6px}
+.tabs{display:flex;background:var(--bg);border-radius:10px;padding:2px;margin:16px 0}.tabs span{flex:1;text-align:center;padding:6px;border-radius:8px;font-size:13px}.tabs .on{background:var(--card);font-weight:600}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.rnd{border:1px solid var(--line);border-radius:14px;padding:12px}.rnd b{display:block}.m{display:flex;justify-content:space-between;padding:6px 0;font-size:14px}.m i{color:var(--mut);font-style:normal;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--mut);font-weight:500;font-size:12px}
+.live{background:#0b0b0f;color:#fff;border-radius:18px;padding:24px;min-height:300px;display:grid;gap:16px}
+.live .top{display:flex;justify-content:space-between;color:#aaa}.clock{font-size:64px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+.score{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;text-align:center;font-size:22px}.score .n{font-size:72px;font-weight:800}
+.phone{width:300px;border:1px solid var(--line);border-radius:28px;padding:14px;background:var(--card)}
+.sda{border:1px solid var(--line);border-radius:16px;padding:16px;background:var(--card);max-width:520px}
+.row{display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line)}.row:first-of-type{border-top:0}
+.flex{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+.sk{height:14px;margin:10px 0;border-radius:6px;background:var(--line)}
+@media(max-width:900px){.ipad{grid-template-columns:1fr}.side{display:none}.cols{grid-template-columns:1fr}}
+</style></head><body>
+<header><h1>Torneos en el menú lateral</h1><p>Maqueta. Lista a la izquierda, torneo a pantalla completa a la derecha.</p></header>
+<div class="wrap">
+
+<div><p class="lbl">1 · iPad / Mac: con datos</p>
+<div class="ipad">
+<div class="side"><div>Inicio</div><div>Cuaderno</div><div>Asistencia</div><div>Planificación</div><div>Situaciones</div><div class="on">🏆 Torneos</div><div class="sep">Educación Física</div><div>Sesiones</div><div>Pruebas</div><div>Material</div></div>
+<div class="list"><div class="lh"><b>Torneos</b><span>＋ Nuevo</span></div><span class="course">1º BAC A ▾</span>
+<div class="grp">SA 1 · Building Health</div>
+<div class="it on"><div class="t">Torneo 1<span class="badge">En curso</span></div><div class="s">Liga · 4 equipos · 2 de 6</div></div>
+<div class="grp">SA 2 · Bádminton</div>
+<div class="it"><div class="t">Copa dobles</div><div class="s">Eliminatoria · 8 equipos</div></div>
+<div class="grp">Sin situación</div>
+<div class="it"><div class="t">Liga de fútbol 2025</div><div class="s">Liga · migrado</div></div></div>
+<div class="detail"><div class="dh"><h2>Torneo 1</h2><span>⇪ ⋯</span></div>
+<div class="meta">1º BAC A · SA 1 · Liga · 4 equipos · 1 pista · 6 min · empieza 14/10 15:41</div>
+<span class="btn">▶ Modo directo</span><span class="btn2">Imprimir equipos</span>
+<div class="tabs"><span class="on">Calendario</span><span>Clasificación</span><span>Equipos</span></div>
+<div class="cols">
+<div class="rnd"><b>Ronda 1 · 15:41</b><div class="m"><span>Grupo 1 <b style="display:inline">1–1</b> Grupo 2</span><i>Pista 1</i></div></div>
+<div class="rnd"><b>Ronda 2 · 15:49</b><div class="m"><span>Grupo 3 <b style="display:inline">1–2</b> Grupo 4</span><i>Pista 1</i></div></div>
+<div class="rnd"><b>Ronda 3 · 15:57</b><div class="m"><span>Grupo 1 – Grupo 3</span><i>Pista 1</i></div></div>
+<div class="rnd"><b>Ronda 4 · 16:05</b><div class="m"><span>Grupo 2 – Grupo 4</span><i>Pista 1</i></div></div>
+</div>
+<p class="lbl" style="margin-top:16px">Clasificación al lado en pantallas anchas</p>
+<table><tr><th>#</th><th>Equipo</th><th>PJ</th><th>Pts</th></tr><tr><td>1</td><td>Grupo 4</td><td>1</td><td>3</td></tr><tr><td>2</td><td>Grupo 1</td><td>1</td><td>1</td></tr><tr><td>3</td><td>Grupo 2</td><td>1</td><td>1</td></tr></table>
+</div></div></div>
+
+<div class="flex">
+<div><p class="lbl">2 · Modo directo a pantalla completa (sin menú)</p>
+<div class="live" style="width:520px;max-width:100%"><div class="top"><span>✕ Salir</span><span>Ronda 2 de 6</span><span>Siguiente ›</span></div>
+<div class="clock">04:12</div><div class="score"><div>Grupo 3<div class="n">1</div>− ＋</div><div>—</div><div>Grupo 4<div class="n">2</div>− ＋</div></div></div></div>
+
+<div><p class="lbl">3 · Vacío</p><div class="sda" style="width:300px"><div style="text-align:center;padding:20px"><div style="font-size:34px">🏆</div><b>Sin torneos en 1º BAC A</b><p style="color:var(--mut)">Crea uno a partir de los grupos de una situación.</p><span class="btn">Crear torneo</span></div></div>
+<p class="lbl" style="margin-top:16px">4 · Cargando</p><div class="sda" style="width:300px"><div class="sk"></div><div class="sk" style="width:70%"></div></div></div>
+</div>
+
+<div class="flex">
+<div><p class="lbl">5 · «＋ Nuevo»: primero la situación</p><div class="sda" style="width:340px">
+<b>¿De qué situación salen los equipos?</b>
+<div class="row"><span>SA 1 · Building Health</span><span style="color:var(--mut)">4 grupos ›</span></div>
+<div class="row"><span>SA 2 · Bádminton</span><span style="color:var(--mut)">8 grupos ›</span></div>
+<div class="row" style="color:var(--mut)"><span>SA 4 · Primeros auxilios</span><span>Sin grupos</span></div>
+<p style="color:var(--mut);font-size:13px">Luego sigue la hoja «Nuevo torneo» de siempre.</p></div></div>
+
+<div><p class="lbl">6 · Sección en la Situación (más sencilla)</p><div class="sda" style="width:340px">
+<div style="display:flex;justify-content:space-between"><b>Torneos</b><span style="color:var(--acc)">＋ Nuevo</span></div>
+<div class="row"><span>Torneo 1 <span class="badge">En curso</span></span><span style="color:var(--mut)">›</span></div>
+<p style="color:var(--mut);font-size:13px">Tocar una fila abre el torneo en la pantalla «Torneos».</p></div></div>
+
+<div><p class="lbl">7 · iPhone: lista → detalle</p><div class="phone"><b>‹ Torneos</b><h3 style="margin:8px 0 0">Torneo 1</h3><div class="meta">Liga · 4 equipos</div><span class="btn" style="display:block;text-align:center">▶ Modo directo</span><div class="tabs"><span class="on">Calendario</span><span>Clasif.</span><span>Equipos</span></div><div class="rnd"><b>Ronda 1</b><div class="m"><span>Grupo 1 1–1 Grupo 2</span></div></div></div></div>
+</div>
+</div></body></html>

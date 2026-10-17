@@ -505,6 +505,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
     case planner
     case situations
     case diary
+    case libreta
     case meetings
     case inclusion
     case evaluationHub
@@ -534,6 +535,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "Planner"
         case .situations: return "Situaciones"
         case .diary: return "Diario de aula"
+        case .libreta: return "Libreta"
         case .meetings: return "Reuniones"
         case .inclusion: return "Inclusión"
         case .evaluationHub: return "Evaluación"
@@ -546,7 +548,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .peRubrics: return "Rúbricas por área"
         case .peIncidents: return "Incidencias y seguridad"
         case .peMaterial: return "Recursos y material"
-        case .peTournaments: return "Retos y torneos"
+        case .peTournaments: return "Torneos"
         case .settings: return "Ajustes"
         case .backups: return "Seguridad"
         }
@@ -563,6 +565,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "Preparación lectiva"
         case .situations: return "Programación curricular"
         case .diary: return "Trazabilidad de sesión"
+        case .libreta: return "Notas a mano con Apple Pencil"
         case .meetings: return "Actas de centro y acuerdos"
         case .inclusion: return "Plazos del manual"
         case .evaluationHub: return "Instrumentos y calendario"
@@ -575,7 +578,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .peRubrics: return "Criterios específicos"
         case .peIncidents: return "Seguimiento operativo"
         case .peMaterial: return "Inventario rápido"
-        case .peTournaments: return "Competición y resultados"
+        case .peTournaments: return "Equipos, calendario y resultados"
         case .settings: return "Configuración"
         case .backups: return "Copias y restauración"
         }
@@ -592,6 +595,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .planner: return "calendar.badge.clock"
         case .situations: return "doc.text.magnifyingglass"
         case .diary: return "doc.text.fill"
+        case .libreta: return "pencil.and.scribble"
         case .meetings: return "person.3.fill"
         case .inclusion: return "person.2.badge.gearshape"
         case .evaluationHub: return "chart.bar.doc.horizontal"
@@ -614,11 +618,11 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard, .courses, .students, .teacherRadar, .notebook:
             return .academic
-        case .attendance, .planner, .situations, .diary, .meetings, .inclusion:
+        case .attendance, .planner, .situations, .peTournaments, .diary, .libreta, .meetings, .inclusion:
             return .operations
         case .evaluationHub, .webSubmissions, .rubrics, .reports, .library:
             return .evaluation
-        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
+        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial:
             return .domainModules
         case .settings, .backups:
             return .system
@@ -627,7 +631,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
 
     var requiresPhysicalEducationProfile: Bool {
         switch self {
-        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
+        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial:
             return true
         default:
             return false
@@ -922,7 +926,7 @@ struct AppWorkspaceShell: View {
             shellStore.bind(to: bridge)
 
             let restoredModule = AppWorkspaceModule(rawValue: persistedActiveModule) ?? .dashboard
-            activeModule = restoredModule == .teacherRadar ? .dashboard : restoredModule
+            activeModule = (restoredModule == .teacherRadar || !restoredModule.isAvailableOnThisDevice) ? .dashboard : restoredModule
             
             await bridge.ensureClassesLoaded()
             try? await bridge.refreshStudentsDirectory()
@@ -2221,44 +2225,8 @@ struct PEMaterialRecord: Identifiable, Codable {
     var createdAt: Date
 }
 
-enum TournamentTemplate: String, Codable, CaseIterable, Identifiable {
-    case roundRobin = "Round-robin"
-    case knockout = "Eliminatoria"
-    case groupsAndKnockout = "Fase de grupos + eliminatoria"
-
-    var id: String { rawValue }
-}
-
-enum TournamentStatus: String, Codable, CaseIterable, Identifiable {
-    case draft = "Borrador"
-    case active = "Activo"
-    case closed = "Cerrado"
-    case archived = "Archivado"
-
-    var id: String { rawValue }
-}
-
-enum TournamentStudentLevel: String, Codable, CaseIterable, Identifiable {
-    case strong = "Fuerte"
-    case balanced = "Medio"
-    case developing = "Débil"
-
-    var id: String { rawValue }
-
-    var score: Int {
-        switch self {
-        case .strong: return 3
-        case .balanced: return 2
-        case .developing: return 1
-        }
-    }
-}
-
 let peIncidentMetadataStorageKey = "workspace.pe.incident.metadata.v1"
 let peMaterialStorageKey = "workspace.pe.material.records.v1"
-let peTournamentStorageKey = "workspace.pe.tournaments.v1"
-let peTournamentSportsStorageKey = "workspace.pe.tournaments.sports.v1"
-let peTournamentTieBreakersStorageKey = "workspace.pe.tournaments.tieBreakers.v1"
 
 func storedItems<T: Decodable>(forKey key: String, as type: T.Type) -> [T] {
     guard let data = UserDefaults.standard.data(forKey: key),
@@ -2354,213 +2322,6 @@ func colorHex(for status: PEMaterialStatus) -> String {
     case .missing: return "#F57C00"
     case .damaged: return "#C62828"
     case .replenish: return "#6A1B9A"
-    }
-}
-
-func generateTeams(
-    students: [Student],
-    count: Int
-) -> [TournamentTeam] {
-    let normalizedCount = max(2, count)
-    let colors = ["#1E88E5", "#43A047", "#FB8C00", "#8E24AA", "#E53935", "#00897B", "#3949AB", "#F4511E"]
-    var buckets = Array(repeating: [Int64](), count: normalizedCount)
-    for (index, student) in students.enumerated() {
-        buckets[index % normalizedCount].append(student.id)
-    }
-    return (0..<normalizedCount).map { index in
-        TournamentTeam(
-            id: UUID(),
-            name: "Equipo \(index + 1)",
-            colorHex: colors[index % colors.count],
-            studentIds: buckets[index]
-        )
-    }
-}
-
-func normalizedProfiles(
-    students: [Student],
-    existingProfiles: [TournamentStudentProfile]?
-) -> [TournamentStudentProfile] {
-    let lookup = Dictionary(uniqueKeysWithValues: (existingProfiles ?? []).map { ($0.id, $0) })
-    return students.map { student in
-        lookup[student.id] ?? TournamentStudentProfile(id: student.id, level: .balanced, incompatibleStudentIds: [])
-    }
-}
-
-func generateBalancedTeams(
-    students: [Student],
-    count: Int,
-    profiles: [TournamentStudentProfile],
-    existingTeams: [TournamentTeam] = []
-) -> [TournamentTeam] {
-    let normalizedCount = max(2, count)
-    let colors = ["#1E88E5", "#43A047", "#FB8C00", "#8E24AA", "#E53935", "#00897B", "#3949AB", "#F4511E"]
-    let profileLookup = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
-    let seededNames = existingTeams.map(\.name)
-
-    var teams: [TournamentTeam] = (0..<normalizedCount).map { index in
-        TournamentTeam(
-            id: existingTeams.indices.contains(index) ? existingTeams[index].id : UUID(),
-            name: seededNames.indices.contains(index) ? seededNames[index] : "Equipo \(index + 1)",
-            colorHex: colors[index % colors.count],
-            studentIds: []
-        )
-    }
-
-    let orderedStudents = students.shuffled().sorted { lhs, rhs in
-        let lhsScore = profileLookup[lhs.id]?.level.score ?? 2
-        let rhsScore = profileLookup[rhs.id]?.level.score ?? 2
-        if lhsScore == rhsScore {
-            return lhs.firstName < rhs.firstName
-        }
-        return lhsScore > rhsScore
-    }
-
-    func teamLoad(_ team: TournamentTeam) -> Int {
-        team.studentIds.reduce(0) { total, studentId in
-            total + (profileLookup[studentId]?.level.score ?? 2)
-        }
-    }
-
-    for student in orderedStudents {
-        let profile = profileLookup[student.id] ?? TournamentStudentProfile(id: student.id, level: .balanced, incompatibleStudentIds: [])
-        let preferredIndex = teams.indices.min { lhs, rhs in
-            let lhsHasConflict = !Set(teams[lhs].studentIds).isDisjoint(with: profile.incompatibleStudentIds)
-            let rhsHasConflict = !Set(teams[rhs].studentIds).isDisjoint(with: profile.incompatibleStudentIds)
-            if lhsHasConflict != rhsHasConflict { return !lhsHasConflict }
-
-            let lhsCount = teams[lhs].studentIds.count
-            let rhsCount = teams[rhs].studentIds.count
-            if lhsCount != rhsCount { return lhsCount < rhsCount }
-
-            let lhsLoad = teamLoad(teams[lhs])
-            let rhsLoad = teamLoad(teams[rhs])
-            if lhsLoad != rhsLoad { return lhsLoad < rhsLoad }
-
-            return lhs < rhs
-        } ?? 0
-        teams[preferredIndex].studentIds.append(student.id)
-    }
-
-    return teams
-}
-
-func generateTournamentMatches(
-    template: TournamentTemplate,
-    teams: [TournamentTeam]
-) -> [TournamentMatch] {
-    switch template {
-    case .roundRobin:
-        return generateRoundRobinMatches(teams: teams)
-    case .knockout:
-        return generateKnockoutMatches(teams: teams)
-    case .groupsAndKnockout:
-        let midpoint = max(1, teams.count / 2)
-        let groupA = Array(teams.prefix(midpoint))
-        let groupB = Array(teams.dropFirst(midpoint))
-        var matches = generateRoundRobinMatches(teams: groupA, phase: "Grupo A")
-        matches += generateRoundRobinMatches(teams: groupB, phase: "Grupo B")
-        matches.append(
-            TournamentMatch(id: UUID(), phase: "Semifinal", round: 1, homeLabel: "1A", awayLabel: "2B", homeTeamId: nil, awayTeamId: nil, homeScore: 0, awayScore: 0, court: "", linkedSessionId: nil)
-        )
-        matches.append(
-            TournamentMatch(id: UUID(), phase: "Semifinal", round: 2, homeLabel: "1B", awayLabel: "2A", homeTeamId: nil, awayTeamId: nil, homeScore: 0, awayScore: 0, court: "", linkedSessionId: nil)
-        )
-        matches.append(
-            TournamentMatch(id: UUID(), phase: "Final", round: 3, homeLabel: "Ganador SF1", awayLabel: "Ganador SF2", homeTeamId: nil, awayTeamId: nil, homeScore: 0, awayScore: 0, court: "", linkedSessionId: nil)
-        )
-        return matches
-    }
-}
-
-func generateRoundRobinMatches(
-    teams: [TournamentTeam],
-    phase: String = "Liga"
-) -> [TournamentMatch] {
-    guard teams.count >= 2 else { return [] }
-    var matches: [TournamentMatch] = []
-    var round = 1
-    for homeIndex in teams.indices {
-        for awayIndex in teams.indices where awayIndex > homeIndex {
-            let home = teams[homeIndex]
-            let away = teams[awayIndex]
-            matches.append(
-                TournamentMatch(
-                    id: UUID(),
-                    phase: phase,
-                    round: round,
-                    homeLabel: home.name,
-                    awayLabel: away.name,
-                    homeTeamId: home.id,
-                    awayTeamId: away.id,
-                    homeScore: 0,
-                    awayScore: 0,
-                    court: "",
-                    linkedSessionId: nil
-                )
-            )
-            round += 1
-        }
-    }
-    return matches
-}
-
-func generateKnockoutMatches(teams: [TournamentTeam]) -> [TournamentMatch] {
-    guard teams.count >= 2 else { return [] }
-    var matches: [TournamentMatch] = []
-    let orderedTeams = teams
-    var round = 1
-    var index = 0
-    while index < orderedTeams.count {
-        let home = orderedTeams[index]
-        let away = index + 1 < orderedTeams.count ? orderedTeams[index + 1] : nil
-        matches.append(
-            TournamentMatch(
-                id: UUID(),
-                phase: "Eliminatoria",
-                round: round,
-                homeLabel: home.name,
-                awayLabel: away?.name ?? "BYE",
-                homeTeamId: home.id,
-                awayTeamId: away?.id,
-                homeScore: 0,
-                awayScore: 0,
-                court: "",
-                linkedSessionId: nil
-            )
-        )
-        round += 1
-        index += 2
-    }
-    if matches.count > 1 {
-        matches.append(
-            TournamentMatch(
-                id: UUID(),
-                phase: "Final",
-                round: round,
-                homeLabel: "Ganador \(matches.first?.homeLabel ?? "A")",
-                awayLabel: "Ganador \(matches.dropFirst().first?.homeLabel ?? "B")",
-                homeTeamId: nil,
-                awayTeamId: nil,
-                homeScore: 0,
-                awayScore: 0,
-                court: "",
-                linkedSessionId: nil
-            )
-        )
-    }
-    return matches
-}
-
-func syncTournamentMatchLabels(_ tournament: inout TournamentViewState) {
-    let lookup = Dictionary(uniqueKeysWithValues: tournament.teams.map { ($0.id, $0.name) })
-    for index in tournament.matches.indices {
-        if let homeId = tournament.matches[index].homeTeamId, let homeName = lookup[homeId] {
-            tournament.matches[index].homeLabel = homeName
-        }
-        if let awayId = tournament.matches[index].awayTeamId, let awayName = lookup[awayId] {
-            tournament.matches[index].awayLabel = awayName
-        }
     }
 }
 

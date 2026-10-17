@@ -9,6 +9,7 @@ import com.migestor.shared.domain.LearningSituation
 import com.migestor.shared.domain.LearningSituationLinkedResource
 import com.migestor.shared.domain.LearningSituationResourceKind
 import com.migestor.shared.domain.LearningSituationSessionPlan
+import com.migestor.shared.domain.LearningSituationTournament
 import com.migestor.shared.domain.LearningSituationSessionSequenceVersion
 import com.migestor.shared.domain.LearningSituationStatus
 import com.migestor.shared.domain.LearningSituationVersion
@@ -1083,6 +1084,31 @@ class SqlDelightSyncAdapter(
                     }
                 }
             }
+            container.learningSituationsRepository.listTournaments(situation.id).forEach { tournament ->
+                val tournamentUpdatedAt = tournament.trace.updatedAt.toEpochMilliseconds()
+                if (sinceEpochMs == 0L || tournamentUpdatedAt > sinceEpochMs) {
+                    changes += SyncChange(
+                        entity = "learning_situation_tournament",
+                        id = tournament.id,
+                        updatedAtEpochMs = tournamentUpdatedAt,
+                        deviceId = tournament.trace.deviceId ?: localDeviceId,
+                        payload = buildJsonObject {
+                            put("id", JsonPrimitive(tournament.id))
+                            put("learningSituationId", tournament.learningSituationId?.let { JsonPrimitive(it) } ?: JsonNull)
+                            put("classId", JsonPrimitive(tournament.classId))
+                            put("tabId", tournament.tabId?.let { JsonPrimitive(it) } ?: JsonNull)
+                            put("name", JsonPrimitive(tournament.name))
+                            put("format", JsonPrimitive(tournament.format))
+                            put("status", JsonPrimitive(tournament.status))
+                            put("configJson", JsonPrimitive(tournament.configJson))
+                            put("teamSnapshotJson", JsonPrimitive(tournament.teamSnapshotJson))
+                            put("scheduleJson", JsonPrimitive(tournament.scheduleJson))
+                            put("resultsJson", JsonPrimitive(tournament.resultsJson))
+                            put("knockoutResultsJson", JsonPrimitive(tournament.knockoutResultsJson))
+                        }.toString(),
+                    )
+                }
+            }
             container.learningSituationsRepository.listClassLinks(situation.id).forEach { link ->
                 val linkUpdatedAt = link.trace.updatedAt.toEpochMilliseconds()
                 if (sinceEpochMs == 0L || linkUpdatedAt > sinceEpochMs) {
@@ -1116,6 +1142,42 @@ class SqlDelightSyncAdapter(
                     )
                 }
             }
+        }
+
+        // Torneos de solo curso (sin SdA): no cuelgan de ninguna situación, así que se emiten aparte.
+        container.learningSituationsRepository.listTournamentsWithoutSituation().forEach { tournament ->
+            val tournamentUpdatedAt = tournament.trace.updatedAt.toEpochMilliseconds()
+            if (sinceEpochMs == 0L || tournamentUpdatedAt > sinceEpochMs) {
+                changes += SyncChange(
+                    entity = "learning_situation_tournament",
+                    id = tournament.id,
+                    updatedAtEpochMs = tournamentUpdatedAt,
+                    deviceId = tournament.trace.deviceId ?: localDeviceId,
+                    payload = buildJsonObject {
+                        put("id", JsonPrimitive(tournament.id))
+                        put("learningSituationId", JsonNull)
+                        put("classId", JsonPrimitive(tournament.classId))
+                        put("tabId", tournament.tabId?.let { JsonPrimitive(it) } ?: JsonNull)
+                        put("name", JsonPrimitive(tournament.name))
+                        put("format", JsonPrimitive(tournament.format))
+                        put("status", JsonPrimitive(tournament.status))
+                        put("configJson", JsonPrimitive(tournament.configJson))
+                        put("teamSnapshotJson", JsonPrimitive(tournament.teamSnapshotJson))
+                        put("scheduleJson", JsonPrimitive(tournament.scheduleJson))
+                        put("resultsJson", JsonPrimitive(tournament.resultsJson))
+                        put("knockoutResultsJson", JsonPrimitive(tournament.knockoutResultsJson))
+                    }.toString(),
+                )
+            }
+        }
+
+        // Torneos de SdA: el borrado se detecta por diferencia de ids (el id es un UUID de texto).
+        appendDeletesByScope(
+            scope = "global:learning_situation_tournament",
+            entity = "learning_situation_tournament",
+            currentIds = container.learningSituationsRepository.listAllTournaments().map { it.id }.toSet(),
+        ) { deletedId ->
+            buildJsonObject { put("id", JsonPrimitive(deletedId)) }
         }
 
         emitOutgoingDeletes(changes, sinceEpochMs)
@@ -1953,6 +2015,39 @@ class SqlDelightSyncAdapter(
                         applied++
                     }
 
+                    "learning_situation_tournament" -> {
+                        val tournamentId = payload.string("id") ?: change.id.takeIf { it.isNotBlank() } ?: return@forEach
+                        // learningSituationId nulo = torneo solo de curso (válido).
+                        val situationId = payload.long("learningSituationId")
+                        val classId = payload.long("classId") ?: return@forEach
+                        val name = payload.string("name") ?: return@forEach
+                        val format = payload.string("format") ?: return@forEach
+                        val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        val existing = container.learningSituationsRepository.getTournament(tournamentId)
+                        // Last-write-wins: un cambio más antiguo que lo local no pisa el torneo.
+                        if (existing != null && existing.trace.updatedAt.toEpochMilliseconds() > change.updatedAtEpochMs) {
+                            return@forEach
+                        }
+                        container.learningSituationsRepository.saveTournamentFromSync(
+                            LearningSituationTournament(
+                                id = tournamentId,
+                                learningSituationId = situationId,
+                                classId = classId,
+                                tabId = if (payload.containsKey("tabId")) payload.string("tabId") else existing?.tabId,
+                                name = name,
+                                format = format,
+                                status = if (payload.containsKey("status")) payload.string("status") ?: "draft" else existing?.status ?: "draft",
+                                configJson = if (payload.containsKey("configJson")) payload.rawString("configJson") ?: existing?.configJson ?: "{}" else existing?.configJson ?: "{}",
+                                teamSnapshotJson = if (payload.containsKey("teamSnapshotJson")) payload.rawString("teamSnapshotJson") ?: existing?.teamSnapshotJson ?: "[]" else existing?.teamSnapshotJson ?: "[]",
+                                scheduleJson = if (payload.containsKey("scheduleJson")) payload.rawString("scheduleJson") ?: existing?.scheduleJson ?: "[]" else existing?.scheduleJson ?: "[]",
+                                resultsJson = if (payload.containsKey("resultsJson")) payload.rawString("resultsJson") ?: existing?.resultsJson ?: "{}" else existing?.resultsJson ?: "{}",
+                                knockoutResultsJson = if (payload.containsKey("knockoutResultsJson")) payload.rawString("knockoutResultsJson") ?: existing?.knockoutResultsJson ?: "{}" else existing?.knockoutResultsJson ?: "{}",
+                                trace = AuditTrace(createdAt = updatedAt, updatedAt = updatedAt, deviceId = change.deviceId, syncVersion = 1),
+                            ),
+                        )
+                        applied++
+                    }
+
                     "learning_situation_class_link" -> {
                         val situationId = payload.long("learningSituationId") ?: return@forEach
                         val classId = payload.long("classId") ?: return@forEach
@@ -2251,6 +2346,12 @@ class SqlDelightSyncAdapter(
                     container.database.appDatabaseQueries.deleteInstrumentResponseById(classId, studentId, columnId, itemId)
                     true
                 } else false
+            }
+            "learning_situation_tournament" -> {
+                (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {
+                    container.learningSituationsRepository.deleteTournament(it)
+                    true
+                } ?: false
             }
             "notebook_group" -> {
                 payload.long("id")?.let { container.notebookRepository.deleteWorkGroup(it); true } ?: false

@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta viva: Libreta</title>
+<style>
+/* ============ Tokens de la app (mismos que la maqueta del Dashboard) ============ */
+:root{
+  --s1:.5rem;--s2:1rem;--s3:1.5rem;--s4:2rem;--s5:2.5rem;--s6:3rem;
+  --r-card:1.25rem;--r-ctrl:.875rem;--r-pill:62.5rem;--r-sm:.5rem;
+  --t-large:2.125rem;--t-title:1.375rem;--t-head:1.0625rem;--t-sub:.9375rem;--t-foot:.8125rem;--t-cap:.75rem;
+  --bg:#f2f2f7;--card:#fff;--card2:#f7f7fa;--fg:#1c1c1e;--mut:#5b5b62;--line:rgba(60,60,67,.18);
+  --acc:#0060df;--acc-fg:#fff;--acc-bg:rgba(0,96,223,.10);--red:#c4231a;--red-bg:rgba(196,35,26,.10);
+  --glass:rgba(255,255,255,.55);--glass-b:rgba(255,255,255,.75);--glass-s:rgba(0,0,0,.10);--glass-hi:rgba(255,255,255,.9);
+  --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06);
+  /* ---- Tokens de Libreta: copiados de Cuadernos (Theme.swift), no cambian ---- */
+  --desk:#EDE6DA;--desk-glow:rgba(255,255,255,.45);--slot:rgba(255,255,255,.28);
+  --wood:#B88A5F;--wood-top:#D4AD84;--wood-edge:#8C6240;--grain:rgba(90,58,30,.16);
+  --paper:#FBF8F1;--paper-edge:#ECE5D6;--rule:#8FA8C2;--margin:#D98080;--paper-acc:#A4532F;
+  --paper-ink:#2B2622;--paper-ink2:#6E6458;--ink:#2B2622;--ink2:#6B6054;
+  --backdrop:#5A4536;--reader-bg:#E4DCCD;--ribbon:#8E2A2C;--book-shadow:rgba(51,35,15,.24);--scrim:rgba(43,38,34,.16);
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#000;--card:#1c1c1e;--card2:#242427;--fg:#f5f5f7;--mut:#a5a5ad;--line:rgba(235,235,245,.18);
+  --acc:#4da3ff;--acc-fg:#001a33;--acc-bg:rgba(77,163,255,.16);--red:#ff7b73;--red-bg:rgba(255,123,115,.16);
+  --glass:rgba(60,60,67,.5);--glass-b:rgba(255,255,255,.22);--glass-s:rgba(0,0,0,.5);--glass-hi:rgba(255,255,255,.3);
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+  --desk:#1D1A17;--desk-glow:rgba(255,243,224,.05);--slot:rgba(255,255,255,.04);
+  --wood:#5E4535;--wood-top:#735643;--wood-edge:#3D2C21;--grain:rgba(26,18,12,.32);
+  --paper:#E9E3D5;--paper-edge:#C9C1AF;--ink:#EFE8DC;--ink2:#A89E91;
+  --backdrop:#3A2E25;--reader-bg:#151311;--book-shadow:rgba(0,0,0,.6);--scrim:rgba(0,0,0,.45);}}
+:root[data-theme=dark]{
+  --bg:#000;--card:#1c1c1e;--card2:#242427;--fg:#f5f5f7;--mut:#a5a5ad;--line:rgba(235,235,245,.18);
+  --acc:#4da3ff;--acc-fg:#001a33;--acc-bg:rgba(77,163,255,.16);--red:#ff7b73;--red-bg:rgba(255,123,115,.16);
+  --glass:rgba(60,60,67,.5);--glass-b:rgba(255,255,255,.22);--glass-s:rgba(0,0,0,.5);--glass-hi:rgba(255,255,255,.3);
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+  --desk:#1D1A17;--desk-glow:rgba(255,243,224,.05);--slot:rgba(255,255,255,.04);
+  --wood:#5E4535;--wood-top:#735643;--wood-edge:#3D2C21;--grain:rgba(26,18,12,.32);
+  --paper:#E9E3D5;--paper-edge:#C9C1AF;--ink:#EFE8DC;--ink2:#A89E91;
+  --backdrop:#3A2E25;--reader-bg:#151311;--book-shadow:rgba(0,0,0,.6);--scrim:rgba(0,0,0,.45);}
+
+*{box-sizing:border-box}
+body{margin:0;font:var(--t-sub)/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:.125rem solid var(--acc);outline-offset:.125rem}
+h1,h2,h3,p{margin:0}
+.mut{color:var(--mut)}
+.serif{font-family:"New York",ui-serif,Georgia,serif}
+.hand{font-family:"Bradley Hand","Noteworthy","Segoe Print","Comic Sans MS",cursive}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.i{display:inline-grid;place-items:center;width:1.25rem;height:1.25rem;border-radius:50%;border:1px solid var(--line);font-size:.6875rem;font-weight:700;color:var(--mut);cursor:help;vertical-align:middle;background:var(--card)}
+@media(prefers-reduced-motion:reduce){.reader{transform:none!important}.fan .grid>*{animation-name:fade!important}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* ============ Barra de la maqueta (no es parte de la app) ============ */
+.lab{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;gap:var(--s1) var(--s3);align-items:center;padding:var(--s1) var(--s2);background:var(--card);border-bottom:1px solid var(--line)}
+.lab fieldset{border:0;margin:0;padding:0;display:flex;gap:.25rem;align-items:center;flex-wrap:wrap}
+.lab legend{float:left;margin-right:var(--s1);font-size:var(--t-cap);text-transform:uppercase;letter-spacing:.04em;color:var(--mut);padding:0}
+.chip{min-height:2.75rem;padding:0 var(--s2);border-radius:var(--r-pill);border:1px solid var(--line);background:var(--card2)}
+.chip[aria-pressed=true]{background:var(--acc);color:var(--acc-fg);border-color:transparent;font-weight:600}
+.stage{padding:var(--s3) var(--s2) var(--s4);display:flex;justify-content:center}
+
+/* ============ Marco iPad ============ */
+.device{position:relative;width:100%;max-width:73.75rem;aspect-ratio:1180/820;border-radius:1.75rem;border:.625rem solid #1c1c1e;box-shadow:var(--shadow);overflow:hidden;background:var(--bg);transition:max-width .35s ease}
+.device[data-orient=port]{max-width:41rem;aspect-ratio:820/1180}
+.ipad{position:absolute;inset:0;display:grid;grid-template-columns:16.5rem 1fr;transition:grid-template-columns .4s cubic-bezier(.2,.8,.2,1)}
+.device[data-orient=port] .ipad,.ipad.reading{grid-template-columns:0 1fr}
+
+/* ---- Barra lateral real de la app ---- */
+.side{background:var(--card2);border-right:1px solid var(--line);overflow:auto;padding:var(--s2) var(--s1);min-width:0;transition:opacity .3s}
+.device[data-orient=port] .side,.ipad.reading .side{opacity:0;pointer-events:none}
+.side h1{font-size:var(--t-title);font-weight:700;padding:0 var(--s1) var(--s2)}
+.side h2{font-size:var(--t-cap);text-transform:uppercase;letter-spacing:.04em;color:var(--mut);padding:var(--s2) var(--s1) .25rem;font-weight:600}
+.side a{display:grid;grid-template-columns:1.5rem 1fr;gap:var(--s1);align-items:center;min-height:2.75rem;padding:.25rem var(--s1);border-radius:var(--r-sm);color:var(--fg);text-decoration:none}
+.side a svg{width:1rem;height:1rem;color:var(--mut)}
+.side a b{display:block;font-size:var(--t-sub);font-weight:600}
+.side a small{display:block;font-size:var(--t-cap);color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side a[aria-current]{background:var(--acc-bg)}
+.side a[aria-current] b,.side a[aria-current] svg{color:var(--acc)}
+.side a .nw{display:inline-block;margin-left:.375rem;font-size:.6875rem;font-weight:700;color:var(--acc);vertical-align:middle}
+
+/* ---- Detalle ---- */
+.detail{position:relative;min-width:0;overflow:hidden;background:var(--desk)}
+.desk{position:absolute;inset:0;overflow:auto;padding:6.5rem var(--s4) var(--s4);
+  background:radial-gradient(60% 40% at 50% 0%,var(--desk-glow),transparent 70%),
+  repeating-linear-gradient(90deg,rgba(0,0,0,.018) 0 1px,transparent 1px 3px),repeating-linear-gradient(0deg,rgba(0,0,0,.014) 0 1px,transparent 1px 4px),var(--desk)}
+
+/* Barra superior: la misma de todos los módulos (cristal sobre el contenido) */
+.appbar{position:absolute;z-index:5;left:var(--s2);right:var(--s2);top:var(--s2);display:flex;align-items:center;gap:var(--s2);padding:var(--s1);border-radius:1.375rem;transition:opacity .25s,transform .35s}
+.ipad.reading .appbar{opacity:0;transform:translateY(-1rem);pointer-events:none}
+.appbar .ttl{flex:1;min-width:0;display:flex;align-items:baseline;gap:var(--s1);padding-left:var(--s1)}
+.appbar .ttl h2{font-size:var(--t-title);font-weight:700}
+.appbar .ttl span{font-size:var(--t-foot);color:var(--mut);white-space:nowrap}
+.appbar .sidebtn{display:none}
+.device[data-orient=port] .appbar .lt,.device[data-orient=port] .appbar .ttl span,.device[data-orient=port] .appbar>.i{display:none}
+.device[data-orient=port] .appbar .btn.primary{padding:0}
+.device[data-orient=port] .appbar .sidebtn{display:inline-flex}
+.glass{background:var(--glass);-webkit-backdrop-filter:blur(20px) saturate(1.7);backdrop-filter:blur(20px) saturate(1.7);border:1px solid var(--glass-b);box-shadow:inset 0 1px 0 var(--glass-hi),0 2px 10px var(--glass-s);color:var(--fg)}
+.btn{min-height:2.75rem;min-width:2.75rem;padding:0 var(--s2);border-radius:var(--r-ctrl);border:1px solid transparent;background:none;display:inline-flex;align-items:center;justify-content:center;gap:var(--s1);font-weight:600;transition:transform .15s,background .15s}
+.btn svg{width:1.125rem;height:1.125rem}
+.btn.icon{padding:0}
+.btn:hover{background:var(--glass-b)}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--acc);color:var(--acc-fg);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 14px rgba(0,96,223,.3)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:default;box-shadow:none}
+.btn.on{background:var(--acc-bg);color:var(--acc)}
+.seg{display:inline-flex;padding:.25rem;border-radius:var(--r-pill);gap:.125rem}
+.seg button{min-height:2.75rem;padding:0 var(--s2);border:0;background:none;border-radius:var(--r-pill);font-weight:500;color:var(--mut)}
+.seg button:disabled{opacity:.5;cursor:default}
+.seg button[aria-checked=true]{background:var(--card);color:var(--fg);font-weight:600;box-shadow:0 1px 4px var(--glass-s)}
+
+/* ============ Estantería (Cuadernos tal cual) ============ */
+.shelf{margin-bottom:var(--s4)}
+.books{display:flex;align-items:flex-end;gap:.5rem;height:12.5rem;padding:0 var(--s3)}
+.spine{position:relative;flex:none;width:var(--w);height:var(--h);border:0;padding:0;border-radius:.1875rem .1875rem 0 0;
+  background:linear-gradient(90deg,rgba(0,0,0,.28),rgba(255,255,255,.14) 30%,rgba(255,255,255,.04) 55%,rgba(0,0,0,.22)),var(--c);
+  box-shadow:inset 0 .375rem 0 -.25rem rgba(255,255,255,.35),inset 0 -.375rem 0 -.25rem rgba(0,0,0,.25);
+  transition:transform .25s cubic-bezier(.2,.8,.2,1);touch-action:manipulation}
+.spine::before,.spine::after{content:"";position:absolute;left:.25rem;right:.25rem;height:.1875rem;border-top:1px dashed rgba(255,255,255,.35)}
+.spine::before{top:.5rem}.spine::after{bottom:.5rem}
+.spine .hit{position:absolute;inset:0 -.25rem}
+.spine .t{position:absolute;inset:1.25rem 0;display:grid;place-items:center;writing-mode:vertical-rl;transform:rotate(180deg);
+  color:rgba(255,255,255,.92);font-size:.8125rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
+.spine.light .t{color:rgba(43,38,34,.85)}
+.peek{position:absolute;bottom:calc(100% + .75rem);left:50%;width:7.5rem;transform:translateX(-50%) translateY(.5rem) scale(.9);opacity:0;pointer-events:none;transition:opacity .2s,transform .25s cubic-bezier(.2,.8,.2,1);z-index:4}
+@media(hover:hover){.spine:hover{transform:translateY(-1rem)}.spine:hover .peek{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+.first .peek{bottom:auto;top:0;left:calc(100% + .75rem);transform:translateX(.5rem) scale(.9)}
+@media(hover:hover){.first .spine:hover .peek{transform:translateX(0) scale(1)}}
+.slot{flex:none;width:2.75rem;height:80%;margin-left:var(--s1);border:1.5px dashed var(--ink2);border-radius:.375rem .375rem 0 0;background:var(--slot);color:var(--ink2);font-size:1.25rem;opacity:.7}
+.slot:hover{opacity:1}
+.plank{position:relative;height:2.5rem;border-radius:.1875rem;
+  background:linear-gradient(var(--wood-top) 0 .375rem,var(--wood) .375rem calc(100% - .1875rem),var(--wood-edge) calc(100% - .1875rem)),var(--wood);
+  box-shadow:0 .75rem 1rem -.5rem var(--book-shadow)}
+.plank::after{content:"";position:absolute;inset:.375rem 0 .1875rem;background:repeating-linear-gradient(90deg,transparent 0 2.3rem,var(--grain) 2.3rem 2.4rem,transparent 2.4rem 5.1rem,var(--grain) 5.1rem 5.15rem);border-radius:inherit}
+.tag{position:absolute;z-index:2;left:var(--s3);top:.375rem;min-height:1.75rem;padding:0 var(--s2);border:0;border-radius:.1875rem;background:var(--paper);color:var(--paper-ink);
+  box-shadow:0 2px 4px var(--book-shadow);font-size:var(--t-foot);display:inline-flex;align-items:center;gap:.375rem}
+.tag::after{content:"";position:absolute;inset:-.5rem 0}
+.tag::before{content:"";width:.375rem;height:.375rem;border-radius:50%;background:#9a9186;box-shadow:inset 0 1px 1px rgba(0,0,0,.3)}
+.shelf+.shelf{margin-top:var(--s5)}
+.loose-h{font-size:var(--t-foot);color:var(--ink2);margin:0 0 var(--s1) var(--s3)}
+
+/* ============ Portada (Cuadernos tal cual) ============ */
+.cover{position:relative;width:100%;aspect-ratio:.72;border-radius:.25rem .4375rem .4375rem .25rem;
+  background:linear-gradient(90deg,rgba(0,0,0,.25) 0 .375rem,rgba(255,255,255,.08) .375rem .5rem,transparent .5rem),
+  repeating-linear-gradient(45deg,rgba(255,255,255,.035) 0 2px,transparent 2px 4px),var(--c);
+  box-shadow:0 .125rem .25rem var(--book-shadow),0 .75rem 1.5rem -.5rem var(--book-shadow)}
+.cover .lbl{position:absolute;left:16%;right:16%;top:16%;padding:.375rem .25rem;background:var(--paper);border-radius:.125rem;text-align:center;color:var(--paper-ink);font-size:.75rem;line-height:1.2;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.cover .el{position:absolute;top:0;bottom:0;right:12%;width:.25rem;background:rgba(0,0,0,.45);box-shadow:1px 0 0 rgba(255,255,255,.12)}
+
+/* ============ Montones ============ */
+.piles{display:grid;grid-template-columns:repeat(auto-fill,minmax(10rem,1fr));gap:var(--s4) var(--s3);padding:0 var(--s2)}
+.pile{border:0;background:none;padding:0;display:grid;gap:var(--s1);justify-items:center;text-align:center;color:var(--ink)}
+.pile .stack{position:relative;width:8.5rem;aspect-ratio:.72}
+.pile .stack .cover{position:absolute;inset:0;transform:rotate(var(--r)) translate(var(--x),var(--y));transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+@media(hover:hover){.pile:hover .stack .cover:last-child{transform:rotate(0) translateY(-.375rem)}}
+.pile b{font-weight:600}
+.pile small{color:var(--ink2);font-size:var(--t-foot)}
+.fan{position:absolute;inset:0;z-index:6;display:grid;place-items:center;background:var(--scrim);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);animation:fade .25s ease both}
+.fan .grid{display:grid;grid-template-columns:repeat(4,8rem);gap:var(--s3)}
+.fan .grid>*{animation:fly .45s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i)*40ms)}
+.fan .close{position:absolute;right:var(--s3);top:var(--s3)}
+.fan h3{grid-column:1/-1;color:var(--ink)}
+.cov-btn{border:0;background:none;padding:0;display:grid;gap:.375rem;color:var(--ink2);font-size:var(--t-cap);text-align:center}
+.cov-btn:active{transform:scale(.97)}
+.newcov{aspect-ratio:.72;border:1.5px dashed var(--ink2);border-radius:.4375rem;display:grid;place-items:center;color:var(--ink2);background:var(--slot)}
+@keyframes fade{from{opacity:0}}
+@keyframes hintout{to{opacity:0;visibility:hidden}}
+@keyframes fly{from{opacity:0;transform:translateY(2rem) scale(.85) rotate(-4deg)}}
+
+/* ============ Estados ============ */
+.sk-spine{width:var(--w);height:var(--h);border-radius:.1875rem .1875rem 0 0;background:var(--ink2);opacity:.18;animation:pulse 1.2s ease-in-out infinite alternate}
+@keyframes pulse{to{opacity:.08}}
+.empty,.error{display:grid;justify-items:center;text-align:center;gap:var(--s2);max-width:26rem;margin:var(--s5) auto 0;color:var(--ink)}
+.empty .art{width:7rem;opacity:.9}
+.empty h3,.error h3{font-size:var(--t-title);font-weight:600}
+.empty p,.error p{color:var(--ink2)}
+.acts{display:flex;gap:var(--s1);flex-wrap:wrap;justify-content:center;margin-top:var(--s1)}
+.btn.quiet{border-color:var(--ink2);color:var(--ink)}
+.banner{display:flex;gap:var(--s2);align-items:center;padding:var(--s2);border-radius:var(--r-ctrl);background:var(--card);box-shadow:var(--shadow);margin:0 var(--s2) var(--s3);color:var(--fg)}
+.banner svg{flex:none;width:1.25rem;height:1.25rem;color:var(--red)}
+.banner p{flex:1}
+
+/* ============ Lector a pantalla completa ============ */
+.reader{position:absolute;inset:0;z-index:20;background:var(--reader-bg);display:grid;place-items:center;padding:5.5rem var(--s3) var(--s4);opacity:0;transform:scale(.94);pointer-events:none;transition:opacity .35s ease,transform .45s cubic-bezier(.2,.8,.2,1)}
+.ipad.reading .reader{opacity:1;transform:none;pointer-events:auto}
+.rbar{position:absolute;top:var(--s2);left:var(--s2);right:var(--s2);display:flex;align-items:center;gap:var(--s1);padding:.375rem;border-radius:1.375rem}
+.rbar .name{flex:1;min-width:0;text-align:center;font-size:var(--t-head);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rbar .grp{display:flex;gap:.125rem}
+.rbar .div{width:1px;align-self:stretch;margin:.375rem .25rem;background:var(--line)}
+.back{padding:0 var(--s2) 0 var(--s1)}
+.spreadwrap{height:100%;width:100%;display:grid;place-items:center}
+.spread{position:relative;height:100%;max-height:100%;aspect-ratio:calc(2*.72 + .05);padding:1.125rem;border-radius:.875rem;
+  background:linear-gradient(90deg,transparent 49.4%,rgba(0,0,0,.35) 50%,transparent 50.6%),var(--backdrop);box-shadow:0 1.5rem 3rem -1rem var(--book-shadow);display:grid;grid-template-columns:1fr 1fr}
+.device[data-orient=port] .page{--rs:1.375rem}
+.device[data-orient=port] .spread{aspect-ratio:calc(.72 + .04);grid-template-columns:1fr;background:linear-gradient(90deg,rgba(0,0,0,.35) 0 .375rem,transparent .375rem),var(--backdrop)}
+.device[data-orient=port] .page.left{display:none}
+.page{position:relative;--rs:1.5rem;background:
+  linear-gradient(90deg,transparent calc(9% - 1px),var(--margin) calc(9% - 1px) 9%,transparent 9%),
+  repeating-linear-gradient(transparent 0 calc(var(--rs) - 1px),var(--rule) calc(var(--rs) - 1px) var(--rs)) 0 calc(var(--rs)*3)/100% calc(100% - var(--rs)*5) no-repeat,var(--paper);
+  color:var(--paper-ink);overflow:hidden}
+.page.left{border-radius:.25rem 0 0 .25rem;box-shadow:inset -1.5rem 0 1.5rem -1.5rem rgba(0,0,0,.25)}
+.page.right{border-radius:0 .25rem .25rem 0;box-shadow:inset 1.5rem 0 1.5rem -1.5rem rgba(0,0,0,.25)}
+.device[data-orient=port] .page.right{border-radius:.25rem}
+.ink{position:absolute;left:11%;right:7%;top:calc(var(--rs)*3 + .2rem);font-size:calc(var(--rs)*.78);line-height:var(--rs);color:#22324f}
+.ink p{margin:0;min-height:var(--rs)}
+.ink .h{font-size:calc(var(--rs)*.95);color:#7a2f1c}
+.ink .red{color:#a3383a}
+.ink svg{display:block}
+.pnum{position:absolute;bottom:2.5%;font-size:.75rem;color:var(--paper-ink2)}
+.left .pnum{left:9%}.right .pnum{right:9%}
+.ribbon{position:absolute;top:-.375rem;right:16%;width:1.125rem;height:28%;background:linear-gradient(90deg,rgba(0,0,0,.18),transparent 40%,rgba(255,255,255,.12)),var(--ribbon);clip-path:polygon(0 0,100% 0,100% 100%,50% 88%,0 100%);box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.step{position:absolute;bottom:var(--s4);width:2.75rem;height:2.75rem;border-radius:50%;display:grid;place-items:center}
+.step svg{width:1.125rem;height:1.125rem}
+.step.prev{left:var(--s3)}.step.next{right:var(--s3)}
+.hint{animation:hintout .6s ease 3.5s both;position:absolute;bottom:var(--s3);left:50%;transform:translateX(-50%);font-size:var(--t-cap);color:var(--ink2);padding:.375rem var(--s2);border-radius:var(--r-pill)}
+
+/* ============ Menús y hojas modales (estilo de la app) ============ */
+.menu{position:absolute;z-index:40;min-width:15rem;padding:.5rem;border-radius:var(--r-card);animation:pop .18s ease both}
+.menu button{display:flex;width:100%;align-items:center;gap:var(--s1);min-height:2.75rem;padding:0 var(--s1);border:0;background:none;border-radius:.625rem;text-align:left}
+.menu button svg{width:1rem;height:1rem;color:var(--mut)}
+.menu button:hover{background:var(--acc-bg)}
+.menu button.danger,.menu button.danger svg{color:var(--red)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:.25rem 0}
+@keyframes pop{from{opacity:0;transform:scale(.96) translateY(-4px)}}
+.modal{position:absolute;inset:0;z-index:60;display:grid;place-items:center;background:rgba(0,0,0,.28);animation:fade .2s ease both}
+.sheet{width:min(34rem,92%);max-height:92%;overflow:auto;background:var(--bg);border-radius:var(--r-card);box-shadow:0 2rem 4rem rgba(0,0,0,.3);animation:up .3s cubic-bezier(.2,.8,.2,1) both}
+@keyframes up{from{transform:translateY(2rem);opacity:0}}
+.sheet header{position:sticky;top:0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:var(--s1);background:var(--bg);border-bottom:1px solid var(--line)}
+.sheet header h3{font-size:var(--t-head);font-weight:600}
+.sheet header .r{justify-self:end}
+.lnk{min-height:2.75rem;padding:0 var(--s2);border:0;background:none;color:var(--acc)}
+.lnk.b{font-weight:600}
+.lnk:disabled{color:var(--mut);cursor:default}
+.sheet .body{padding:var(--s3);display:grid;gap:var(--s3)}
+.group{background:var(--card);border-radius:var(--r-ctrl);overflow:hidden}
+.group .rowf{display:flex;align-items:center;gap:var(--s2);min-height:2.75rem;padding:0 var(--s2)}
+.group .rowf+.rowf{border-top:1px solid var(--line)}
+.group input,.group select{flex:1;min-height:2.75rem;border:0;background:none;outline:none;text-align:right}
+.group input{text-align:left}
+.fld-h{font-size:var(--t-cap);text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:0 0 .375rem var(--s2)}
+.swatches{display:flex;flex-wrap:wrap;gap:var(--s1);padding:var(--s2)}
+.sw{width:2.75rem;height:2.75rem;border-radius:50%;border:0;background:var(--c);box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+.sw{display:grid;place-items:center;color:#fff}
+.sw[aria-checked=true]::after{content:"✓";font-weight:700;font-size:1.125rem}
+.sw[aria-checked=true]{box-shadow:0 0 0 .1875rem var(--card),0 0 0 .3125rem var(--acc)}
+.papers{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s2);padding:var(--s2)}
+.pp{border:0;background:none;padding:0;display:grid;gap:.375rem;justify-items:center;font-size:var(--t-cap);color:var(--mut)}
+.pp i{display:block;width:100%;aspect-ratio:.72;border-radius:.25rem;background-color:#FBF8F1;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1)}
+.pp[aria-checked=true] i{box-shadow:0 0 0 .125rem var(--card),0 0 0 .25rem var(--acc)}
+.pp[aria-checked=true]{color:var(--acc);font-weight:600}
+.steps{margin:0;padding-left:var(--s3);display:grid;gap:var(--s1)}
+.alert{width:min(17.5rem,90%);background:var(--card);border-radius:var(--r-card);text-align:center;overflow:hidden;animation:pop .2s ease both}
+.alert .tx{padding:var(--s3) var(--s2) var(--s2);display:grid;gap:.375rem}
+.alert .tx p{font-size:var(--t-foot);color:var(--mut)}
+.alert .ab{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+.alert .ab button{min-height:2.75rem;border:0;background:none;color:var(--acc)}
+.alert .ab button+button{border-left:1px solid var(--line)}
+.alert .ab button:first-child{font-weight:600}
+.alert .ab .danger{color:var(--red)}
+.toast{position:absolute;z-index:70;left:50%;bottom:var(--s3);transform:translateX(-50%);padding:var(--s1) var(--s2);border-radius:var(--r-pill);font-weight:600;font-size:var(--t-foot);animation:up .3s ease both}
+
+/* ============ Notas de la maqueta ============ */
+.notes{max-width:73.75rem;margin:0 auto;padding:0 var(--s2) var(--s6);display:grid;gap:var(--s3)}
+.notes .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(18rem,1fr));gap:var(--s2)}
+.notes section{background:var(--card);border-radius:var(--r-card);padding:var(--s3)}
+.notes h2{font-size:var(--t-head);margin-bottom:var(--s1)}
+.notes ul{margin:0;padding-left:var(--s3);display:grid;gap:.25rem}
+@media(max-width:50rem){.device{aspect-ratio:auto;height:46rem}.ipad{grid-template-columns:0 1fr}.side{opacity:0}.appbar .sidebtn{display:inline-flex}}
+</style></head>
+<body>
+
+<div class="lab" role="toolbar" aria-label="Controles de la maqueta">
+  <fieldset><legend>Pantalla</legend>
+    <button class="chip" data-k="screen" data-v="shelf">Estantería</button>
+    <button class="chip" data-k="screen" data-v="piles">Montones</button>
+    <button class="chip" data-k="screen" data-v="reader">Lector</button>
+  </fieldset>
+  <fieldset><legend>Estado</legend>
+    <button class="chip" data-k="state" data-v="data">Con datos</button>
+    <button class="chip" data-k="state" data-v="loading">Cargando</button>
+    <button class="chip" data-k="state" data-v="empty">Vacío</button>
+    <button class="chip" data-k="state" data-v="error">Error</button>
+  </fieldset>
+  <fieldset><legend>iPad</legend>
+    <button class="chip" data-k="orient" data-v="land">Horizontal</button>
+    <button class="chip" data-k="orient" data-v="port">Vertical</button>
+  </fieldset>
+  <fieldset><legend>Tema</legend>
+    <button class="chip" data-k="theme" data-v="auto">Auto</button>
+    <button class="chip" data-k="theme" data-v="light">Claro</button>
+    <button class="chip" data-k="theme" data-v="dark">Oscuro</button>
+  </fieldset>
+</div>
+
+<div class="stage">
+  <div class="device" id="device" data-orient="land">
+    <div class="ipad" id="ipad">
+      <nav class="side" aria-label="Módulos" id="side"></nav>
+      <main class="detail" id="detail">
+        <header class="appbar glass" id="appbar"></header>
+        <div class="desk" id="desk"></div>
+        <div id="layer"></div>
+      </main>
+      <section class="reader" id="reader" aria-label="Libreta abierta" aria-hidden="true"></section>
+    </div>
+    <div id="top"></div>
+  </div>
+</div>
+
+<div class="notes">
+  <div class="cols">
+    <section><h2>Qué no cambia (es el objeto)</h2><ul>
+      <li>Mesa de lino, baldas de nogal, lomos de tela y portadas.</li>
+      <li>Papel crema, renglones, margen y cinta del marcapáginas.</li>
+      <li>Tipografía serif en rótulos, títulos de libreta y números de hoja.</li>
+      <li>Gestos: tocar lomo abre, pasar el lápiz encima enseña la portada, pulsación larga abre el menú.</li>
+    </ul></section>
+    <section><h2>Qué se adapta (es la app)</h2><ul>
+      <li>Barra lateral y barra superior de MiGestor, como en cualquier módulo.</li>
+      <li>Botones y menús en cristal, con el azul de la app (no terracota).</li>
+      <li>Hojas modales (nueva libreta, importar) con el estilo de Ajustes.</li>
+      <li>«Nueva libreta» es la única acción principal de la pantalla.</li>
+    </ul></section>
+    <section><h2>Reglas</h2><ul>
+      <li>Solo iPad. En iPhone y Mac el módulo no aparece.</li>
+      <li>Al abrir una libreta se esconden barra lateral y barra superior.</li>
+      <li>«Estantería» (arriba a la izquierda) devuelve a la mesa con la barra lateral.</li>
+      <li>Datos propios (SwiftData), sin iCloud en la primera versión.</li>
+      <li>Fase 2, fuera de esta maqueta: ligar libreta a grupo y meterla en Copias.</li>
+    </ul></section>
+  </div>
+</div>
+
+<script>
+const COLORS={blue:'#2F4C78',red:'#A3383A',green:'#3F6A4A',yellow:'#D2A23A',black:'#2A2A2D',brown:'#7A5335',purple:'#5D4774',teal:'#2E6D71'};
+const NAMES={blue:'Azul',red:'Rojo',green:'Verde',yellow:'Mostaza',black:'Negro',brown:'Marrón',purple:'Morado',teal:'Turquesa'};
+const DATA=[
+  {g:'Clases',items:[['Sesiones voleibol','blue',38],['Ideas SdA 2º ESO','green',22],['Bocetos de pistas','teal',12],['Juegos cooperativos','yellow',16],['Expresión corporal','purple',8]]},
+  {g:'Tutoría y centro',items:[['Tutoría 2º B','red',30],['Claustro y CCP','black',18],['Reuniones de inclusión','brown',14]]},
+  {g:'Formación',items:[['Curso IA docente','purple',20],['Lecturas','brown',10]]},
+];
+const LOOSE=[['Ideas sueltas','yellow',6],['Agenda del curso','blue',26]];
+const S={screen:'shelf',state:'data',orient:'land',theme:'auto',open:null,overlay:null};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* Iconos tipo SF Symbols simplificados */
+const P={
+ grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+ table:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>',
+ check:'<path d="M4 6h3M4 12h3M4 18h3M11 6h9M11 12h9M11 18h9"/>',
+ cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+ doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
+ pen:'<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M3 21c3-1 5 1 8-1"/>',
+ people:'<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-4 3-6 6-6s6 2 6 6M15 14c3 0 6 1.5 6 5"/>',
+ gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>',
+ shield:'<path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/>',
+ books:'<path d="M4 4h4v16H4zM10 4h4v16h-4zM15 5l4-1 3 15-4 1z"/>',
+ rubric:'<path d="M4 6l2 2 3-3M4 13l2 2 3-3M12 7h8M12 14h8M4 20h16"/>',
+ chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+ send:'<path d="M3 11l18-8-8 18-2-8z"/>',
+ search:'<circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/>',
+ plus:'<path d="M12 5v14M5 12h14"/>',
+ left:'<path d="M15 5l-7 7 7 7"/>', right:'<path d="M9 5l7 7-7 7"/>',
+ pages:'<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
+ mark:'<path d="M7 3h10v18l-5-4-5 4z"/>',
+ shapes:'<circle cx="8" cy="8" r="4"/><rect x="12" y="12" width="9" height="9" rx="1.5"/>',
+ more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+ sidebar:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
+ open:'<path d="M3 6c3-1 6-1 9 1 3-2 6-2 9-1v13c-3-1-6-1-9 1-3-2-6-2-9-1z"/><path d="M12 7v13"/>',
+ edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+ move:'<path d="M3 7h7l2 2h9v10H3z"/>',
+ share:'<path d="M12 3v12M7 8l5-5 5 5M5 13v8h14v-8"/>',
+ trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/>',
+ warn:'<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
+ hand:'<path d="M8 12V5a1.5 1.5 0 013 0v6M11 11V4a1.5 1.5 0 013 0v7M14 11V6a1.5 1.5 0 013 0v8c0 4-3 7-6 7s-5-2-6-4l-2-4a1.5 1.5 0 012.5-1.5L8 14"/>',
+ down:'<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>',
+ x:'<path d="M6 6l12 12M18 6L6 18"/>',
+};
+const ic=(n,extra='')=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${P[n]}</svg>`;
+
+/* ---------- Barra lateral real ---------- */
+const SIDE=[
+ ['Hoy',[['grid','Hoy','Dashboard y radar docente']]],
+ ['Evaluación',[['table','Cuaderno','Evaluación diaria'],['check','Asistencia','Pase y seguimiento'],['chart','Evaluación','Instrumentos y calendario'],['rubric','Rúbricas','Banco de evaluación'],['send','Entregas web','Recibe en el Cuaderno']]],
+ ['Planificación',[['cal','Planificación','Sesiones y agenda'],['doc','Diario de aula','Trazabilidad de sesión'],['pen','Libreta','Notas a mano con Apple Pencil','cur'],['doc','Situaciones','Programación e importación'],['people','Reuniones','Actas de centro y acuerdos'],['people','Alumnado','Perfiles y seguimiento']]],
+ ['Sistema',[['doc','Informes','Salida docente'],['books','Biblioteca','Plantillas reutilizables'],['gear','Ajustes','Configuración'],['shield','Seguridad','Copias y restauración']]],
+];
+function renderSide(){
+  $('#side').innerHTML='<h1>MiGestor</h1>'+SIDE.map(([h,rows])=>`<h2>${h}</h2>`+rows.map(([i,t,s,c])=>
+    `<a href="#" ${c?'aria-current="page" class="new"':''}>${ic(i)}<span><b>${t}${c?'<span class="nw">Nuevo</span>':''}</b><small>${s}</small></span></a>`).join('')).join('')+
+    `<p class="mut" style="font-size:var(--t-cap);padding:var(--s2) var(--s1)">Libreta va entre Diario y Situaciones: es donde ya vive lo que escribes a mano. <span class="i" title="Icono pencil.and.scribble. La etiqueta «Nuevo» solo se ve las primeras semanas.">i</span></p>`;
+}
+
+/* ---------- Barra superior del módulo ---------- */
+function renderAppbar(){
+  const total=DATA.reduce((n,g)=>n+g.items.length,0)+LOOSE.length;
+  const sub={data:`${total} libretas`,loading:'Cargando…',empty:'',error:''}[S.state];
+  const disabled=S.state!=='data'?'disabled aria-disabled="true"':'';
+  $('#appbar').innerHTML=`
+    <button class="btn icon sidebtn" aria-label="Mostrar barra lateral">${ic('sidebar')}</button>
+    <div class="ttl"><h2>Libreta</h2><span>${sub}</span></div>
+    <div class="seg glass" role="radiogroup" aria-label="Vista de la biblioteca" >
+      <button role="radio" aria-checked="${S.screen!=='piles'}" data-view="shelf" ${S.state!=='data'?'disabled':''}>Estantería</button>
+      <button role="radio" aria-checked="${S.screen==='piles'}" data-view="piles" ${S.state!=='data'?'disabled':''}>Montones</button>
+    </div>
+    <button class="btn icon" aria-label="Buscar en libretas" ${disabled}>${ic('search')}</button>
+    ${S.state==='empty'?`<button class="btn icon" data-act="new" aria-label="Nueva libreta">${ic('plus')}</button>`:`<button class="btn primary" data-act="new" aria-label="Nueva libreta" ${S.state==='error'||S.state==='loading'?'disabled':''}>${ic('plus')}<span class="lt">Nueva libreta</span></button>`}
+    <span class="i" title="Misma barra de cristal que el resto de módulos. Buscar encuentra texto escrito a mano (Vision). La vista elegida se recuerda.">i</span>`;
+}
+
+/* ---------- Piezas ---------- */
+const lightC=c=>c==='yellow';
+const cover=(t,c)=>`<div class="cover" style="--c:${COLORS[c]}"><span class="lbl serif">${esc(t)}</span><i class="el"></i></div>`;
+function hash(s){let h=7;for(const ch of s)h=(h*31+ch.charCodeAt(0))>>>0;return h}
+function spine(t,c,p){
+  const h=hash(t),w=2.25+Math.min(p,40)/40*.9+(h%5)/20,ht=84+h%17;
+  return `<button class="spine ${lightC(c)?'light':''}" style="--c:${COLORS[c]};--w:${w.toFixed(2)}rem;--h:${ht}%" data-open="${esc(t)}" data-c="${c}" aria-label="${esc(t)}, ${p} hojas. Mantén pulsado para más opciones">
+    <span class="hit" aria-hidden="true"></span><span class="t serif">${esc(t)}</span><span class="peek">${cover(t,c)}</span></button>`;
+}
+function shelf(title,items,first){
+  return `<div class="shelf ${first?'first':''}">
+    <div class="books">${items.map(i=>spine(...i)).join('')}<button class="slot" data-act="new" aria-label="Nueva libreta en ${esc(title)}">+</button></div>
+    <div class="plank">${title?`<button class="tag serif" data-tag="${esc(title)}" aria-label="Menú del grupo ${esc(title)}">${esc(title)}</button>`:''}</div></div>`;
+}
+
+/* ---------- Mesa según estado ---------- */
+function renderDesk(){
+  const d=$('#desk');
+  if(S.state==='loading'){
+    const sk=n=>Array.from({length:n},(_,i)=>`<div class="sk-spine" style="--w:${1.6+(i%3)*.4}rem;--h:${84+(i*7)%16}%"></div>`).join('');
+    d.innerHTML=[6,4,3].map(n=>`<div class="shelf" aria-hidden="true"><div class="books">${sk(n)}</div><div class="plank"></div></div>`).join('')+'<p class="sr" role="status">Cargando libretas</p>';
+    return;
+  }
+  if(S.state==='empty'){
+    d.innerHTML=`<div class="empty">
+      <div class="art">${cover('Primera libreta','blue')}</div>
+      <h3>Aún no tienes libretas</h3>
+      <p>Crea una para tomar notas a mano. Si ya usabas Cuadernos, trae tus libretas con su copia.</p>
+      <div class="acts"><button class="btn primary" data-act="new">${ic('plus')}Nueva libreta</button>
+      <button class="btn quiet" data-act="import">${ic('down')}Traer de Cuadernos</button></div></div>`;
+    return;
+  }
+  if(S.state==='error'){
+    d.innerHTML=`<div class="banner" role="alert">${ic('warn')}<p><b>No se pudieron abrir tus libretas.</b><br><span class="mut">Siguen guardadas en este iPad. Prueba otra vez.</span></p><button class="btn primary" data-act="retry">Reintentar</button></div>
+      <div class="shelf" aria-hidden="true"><div class="books"></div><div class="plank"></div></div>
+`;
+    return;
+  }
+  if(S.screen==='piles'){
+    const all=[...DATA.map(g=>[g.g,g.items]),['Sin grupo',LOOSE]];
+    d.innerHTML=`<div class="piles">${all.map(([g,items])=>{
+      const top=items.slice(0,4).reverse();
+      return `<button class="pile" data-pile="${esc(g)}" aria-label="Montón ${esc(g)}, ${items.length} libretas"><div class="stack">${top.map((it,i)=>{const h=hash(it[0]);const last=i===top.length-1;
+        return `<div class="cover" style="--c:${COLORS[it[1]]};--r:${last?(h%3-1):((h%15)-7)}deg;--x:${(h%9-4)/2}px;--y:${(h%7-3)/2}px"><span class="lbl serif">${esc(it[0])}</span><i class="el"></i></div>`}).join('')}</div>
+        <b class="serif">${esc(g)}</b><small>${items.length} libretas</small></button>`}).join('')}</div>`;
+    return;
+  }
+  d.innerHTML=DATA.map((g,i)=>shelf(g.g,g.items,i===0)).join('')+
+    `<p class="loose-h serif">Sin grupo</p>`+shelf('',LOOSE,false);
+}
+
+/* ---------- Lector ---------- */
+function renderReader(){
+  const o=S.open||{t:'Sesiones voleibol',c:'blue'};
+  $('#reader').innerHTML=`
+    <div class="rbar glass" role="toolbar" aria-label="Libreta">
+      <button class="btn back" data-act="close" aria-label="Volver a la estantería">${ic('left')}Estantería</button>
+      <div class="name serif">${esc(o.t)}</div>
+      <div class="grp">
+        <button class="btn icon" aria-label="Buscar">${ic('search')}</button>
+        <button class="btn icon" aria-label="Ver hojas">${ic('pages')}</button>
+        <button class="btn icon on" aria-label="Marcapáginas" aria-pressed="true">${ic('mark')}</button>
+        <button class="btn icon" aria-label="Imágenes, texto y pegatinas" aria-pressed="false">${ic('shapes')}</button>
+        <span class="div"></span>
+        <button class="btn icon" data-act="more" aria-label="Más opciones">${ic('more')}</button>
+      </div>
+    </div>
+    <div class="spreadwrap"><div class="spread" style="--backdrop:color-mix(in srgb,${COLORS[o.c]} 55%,#3a2a1e)">
+      <div class="page left"><div class="ink hand">
+        <p class="h">Sesión 4 · Voleibol</p><p></p>
+        <p>Calentamiento: 8 min en parejas</p>
+        <p>Toque de dedos contra la pared</p>
+        <p>Juego reducido 3 × 3</p>
+        <p class="red">Ojo: material del gimnasio B</p><p></p>
+        <p>Vuelta a la calma: estiramientos</p>
+      </div><span class="pnum serif">7</span></div>
+      <div class="page right"><div class="ribbon" aria-label="Hoja con marcapáginas"></div><div class="ink hand">
+        <p class="h">Rotaciones</p><p></p>
+        <svg viewBox="0 0 200 90" width="80%" aria-hidden="true" fill="none" stroke="#22324f" stroke-width="1.6" stroke-linecap="round">
+          <path d="M8 10 Q100 6 192 11 L190 82 Q100 85 10 80 Z"/><path d="M100 8 L101 83" stroke-dasharray="3 3"/>
+          <circle cx="40" cy="30" r="5"/><circle cx="60" cy="58" r="5"/><circle cx="30" cy="65" r="5"/>
+          <path d="M140 30 l6 6 m0-6 l-6 6 M160 58 l6 6 m0-6 l-6 6 M150 70 l6 6 m0-6 l-6 6"/>
+          <path d="M45 34 Q55 44 58 52" stroke="#a3383a"/></svg>
+        <p></p><p>Rotar cada 3 puntos</p>
+      </div><span class="pnum serif">8</span></div>
+    </div></div>
+    <button class="step prev glass" aria-label="Hoja anterior">${ic('left')}</button>
+    <button class="step next glass" aria-label="Hoja siguiente">${ic('right')}</button>
+    <span class="hint glass" role="status">El dedo pasa hoja · el Apple Pencil escribe</span>`;
+}
+
+/* ---------- Capas: menús, hojas y avisos ---------- */
+let trigger=null;
+function modalOpen(){trigger=document.activeElement;$('#ipad').inert=true}
+function closeLayer(){const had=!!$('#top .modal');S.overlay=null;$('#layer').innerHTML='';$('#top').innerHTML='';$('#ipad').inert=false;
+  if(had&&trigger&&document.contains(trigger))trigger.focus();trigger=null}
+function toast(t){$('#top').innerHTML=`<div class="toast glass" role="status">${t}</div>`;setTimeout(()=>{if($('.toast'))$('#top').innerHTML=''},4000)}
+function menuAt(x,y,html,host){
+  const r=host.getBoundingClientRect();
+  host.querySelector('.layer-menu')?.remove();
+  host.insertAdjacentHTML('beforeend',`<div class="menu glass layer-menu" role="menu" style="left:${Math.min(x-r.left,r.width-260)}px;top:${Math.min(y-r.top,r.height-300)}px">${html}</div>`);
+  host.querySelector('.layer-menu button')?.focus();
+}
+const bookMenu=t=>`<button role="menuitem" data-act="openbook" data-t="${esc(t)}">${ic('open')}Abrir</button>
+  <button role="menuitem">${ic('edit')}Renombrar</button><button role="menuitem">${ic('move')}Mover a grupo…</button>
+  <button role="menuitem">${ic('share')}Exportar</button><hr><button role="menuitem" class="danger" data-act="del" data-t="${esc(t)}">${ic('trash')}Eliminar</button>`;
+const groupMenu=g=>`<button role="menuitem" data-act="new">${ic('plus')}Nueva libreta aquí</button><button role="menuitem">${ic('edit')}Renombrar grupo</button>
+  <button role="menuitem">Subir</button><button role="menuitem">Bajar</button><hr><button role="menuitem" class="danger">${ic('trash')}Eliminar grupo</button>`;
+const readerMenu=`<button role="menuitem">${ic('hand')}Dibujar también con el dedo</button><button role="menuitem">${ic('plus')}Añadir hoja al final</button>
+  <button role="menuitem">${ic('doc')}Plantilla de esta hoja</button><hr><button role="menuitem">${ic('share')}Exportar / compartir…</button>`;
+
+const PAPERS=[['Rayado','repeating-linear-gradient(transparent 0 7px,#8FA8C2 7px 8px)'],['Cuadriculado','repeating-linear-gradient(transparent 0 7px,#9BB1C6 7px 8px),repeating-linear-gradient(90deg,transparent 0 7px,#9BB1C6 7px 8px)'],['Puntos','radial-gradient(circle,#8C98A5 1px,transparent 1.2px) 0 0/8px 8px'],['Liso','none'],
+  ['Semana','linear-gradient(transparent 22%,#8FA8C2 22% 23%,transparent 23% 45%,#8FA8C2 45% 46%,transparent 46% 68%,#8FA8C2 68% 69%,transparent 69%)'],['Tareas','repeating-linear-gradient(transparent 0 9px,#8FA8C2 9px 10px)'],['Cornell','linear-gradient(90deg,transparent 30%,#D98080 30% 32%,transparent 32%),linear-gradient(transparent 78%,#D98080 78% 80%,transparent 80%)'],['Pentagrama','repeating-linear-gradient(transparent 0 3px,#8FA8C2 3px 4px,transparent 4px 20px)']];
+function sheetNew(){
+  S.overlay='new';modalOpen();
+  $('#top').innerHTML=`<div class="modal" data-act="dismiss"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="nt">
+    <header><button class="lnk" data-act="dismiss">Cancelar</button><h3 id="nt">Nueva libreta</h3><button class="lnk b r" data-act="create">Crear</button></header>
+    <div class="body">
+      <div><p class="fld-h">Libreta</p><div class="group">
+        <div class="rowf"><label class="sr" for="nt-t">Título</label><input id="nt-t" placeholder="Título" value="Sesiones baloncesto" autocomplete="off"></div>
+        <div class="rowf"><span>Grupo</span><select aria-label="Grupo"><option>Clases</option><option>Tutoría y centro</option><option>Formación</option><option>Ninguno</option></select></div>
+      </div></div>
+      <div><p class="fld-h">Tapa</p><div class="group"><div class="swatches" role="radiogroup" aria-label="Color de tapa">
+        ${Object.keys(COLORS).map((k,i)=>`<button class="sw" role="radio" aria-checked="${i===0}" aria-label="${NAMES[k]}" style="--c:${COLORS[k]}" data-sw></button>`).join('')}</div></div></div>
+      <div><p class="fld-h">Papel <span class="i" title="Básicos arriba, plantillas abajo. Igual que en Cuadernos.">i</span></p><div class="group"><div class="papers" role="radiogroup" aria-label="Papel">
+        ${PAPERS.map(([n,bg],i)=>`<button class="pp" role="radio" aria-checked="${i===0}" data-pp><i style="background-image:${bg}"></i>${n}</button>`).join('')}</div></div></div>
+    </div></div></div>`;
+  const inp=$('.sheet input'),cr=$('[data-act=create]');inp.addEventListener('input',()=>cr.disabled=!inp.value.trim());inp.focus();
+}
+function sheetImport(){
+  S.overlay='import';modalOpen();
+  $('#top').innerHTML=`<div class="modal" data-act="dismiss"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="it">
+    <header><button class="lnk" data-act="dismiss">Cancelar</button><h3 id="it">Traer de Cuadernos</h3><span></span></header>
+    <div class="body">
+      <p>Tus libretas pasan con sus hojas, grupos, imágenes y marcapáginas. En Cuadernos no se borra nada.</p>
+      <ol class="steps"><li>Abre Cuadernos y pulsa <b>Exportar › Copia de la biblioteca</b>.</li><li>Guarda el archivo en Archivos.</li><li>Vuelve aquí y elige ese archivo.</li></ol>
+      <button class="btn primary" data-act="pick">${ic('down')}Elegir archivo</button>
+    </div></div></div>`;
+}
+function alertDel(t){
+  modalOpen();
+  $('#top').innerHTML=`<div class="modal" data-act="dismiss"><div class="alert" role="alertdialog" aria-modal="true" aria-labelledby="dt">
+    <div class="tx"><h3 id="dt" class="t-head">¿Eliminar «${esc(t)}»?</h3><p>Se borran todas sus hojas. No se puede deshacer.</p></div>
+    <div class="ab"><button data-act="dismiss">Cancelar</button><button class="danger" data-act="confirmdel">Eliminar</button></div></div></div>`;
+  $('.alert button').focus();
+}
+function fan(g){
+  const items=g==='Sin grupo'?LOOSE:DATA.find(x=>x.g===g).items;
+  $('#layer').innerHTML=`<div class="fan" data-act="unfan"><button class="btn icon glass close" data-act="unfan" aria-label="Plegar montón">${ic('x')}</button>
+    <div class="grid"><h3 class="serif t-title" style="--i:0">${esc(g)}</h3>${items.map((it,i)=>`<button class="cov-btn" style="--i:${i+1}" data-open="${esc(it[0])}" data-c="${it[1]}">${cover(it[0],it[1])}${it[2]} hojas</button>`).join('')}
+    <button class="cov-btn" style="--i:${items.length+1}" data-act="new"><span class="newcov">${ic('plus','width="24"')}</span>Nueva libreta</button></div></div>`;
+}
+
+/* ---------- Abrir / cerrar ---------- */
+function openBook(t,c){
+  S.open={t,c};S.screen='reader';closeLayer();renderReader();
+  $('#ipad').classList.add('reading');$('#reader').setAttribute('aria-hidden','false');sync();
+  setTimeout(()=>$('#reader .back')?.focus(),350);
+}
+function closeBook(){
+  S.screen=S.last||'shelf';$('#ipad').classList.remove('reading');$('#reader').setAttribute('aria-hidden','true');sync();renderAll();
+}
+
+/* ---------- Render ---------- */
+function sync(){
+  document.querySelectorAll('.lab .chip').forEach(b=>b.setAttribute('aria-pressed',S[b.dataset.k]===b.dataset.v));
+  $('#device').dataset.orient=S.orient;
+  const reading=$('#ipad').classList.contains('reading');
+  $('#side').inert=reading||S.orient==='port';$('#appbar').inert=reading;$('#desk').inert=reading;$('#reader').inert=!reading;
+  if(S.theme==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.dataset.theme=S.theme;
+}
+function renderAll(){renderSide();renderAppbar();renderDesk();renderReader();sync()}
+
+/* ---------- Eventos ---------- */
+document.querySelector('.lab').addEventListener('click',e=>{
+  const b=e.target.closest('.chip');if(!b)return;
+  S[b.dataset.k]=b.dataset.v;closeLayer();
+  if(b.dataset.k==='screen'){
+    if(b.dataset.v==='reader'){S.state='data';openBook('Sesiones voleibol','blue');renderAppbar();renderDesk();return}
+    S.last=b.dataset.v;$('#ipad').classList.remove('reading');
+  }
+  if(b.dataset.k==='state'&&S.screen==='reader'){S.screen=S.last||'shelf';$('#ipad').classList.remove('reading')}
+  renderAll();
+});
+let pressTimer=null,longFired=false;
+const dev=$('#device');
+dev.addEventListener('pointerdown',e=>{
+  const sp=e.target.closest('.spine,.cov-btn[data-open]');longFired=false;
+  if(sp){pressTimer=setTimeout(()=>{longFired=true;menuAt(e.clientX,e.clientY,bookMenu(sp.dataset.open),$('#detail'))},500)}
+});
+['pointerup','pointerleave','pointercancel'].forEach(t=>dev.addEventListener(t,()=>clearTimeout(pressTimer)));
+dev.addEventListener('contextmenu',e=>{const sp=e.target.closest('.spine');if(sp){e.preventDefault();menuAt(e.clientX,e.clientY,bookMenu(sp.dataset.open),$('#detail'))}});
+dev.addEventListener('click',e=>{
+  if(longFired){longFired=false;return}
+  const t=e.target;
+  const act=t.closest('[data-act]');
+  if(t.closest('.sheet,.alert')&&act&&act.dataset.act==='dismiss'&&!t.closest('button'))return;
+  if(t.closest('[data-sw]')){t.closest('.swatches').querySelectorAll('[data-sw]').forEach(x=>x.setAttribute('aria-checked',x===t.closest('[data-sw]')));return}
+  if(t.closest('[data-pp]')){t.closest('.papers').querySelectorAll('[data-pp]').forEach(x=>x.setAttribute('aria-checked',x===t.closest('[data-pp]')));return}
+  const menu=t.closest('.layer-menu');
+  if(!menu)document.querySelectorAll('.layer-menu').forEach(m=>{if(!t.closest('[data-tag],[data-act=more]'))m.remove()});
+  const view=t.closest('[data-view]');if(view){S.screen=S.last=view.dataset.view;closeLayer();renderAppbar();renderDesk();sync();return}
+  const open=t.closest('[data-open]');if(open&&!menu){openBook(open.dataset.open,open.dataset.c);return}
+  const tag=t.closest('[data-tag]');if(tag){const r=tag.getBoundingClientRect();menuAt(r.left,r.bottom+6,groupMenu(tag.dataset.tag),$('#detail'));return}
+  const pile=t.closest('[data-pile]');if(pile){fan(pile.dataset.pile);return}
+  if(!act)return;
+  switch(act.dataset.act){
+    case 'new':closeLayer();sheetNew();break;
+    case 'import':sheetImport();break;
+    case 'dismiss':if(t.closest('button')||t===act)closeLayer();break;
+    case 'create':{const v=$('.sheet input')?.value.trim()||'Sin título';closeLayer();S.state='data';renderAll();openBook(v,'blue');break}
+    case 'pick':closeLayer();S.state='data';renderAll();toast('12 libretas traídas de Cuadernos');break;
+    case 'retry':S.state='loading';renderAll();setTimeout(()=>{S.state='data';renderAll()},1100);break;
+    case 'close':closeBook();break;
+    case 'more':{const r=act.getBoundingClientRect();menuAt(r.right-250,r.bottom+6,readerMenu,$('#reader'));break}
+    case 'openbook':openBook(act.dataset.t,'blue');break;
+    case 'del':menu?.remove();alertDel(act.dataset.t);break;
+    case 'confirmdel':closeLayer();toast('Libreta eliminada');break;
+    case 'unfan':if(t===act||t.closest('.close'))$('#layer').innerHTML='';break;
+  }
+});
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  if($('#top').innerHTML||document.querySelector('.layer-menu')||$('#layer').innerHTML){closeLayer();document.querySelectorAll('.layer-menu').forEach(m=>m.remove())}
+  else if($('#ipad').classList.contains('reading'))closeBook();
+});
+renderAll();
+</script>
+</body></html>

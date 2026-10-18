@@ -959,6 +959,15 @@ struct MacRootView: View {
                 }
 
                 Button {
+                    dashboardToolbarActions.courtVoice()
+                } label: {
+                    Label("Voz de Pista", systemImage: "waveform.badge.mic")
+                }
+                .disabled(!dashboardToolbarActions.canRunActions)
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .help("Captura manos libres por voz (⇧⌘M)")
+
+                Button {
                     dashboardToolbarActions.passList()
                 } label: {
                     Label("Pasar lista", systemImage: "checkmark.circle")
@@ -968,6 +977,13 @@ struct MacRootView: View {
                 .help("Pasar lista para la clase activa")
 
                 Menu {
+                    Button {
+                        dashboardToolbarActions.courtVoice()
+                    } label: {
+                        Label("Voz de Pista", systemImage: "waveform.badge.mic")
+                    }
+                    .disabled(!dashboardToolbarActions.canRunActions)
+
                     Button {
                         dashboardToolbarActions.observation()
                     } label: {

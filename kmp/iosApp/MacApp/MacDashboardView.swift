@@ -7,6 +7,7 @@ struct MacDashboardToolbarActions {
     let refresh: () -> Void
     let passList: () -> Void
     let observation: () -> Void
+    let courtVoice: () -> Void
     var snapshot: DashboardSnapshot? = nil
     var syncPill: DashboardSyncPill? = nil
 }
@@ -402,10 +403,11 @@ struct MacDashboardView: View {
     private func syncToolbarActions() {
         onToolbarActionsChange(
             MacDashboardToolbarActions(
-                canRunActions: activeContext?.classId != nil,
+                canRunActions: !dashboardStore.classes.isEmpty,
                 refresh: { retryLoad() },
-                passList: { onNavigate(.attendance(classId: activeContext?.classId?.int64Value)) },
-                observation: { activeSheet = .observation(classId: activeContext?.classId?.int64Value) },
+                passList: { onNavigate(.attendance(classId: activeClassId)) },
+                observation: { activeSheet = .observation(classId: activeClassId) },
+                courtVoice: { activeSheet = .courtVoice(classId: activeClassId) },
                 snapshot: snapshot,
                 syncPill: syncPill
             )

@@ -76,6 +76,7 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
     case duaAdaptation
     case plannerSequence
     case metacognitionPrompts
+    case courtVoiceCapture
 
     var id: String { rawValue }
 
@@ -85,7 +86,7 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
             return .evaluator
         case .tutorMeetingSummary, .earlyWarning, .weeklyStudentEmail, .duaAdaptation:
             return .tutor
-        case .physicalProgressAnalysis:
+        case .physicalProgressAnalysis, .courtVoiceCapture:
             return .physicalEducation
         }
     }
@@ -112,6 +113,8 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
             return "Secuencia didáctica"
         case .metacognitionPrompts:
             return "Metacognición y coevaluación"
+        case .courtVoiceCapture:
+            return "Voz de Pista"
         }
     }
 
@@ -137,6 +140,8 @@ enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
             return "Estructura fases y actividades para el módulo de planificación."
         case .metacognitionPrompts:
             return "Formula preguntas de autorreflexión y evaluación formativa entre iguales."
+        case .courtVoiceCapture:
+            return "Convierte notas de voz en pista en acciones revisables de asistencia, actitud, notas y lesiones."
         }
     }
 }
@@ -149,6 +154,7 @@ enum EducationalIntelligenceAgentInput {
     case dua(DUAAdaptationInput)
     case planner(PlannerSequenceInput)
     case metacognition(MetacognitionPromptsInput)
+    case courtVoice(CourtVoiceCaptureInput)
 }
 
 enum EducationalIntelligenceAgentError: LocalizedError {
@@ -183,6 +189,7 @@ enum AppleAIRequest {
     case duaAdaptation(DUAAdaptationInput)
     case plannerSequence(PlannerSequenceInput)
     case metacognitionPrompts(MetacognitionPromptsInput)
+    case courtVoiceCapture(CourtVoiceCaptureInput)
 }
 
 enum AppleAIResult {
@@ -203,6 +210,7 @@ enum AppleAIResult {
     case duaAdaptation(DUAAdaptationDraft)
     case plannerSequence(PlannerSequenceDraft)
     case metacognitionPrompts(MetacognitionPromptsDraft)
+    case courtVoiceCapture(CourtVoiceCaptureDraft)
 }
 
 struct AppleAIGeneration {
@@ -219,6 +227,7 @@ final class AppleAIOrchestrator {
     private let formulas = AppleFoundationFormulaService()
     private let studentEmails = AppleFoundationStudentEmailService()
     private let pedagogical = AppleFoundationPedagogicalService()
+    private let courtVoice = AppleFoundationCourtVoiceService()
 
     func availability() -> AppleAIAvailability {
         let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: true)
@@ -257,6 +266,7 @@ final class AppleAIOrchestrator {
             studentInsights.prewarm()
             studentEmails.prewarm()
             pedagogical.prewarm()
+            courtVoice.prewarm()
         }
     }
 
@@ -296,6 +306,8 @@ final class AppleAIOrchestrator {
             return .plannerSequence(try await pedagogical.generatePlannerSequence(from: input))
         case let .metacognitionPrompts(input):
             return .metacognitionPrompts(try await pedagogical.generateMetacognitionPrompts(from: input))
+        case let .courtVoiceCapture(input):
+            return .courtVoiceCapture(await courtVoice.parseVoiceCapture(from: input))
         }
     }
 
@@ -320,6 +332,8 @@ final class AppleAIOrchestrator {
             return try await generate(.metacognitionPrompts(input))
         case (.physicalEducation, .physical(let evidence)):
             return try await generate(.physicalProgressAnalysis(evidence))
+        case (.physicalEducation, .courtVoice(let input)):
+            return try await generate(.courtVoiceCapture(input))
         default:
             throw EducationalIntelligenceAgentError.unsupportedInput(agent)
         }
@@ -348,6 +362,8 @@ final class AppleAIOrchestrator {
             return try await generate(.plannerSequence(input))
         case (.metacognitionPrompts, .metacognition(let input)):
             return try await generate(.metacognitionPrompts(input))
+        case (.courtVoiceCapture, .courtVoice(let input)):
+            return try await generate(.courtVoiceCapture(input))
         default:
             throw EducationalIntelligenceAgentError.unsupportedCapability(capability)
         }
@@ -452,6 +468,8 @@ final class AppleAIOrchestrator {
         case .plannerSequence(let draft):
             return draft.appearsToBeRulesFallback
         case .metacognitionPrompts(let draft):
+            return draft.appearsToBeRulesFallback
+        case .courtVoiceCapture(let draft):
             return draft.appearsToBeRulesFallback
         }
     }

@@ -136,6 +136,32 @@ enum AppleAIReadinessFixtures {
         confidenceNote: "Fixture de metacognición."
     )
 
+    static let courtVoiceCapture = CourtVoiceCaptureDraft(
+        rawTranscript: "Alumno Ejemplo llega 5 minutos tarde. Alumna Demo muy participativa ayudando con el material de bádminton.",
+        className: "1º Bachillerato A",
+        actions: [
+            CourtVoiceProposedAction(
+                kind: .attendance,
+                studentId: 101,
+                studentName: "Alumno Ejemplo",
+                attendanceStatus: "TARDE",
+                note: "Llega 5 minutos tarde",
+                severity: "low",
+                sourceExcerpt: "Alumno Ejemplo llega 5 minutos tarde"
+            ),
+            CourtVoiceProposedAction(
+                kind: .observation,
+                studentId: 102,
+                studentName: "Alumna Demo",
+                note: "Muy participativa ayudando con el material de bádminton",
+                severity: "low",
+                sourceExcerpt: "Alumna Demo muy participativa ayudando con el material de bádminton"
+            )
+        ],
+        unmatchedSegments: [],
+        confidenceNote: "Fixture local de Voz de Pista."
+    )
+
     static var contractChecks: [String] {
         var checks: [String] = []
         checks.append(earlyWarning.confidence <= 1 ? "confidence.clamped.ok" : "confidence.clamped.failed")
@@ -147,6 +173,7 @@ enum AppleAIReadinessFixtures {
         checks.append(duaAdaptation.representationStrategies.count <= 3 ? "dua.strategies.limit.ok" : "dua.strategies.limit.failed")
         checks.append(plannerSequence.steps.count == 3 ? "planner.steps.ok" : "planner.steps.failed")
         checks.append(!metacognitionPrompts.exitTicketQuestion.isEmpty ? "metacognition.exitTicket.ok" : "metacognition.exitTicket.failed")
+        checks.append(courtVoiceCapture.actions.count == 2 ? "courtVoice.actions.ok" : "courtVoice.actions.failed")
         return checks
     }
 }

@@ -105,6 +105,8 @@ targets:
         INFOPLIST_KEY_CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         INFOPLIST_KEY_NSAppleEventsUsageDescription: "Mi Gestor prepara en Mail un correo por alumno con su enlace privado de entrega."
         INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "MiGestor copia los eventos del curso a un calendario Colegio de tu cuenta de Calendario, si lo activas en Ajustes."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Cuaderno Vivo usa el micrófono para dictar notas rápidas en Voz de Pista y adjuntar audios al diario de aula."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Cuaderno Vivo usa el reconocimiento de voz en el dispositivo para transcribir acciones de Voz de Pista."
         FRAMEWORK_SEARCH_PATHS:
           - "$(inherited)"
           - "$(SRCROOT)/Frameworks/macos"

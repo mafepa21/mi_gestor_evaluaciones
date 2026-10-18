@@ -673,12 +673,14 @@ enum ClassroomCaptureSheet: Identifiable {
     case quickNote
     case observation
     case injury
+    case courtVoice
 
     var id: String {
         switch self {
         case .quickNote: return "quickNote"
         case .observation: return "observation"
         case .injury: return "injury"
+        case .courtVoice: return "courtVoice"
         }
     }
 }
@@ -1129,6 +1131,9 @@ struct AppWorkspaceShell: View {
                             },
                             onObservation: {
                                 presentClassroomCapture(.observation)
+                            },
+                            onCourtVoice: {
+                                presentClassroomCapture(.courtVoice)
                             }
                         )
                     }

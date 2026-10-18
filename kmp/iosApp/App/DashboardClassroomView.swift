@@ -217,6 +217,15 @@ struct DashboardClassroomView: View {
                 .disabled(context?.classId == nil)
 
                 Button {
+                    onAction(.courtVoice)
+                } label: {
+                    Label("Voz de Pista", systemImage: DashboardNowAction.courtVoice.systemImage)
+                        .font(DashboardStyle.Typography.headline)
+                        .frame(maxWidth: singleColumn ? .infinity : nil)
+                }
+                .dashboardButtonStyle(large: true)
+
+                Button {
                     onAction(.observation)
                 } label: {
                     Label("Nueva observación", systemImage: DashboardNowAction.observation.systemImage)

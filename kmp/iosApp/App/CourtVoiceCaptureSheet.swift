@@ -480,7 +480,7 @@ struct CourtVoiceCaptureSheet: View {
                 } label: {
                     Image(systemName: action.isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.title3.weight(.bold))
-                        .foregroundStyle(action.isSelected ? action.kind.tint : .secondary)
+                        .foregroundStyle(action.isSelected ? action.kind.tint : Color.secondary)
                 }
                 .buttonStyle(.plain)
 
@@ -513,7 +513,7 @@ struct CourtVoiceCaptureSheet: View {
             // Selector de alumno (con aviso si requiere confirmación manual)
             HStack(spacing: 12) {
                 Image(systemName: action.studentId != nil ? "person.crop.circle.fill.badge.checkmark" : "person.crop.circle.badge.exclamationmark")
-                    .foregroundStyle(action.studentId != nil ? .primary : .orange)
+                    .foregroundStyle(action.studentId != nil ? Color.primary : Color.orange)
 
                 if !studentsInSelectedClass.isEmpty {
                     Picker("Alumno", selection: Binding<Int64?>(
@@ -553,7 +553,7 @@ struct CourtVoiceCaptureSheet: View {
                                     isCurrent ? option.color.opacity(0.22) : Color.secondary.opacity(0.08),
                                     in: Capsule()
                                 )
-                                .foregroundStyle(isCurrent ? option.color : .secondary)
+                                .foregroundStyle(isCurrent ? option.color : Color.secondary)
                         }
                         .buttonStyle(.plain)
                     }

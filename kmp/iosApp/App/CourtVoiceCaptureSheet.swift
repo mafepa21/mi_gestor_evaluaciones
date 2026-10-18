@@ -487,19 +487,73 @@ struct CourtVoiceCaptureSheet: View {
         .background(NotebookStyle.surface.opacity(0.65), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    // MARK: - 4. Bandeja de Confirmación de 1 Toque (Tarjetas de Acción)
+    // MARK: - 4. Bandeja de Confirmación de 1 Toque (Apple HIG: Eficiencia radical y acciones en lote)
 
     private func reviewTraySection(draft: CourtVoiceCaptureDraft) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let evalActionsCount = draft.actions.filter { $0.kind == .quickEvaluation }.count
+        return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 12) {
                 Text("Bandeja de confirmación (\(draft.actions.count))")
                     .font(.headline.weight(.bold))
+
+                if !draft.actions.isEmpty {
+                    Button(allActionsSelected ? "Desmarcar todo" : "Marcar todo") {
+                        setAllActionsSelected(!allActionsSelected)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(EvaluationDesign.accent)
+                }
 
                 Spacer()
 
                 if let metadata {
                     AppleAIStatusBadge(state: metadata.state, message: metadata.audit.provenanceLabel)
                 }
+            }
+
+            // Barra rápida de lote (Batch Bar HIG): permite fijar el mismo instrumento para todas las notas de golpe o añadir otro alumno
+            if !draft.actions.isEmpty {
+                HStack(spacing: 12) {
+                    if evalActionsCount > 1 && !evaluableColumns.isEmpty {
+                        Menu {
+                            ForEach(evaluableColumns, id: \.id) { col in
+                                Button {
+                                    applyColumnToAllEvaluations(columnId: col.id)
+                                } label: {
+                                    Label(col.title, systemImage: "tablecells")
+                                }
+                            }
+                        } label: {
+                            Label("Mismo instrumento en las \(evalActionsCount) notas", systemImage: "arrow.triangle.branch")
+                                .font(.caption.weight(.bold))
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    }
+
+                    Spacer()
+
+                    if !studentsInSelectedClass.isEmpty {
+                        Menu {
+                            ForEach(studentsInSelectedClass, id: \.id) { student in
+                                Button {
+                                    addBlankAction(for: student)
+                                } label: {
+                                    Label(student.fullName, systemImage: "person.badge.plus")
+                                }
+                            }
+                        } label: {
+                            Label("Añadir alumno", systemImage: "plus.circle.fill")
+                                .font(.caption.weight(.bold))
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(EvaluationDesign.accentSoft.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
             if draft.actions.isEmpty {
@@ -539,7 +593,8 @@ struct CourtVoiceCaptureSheet: View {
 
     private func actionRowCard(index: Int, action: CourtVoiceProposedAction) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
+            // Fila superior: Check + Selector de Alumno directo + Selector segmentado/menú de Tipo + Botón Copiar/Propagar
+            HStack(alignment: .center, spacing: 10) {
                 Button {
                     toggleActionSelection(at: index)
                 } label: {
@@ -548,35 +603,8 @@ struct CourtVoiceCaptureSheet: View {
                         .foregroundStyle(action.isSelected ? action.kind.tint : Color.secondary)
                 }
                 .buttonStyle(.plain)
+                .help(action.isSelected ? "Incluida al aplicar" : "Ignorar esta acción")
 
-                Label(action.kind.title, systemImage: action.kind.systemImage)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(action.kind.tint)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(action.kind.tint.opacity(0.12), in: Capsule())
-
-                Spacer()
-
-                // Selector rápido para cambiar el tipo de acción si el docente lo prefiere
-                Menu {
-                    ForEach(CourtVoiceActionKind.allCases) { kind in
-                        Button {
-                            updateActionKind(at: index, kind: kind)
-                        } label: {
-                            Label(kind.title, systemImage: kind.systemImage)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            // Selector de alumno (con aviso si requiere confirmación manual)
-            HStack(spacing: 12) {
                 Image(systemName: action.studentId != nil ? "person.crop.circle.fill.badge.checkmark" : "person.crop.circle.badge.exclamationmark")
                     .foregroundStyle(action.studentId != nil ? Color.primary : Color.orange)
 
@@ -593,15 +621,87 @@ struct CourtVoiceCaptureSheet: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(maxWidth: 240, alignment: .leading)
                 } else {
                     Text(action.studentName)
                         .font(.subheadline.weight(.bold))
                 }
 
-                Spacer()
+                Spacer(minLength: 4)
+
+                // Conmutador rápido de 1 clic entre Instrumento Evaluable y Observación (o cambio a cualquiera de los 4 tipos)
+                Menu {
+                    ForEach(CourtVoiceActionKind.allCases) { kind in
+                        Button {
+                            updateActionKind(at: index, kind: kind)
+                        } label: {
+                            Label(kind.title, systemImage: kind.systemImage)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: action.kind.systemImage)
+                        Text(action.kind.title)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(action.kind.tint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(action.kind.tint.opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Cambiar entre Evaluación de instrumento, Observación, Asistencia o Lesión")
+
+                // Menú HIG de eficiencia: Copiar esta misma nota/instrumento/acción a otro alumno o propagar al resto
+                Menu {
+                    if !studentsInSelectedClass.isEmpty {
+                        Menu("Clonar esta acción para otro alumno…") {
+                            ForEach(studentsInSelectedClass.filter { $0.id != action.studentId }, id: \.id) { student in
+                                Button {
+                                    duplicateAction(at: index, forStudent: student)
+                                } label: {
+                                    Text(student.fullName)
+                                }
+                            }
+                        }
+                    }
+
+                    if action.kind == .quickEvaluation {
+                        Divider()
+                        Button {
+                            propagateEvaluationSettings(from: index, copyScore: false)
+                        } label: {
+                            Label("Usar este instrumento en todas las notas", systemImage: "tablecells.badge.ellipsis")
+                        }
+
+                        Button {
+                            propagateEvaluationSettings(from: index, copyScore: true)
+                        } label: {
+                            Label("Copiar instrumento y nota a todas las evaluaciones", systemImage: "doc.on.doc.fill")
+                        }
+                    }
+
+                    Divider()
+                    Button(role: .destructive) {
+                        removeAction(at: index)
+                    } label: {
+                        Label("Eliminar de la bandeja", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "plus.square.on.square")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(6)
+                        .background(Color.secondary.opacity(0.10), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Copiar nota/instrumento a otro alumno o aplicar al resto")
             }
 
-            // Controles específicos según el tipo de acción
+            // Controles específicos según el tipo de acción (diseño compacto HIG)
             switch action.kind {
             case .attendance:
                 HStack(spacing: 8) {
@@ -625,33 +725,73 @@ struct CourtVoiceCaptureSheet: View {
                 }
 
             case .quickEvaluation:
-                HStack(spacing: 12) {
-                    HStack(spacing: 6) {
-                        Text("Nota:")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                        TextField("0-10", value: Binding<Double>(
-                            get: { action.score ?? 7.0 },
-                            set: { updateScore(at: index, score: $0) }
-                        ), format: .number.precision(.fractionLength(0...1)))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 68)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        if !evaluableColumns.isEmpty {
+                            HStack(spacing: 6) {
+                                Image(systemName: "tablecells")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(EvaluationDesign.accent)
+                                Picker("Instrumento", selection: Binding<String?>(
+                                    get: { action.columnId ?? evaluableColumns.first?.id },
+                                    set: { updateColumn(at: index, columnId: $0) }
+                                )) {
+                                    ForEach(evaluableColumns, id: \.id) { col in
+                                        Text(col.title).tag(Optional(col.id))
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                            }
+                        } else {
+                            Text("Evaluación rápida de sesión")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 6) {
+                            Text("Nota:")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                            TextField("0-10", value: Binding<Double>(
+                                get: { action.score ?? 7.5 },
+                                set: { updateScore(at: index, score: $0) }
+                            ), format: .number.precision(.fractionLength(0...1)))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+
+                            Stepper("", value: Binding<Double>(
+                                get: { action.score ?? 7.5 },
+                                set: { updateScore(at: index, score: $0) }
+                            ), in: 0...10, step: 0.5)
+                            .labelsHidden()
+                        }
                     }
 
-                    if !evaluableColumns.isEmpty {
-                        Picker("Columna", selection: Binding<String?>(
-                            get: { action.columnId ?? evaluableColumns.first?.id },
-                            set: { updateColumn(at: index, columnId: $0) }
-                        )) {
-                            ForEach(evaluableColumns, id: \.id) { col in
-                                Text(col.title).tag(Optional(col.id))
-                            }
-                        }
-                        .pickerStyle(.menu)
-                    } else {
-                        Text("Se guardará como acción rápida de evaluación")
-                            .font(.caption)
+                    // Píldoras rápidas LOMLOE / Notas frecuentes para cambiar con 1 toque sin usar el teclado
+                    HStack(spacing: 6) {
+                        Text("Rápido:")
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
+                        ForEach([("Insuf. 4", 4.0), ("Suf. 6", 6.0), ("Bien 7", 7.0), ("Not. 8", 8.0), ("Sob. 9.5", 9.5), ("10", 10.0)], id: \.0) { label, preset in
+                            let isSelectedPreset = abs((action.score ?? -1) - preset) < 0.05
+                            Button {
+                                updateScore(at: index, score: preset)
+                            } label: {
+                                Text(label)
+                                    .font(.caption2.weight(.bold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        isSelectedPreset ? action.kind.tint.opacity(0.22) : Color.secondary.opacity(0.08),
+                                        in: Capsule()
+                                    )
+                                    .foregroundStyle(isSelectedPreset ? action.kind.tint : Color.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
 
@@ -671,7 +811,7 @@ struct CourtVoiceCaptureSheet: View {
                 EmptyView()
             }
 
-            TextField("Nota o detalle", text: Binding<String>(
+            TextField("Detalle u observación (opcional)", text: Binding<String>(
                 get: { action.note },
                 set: { updateNote(at: index, note: $0) }
             ))
@@ -983,6 +1123,81 @@ struct CourtVoiceCaptureSheet: View {
         }
     }
 
+    private var allActionsSelected: Bool {
+        guard let actions = draft?.actions, !actions.isEmpty else { return false }
+        return actions.allSatisfy(\.isSelected)
+    }
+
+    private func setAllActionsSelected(_ isSelected: Bool) {
+        guard let count = draft?.actions.count else { return }
+        for idx in 0..<count {
+            draft?.actions[idx].isSelected = isSelected
+        }
+    }
+
+    private func applyColumnToAllEvaluations(columnId: String) {
+        guard let count = draft?.actions.count else { return }
+        let title = evaluableColumns.first(where: { $0.id == columnId })?.title
+        for idx in 0..<count where draft?.actions[idx].kind == .quickEvaluation {
+            draft?.actions[idx].columnId = columnId
+            draft?.actions[idx].columnTitle = title
+        }
+    }
+
+    private func addBlankAction(for student: Student) {
+        let defaultCol = evaluableColumns.first
+        let newAction = CourtVoiceProposedAction(
+            isSelected: true,
+            kind: .quickEvaluation,
+            studentId: student.id,
+            studentName: student.fullName,
+            note: "",
+            severity: "low",
+            score: 8.0,
+            columnId: defaultCol?.id,
+            columnTitle: defaultCol?.title,
+            sourceExcerpt: "Añadido manualmente en bandeja"
+        )
+        draft?.actions.append(newAction)
+    }
+
+    private func duplicateAction(at index: Int, forStudent student: Student) {
+        guard let source = draft?.actions[safe: index] else { return }
+        let cloned = CourtVoiceProposedAction(
+            isSelected: true,
+            kind: source.kind,
+            studentId: student.id,
+            studentName: student.fullName,
+            attendanceStatus: source.attendanceStatus,
+            note: source.note,
+            severity: source.severity,
+            score: source.score,
+            columnId: source.columnId,
+            columnTitle: source.columnTitle,
+            markInjured: source.markInjured,
+            sourceExcerpt: source.sourceExcerpt
+        )
+        let insertIndex = min((draft?.actions.count ?? 0), index + 1)
+        draft?.actions.insert(cloned, at: insertIndex)
+    }
+
+    private func propagateEvaluationSettings(from index: Int, copyScore: Bool) {
+        guard let source = draft?.actions[safe: index],
+              let count = draft?.actions.count else { return }
+        for idx in 0..<count where idx != index && draft?.actions[idx].kind == .quickEvaluation {
+            draft?.actions[idx].columnId = source.columnId
+            draft?.actions[idx].columnTitle = source.columnTitle
+            if copyScore, let score = source.score {
+                draft?.actions[idx].score = score
+            }
+        }
+    }
+
+    private func removeAction(at index: Int) {
+        guard draft?.actions.indices.contains(index) == true else { return }
+        draft?.actions.remove(at: index)
+    }
+
     private func updateAttendanceStatus(at index: Int, status: String) {
         guard draft?.actions.indices.contains(index) == true else { return }
         draft?.actions[index].attendanceStatus = status
@@ -1007,5 +1222,11 @@ struct CourtVoiceCaptureSheet: View {
     private func updateNote(at index: Int, note: String) {
         guard draft?.actions.indices.contains(index) == true else { return }
         draft?.actions[index].note = note
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }

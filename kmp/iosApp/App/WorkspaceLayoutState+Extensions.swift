@@ -91,19 +91,26 @@ extension AppWorkspaceShell {
 
     @ViewBuilder
     func classroomCaptureSheetView(_ sheet: ClassroomCaptureSheet) -> some View {
-        ClassroomCaptureSheetView(
-            kind: sheet,
-            students: classroomCaptureStudents,
-            selectedStudentId: $classroomCaptureStudentId,
-            noteText: $classroomCaptureText,
-            isSaving: isSavingClassroomCapture,
-            onCancel: {
-                classroomCaptureSheet = nil
-            },
-            onSave: {
-                Task { await saveClassroomCapture(sheet) }
-            }
-        )
+        if sheet == .courtVoice {
+            CourtVoiceCaptureSheet(
+                bridge: bridge,
+                initialClassId: selectedClassId
+            )
+        } else {
+            ClassroomCaptureSheetView(
+                kind: sheet,
+                students: classroomCaptureStudents,
+                selectedStudentId: $classroomCaptureStudentId,
+                noteText: $classroomCaptureText,
+                isSaving: isSavingClassroomCapture,
+                onCancel: {
+                    classroomCaptureSheet = nil
+                },
+                onSave: {
+                    Task { await saveClassroomCapture(sheet) }
+                }
+            )
+        }
     }
 
     func saveClassroomCapture(_ sheet: ClassroomCaptureSheet) async {
@@ -129,6 +136,8 @@ extension AppWorkspaceShell {
                 let current = classroomCaptureStudents.first(where: { $0.id == studentId })?.isInjured ?? false
                 try await bridge.updateStudentInjuryStatus(studentId: studentId, isInjured: !current, classId: classId)
                 bridge.status = current ? "Lesión retirada." : "Alumno marcado con lesión."
+            case .courtVoice:
+                break
             }
             classroomCaptureSheet = nil
             classroomCaptureText = ""

@@ -184,6 +184,7 @@ enum DashboardNowAction: String, Identifiable {
     case quickEvaluation
     case openPlanner
     case openJournal
+    case courtVoice
 
     var id: String { rawValue }
 
@@ -196,6 +197,7 @@ enum DashboardNowAction: String, Identifiable {
         case .quickEvaluation: return "Evaluación rápida"
         case .openPlanner: return "Abrir Planner"
         case .openJournal: return "Diario"
+        case .courtVoice: return "Voz de Pista"
         }
     }
 
@@ -208,6 +210,7 @@ enum DashboardNowAction: String, Identifiable {
         case .quickEvaluation: return "sparkles"
         case .openPlanner: return "calendar"
         case .openJournal: return "doc.text"
+        case .courtVoice: return "mic.badge.plus"
         }
     }
 }

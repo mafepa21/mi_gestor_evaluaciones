@@ -39,6 +39,7 @@ struct DashboardView: View {
     @State private var isInspectorPresented = false
     @State private var isQuickEvaluationPresented = false
     @State private var isObservationPresented = false
+    @State private var isCourtVoicePresented = false
 
     // Análisis (briefing de una frase).
     @State private var classTrends: KmpBridge.AITrendsSnapshot? = nil
@@ -134,6 +135,13 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $isObservationPresented) {
                 DashboardObservationSheet(bridge: bridge, initialClassId: dashboardActionClassId)
+                #if os(iOS)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                #endif
+            }
+            .sheet(isPresented: $isCourtVoicePresented) {
+                CourtVoiceCaptureSheet(bridge: bridge, initialClassId: dashboardActionClassId)
                 #if os(iOS)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
@@ -369,6 +377,8 @@ struct DashboardView: View {
             performQuickEvaluation()
         case .openPlanner, .openJournal:
             onOpenModule(.planner, classId, nil)
+        case .courtVoice:
+            isCourtVoicePresented = true
         }
     }
 

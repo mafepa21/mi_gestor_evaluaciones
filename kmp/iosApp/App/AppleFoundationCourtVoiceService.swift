@@ -686,6 +686,8 @@ final class AppleFoundationCourtVoiceService {
 @MainActor
 final class CourtVoiceLiveRecognizer: ObservableObject {
     @Published private(set) var isRecording = false
+    @Published private(set) var isTranscribingFile = false
+    @Published var importedFileName: String?
     @Published var transcript = ""
     @Published var statusMessage: String?
 
@@ -704,6 +706,7 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
 
     func startRecording() {
         statusMessage = nil
+        importedFileName = nil
         SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
             Task { @MainActor in
                 guard let self else { return }
@@ -724,9 +727,109 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
         recognitionTask?.cancel()
         recognitionTask = nil
         isRecording = false
+        isTranscribingFile = false
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
+    }
+
+    /// Transcribe un archivo de audio pregrabado (ej. de la app Notas de Voz de Apple: .m4a, .wav, .mp3, .caf)
+    /// y devuelve el texto transcrito para estructurarlo automáticamente.
+    func transcribeAudioFile(url: URL) async -> String? {
+        if isRecording {
+            stopRecording()
+        }
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        statusMessage = nil
+
+        let authStatus = await withCheckedContinuation { (continuation: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
+            SFSpeechRecognizer.requestAuthorization { status in
+                continuation.resume(returning: status)
+            }
+        }
+
+        guard authStatus == .authorized else {
+            statusMessage = "Activa el permiso de Reconocimiento de Voz en Ajustes para transcribir notas de voz."
+            return nil
+        }
+
+        guard let recognizer, recognizer.isAvailable else {
+            statusMessage = "El reconocedor de voz en español no está disponible ahora mismo."
+            return nil
+        }
+
+        let hasSecurityScope = url.startAccessingSecurityScopedResource()
+        defer {
+            if hasSecurityScope {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        // Copiamos a un archivo temporal local por si el usuario seleccionó un archivo en iCloud Drive / Notas de Voz
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("court-voice-\(UUID().uuidString)-\(url.lastPathComponent)")
+        do {
+            if FileManager.default.fileExists(atPath: tempURL.path) {
+                try FileManager.default.removeItem(at: tempURL)
+            }
+            try FileManager.default.copyItem(at: url, to: tempURL)
+        } catch {
+            statusMessage = "No se pudo leer el archivo de audio seleccionado."
+            return nil
+        }
+        defer {
+            try? FileManager.default.removeItem(at: tempURL)
+        }
+
+        importedFileName = url.lastPathComponent
+        isTranscribingFile = true
+        transcript = ""
+
+        let request = SFSpeechURLRecognitionRequest(url: tempURL)
+        request.shouldReportPartialResults = true
+        if #available(iOS 17.0, macOS 14.0, *) {
+            request.addsPunctuation = true
+        }
+
+        return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+            var hasResumed = false
+            recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+                Task { @MainActor in
+                    guard let self else {
+                        if !hasResumed {
+                            hasResumed = true
+                            continuation.resume(returning: nil)
+                        }
+                        return
+                    }
+
+                    if let result {
+                        let text = result.bestTranscription.formattedString
+                        self.transcript = text
+                        if result.isFinal && !hasResumed {
+                            hasResumed = true
+                            self.isTranscribingFile = false
+                            self.recognitionTask = nil
+                            continuation.resume(returning: text)
+                        }
+                    }
+
+                    if let error, !hasResumed {
+                        hasResumed = true
+                        self.isTranscribingFile = false
+                        self.recognitionTask = nil
+                        let current = self.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !current.isEmpty {
+                            continuation.resume(returning: current)
+                        } else {
+                            self.statusMessage = "No se pudo transcribir el audio (\(error.localizedDescription))."
+                            continuation.resume(returning: nil)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func beginSession() {

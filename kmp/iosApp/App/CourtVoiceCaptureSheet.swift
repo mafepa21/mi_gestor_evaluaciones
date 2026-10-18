@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import MiGestorKit
 
 #if canImport(AppIntents)
@@ -97,6 +98,8 @@ struct CourtVoiceCaptureSheet: View {
     @State private var metadata: AppleAIGenerationMetadata?
     @State private var isAnalyzing = false
     @State private var isApplying = false
+    @State private var isAudioImporterPresented = false
+    @State private var isAudioDropTargeted = false
     @State private var feedbackBanner: (message: String, isError: Bool)?
     @State private var pendingInbox: [PendingCourtVoiceNote] = []
 
@@ -201,6 +204,22 @@ struct CourtVoiceCaptureSheet: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         #endif
+        .fileImporter(
+            isPresented: $isAudioImporterPresented,
+            allowedContentTypes: [.audio, .mpeg4Audio, .wav, .mp3, .aiff],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                Task { await handleImportedAudioFile(url: url) }
+            case .failure(let error):
+                feedbackBanner = ("No se pudo abrir el audio: \(error.localizedDescription)", true)
+            }
+        }
+        .onDrop(of: [.fileURL, .audio], isTargeted: $isAudioDropTargeted) { providers in
+            handleDroppedAudioProviders(providers)
+        }
         .onAppear {
             selectedClassId = initialClassId ?? bridge.selectedStudentsClassId ?? bridge.classes.first?.id
             pendingInbox = CourtVoiceInboxStore.loadPending()
@@ -243,7 +262,7 @@ struct CourtVoiceCaptureSheet: View {
                 Text("Captura manos libres en pista")
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.primary)
-                Text("Dicta retrasos, actitud, notas rápidas o lesiones de varios alumnos a la vez.")
+                Text("Dicta en directo o sube una grabación de Notas de Voz para estructurar tu clase con calma.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -269,7 +288,7 @@ struct CourtVoiceCaptureSheet: View {
         )
     }
 
-    // MARK: - 2. Bloque de Micrófono y Transcripción Editable
+    // MARK: - 2. Bloque de Micrófono, Subida de Audio y Transcripción Editable
 
     private var microphoneSection: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -295,6 +314,29 @@ struct CourtVoiceCaptureSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(recognizer.isRecording ? .red : EvaluationDesign.accent)
+                .disabled(recognizer.isTranscribingFile)
+
+                Button {
+                    feedbackBanner = nil
+                    isAudioImporterPresented = true
+                } label: {
+                    HStack(spacing: 8) {
+                        if recognizer.isTranscribingFile {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "waveform.badge.plus")
+                                .font(.subheadline.weight(.bold))
+                        }
+                        Text(recognizer.isTranscribingFile ? "Transcribiendo…" : "Subir nota de voz")
+                            .font(.subheadline.weight(.bold))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.bordered)
+                .disabled(recognizer.isRecording || recognizer.isTranscribingFile || isAnalyzing)
+                .help("Importa o arrastra un audio grabado con Notas de Voz (.m4a, .mp3, .wav)")
 
                 Button {
                     Task { await analyzeCurrentTranscript() }
@@ -309,12 +351,29 @@ struct CourtVoiceCaptureSheet: View {
                     .padding(.vertical, 12)
                 }
                 .buttonStyle(.bordered)
-                .disabled(effectiveTranscript.isEmpty || isAnalyzing)
+                .disabled(effectiveTranscript.isEmpty || isAnalyzing || recognizer.isTranscribingFile)
+            }
+
+            if let fileName = recognizer.importedFileName {
+                HStack(spacing: 8) {
+                    Image(systemName: "music.mic")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(EvaluationDesign.accent)
+                    Text("Audio cargado: \(fileName)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    if recognizer.isTranscribingFile {
+                        Text("· Convirtiendo voz a texto…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Transcripción de pista")
+                    Text("Transcripción de pista (puedes arrastrar aquí un archivo de Notas de Voz)")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -322,6 +381,7 @@ struct CourtVoiceCaptureSheet: View {
                         Button("Limpiar") {
                             manualTranscript = ""
                             recognizer.transcript = ""
+                            recognizer.importedFileName = nil
                             draft = nil
                             metadata = nil
                             feedbackBanner = nil
@@ -343,7 +403,12 @@ struct CourtVoiceCaptureSheet: View {
                 .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(recognizer.isRecording ? Color.red.opacity(0.45) : EvaluationDesign.border, lineWidth: 1)
+                        .stroke(
+                            isAudioDropTargeted
+                                ? EvaluationDesign.accent
+                                : (recognizer.isRecording ? Color.red.opacity(0.45) : EvaluationDesign.border),
+                            lineWidth: isAudioDropTargeted ? 2 : 1
+                        )
                 )
             }
 
@@ -687,6 +752,47 @@ struct CourtVoiceCaptureSheet: View {
     }
 
     // MARK: - Lógica de Carga, Análisis y Aplicación en Bloque
+
+    @MainActor
+    private func handleImportedAudioFile(url: URL) async {
+        feedbackBanner = nil
+        draft = nil
+        metadata = nil
+        if let transcribed = await recognizer.transcribeAudioFile(url: url),
+           !transcribed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            manualTranscript = transcribed
+            await analyzeCurrentTranscript()
+        }
+    }
+
+    private func handleDroppedAudioProviders(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first(where: {
+            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) ||
+            $0.hasItemConformingToTypeIdentifier(UTType.audio.identifier)
+        }) else {
+            return false
+        }
+
+        let targetType = provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+            ? UTType.fileURL.identifier
+            : UTType.audio.identifier
+
+        provider.loadItem(forTypeIdentifier: targetType, options: nil) { item, _ in
+            let resolvedURL: URL?
+            if let url = item as? URL {
+                resolvedURL = url
+            } else if let data = item as? Data {
+                resolvedURL = URL(dataRepresentation: data, relativeTo: nil)
+            } else {
+                resolvedURL = nil
+            }
+            guard let url = resolvedURL else { return }
+            Task { @MainActor in
+                await handleImportedAudioFile(url: url)
+            }
+        }
+        return true
+    }
 
     private func loadClassRosterAndNotebook() {
         Task { @MainActor in

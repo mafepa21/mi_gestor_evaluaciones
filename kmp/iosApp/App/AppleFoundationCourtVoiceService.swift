@@ -299,6 +299,11 @@ struct CourtVoiceProposedAction: Identifiable, Codable, Hashable, Sendable {
     var columnTitle: String?
     var columnMention: String?
     var columnCandidates: [CourtVoiceColumnCandidate]
+    /// Criterios de la rúbrica o ítems de la plantilla de `criteriaColumnId` que encajan con la frase.
+    /// En `.quickEvaluation` coincide con `columnId`; en `.observation` es la sugerencia de evaluar con ese instrumento.
+    var criterionProposals: [CourtVoiceCriterionProposal]?
+    var criteriaColumnId: String?
+    var criteriaColumnTitle: String?
     /// Para `.injury`: `true` = marcar lesionado, `false` = retirar lesión.
     var markInjured: Bool?
     /// Fragmento original del dictado que originó la acción.
@@ -359,10 +364,16 @@ struct CourtVoiceProposedAction: Identifiable, Codable, Hashable, Sendable {
     var isReadyToApply: Bool {
         guard studentId != nil else { return false }
         if kind == .quickEvaluation {
-            let hasValue = score != nil || !(formattedScaleValue?.isEmpty ?? true)
+            let hasValue = score != nil || !(formattedScaleValue?.isEmpty ?? true) || hasChosenCriteria
             return hasValue && columnId != nil
         }
         return true
+    }
+
+    /// Hay al menos un criterio valorado para el instrumento elegido.
+    var hasChosenCriteria: Bool {
+        guard let columnId, criteriaColumnId == columnId else { return false }
+        return criterionProposals?.hasChosenLevel ?? false
     }
 
     var actionSummaryLine: String {

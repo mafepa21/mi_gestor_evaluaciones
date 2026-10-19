@@ -108,6 +108,9 @@ struct CourtVoiceCaptureSheet: View {
     @State private var isAudioDropTargeted = false
     @State private var feedbackBanner: (message: String, isError: Bool)?
     @State private var pendingInbox: [PendingCourtVoiceNote] = []
+    /// Criterios de rúbricas y plantillas de las columnas visibles, por `columnId`.
+    @State private var criteriaInstruments: [String: CourtVoiceInstrumentDescriptor] = [:]
+    @State private var refiningCriteriaActionIds: Set<String> = []
 
     // MARK: Datos cargados de forma aislada para la clase seleccionada (sin mutar el Cuaderno ni mezclar allStudents)
 
@@ -833,7 +836,7 @@ struct CourtVoiceCaptureSheet: View {
                             }
                             .pickerStyle(.segmented)
                             .fixedSize()
-                        } else {
+                        } else if !showsCriteriaEditor(for: action) {
                         HStack(spacing: 6) {
                             Text(action.rawUnit.map { "Marca (\($0)):" } ?? "Valor:")
                                 .font(.caption.weight(.bold))
@@ -877,7 +880,7 @@ struct CourtVoiceCaptureSheet: View {
                     }
 
                     // Píldoras rápidas LOMLOE / Notas frecuentes para asignar o cambiar con 1 toque
-                    if !isStructuredColumn(action.columnId) {
+                    if !isStructuredColumn(action.columnId) && !showsCriteriaEditor(for: action) {
                     HStack(spacing: 6) {
                         Text("Rápido:")
                             .font(.caption2.weight(.semibold))
@@ -901,6 +904,16 @@ struct CourtVoiceCaptureSheet: View {
                         }
                     }
                     }
+
+                    if showsCriteriaEditor(for: action), let proposals = action.criterionProposals {
+                        CourtVoiceCriteriaEditor(
+                            proposals: proposals,
+                            isLoading: refiningCriteriaActionIds.contains(action.id),
+                            onChoose: { criterionId, levelId in
+                                chooseCriterionLevel(actionId: action.id, criterionId: criterionId, levelId: levelId)
+                            }
+                        )
+                    }
                 }
 
             case .injury:
@@ -916,7 +929,22 @@ struct CourtVoiceCaptureSheet: View {
                 .toggleStyle(.switch)
 
             case .observation:
-                EmptyView()
+                if let proposals = action.criterionProposals, let title = action.criteriaColumnTitle {
+                    let count = proposals.filter(\.isMentioned).count
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) {
+                            criteriaSuggestionLabel(count: count, title: title)
+                            Spacer(minLength: 8)
+                            criteriaSuggestionButtons(index: index)
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            criteriaSuggestionLabel(count: count, title: title)
+                            HStack(spacing: 12) { criteriaSuggestionButtons(index: index) }
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
             }
 
             TextField("Detalle u observación (opcional)", text: Binding<String>(
@@ -1060,6 +1088,7 @@ struct CourtVoiceCaptureSheet: View {
             loadedStudents = []
             loadedColumns = []
             sessionTitleHint = nil
+            criteriaInstruments = [:]
             return
         }
 
@@ -1072,6 +1101,7 @@ struct CourtVoiceCaptureSheet: View {
 
         loadedStudents = students
         loadedColumns = columns
+        criteriaInstruments = await CourtVoiceInstrumentLoader.load(bridge: bridge, classId: classId, columns: evaluableColumns)
         sessionTitleHint = context?.sessionTitle.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
 
         let studentDescriptors = buildStudentDescriptors()
@@ -1153,13 +1183,46 @@ struct CourtVoiceCaptureSheet: View {
                 ]
             )
             if case .courtVoiceCapture(let parsedDraft) = generation.result {
-                draft = parsedDraft
+                draft = CourtVoiceCriteriaMatcher.attachSuggestions(to: parsedDraft, instruments: criteriaInstruments)
                 metadata = generation.metadata
             }
         } catch {
             orchestrator.recordFailure(error)
             let fallbackService = AppleFoundationCourtVoiceService()
-            draft = fallbackService.parseWithRulesFallback(from: input, reason: "Estructurado con motor de reglas locales.")
+            let fallback = fallbackService.parseWithRulesFallback(from: input, reason: "Estructurado con motor de reglas locales.")
+            draft = CourtVoiceCriteriaMatcher.attachSuggestions(to: fallback, instruments: criteriaInstruments)
+        }
+        await refineCriteriaWithModel()
+    }
+
+    /// Las reglas ya han rellenado la bandeja; Apple Intelligence afina criterios y niveles sin pisar lo que el docente tocó.
+    @MainActor
+    private func refineCriteriaWithModel() async {
+        guard CourtVoiceCriteriaModelRefiner.isAvailable, let actions = draft?.actions else { return }
+        let targets = actions.filter { $0.criterionProposals != nil && ($0.kind == .quickEvaluation || $0.kind == .observation) }.prefix(8)
+        guard !targets.isEmpty else { return }
+        refiningCriteriaActionIds = Set(targets.map(\.id))
+        defer { refiningCriteriaActionIds = [] }
+        for target in targets {
+            guard let proposals = target.criterionProposals else { continue }
+            let refined = await CourtVoiceCriteriaModelRefiner.refine(
+                text: CourtVoiceCriteriaMatcher.evidenceText(for: target),
+                proposals: proposals
+            )
+            guard let index = draft?.actions.firstIndex(where: { $0.id == target.id }),
+                  draft?.actions[index].criteriaColumnId == target.criteriaColumnId,
+                  let current = draft?.actions[index].criterionProposals else { continue }
+            // Si el docente cambió algo mientras tanto, se respeta su elección criterio a criterio.
+            let merged = refined.map { candidate -> CourtVoiceCriterionProposal in
+                guard let live = current.first(where: { $0.id == candidate.id }) else { return candidate }
+                return live.chosenLevelId != live.suggestedLevelId ? live : candidate
+            }
+            let wasReady = draft?.actions[index].isReadyToApply ?? false
+            draft?.actions[index].criterionProposals = merged
+            refiningCriteriaActionIds.remove(target.id)
+            if let updated = draft?.actions[index], !wasReady, updated.isReadyToApply {
+                draft?.actions[index].isSelected = updated.confidence >= 0.75
+            }
         }
     }
 
@@ -1284,6 +1347,12 @@ struct CourtVoiceCaptureSheet: View {
             column: descriptor
         )
 
+        // Criterios valorados en la bandeja: se guardan como evaluación de rúbrica o como respuestas de la plantilla.
+        if action.hasChosenCriteria, let proposals = action.criterionProposals, let instrument = criteriaInstruments[column.id] {
+            try await persistCriteria(proposals: proposals, instrument: instrument, note: action.note, classId: classId, studentId: studentId)
+            return
+        }
+
         // Instrumento estructurado: solo se marca el estado de entrega en el texto de la celda.
         // Nunca saveGrade: la nota real la deriva saveResponses al rellenar los indicadores.
         if column.inputKind.isStructuredInstrument {
@@ -1401,6 +1470,98 @@ struct CourtVoiceCaptureSheet: View {
         }
     }
 
+    /// Solo se escriben los criterios con nivel elegido; el resto de valoraciones existentes se conserva.
+    @MainActor
+    private func persistCriteria(
+        proposals: [CourtVoiceCriterionProposal],
+        instrument: CourtVoiceInstrumentDescriptor,
+        note: String,
+        classId: Int64,
+        studentId: Int64
+    ) async throws {
+        let chosen = proposals.filter { $0.chosenLevelId != nil }
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        switch instrument.source {
+        case .rubric(let evaluationId, _):
+            var resolvedScore: Double?
+            for proposal in chosen {
+                guard let criterionId = Int64(proposal.criterion.id),
+                      let levelIdText = proposal.chosenLevelId,
+                      let levelId = Int64(levelIdText) else { continue }
+                let score = try await bridge.container.rubricsRepository.saveRubricAssessment(
+                    studentId: studentId,
+                    evaluationId: evaluationId,
+                    criterionId: criterionId,
+                    levelId: levelId,
+                    updatedAtEpochMs: nowMs,
+                    deviceId: bridge.localDeviceId,
+                    syncVersion: 1
+                )
+                resolvedScore = score?.doubleValue ?? resolvedScore
+            }
+            let assessments = try await bridge.container.rubricsRepository.listRubricAssessments(
+                studentId: studentId,
+                evaluationId: evaluationId
+            )
+            let selections = assessments.map { "\($0.criterionId):\($0.levelId)" }.sorted().joined(separator: ",")
+            guard let score = resolvedScore ?? proposals.previewScore else {
+                throw NSError(domain: "CourtVoice", code: 422, userInfo: [NSLocalizedDescriptionKey: "No se pudo calcular la nota de \(instrument.title)."])
+            }
+            try await bridge.container.notebookRepository.upsertGrade(
+                classId: classId,
+                studentId: studentId,
+                columnId: instrument.columnId,
+                evaluationId: KotlinLong(value: evaluationId),
+                numericValue: score,
+                rubricSelections: selections.isEmpty ? nil : selections,
+                evidence: note.nilIfEmpty,
+                createdAtEpochMs: nowMs,
+                updatedAtEpochMs: nowMs,
+                deviceId: bridge.localDeviceId,
+                syncVersion: 1
+            )
+
+        case .template:
+            let existing = try await bridge.container.notebookInstrumentsRepository.listResponsesForCell(
+                classId: classId,
+                studentId: studentId,
+                columnId: instrument.columnId
+            )
+            var byItem = Dictionary(existing.map { ($0.itemId, $0) }, uniquingKeysWith: { _, last in last })
+            let trace = AuditTrace(
+                authorUserId: nil,
+                createdAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: 0),
+                updatedAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+                associatedGroupId: nil,
+                deviceId: bridge.localDeviceId,
+                syncVersion: 1
+            )
+            for proposal in chosen {
+                guard let levelId = proposal.chosenLevelId else { continue }
+                let isCheck = proposal.criterion.kind == .check
+                byItem[proposal.criterion.id] = NotebookInstrumentResponse(
+                    classId: classId,
+                    studentId: studentId,
+                    columnId: instrument.columnId,
+                    itemId: proposal.criterion.id,
+                    textValue: nil,
+                    boolValue: isCheck ? KotlinBoolean(value: levelId == CourtVoiceCriterionLevel.checkYes.id) : nil,
+                    numberValue: isCheck ? nil : Double(levelId).map { KotlinDouble(value: $0) },
+                    trace: trace
+                )
+            }
+            _ = try await bridge.container.notebookInstrumentsRepository.saveResponses(
+                classId: classId,
+                studentId: studentId,
+                columnId: instrument.columnId,
+                responses: Array(byItem.values),
+                updatedAtEpochMs: nowMs,
+                deviceId: bridge.localDeviceId,
+                syncVersion: 1
+            )
+        }
+    }
+
     // MARK: - Mutaciones locales de la bandeja y Aprendizaje de Alias
 
     private func toggleActionSelection(at index: Int) {
@@ -1459,6 +1620,7 @@ struct CourtVoiceCaptureSheet: View {
         for idx in 0..<count where draft?.actions[idx].kind == .quickEvaluation {
             draft?.actions[idx].columnId = columnId
             draft?.actions[idx].columnTitle = title
+            refreshCriteria(at: idx)
             if let updated = draft?.actions[idx], updated.isReadyToApply {
                 draft?.actions[idx].isSelected = true
             }
@@ -1510,6 +1672,12 @@ struct CourtVoiceCaptureSheet: View {
         for idx in 0..<count where idx != index && draft?.actions[idx].kind == .quickEvaluation {
             draft?.actions[idx].columnId = source.columnId
             draft?.actions[idx].columnTitle = source.columnTitle
+            if copyScore, source.hasChosenCriteria {
+                draft?.actions[idx].criterionProposals = source.criterionProposals
+                draft?.actions[idx].criteriaColumnId = source.criteriaColumnId
+            } else {
+                refreshCriteria(at: idx)
+            }
             if copyScore, let score = source.score {
                 draft?.actions[idx].score = score
                 draft?.actions[idx].formattedScaleValue = source.formattedScaleValue
@@ -1553,6 +1721,88 @@ struct CourtVoiceCaptureSheet: View {
         }
     }
 
+    private func showsCriteriaEditor(for action: CourtVoiceProposedAction) -> Bool {
+        guard let columnId = action.columnId else { return false }
+        return action.criteriaColumnId == columnId && action.criterionProposals != nil
+    }
+
+    private func criteriaSuggestionLabel(count: Int, title: String) -> some View {
+        Label {
+            Text(count == 1 ? "Encaja con 1 criterio de «\(title)»" : "Encaja con \(count) criterios de «\(title)»")
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "sparkles").foregroundStyle(.purple)
+        }
+    }
+
+    @ViewBuilder
+    private func criteriaSuggestionButtons(index: Int) -> some View {
+        Button("Ahora no") { dismissCriteriaSuggestion(at: index) }
+            .buttonStyle(.borderless)
+        Button("Evaluar con rúbrica") { convertObservationToEvaluation(at: index) }
+            .buttonStyle(.borderedProminent)
+    }
+
+    private func chooseCriterionLevel(actionId: String, criterionId: String, levelId: String?) {
+        guard let index = draft?.actions.firstIndex(where: { $0.id == actionId }),
+              let criterionIndex = draft?.actions[index].criterionProposals?.firstIndex(where: { $0.id == criterionId }) else { return }
+        draft?.actions[index].criterionProposals?[criterionIndex].chosenLevelId = levelId
+        if let updated = draft?.actions[index] {
+            draft?.actions[index].isSelected = updated.isReadyToApply
+        }
+    }
+
+    private func dismissCriteriaSuggestion(at index: Int) {
+        guard draft?.actions.indices.contains(index) == true else { return }
+        draft?.actions[index].criterionProposals = nil
+        draft?.actions[index].criteriaColumnId = nil
+        draft?.actions[index].criteriaColumnTitle = nil
+    }
+
+    /// Crea una evaluación con los criterios sugeridos justo debajo y conserva la observación.
+    private func convertObservationToEvaluation(at index: Int) {
+        guard let source = draft?.actions[index],
+              let columnId = source.criteriaColumnId,
+              let proposals = source.criterionProposals else { return }
+        var evaluation = CourtVoiceProposedAction(
+            kind: .quickEvaluation,
+            studentId: source.studentId,
+            studentName: source.studentName,
+            studentMention: source.studentMention,
+            studentCandidates: source.studentCandidates,
+            columnId: columnId,
+            columnTitle: source.criteriaColumnTitle,
+            sourceExcerpt: source.sourceExcerpt.isEmpty ? source.note : source.sourceExcerpt,
+            resolutionReason: "Evaluación creada desde la observación",
+            confidence: source.confidence
+        )
+        evaluation.criterionProposals = proposals
+        evaluation.criteriaColumnId = columnId
+        evaluation.isSelected = evaluation.isReadyToApply
+        dismissCriteriaSuggestion(at: index)
+        draft?.actions.insert(evaluation, at: index + 1)
+        #if os(iOS)
+        UIAccessibility.post(notification: .announcement, argument: "Evaluación con rúbrica añadida. Se conserva la observación.")
+        #endif
+    }
+
+    /// Recalcula los criterios cuando el docente cambia de instrumento en la tarjeta.
+    private func refreshCriteria(at index: Int) {
+        guard let action = draft?.actions[index] else { return }
+        if let columnId = action.columnId, let instrument = criteriaInstruments[columnId] {
+            draft?.actions[index].criterionProposals = CourtVoiceCriteriaMatcher.match(
+                text: CourtVoiceCriteriaMatcher.evidenceText(for: action),
+                instrument: instrument
+            )
+            draft?.actions[index].criteriaColumnId = columnId
+        } else {
+            draft?.actions[index].criterionProposals = nil
+            draft?.actions[index].criteriaColumnId = nil
+        }
+        draft?.actions[index].criteriaColumnTitle = nil
+    }
+
     private func isStructuredColumn(_ columnId: String?) -> Bool {
         guard let columnId else { return false }
         return evaluableColumns.first(where: { $0.id == columnId })?.inputKind.isStructuredInstrument ?? false
@@ -1579,6 +1829,7 @@ struct CourtVoiceCaptureSheet: View {
            !mention.isEmpty {
             CourtVoiceAliasStore.learnColumnAlias(mention: mention, columnId: columnId, classId: classId)
         }
+        refreshCriteria(at: index)
         if let colDesc = buildColumnDescriptors().first(where: { $0.id == columnId }),
            let action = draft?.actions[index] {
             // Si lo dictado fue una entrega, se reconvierte desde ella (no desde una nota) al cambiar de columna.

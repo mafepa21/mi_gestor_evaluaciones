@@ -87,6 +87,7 @@ extension NotebookModuleView {
             activeTabId: activeNotebookTabId(data: data),
             searchText: NotebookGridSearch.queryForGrid(liveText: searchText, settledText: debouncedGridSearchText),
             hiddenColumnsRevision: notebookHiddenColumnsRevision(data: data),
+            averageConfigRevision: gridLayoutModel.signatures(for: data).averageConfig,
             structuralRevision: structuralGridRevision
         )
     }

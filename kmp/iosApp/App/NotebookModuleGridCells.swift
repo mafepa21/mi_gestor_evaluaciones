@@ -576,25 +576,14 @@ extension NotebookModuleView {
     }
 
     func columnWeightBadge(for column: NotebookColumnDefinition) -> String? {
-        if !column.countsTowardAverage {
+        // El peso es el % que se guarda en «Editar media»: se muestra tal cual.
+        guard column.countsTowardAverage, column.weight > 0 else {
             return "no cuenta"
         }
-        if column.weight == 1 {
-            return nil
-        }
-        // D1: Si la columna proviene de una evaluación importada o tiene un peso
-        // asignado (0,4 para 40 % o 55 para 55 %), mostramos "55%" o "40%" en la cabecera.
-        if column.evaluationId != nil || (column.weight > 0 && column.weight != 1) {
-            let percent = (column.weight > 0 && column.weight < 1) ? column.weight * 100 : column.weight
-            let rounded = (percent * 10).rounded() / 10
-            return rounded.truncatingRemainder(dividingBy: 1) == 0
-                ? "\(Int(rounded))%"
-                : "\(String(format: "%.1f", rounded).replacingOccurrences(of: ".", with: ","))%"
-        }
-        if column.weight.truncatingRemainder(dividingBy: 1) == 0 {
-            return "×\(Int(column.weight))"
-        }
-        return "×\(IosFormatting.decimal(from: column.weight))"
+        let rounded = (column.weight * 10).rounded() / 10
+        return rounded.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(rounded))%"
+            : "\(String(format: "%.1f", rounded).replacingOccurrences(of: ".", with: ","))%"
     }
 
     func displayTint(for column: NotebookColumnDefinition) -> Color {

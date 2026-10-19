@@ -6,6 +6,8 @@ struct NotebookRenderCacheKey: Hashable {
     let activeTabId: String?
     let searchText: String
     let hiddenColumnsRevision: Int
+    /// Pesos y casillas de la media: si cambian, la cabecera debe mostrar el % nuevo.
+    let averageConfigRevision: Int
     let structuralRevision: Int
 }
 
@@ -14,6 +16,7 @@ struct NotebookDataSignatures {
     let columns: Int
     let categories: Int
     let hiddenColumns: Int
+    let averageConfig: Int
     let rows: Int
     let groups: Int
     let members: Int
@@ -49,6 +52,7 @@ final class NotebookGridLayoutModel: ObservableObject {
             columns: Self.version(sheet.columns.map { "\($0.id):\($0.order):\($0.visibility):\($0.isPinned):\($0.categoryId ?? ""):\($0.widthDp)" }),
             categories: Self.version(sheet.columnCategories.map { "\($0.id):\($0.tabId):\($0.order):\($0.isCollapsed)" }),
             hiddenColumns: Self.version(sheet.columns.map { "\($0.id):\($0.visibility):\($0.isHidden):\($0.isArchived)" }),
+            averageConfig: Self.version(sheet.columns.map { "\($0.id):\($0.weight):\($0.countsTowardAverage)" }),
             rows: Self.rowsVersion(sheet.rows),
             groups: Self.version(sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.name):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
             members: Self.version(sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" })

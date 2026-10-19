@@ -432,6 +432,13 @@ final class AppleFoundationCourtVoiceService {
                 if resolvedActions.isEmpty && !deterministic.actions.isEmpty {
                     return deterministic
                 }
+                // Si el modelo de IA extrajo muchas menos acciones con alumno que el motor determinista (ej. colapsó una enumeración de varios alumnos),
+                // preferimos o combinamos con la resolución determinista para no perder ningún alumno dictado.
+                let aiResolvedStudentCount = Set(resolvedActions.compactMap(\.studentId)).count
+                let ruleResolvedStudentCount = Set(deterministic.actions.compactMap(\.studentId)).count
+                if ruleResolvedStudentCount > aiResolvedStudentCount && deterministic.actions.count > resolvedActions.count {
+                    return deterministic
+                }
                 return CourtVoiceCaptureDraft(
                     rawTranscript: trimmed,
                     className: input.className,
@@ -464,10 +471,10 @@ final class AppleFoundationCourtVoiceService {
             2. Clasifica cada acción en uno de estos 4 tipos (`kind`):
                - `attendance`: retrasos ("llega tarde", "5 min tarde"), faltas ("no ha venido", "ausente"), justificadas, olvido de ropa/material deportivo (`SIN_MATERIAL`) o exenciones (`EXENTO`). Cuidado: "le falta técnica" o "esta tarde" NO son asistencia.
                - `injury`: lesión física hoy, esguince, molestia en tobillo/rodilla/gemelo/hombro, indisposición o alta médica ("ya está recuperado", "alta médica").
-               - `quickEvaluation`: SOLO cuando el profesor expresa intención de CALIFICAR o registrar una marca/nota/nivel en un instrumento. Si no se dice ninguna nota ni marca, deja `score` en `nil` (nunca inventes un 7.5). Si no se menciona ningún instrumento, deja `columnHint` en `nil`.
-               - `observation`: actitud, comportamiento, fair play, participación, esfuerzo, recogida de material, conflictos o anécdotas de sesión SIN pedir una calificación numérica ni nombrar una columna evaluable con nota. Ejemplo: "excelente compañero animando al equipo" es `observation`.
-            3. Si una frase o lista separada por comas menciona a varios alumnos ("Lucía un 8, Marcos un 7, Elena notable" o "Sofía y Mateo llegan tarde"), genera una acción independiente por cada alumno con su propio valor.
-            4. Si una segunda frase continúa hablando del mismo alumno sin repetir su nombre ("Lucía un 8. Además ayudó a recoger"), mantén a ese alumno como sujeto.
+               - `quickEvaluation`: cuando el profesor expresa intención de CALIFICAR, registrar una marca/nota/nivel o indicar si un alumno HA COMPLETADO / ENTREGADO o NO HA COMPLETADO una rúbrica, autoevaluación, prueba o instrumento. Si dice "ha completado / sí / entregado", pon `score = 10.0`. Si dice "no la ha completado / no entregado", pon `score = 0.0`. Si no dice ninguna nota ni estado de completitud, deja `score` en `nil`.
+               - `observation`: actitud, comportamiento, fair play, participación, esfuerzo, recogida de material, conflictos o anécdotas de sesión SIN pedir una calificación ni nombrar una columna evaluable. Ejemplo: "excelente compañero animando al equipo" es `observation`.
+            3. Si una frase o enumeración menciona a varios alumnos ("Lucía un 8, Marcos un 7", "Sofía y Mateo llegan tarde", o "Ferran ha completado la rúbrica, Ignacio también, Emma también, José también, Nerea no la ha completado"), genera UNA ACCIÓN INDEPENDIENTE POR CADA ALUMNO heredando el instrumento y el valor cuando se dice "también" o invirtiéndolo cuando se dice "tampoco / no la ha completado".
+            4. Si una segunda frase empieza por conector continuativo sin repetir el nombre ("Lucía un 8. Además ayudó a recoger"), mantén a ese alumno como sujeto.
             """
         )
     }
@@ -481,6 +488,9 @@ final class AppleFoundationCourtVoiceService {
         var lastRememberedColumn: CourtVoiceColumnDescriptor?
         var lastRememberedColumnReason: String?
         var lastRememberedStudent: CourtVoiceStudentDescriptor?
+        var lastRememberedKind: CourtVoiceActionKind?
+        var lastRememberedScore: Double?
+        var lastRememberedNote: String?
 
         return generated.map { item in
             let combinedText = "\(item.columnHint ?? "") \(item.note) \(item.sourceExcerpt)"
@@ -497,12 +507,17 @@ final class AppleFoundationCourtVoiceService {
                 lastRememberedColumnReason = colResolution.reason
             }
 
+            let isEllipticalSame = Self.isEllipticalSamePredicate(combinedText)
+            let isEllipticalNegated = Self.isEllipticalNegatedPredicate(combinedText)
+
             let resolvedKind: CourtVoiceActionKind
             let rawKindStr = item.kind.rawValue
-            if let parsed = CourtVoiceActionKind(rawValue: rawKindStr) {
-                if parsed == .quickEvaluation && item.score == nil && extractedVal == nil && colResolution.matched == nil {
+            if (isEllipticalSame || isEllipticalNegated), let rememberedKind = lastRememberedKind {
+                resolvedKind = rememberedKind
+            } else if let parsed = CourtVoiceActionKind(rawValue: rawKindStr) {
+                if parsed == .quickEvaluation && item.score == nil && extractedVal == nil && colResolution.matched == nil && lastRememberedColumn == nil {
                     resolvedKind = inferKind(from: "\(item.note) \(item.sourceExcerpt)", columns: rankedColumns)
-                } else if parsed == .observation && (item.score != nil || (extractedVal != nil && colResolution.matched != nil)) {
+                } else if parsed == .observation && (item.score != nil || ((extractedVal != nil || Self.extractCompletionScore(from: combinedText) != nil) && (colResolution.matched != nil || lastRememberedColumn != nil))) {
                     resolvedKind = .quickEvaluation
                 } else {
                     resolvedKind = parsed
@@ -551,7 +566,18 @@ final class AppleFoundationCourtVoiceService {
                 targetColumn = nil
             }
 
-            let rawScore = item.score ?? extractedVal?.numericValue
+            let completionScore = Self.extractCompletionScore(from: combinedText)
+            let rawScore: Double?
+            if isEllipticalNegated {
+                rawScore = 0.0
+            } else if let s = item.score ?? extractedVal?.numericValue ?? completionScore {
+                rawScore = s
+            } else if isEllipticalSame {
+                rawScore = lastRememberedScore
+            } else {
+                rawScore = nil
+            }
+
             let converted = Self.convertValueForColumn(
                 rawScore: rawScore,
                 rawText: "\(item.note) \(item.sourceExcerpt)",
@@ -562,7 +588,21 @@ final class AppleFoundationCourtVoiceService {
                 reasons.append("Sin calificación detectada: indica nota")
             }
 
-            let normalizedStatus = Self.normalizeAttendanceStatus(item.attendanceStatus, transcriptFragment: "\(item.note) \(item.sourceExcerpt)")
+            if resolvedKind != .observation {
+                lastRememberedKind = resolvedKind
+            }
+            if let validScore = converted.numericScore ?? rawScore {
+                lastRememberedScore = validScore
+            }
+            if !item.note.isEmpty && !isEllipticalSame {
+                lastRememberedNote = item.note
+            }
+
+            let effectiveNote = (isEllipticalSame && (item.note.count <= 12 || Self.normalized(item.note) == "tambien"))
+                ? (lastRememberedNote ?? item.note)
+                : item.note
+
+            let normalizedStatus = Self.normalizeAttendanceStatus(item.attendanceStatus, transcriptFragment: "\(effectiveNote) \(item.sourceExcerpt)")
             let isReady = effectiveStudent != nil && (resolvedKind != .quickEvaluation || (targetColumn != nil && (converted.numericScore != nil || converted.formattedText != nil)))
 
             return CourtVoiceProposedAction(
@@ -573,7 +613,7 @@ final class AppleFoundationCourtVoiceService {
                 studentMention: item.studentName,
                 studentCandidates: studentCandidates,
                 attendanceStatus: resolvedKind == .attendance ? normalizedStatus : nil,
-                note: item.note,
+                note: effectiveNote,
                 severity: item.severity,
                 score: resolvedKind == .quickEvaluation ? converted.numericScore : nil,
                 formattedScaleValue: resolvedKind == .quickEvaluation ? converted.formattedText : nil,
@@ -582,10 +622,10 @@ final class AppleFoundationCourtVoiceService {
                 columnTitle: resolvedKind == .quickEvaluation ? targetColumn?.title : nil,
                 columnMention: item.columnHint,
                 columnCandidates: colResolution.candidates,
-                markInjured: resolvedKind == .injury ? (item.markInjured ?? !Self.isInjuryRecovery(in: "\(item.note) \(item.sourceExcerpt)")) : nil,
+                markInjured: resolvedKind == .injury ? (item.markInjured ?? !Self.isInjuryRecovery(in: "\(effectiveNote) \(item.sourceExcerpt)")) : nil,
                 sourceExcerpt: item.sourceExcerpt,
                 resolutionReason: reasons.isEmpty ? nil : reasons.joined(separator: " · "),
-                confidence: min(studentRes.confidence, resolvedKind == .quickEvaluation ? colResolution.confidence : 1.0)
+                confidence: min(studentRes.confidence, resolvedKind == .quickEvaluation ? (targetColumn != nil ? max(0.75, colResolution.confidence) : 0.4) : 1.0)
             )
         }
     }
@@ -638,9 +678,14 @@ final class AppleFoundationCourtVoiceService {
         // Memoria contextual dentro de la misma nota de voz:
         // - Instrumento: SOLO se recuerda si el docente ya mencionó uno explícitamente (nunca se inventa la primera columna por defecto).
         // - Alumno: si una frase continuativa ("Además ayudó a recoger") no menciona otro nombre, hereda el último alumno único.
+        // - Predicado elíptico ("Ignacio Alemán también", "Emma Ambel también", "Nerea Cardo no la ha completado"): hereda kind, columna y nota/estado de la acción previa.
         var lastRememberedColumn: CourtVoiceColumnDescriptor? = nil
         var lastRememberedColumnReason: String? = nil
         var lastRememberedStudent: CourtVoiceStudentDescriptor? = nil
+        var lastRememberedKind: CourtVoiceActionKind? = nil
+        var lastRememberedScore: Double? = nil
+        var lastRememberedAttendanceStatus: String? = nil
+        var lastRememberedNote: String? = nil
 
         for segment in segments {
             let trimmedSegment = segment.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -658,7 +703,17 @@ final class AppleFoundationCourtVoiceService {
             }
 
             let studentMatches = Self.findAllStudentMentions(in: trimmedSegment, roster: input.students, classId: input.classId)
-            let kind = inferKind(from: trimmedSegment, columns: rankedColumns)
+            let isSameEllipsis = Self.isEllipticalSamePredicate(trimmedSegment)
+            let isNegatedEllipsis = Self.isEllipticalNegatedPredicate(trimmedSegment)
+
+            let inferredKind = inferKind(from: trimmedSegment, columns: rankedColumns, inheritedColumn: lastRememberedColumn)
+            let kind: CourtVoiceActionKind
+            if (isSameEllipsis || isNegatedEllipsis), let prevKind = lastRememberedKind {
+                kind = prevKind
+            } else {
+                kind = inferredKind
+            }
+
             let columnToUse = colResolution.matched ?? lastRememberedColumn
             let colReason = colResolution.matched != nil
                 ? colResolution.reason
@@ -666,7 +721,7 @@ final class AppleFoundationCourtVoiceService {
 
             // Si el segmento solo introduce el instrumento ("En la rúbrica de saque") sin alumno ni nota ni verbo de acción,
             // actualizamos la memoria de instrumento y pasamos al siguiente segmento sin ensuciar unmatched.
-            if studentMatches.isEmpty, colResolution.matched != nil, Self.extractValueAndUnit(from: trimmedSegment, column: colResolution.matched) == nil {
+            if studentMatches.isEmpty, colResolution.matched != nil, Self.extractValueAndUnit(from: trimmedSegment, column: colResolution.matched) == nil, Self.extractCompletionScore(from: trimmedSegment) == nil {
                 continue
             }
 
@@ -684,9 +739,13 @@ final class AppleFoundationCourtVoiceService {
                         column: columnToUse,
                         columnCandidates: colResolution.candidates,
                         columnReason: colReason,
+                        inheritedScore: isSameEllipsis ? lastRememberedScore : (isNegatedEllipsis ? 0.0 : nil),
+                        inheritedAttendance: isSameEllipsis ? lastRememberedAttendanceStatus : nil,
+                        inheritedNote: isSameEllipsis ? lastRememberedNote : nil,
                         defaultSelect: true
                     )
                     actions.append(action)
+                    updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 } else if let candidateName = Self.extractCapitalizedNameCandidate(from: trimmedSegment) {
                     let fuzzyRes = Self.resolveStudents(mention: candidateName, in: input.students, classId: input.classId)
                     if let matched = fuzzyRes.matched {
@@ -704,9 +763,13 @@ final class AppleFoundationCourtVoiceService {
                         column: columnToUse,
                         columnCandidates: colResolution.candidates,
                         columnReason: colReason,
+                        inheritedScore: isSameEllipsis ? lastRememberedScore : (isNegatedEllipsis ? 0.0 : nil),
+                        inheritedAttendance: isSameEllipsis ? lastRememberedAttendanceStatus : nil,
+                        inheritedNote: isSameEllipsis ? lastRememberedNote : nil,
                         defaultSelect: fuzzyRes.matched != nil && fuzzyRes.confidence >= 0.75
                     )
                     actions.append(action)
+                    updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 } else {
                     unmatched.append(trimmedSegment)
                 }
@@ -727,9 +790,13 @@ final class AppleFoundationCourtVoiceService {
                         column: columnToUse,
                         columnCandidates: colResolution.candidates,
                         columnReason: colReason,
+                        inheritedScore: isSameEllipsis ? lastRememberedScore : (isNegatedEllipsis ? 0.0 : nil),
+                        inheritedAttendance: isSameEllipsis ? lastRememberedAttendanceStatus : nil,
+                        inheritedNote: isSameEllipsis ? lastRememberedNote : nil,
                         defaultSelect: match.matched != nil && match.confidence >= 0.75
                     )
                     actions.append(action)
+                    updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 }
             }
         }
@@ -744,6 +811,26 @@ final class AppleFoundationCourtVoiceService {
         )
     }
 
+    private func updateRememberedActionState(
+        from action: CourtVoiceProposedAction,
+        kind: inout CourtVoiceActionKind?,
+        score: inout Double?,
+        attendance: inout String?,
+        note: inout String?,
+        isElliptical: Bool
+    ) {
+        kind = action.kind
+        if let s = action.score {
+            score = s
+        }
+        if let att = action.attendanceStatus {
+            attendance = att
+        }
+        if !isElliptical && !action.note.isEmpty {
+            note = action.note
+        }
+    }
+
     private func buildRuleAction(
         kind: CourtVoiceActionKind,
         student: CourtVoiceStudentDescriptor?,
@@ -756,17 +843,26 @@ final class AppleFoundationCourtVoiceService {
         column: CourtVoiceColumnDescriptor?,
         columnCandidates: [CourtVoiceColumnCandidate],
         columnReason: String?,
+        inheritedScore: Double? = nil,
+        inheritedAttendance: String? = nil,
+        inheritedNote: String? = nil,
         defaultSelect: Bool
     ) -> CourtVoiceProposedAction {
         var reasons: [String] = []
         if let studentReason, !studentReason.isEmpty {
             reasons.append(studentReason)
         }
-        let cleanedNote = Self.cleanObservationNote(segment, removingStudentName: student?.fullName ?? fallbackName, studentMention: studentMention)
+        let rawCleanedNote = Self.cleanObservationNote(segment, removingStudentName: student?.fullName ?? fallbackName, studentMention: studentMention)
+        let cleanedNote: String
+        if let inheritedNote, Self.isEllipticalSamePredicate(segment), rawCleanedNote.count <= 14 {
+            cleanedNote = inheritedNote
+        } else {
+            cleanedNote = rawCleanedNote
+        }
 
         switch kind {
         case .attendance:
-            let status = Self.normalizeAttendanceStatus(nil, transcriptFragment: segment)
+            let status = inheritedAttendance ?? Self.normalizeAttendanceStatus(nil, transcriptFragment: segment)
             return CourtVoiceProposedAction(
                 isSelected: defaultSelect && student != nil,
                 kind: .attendance,
@@ -799,8 +895,10 @@ final class AppleFoundationCourtVoiceService {
             )
         case .quickEvaluation:
             let extracted = Self.extractValueAndUnit(from: segment, column: column)
+            let completionScore = Self.extractCompletionScore(from: segment)
+            let effectiveRawScore = extracted?.numericValue ?? completionScore ?? inheritedScore
             let converted = Self.convertValueForColumn(
-                rawScore: extracted?.numericValue,
+                rawScore: effectiveRawScore,
                 rawText: segment,
                 unit: extracted?.unit,
                 column: column
@@ -856,7 +954,11 @@ final class AppleFoundationCourtVoiceService {
 
     // MARK: - Clasificación de Intención con Límites de Palabra y Exclusiones Semánticas
 
-    func inferKind(from text: String, columns: [CourtVoiceColumnDescriptor] = []) -> CourtVoiceActionKind {
+    func inferKind(
+        from text: String,
+        columns: [CourtVoiceColumnDescriptor] = [],
+        inheritedColumn: CourtVoiceColumnDescriptor? = nil
+    ) -> CourtVoiceActionKind {
         let lower = Self.normalized(text)
 
         // 1. Lesiones o estado físico (con límites de palabra para evitar "salta" -> "alta")
@@ -879,9 +981,10 @@ final class AppleFoundationCourtVoiceService {
             return .attendance
         }
 
-        // 3. Discriminación entre Evaluación Rápida (instrumento + nota/marca) y Observación (actitud/convivencia)
-        let matchedColumn = Self.findBestMatchingColumn(in: text, columns: columns)?.column
+        // 3. Discriminación entre Evaluación Rápida (instrumento + nota/marca/completitud) y Observación (actitud/convivencia)
+        let matchedColumn = Self.findBestMatchingColumn(in: text, columns: columns)?.column ?? inheritedColumn
         let extractedVal = Self.extractValueAndUnit(from: text, column: matchedColumn)
+        let completionScore = Self.extractCompletionScore(from: text)
 
         let pureObservationPhrases = [
             "participativ", "recogiendo", "recoger el material", "ayudando", "ayuda a",
@@ -893,14 +996,21 @@ final class AppleFoundationCourtVoiceService {
         let hasObservationSignal = pureObservationPhrases.contains(where: { lower.contains($0) })
 
         let explicitEvalWords = [
-            "nota", "ponle", "poner", "califica", "evalua", "rubrica", "instrumento",
-            "prueba", "test", "examen", "circuito", "control", "baremo", "palier", "marca"
+            "nota", "ponle", "poner", "califica", "evalua", "rubrica", "autoevaluacion", "coevaluacion",
+            "instrumento", "prueba", "test", "examen", "circuito", "control", "baremo", "palier", "marca",
+            "completado", "completada", "completo", "entregado", "entregada", "realizado", "realizada", "hecho"
         ]
         let explicitEvalPhrases = [
-            "en la columna", "tiene un", "saca un", "sacado un", "le pongo", "apuntale un"
+            "en la columna", "tiene un", "saca un", "sacado un", "le pongo", "apuntale un",
+            "ha completado", "la ha completado", "no la ha completado", "no ha completado",
+            "ha entregado", "no ha entregado"
         ]
         let hasExplicitEvalVerb = explicitEvalWords.contains(where: { Self.containsWholeWord(lower, word: $0) }) ||
             explicitEvalPhrases.contains(where: { lower.contains($0) })
+
+        if completionScore != nil && (matchedColumn != nil || hasExplicitEvalVerb) {
+            return .quickEvaluation
+        }
 
         if let extracted = extractedVal {
             // Si es un dato bruto con unidad física ("8,2 segundos en 50m", "palier 7,5") y hay columna física o palabra de prueba
@@ -920,6 +1030,47 @@ final class AppleFoundationCourtVoiceService {
         }
 
         return .observation
+    }
+
+    /// Detecta expresiones de completitud/entrega de instrumentos ("ha completado la rúbrica", "no la ha completado", "entregado", "no entregado").
+    static func extractCompletionScore(from text: String) -> Double? {
+        let lower = normalized(text)
+        let negativePhrases = [
+            "no la ha completado", "no lo ha completado", "no ha completado", "sin completar",
+            "no completado", "no completada", "no ha entregado", "no la ha entregado", "sin entregar",
+            "no entregado", "no entregada", "no la ha hecho", "no lo ha hecho", "pendiente de completar"
+        ]
+        if negativePhrases.contains(where: { lower.contains($0) }) {
+            return 0.0
+        }
+        let positivePhrases = [
+            "ha completado", "la ha completado", "lo ha completado", "completado la", "completada la",
+            "ha entregado", "la ha entregado", "lo ha entregado", "ha rellenado", "ha realizado la"
+        ]
+        if positivePhrases.contains(where: { lower.contains($0) }) {
+            return 10.0
+        }
+        return nil
+    }
+
+    /// Detecta si un segmento es una continuación elíptica afirmativa que repite la acción anterior para un nuevo alumno ("Ignacio Alemán también", "Emma Ambel igual", "y José Bautista también").
+    static func isEllipticalSamePredicate(_ text: String) -> Bool {
+        let lower = normalized(text)
+        if extractCompletionScore(from: text) != nil || extractValueAndUnit(from: text) != nil {
+            return false
+        }
+        let words = lower.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        return words.contains("tambien") || words.contains("igual") || lower.hasSuffix("lo mismo")
+    }
+
+    /// Detecta si un segmento niega el predicado anterior para un nuevo alumno ("Nerea Cardo tampoco", "Nerea Cardo no", "Nerea Cardo no la ha completado").
+    static func isEllipticalNegatedPredicate(_ text: String) -> Bool {
+        let lower = normalized(text)
+        if extractCompletionScore(from: text) == 0.0 {
+            return true
+        }
+        let words = lower.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        return words.contains("tampoco") || words.last == "no"
     }
 
     static func matchesAttendanceIntent(_ lower: String) -> Bool {
@@ -971,7 +1122,7 @@ final class AppleFoundationCourtVoiceService {
         return recoveryPhrases.contains(where: { lower.contains($0) })
     }
 
-    // MARK: - Segmentación Inteligente (Comas, Conectores y Sujeto Heredado)
+    // MARK: - Segmentación Inteligente (Comas, Conectores, Pausas y Elipsis "X también")
 
     static func splitIntoSegments(
         _ text: String,
@@ -985,14 +1136,22 @@ final class AppleFoundationCourtVoiceService {
             options: .regularExpression
         )
 
+        // IMPORTANTE:
+        // - Cortar ANTES de conectores continuativos ("además", "luego", "después"), pero
+        // - En el caso de "también" / "tampoco" pospuesto tras un alumno ("Ignacio Alemán también Emma Ambel también"),
+        //   el corte va DESPUÉS de "también" / "tampoco" si no iba precedido de punto/coma.
         let connectorReplaced = decimalProtected
             .replacingOccurrences(of: "\n", with: ";")
             .replacingOccurrences(of: ". ", with: ";")
             .replacingOccurrences(of: " por otro lado ", with: ";", options: .caseInsensitive)
             .replacingOccurrences(of: " además ", with: "; además ", options: .caseInsensitive)
-            .replacingOccurrences(of: " también ", with: "; también ", options: .caseInsensitive)
             .replacingOccurrences(of: " luego ", with: "; luego ", options: .caseInsensitive)
             .replacingOccurrences(of: " después ", with: "; después ", options: .caseInsensitive)
+            .replacingOccurrences(
+                of: "(?i)\\b(tambi[eé]n|tampoco)\\b(?=\\s+[\\p{Lu}])",
+                with: "$1;",
+                options: .regularExpression
+            )
 
         let primaryChunks = connectorReplaced
             .split(separator: ";")
@@ -1002,14 +1161,80 @@ final class AppleFoundationCourtVoiceService {
         var finalSegments: [String] = []
         for chunk in primaryChunks {
             let subChunks = splitCommaSeparatedClauseIfIndependent(chunk, roster: roster, classId: classId)
-            finalSegments.append(contentsOf: subChunks)
+            for sub in subChunks {
+                finalSegments.append(contentsOf: splitRunOnStudentClauses(sub, roster: roster, classId: classId))
+            }
         }
         return finalSegments
+    }
+
+    /// Si un bloque sin puntuación contiene una cláusula cerrada ("... ha completado la rúbrica de autoevaluación Ignacio Alemán también ...")
+    /// o "... también Nerea Cardo no la ha completado", divide justo antes del siguiente nombre de alumno cuando la primera parte ya tiene verbo/predicado propio.
+    private static func splitRunOnStudentClauses(
+        _ chunk: String,
+        roster: [CourtVoiceStudentDescriptor],
+        classId: Int64
+    ) -> [String] {
+        let trimmed = chunk.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        // Cortar tras "también" o "tampoco" cuando va seguido de cualquier alumno de la clase (incluso en minúsculas) o de otro predicado
+        let afterTambienPattern = "(?i)\\b(tambi[eé]n|tampoco)\\b\\s+(?=[\\p{L}]{3,})"
+        if let regex = try? NSRegularExpression(pattern: afterTambienPattern),
+           let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)),
+           let fullRange = Range(match.range, in: trimmed),
+           let wordRange = Range(match.range(at: 1), in: trimmed) {
+            let prefixPart = String(trimmed[..<wordRange.upperBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let suffixPart = String(trimmed[fullRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            // Solo cortamos si prefixPart ya nombra a un alumno (p. ej. "Ignacio Alemán también") y no empieza por "también"
+            let prefixNorm = normalized(prefixPart)
+            if !prefixNorm.hasPrefix("tambien") && !prefixNorm.hasPrefix("tampoco") && !suffixPart.isEmpty {
+                var pieces: [String] = [prefixPart]
+                pieces.append(contentsOf: splitRunOnStudentClauses(suffixPart, roster: roster, classId: classId))
+                return pieces
+            }
+        }
+
+        // Si el segmento tiene varios alumnos de la lista NO unidos por "y" / "e" / "ni", y entre ellos ya hay un predicado ("ha completado la rúbrica de autoevaluación Ignacio Alemán..."),
+        // separamos antes del segundo alumno.
+        guard !roster.isEmpty else { return [trimmed] }
+        let norm = normalized(trimmed)
+        var studentSpans: [(student: CourtVoiceStudentDescriptor, range: Range<String.Index>)] = []
+        for student in roster.sorted(by: { $0.fullName.count > $1.fullName.count }) {
+            let normFull = normalized(student.fullName)
+            guard normFull.count >= 4 else { continue }
+            let pattern = "(?<![\\p{L}\\p{N}])\(NSRegularExpression.escapedPattern(for: normFull))(?![\\p{L}\\p{N}])"
+            if let r = norm.range(of: pattern, options: .regularExpression) {
+                if !studentSpans.contains(where: { $0.range.overlaps(r) }) {
+                    studentSpans.append((student, r))
+                }
+            }
+        }
+        studentSpans.sort { $0.range.lowerBound < $1.range.lowerBound }
+        if studentSpans.count >= 2 {
+            let firstSpan = studentSpans[0]
+            let secondSpan = studentSpans[1]
+            let between = String(norm[firstSpan.range.upperBound..<secondSpan.range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if between != "y" && between != "e" && between != "ni" && between != "," && between.count >= 4 {
+                // Convertimos el índice de `norm` a posición aproximada por palabras en `trimmed`
+                let fullNamePattern = "(?i)(?<![\\p{L}\\p{N}])\(NSRegularExpression.escapedPattern(for: secondSpan.student.fullName))(?![\\p{L}\\p{N}])"
+                if let origRange = trimmed.range(of: fullNamePattern, options: [.regularExpression, .diacriticInsensitive, .caseInsensitive]) {
+                    let firstPart = String(trimmed[..<origRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let restPart = String(trimmed[origRange.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !firstPart.isEmpty && !restPart.isEmpty {
+                        return [firstPart] + splitRunOnStudentClauses(restPart, roster: roster, classId: classId)
+                    }
+                }
+            }
+        }
+
+        return [trimmed]
     }
 
     /// Divide por comas cuando una sub-cláusula después de la coma tiene su propio predicado/acción o su propio alumno + valor
     /// Ej.: "Lucía un 8, Marcos un 7, Elena notable" -> 3 segmentos independientes.
     /// Ej.: "Sofía y Mateo llegan tarde, Hugo muy participativo" -> 2 segmentos independientes.
+    /// Ej.: "Ferran ha completado la rúbrica, Ignacio también, Emma también" -> 3 segmentos independientes.
     /// Pero conserva enumeraciones conjuntivas: "Sofía, Mateo y Hugo llegan tarde" -> 1 solo segmento.
     private static func splitCommaSeparatedClauseIfIndependent(
         _ chunk: String,
@@ -1028,16 +1253,18 @@ final class AppleFoundationCourtVoiceService {
 
         guard parts.count > 1 else { return [chunk] }
 
-        // Una cláusula es autónoma si contiene una nota/valor, una palabra clave de acción o un verbo/predicado (más allá de un simple nombre propio)
+        // Una cláusula es autónoma si contiene una nota/valor, una palabra clave de acción, una elipsis ("también"/"tampoco") o un verbo/predicado
         func hasOwnPredicate(_ part: String) -> Bool {
             let norm = normalized(part)
             if extractValueAndUnit(from: part) != nil { return true }
+            if extractCompletionScore(from: part) != nil { return true }
+            if isEllipticalSamePredicate(part) || isEllipticalNegatedPredicate(part) { return true }
             if matchesAttendanceIntent(norm) { return true }
             let predicateHints = [
                 "tarde", "retraso", "ausente", "falta", "material", "lesion", "esguince",
                 "dolor", "molestia", "tobillo", "rodilla", "participativ", "recog", "ayud",
                 "hablando", "distraid", "aviso", "buen", "excelente", "muy ", "viene", "llega",
-                "tiene", "saca", "ponle", "nota"
+                "tiene", "saca", "ponle", "nota", "completad", "entregad", "autoevaluacion", "rubrica"
             ]
             return predicateHints.contains(where: { norm.contains($0) })
         }
@@ -1111,7 +1338,7 @@ final class AppleFoundationCourtVoiceService {
         return normalizedText.range(of: pattern, options: .regularExpression) != nil
     }
 
-    static func jaroWinklerSimilarity(_ s1: String, _ s2: String) -> Double {
+    nonisolated static func jaroWinklerSimilarity(_ s1: String, _ s2: String) -> Double {
         let a = Array(s1)
         let b = Array(s2)
         if a == b { return 1.0 }
@@ -2039,6 +2266,9 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
 
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             var hasResumed = false
+            var committedUtterances: [String] = []
+            var currentUtterance: String = ""
+
             recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
                 Task { @MainActor in
                     guard let self else {
@@ -2050,13 +2280,24 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
                     }
 
                     if let result {
-                        let text = result.bestTranscription.formattedString
-                        self.transcript = text
+                        let newText = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !newText.isEmpty {
+                            Self.mergeUtteranceUpdate(
+                                newText: newText,
+                                currentUtterance: &currentUtterance,
+                                committedUtterances: &committedUtterances
+                            )
+                            let fullTranscript = Self.joinUtterances(committed: committedUtterances, current: currentUtterance)
+                            self.transcript = fullTranscript
+                        }
+
                         if result.isFinal && !hasResumed {
                             hasResumed = true
                             self.isTranscribingFile = false
                             self.recognitionTask = nil
-                            continuation.resume(returning: text)
+                            let finalTranscript = Self.joinUtterances(committed: committedUtterances, current: currentUtterance)
+                            self.transcript = finalTranscript
+                            continuation.resume(returning: finalTranscript)
                         }
                     }
 
@@ -2064,9 +2305,11 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
                         hasResumed = true
                         self.isTranscribingFile = false
                         self.recognitionTask = nil
-                        let current = self.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !current.isEmpty {
-                            continuation.resume(returning: current)
+                        let finalTranscript = Self.joinUtterances(committed: committedUtterances, current: currentUtterance)
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !finalTranscript.isEmpty {
+                            self.transcript = finalTranscript
+                            continuation.resume(returning: finalTranscript)
                         } else {
                             self.statusMessage = "No se pudo transcribir el audio en local (\(error.localizedDescription))."
                             continuation.resume(returning: nil)
@@ -2125,17 +2368,100 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
             return
         }
 
+        var committedUtterances: [String] = []
+        var currentUtterance: String = ""
+
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor in
                 guard let self else { return }
                 if let result {
-                    self.transcript = result.bestTranscription.formattedString
+                    let newText = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !newText.isEmpty {
+                        Self.mergeUtteranceUpdate(
+                            newText: newText,
+                            currentUtterance: &currentUtterance,
+                            committedUtterances: &committedUtterances
+                        )
+                        self.transcript = Self.joinUtterances(committed: committedUtterances, current: currentUtterance)
+                    }
                 }
                 if error != nil && self.isRecording {
                     self.stopRecording()
                 }
             }
         }
+    }
+
+    /// En `requiresOnDeviceRecognition = true`, cuando el hablante hace una pausa (~0.8s), `SFSpeechRecognizer` reinicia
+    /// `bestTranscription.formattedString` desde 0 con la nueva frase en lugar de acumular todo el archivo.
+    /// Este método detecta cuándo `newText` es un nuevo enunciado tras una pausa y preserva los enunciados anteriores en `committedUtterances`.
+    nonisolated static func mergeUtteranceUpdate(
+        newText: String,
+        currentUtterance: inout String,
+        committedUtterances: inout [String]
+    ) {
+        let trimmedNew = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedNew.isEmpty else { return }
+
+        guard !currentUtterance.isEmpty else {
+            currentUtterance = trimmedNew
+            return
+        }
+
+        let normCurrent = AppleFoundationCourtVoiceService.normalized(currentUtterance)
+        let normNew = AppleFoundationCourtVoiceService.normalized(trimmedNew)
+
+        // Si es extensión de la frase actual o refinamiento del mismo comienzo, reemplazamos `currentUtterance`
+        if normNew.hasPrefix(normCurrent) || normCurrent.hasPrefix(normNew) {
+            // Pero cuidado: si `currentUtterance` ya tenía una frase larga (>= 12 caracteres) y `trimmedNew` empieza desde 1 palabra corta que casualmente no comparte el primer token, no entraría aquí.
+            currentUtterance = trimmedNew
+            return
+        }
+
+        let currentFirstToken = normCurrent.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).first.map(String.init) ?? ""
+        let newFirstToken = normNew.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).first.map(String.init) ?? ""
+
+        // Si comparten la primera palabra (o muy similar fonéticamente), es una revisión de la misma frase en curso
+        if !currentFirstToken.isEmpty && !newFirstToken.isEmpty {
+            if currentFirstToken == newFirstToken ||
+               AppleFoundationCourtVoiceService.spanishPhoneticKey(currentFirstToken) == AppleFoundationCourtVoiceService.spanishPhoneticKey(newFirstToken) ||
+               AppleFoundationCourtVoiceService.jaroWinklerSimilarity(currentFirstToken, newFirstToken) >= 0.82 {
+                currentUtterance = trimmedNew
+                return
+            }
+        }
+
+        // Si `newText` ya contiene toda la frase anterior al principio (con pequeñas variaciones de puntuación), actualizamos
+        let currentWords = normCurrent.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        let newWords = normNew.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        if currentWords.count >= 2 && newWords.count >= currentWords.count {
+            let prefixOverlap = zip(currentWords.prefix(2), newWords.prefix(2)).filter { $0 == $1 }.count
+            if prefixOverlap >= 1 {
+                currentUtterance = trimmedNew
+                return
+            }
+        }
+
+        // En caso contrario, el reconocedor on-device ha reiniciado el buffer tras una pausa de voz:
+        // consolidamos `currentUtterance` y empezamos el nuevo tramo con `trimmedNew`.
+        committedUtterances.append(currentUtterance)
+        currentUtterance = trimmedNew
+    }
+
+    nonisolated static func joinUtterances(committed: [String], current: String) -> String {
+        var all = committed.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let trimmedCurrent = current.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedCurrent.isEmpty {
+            all.append(trimmedCurrent)
+        }
+        guard !all.isEmpty else { return "" }
+        return all.enumerated().map { idx, piece in
+            let clean = piece.trimmingCharacters(in: .whitespacesAndNewlines)
+            if idx < all.count - 1, let last = clean.last, !".;:!?,".contains(last) {
+                return clean + "."
+            }
+            return clean
+        }.joined(separator: " ")
     }
 }
 

@@ -477,32 +477,61 @@ final class AppleFoundationCourtVoiceService {
                     options: AppleFoundationModelSupport.generationOptions(temperature: 0.1)
                 )
                 let resolvedActions = mapGeneratedActions(response.content.actions, input: input)
-                if resolvedActions.isEmpty && !deterministic.actions.isEmpty {
-                    return deterministic
-                }
-                // Si el modelo de IA extrajo muchas menos acciones con alumno que el motor determinista (ej. colapsó una enumeración de varios alumnos),
-                // preferimos o combinamos con la resolución determinista para no perder ningún alumno dictado.
-                let aiResolvedStudentCount = Set(resolvedActions.compactMap(\.studentId)).count
-                let ruleResolvedStudentCount = Set(deterministic.actions.compactMap(\.studentId)).count
-                if ruleResolvedStudentCount > aiResolvedStudentCount && deterministic.actions.count > resolvedActions.count {
+                guard let merged = Self.mergeWithRules(aiActions: resolvedActions, ruleActions: deterministic.actions) else {
                     return deterministic
                 }
                 return CourtVoiceCaptureDraft(
                     rawTranscript: trimmed,
                     className: input.className,
-                    actions: resolvedActions,
+                    actions: merged.actions,
                     unmatchedSegments: response.content.unmatchedSegments,
-                    confidenceNote: "Acciones extraídas con Apple Intelligence on-device. Revisa antes de confirmar.",
+                    confidenceNote: merged.addedFromRules > 0
+                        ? "Apple Intelligence on-device, completado con reglas locales (\(merged.addedFromRules)). Revisa antes de confirmar."
+                        : "Acciones extraídas con Apple Intelligence on-device. Revisa antes de confirmar.",
                     appearsToBeRulesFallback: false
                 )
             } catch {
-                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                // Un fallo de esta petición (texto largo, respuesta mal formada…) no apaga la IA para las siguientes.
+                AppleFoundationModelSupport.recordRequestFailure(error)
                 return deterministic
             }
         }
         #endif
 
         return deterministic
+    }
+
+    /// Combina la respuesta de Apple Intelligence con las reglas en vez de descartarla entera.
+    /// - Alumnos que la IA no recogió (p. ej. al resumir una enumeración): se añaden las acciones de las reglas.
+    /// - Acción de la IA sin valor aplicable cuando las reglas sí lo tienen para el mismo alumno y tipo: se usa la de las reglas.
+    /// Devuelve `nil` si la IA no devolvió nada, para usar solo las reglas.
+    static func mergeWithRules(
+        aiActions: [CourtVoiceProposedAction],
+        ruleActions: [CourtVoiceProposedAction]
+    ) -> (actions: [CourtVoiceProposedAction], addedFromRules: Int)? {
+        guard !aiActions.isEmpty else { return nil }
+        var merged = aiActions
+        var usedRuleIds = Set<String>()
+        var replaced = 0
+
+        for index in merged.indices where !merged[index].isReadyToApply {
+            let ai = merged[index]
+            guard let studentId = ai.studentId,
+                  let rule = ruleActions.first(where: {
+                      $0.studentId == studentId && $0.kind == ai.kind && $0.isReadyToApply && !usedRuleIds.contains($0.id)
+                  }) else { continue }
+            merged[index] = rule
+            usedRuleIds.insert(rule.id)
+            replaced += 1
+        }
+
+        let aiStudents = Set(aiActions.compactMap(\.studentId))
+        let missing = ruleActions.filter { rule in
+            guard let studentId = rule.studentId else { return false }
+            return !aiStudents.contains(studentId) && !usedRuleIds.contains(rule.id)
+        }
+        merged.append(contentsOf: missing)
+        return (merged, replaced + missing.count)
     }
 
     // MARK: - Mapeo de salida de Foundation Models mediante el Resolutor Determinista

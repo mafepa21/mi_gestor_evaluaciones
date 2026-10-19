@@ -546,4 +546,44 @@ final class CourtVoiceCaptureTests: XCTestCase {
         let draft = AppleFoundationCourtVoiceService().parseWithRulesFallback(from: input, reason: "Asistencia")
         XCTAssertFalse(draft.actions.contains { $0.columnId == "col_asis" })
     }
+
+    // MARK: - Combinación Apple Intelligence + reglas
+
+    func testMergeKeepsAIAndAddsStudentsItMissed() {
+        let ai = [
+            CourtVoiceProposedAction(kind: .quickEvaluation, studentId: 1, studentName: "Sofía García", score: 8, columnId: "col_saque")
+        ]
+        let rules = [
+            CourtVoiceProposedAction(kind: .quickEvaluation, studentId: 1, studentName: "Sofía García", score: 8, columnId: "col_saque"),
+            CourtVoiceProposedAction(kind: .quickEvaluation, studentId: 2, studentName: "Mateo López", score: 7, columnId: "col_saque"),
+            CourtVoiceProposedAction(kind: .attendance, studentId: 3, studentName: "Hugo Martínez", attendanceStatus: "TARDE")
+        ]
+        let merged = AppleFoundationCourtVoiceService.mergeWithRules(aiActions: ai, ruleActions: rules)
+        XCTAssertEqual(merged?.actions.map(\.studentId), [1, 2, 3])
+        XCTAssertEqual(merged?.actions.first?.id, ai[0].id, "La acción de la IA se conserva")
+        XCTAssertEqual(merged?.addedFromRules, 2)
+    }
+
+    func testMergeReplacesIncompleteAIActionWithReadyRule() {
+        let ai = [CourtVoiceProposedAction(kind: .quickEvaluation, studentId: 1, studentName: "Sofía García", columnId: "col_saque")]
+        let rule = CourtVoiceProposedAction(kind: .quickEvaluation, studentId: 1, studentName: "Sofía García", score: 6, columnId: "col_saque")
+        let merged = AppleFoundationCourtVoiceService.mergeWithRules(aiActions: ai, ruleActions: [rule])
+        XCTAssertEqual(merged?.actions.count, 1)
+        XCTAssertEqual(merged?.actions.first?.score, 6)
+        XCTAssertEqual(merged?.addedFromRules, 1)
+    }
+
+    func testMergeWithEmptyAIUsesRules() {
+        let rule = CourtVoiceProposedAction(kind: .observation, studentId: 1, studentName: "Sofía García", note: "Ayuda a recoger")
+        XCTAssertNil(AppleFoundationCourtVoiceService.mergeWithRules(aiActions: [], ruleActions: [rule]))
+    }
+
+    func testRequestScopedFailuresDoNotPauseTheModel() {
+        let tooLong = NSError(domain: "FoundationModels", code: 1, userInfo: [NSLocalizedDescriptionKey: "Exceeded context window size"])
+        let kind = AppleFoundationModelSupport.runtimeFailureKind(for: tooLong)
+        XCTAssertEqual(kind, "exceededContextWindowSize")
+        XCTAssertTrue(AppleFoundationModelSupport.requestScopedFailureKinds.contains(kind))
+        let assets = NSError(domain: "x", code: 1, userInfo: [NSLocalizedDescriptionKey: "assets unavailable"])
+        XCTAssertFalse(AppleFoundationModelSupport.requestScopedFailureKinds.contains(AppleFoundationModelSupport.runtimeFailureKind(for: assets)))
+    }
 }

@@ -358,5 +358,84 @@ final class CourtVoiceCaptureTests: XCTestCase {
         XCTAssertEqual(draft.actions[1].studentId, 6)
         XCTAssertEqual(draft.actions[1].kind, .observation)
     }
+
+    // MARK: - Regresión Audio Real: Pausas On-Device + Elipsis ("X también" / "Y no la ha completado")
+
+    func testOnDeviceUtteranceAccumulationAcrossPauses() {
+        var committed: [String] = []
+        var current: String = ""
+
+        // Simulamos cómo SFSpeechRecognizer con `requiresOnDeviceRecognition = true` emite parciales y luego reinicia `formattedString` tras cada pausa
+        let callbacks = [
+            "Ferran Abad ha completado",
+            "Ferran Abad ha completado la rúbrica de autoevaluación",
+            "Ignacio Alemán también",
+            "Emma Ambel",
+            "Emma Ambel también",
+            "José Bautista también",
+            "Nerea Cardo no la ha completado"
+        ]
+
+        for chunk in callbacks {
+            CourtVoiceLiveRecognizer.mergeUtteranceUpdate(
+                newText: chunk,
+                currentUtterance: &current,
+                committedUtterances: &committed
+            )
+        }
+
+        let full = CourtVoiceLiveRecognizer.joinUtterances(committed: committed, current: current)
+        XCTAssertTrue(full.contains("Ferran Abad ha completado la rúbrica de autoevaluación"))
+        XCTAssertTrue(full.contains("Ignacio Alemán también"))
+        XCTAssertTrue(full.contains("Emma Ambel también"))
+        XCTAssertTrue(full.contains("José Bautista también"))
+        XCTAssertTrue(full.contains("Nerea Cardo no la ha completado"))
+    }
+
+    func testEllipticalRubricCompletionList() {
+        let roster: [CourtVoiceStudentDescriptor] = [
+            .init(id: 101, firstName: "Ferran", lastName: "Abad", fullName: "Ferran Abad", isCurrentlyInjured: false),
+            .init(id: 102, firstName: "Ignacio", lastName: "Alemán", fullName: "Ignacio Alemán", isCurrentlyInjured: false),
+            .init(id: 103, firstName: "Emma", lastName: "Ambel", fullName: "Emma Ambel", isCurrentlyInjured: false),
+            .init(id: 104, firstName: "José", lastName: "Bautista", fullName: "José Bautista", isCurrentlyInjured: false),
+            .init(id: 105, firstName: "Nerea", lastName: "Cardo", fullName: "Nerea Cardo", isCurrentlyInjured: false)
+        ]
+        let columns: [CourtVoiceColumnDescriptor] = [
+            .init(id: "col_autoeval", title: "Rúbrica de autoevaluación", evaluationId: 1, columnType: "CHECK", inputKind: "YES_NO", scaleKind: .yesNo)
+        ]
+
+        let service = AppleFoundationCourtVoiceService()
+        let input = CourtVoiceCaptureInput(
+            transcript: "Ferran Abad ha completado la rúbrica de autoevaluación. Ignacio Alemán también. Emma Ambel también. José Bautista también. Nerea Cardo no la ha completado",
+            classId: 200,
+            className: "1º BAC A",
+            students: roster,
+            evaluableColumns: columns
+        )
+
+        let draft = service.parseWithRulesFallback(from: input, reason: "Audio real autoevaluación")
+        XCTAssertEqual(draft.actions.count, 5, "Debe generar una acción para cada uno de los 5 alumnos")
+
+        for i in 0..<4 {
+            XCTAssertEqual(draft.actions[i].kind, .quickEvaluation)
+            XCTAssertEqual(draft.actions[i].columnId, "col_autoeval")
+            XCTAssertEqual(draft.actions[i].score, 10.0)
+            XCTAssertEqual(draft.actions[i].formattedScaleValue, "true")
+            XCTAssertTrue(draft.actions[i].isSelected)
+        }
+
+        XCTAssertEqual(draft.actions[0].studentId, 101)
+        XCTAssertEqual(draft.actions[1].studentId, 102)
+        XCTAssertEqual(draft.actions[2].studentId, 103)
+        XCTAssertEqual(draft.actions[3].studentId, 104)
+
+        // Nerea Cardo: no la ha completado -> score 0.0 / false en la misma columna heredada
+        XCTAssertEqual(draft.actions[4].studentId, 105)
+        XCTAssertEqual(draft.actions[4].kind, .quickEvaluation)
+        XCTAssertEqual(draft.actions[4].columnId, "col_autoeval")
+        XCTAssertEqual(draft.actions[4].score, 0.0)
+        XCTAssertEqual(draft.actions[4].formattedScaleValue, "false")
+        XCTAssertTrue(draft.actions[4].isSelected)
+    }
 }
 

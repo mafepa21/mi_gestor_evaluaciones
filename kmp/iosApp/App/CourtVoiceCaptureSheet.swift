@@ -94,6 +94,12 @@ struct CourtVoiceCaptureSheet: View {
 
     @State private var selectedClassId: Int64?
     @State private var manualTranscript: String = ""
+    @State private var captureDate: Date = .now
+    @State private var activePendingNoteId: String?
+    @State private var loadedStudents: [Student] = []
+    @State private var loadedColumns: [NotebookColumnDefinition] = []
+    @State private var sessionTitleHint: String?
+    @State private var isLoadingClassContext = false
     @State private var draft: CourtVoiceCaptureDraft?
     @State private var metadata: AppleAIGenerationMetadata?
     @State private var isAnalyzing = false
@@ -103,38 +109,39 @@ struct CourtVoiceCaptureSheet: View {
     @State private var feedbackBanner: (message: String, isError: Bool)?
     @State private var pendingInbox: [PendingCourtVoiceNote] = []
 
-    // MARK: Datos derivados del Bridge
+    // MARK: Datos cargados de forma aislada para la clase seleccionada (sin mutar el Cuaderno ni mezclar allStudents)
 
     private var activeClass: SchoolClass? {
         bridge.classes.first(where: { $0.id == selectedClassId }) ?? bridge.classes.first
     }
 
     private var studentsInSelectedClass: [Student] {
-        if !bridge.studentsInClass.isEmpty {
-            return bridge.studentsInClass
-        }
-        return bridge.allStudents
+        loadedStudents
     }
 
     private var evaluableColumns: [NotebookColumnDefinition] {
-        guard let data = bridge.notebookState as? NotebookUiStateData else { return [] }
-        return data.sheet.columns.filter { col in
-            col.evaluationId != nil && col.type != .calculated
+        loadedColumns.filter { col in
+            col.type != .calculated &&
+            !col.isLocked &&
+            !col.isHidden &&
+            col.visibility == .visible
         }
     }
 
+    /// Da prioridad siempre a lo que el docente ha escrito o corregido en el campo de texto (`manualTranscript`),
+    /// usando `recognizer.transcript` únicamente mientras está grabando en vivo y el campo manual está vacío.
     private var effectiveTranscript: String {
-        let live = recognizer.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !live.isEmpty { return live }
-        return manualTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let manual = manualTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !manual.isEmpty { return manual }
+        return recognizer.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var selectedActionsCount: Int {
-        draft?.actions.filter { $0.isSelected && $0.studentId != nil }.count ?? 0
+        draft?.actions.filter { $0.isSelected && $0.isReadyToApply }.count ?? 0
     }
 
     private var canApply: Bool {
-        selectedClassId != nil && selectedActionsCount > 0 && !isApplying && !isAnalyzing
+        selectedClassId != nil && selectedActionsCount > 0 && !isApplying && !isAnalyzing && !isLoadingClassContext
     }
 
     var body: some View {
@@ -148,7 +155,7 @@ struct CourtVoiceCaptureSheet: View {
                         pendingInboxSection
                     }
 
-                    if isAnalyzing {
+                    if isAnalyzing || isLoadingClassContext {
                         analyzingStateView
                     } else if let draft {
                         reviewTraySection(draft: draft)
@@ -221,17 +228,25 @@ struct CourtVoiceCaptureSheet: View {
             handleDroppedAudioProviders(providers)
         }
         .onAppear {
-            selectedClassId = initialClassId ?? bridge.selectedStudentsClassId ?? bridge.classes.first?.id
             pendingInbox = CourtVoiceInboxStore.loadPending()
+            let initialPending = pendingInbox.first
+            selectedClassId = initialClassId
+                ?? initialPending?.classIdHint
+                ?? bridge.currentNotebookClassId
+                ?? bridge.selectedStudentsClassId
+                ?? bridge.classes.first?.id
+
             if !initialTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 manualTranscript = initialTranscript
-            } else if let firstPending = pendingInbox.first {
+            } else if let firstPending = initialPending {
                 manualTranscript = firstPending.transcript
+                captureDate = firstPending.createdAt
+                activePendingNoteId = firstPending.id
             }
-            loadClassRosterAndNotebook()
+            Task { await loadClassContextAndAnalyzeIfNeeded(shouldAutoAnalyze: true) }
         }
         .appOnChange(of: selectedClassId) { _ in
-            loadClassRosterAndNotebook()
+            Task { await loadClassContextAndAnalyzeIfNeeded(shouldAutoAnalyze: draft != nil) }
         }
         .appOnChange(of: recognizer.transcript) { newValue in
             if !newValue.isEmpty {
@@ -245,39 +260,58 @@ struct CourtVoiceCaptureSheet: View {
         }
     }
 
-    // MARK: - 1. Cabecera y selector de grupo
+    // MARK: - 1. Cabecera, selector de grupo y fecha de registro
 
     private var headerCard: some View {
-        HStack(alignment: .center, spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(recognizer.isRecording ? Color.red.opacity(0.16) : EvaluationDesign.accentSoft)
-                    .frame(width: 56, height: 56)
-                Image(systemName: recognizer.isRecording ? "waveform" : "mic.badge.plus")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(recognizer.isRecording ? Color.red : EvaluationDesign.accent)
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(recognizer.isRecording ? Color.red.opacity(0.16) : EvaluationDesign.accentSoft)
+                        .frame(width: 56, height: 56)
+                    Image(systemName: recognizer.isRecording ? "waveform" : "mic.badge.plus")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(recognizer.isRecording ? Color.red : EvaluationDesign.accent)
+                }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Captura manos libres en pista")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.primary)
-                Text("Dicta en directo o sube una grabación de Notas de Voz para estructurar tu clase con calma.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 8)
-
-            if !bridge.classes.isEmpty {
-                Picker("Grupo", selection: $selectedClassId) {
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
-                        Text("\(schoolClass.name) · \(schoolClass.course)º")
-                            .tag(Optional(schoolClass.id))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Captura manos libres en pista")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.primary)
+                    if let sessionTitleHint, !sessionTitleHint.isEmpty {
+                        Label("Sesión: \(sessionTitleHint)", systemImage: "figure.run")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(EvaluationDesign.accent)
+                    } else {
+                        Text("Dicta en directo o sube una grabación de Notas de Voz para estructurar tu clase con calma.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 8) {
+                    if !bridge.classes.isEmpty {
+                        Picker("Grupo", selection: $selectedClassId) {
+                            ForEach(bridge.classes, id: \.id) { schoolClass in
+                                Text("\(schoolClass.name) · \(schoolClass.course)º")
+                                    .tag(Optional(schoolClass.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                    }
+
+                    DatePicker(
+                        "Fecha",
+                        selection: $captureDate,
+                        displayedComponents: [.date]
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .help("Fecha en la que se registrará la asistencia o nota")
+                }
             }
         }
         .padding(16)
@@ -299,6 +333,8 @@ struct CourtVoiceCaptureSheet: View {
                         Task { await analyzeCurrentTranscript() }
                     } else {
                         feedbackBanner = nil
+                        activePendingNoteId = nil
+                        captureDate = .now
                         recognizer.startRecording()
                     }
                 } label: {
@@ -351,7 +387,7 @@ struct CourtVoiceCaptureSheet: View {
                     .padding(.vertical, 12)
                 }
                 .buttonStyle(.bordered)
-                .disabled(effectiveTranscript.isEmpty || isAnalyzing || recognizer.isTranscribingFile)
+                .disabled(effectiveTranscript.isEmpty || isAnalyzing || recognizer.isTranscribingFile || isLoadingClassContext)
             }
 
             if let fileName = recognizer.importedFileName {
@@ -373,7 +409,7 @@ struct CourtVoiceCaptureSheet: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Transcripción de pista (puedes arrastrar aquí un archivo de Notas de Voz)")
+                    Text("Transcripción de pista (puedes corregir cualquier nombre o arrastrar aquí un archivo de Notas de Voz)")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -382,6 +418,7 @@ struct CourtVoiceCaptureSheet: View {
                             manualTranscript = ""
                             recognizer.transcript = ""
                             recognizer.importedFileName = nil
+                            activePendingNoteId = nil
                             draft = nil
                             metadata = nil
                             feedbackBanner = nil
@@ -453,6 +490,7 @@ struct CourtVoiceCaptureSheet: View {
                 Button("Vaciar") {
                     CourtVoiceInboxStore.clearAll()
                     pendingInbox = []
+                    activePendingNoteId = nil
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.plain)
@@ -465,15 +503,19 @@ struct CourtVoiceCaptureSheet: View {
                         Text(item.transcript)
                             .font(.subheadline)
                             .lineLimit(2)
-                        Text(item.createdAt.formatted(date: .omitted, time: .shortened))
+                        Text(item.createdAt.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("Analizar") {
+                        recognizer.transcript = ""
                         manualTranscript = item.transcript
-                        CourtVoiceInboxStore.remove(id: item.id)
-                        pendingInbox = CourtVoiceInboxStore.loadPending()
+                        captureDate = item.createdAt
+                        activePendingNoteId = item.id
+                        if let hintedClass = item.classIdHint, bridge.classes.contains(where: { $0.id == hintedClass }) {
+                            selectedClassId = hintedClass
+                        }
                         Task { await analyzeCurrentTranscript() }
                     }
                     .buttonStyle(.bordered)
@@ -515,7 +557,7 @@ struct CourtVoiceCaptureSheet: View {
             // Barra rápida de lote (Batch Bar HIG): permite fijar el mismo instrumento para todas las notas de golpe o añadir otro alumno
             if !draft.actions.isEmpty {
                 HStack(spacing: 12) {
-                    if evalActionsCount > 1 && !evaluableColumns.isEmpty {
+                    if evalActionsCount > 0 && !evaluableColumns.isEmpty {
                         Menu {
                             ForEach(evaluableColumns, id: \.id) { col in
                                 Button {
@@ -525,8 +567,11 @@ struct CourtVoiceCaptureSheet: View {
                                 }
                             }
                         } label: {
-                            Label("Mismo instrumento en las \(evalActionsCount) notas", systemImage: "arrow.triangle.branch")
-                                .font(.caption.weight(.bold))
+                            Label(
+                                evalActionsCount == 1 ? "Elegir instrumento para la evaluación" : "Mismo instrumento en las \(evalActionsCount) notas",
+                                systemImage: "arrow.triangle.branch"
+                            )
+                            .font(.caption.weight(.bold))
                         }
                         .menuStyle(.borderlessButton)
                         .fixedSize()
@@ -592,18 +637,20 @@ struct CourtVoiceCaptureSheet: View {
     }
 
     private func actionRowCard(index: Int, action: CourtVoiceProposedAction) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Fila superior: Check + Selector de Alumno directo + Selector segmentado/menú de Tipo + Botón Copiar/Propagar
+        let isActionIncomplete = !action.isReadyToApply
+        return VStack(alignment: .leading, spacing: 12) {
+            // Fila superior: Check + Selector de Alumno directo + Selector de Tipo + Botón Copiar/Propagar
             HStack(alignment: .center, spacing: 10) {
                 Button {
                     toggleActionSelection(at: index)
                 } label: {
-                    Image(systemName: action.isSelected ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: (action.isSelected && action.isReadyToApply) ? "checkmark.circle.fill" : "circle")
                         .font(.title3.weight(.bold))
-                        .foregroundStyle(action.isSelected ? action.kind.tint : Color.secondary)
+                        .foregroundStyle((action.isSelected && action.isReadyToApply) ? action.kind.tint : Color.secondary)
                 }
                 .buttonStyle(.plain)
-                .help(action.isSelected ? "Incluida al aplicar" : "Ignorar esta acción")
+                .disabled(isActionIncomplete)
+                .help(isActionIncomplete ? "Completa el alumno, instrumento y nota para poder aplicar" : (action.isSelected ? "Incluida al aplicar" : "Ignorar esta acción"))
 
                 Image(systemName: action.studentId != nil ? "person.crop.circle.fill.badge.checkmark" : "person.crop.circle.badge.exclamationmark")
                     .foregroundStyle(action.studentId != nil ? Color.primary : Color.orange)
@@ -630,7 +677,7 @@ struct CourtVoiceCaptureSheet: View {
 
                 Spacer(minLength: 4)
 
-                // Conmutador rápido de 1 clic entre Instrumento Evaluable y Observación (o cambio a cualquiera de los 4 tipos)
+                // Conmutador rápido de 1 clic entre los 4 tipos de acción
                 Menu {
                     ForEach(CourtVoiceActionKind.allCases) { kind in
                         Button {
@@ -701,7 +748,35 @@ struct CourtVoiceCaptureSheet: View {
                 .help("Copiar nota/instrumento a otro alumno o aplicar al resto")
             }
 
-            // Controles específicos según el tipo de acción (diseño compacto HIG)
+            // Si hay ambigüedad de alumno (ej. dos "Lucía"), mostrar píldoras con los candidatos para resolver con 1 toque
+            if action.studentId == nil && !action.studentCandidates.isEmpty {
+                HStack(spacing: 6) {
+                    Text("¿Quién es?")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.orange)
+                    ForEach(action.studentCandidates) { cand in
+                        Button {
+                            updateActionStudent(at: index, studentId: cand.id)
+                        } label: {
+                            Text(cand.fullName)
+                                .font(.caption2.weight(.bold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.orange.opacity(0.15), in: Capsule())
+                                .foregroundStyle(.orange)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            if let reason = action.resolutionReason, !reason.isEmpty {
+                Label(reason, systemImage: isActionIncomplete ? "exclamationmark.circle" : "sparkle.magnifyingglass")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(isActionIncomplete ? Color.orange : Color.secondary)
+            }
+
+            // Controles específicos según el tipo de acción
             switch action.kind {
             case .attendance:
                 HStack(spacing: 8) {
@@ -727,56 +802,73 @@ struct CourtVoiceCaptureSheet: View {
             case .quickEvaluation:
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 12) {
-                        if !evaluableColumns.isEmpty {
-                            HStack(spacing: 6) {
-                                Image(systemName: "tablecells")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(EvaluationDesign.accent)
-                                Picker("Instrumento", selection: Binding<String?>(
-                                    get: { action.columnId ?? evaluableColumns.first?.id },
-                                    set: { updateColumn(at: index, columnId: $0) }
-                                )) {
-                                    ForEach(evaluableColumns, id: \.id) { col in
-                                        Text(col.title).tag(Optional(col.id))
-                                    }
+                        HStack(spacing: 6) {
+                            Image(systemName: "tablecells")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(action.columnId != nil ? EvaluationDesign.accent : Color.orange)
+                            Picker("Instrumento", selection: Binding<String?>(
+                                get: { action.columnId },
+                                set: { updateColumn(at: index, columnId: $0) }
+                            )) {
+                                Text("Sin instrumento, elige uno…").tag(String?.none)
+                                ForEach(evaluableColumns, id: \.id) { col in
+                                    Text(col.title).tag(Optional(col.id))
                                 }
-                                .pickerStyle(.menu)
-                                .labelsHidden()
                             }
-                        } else {
-                            Text("Evaluación rápida de sesión")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                            .pickerStyle(.menu)
+                            .labelsHidden()
                         }
 
                         Spacer()
 
                         HStack(spacing: 6) {
-                            Text("Nota:")
+                            Text(action.rawUnit.map { "Marca (\($0)):" } ?? "Valor:")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(.secondary)
-                            TextField("0-10", value: Binding<Double>(
-                                get: { action.score ?? 7.5 },
+                                .foregroundStyle(action.score != nil ? Color.secondary : Color.orange)
+                            TextField("Sin nota", value: Binding<Double?>(
+                                get: { action.score },
                                 set: { updateScore(at: index, score: $0) }
-                            ), format: .number.precision(.fractionLength(0...1)))
+                            ), format: .number.precision(.fractionLength(0...2)))
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 60)
+                            .frame(width: 68)
 
                             Stepper("", value: Binding<Double>(
-                                get: { action.score ?? 7.5 },
+                                get: { action.score ?? 5.0 },
                                 set: { updateScore(at: index, score: $0) }
-                            ), in: 0...10, step: 0.5)
+                            ), in: 0...200, step: 0.5)
                             .labelsHidden()
                         }
                     }
 
-                    // Píldoras rápidas LOMLOE / Notas frecuentes para cambiar con 1 toque sin usar el teclado
+                    // Si no se reconoció columna pero hay sugerencias, permitir elegir con 1 toque
+                    if action.columnId == nil && !action.columnCandidates.isEmpty {
+                        HStack(spacing: 6) {
+                            Text("Sugerencias:")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(action.columnCandidates) { cand in
+                                Button {
+                                    updateColumn(at: index, columnId: cand.id)
+                                } label: {
+                                    Text(cand.title)
+                                        .font(.caption2.weight(.bold))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(EvaluationDesign.accent.opacity(0.14), in: Capsule())
+                                        .foregroundStyle(EvaluationDesign.accent)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    // Píldoras rápidas LOMLOE / Notas frecuentes para asignar o cambiar con 1 toque
                     HStack(spacing: 6) {
                         Text("Rápido:")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                         ForEach([("Insuf. 4", 4.0), ("Suf. 6", 6.0), ("Bien 7", 7.0), ("Not. 8", 8.0), ("Sob. 9.5", 9.5), ("10", 10.0)], id: \.0) { label, preset in
-                            let isSelectedPreset = abs((action.score ?? -1) - preset) < 0.05
+                            let isSelectedPreset = action.score != nil && abs((action.score ?? -1) - preset) < 0.05
                             Button {
                                 updateScore(at: index, score: preset)
                             } label: {
@@ -822,7 +914,12 @@ struct CourtVoiceCaptureSheet: View {
         .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(action.isSelected ? action.kind.tint.opacity(0.35) : EvaluationDesign.border, lineWidth: 1)
+                .stroke(
+                    isActionIncomplete
+                        ? Color.orange.opacity(0.45)
+                        : (action.isSelected ? action.kind.tint.opacity(0.35) : EvaluationDesign.border),
+                    lineWidth: 1
+                )
         )
     }
 
@@ -831,7 +928,7 @@ struct CourtVoiceCaptureSheet: View {
     private var analyzingStateView: some View {
         HStack(spacing: 12) {
             ProgressView()
-            Text("Cruzando nombres con el listado de clase y preparando acciones...")
+            Text(isLoadingClassContext ? "Cargando listado e instrumentos de la clase..." : "Cruzando nombres con el listado de clase y preparando acciones...")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
@@ -851,6 +948,7 @@ struct CourtVoiceCaptureSheet: View {
 
             ForEach(sampleVoicePrompts, id: \.self) { sample in
                 Button {
+                    recognizer.transcript = ""
                     manualTranscript = sample
                     Task { await analyzeCurrentTranscript() }
                 } label: {
@@ -891,15 +989,19 @@ struct CourtVoiceCaptureSheet: View {
         ]
     }
 
-    // MARK: - Lógica de Carga, Análisis y Aplicación en Bloque
+    // MARK: - Lógica de Carga Aislada, Análisis y Aplicación en Bloque
 
     @MainActor
     private func handleImportedAudioFile(url: URL) async {
         feedbackBanner = nil
         draft = nil
         metadata = nil
+        activePendingNoteId = nil
         if let transcribed = await recognizer.transcribeAudioFile(url: url),
            !transcribed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let fileDate = recognizer.importedFileCreationDate {
+                captureDate = fileDate
+            }
             manualTranscript = transcribed
             await analyzeCurrentTranscript()
         }
@@ -934,14 +1036,65 @@ struct CourtVoiceCaptureSheet: View {
         return true
     }
 
-    private func loadClassRosterAndNotebook() {
-        Task { @MainActor in
-            guard let classId = selectedClassId else { return }
-            bridge.selectClass(id: classId)
-            await bridge.selectStudentsClass(classId: classId)
-            if !manualTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft == nil {
-                await analyzeCurrentTranscript()
-            }
+    /// Carga directamente desde los repositorios los alumnos, columnas y contexto de sesión de la clase seleccionada,
+    /// esperando a que terminen antes de analizar y SIN llamar a `bridge.selectClass` para no mutar el Cuaderno ni mezclar `allStudents`.
+    @MainActor
+    private func loadClassContextAndAnalyzeIfNeeded(shouldAutoAnalyze: Bool) async {
+        guard let classId = selectedClassId else {
+            loadedStudents = []
+            loadedColumns = []
+            sessionTitleHint = nil
+            return
+        }
+
+        isLoadingClassContext = true
+        defer { isLoadingClassContext = false }
+
+        let students = (try? await bridge.container.classesRepository.listStudentsInClass(classId: classId)) ?? []
+        let columns = (try? await bridge.container.notebookConfigRepository.listColumns(classId: classId)) ?? []
+        let context = try? await bridge.classroomCaptureContext(classId: classId, on: captureDate)
+
+        loadedStudents = students
+        loadedColumns = columns
+        sessionTitleHint = context?.sessionTitle.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+
+        let studentDescriptors = buildStudentDescriptors()
+        let columnDescriptors = buildColumnDescriptors()
+        recognizer.updateContextualVocabulary(students: studentDescriptors, columns: columnDescriptors, classId: classId)
+
+        if shouldAutoAnalyze && !effectiveTranscript.isEmpty {
+            await analyzeCurrentTranscript()
+        }
+    }
+
+    private func buildStudentDescriptors() -> [CourtVoiceStudentDescriptor] {
+        studentsInSelectedClass.map {
+            CourtVoiceStudentDescriptor(
+                id: $0.id,
+                firstName: $0.firstName,
+                lastName: $0.lastName,
+                fullName: $0.fullName,
+                isCurrentlyInjured: $0.isInjured
+            )
+        }
+    }
+
+    private func buildColumnDescriptors() -> [CourtVoiceColumnDescriptor] {
+        evaluableColumns.map { col in
+            CourtVoiceColumnDescriptor(
+                id: col.id,
+                title: col.title,
+                evaluationId: col.evaluationId?.int64Value,
+                columnType: col.type.name,
+                inputKind: col.inputKind.name,
+                scaleKind: CourtVoiceColumnScaleKind(rawValue: col.scaleKind.name) ?? .tenPoint,
+                ordinalLevels: col.ordinalLevels,
+                unitOrSituation: col.unitOrSituation,
+                dateEpochMs: col.dateEpochMs?.int64Value,
+                isLocked: col.isLocked,
+                isHiddenOrArchived: col.isHidden || col.visibility != .visible,
+                tabIds: col.tabIds
+            )
         }
     }
 
@@ -950,21 +1103,25 @@ struct CourtVoiceCaptureSheet: View {
         let text = effectiveTranscript
         guard !text.isEmpty, let classId = selectedClassId else { return }
 
+        if loadedStudents.isEmpty && loadedColumns.isEmpty {
+            await loadClassContextAndAnalyzeIfNeeded(shouldAutoAnalyze: false)
+        }
+
         isAnalyzing = true
         feedbackBanner = nil
         defer { isAnalyzing = false }
 
-        let studentDescriptors = studentsInSelectedClass.map {
-            CourtVoiceStudentDescriptor(id: $0.id, fullName: $0.fullName, isCurrentlyInjured: $0.isInjured)
-        }
-        let columnDescriptors = evaluableColumns.map {
-            CourtVoiceColumnDescriptor(id: $0.id, title: $0.title, evaluationId: $0.evaluationId?.int64Value)
-        }
+        let studentDescriptors = buildStudentDescriptors()
+        let columnDescriptors = buildColumnDescriptors()
+        recognizer.updateContextualVocabulary(students: studentDescriptors, columns: columnDescriptors, classId: classId)
+
         let input = CourtVoiceCaptureInput(
             transcript: text,
             classId: classId,
             className: activeClass?.name ?? "Clase activa",
-            sessionTitle: nil,
+            sessionTitle: sessionTitleHint,
+            activeTabId: bridge.selectedNotebookTabId,
+            referenceDate: captureDate,
             students: studentDescriptors,
             evaluableColumns: columnDescriptors
         )
@@ -993,15 +1150,17 @@ struct CourtVoiceCaptureSheet: View {
     @MainActor
     private func applySelectedActions() async {
         guard let classId = selectedClassId, let currentDraft = draft else { return }
-        let actionsToApply = currentDraft.actions.filter { $0.isSelected && $0.studentId != nil }
+        let actionsToApply = currentDraft.actions.filter { $0.isSelected && $0.isReadyToApply }
         guard !actionsToApply.isEmpty else { return }
 
         isApplying = true
         feedbackBanner = nil
         defer { isApplying = false }
 
-        var appliedCount = 0
-        let now = Date()
+        var succeededIds: Set<String> = []
+        var errorMessages: [String] = []
+        var didModifyGradesOrCells = false
+        let targetDate = captureDate
 
         for action in actionsToApply {
             guard let studentId = action.studentId else { continue }
@@ -1012,11 +1171,11 @@ struct CourtVoiceCaptureSheet: View {
                     try await bridge.saveAttendance(
                         studentId: studentId,
                         classId: classId,
-                        on: now,
+                        on: targetDate,
                         status: status,
                         note: action.note.isEmpty ? nil : action.note
                     )
-                    appliedCount += 1
+                    succeededIds.insert(action.id)
 
                 case .observation:
                     let detailText = action.note.isEmpty ? action.sourceExcerpt : action.note
@@ -1027,35 +1186,16 @@ struct CourtVoiceCaptureSheet: View {
                         detail: detailText,
                         severity: action.severity
                     )
-                    try? await bridge.saveQuickStudentNote(
-                        studentId: studentId,
-                        classId: classId,
-                        note: detailText
-                    )
-                    appliedCount += 1
+                    succeededIds.insert(action.id)
 
                 case .quickEvaluation:
-                    let scoreValue = action.score ?? 7.0
-                    let targetCol = evaluableColumns.first(where: { $0.id == action.columnId }) ?? evaluableColumns.first
-                    if let col = targetCol {
-                        bridge.selectClass(id: classId)
-                        bridge.saveColumnGrade(
-                            studentId: studentId,
-                            column: col,
-                            value: IosFormatting.decimal(from: scoreValue)
-                        )
+                    guard let colId = action.columnId,
+                          let targetCol = evaluableColumns.first(where: { $0.id == colId }) else {
+                        throw NSError(domain: "CourtVoice", code: 422, userInfo: [NSLocalizedDescriptionKey: "Selecciona un instrumento válido para \(action.studentName)."])
                     }
-                    let evalId = targetCol?.evaluationId?.int64Value
-                    await bridge.performQuickAction(
-                        type: .quickEvaluation,
-                        mode: .classroom,
-                        classId: classId,
-                        studentId: studentId,
-                        evaluationId: evalId,
-                        note: action.note.isEmpty ? nil : action.note,
-                        score: scoreValue
-                    )
-                    appliedCount += 1
+                    try await persistSingleEvaluationAction(action: action, column: targetCol, classId: classId, studentId: studentId)
+                    didModifyGradesOrCells = true
+                    succeededIds.insert(action.id)
 
                 case .injury:
                     let markInjured = action.markInjured ?? true
@@ -1065,7 +1205,7 @@ struct CourtVoiceCaptureSheet: View {
                         classId: classId
                     )
                     if !action.note.isEmpty {
-                        _ = try? await bridge.createIncident(
+                        _ = try await bridge.createIncident(
                             classId: classId,
                             studentId: studentId,
                             title: markInjured ? "Lesión / Adaptación en pista" : "Alta de lesión",
@@ -1073,25 +1213,152 @@ struct CourtVoiceCaptureSheet: View {
                             severity: "medium"
                         )
                     }
-                    appliedCount += 1
+                    succeededIds.insert(action.id)
                 }
             } catch {
-                feedbackBanner = ("Error al aplicar una acción: \(error.localizedDescription)", true)
+                errorMessages.append("\(action.studentName): \(error.localizedDescription)")
             }
         }
 
+        // Refrescamos una única vez al final sin cambiar la clase seleccionada del Cuaderno si era otra.
+        if didModifyGradesOrCells {
+            if bridge.currentNotebookClassId == classId {
+                bridge.notebookViewModel.selectClass(classId: classId, force: true)
+            }
+            bridge.scheduleGradeSnapshotSync(forClassId: classId)
+        }
         try? await bridge.refreshStudentsDirectory()
         try? await bridge.refreshDashboard()
-        bridge.status = appliedCount == 1
-            ? "1 acción de Voz de Pista aplicada al cuaderno."
-            : "\(appliedCount) acciones de Voz de Pista aplicadas al cuaderno."
-        feedbackBanner = (bridge.status, false)
 
-        try? await Task.sleep(nanoseconds: 750_000_000)
-        dismiss()
+        if errorMessages.isEmpty {
+            if let pendingId = activePendingNoteId {
+                CourtVoiceInboxStore.remove(id: pendingId)
+                pendingInbox = CourtVoiceInboxStore.loadPending()
+                activePendingNoteId = nil
+            }
+            bridge.status = succeededIds.count == 1
+                ? "1 acción de Voz de Pista aplicada al cuaderno."
+                : "\(succeededIds.count) acciones de Voz de Pista aplicadas al cuaderno."
+            feedbackBanner = (bridge.status, false)
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            dismiss()
+        } else {
+            // Si hubo errores, quitamos de la bandeja las acciones ya aplicadas y dejamos visibles las fallidas para reintentar sin duplicar.
+            draft?.actions.removeAll { succeededIds.contains($0.id) }
+            let summary = succeededIds.isEmpty
+                ? "No se pudo aplicar: \(errorMessages.joined(separator: " · "))"
+                : "Se aplicaron \(succeededIds.count), pero fallaron \(errorMessages.count): \(errorMessages.joined(separator: " · "))"
+            feedbackBanner = (summary, true)
+        }
     }
 
-    // MARK: - Mutaciones locales de la bandeja
+    /// Único camino de escritura determinista para evaluaciones según el tipo y escala de la columna.
+    @MainActor
+    private func persistSingleEvaluationAction(
+        action: CourtVoiceProposedAction,
+        column: NotebookColumnDefinition,
+        classId: Int64,
+        studentId: Int64
+    ) async throws {
+        let descriptor = buildColumnDescriptors().first(where: { $0.id == column.id })
+        let converted = AppleFoundationCourtVoiceService.convertValueForColumn(
+            rawScore: action.score,
+            rawText: action.formattedScaleValue ?? action.note,
+            unit: action.rawUnit,
+            column: descriptor
+        )
+
+        switch column.type {
+        case .numeric, .rubric:
+            guard let numericVal = converted.numericScore ?? action.score else {
+                throw NSError(domain: "CourtVoice", code: 422, userInfo: [NSLocalizedDescriptionKey: "Falta calificación numérica."])
+            }
+            _ = try await bridge.container.notebookRepository.saveGrade(
+                classId: classId,
+                studentId: studentId,
+                columnId: column.id,
+                evaluationId: column.evaluationId,
+                value: KotlinDouble(value: numericVal)
+            )
+            if !action.note.isEmpty {
+                try? await bridge.container.notebookRepository.saveCell(
+                    classId: classId,
+                    studentId: studentId,
+                    columnId: column.id,
+                    textValue: nil,
+                    boolValue: nil,
+                    iconValue: nil,
+                    ordinalValue: nil,
+                    note: action.note,
+                    colorHex: nil,
+                    attachmentUris: [],
+                    authorUserId: nil,
+                    associatedGroupId: nil
+                )
+            }
+
+        case .ordinal:
+            let ordinalText = converted.formattedText
+                ?? action.formattedScaleValue
+                ?? action.score.map { IosFormatting.decimal(from: $0) }
+            guard let ordinalText, !ordinalText.isEmpty else {
+                throw NSError(domain: "CourtVoice", code: 422, userInfo: [NSLocalizedDescriptionKey: "Falta nivel para columna ordinal."])
+            }
+            try await bridge.container.notebookRepository.saveCell(
+                classId: classId,
+                studentId: studentId,
+                columnId: column.id,
+                textValue: nil,
+                boolValue: nil,
+                iconValue: nil,
+                ordinalValue: ordinalText,
+                note: action.note.nilIfEmpty,
+                colorHex: nil,
+                attachmentUris: [],
+                authorUserId: nil,
+                associatedGroupId: nil
+            )
+
+        case .check:
+            let boolVal = (converted.formattedText == "true") || ((action.score ?? 0) >= 5.0)
+            try await bridge.container.notebookRepository.saveCell(
+                classId: classId,
+                studentId: studentId,
+                columnId: column.id,
+                textValue: nil,
+                boolValue: KotlinBoolean(value: boolVal),
+                iconValue: nil,
+                ordinalValue: nil,
+                note: action.note.nilIfEmpty,
+                colorHex: nil,
+                attachmentUris: [],
+                authorUserId: nil,
+                associatedGroupId: nil
+            )
+
+        default:
+            let textVal = converted.formattedText
+                ?? action.formattedScaleValue
+                ?? action.score.map { IosFormatting.decimal(from: $0) }
+                ?? action.note
+            try await bridge.container.notebookRepository.saveCell(
+                classId: classId,
+                studentId: studentId,
+                columnId: column.id,
+                textValue: textVal,
+                boolValue: nil,
+                iconValue: nil,
+                ordinalValue: nil,
+                note: action.note.nilIfEmpty,
+                colorHex: nil,
+                attachmentUris: [],
+                authorUserId: nil,
+                associatedGroupId: nil
+            )
+        }
+    }
+
+    // MARK: - Mutaciones locales de la bandeja y Aprendizaje de Alias
 
     private func toggleActionSelection(at index: Int) {
         guard draft?.actions.indices.contains(index) == true else { return }
@@ -1104,34 +1371,42 @@ struct CourtVoiceCaptureSheet: View {
         if kind == .attendance && draft?.actions[index].attendanceStatus == nil {
             draft?.actions[index].attendanceStatus = "TARDE"
         }
-        if kind == .quickEvaluation && draft?.actions[index].score == nil {
-            draft?.actions[index].score = 7.5
-            draft?.actions[index].columnId = evaluableColumns.first?.id
-            draft?.actions[index].columnTitle = evaluableColumns.first?.title
-        }
         if kind == .injury && draft?.actions[index].markInjured == nil {
             draft?.actions[index].markInjured = true
+        }
+        if let action = draft?.actions[index] {
+            draft?.actions[index].isSelected = action.isReadyToApply
         }
     }
 
     private func updateActionStudent(at index: Int, studentId: Int64?) {
         guard draft?.actions.indices.contains(index) == true else { return }
+        let previousMention = draft?.actions[index].studentMention ?? ""
         draft?.actions[index].studentId = studentId
         if let studentId, let student = studentsInSelectedClass.first(where: { $0.id == studentId }) {
             draft?.actions[index].studentName = student.fullName
-            draft?.actions[index].isSelected = true
+            if let classId = selectedClassId, !previousMention.isEmpty,
+               AppleFoundationCourtVoiceService.normalized(previousMention) != AppleFoundationCourtVoiceService.normalized(student.fullName) {
+                CourtVoiceAliasStore.learnStudentAlias(mention: previousMention, studentId: studentId, classId: classId)
+                draft?.actions[index].resolutionReason = "Aprendido: «\(previousMention)» → \(student.fullName)"
+            }
+            if let updated = draft?.actions[index] {
+                draft?.actions[index].isSelected = updated.isReadyToApply
+            }
+        } else {
+            draft?.actions[index].isSelected = false
         }
     }
 
     private var allActionsSelected: Bool {
         guard let actions = draft?.actions, !actions.isEmpty else { return false }
-        return actions.allSatisfy(\.isSelected)
+        return actions.allSatisfy { $0.isSelected && $0.isReadyToApply }
     }
 
     private func setAllActionsSelected(_ isSelected: Bool) {
         guard let count = draft?.actions.count else { return }
         for idx in 0..<count {
-            draft?.actions[idx].isSelected = isSelected
+            draft?.actions[idx].isSelected = isSelected && (draft?.actions[idx].isReadyToApply ?? false)
         }
     }
 
@@ -1141,22 +1416,25 @@ struct CourtVoiceCaptureSheet: View {
         for idx in 0..<count where draft?.actions[idx].kind == .quickEvaluation {
             draft?.actions[idx].columnId = columnId
             draft?.actions[idx].columnTitle = title
+            if let updated = draft?.actions[idx], updated.isReadyToApply {
+                draft?.actions[idx].isSelected = true
+            }
         }
     }
 
     private func addBlankAction(for student: Student) {
-        let defaultCol = evaluableColumns.first
         let newAction = CourtVoiceProposedAction(
-            isSelected: true,
+            isSelected: false,
             kind: .quickEvaluation,
             studentId: student.id,
             studentName: student.fullName,
             note: "",
             severity: "low",
-            score: 8.0,
-            columnId: defaultCol?.id,
-            columnTitle: defaultCol?.title,
-            sourceExcerpt: "Añadido manualmente en bandeja"
+            score: nil,
+            columnId: nil,
+            columnTitle: nil,
+            sourceExcerpt: "Añadido manualmente en bandeja",
+            resolutionReason: "Elige instrumento y nota para aplicar"
         )
         draft?.actions.append(newAction)
     }
@@ -1164,7 +1442,7 @@ struct CourtVoiceCaptureSheet: View {
     private func duplicateAction(at index: Int, forStudent student: Student) {
         guard let source = draft?.actions[safe: index] else { return }
         let cloned = CourtVoiceProposedAction(
-            isSelected: true,
+            isSelected: source.isReadyToApply,
             kind: source.kind,
             studentId: student.id,
             studentName: student.fullName,
@@ -1172,6 +1450,8 @@ struct CourtVoiceCaptureSheet: View {
             note: source.note,
             severity: source.severity,
             score: source.score,
+            formattedScaleValue: source.formattedScaleValue,
+            rawUnit: source.rawUnit,
             columnId: source.columnId,
             columnTitle: source.columnTitle,
             markInjured: source.markInjured,
@@ -1189,6 +1469,11 @@ struct CourtVoiceCaptureSheet: View {
             draft?.actions[idx].columnTitle = source.columnTitle
             if copyScore, let score = source.score {
                 draft?.actions[idx].score = score
+                draft?.actions[idx].formattedScaleValue = source.formattedScaleValue
+                draft?.actions[idx].rawUnit = source.rawUnit
+            }
+            if let updated = draft?.actions[idx], updated.isReadyToApply {
+                draft?.actions[idx].isSelected = true
             }
         }
     }
@@ -1203,15 +1488,52 @@ struct CourtVoiceCaptureSheet: View {
         draft?.actions[index].attendanceStatus = status
     }
 
-    private func updateScore(at index: Int, score: Double) {
+    private func updateScore(at index: Int, score: Double?) {
         guard draft?.actions.indices.contains(index) == true else { return }
-        draft?.actions[index].score = min(10.0, max(0.0, score))
+        if let score {
+            let colId = draft?.actions[index].columnId
+            let colDesc = buildColumnDescriptors().first(where: { $0.id == colId })
+            let maxAllowed = (colDesc?.scaleKind.isRawPhysicalMark == true || colDesc?.scaleKind == .percentage) ? 1000.0 : 10.0
+            let clamped = min(maxAllowed, max(0.0, score))
+            draft?.actions[index].score = clamped
+            if let colDesc {
+                let conv = AppleFoundationCourtVoiceService.convertValueForColumn(rawScore: clamped, rawText: "", unit: draft?.actions[index].rawUnit, column: colDesc)
+                draft?.actions[index].formattedScaleValue = conv.formattedText
+            }
+        } else {
+            draft?.actions[index].score = nil
+            draft?.actions[index].formattedScaleValue = nil
+        }
+        if let updated = draft?.actions[index] {
+            draft?.actions[index].isSelected = updated.isReadyToApply
+        }
     }
 
     private func updateColumn(at index: Int, columnId: String?) {
         guard draft?.actions.indices.contains(index) == true else { return }
+        let col = evaluableColumns.first(where: { $0.id == columnId })
         draft?.actions[index].columnId = columnId
-        draft?.actions[index].columnTitle = evaluableColumns.first(where: { $0.id == columnId })?.title
+        draft?.actions[index].columnTitle = col?.title
+        if let classId = selectedClassId,
+           let columnId,
+           let mention = draft?.actions[index].columnMention,
+           !mention.isEmpty {
+            CourtVoiceAliasStore.learnColumnAlias(mention: mention, columnId: columnId, classId: classId)
+        }
+        if let colDesc = buildColumnDescriptors().first(where: { $0.id == columnId }),
+           let currentScore = draft?.actions[index].score {
+            let conv = AppleFoundationCourtVoiceService.convertValueForColumn(
+                rawScore: currentScore,
+                rawText: draft?.actions[index].note ?? "",
+                unit: draft?.actions[index].rawUnit,
+                column: colDesc
+            )
+            draft?.actions[index].score = conv.numericScore
+            draft?.actions[index].formattedScaleValue = conv.formattedText
+        }
+        if let updated = draft?.actions[index] {
+            draft?.actions[index].isSelected = updated.isReadyToApply
+        }
     }
 
     private func updateInjuryFlag(at index: Int, markInjured: Bool) {
@@ -1230,3 +1552,4 @@ private extension Array {
         indices.contains(index) ? self[index] : nil
     }
 }
+

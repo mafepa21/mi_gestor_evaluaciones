@@ -302,6 +302,8 @@ struct CourtVoiceProposedAction: Identifiable, Codable, Hashable, Sendable {
     /// Criterios de la rúbrica o ítems de la plantilla de `criteriaColumnId` que encajan con la frase.
     /// En `.quickEvaluation` coincide con `columnId`; en `.observation` es la sugerencia de evaluar con ese instrumento.
     var criterionProposals: [CourtVoiceCriterionProposal]?
+    /// «Igual que Irene» / «igual que el primero»: acción de la que se copian los criterios no dichos.
+    var inheritsCriteriaFromActionId: String?
     var criteriaColumnId: String?
     var criteriaColumnTitle: String?
     /// Para `.injury`: `true` = marcar lesionado, `false` = retirar lesión.
@@ -468,15 +470,38 @@ final class AppleFoundationCourtVoiceService {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
             do {
-                // Creamos una sesión limpia por análisis para no acumular historial de otras clases ni agotar los ~4K tokens.
-                let session = makeFreshSession()
-                let response = try await session.respond(
-                    to: buildPrompt(from: input),
-                    generating: GeneratedCourtVoiceCaptureDraft.self,
-                    includeSchemaInPrompt: true,
-                    options: AppleFoundationModelSupport.generationOptions(temperature: 0.1)
-                )
-                let resolvedActions = mapGeneratedActions(response.content.actions, input: input)
+                // Un dictado largo (p. ej. 9 minutos alumno a alumno) no cabe en los ~4K tokens del modelo:
+                // se trocea por bloques de alumno ya separados por las reglas y se une el resultado.
+                let chunks = Self.chunkTranscript(trimmed)
+                var resolvedActions: [CourtVoiceProposedAction] = []
+                var unmatchedFromAI: [String] = []
+                for chunk in chunks {
+                    let chunkInput = CourtVoiceCaptureInput(
+                        transcript: chunk,
+                        classId: input.classId,
+                        className: input.className,
+                        sessionTitle: input.sessionTitle,
+                        activeTabId: input.activeTabId,
+                        referenceDate: input.referenceDate,
+                        students: input.students,
+                        evaluableColumns: input.evaluableColumns
+                    )
+                    do {
+                        // Sesión limpia por trozo para no acumular historial ni agotar el contexto.
+                        let session = makeFreshSession()
+                        let response = try await session.respond(
+                            to: buildPrompt(from: chunkInput),
+                            generating: GeneratedCourtVoiceCaptureDraft.self,
+                            includeSchemaInPrompt: true,
+                            options: AppleFoundationModelSupport.generationOptions(temperature: 0.1)
+                        )
+                        resolvedActions.append(contentsOf: mapGeneratedActions(response.content.actions, input: chunkInput))
+                        unmatchedFromAI.append(contentsOf: response.content.unmatchedSegments)
+                    } catch where chunks.count > 1 && AppleFoundationModelSupport.requestScopedFailureKinds.contains(AppleFoundationModelSupport.runtimeFailureKind(for: error)) {
+                        // Si falla un trozo, las reglas lo completan al combinar.
+                        AppleFoundationModelSupport.recordRequestFailure(error)
+                    }
+                }
                 guard let merged = Self.mergeWithRules(aiActions: resolvedActions, ruleActions: deterministic.actions) else {
                     return deterministic
                 }
@@ -484,7 +509,7 @@ final class AppleFoundationCourtVoiceService {
                     rawTranscript: trimmed,
                     className: input.className,
                     actions: merged.actions,
-                    unmatchedSegments: response.content.unmatchedSegments,
+                    unmatchedSegments: unmatchedFromAI,
                     confidenceNote: merged.addedFromRules > 0
                         ? "Apple Intelligence on-device, completado con reglas locales (\(merged.addedFromRules)). Revisa antes de confirmar."
                         : "Acciones extraídas con Apple Intelligence on-device. Revisa antes de confirmar.",
@@ -499,6 +524,36 @@ final class AppleFoundationCourtVoiceService {
         #endif
 
         return deterministic
+    }
+
+    /// Trozos de como mucho `maxLength` caracteres sin partir el bloque de un alumno. Un texto corto va entero.
+    static func chunkTranscript(_ text: String, ruleActions: [CourtVoiceProposedAction] = [], maxLength: Int = 900) -> [String] {
+        guard text.count > maxLength else { return [text] }
+        // Se trocea el texto original por frases (no se pierde nada) y nunca se deja un nombre solo
+        // («Noemí.») al final de un trozo: su descripción va en el siguiente.
+        let sentences = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .components(separatedBy: ". ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        var chunks: [[String]] = []
+        var current: [String] = []
+        var length = 0
+        for sentence in sentences {
+            if !current.isEmpty && length + sentence.count + 2 > maxLength {
+                var carry: [String] = []
+                if let last = current.last, last.split(separator: " ").count <= 3, current.count > 1 {
+                    carry = [current.removeLast()]
+                }
+                chunks.append(current)
+                current = carry
+                length = carry.reduce(0) { $0 + $1.count + 2 }
+            }
+            current.append(sentence)
+            length += sentence.count + 2
+        }
+        if !current.isEmpty { chunks.append(current) }
+        return chunks.map { $0.joined(separator: ". ") }
     }
 
     /// Combina la respuesta de Apple Intelligence con las reglas en vez de descartarla entera.
@@ -769,6 +824,8 @@ final class AppleFoundationCourtVoiceService {
         var lastRememberedIsDelivery = false
         var lastRememberedAttendanceStatus: String? = nil
         var lastRememberedNote: String? = nil
+        // Bloques de dictado alumno a alumno («Noemí.», «Daniela, …»). Con dos o más, todo el dictado se trata así.
+        var headerBlockIds: Set<String> = []
 
         for segment in segments {
             let trimmedSegment = segment.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -785,7 +842,19 @@ final class AppleFoundationCourtVoiceService {
                 lastRememberedColumnReason = colResolution.reason
             }
 
-            let studentMatches = Self.findAllStudentMentions(in: trimmedSegment, roster: input.students, classId: input.classId)
+            let allMatches = Self.findAllStudentMentions(in: trimmedSegment, roster: input.students, classId: input.classId)
+            // «Igual que Irene»: Irene es una referencia, no el sujeto de la frase.
+            let referencedIds = Self.referencedStudentIds(in: trimmedSegment, matches: allMatches)
+            let studentMatches = allMatches.filter { match in
+                guard let id = match.matched?.id else { return true }
+                return !referencedIds.contains(id)
+            }
+            let referenceActionId: String? = {
+                if let refId = referencedIds.first {
+                    return actions.last(where: { $0.studentId == refId && ($0.kind == .quickEvaluation || $0.kind == .observation) })?.id
+                }
+                return nil
+            }()
             let isSameEllipsis = Self.isEllipticalSamePredicate(trimmedSegment)
             let isNegatedEllipsis = Self.isEllipticalNegatedPredicate(trimmedSegment)
 
@@ -804,7 +873,12 @@ final class AppleFoundationCourtVoiceService {
 
             // Si el segmento solo introduce el instrumento ("En la rúbrica de saque") sin alumno ni nota ni verbo de acción,
             // actualizamos la memoria de instrumento y pasamos al siguiente segmento sin ensuciar unmatched.
-            if studentMatches.isEmpty, colResolution.matched != nil, Self.extractValueAndUnit(from: trimmedSegment, column: colResolution.matched) == nil, Self.extractCompletionScore(from: trimmedSegment) == nil {
+            // Si el fragmento tiene más contenido que el nombre del instrumento («hace lanzamiento con el empeine»), no es una presentación:
+            // se trata como descripción del alumno en curso.
+            if studentMatches.isEmpty, let introColumn = colResolution.matched,
+               Self.extractValueAndUnit(from: trimmedSegment, column: introColumn) == nil,
+               Self.extractCompletionScore(from: trimmedSegment) == nil,
+               Self.isOnlyInstrumentMention(trimmedSegment, column: introColumn) {
                 continue
             }
 
@@ -830,7 +904,26 @@ final class AppleFoundationCourtVoiceService {
                     )
                     actions.append(action)
                     updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
-                } else if let candidateName = Self.extractCapitalizedNameCandidate(from: trimmedSegment) {
+                } else if let openIndex = openBlockIndex(in: actions),
+                          kind == .observation || kind == .quickEvaluation,
+                          headerBlockIds.contains(actions[openIndex].id) || Self.startsLowercase(trimmedSegment),
+                          (!Self.isNewAttempt(trimmedSegment) || Self.isHeaderOnly(actions[openIndex])),
+                          Self.extractHeaderNameCandidate(from: trimmedSegment, roster: input.students, classId: input.classId) == nil {
+                    // Descripción sin nombre tras «Noemí.»: pertenece al alumno del bloque abierto.
+                    let ownReference = referenceActionId
+                        ?? (Self.refersToPreviousAttempt(trimmedSegment) ? actions[..<openIndex].last(where: { $0.studentId != nil && $0.studentId == actions[openIndex].studentId })?.id : nil)
+                    actions[openIndex] = mergeIntoBlock(
+                        actions[openIndex],
+                        segment: trimmedSegment,
+                        roster: input.students,
+                        columns: rankedColumns,
+                        column: columnToUse,
+                        columnCandidates: colResolution.candidates,
+                        columnReason: colReason,
+                        reference: ownReference
+                    )
+                    updateRememberedActionState(from: actions[openIndex], kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: false)
+                } else if let candidateName = Self.extractHeaderNameCandidate(from: trimmedSegment, roster: input.students, classId: input.classId) {
                     let fuzzyRes = Self.resolveStudents(mention: candidateName, in: input.students, classId: input.classId)
                     if let matched = fuzzyRes.matched {
                         lastRememberedStudent = matched
@@ -853,11 +946,36 @@ final class AppleFoundationCourtVoiceService {
                         inheritedNote: isSameEllipsis ? lastRememberedNote : nil,
                         defaultSelect: fuzzyRes.matched != nil && fuzzyRes.confidence >= 0.75
                     )
+                    if Self.opensRollCallBlock(action) || headerBlockIds.count >= 2 { headerBlockIds.insert(action.id) }
                     actions.append(action)
                     updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 } else {
                     unmatched.append(trimmedSegment)
                 }
+            } else if studentMatches.count == 1,
+                      let openIndex = openBlockIndex(in: actions),
+                      let openStudentId = actions[openIndex].studentId,
+                      let single = studentMatches.first?.matched
+                        ?? (studentMatches.first?.candidates.contains { $0.id == openStudentId } == true
+                            ? input.students.first { $0.id == openStudentId } : nil),
+                      actions[openIndex].studentId == single.id,
+                      headerBlockIds.contains(actions[openIndex].id),
+                      Self.extractValueAndUnit(from: trimmedSegment, column: columnToUse) == nil,
+                      kind == .observation || kind == .quickEvaluation,
+                      !Self.isNewAttempt(trimmedSegment) || Self.isHeaderOnly(actions[openIndex]) {
+                // «Rocío. Posición… Rocío. posición…»: el mismo alumno seguido es un solo bloque.
+                lastRememberedStudent = single
+                actions[openIndex] = mergeIntoBlock(
+                    actions[openIndex],
+                    segment: trimmedSegment,
+                    roster: input.students,
+                    columns: rankedColumns,
+                    column: columnToUse,
+                    columnCandidates: colResolution.candidates,
+                    columnReason: colReason,
+                    reference: referenceActionId
+                )
+                updateRememberedActionState(from: actions[openIndex], kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: false)
             } else {
                 if studentMatches.count == 1, let single = studentMatches.first?.matched {
                     lastRememberedStudent = single
@@ -881,11 +999,23 @@ final class AppleFoundationCourtVoiceService {
                         inheritedNote: isSameEllipsis ? lastRememberedNote : nil,
                         defaultSelect: match.matched != nil && match.confidence >= 0.75
                     )
-                    actions.append(action)
+                    var withReference = action
+                    if studentMatches.count == 1 {
+                        withReference.inheritsCriteriaFromActionId = referenceActionId
+                            ?? (Self.refersToPreviousAttempt(trimmedSegment) ? actions.last(where: { $0.studentId != nil && $0.studentId == match.matched?.id })?.id : nil)
+                    }
+                    if Self.opensRollCallBlock(withReference) || headerBlockIds.count >= 2 { headerBlockIds.insert(withReference.id) }
+                    actions.append(withReference)
                     updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 }
             }
         }
+
+        // Un nombre dicho sin descripción («Daniela.» seguido de otro nombre) no es una acción.
+        let headerOnly = actions.filter(Self.isHeaderOnly)
+        unmatched.append(contentsOf: headerOnly.map { "\($0.studentName): sin descripción" })
+        let headerOnlyIds = Set(headerOnly.map(\.id))
+        actions.removeAll { headerOnlyIds.contains($0.id) }
 
         return CourtVoiceCaptureDraft(
             rawTranscript: raw,
@@ -895,6 +1025,149 @@ final class AppleFoundationCourtVoiceService {
             confidenceNote: reason,
             appearsToBeRulesFallback: true
         )
+    }
+
+    // MARK: - Bloques por alumno (dictado alumno a alumno)
+
+    /// Última acción a la que se le puede seguir añadiendo descripción (evaluación u observación).
+    private func openBlockIndex(in actions: [CourtVoiceProposedAction]) -> Int? {
+        guard let last = actions.indices.last else { return nil }
+        let kind = actions[last].kind
+        return (kind == .observation || kind == .quickEvaluation) ? last : nil
+    }
+
+    /// Une un fragmento al bloque del alumno y rehace la acción con todo el texto.
+    private func mergeIntoBlock(
+        _ block: CourtVoiceProposedAction,
+        segment: String,
+        roster: [CourtVoiceStudentDescriptor],
+        columns: [CourtVoiceColumnDescriptor],
+        column: CourtVoiceColumnDescriptor?,
+        columnCandidates: [CourtVoiceColumnCandidate],
+        columnReason: String?,
+        reference: String?
+    ) -> CourtVoiceProposedAction {
+        let base = block.sourceExcerpt.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+        let combined = base.isEmpty ? segment : "\(base). \(segment)"
+        let inferred = inferKind(from: combined, columns: columns, inheritedColumn: column)
+        let kind: CourtVoiceActionKind = (block.kind == .quickEvaluation || inferred == .quickEvaluation) ? .quickEvaluation : .observation
+        let student = roster.first { $0.id == block.studentId }
+        var rebuilt = buildRuleAction(
+            kind: kind,
+            student: student,
+            studentMention: block.studentMention,
+            studentCandidates: block.studentCandidates,
+            studentConfidence: block.confidence,
+            studentReason: block.resolutionReason,
+            fallbackName: block.studentName,
+            segment: combined,
+            column: column,
+            columnCandidates: columnCandidates,
+            columnReason: columnReason,
+            defaultSelect: student != nil && block.confidence >= 0.75
+        )
+        rebuilt.id = block.id
+        rebuilt.inheritsCriteriaFromActionId = block.inheritsCriteriaFromActionId ?? reference
+        return rebuilt
+    }
+
+    /// «En la rúbrica de saque»: el fragmento no dice nada más que el instrumento.
+    static func isOnlyInstrumentMention(_ segment: String, column: CourtVoiceColumnDescriptor) -> Bool {
+        let filler: Set<String> = ["para", "ahora", "vamos", "con", "la", "el", "de", "del", "en", "los", "las", "una", "uno", "esta", "este", "evaluamos", "evaluar", "apunta", "pasamos"]
+        let columnWords = Set(normalized(column.title).split(whereSeparator: { !$0.isLetter }).map(String.init))
+        let residual = normalized(segment)
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { $0.count >= 3 && !filler.contains($0) && !columnWords.contains($0) }
+        return residual.isEmpty
+    }
+
+    /// Acción que solo contiene el nombre del alumno («Noemí.»), a la espera de su descripción.
+    static func isHeaderOnly(_ action: CourtVoiceProposedAction) -> Bool {
+        guard action.kind == .observation else { return false }
+        let nameWords = Set(
+            (normalized(action.studentName) + " " + normalized(action.studentMention))
+                .split(whereSeparator: { !$0.isLetter }).map(String.init)
+        )
+        let rest = normalized(action.sourceExcerpt)
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { $0.count > 1 && !nameWords.contains($0) }
+        return rest.isEmpty
+    }
+
+    /// «Noemí.» o «Daniela, segundo tiro…»: el nombre va solo o seguido de coma/punto, como quien pasa lista.
+    /// Las frases sin nombre que siguen a ese bloque son del mismo alumno.
+    static func opensRollCallBlock(_ action: CourtVoiceProposedAction) -> Bool {
+        if isHeaderOnly(action) { return true }
+        let excerpt = action.sourceExcerpt.trimmingCharacters(in: .whitespacesAndNewlines)
+        for name in [action.studentMention, action.studentName.split(separator: " ").first.map(String.init) ?? ""] where !name.isEmpty {
+            guard excerpt.lowercased().hasPrefix(name.lowercased()) else { continue }
+            let rest = excerpt.dropFirst(name.count).drop { $0 == " " }
+            if rest.first == "," || rest.first == "." { return true }
+            // «Marta V. …»: nombre con inicial del apellido.
+            if rest.count >= 2, rest.first?.isUppercase == true, rest.dropFirst().first == "." || rest.dropFirst().first == "," { return true }
+        }
+        return false
+    }
+
+    /// El dictado del sistema corta frases en las pausas: un fragmento que empieza en minúscula sigue la frase anterior.
+    static func startsLowercase(_ segment: String) -> Bool {
+        segment.first(where: { $0.isLetter })?.isLowercase ?? false
+    }
+
+    /// «segundo lanzamiento», «otro tiro», «repite»: empieza un intento nuevo del mismo alumno.
+    static func isNewAttempt(_ segment: String) -> Bool {
+        let norm = normalized(segment)
+        let markers = ["segundo", "segunda", "tercer", "tercera", "otro lanzamiento", "otro tiro", "otra vez", "repite"]
+        return markers.contains { containsKeyword(norm, keyword: $0) }
+    }
+
+    /// «igual que el primero», «en el anterior»: copia lo no dicho del intento anterior del mismo alumno.
+    static func refersToPreviousAttempt(_ segment: String) -> Bool {
+        let norm = normalized(segment)
+        return ["igual que el primero", "igual que el anterior", "en el anterior", "como el primero", "como el anterior", "lo mismo que antes"]
+            .contains { norm.contains($0) }
+    }
+
+    /// Alumnos citados como comparación («igual que Irene», «como Lucía»), que no son el sujeto.
+    static func referencedStudentIds(in segment: String, matches: [StudentResolutionResult]) -> Set<Int64> {
+        let norm = normalized(segment)
+        var ids = Set<Int64>()
+        for match in matches {
+            guard let student = match.matched else { continue }
+            let mention = normalized(match.mention)
+            let first = normalized(student.firstName)
+            for prefix in ["igual que ", "como ", "lo mismo que ", "parecido a "] {
+                if norm.contains(prefix + mention) || norm.contains(prefix + first) {
+                    ids.insert(student.id)
+                }
+            }
+        }
+        return ids
+    }
+
+    /// Nombre en mayúscula que puede ser un alumno. Una palabra en mayúscula al empezar la frase solo cuenta
+    /// si va sola, seguida de coma o punto («Sirena.», «Doemí, lanzamiento…») o si se parece mucho a un alumno;
+    /// así «Buen pie de apoyo» o «Tiene apoyo bien» no crean alumnos inventados.
+    static func extractHeaderNameCandidate(
+        from segment: String,
+        roster: [CourtVoiceStudentDescriptor],
+        classId: Int64
+    ) -> String? {
+        guard let candidate = extractCapitalizedNameCandidate(from: segment) else { return nil }
+        let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = trimmed.split(separator: " ")
+        let isFirstWord = words.first.map { $0.trimmingCharacters(in: .punctuationCharacters) == candidate } ?? false
+        if words.count == 1 { return candidate }
+        let resolution = resolveStudents(mention: candidate, in: roster, classId: classId)
+        let bestConfidence = resolution.candidates.first?.confidence ?? 0
+        // En mitad de la frase, una mayúscula que no se parece a nadie de la clase es un error del dictado («… coordinada Lanza bien»).
+        guard isFirstWord else { return bestConfidence > 0 ? candidate : nil }
+        let firstToken = String(words[0])
+        let isVocative = firstToken.hasSuffix(",") || firstToken.hasSuffix(".")
+        if isVocative && bestConfidence > 0 { return candidate }
+        return bestConfidence >= 0.80 ? candidate : nil
     }
 
     private func updateRememberedActionState(
@@ -1315,7 +1588,7 @@ final class AppleFoundationCourtVoiceService {
             let normFull = normalized(student.fullName)
             guard normFull.count >= 4 else { continue }
             let pattern = "(?<![\\p{L}\\p{N}])\(NSRegularExpression.escapedPattern(for: normFull))(?![\\p{L}\\p{N}])"
-            if let r = norm.range(of: pattern, options: .regularExpression) {
+            if let r = Self.cachedRegexRange(pattern, in: norm) {
                 if !studentSpans.contains(where: { $0.range.overlaps(r) }) {
                     studentSpans.append((student, r))
                 }
@@ -1434,11 +1707,29 @@ final class AppleFoundationCourtVoiceService {
         return s
     }
 
+    /// Las mismas expresiones se buscan cientos de veces en un dictado largo; compilarlas una sola vez
+    /// baja el análisis de 9 minutos de audio de varios segundos a menos de uno.
+    private static var regexCache: [String: NSRegularExpression] = [:]
+
+    static func cachedRegexRange(_ pattern: String, in text: String) -> Range<String.Index>? {
+        let regex: NSRegularExpression
+        if let cached = regexCache[pattern] {
+            regex = cached
+        } else {
+            guard let compiled = try? NSRegularExpression(pattern: pattern) else { return nil }
+            if regexCache.count > 2_000 { regexCache.removeAll(keepingCapacity: true) }
+            regexCache[pattern] = compiled
+            regex = compiled
+        }
+        guard let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+        return Range(match.range, in: text)
+    }
+
     static func containsWholeWord(_ normalizedText: String, word: String) -> Bool {
         let normWord = normalized(word)
         guard !normWord.isEmpty else { return false }
         let pattern = "(?<![\\p{L}\\p{N}])\(NSRegularExpression.escapedPattern(for: normWord))(?![\\p{L}\\p{N}])"
-        return normalizedText.range(of: pattern, options: .regularExpression) != nil
+        return Self.cachedRegexRange(pattern, in: normalizedText) != nil
     }
 
     static func containsKeyword(_ normalizedText: String, keyword: String, prefixMatch: Bool = false) -> Bool {
@@ -1446,7 +1737,7 @@ final class AppleFoundationCourtVoiceService {
         guard !normKey.isEmpty else { return false }
         let suffix = prefixMatch ? "[\\p{L}]*" : ""
         let pattern = "(?<![\\p{L}\\p{N}])\(NSRegularExpression.escapedPattern(for: normKey))\(suffix)(?![\\p{L}\\p{N}])"
-        return normalizedText.range(of: pattern, options: .regularExpression) != nil
+        return Self.cachedRegexRange(pattern, in: normalizedText) != nil
     }
 
     nonisolated static func jaroWinklerSimilarity(_ s1: String, _ s2: String) -> Double {
@@ -1635,7 +1926,7 @@ final class AppleFoundationCourtVoiceService {
         let learnedAliases = CourtVoiceAliasStore.studentAliases(forClassId: classId)
         for (alias, studentId) in learnedAliases.sorted(by: { $0.key.count > $1.key.count }) {
             let pattern = "(?<![\\p{L}\\p{N}])\(NSRegularExpression.escapedPattern(for: alias))(?![\\p{L}\\p{N}])"
-            if let range = normSegment.range(of: pattern, options: .regularExpression),
+            if let range = Self.cachedRegexRange(pattern, in: normSegment),
                !overlapsConsumed(range),
                let student = roster.first(where: { $0.id == studentId }) {
                 consumedRanges.append(range)
@@ -1650,7 +1941,7 @@ final class AppleFoundationCourtVoiceService {
             let normFull = normalized(student.fullName)
             guard normFull.count >= 3 else { continue }
             let pattern = "(?<![\\p{L}\\p{N}])\(NSRegularExpression.escapedPattern(for: normFull))(?![\\p{L}\\p{N}])"
-            if let range = normSegment.range(of: pattern, options: .regularExpression), !overlapsConsumed(range) {
+            if let range = Self.cachedRegexRange(pattern, in: normSegment), !overlapsConsumed(range) {
                 consumedRanges.append(range)
                 matchedStudentIds.insert(student.id)
                 let cand = CourtVoiceStudentCandidate(id: student.id, fullName: student.fullName, confidence: 1.0, matchReason: "Nombre completo")
@@ -1665,11 +1956,15 @@ final class AppleFoundationCourtVoiceService {
 
         for normFirst in sortedFirstNames {
             let pattern = "(?<![\\p{L}\\p{N}])\(NSRegularExpression.escapedPattern(for: normFirst))(?![\\p{L}\\p{N}])"
-            guard let range = normSegment.range(of: pattern, options: .regularExpression), !overlapsConsumed(range) else {
+            guard let range = Self.cachedRegexRange(pattern, in: normSegment), !overlapsConsumed(range) else {
                 continue
             }
             consumedRanges.append(range)
-            let resolution = resolveStudents(mention: normFirst, in: roster, classId: classId)
+            var resolution = resolveStudents(mention: normFirst, in: roster, classId: classId)
+            if resolution.matched == nil,
+               let byInitial = resolveBySurnameInitial(firstName: normFirst, in: segment, roster: roster) {
+                resolution = byInitial
+            }
             if let m = resolution.matched {
                 if !matchedStudentIds.contains(m.id) {
                     matchedStudentIds.insert(m.id)
@@ -1691,7 +1986,7 @@ final class AppleFoundationCourtVoiceService {
 
         for token in tokenCandidates.sorted(by: { $0.count > $1.count }) {
             let pattern = "(?<![\\p{L}\\p{N}])\(NSRegularExpression.escapedPattern(for: token))(?![\\p{L}\\p{N}])"
-            guard let range = normSegment.range(of: pattern, options: .regularExpression), !overlapsConsumed(range) else {
+            guard let range = Self.cachedRegexRange(pattern, in: normSegment), !overlapsConsumed(range) else {
                 continue
             }
             consumedRanges.append(range)
@@ -1707,7 +2002,7 @@ final class AppleFoundationCourtVoiceService {
         }
 
         // 5. Si no se encontró ningún nombre exacto pero hay un candidato en mayúscula con fonética similar ("Isan", "Ugo", "Bictor")
-        if results.isEmpty, let capCandidate = extractCapitalizedNameCandidate(from: segment) {
+        if results.isEmpty, let capCandidate = extractHeaderNameCandidate(from: segment, roster: roster, classId: classId) {
             let resolution = resolveStudents(mention: capCandidate, in: roster, classId: classId)
             if resolution.matched != nil || !resolution.candidates.isEmpty {
                 results.append(resolution)
@@ -1715,6 +2010,27 @@ final class AppleFoundationCourtVoiceService {
         }
 
         return results
+    }
+
+    /// «Marta V.», «Marta B,»: la inicial del apellido (en mayúscula, tras el nombre) desambigua entre alumnos con el mismo nombre.
+    static func resolveBySurnameInitial(
+        firstName normFirst: String,
+        in segment: String,
+        roster: [CourtVoiceStudentDescriptor]
+    ) -> StudentResolutionResult? {
+        let sameName = roster.filter { normalized($0.firstName) == normFirst }
+        guard sameName.count >= 2 else { return nil }
+        let folded = segment.folding(options: [.diacriticInsensitive], locale: Locale(identifier: "es_ES"))
+        let pattern = "(?i:\(NSRegularExpression.escapedPattern(for: normFirst)))\\s+(\\p{Lu})(?![\\p{L}])"
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: folded, range: NSRange(folded.startIndex..., in: folded)),
+              let initialRange = Range(match.range(at: 1), in: folded) else { return nil }
+        let initial = normalized(String(folded[initialRange]))
+        let hits = sameName.filter { normalized($0.lastName).hasPrefix(initial) }
+        guard hits.count == 1, let student = hits.first else { return nil }
+        let reason = "Inicial del apellido (\(initial.uppercased()).) → \(student.fullName)"
+        let candidate = CourtVoiceStudentCandidate(id: student.id, fullName: student.fullName, confidence: 0.93, matchReason: reason)
+        return StudentResolutionResult(mention: "\(student.firstName) \(initial.uppercased()).", matched: student, candidates: [candidate], confidence: 0.93, reason: reason)
     }
 
     static func findAllStudents(in segment: String, roster: [CourtVoiceStudentDescriptor]) -> [CourtVoiceStudentDescriptor] {
@@ -2255,9 +2571,10 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
     func updateContextualVocabulary(
         students: [CourtVoiceStudentDescriptor],
         columns: [CourtVoiceColumnDescriptor],
-        classId: Int64
+        classId: Int64,
+        extraPhrases: [String] = []
     ) {
-        var phrases: Set<String> = []
+        var phrases: Set<String> = Set(extraPhrases)
         for s in students {
             phrases.insert(s.fullName)
             phrases.insert(s.firstName)
@@ -2274,7 +2591,9 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
             phrases.insert(alias)
         }
         phrases.formUnion(["Course Navette", "palier", "bádminton", "rúbrica", "fair play", "sin material", "esguince"])
-        contextualStrings = Array(phrases).filter { !$0.isEmpty }
+        phrases.formUnion(CourtVoiceDictationCorrections.vocabulary)
+        // Apple recomienda no pasar de ~100 frases; si sobran, se descartan las más largas.
+        contextualStrings = Array(phrases.filter { !$0.isEmpty }.sorted { $0.count < $1.count }.prefix(100))
     }
 
     func toggleRecording() {

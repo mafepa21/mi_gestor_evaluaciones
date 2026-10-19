@@ -812,6 +812,7 @@
 		FB055151EE3D206236A08C2F /* PlannerWeekDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E31019B3456252E21063E25 /* PlannerWeekDetailPane.swift */; };
 		FB325786BC7726582CF1A026 /* RubricMetacognitionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A2242F5FBFA0C7B6892334B /* RubricMetacognitionSheet.swift */; };
 		FB843CEE269EFF627C42681D /* CooperativeGroupGeneratorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995790F8B9F9C8C528105319 /* CooperativeGroupGeneratorService.swift */; };
+		FC44FC4E6D4E107241F3E841 /* CourtVoiceRealDictationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7555A56587822C96BF3303A /* CourtVoiceRealDictationTests.swift */; };
 		FCFCDB058F5AC765537750B3 /* NotebookModuleOrganization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEEB5AEB802B224689F0882B /* NotebookModuleOrganization.swift */; };
 		FD1CB4E8A91F032590280EB6 /* KmpBridge+Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 831A193F350D0D1EF8FA3BF6 /* KmpBridge+Dashboard.swift */; };
 		FD2174F0F00D3AED49472BA1 /* KmpBridgeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A47C8FEAEAB280FF9E56FDA /* KmpBridgeModels.swift */; };
@@ -1241,6 +1242,7 @@
 		C680A5ECE29A5E0CA5322A5A /* DataSecuritySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataSecuritySettingsView.swift; sourceTree = "<group>"; };
 		C6A13EB373B0EE87E425E97C /* ScheduleExcelImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleExcelImportService.swift; sourceTree = "<group>"; };
 		C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataManagementSettingsView.swift; sourceTree = "<group>"; };
+		C7555A56587822C96BF3303A /* CourtVoiceRealDictationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourtVoiceRealDictationTests.swift; sourceTree = "<group>"; };
 		C85AD42D18AFCD452127D549 /* ScheduleImportModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImportModels.swift; sourceTree = "<group>"; };
 		C8BFCF99CED1D1B0B14F406F /* PlannerWorkspaceViewModel+DayBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+DayBoard.swift"; sourceTree = "<group>"; };
 		CABF3C938060DE09EB0F96BB /* RubricsBuilderScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricsBuilderScreen.swift; sourceTree = "<group>"; };
@@ -1424,6 +1426,7 @@
 				8E57E19C9CA07F86D0477CCE /* CooperativeGroupAndCalibrationTests.swift */,
 				E773CB3C5E4B7602590F7F35 /* CourtVoiceCaptureTests.swift */,
 				553CB47B4806F997A313F12A /* CourtVoiceCriteriaTests.swift */,
+				C7555A56587822C96BF3303A /* CourtVoiceRealDictationTests.swift */,
 				379959F6774F930B1BDBD791 /* DiaryTimelineProjectionTests.swift */,
 				880A34E6ED9FC0F10FE40AC2 /* LearningSituationDocumentImportTests.swift */,
 				968077A1B396C10078A51773 /* LegacyTournamentMigratorTests.swift */,
@@ -2215,6 +2218,7 @@
 				D6C47A2BDBB0BEEA7AA192B1 /* CooperativeGroupAndCalibrationTests.swift in Sources */,
 				CF6F570D1534DB2E5DFFE678 /* CourtVoiceCaptureTests.swift in Sources */,
 				7AFCD20DE4748CFAC9DEC594 /* CourtVoiceCriteriaTests.swift in Sources */,
+				FC44FC4E6D4E107241F3E841 /* CourtVoiceRealDictationTests.swift in Sources */,
 				6669D2E57DFF465030F853CB /* DiaryTimelineProjectionTests.swift in Sources */,
 				BBC3ED3DFE1B028A9D42695B /* LearningSituationDocumentImportTests.swift in Sources */,
 				EB9EF09DBFD79A64E04FDBBC /* LegacyTournamentMigratorTests.swift in Sources */,

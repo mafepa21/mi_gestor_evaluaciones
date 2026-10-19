@@ -91,12 +91,14 @@ enum CourtVoiceCriteriaMatcher {
         "hace", "hacer", "tiene", "tener", "siempre", "nunca", "poco", "mucho", "bastante", "algo", "veces", "sobre",
         "entre", "desde", "hasta", "segun", "durante", "adecuado", "adecuada", "adecuados", "adecuadas", "correcto",
         "correcta", "correctos", "correctas", "excelente", "genial", "perfecto", "perfecta", "regular", "flojo", "floja",
-        "buena", "bueno", "buenos", "buenas", "solo", "sola", "ella", "ellos"
+        "buena", "bueno", "buenos", "buenas", "solo", "sola", "ella", "ellos",
+        "balon", "pelota", "lanzamiento", "lanzamientos", "lanza", "tiro", "chuta", "primer", "primero", "segundo",
+        "tanto", "pelin", "demasiado", "igual", "resto", "factores", "elementos"
     ]
 
     /// Familias de palabras del vocabulario de Educación Física que deben contar como la misma idea.
     private static let synonymGroups: [[String]] = [
-        ["desplaz", "muev", "mover", "coloca", "posicion", "llega", "corre", "recorr"],
+        ["desplaz", "muev", "mover", "llega", "corre", "recorr"],
         ["golpe", "golpeo", "raqueta", "remate", "saque", "clear", "dejad"],
         ["tecni", "ejecu", "gesto"],
         ["decisi", "decid", "tacti", "elige", "eleg", "estrateg", "lee el juego"],
@@ -107,7 +109,14 @@ enum CourtVoiceCriteriaMatcher {
         ["cooper", "colabor", "equipo", "ayuda"],
         ["autoconc", "reflexi", "autoeval"],
         ["feedback", "retroal", "comenta", "empati"],
-        ["etic", "valor", "competi"]
+        ["etic", "valor", "competi"],
+        ["equilib", "desequilib", "estable", "estabil", "firme"],
+        ["interior", "empein", "punta", "puntera", "superfic"],
+        ["direcc", "potenc", "potent", "fuerte", "punteri", "porteri", "coloc", "centro"],
+        ["aproxim", "acerca", "carrera"],
+        ["corporal", "postura", "cuerpo"],
+        ["apoyo"],
+        ["coordin", "armoni", "ampli"]
     ]
 
     private enum Tone: Double {
@@ -117,10 +126,13 @@ enum CourtVoiceCriteriaMatcher {
         case low = 0.0
     }
 
-    private static let partialPhrases = ["a veces", "le cuesta", "irregular", "mejorable", "en desarrollo", "regular", "todavia", "a medias", "justo"]
-    private static let lowPhrases = ["muy mal", "fatal", "no sabe", "no consigue", "insuficiente", "muy flojo", "nada bien", "mal"]
+    private static let partialPhrases = [
+        "a veces", "le cuesta", "irregular", "mejorable", "en desarrollo", "regular", "todavia", "a medias", "justo",
+        "un tanto", "un pelin", "un poco", "no del todo", "no es del todo", "no es el todo", "podria ser", "algo "
+    ]
+    private static let lowPhrases = ["muy mal", "fatal", "no sabe", "no consigue", "insuficiente", "muy flojo", "nada bien", "mal", "demasiado", "flojo"]
     private static let negationWords: Set<String> = ["no", "nunca", "tampoco"]
-    private static let topPhrases = ["muy bien", "excelente", "perfect", "genial", "domina", "sobresal", "impecable", "brillante", "fenomenal", "de diez"]
+    private static let topPhrases = ["muy bien", "muy buen", "excelente", "perfect", "genial", "domina", "sobresal", "impecable", "brillante", "fenomenal", "de diez"]
     private static let goodPhrases = ["bien", "adecuad", "correct", "bastante", "notable", "buen", "solid", "segur"]
 
     // MARK: Entrada pública
@@ -184,6 +196,28 @@ enum CourtVoiceCriteriaMatcher {
         for index in updated.actions.indices {
             var action = updated.actions[index]
             let text = evidenceText(for: action)
+            defer { updated.actions[index] = action }
+            // «Lorena. Repite igual que el primero»: es una evaluación del mismo instrumento que la acción citada.
+            if action.kind == .observation,
+               let referenceId = action.inheritsCriteriaFromActionId,
+               let reference = updated.actions[..<index].first(where: { $0.id == referenceId }),
+               reference.kind == .quickEvaluation,
+               let referenceColumn = reference.columnId,
+               instruments[referenceColumn] != nil {
+                action.kind = .quickEvaluation
+                action.columnId = referenceColumn
+                action.columnTitle = reference.columnTitle
+                action.resolutionReason = "Igual que su intento anterior"
+            }
+            // Una descripción técnica larga (3 o más criterios) es una evaluación, no una observación.
+            if action.kind == .observation,
+               let best = bestInstrument(text: text, instruments: ordered),
+               best.proposals.filter(\.isMentioned).count >= 3 {
+                action.kind = .quickEvaluation
+                action.columnId = best.instrument.columnId
+                action.columnTitle = best.instrument.title
+                action.resolutionReason = "Descripción con varios criterios de «\(best.instrument.title)»"
+            }
             switch action.kind {
             case .quickEvaluation:
                 let wasReady = action.isReadyToApply
@@ -209,6 +243,48 @@ enum CourtVoiceCriteriaMatcher {
             case .attendance, .injury:
                 break
             }
+            if let referenceId = action.inheritsCriteriaFromActionId,
+               let reference = updated.actions.first(where: { $0.id == referenceId }),
+               reference.criteriaColumnId == action.criteriaColumnId,
+               let referenceProposals = reference.criterionProposals,
+               var proposals = action.criterionProposals {
+                let wasReady = action.isReadyToApply
+                for i in proposals.indices where !proposals[i].isMentioned {
+                    guard let source = referenceProposals.first(where: { $0.id == proposals[i].id }), source.chosenLevelId != nil else { continue }
+                    proposals[i].evidence = "Igual que \(reference.studentName)"
+                    proposals[i].suggestedLevelId = source.chosenLevelId
+                    proposals[i].chosenLevelId = source.chosenLevelId
+                }
+                action.criterionProposals = proposals
+                if !wasReady && action.isReadyToApply { action.isSelected = action.confidence >= 0.75 }
+            }
+        }
+        return promoteObservationsInEvaluationSession(updated, instruments: instruments)
+    }
+
+    /// Si el dictado es una sesión de evaluación con un instrumento (3 o más alumnos evaluados con él), las frases cortas
+    /// que tocan alguno de sus criterios («Lucía. Golpeo perfecto.») también son evaluaciones de ese instrumento.
+    private static func promoteObservationsInEvaluationSession(
+        _ draft: CourtVoiceCaptureDraft,
+        instruments: [String: CourtVoiceInstrumentDescriptor]
+    ) -> CourtVoiceCaptureDraft {
+        let evaluationsByColumn = Dictionary(grouping: draft.actions.filter { $0.kind == .quickEvaluation && $0.hasChosenCriteria }, by: { $0.columnId ?? "" })
+        guard let (columnId, evaluations) = evaluationsByColumn.max(by: { $0.value.count < $1.value.count }),
+              evaluations.count >= 3,
+              let instrument = instruments[columnId] else { return draft }
+        var updated = draft
+        for index in updated.actions.indices where updated.actions[index].kind == .observation {
+            var action = updated.actions[index]
+            let proposals = match(text: evidenceText(for: action), instrument: instrument)
+            guard proposals.contains(where: \.isMentioned) else { continue }
+            action.kind = .quickEvaluation
+            action.columnId = columnId
+            action.columnTitle = instrument.title
+            action.criterionProposals = proposals
+            action.criteriaColumnId = columnId
+            action.criteriaColumnTitle = nil
+            action.resolutionReason = "Sesión de evaluación con «\(instrument.title)»"
+            action.isSelected = action.isReadyToApply && action.confidence >= 0.75
             updated.actions[index] = action
         }
         return updated
@@ -225,9 +301,10 @@ enum CourtVoiceCriteriaMatcher {
     // MARK: Nivel sugerido
 
     static func suggestLevel(for criterion: CourtVoiceCriterionDescriptor, clause: String) -> CourtVoiceCriterionLevel? {
-        let text = normalized(clause)
+        let text = CourtVoiceDictationCorrections.apply(normalized(clause))
         let words = wordList(text)
-        let isNegated = words.contains { negationWords.contains($0) }
+        let softened = ["no del todo", "no es del todo", "no es el todo"].contains { text.contains($0) }
+        let isNegated = !softened && words.contains { negationWords.contains($0) }
 
         switch criterion.kind {
         case .check:
@@ -299,7 +376,7 @@ enum CourtVoiceCriteriaMatcher {
 
     /// Claves de significado: familia de sinónimos o raíz de 5 letras de cada palabra con contenido.
     static func keys(of text: String) -> Set<String> {
-        let normalizedText = normalized(text)
+        let normalizedText = CourtVoiceDictationCorrections.apply(normalized(text))
         var result = Set<String>()
         for (groupIndex, group) in synonymGroups.enumerated() where group.contains(where: { $0.contains(" ") && normalizedText.contains($0) }) {
             result.insert("g\(groupIndex)")
@@ -313,6 +390,38 @@ enum CourtVoiceCriteriaMatcher {
         }
         return result
     }
+}
+
+// MARK: - Correcciones de dictado en Educación Física
+
+/// Errores habituales del dictado del sistema al describir técnica deportiva. Se aplican solo para entender
+/// la frase (emparejar criterios y niveles); el texto que ve el docente no cambia.
+enum CourtVoiceDictationCorrections {
+    private static let rules: [(pattern: String, replacement: String)] = [
+        ("\\b(pie de polio|piedra pollo|pide apoyo|te da apoyo|tiene apoyo|lleve apoyo|el que de apoyo|que de apoyo|se le ha apoyo|pie de pollo)\\b", "pie de apoyo"),
+        ("\\b(un peine|el peine|empeno|empeño)\\b", "empeine"),
+        ("\\bposicion(es)? (incorporal|incorporada|incorporar|de todo|en corporal)\\b", "posicion corporal"),
+        ("\\bgolpeon\\b", "golpeo"),
+        ("\\btexto (coordinado|amplio)\\b", "gesto $1"),
+        ("\\bgestor\\b", "gesto"),
+        ("\\blanz momento\\b", "lanzamiento"),
+        ("\\bpie de apoyo\\b", "apoyo")
+    ]
+
+    /// Recibe texto ya normalizado (minúsculas, sin tildes).
+    static func apply(_ normalizedText: String) -> String {
+        var text = normalizedText
+        for rule in rules {
+            text = text.replacingOccurrences(of: rule.pattern, with: rule.replacement, options: .regularExpression)
+        }
+        return text
+    }
+
+    /// Vocabulario que se ofrece al reconocedor de voz para que acierte más con estos términos.
+    static let vocabulary = [
+        "pie de apoyo", "empeine", "interior", "posición corporal", "golpeo", "gesto técnico", "aproximación",
+        "puntera", "portería", "lanzamiento", "equilibrio", "coordinación"
+    ]
 }
 
 // MARK: - Refinado con Apple Intelligence (en el dispositivo)

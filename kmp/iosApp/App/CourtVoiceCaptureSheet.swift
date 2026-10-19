@@ -1106,7 +1106,7 @@ struct CourtVoiceCaptureSheet: View {
 
         let studentDescriptors = buildStudentDescriptors()
         let columnDescriptors = buildColumnDescriptors()
-        recognizer.updateContextualVocabulary(students: studentDescriptors, columns: columnDescriptors, classId: classId)
+        recognizer.updateContextualVocabulary(students: studentDescriptors, columns: columnDescriptors, classId: classId, extraPhrases: criteriaVocabulary)
 
         if shouldAutoAnalyze && !effectiveTranscript.isEmpty {
             await analyzeCurrentTranscript()
@@ -1159,7 +1159,7 @@ struct CourtVoiceCaptureSheet: View {
 
         let studentDescriptors = buildStudentDescriptors()
         let columnDescriptors = buildColumnDescriptors()
-        recognizer.updateContextualVocabulary(students: studentDescriptors, columns: columnDescriptors, classId: classId)
+        recognizer.updateContextualVocabulary(students: studentDescriptors, columns: columnDescriptors, classId: classId, extraPhrases: criteriaVocabulary)
 
         let input = CourtVoiceCaptureInput(
             transcript: text,
@@ -1719,6 +1719,11 @@ struct CourtVoiceCaptureSheet: View {
         if let updated = draft?.actions[index] {
             draft?.actions[index].isSelected = updated.isReadyToApply
         }
+    }
+
+    /// Títulos de criterios de las rúbricas y plantillas cargadas, para que el dictado los reconozca mejor.
+    private var criteriaVocabulary: [String] {
+        Array(Set(criteriaInstruments.values.flatMap { $0.criteria.map(\.title) })).filter { $0.count <= 60 }
     }
 
     private func showsCriteriaEditor(for action: CourtVoiceProposedAction) -> Bool {

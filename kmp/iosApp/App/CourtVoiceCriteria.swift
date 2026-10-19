@@ -354,7 +354,8 @@ enum CourtVoiceCriteriaModelRefiner {
                 )
                 return merge(response.content.matches.map { (criterionId: $0.criterionId, levelName: $0.levelName, evidence: $0.evidence) }, into: proposals)
             } catch {
-                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                // Si falla el afinado de criterios, quedan las reglas; no apaga la IA para el resto de la bandeja.
+                AppleFoundationModelSupport.recordRequestFailure(error)
                 return proposals
             }
         }

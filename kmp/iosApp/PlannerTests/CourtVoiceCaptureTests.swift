@@ -437,5 +437,54 @@ final class CourtVoiceCaptureTests: XCTestCase {
         XCTAssertEqual(draft.actions[4].formattedScaleValue, "false")
         XCTAssertTrue(draft.actions[4].isSelected)
     }
-}
 
+    // MARK: - Instrumentos estructurados: solo estado de entrega, nunca nota
+
+    func testStructuredFormCompletionListProducesDeliveryStatusWithoutScore() {
+        let roster: [CourtVoiceStudentDescriptor] = [
+            .init(id: 101, firstName: "Ferran", lastName: "Abad", fullName: "Ferran Abad", isCurrentlyInjured: false),
+            .init(id: 102, firstName: "Ignacio", lastName: "Alemán", fullName: "Ignacio Alemán", isCurrentlyInjured: false),
+            .init(id: 105, firstName: "Nerea", lastName: "Cardo", fullName: "Nerea Cardo", isCurrentlyInjured: false)
+        ]
+        let columns: [CourtVoiceColumnDescriptor] = [
+            .init(id: "col_autoeval", title: "Rúbrica de autoevaluación", evaluationId: 1, columnType: "TEXT", inputKind: "STRUCTURED_FORM", scaleKind: .fourLevel)
+        ]
+
+        let service = AppleFoundationCourtVoiceService()
+        let input = CourtVoiceCaptureInput(
+            transcript: "Ferran Abad ha completado la rúbrica de autoevaluación. Ignacio Alemán también. Nerea Cardo no la ha completado",
+            classId: 200,
+            className: "1º BAC A",
+            students: roster,
+            evaluableColumns: columns
+        )
+
+        let draft = service.parseWithRulesFallback(from: input, reason: "Formulario estructurado")
+        XCTAssertEqual(draft.actions.count, 3)
+
+        for action in draft.actions.prefix(2) {
+            XCTAssertEqual(action.columnId, "col_autoeval")
+            XCTAssertNil(action.score, "No debe inventar una nota 1-4 en un instrumento estructurado")
+            XCTAssertEqual(action.formattedScaleValue, CourtVoiceDeliveryStatus.completed.rawValue)
+            XCTAssertTrue(action.isReadyToApply)
+        }
+
+        let nerea = draft.actions[2]
+        XCTAssertEqual(nerea.studentId, 105)
+        XCTAssertNil(nerea.score, "«No la ha completado» no es un 1 (Insuficiente)")
+        XCTAssertEqual(nerea.formattedScaleValue, CourtVoiceDeliveryStatus.pending.rawValue)
+    }
+
+    func testStructuredColumnIgnoresDictatedNumericScore() {
+        let column = CourtVoiceColumnDescriptor(id: "col_form", title: "Formulario", columnType: "TEXT", inputKind: "STRUCTURED_FORM", scaleKind: .fourLevel)
+        XCTAssertTrue(column.isStructuredInstrument)
+
+        let dictated = AppleFoundationCourtVoiceService.convertValueForColumn(rawScore: 7.0, rawText: "un 7", unit: nil, column: column)
+        XCTAssertNil(dictated.numericScore)
+        XCTAssertNil(dictated.formattedText, "Una nota suelta no es un estado de entrega: queda para revisión")
+
+        let numericColumn = CourtVoiceColumnDescriptor(id: "col_num", title: "Nota", scaleKind: .fourLevel)
+        XCTAssertFalse(numericColumn.isStructuredInstrument)
+        XCTAssertEqual(AppleFoundationCourtVoiceService.convertValueForColumn(rawScore: 10.0, rawText: "", unit: nil, column: numericColumn).numericScore, 4.0)
+    }
+}

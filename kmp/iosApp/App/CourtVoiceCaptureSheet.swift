@@ -821,6 +821,18 @@ struct CourtVoiceCaptureSheet: View {
 
                         Spacer()
 
+                        if isStructuredColumn(action.columnId) {
+                            Picker("Estado", selection: Binding<CourtVoiceDeliveryStatus?>(
+                                get: { CourtVoiceDeliveryStatus.from(action.formattedScaleValue) },
+                                set: { updateDeliveryStatus(at: index, status: $0) }
+                            )) {
+                                ForEach(CourtVoiceDeliveryStatus.allCases, id: \.self) { status in
+                                    Text(status.label).tag(Optional(status))
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .fixedSize()
+                        } else {
                         HStack(spacing: 6) {
                             Text(action.rawUnit.map { "Marca (\($0)):" } ?? "Valor:")
                                 .font(.caption.weight(.bold))
@@ -837,6 +849,7 @@ struct CourtVoiceCaptureSheet: View {
                                 set: { updateScore(at: index, score: $0) }
                             ), in: 0...200, step: 0.5)
                             .labelsHidden()
+                        }
                         }
                     }
 
@@ -863,6 +876,7 @@ struct CourtVoiceCaptureSheet: View {
                     }
 
                     // Píldoras rápidas LOMLOE / Notas frecuentes para asignar o cambiar con 1 toque
+                    if !isStructuredColumn(action.columnId) {
                     HStack(spacing: 6) {
                         Text("Rápido:")
                             .font(.caption2.weight(.semibold))
@@ -884,6 +898,7 @@ struct CourtVoiceCaptureSheet: View {
                             }
                             .buttonStyle(.plain)
                         }
+                    }
                     }
                 }
 
@@ -1268,6 +1283,29 @@ struct CourtVoiceCaptureSheet: View {
             column: descriptor
         )
 
+        // Instrumento estructurado: solo se marca el estado de entrega en el texto de la celda.
+        // Nunca saveGrade: la nota real la deriva saveResponses al rellenar los indicadores.
+        if column.inputKind.isStructuredInstrument {
+            guard let status = CourtVoiceDeliveryStatus.from(converted.formattedText ?? action.formattedScaleValue) else {
+                throw NSError(domain: "CourtVoice", code: 422, userInfo: [NSLocalizedDescriptionKey: "Indica si \(column.title) está completada o pendiente."])
+            }
+            try await bridge.container.notebookRepository.saveCell(
+                classId: classId,
+                studentId: studentId,
+                columnId: column.id,
+                textValue: status.rawValue,
+                boolValue: nil,
+                iconValue: nil,
+                ordinalValue: nil,
+                note: action.note.nilIfEmpty,
+                colorHex: nil,
+                attachmentUris: [],
+                authorUserId: nil,
+                associatedGroupId: nil
+            )
+            return
+        }
+
         switch column.type {
         case .numeric, .rubric:
             guard let numericVal = converted.numericScore ?? action.score else {
@@ -1509,6 +1547,20 @@ struct CourtVoiceCaptureSheet: View {
         }
     }
 
+    private func isStructuredColumn(_ columnId: String?) -> Bool {
+        guard let columnId else { return false }
+        return evaluableColumns.first(where: { $0.id == columnId })?.inputKind.isStructuredInstrument ?? false
+    }
+
+    private func updateDeliveryStatus(at index: Int, status: CourtVoiceDeliveryStatus?) {
+        guard draft?.actions.indices.contains(index) == true else { return }
+        draft?.actions[index].score = nil
+        draft?.actions[index].formattedScaleValue = status?.rawValue
+        if let updated = draft?.actions[index] {
+            draft?.actions[index].isSelected = updated.isReadyToApply
+        }
+    }
+
     private func updateColumn(at index: Int, columnId: String?) {
         guard draft?.actions.indices.contains(index) == true else { return }
         let col = evaluableColumns.first(where: { $0.id == columnId })
@@ -1530,6 +1582,17 @@ struct CourtVoiceCaptureSheet: View {
             )
             draft?.actions[index].score = conv.numericScore
             draft?.actions[index].formattedScaleValue = conv.formattedText
+        } else if let colDesc = buildColumnDescriptors().first(where: { $0.id == columnId }) {
+            // Sin nota previa: un estado de entrega solo vale en columnas estructuradas.
+            let currentText = draft?.actions[index].formattedScaleValue
+            if colDesc.isStructuredInstrument {
+                if CourtVoiceDeliveryStatus.from(currentText) == nil {
+                    draft?.actions[index].formattedScaleValue = AppleFoundationCourtVoiceService
+                        .deliveryStatus(rawScore: nil, rawText: draft?.actions[index].sourceExcerpt ?? "")?.rawValue
+                }
+            } else if CourtVoiceDeliveryStatus.from(currentText) != nil {
+                draft?.actions[index].formattedScaleValue = nil
+            }
         }
         if let updated = draft?.actions[index] {
             draft?.actions[index].isSelected = updated.isReadyToApply

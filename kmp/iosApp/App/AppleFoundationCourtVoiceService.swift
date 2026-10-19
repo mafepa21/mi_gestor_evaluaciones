@@ -106,6 +106,34 @@ struct CourtVoiceColumnDescriptor: Hashable, Sendable, Codable, Identifiable {
     var isEvaluableCandidate: Bool {
         !isLocked && !isHiddenOrArchived && columnType.uppercased() != "CALCULATED"
     }
+
+    /// Instrumento estructurado (checklist, observación, formulario o quiz). Su nota sale de las respuestas de
+    /// la plantilla, así que Voz de Pista solo puede marcar el estado de entrega, nunca dictar una nota.
+    var isStructuredInstrument: Bool {
+        CourtVoiceColumnDescriptor.structuredInputKinds.contains(inputKind.uppercased())
+    }
+
+    static let structuredInputKinds: Set<String> = [
+        "STRUCTURED_CHECKLIST", "STRUCTURED_OBSERVATION", "STRUCTURED_FORM", "STRUCTURED_QUIZ"
+    ]
+}
+
+/// Estado de entrega que Voz de Pista escribe en columnas de instrumento estructurado.
+enum CourtVoiceDeliveryStatus: String, CaseIterable, Sendable {
+    case completed = "Completo"
+    case pending = "Pendiente"
+
+    var label: String {
+        switch self {
+        case .completed: return "Completada"
+        case .pending: return "Pendiente"
+        }
+    }
+
+    static func from(_ text: String?) -> CourtVoiceDeliveryStatus? {
+        guard let text else { return nil }
+        return CourtVoiceDeliveryStatus(rawValue: text)
+    }
 }
 
 struct CourtVoiceStudentCandidate: Hashable, Sendable, Codable, Identifiable {
@@ -822,6 +850,9 @@ final class AppleFoundationCourtVoiceService {
         kind = action.kind
         if let s = action.score {
             score = s
+        } else if let status = CourtVoiceDeliveryStatus.from(action.formattedScaleValue) {
+            // Estado de entrega (columna estructurada): se recuerda como 10/0 para que "también"/"tampoco" lo hereden.
+            score = status == .completed ? 10.0 : 0.0
         }
         if let att = action.attendanceStatus {
             attendance = att
@@ -1051,6 +1082,19 @@ final class AppleFoundationCourtVoiceService {
             return 10.0
         }
         return nil
+    }
+
+    /// Estado de entrega para columnas estructuradas. Prioriza la frase dictada ("ha completado" / "no la ha completado");
+    /// si no la hay, solo acepta el 10/0 que hereda una elipsis ("también", "tampoco"). Cualquier otra nota queda sin valor.
+    static func deliveryStatus(rawScore: Double?, rawText: String) -> CourtVoiceDeliveryStatus? {
+        if let completion = extractCompletionScore(from: rawText) {
+            return completion >= 5.0 ? .completed : .pending
+        }
+        switch rawScore {
+        case 10.0?: return .completed
+        case 0.0?: return .pending
+        default: return nil
+        }
     }
 
     /// Detecta si un segmento es una continuación elíptica afirmativa que repite la acción anterior para un nuevo alumno ("Ignacio Alemán también", "Emma Ambel igual", "y José Bautista también").
@@ -1981,6 +2025,11 @@ final class AppleFoundationCourtVoiceService {
     ) -> (numericScore: Double?, formattedText: String?, unit: String?) {
         guard let column else {
             return (rawScore, nil, unit)
+        }
+
+        // Instrumento estructurado: solo estado de entrega. Nunca se convierte a escala ni se inventa nota.
+        if column.isStructuredInstrument {
+            return (nil, deliveryStatus(rawScore: rawScore, rawText: rawText)?.rawValue, nil)
         }
 
         let normText = normalized(rawText)

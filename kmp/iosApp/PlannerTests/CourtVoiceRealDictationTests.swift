@@ -112,7 +112,7 @@ Lorena, segundo lanzamiento por el interior, por gesto y buen golpe.
         let fakeNames: Set<String> = ["Buen", "Hace", "Pide", "Ahora", "Damas", "Tiene", "Lanza", "Lleve", "Golpeado", "Posición", "Bueno"]
         XCTAssertFalse(draft.actions.contains { fakeNames.contains($0.studentName) }, "Ninguna palabra de la descripción se toma por alumna")
         XCTAssertTrue((24...32).contains(draft.actions.count), "Una acción por alumna e intento (\(draft.actions.count))")
-        XCTAssertLessThanOrEqual(draft.unmatchedSegments.count, 2)
+        XCTAssertLessThanOrEqual(draft.unmatchedSegments.count, 2, "\(draft.unmatchedSegments)")
     }
 
     func testHeaderNameOwnsFollowingDescription() {
@@ -150,19 +150,41 @@ Lorena, segundo lanzamiento por el interior, por gesto y buen golpe.
         XCTAssertTrue(lorenaRepeat?.hasChosenCriteria ?? false, "«Repite igual que el primero» copia los niveles de su primer lanzamiento")
     }
 
+    func testShortDictationsKeepSeparateActions() {
+        let service = AppleFoundationCourtVoiceService()
+        let columns = [
+            CourtVoiceColumnDescriptor(id: "col_saque", title: "Saque", evaluationId: 1),
+            CourtVoiceColumnDescriptor(id: "col_recepcion", title: "Recepción", evaluationId: 2)
+        ]
+        let parse: (String) -> CourtVoiceCaptureDraft = { text in
+            service.parseWithRulesFallback(from: CourtVoiceCaptureInput(transcript: text, classId: 1, className: "1º ESO", students: self.roster, evaluableColumns: columns), reason: "")
+        }
+        let twoGrades = parse("Lucía un 8 en saque. Lucía un 6 en recepción.")
+        XCTAssertEqual(twoGrades.actions.filter { $0.studentId == 1 }.count, 2, "Dos notas distintas no se funden")
+
+        let mixed = parse("Irene muy participativa. Irene un 7 en saque.")
+        XCTAssertEqual(mixed.actions.filter { $0.studentId == 14 }.count, 2)
+
+        let loose = parse("Lucía un 8 en saque. Mañana traed ropa deportiva.")
+        XCTAssertEqual(loose.actions.count, 1)
+        XCTAssertTrue(loose.unmatchedSegments.contains { $0.contains("Mañana traed ropa") }, "Una frase suelta no se mete en la nota de Lucía")
+    }
+
     func testDictationCorrections() {
-        let fixed = CourtVoiceDictationCorrections.apply(CourtVoiceCriteriaMatcher.normalized("Pide apoyo bien, lanza con el empeño y posición incorporada"))
+        XCTAssertFalse(CourtVoiceDictationCorrections.apply(CourtVoiceCriteriaMatcher.normalized("Hugo pone mucho empeño")).contains("empeine"),
+                       "Sin rúbrica de técnica, «empeño» es esfuerzo")
+        let fixed = CourtVoiceDictationCorrections.apply(CourtVoiceCriteriaMatcher.normalized("Pide apoyo bien, lanza con el empeño y posición incorporada"), technicalContext: true)
         XCTAssertTrue(fixed.contains("apoyo"))
         XCTAssertTrue(fixed.contains("empeine"))
         XCTAssertTrue(fixed.contains("posicion corporal"))
     }
 
     func testLongDictationIsChunkedForAppleIntelligence() {
-        let input = CourtVoiceCaptureInput(transcript: transcript, classId: 1, className: "1º ESO", students: roster)
-        let rules = AppleFoundationCourtVoiceService().parseWithRulesFallback(from: input, reason: "")
-        let chunks = AppleFoundationCourtVoiceService.chunkTranscript(transcript, ruleActions: rules.actions)
+        let chunks = AppleFoundationCourtVoiceService.chunkTranscript(transcript)
         XCTAssertGreaterThanOrEqual(chunks.count, 4)
         XCTAssertTrue(chunks.allSatisfy { $0.count <= 1_200 }, "Cada trozo cabe en el contexto del modelo")
-        XCTAssertEqual(AppleFoundationCourtVoiceService.chunkTranscript("Lucía un 8", ruleActions: []), ["Lucía un 8"])
+        let words: (String) -> [String] = { $0.split(whereSeparator: { !$0.isLetter }).map(String.init) }
+        XCTAssertEqual(words(chunks.joined(separator: " ")), words(transcript), "No se pierde ni se repite texto")
+        XCTAssertEqual(AppleFoundationCourtVoiceService.chunkTranscript("Lucía un 8"), ["Lucía un 8"])
     }
 }

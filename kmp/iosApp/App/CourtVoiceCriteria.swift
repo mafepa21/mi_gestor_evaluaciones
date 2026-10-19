@@ -139,8 +139,9 @@ enum CourtVoiceCriteriaMatcher {
 
     /// Devuelve una propuesta por cada criterio del instrumento. Solo los mencionados llevan evidencia y nivel sugerido.
     static func match(text: String, instrument: CourtVoiceInstrumentDescriptor) -> [CourtVoiceCriterionProposal] {
+        let technical = CourtVoiceDictationCorrections.isTechnicalInstrument(instrument)
         let clauses = splitClauses(text)
-        let clauseKeys = clauses.map { keys(of: $0) }
+        let clauseKeys = clauses.map { keys(of: $0, technicalContext: technical) }
         let textKeys = Set(clauseKeys.flatMap { $0 })
         let criterionKeys = instrument.criteria.map { keys(of: $0.title) }
 
@@ -158,7 +159,7 @@ enum CourtVoiceCriteriaMatcher {
             }
             let evidenceClauses = clauses.indices.filter { !clauseKeys[$0].intersection(own).isEmpty }.map { clauses[$0] }
             let evidence = evidenceClauses.joined(separator: " … ")
-            let suggested = suggestLevel(for: criterion, clause: evidence)
+            let suggested = suggestLevel(for: criterion, clause: evidence, technicalContext: technical)
             return CourtVoiceCriterionProposal(
                 criterion: criterion,
                 evidence: evidence,
@@ -275,8 +276,12 @@ enum CourtVoiceCriteriaMatcher {
         var updated = draft
         for index in updated.actions.indices where updated.actions[index].kind == .observation {
             var action = updated.actions[index]
-            let proposals = match(text: evidenceText(for: action), instrument: instrument)
-            guard proposals.contains(where: \.isMentioned) else { continue }
+            let text = evidenceText(for: action)
+            let proposals = match(text: text, instrument: instrument)
+            let mentioned = proposals.filter(\.isMentioned)
+            // Dos criterios, o uno con nivel claro («Golpeo perfecto»); nunca una frase de actitud.
+            guard mentioned.count >= 2 || mentioned.contains(where: { $0.suggestedLevelId != nil }),
+                  !looksLikeAttitudeNote(text) else { continue }
             action.kind = .quickEvaluation
             action.columnId = columnId
             action.columnTitle = instrument.title
@@ -290,6 +295,13 @@ enum CourtVoiceCriteriaMatcher {
         return updated
     }
 
+    /// Frases de actitud o convivencia que deben quedarse como observación.
+    static func looksLikeAttitudeNote(_ text: String) -> Bool {
+        let norm = normalized(text)
+        return ["participativ", "recog", "ayud", "compañer", "companer", "actitud", "comporta", "hablando", "distraid",
+                "interrump", "conflicto", "pelea", "discute", "aviso", "animando", "motivad", "esfuerz"].contains { norm.contains($0) }
+    }
+
     static func evidenceText(for action: CourtVoiceProposedAction) -> String {
         let excerpt = action.sourceExcerpt.trimmingCharacters(in: .whitespacesAndNewlines)
         let note = action.note.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -300,8 +312,8 @@ enum CourtVoiceCriteriaMatcher {
 
     // MARK: Nivel sugerido
 
-    static func suggestLevel(for criterion: CourtVoiceCriterionDescriptor, clause: String) -> CourtVoiceCriterionLevel? {
-        let text = CourtVoiceDictationCorrections.apply(normalized(clause))
+    static func suggestLevel(for criterion: CourtVoiceCriterionDescriptor, clause: String, technicalContext: Bool = false) -> CourtVoiceCriterionLevel? {
+        let text = CourtVoiceDictationCorrections.apply(normalized(clause), technicalContext: technicalContext)
         let words = wordList(text)
         let softened = ["no del todo", "no es del todo", "no es el todo"].contains { text.contains($0) }
         let isNegated = !softened && words.contains { negationWords.contains($0) }
@@ -333,7 +345,8 @@ enum CourtVoiceCriteriaMatcher {
 
     private static func tone(of text: String, words: [String]) -> Tone? {
         if partialPhrases.contains(where: { text.contains($0) }) { return .partial }
-        if lowPhrases.contains(where: { phrase in phrase.contains(" ") ? text.contains(phrase) : words.contains(phrase) }) { return .low }
+        let praise = ["demasiado bien", "demasiado buen"].contains { text.contains($0) }
+        if !praise, lowPhrases.contains(where: { phrase in phrase.contains(" ") ? text.contains(phrase) : words.contains(phrase) }) { return .low }
         if topPhrases.contains(where: { text.contains($0) }) { return .top }
         if goodPhrases.contains(where: { phrase in words.contains { $0.hasPrefix(phrase) } }) { return .good }
         return nil
@@ -375,8 +388,8 @@ enum CourtVoiceCriteriaMatcher {
     }
 
     /// Claves de significado: familia de sinónimos o raíz de 5 letras de cada palabra con contenido.
-    static func keys(of text: String) -> Set<String> {
-        let normalizedText = CourtVoiceDictationCorrections.apply(normalized(text))
+    static func keys(of text: String, technicalContext: Bool = false) -> Set<String> {
+        let normalizedText = CourtVoiceDictationCorrections.apply(normalized(text), technicalContext: technicalContext)
         var result = Set<String>()
         for (groupIndex, group) in synonymGroups.enumerated() where group.contains(where: { $0.contains(" ") && normalizedText.contains($0) }) {
             result.insert("g\(groupIndex)")
@@ -397,24 +410,36 @@ enum CourtVoiceCriteriaMatcher {
 /// Errores habituales del dictado del sistema al describir técnica deportiva. Se aplican solo para entender
 /// la frase (emparejar criterios y niveles); el texto que ve el docente no cambia.
 enum CourtVoiceDictationCorrections {
-    private static let rules: [(pattern: String, replacement: String)] = [
-        ("\\b(pie de polio|piedra pollo|pide apoyo|te da apoyo|tiene apoyo|lleve apoyo|el que de apoyo|que de apoyo|se le ha apoyo|pie de pollo)\\b", "pie de apoyo"),
-        ("\\b(un peine|el peine|empeno|empeño)\\b", "empeine"),
+    /// Expresiones que no tienen sentido en español: siempre son un error del dictado.
+    private static let alwaysRules: [(pattern: String, replacement: String)] = [
+        ("\\b(pie de polio|piedra pollo|pie de pollo|el que de apoyo|que de apoyo|se le ha apoyo|lleve apoyo|te da apoyo|pide apoyo)\\b", "pie de apoyo"),
         ("\\bposicion(es)? (incorporal|incorporada|incorporar|de todo|en corporal)\\b", "posicion corporal"),
         ("\\bgolpeon\\b", "golpeo"),
         ("\\btexto (coordinado|amplio)\\b", "gesto $1"),
-        ("\\bgestor\\b", "gesto"),
-        ("\\blanz momento\\b", "lanzamiento"),
-        ("\\bpie de apoyo\\b", "apoyo")
+        ("\\blanz momento\\b", "lanzamiento")
+    ]
+
+    /// Palabras reales que el dictado pone en lugar del término técnico («empeño» por empeine, «gestor» por gesto).
+    /// Solo se corrigen si el instrumento evalúa esa técnica, para no convertir «mucho empeño» en un criterio de golpeo.
+    private static let technicalRules: [(pattern: String, replacement: String)] = [
+        ("\\b(un peine|el peine|empeno)\\b", "empeine"),
+        ("\\btiene apoyo\\b", "pie de apoyo"),
+        ("\\bgestor\\b", "gesto")
     ]
 
     /// Recibe texto ya normalizado (minúsculas, sin tildes).
-    static func apply(_ normalizedText: String) -> String {
+    static func apply(_ normalizedText: String, technicalContext: Bool = false) -> String {
         var text = normalizedText
-        for rule in rules {
+        for rule in alwaysRules + (technicalContext ? technicalRules : []) {
             text = text.replacingOccurrences(of: rule.pattern, with: rule.replacement, options: .regularExpression)
         }
-        return text
+        return text.replacingOccurrences(of: "\\bpie de apoyo\\b", with: "apoyo", options: .regularExpression)
+    }
+
+    /// El instrumento evalúa técnica de golpeo o apoyo (sus criterios hablan de superficie, empeine, apoyo o gesto).
+    static func isTechnicalInstrument(_ instrument: CourtVoiceInstrumentDescriptor) -> Bool {
+        let titles = instrument.criteria.map { CourtVoiceCriteriaMatcher.normalized($0.title) }.joined(separator: " ")
+        return ["empeine", "superficie", "apoyo", "gesto", "golpeo", "interior"].contains { titles.contains($0) }
     }
 
     /// Vocabulario que se ofrece al reconocedor de voz para que acierte más con estos términos.

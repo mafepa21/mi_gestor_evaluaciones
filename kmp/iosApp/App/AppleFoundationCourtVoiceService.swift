@@ -472,7 +472,7 @@ final class AppleFoundationCourtVoiceService {
             do {
                 // Un dictado largo (p. ej. 9 minutos alumno a alumno) no cabe en los ~4K tokens del modelo:
                 // se trocea por bloques de alumno ya separados por las reglas y se une el resultado.
-                let chunks = Self.chunkTranscript(trimmed, ruleActions: deterministic.actions)
+                let chunks = Self.chunkTranscript(trimmed)
                 var resolvedActions: [CourtVoiceProposedAction] = []
                 var unmatchedFromAI: [String] = []
                 for chunk in chunks {
@@ -527,21 +527,33 @@ final class AppleFoundationCourtVoiceService {
     }
 
     /// Trozos de como mucho `maxLength` caracteres sin partir el bloque de un alumno. Un texto corto va entero.
-    static func chunkTranscript(_ text: String, ruleActions: [CourtVoiceProposedAction], maxLength: Int = 900) -> [String] {
+    static func chunkTranscript(_ text: String, ruleActions: [CourtVoiceProposedAction] = [], maxLength: Int = 900) -> [String] {
         guard text.count > maxLength else { return [text] }
-        let blocks = ruleActions.map { $0.sourceExcerpt.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        guard !blocks.isEmpty else { return [text] }
-        var chunks: [String] = []
-        var current = ""
-        for block in blocks {
-            if !current.isEmpty && current.count + block.count + 2 > maxLength {
+        // Se trocea el texto original por frases (no se pierde nada) y nunca se deja un nombre solo
+        // («Noemí.») al final de un trozo: su descripción va en el siguiente.
+        let sentences = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .components(separatedBy: ". ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        var chunks: [[String]] = []
+        var current: [String] = []
+        var length = 0
+        for sentence in sentences {
+            if !current.isEmpty && length + sentence.count + 2 > maxLength {
+                var carry: [String] = []
+                if let last = current.last, last.split(separator: " ").count <= 3, current.count > 1 {
+                    carry = [current.removeLast()]
+                }
                 chunks.append(current)
-                current = ""
+                current = carry
+                length = carry.reduce(0) { $0 + $1.count + 2 }
             }
-            current += current.isEmpty ? block : ". \(block)"
+            current.append(sentence)
+            length += sentence.count + 2
         }
         if !current.isEmpty { chunks.append(current) }
-        return chunks
+        return chunks.map { $0.joined(separator: ". ") }
     }
 
     /// Combina la respuesta de Apple Intelligence con las reglas en vez de descartarla entera.
@@ -812,6 +824,8 @@ final class AppleFoundationCourtVoiceService {
         var lastRememberedIsDelivery = false
         var lastRememberedAttendanceStatus: String? = nil
         var lastRememberedNote: String? = nil
+        // Bloques de dictado alumno a alumno («Noemí.», «Daniela, …»). Con dos o más, todo el dictado se trata así.
+        var headerBlockIds: Set<String> = []
 
         for segment in segments {
             let trimmedSegment = segment.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -892,6 +906,7 @@ final class AppleFoundationCourtVoiceService {
                     updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 } else if let openIndex = openBlockIndex(in: actions),
                           kind == .observation || kind == .quickEvaluation,
+                          headerBlockIds.contains(actions[openIndex].id) || Self.startsLowercase(trimmedSegment),
                           (!Self.isNewAttempt(trimmedSegment) || Self.isHeaderOnly(actions[openIndex])),
                           Self.extractHeaderNameCandidate(from: trimmedSegment, roster: input.students, classId: input.classId) == nil {
                     // Descripción sin nombre tras «Noemí.»: pertenece al alumno del bloque abierto.
@@ -907,6 +922,7 @@ final class AppleFoundationCourtVoiceService {
                         columnReason: colReason,
                         reference: ownReference
                     )
+                    updateRememberedActionState(from: actions[openIndex], kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: false)
                 } else if let candidateName = Self.extractHeaderNameCandidate(from: trimmedSegment, roster: input.students, classId: input.classId) {
                     let fuzzyRes = Self.resolveStudents(mention: candidateName, in: input.students, classId: input.classId)
                     if let matched = fuzzyRes.matched {
@@ -930,6 +946,7 @@ final class AppleFoundationCourtVoiceService {
                         inheritedNote: isSameEllipsis ? lastRememberedNote : nil,
                         defaultSelect: fuzzyRes.matched != nil && fuzzyRes.confidence >= 0.75
                     )
+                    if Self.opensRollCallBlock(action) || headerBlockIds.count >= 2 { headerBlockIds.insert(action.id) }
                     actions.append(action)
                     updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 } else {
@@ -942,6 +959,8 @@ final class AppleFoundationCourtVoiceService {
                         ?? (studentMatches.first?.candidates.contains { $0.id == openStudentId } == true
                             ? input.students.first { $0.id == openStudentId } : nil),
                       actions[openIndex].studentId == single.id,
+                      headerBlockIds.contains(actions[openIndex].id),
+                      Self.extractValueAndUnit(from: trimmedSegment, column: columnToUse) == nil,
                       kind == .observation || kind == .quickEvaluation,
                       !Self.isNewAttempt(trimmedSegment) || Self.isHeaderOnly(actions[openIndex]) {
                 // «Rocío. Posición… Rocío. posición…»: el mismo alumno seguido es un solo bloque.
@@ -956,6 +975,7 @@ final class AppleFoundationCourtVoiceService {
                     columnReason: colReason,
                     reference: referenceActionId
                 )
+                updateRememberedActionState(from: actions[openIndex], kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: false)
             } else {
                 if studentMatches.count == 1, let single = studentMatches.first?.matched {
                     lastRememberedStudent = single
@@ -984,6 +1004,7 @@ final class AppleFoundationCourtVoiceService {
                         withReference.inheritsCriteriaFromActionId = referenceActionId
                             ?? (Self.refersToPreviousAttempt(trimmedSegment) ? actions.last(where: { $0.studentId != nil && $0.studentId == match.matched?.id })?.id : nil)
                     }
+                    if Self.opensRollCallBlock(withReference) || headerBlockIds.count >= 2 { headerBlockIds.insert(withReference.id) }
                     actions.append(withReference)
                     updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 }
@@ -1073,6 +1094,26 @@ final class AppleFoundationCourtVoiceService {
             .map(String.init)
             .filter { $0.count > 1 && !nameWords.contains($0) }
         return rest.isEmpty
+    }
+
+    /// «Noemí.» o «Daniela, segundo tiro…»: el nombre va solo o seguido de coma/punto, como quien pasa lista.
+    /// Las frases sin nombre que siguen a ese bloque son del mismo alumno.
+    static func opensRollCallBlock(_ action: CourtVoiceProposedAction) -> Bool {
+        if isHeaderOnly(action) { return true }
+        let excerpt = action.sourceExcerpt.trimmingCharacters(in: .whitespacesAndNewlines)
+        for name in [action.studentMention, action.studentName.split(separator: " ").first.map(String.init) ?? ""] where !name.isEmpty {
+            guard excerpt.lowercased().hasPrefix(name.lowercased()) else { continue }
+            let rest = excerpt.dropFirst(name.count).drop { $0 == " " }
+            if rest.first == "," || rest.first == "." { return true }
+            // «Marta V. …»: nombre con inicial del apellido.
+            if rest.count >= 2, rest.first?.isUppercase == true, rest.dropFirst().first == "." || rest.dropFirst().first == "," { return true }
+        }
+        return false
+    }
+
+    /// El dictado del sistema corta frases en las pausas: un fragmento que empieza en minúscula sigue la frase anterior.
+    static func startsLowercase(_ segment: String) -> Bool {
+        segment.first(where: { $0.isLetter })?.isLowercase ?? false
     }
 
     /// «segundo lanzamiento», «otro tiro», «repite»: empieza un intento nuevo del mismo alumno.
@@ -1676,6 +1717,7 @@ final class AppleFoundationCourtVoiceService {
             regex = cached
         } else {
             guard let compiled = try? NSRegularExpression(pattern: pattern) else { return nil }
+            if regexCache.count > 2_000 { regexCache.removeAll(keepingCapacity: true) }
             regexCache[pattern] = compiled
             regex = compiled
         }

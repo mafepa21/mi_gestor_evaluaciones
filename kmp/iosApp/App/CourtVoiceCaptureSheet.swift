@@ -111,6 +111,24 @@ struct CourtVoiceCaptureSheet: View {
     /// Criterios de rúbricas y plantillas de las columnas visibles, por `columnId`.
     @State private var criteriaInstruments: [String: CourtVoiceInstrumentDescriptor] = [:]
     @State private var refiningCriteriaActionIds: Set<String> = []
+    /// «Hoy evalúo»: instrumento fijado para la sesión (se recuerda por clase).
+    @State private var focusColumnId: String?
+    @State private var selectedActionId: String?
+    @State private var expandedActionId: String?
+    @State private var isRubricPanelVisible = true
+    @State private var isRubricSheetPresented = false
+    /// Grabaciones: «Solo guardar» deja el dictado en la lista sin analizarlo.
+    @AppStorage("court.voice.saveOnly.v1") private var saveOnly = false
+    @State private var pendingRecordingId: String?
+    @State private var pendingRecordingClassId: Int64?
+    /// Ancho disponible: decide si la rúbrica cabe al lado (no basta la clase de tamaño en Split View o iOS 17).
+    @State private var layoutWidth: CGFloat = 0
+    @State private var classRecordings: [CourtVoiceRecording] = []
+    @State private var isRecordingsSheetPresented = false
+    /// Grabaciones de las que sale la bandeja actual: se borran al aplicar.
+    @State private var draftRecordingIds: Set<String> = []
+    @State private var batchProgress: (current: Int, total: Int, title: String)?
+    @State private var isBatchCancelled = false
 
     // MARK: Datos cargados de forma aislada para la clase seleccionada (sin mutar el Cuaderno ni mezclar allStudents)
 
@@ -148,29 +166,56 @@ struct CourtVoiceCaptureSheet: View {
         selectedClassId != nil && selectedActionsCount > 0 && !isApplying && !isAnalyzing && !isLoadingClassContext
     }
 
+    private var mainColumn: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            headerCard
+            microphoneSection
+
+            if !pendingInbox.isEmpty {
+                pendingInboxSection
+            }
+
+            if let batchProgress {
+                batchProgressView(batchProgress)
+            } else if isAnalyzing || isLoadingClassContext {
+                analyzingStateView
+            } else if let draft {
+                reviewTraySection(draft: draft)
+            } else {
+                examplesHintCard
+            }
+        }
+        .padding(24)
+    }
+
+    /// Rúbrica a la derecha en iPad horizontal y Mac; en iPhone se abre en hoja aparte.
+    private var showsRubricSideBySide: Bool {
+        focusInstrument != nil && isRubricPanelVisible && layoutWidth >= 900
+    }
+
+    @ViewBuilder
+    private var sessionLayout: some View {
+        if let instrument = focusInstrument, showsRubricSideBySide {
+            HStack(alignment: .top, spacing: 0) {
+                ScrollView { mainColumn }
+                    .frame(minWidth: 420, idealWidth: 520, maxWidth: 620)
+                Divider()
+                ScrollView { rubricPanel(instrument, onHide: { isRubricPanelVisible = false }) }
+                    .frame(minWidth: 480, maxWidth: .infinity)
+            }
+        } else {
+            ScrollView {
+                mainColumn
+                    .frame(maxWidth: 720, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .top)
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    headerCard
-                    microphoneSection
-
-                    if !pendingInbox.isEmpty {
-                        pendingInboxSection
-                    }
-
-                    if isAnalyzing || isLoadingClassContext {
-                        analyzingStateView
-                    } else if let draft {
-                        reviewTraySection(draft: draft)
-                    } else {
-                        examplesHintCard
-                    }
-                }
-                .padding(24)
-                .frame(maxWidth: 720, alignment: .topLeading)
-                .frame(maxWidth: .infinity, alignment: .top)
-            }
+            sessionLayout
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { layoutWidth = $0 }
             .background(EvaluationDesign.surface.opacity(0.45))
             .navigationTitle("Voz de Pista")
             #if os(iOS)
@@ -179,8 +224,10 @@ struct CourtVoiceCaptureSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cerrar") {
+                        // Una grabación en curso no se pierde: se guarda en Grabaciones.
                         if recognizer.isRecording {
                             recognizer.stopRecording()
+                            registerFinishedRecording(analyzeNow: false)
                         }
                         dismiss()
                     }
@@ -210,11 +257,62 @@ struct CourtVoiceCaptureSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 620, idealWidth: 680, maxWidth: 760, minHeight: 580, idealHeight: 680)
+        .frame(
+            minWidth: 620,
+            idealWidth: focusInstrument != nil ? 1240 : 680,
+            maxWidth: focusInstrument != nil ? .infinity : 760,
+            minHeight: 580,
+            idealHeight: focusInstrument != nil ? 820 : 680
+        )
         #else
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .modifier(CourtVoicePageSizing())
         #endif
+        .sheet(isPresented: $isRubricSheetPresented) {
+            if let instrument = focusInstrument {
+                NavigationStack {
+                    ScrollView { rubricPanel(instrument, onHide: nil) }
+                        .navigationTitle("Rúbrica")
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cerrar") { isRubricSheetPresented = false }
+                            }
+                        }
+                }
+                #if os(iOS)
+                .presentationDetents([.medium, .large])
+                #endif
+            }
+        }
+        .sheet(isPresented: $isRecordingsSheetPresented) {
+            CourtVoiceRecordingsSheet(
+                className: activeClass?.name ?? "Clase",
+                recordings: classRecordings,
+                onAnalyze: { selection in
+                    Task { await analyzeRecordings(selection) }
+                },
+                onDelete: { ids in
+                    CourtVoiceRecordingStore.shared.delete(ids: ids)
+                    draftRecordingIds.subtract(ids)
+                    reloadRecordings()
+                }
+            )
+        }
+        .appOnChange(of: recognizer.finishedRecording) { finished in
+            guard finished != nil else { return }
+            registerFinishedRecording(analyzeNow: !saveOnly)
+        }
+        .appOnChange(of: focusColumnId) { newValue in
+            if let classId = selectedClassId {
+                CourtVoiceFocusStore.save(columnId: newValue, classId: classId)
+            }
+            selectedActionId = nil
+            expandedActionId = nil
+            if draft != nil, !effectiveTranscript.isEmpty {
+                Task { await analyzeCurrentTranscript() }
+            }
+        }
         .fileImporter(
             isPresented: $isAudioImporterPresented,
             allowedContentTypes: [.audio, .mpeg4Audio, .wav, .mp3, .aiff],
@@ -260,6 +358,7 @@ struct CourtVoiceCaptureSheet: View {
         .onDisappear {
             if recognizer.isRecording {
                 recognizer.stopRecording()
+                registerFinishedRecording(analyzeNow: false)
             }
         }
     }
@@ -305,6 +404,7 @@ struct CourtVoiceCaptureSheet: View {
                         }
                         .pickerStyle(.menu)
                         .labelsHidden()
+                        .disabled(recognizer.isRecording)
                     }
 
                     DatePicker(
@@ -319,6 +419,12 @@ struct CourtVoiceCaptureSheet: View {
             }
         }
         .padding(16)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !criteriaInstruments.isEmpty {
+                focusRow
+                    .padding([.horizontal, .bottom], 16)
+            }
+        }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -333,20 +439,34 @@ struct CourtVoiceCaptureSheet: View {
             HStack(spacing: 12) {
                 Button {
                     if recognizer.isRecording {
+                        // El registro y, si toca, el análisis los hace `registerFinishedRecording`.
                         recognizer.stopRecording()
-                        Task { await analyzeCurrentTranscript() }
+                        if recognizer.finishedRecording == nil {
+                            // No hubo archivo (no se pudo crear o se dañó): no se dice que está guardado.
+                            pendingRecordingId = nil
+                            pendingRecordingClassId = nil
+                            feedbackBanner = ("No se pudo guardar el audio de este dictado.", true)
+                            if !saveOnly && !effectiveTranscript.isEmpty {
+                                Task { await analyzeCurrentTranscript() }
+                            }
+                        }
                     } else {
-                        feedbackBanner = nil
-                        activePendingNoteId = nil
-                        captureDate = .now
-                        recognizer.startRecording()
+                        startDictation()
                     }
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: recognizer.isRecording ? "stop.circle.fill" : "mic.fill")
                             .font(.headline.weight(.bold))
-                        Text(recognizer.isRecording ? "Detener y analizar" : "Pulsar y hablar")
-                            .font(.headline.weight(.bold))
+                        if recognizer.isRecording, let startedAt = recognizer.recordingStartedAt {
+                            TimelineView(.periodic(from: startedAt, by: 1)) { context in
+                                Text("\(saveOnly ? "Parar y guardar" : "Parar y analizar") · \(CourtVoiceRecordingsSheet.durationText(context.date.timeIntervalSince(startedAt)))")
+                                    .font(.headline.weight(.bold))
+                                    .monospacedDigit()
+                            }
+                        } else {
+                            Text("Pulsar y hablar")
+                                .font(.headline.weight(.bold))
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -354,7 +474,8 @@ struct CourtVoiceCaptureSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(recognizer.isRecording ? .red : EvaluationDesign.accent)
-                .disabled(recognizer.isTranscribingFile)
+                .disabled(recognizer.isTranscribingFile || batchProgress != nil)
+                .accessibilityLabel(recognizer.isRecording ? (saveOnly ? "Parar y guardar la grabación" : "Parar y analizar") : "Empezar a dictar")
 
                 Button {
                     feedbackBanner = nil
@@ -394,6 +515,11 @@ struct CourtVoiceCaptureSheet: View {
                 .disabled(effectiveTranscript.isEmpty || isAnalyzing || recognizer.isTranscribingFile || isLoadingClassContext)
             }
 
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { recordingControls }
+                VStack(alignment: .leading, spacing: 8) { recordingControls }
+            }
+
             if let fileName = recognizer.importedFileName {
                 HStack(spacing: 8) {
                     Image(systemName: "music.mic")
@@ -424,6 +550,7 @@ struct CourtVoiceCaptureSheet: View {
                             recognizer.importedFileName = nil
                             activePendingNoteId = nil
                             draft = nil
+                            draftRecordingIds = []
                             metadata = nil
                             feedbackBanner = nil
                         }
@@ -618,7 +745,11 @@ struct CourtVoiceCaptureSheet: View {
                 .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             } else {
                 ForEach(Array(draft.actions.enumerated()), id: \.element.id) { index, action in
-                    actionRowCard(index: index, action: action)
+                    if usesCompactRow(for: action) {
+                        compactActionRow(index: index, action: action)
+                    } else {
+                        actionRowCard(index: index, action: action)
+                    }
                 }
             }
 
@@ -1039,6 +1170,7 @@ struct CourtVoiceCaptureSheet: View {
     private func handleImportedAudioFile(url: URL) async {
         feedbackBanner = nil
         draft = nil
+        draftRecordingIds = []
         metadata = nil
         activePendingNoteId = nil
         if let transcribed = await recognizer.transcribeAudioFile(url: url),
@@ -1102,6 +1234,9 @@ struct CourtVoiceCaptureSheet: View {
         loadedStudents = students
         loadedColumns = columns
         criteriaInstruments = await CourtVoiceInstrumentLoader.load(bridge: bridge, classId: classId, columns: evaluableColumns)
+        let storedFocus = CourtVoiceFocusStore.columnId(classId: classId)
+        focusColumnId = storedFocus.flatMap { criteriaInstruments[$0] != nil ? $0 : nil }
+        reloadRecordings()
         sessionTitleHint = context?.sessionTitle.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
 
         let studentDescriptors = buildStudentDescriptors()
@@ -1169,7 +1304,8 @@ struct CourtVoiceCaptureSheet: View {
             activeTabId: bridge.selectedNotebookTabId,
             referenceDate: captureDate,
             students: studentDescriptors,
-            evaluableColumns: columnDescriptors
+            evaluableColumns: columnDescriptors,
+            focusColumnId: focusColumnId
         )
 
         do {
@@ -1310,6 +1446,12 @@ struct CourtVoiceCaptureSheet: View {
         try? await bridge.refreshDashboard()
 
         if errorMessages.isEmpty {
+            // Las grabaciones se borran solo si de ellas no queda nada por aplicar ni por resolver.
+            let appliedEverything = actionsToApply.count == currentDraft.actions.count && currentDraft.unmatchedSegments.isEmpty
+            if !draftRecordingIds.isEmpty && appliedEverything {
+                CourtVoiceRecordingStore.shared.delete(ids: draftRecordingIds)
+            }
+            draftRecordingIds = []
             if let pendingId = activePendingNoteId {
                 CourtVoiceInboxStore.remove(id: pendingId)
                 pendingInbox = CourtVoiceInboxStore.loadPending()
@@ -1559,6 +1701,340 @@ struct CourtVoiceCaptureSheet: View {
                 deviceId: bridge.localDeviceId,
                 syncVersion: 1
             )
+        }
+    }
+
+    // MARK: - «Hoy evalúo», rúbrica visible y grabaciones
+
+    private var focusInstrument: CourtVoiceInstrumentDescriptor? {
+        focusColumnId.flatMap { criteriaInstruments[$0] }
+    }
+
+    private var focusRow: some View {
+        HStack(spacing: 12) {
+            Menu {
+                Picker("Hoy evalúo", selection: $focusColumnId) {
+                    let today = instrumentsForToday
+                    if !today.isEmpty {
+                        Section("Sesión de hoy") {
+                            ForEach(today) { instrument in focusOption(instrument) }
+                        }
+                    }
+                    let rubrics = sortedInstruments.filter { if case .rubric = $0.source { return !today.contains($0) } else { return false } }
+                    if !rubrics.isEmpty {
+                        Section("Rúbricas") {
+                            ForEach(rubrics) { instrument in focusOption(instrument) }
+                        }
+                    }
+                    let templates = sortedInstruments.filter { $0.source == .template && !today.contains($0) }
+                    if !templates.isEmpty {
+                        Section("Listas y formularios") {
+                            ForEach(templates) { instrument in focusOption(instrument) }
+                        }
+                    }
+                    Divider()
+                    Text("Detectar al dictar").tag(String?.none)
+                }
+                .pickerStyle(.inline)
+            } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("HOY EVALÚO")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(focusInstrument != nil ? EvaluationDesign.accent : Color.secondary)
+                        Text(focusInstrument?.title ?? "Detectar al dictar")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(
+                    focusInstrument != nil ? EvaluationDesign.accentSoft : Color.secondary.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+            }
+            .menuOrder(.fixed)
+            .buttonStyle(.plain)
+            .disabled(recognizer.isRecording)
+            .help(recognizer.isRecording ? "No se puede cambiar mientras se graba" : "Instrumento de la sesión")
+            .accessibilityLabel("Hoy evalúo")
+            .accessibilityValue(focusInstrument.map { "\($0.title), \($0.criteria.count) criterios" } ?? "Detectar al dictar")
+
+            if focusInstrument != nil && !showsRubricSideBySide {
+                Button {
+                    if layoutWidth >= 900 {
+                        isRubricPanelVisible = true
+                    } else {
+                        isRubricSheetPresented = true
+                    }
+                } label: {
+                    Label("Ver rúbrica", systemImage: "tablecells")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private func focusOption(_ instrument: CourtVoiceInstrumentDescriptor) -> some View {
+        let noun = instrument.criteria.first?.kind == .check ? "ítems" : "criterios"
+        return Text("\(instrument.title) · \(instrument.criteria.count) \(noun)").tag(Optional(instrument.columnId))
+    }
+
+    private var sortedInstruments: [CourtVoiceInstrumentDescriptor] {
+        criteriaInstruments.values.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    /// Instrumentos con fecha en el día de la captura (los de la sesión de hoy van arriba).
+    private var instrumentsForToday: [CourtVoiceInstrumentDescriptor] {
+        sortedInstruments.filter { instrument in
+            guard let epoch = loadedColumns.first(where: { $0.id == instrument.columnId })?.dateEpochMs?.int64Value else { return false }
+            return Calendar.current.isDate(Date(timeIntervalSince1970: TimeInterval(epoch) / 1000), inSameDayAs: captureDate)
+        }
+    }
+
+    /// Acción que la rúbrica muestra: la tocada en la bandeja o la primera evaluación del instrumento.
+    private var panelAction: CourtVoiceProposedAction? {
+        guard let actions = draft?.actions, let focusColumnId else { return nil }
+        if let selectedActionId, let selected = actions.first(where: { $0.id == selectedActionId && $0.criteriaColumnId == focusColumnId }) {
+            return selected
+        }
+        return actions.first { $0.kind == .quickEvaluation && $0.criteriaColumnId == focusColumnId }
+    }
+
+    private func rubricPanel(_ instrument: CourtVoiceInstrumentDescriptor, onHide: (() -> Void)?) -> some View {
+        let action = panelAction
+        return CourtVoiceRubricPanel(
+            instrument: instrument,
+            studentName: action.map { $0.studentId != nil ? $0.studentName : "\($0.studentName) (por confirmar)" },
+            proposals: action?.criterionProposals,
+            onChoose: { criterionId, levelId in
+                guard let actionId = action?.id else { return }
+                chooseCriterionLevel(actionId: actionId, criterionId: criterionId, levelId: levelId)
+            },
+            onHide: onHide
+        )
+    }
+
+    private func usesCompactRow(for action: CourtVoiceProposedAction) -> Bool {
+        focusColumnId != nil && action.kind == .quickEvaluation && action.id != expandedActionId
+    }
+
+    /// Fila compacta de la bandeja con «Hoy evalúo»: alumna y niveles en chips. Tocar la marca en la rúbrica.
+    private func compactActionRow(index: Int, action: CourtVoiceProposedAction) -> some View {
+        let isCurrent = panelAction?.id == action.id
+        let chosen = (action.criterionProposals ?? []).compactMap { proposal -> String? in
+            guard let level = proposal.chosenLevel else { return nil }
+            return "\(proposal.criterion.title) · \(level.name)"
+        }
+        return HStack(alignment: .top, spacing: 12) {
+            Button {
+                toggleActionSelection(at: index)
+            } label: {
+                Image(systemName: (action.isSelected && action.isReadyToApply) ? "checkmark.circle.fill" : "circle")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle((action.isSelected && action.isReadyToApply) ? EvaluationDesign.accent : Color.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!action.isReadyToApply)
+            .accessibilityLabel(action.isSelected ? "Incluida al aplicar" : "No incluida")
+
+            Button {
+                selectedActionId = action.id
+                if !showsRubricSideBySide { expandedActionId = action.id }
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text(action.studentId != nil ? action.studentName : "\(action.studentName) · por confirmar")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(action.studentId != nil ? Color.primary : Color.orange)
+                        if isCurrent && showsRubricSideBySide {
+                            Label("En la rúbrica", systemImage: "arrow.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(EvaluationDesign.accent)
+                        }
+                    }
+                    if chosen.isEmpty {
+                        Text("Sin niveles: toca para elegir")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        FlowChips(items: chosen)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Muestra sus niveles en la rúbrica")
+
+            Button {
+                expandedActionId = action.id
+                selectedActionId = action.id
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Editar acción de \(action.studentName)")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            isCurrent && showsRubricSideBySide ? EvaluationDesign.accentSoft : NotebookStyle.surface,
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(isCurrent && showsRubricSideBySide ? EvaluationDesign.accent : EvaluationDesign.border, lineWidth: isCurrent && showsRubricSideBySide ? 1.5 : 1)
+        )
+    }
+
+    @ViewBuilder
+    private var recordingControls: some View {
+        Picker("Al terminar", selection: $saveOnly) {
+            Text("Analizar al parar").tag(false)
+            Text("Solo guardar").tag(true)
+        }
+        .pickerStyle(.segmented)
+        .fixedSize()
+        .disabled(recognizer.isRecording)
+        .accessibilityHint("«Solo guardar» deja el dictado en Grabaciones para analizarlo después")
+
+        Button {
+            reloadRecordings()
+            isRecordingsSheetPresented = true
+        } label: {
+            Label(classRecordings.isEmpty ? "Grabaciones" : "Grabaciones (\(classRecordings.count))", systemImage: "waveform")
+                .frame(minHeight: 32)
+        }
+        .buttonStyle(.bordered)
+        .disabled(recognizer.isRecording || batchProgress != nil)
+    }
+
+    private func batchProgressView(_ progress: (current: Int, total: Int, title: String)) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ProgressView(value: Double(progress.current - 1), total: Double(max(progress.total, 1))) {
+                Text("Transcribiendo \(progress.current) de \(progress.total) · \(progress.title)")
+                    .font(.subheadline.weight(.semibold))
+            }
+            Text("Se transcribe en este dispositivo. Al terminar se analiza todo junto en una sola bandeja.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button("Detener") { isBatchCancelled = true }
+                .buttonStyle(.bordered)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func startDictation() {
+        feedbackBanner = nil
+        activePendingNoteId = nil
+        captureDate = .now
+        var url: URL?
+        if let classId = selectedClassId, let prepared = try? CourtVoiceRecordingStore.shared.prepareNewFile(classId: classId) {
+            pendingRecordingId = prepared.id
+            pendingRecordingClassId = classId
+            url = prepared.url
+        }
+        recognizer.startRecording(saveTo: url)
+    }
+
+    /// Guarda en Grabaciones lo que acaba de grabar el reconocedor y, si toca, lo analiza.
+    private func registerFinishedRecording(analyzeNow: Bool) {
+        guard let finished = recognizer.finishedRecording,
+              let id = pendingRecordingId,
+              let classId = pendingRecordingClassId else { return }
+        recognizer.finishedRecording = nil
+        pendingRecordingId = nil
+        pendingRecordingClassId = nil
+        let recording = CourtVoiceRecordingStore.shared.register(
+            id: id,
+            classId: classId,
+            createdAt: finished.startedAt,
+            duration: finished.duration,
+            instrumentColumnId: focusColumnId,
+            instrumentTitle: focusInstrument?.title,
+            transcript: finished.isTranscriptComplete ? finished.liveTranscript : nil
+        )
+        reloadRecordings()
+        let liveText = finished.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if analyzeNow && !liveText.isEmpty {
+            // Solo se borra al aplicar si el texto cubre toda la grabación; si no, queda para analizarla entera.
+            draftRecordingIds = finished.isTranscriptComplete ? [recording.id] : []
+            if !finished.isTranscriptComplete {
+                feedbackBanner = ("El texto en directo se cortó: «\(recording.title)» queda en Grabaciones para analizarla entera.", true)
+            }
+            Task { await analyzeCurrentTranscript() }
+        } else {
+            feedbackBanner = ("Guardada en Grabaciones: \(recording.title) (\(CourtVoiceRecordingsSheet.durationText(recording.duration))).", false)
+            if !analyzeNow, manualTranscript.trimmingCharacters(in: .whitespacesAndNewlines) == liveText {
+                manualTranscript = ""
+                recognizer.transcript = ""
+            }
+        }
+    }
+
+    private func reloadRecordings() {
+        guard let classId = selectedClassId else {
+            classRecordings = []
+            return
+        }
+        classRecordings = CourtVoiceRecordingStore.shared.list(classId: classId)
+    }
+
+    /// Transcribe una a una las grabaciones elegidas (o usa su texto ya guardado) y las analiza juntas.
+    @MainActor
+    private func analyzeRecordings(_ recordings: [CourtVoiceRecording]) async {
+        guard !recordings.isEmpty else { return }
+        isBatchCancelled = false
+        feedbackBanner = nil
+        var texts: [String] = []
+        var usedIds: Set<String> = []
+        var failed: [String] = []
+        for (offset, recording) in recordings.enumerated() {
+            if isBatchCancelled { break }
+            batchProgress = (offset + 1, recordings.count, recording.title)
+            if let cached = recording.transcript, !cached.isEmpty {
+                texts.append(cached)
+                usedIds.insert(recording.id)
+                continue
+            }
+            let url = CourtVoiceRecordingStore.shared.fileURL(for: recording)
+            if let text = await recognizer.transcribeAudioFile(url: url)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                CourtVoiceRecordingStore.shared.updateTranscript(id: recording.id, transcript: text)
+                texts.append(text)
+                usedIds.insert(recording.id)
+            } else {
+                failed.append(recording.title)
+            }
+        }
+        batchProgress = nil
+        recognizer.importedFileName = nil
+        reloadRecordings()
+        guard !texts.isEmpty else {
+            feedbackBanner = (recognizer.statusMessage ?? "No se pudo transcribir ninguna grabación.", true)
+            return
+        }
+        draftRecordingIds = usedIds
+        manualTranscript = texts.joined(separator: "\n")
+        await analyzeCurrentTranscript()
+        if !failed.isEmpty {
+            feedbackBanner = ("No se pudo transcribir: \(failed.joined(separator: ", ")). \(recognizer.statusMessage ?? "")", true)
         }
     }
 

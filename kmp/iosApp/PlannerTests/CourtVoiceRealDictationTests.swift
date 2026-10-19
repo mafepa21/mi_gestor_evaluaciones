@@ -187,4 +187,63 @@ Lorena, segundo lanzamiento por el interior, por gesto y buen golpe.
         XCTAssertEqual(words(chunks.joined(separator: " ")), words(transcript), "No se pierde ni se repite texto")
         XCTAssertEqual(AppleFoundationCourtVoiceService.chunkTranscript("Lucía un 8"), ["Lucía un 8"])
     }
+
+    // MARK: - «Hoy evalúo»
+
+    func testFocusInstrumentSendsEveryDescriptionToIt() {
+        let column = CourtVoiceColumnDescriptor(id: "col_tiro", title: "Rúbrica de lanzamiento a portería", evaluationId: 1, columnType: "RUBRIC", inputKind: "RUBRIC", scaleKind: .fourLevel)
+        let other = CourtVoiceColumnDescriptor(id: "col_saque", title: "Saque", evaluationId: 2)
+        let input = CourtVoiceCaptureInput(
+            transcript: transcript + ". Irene muy participativa ayudando a recoger.",
+            classId: 1,
+            className: "1º ESO",
+            students: roster,
+            evaluableColumns: [column, other],
+            focusColumnId: "col_tiro"
+        )
+        let raw = AppleFoundationCourtVoiceService().parseWithRulesFallback(from: input, reason: "")
+        let draft = CourtVoiceCriteriaMatcher.attachSuggestions(to: raw, instruments: [rubric.columnId: rubric])
+        let evaluations = draft.actions.filter { $0.kind == .quickEvaluation }
+        XCTAssertFalse(evaluations.isEmpty)
+        XCTAssertTrue(evaluations.allSatisfy { $0.columnId == "col_tiro" }, "Con «Hoy evalúo» no se adivina la columna")
+        XCTAssertTrue(draft.actions.contains { $0.kind == .observation && $0.studentId == 14 && $0.note.contains("participativa") },
+                      "Una nota de actitud sigue siendo observación")
+        XCTAssertFalse(draft.actions.contains { $0.kind == .observation && $0.studentId != 14 }, "Las descripciones técnicas son evaluaciones")
+    }
+
+    func testFocusIgnoredWhenColumnIsNotAvailable() {
+        let input = CourtVoiceCaptureInput(transcript: "Lucía un 8", classId: 1, className: "1º ESO", students: roster, evaluableColumns: [], focusColumnId: "col_borrada")
+        XCTAssertNil(input.focusColumnId)
+    }
+
+    // MARK: - Grabaciones
+
+    func testRecordingStoreLifecycle() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("court-voice-tests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = CourtVoiceRecordingStore(root: root)
+
+        let first = try store.prepareNewFile(classId: 7)
+        try Data([1, 2, 3]).write(to: first.url)
+        let a = store.register(id: first.id, classId: 7, createdAt: Date(), duration: 544, instrumentColumnId: "col_tiro", instrumentTitle: "Rúbrica de lanzamiento", transcript: nil)
+        let second = try store.prepareNewFile(classId: 7)
+        try Data([4]).write(to: second.url)
+        let b = store.register(id: second.id, classId: 7, createdAt: Date().addingTimeInterval(60), duration: 30, instrumentColumnId: "col_tiro", instrumentTitle: "Rúbrica de lanzamiento", transcript: "  Lucía. Golpeo perfecto. ")
+
+        XCTAssertEqual(a.title, "Rúbrica de lanzamiento · 1")
+        XCTAssertEqual(b.title, "Rúbrica de lanzamiento · 2")
+        XCTAssertEqual(b.transcript, "Lucía. Golpeo perfecto.")
+        XCTAssertEqual(store.list(classId: 7).map(\.id), [b.id, a.id], "Más reciente primero")
+        XCTAssertTrue(store.list(classId: 8).isEmpty, "Cada clase ve solo las suyas")
+
+        store.updateTranscript(id: a.id, transcript: "texto")
+        XCTAssertEqual(store.list(classId: 7).first { $0.id == a.id }?.transcript, "texto")
+
+        store.delete(ids: [a.id])
+        XCTAssertEqual(store.list(classId: 7).map(\.id), [b.id])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: first.url.path), "Borrar elimina el audio")
+
+        let values = try root.resourceValues(forKeys: [.isExcludedFromBackupKey])
+        XCTAssertEqual(values.isExcludedFromBackup, true, "Fuera de la copia de iCloud")
+    }
 }

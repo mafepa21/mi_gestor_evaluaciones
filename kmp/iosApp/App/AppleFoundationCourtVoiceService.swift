@@ -164,6 +164,8 @@ struct CourtVoiceCaptureInput: Hashable, Sendable {
     let referenceDate: Date
     let students: [CourtVoiceStudentDescriptor]
     let evaluableColumns: [CourtVoiceColumnDescriptor]
+    /// «Hoy evalúo»: instrumento fijado por el docente. Todas las evaluaciones van a él y el dictado se lee alumno a alumno.
+    let focusColumnId: String?
 
     init(
         transcript: String,
@@ -173,7 +175,8 @@ struct CourtVoiceCaptureInput: Hashable, Sendable {
         activeTabId: String? = nil,
         referenceDate: Date = .now,
         students: [CourtVoiceStudentDescriptor],
-        evaluableColumns: [CourtVoiceColumnDescriptor] = []
+        evaluableColumns: [CourtVoiceColumnDescriptor] = [],
+        focusColumnId: String? = nil
     ) {
         self.transcript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         self.classId = classId
@@ -183,6 +186,11 @@ struct CourtVoiceCaptureInput: Hashable, Sendable {
         self.referenceDate = referenceDate
         self.students = students
         self.evaluableColumns = evaluableColumns.filter(\.isEvaluableCandidate)
+        self.focusColumnId = focusColumnId.flatMap { id in evaluableColumns.contains { $0.id == id } ? id : nil }
+    }
+
+    var focusColumn: CourtVoiceColumnDescriptor? {
+        focusColumnId.flatMap { id in evaluableColumns.first { $0.id == id } }
     }
 }
 
@@ -484,7 +492,8 @@ final class AppleFoundationCourtVoiceService {
                         activeTabId: input.activeTabId,
                         referenceDate: input.referenceDate,
                         students: input.students,
-                        evaluableColumns: input.evaluableColumns
+                        evaluableColumns: input.evaluableColumns,
+                        focusColumnId: input.focusColumnId
                     )
                     do {
                         // Sesión limpia por trozo para no acumular historial ni agotar el contexto.
@@ -508,7 +517,7 @@ final class AppleFoundationCourtVoiceService {
                 return CourtVoiceCaptureDraft(
                     rawTranscript: trimmed,
                     className: input.className,
-                    actions: merged.actions,
+                    actions: Self.applyFocus(merged.actions, input: input),
                     unmatchedSegments: unmatchedFromAI,
                     confidenceNote: merged.addedFromRules > 0
                         ? "Apple Intelligence on-device, completado con reglas locales (\(merged.addedFromRules)). Revisa antes de confirmar."
@@ -826,6 +835,7 @@ final class AppleFoundationCourtVoiceService {
         var lastRememberedNote: String? = nil
         // Bloques de dictado alumno a alumno («Noemí.», «Daniela, …»). Con dos o más, todo el dictado se trata así.
         var headerBlockIds: Set<String> = []
+        let isRollCallFromStart = input.focusColumnId != nil
 
         for segment in segments {
             let trimmedSegment = segment.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -906,7 +916,7 @@ final class AppleFoundationCourtVoiceService {
                     updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 } else if let openIndex = openBlockIndex(in: actions),
                           kind == .observation || kind == .quickEvaluation,
-                          headerBlockIds.contains(actions[openIndex].id) || Self.startsLowercase(trimmedSegment),
+                          isRollCallFromStart || headerBlockIds.contains(actions[openIndex].id) || Self.startsLowercase(trimmedSegment),
                           (!Self.isNewAttempt(trimmedSegment) || Self.isHeaderOnly(actions[openIndex])),
                           Self.extractHeaderNameCandidate(from: trimmedSegment, roster: input.students, classId: input.classId) == nil {
                     // Descripción sin nombre tras «Noemí.»: pertenece al alumno del bloque abierto.
@@ -959,7 +969,7 @@ final class AppleFoundationCourtVoiceService {
                         ?? (studentMatches.first?.candidates.contains { $0.id == openStudentId } == true
                             ? input.students.first { $0.id == openStudentId } : nil),
                       actions[openIndex].studentId == single.id,
-                      headerBlockIds.contains(actions[openIndex].id),
+                      isRollCallFromStart || headerBlockIds.contains(actions[openIndex].id),
                       Self.extractValueAndUnit(from: trimmedSegment, column: columnToUse) == nil,
                       kind == .observation || kind == .quickEvaluation,
                       !Self.isNewAttempt(trimmedSegment) || Self.isHeaderOnly(actions[openIndex]) {
@@ -1020,11 +1030,38 @@ final class AppleFoundationCourtVoiceService {
         return CourtVoiceCaptureDraft(
             rawTranscript: raw,
             className: input.className,
-            actions: actions,
+            actions: Self.applyFocus(actions, input: input),
             unmatchedSegments: unmatched,
             confidenceNote: reason,
             appearsToBeRulesFallback: true
         )
+    }
+
+    /// «Hoy evalúo»: las evaluaciones van al instrumento fijado y la descripción de un alumno es una evaluación
+    /// (salvo notas de actitud, asistencia o lesiones, que siguen siendo lo que son).
+    static func applyFocus(_ actions: [CourtVoiceProposedAction], input: CourtVoiceCaptureInput) -> [CourtVoiceProposedAction] {
+        guard let focus = input.focusColumn else { return actions }
+        return actions.map { original in
+            var action = original
+            if action.kind == .observation,
+               !CourtVoiceCriteriaMatcher.looksLikeAttitudeNote(CourtVoiceCriteriaMatcher.evidenceText(for: action)) {
+                action.kind = .quickEvaluation
+            }
+            guard action.kind == .quickEvaluation else { return action }
+            let wasReady = action.isReadyToApply
+            if action.columnId != focus.id {
+                // Un valor convertido para otra columna no vale en esta escala.
+                if action.columnId != nil {
+                    action.score = nil
+                    action.formattedScaleValue = nil
+                }
+                action.columnId = focus.id
+                action.columnTitle = focus.title
+                action.resolutionReason = "Hoy evalúo: \(focus.title)"
+            }
+            if !wasReady && action.isReadyToApply { action.isSelected = action.confidence >= 0.75 }
+            return action
+        }
     }
 
     // MARK: - Bloques por alumno (dictado alumno a alumno)
@@ -2549,6 +2586,50 @@ final class AppleFoundationCourtVoiceService {
     }
 }
 
+/// Escribe el audio del micrófono a disco desde el hilo de audio y se cierra de forma explícita al parar.
+final class CourtVoiceAudioWriter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var file: AVAudioFile?
+    private var failed = false
+
+    init(file: AVAudioFile) {
+        self.file = file
+    }
+
+    func write(_ buffer: AVAudioPCMBuffer) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let file, !failed else { return }
+        do {
+            try file.write(from: buffer)
+        } catch {
+            failed = true
+        }
+    }
+
+    /// Cierra el archivo. Devuelve `true` si hubo errores de escritura (grabación dañada).
+    @discardableResult
+    func close() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if #available(iOS 18.0, macOS 15.0, *) {
+            file?.close()
+        }
+        file = nil
+        return failed
+    }
+}
+
+/// Grabación terminada por el reconocedor: archivo, inicio, duración y texto en directo (si lo hubo).
+struct CourtVoiceFinishedRecording: Equatable {
+    let url: URL
+    let startedAt: Date
+    let duration: TimeInterval
+    let liveTranscript: String
+    /// Si es `true`, el texto en directo sirve y no hace falta volver a transcribir el archivo.
+    let isTranscriptComplete: Bool
+}
+
 // MARK: - Servicio de Captura de Voz en Vivo (iOS + macOS) con contextualStrings y On-Device
 
 @MainActor
@@ -2559,6 +2640,10 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
     @Published var importedFileCreationDate: Date?
     @Published var transcript = ""
     @Published var statusMessage: String?
+    /// Inicio de la grabación en curso (para mostrar el tiempo).
+    @Published private(set) var recordingStartedAt: Date?
+    /// Grabación recién terminada, a la espera de que la hoja la registre.
+    @Published var finishedRecording: CourtVoiceFinishedRecording?
 
     /// Vocabulario contextual de la clase activa (nombres, apellidos, alias, títulos de columnas) para mejorar el STT.
     var contextualStrings: [String] = []
@@ -2567,6 +2652,10 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
     private let audioEngine = AVAudioEngine()
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
+    private var recordingWriter: CourtVoiceAudioWriter?
+    private var recordingURL: URL?
+    /// El texto en directo no cubre toda la grabación (sin dictado sin conexión o se paró a mitad).
+    private var liveTranscriptLost = false
 
     func updateContextualVocabulary(
         students: [CourtVoiceStudentDescriptor],
@@ -2604,23 +2693,26 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
         }
     }
 
-    func startRecording() {
+    /// `saveTo`: si se indica, el audio se guarda a la vez en ese archivo (.m4a) para analizarlo más tarde.
+    func startRecording(saveTo url: URL? = nil) {
         statusMessage = nil
         importedFileName = nil
         importedFileCreationDate = nil
+        finishedRecording = nil
         SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
             Task { @MainActor in
                 guard let self else { return }
-                guard authStatus == .authorized else {
+                guard authStatus == .authorized || url != nil else {
                     self.statusMessage = "Activa el permiso de Reconocimiento de Voz en Ajustes para dictar desde la pista."
                     return
                 }
-                self.beginSession()
+                self.beginSession(saveTo: url, canUseSpeech: authStatus == .authorized)
             }
         }
     }
 
     func stopRecording() {
+        let wasRecording = isRecording
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
@@ -2629,6 +2721,21 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
         recognitionTask = nil
         isRecording = false
         isTranscribingFile = false
+        // Cerrar el archivo después de quitar el tap termina de escribir el .m4a antes de leerlo.
+        let writeFailed = recordingWriter?.close() ?? false
+        recordingWriter = nil
+        if wasRecording, !writeFailed, let url = recordingURL, let startedAt = recordingStartedAt,
+           let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber, size.intValue > 0 {
+            finishedRecording = CourtVoiceFinishedRecording(
+                url: url,
+                startedAt: startedAt,
+                duration: Date().timeIntervalSince(startedAt),
+                liveTranscript: transcript,
+                isTranscriptComplete: !liveTranscriptLost && !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            )
+        }
+        recordingURL = nil
+        recordingStartedAt = nil
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
@@ -2761,15 +2868,21 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
         }
     }
 
-    private func beginSession() {
-        guard let recognizer, recognizer.isAvailable else {
-            statusMessage = "El reconocedor de voz en español no está disponible ahora mismo. Puedes escribir en el cuadro de texto."
-            return
-        }
-
-        guard recognizer.supportsOnDeviceRecognition else {
-            statusMessage = "Para garantizar privacidad 100% local (sin enviar audio ni nombres de alumnos a servidores externos), descarga el modelo de dictado sin conexión en español desde Ajustes del sistema."
-            return
+    private func beginSession(saveTo url: URL?, canUseSpeech: Bool) {
+        let speechReady = canUseSpeech && (recognizer?.isAvailable ?? false) && (recognizer?.supportsOnDeviceRecognition ?? false)
+        liveTranscriptLost = !speechReady
+        transcript = ""
+        if !speechReady {
+            guard url != nil else {
+                if recognizer?.isAvailable != true {
+                    statusMessage = "El reconocedor de voz en español no está disponible ahora mismo. Puedes escribir en el cuadro de texto."
+                } else {
+                    statusMessage = "Para garantizar privacidad 100% local (sin enviar audio ni nombres de alumnos a servidores externos), descarga el modelo de dictado sin conexión en español desde Ajustes del sistema."
+                }
+                return
+            }
+            // Sin dictado sin conexión se puede seguir grabando: se transcribe más tarde.
+            statusMessage = "Sin dictado sin conexión: se guarda el audio para transcribirlo más tarde."
         }
 
         #if os(iOS)
@@ -2783,31 +2896,65 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
         }
         #endif
 
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        request.requiresOnDeviceRecognition = true
-        request.contextualStrings = contextualStrings
-        if #available(iOS 17.0, macOS 14.0, *) {
-            request.addsPunctuation = true
+        var speechRequest: SFSpeechAudioBufferRecognitionRequest?
+        if speechReady {
+            let request = SFSpeechAudioBufferRecognitionRequest()
+            request.shouldReportPartialResults = true
+            request.requiresOnDeviceRecognition = true
+            request.contextualStrings = contextualStrings
+            if #available(iOS 17.0, macOS 14.0, *) {
+                request.addsPunctuation = true
+            }
+            speechRequest = request
         }
-        recognitionRequest = request
+        recognitionRequest = speechRequest
 
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
+        var file: AVAudioFile?
+        if let url {
+            // AAC admite como mucho 2 canales: se graba en mono o estéreo aunque el micro tenga más.
+            file = try? AVAudioFile(
+                forWriting: url,
+                settings: [
+                    AVFormatIDKey: kAudioFormatMPEG4AAC,
+                    AVSampleRateKey: recordingFormat.sampleRate,
+                    AVNumberOfChannelsKey: min(recordingFormat.channelCount, 2),
+                    AVEncoderBitRateKey: 64_000
+                ],
+                commonFormat: recordingFormat.commonFormat,
+                interleaved: recordingFormat.isInterleaved
+            )
+            if file == nil {
+                statusMessage = "No se pudo crear el archivo de la grabación: este dictado no se guardará en Grabaciones."
+            }
+        }
+        let writer = file.map { CourtVoiceAudioWriter(file: $0) }
+        recordingWriter = writer
+        recordingURL = file != nil ? url : nil
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-            request.append(buffer)
+            speechRequest?.append(buffer)
+            writer?.write(buffer)
         }
 
         audioEngine.prepare()
         do {
             try audioEngine.start()
             isRecording = true
+            recordingStartedAt = Date()
         } catch {
             statusMessage = "No se pudo iniciar la captura de audio."
+            inputNode.removeTap(onBus: 0)
             recognitionRequest = nil
+            _ = recordingWriter?.close()
+            recordingWriter = nil
+            if let url = recordingURL { try? FileManager.default.removeItem(at: url) }
+            recordingURL = nil
             return
         }
+
+        guard let recognizer, let request = speechRequest else { return }
 
         var committedUtterances: [String] = []
         var currentUtterance: String = ""
@@ -2827,7 +2974,15 @@ final class CourtVoiceLiveRecognizer: ObservableObject {
                     }
                 }
                 if error != nil && self.isRecording {
-                    self.stopRecording()
+                    if self.recordingWriter != nil {
+                        // Si falla el dictado en directo, el audio se sigue guardando para transcribirlo después.
+                        self.recognitionRequest = nil
+                        self.recognitionTask = nil
+                        self.liveTranscriptLost = true
+                        self.statusMessage = "El texto en directo se ha parado; el audio se sigue grabando."
+                    } else {
+                        self.stopRecording()
+                    }
                 }
             }
         }

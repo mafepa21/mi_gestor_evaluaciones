@@ -13,6 +13,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Fixed
+
+- **Cuaderno: «Editar media» solo muestra las columnas de la pestaña activa**: antes listaba columnas de todas las pestañas y también las ocultas, que no se ven en el grid ni cuentan para la media real (ya calculada por pestaña en KMP). Ahora el editor filtra con `visibleNotebookSourceColumns` y descarta ocultas; al guardar, las columnas de otras pestañas conservan su configuración. Verificación: build `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No verificado: QA manual con datos de prueba.
+- **Cuaderno: la cabecera muestra el % guardado en «Editar media»**: el modelo de render cacheado no se invalidaba al cambiar pesos (`averageConfigRevision` en `NotebookRenderCacheKey`), y la etiqueta ocultaba el 1 % y multiplicaba por 100 los pesos menores que 1. Ahora muestra siempre el % tal cual y «no cuenta» si la columna está desmarcada o a 0 %. Verificación: build `MiGestorKMPiOS` (simulador) y `MiGestorKMPMac` OK. No verificado: QA manual.
+
 ### Removed
 
 - **Apple: se quitan `createLocalBackup` y `restoreLocalBackup` de `KmpBridge`**: envolvían el sistema de copias antiguo de KMP (`BackupService`, un único `.sqlite` sin adjuntos ni comprobaciones) y ninguna pantalla los llamaba. iPad y Mac usan solo `AppleBackupService`. El servicio KMP se mantiene porque lo usa la app de escritorio (`desktopApp`). Verificación: build `MiGestorKMPMac` y `MiGestorKMPiOS` (simulador) OK.

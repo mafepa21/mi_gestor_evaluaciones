@@ -487,4 +487,63 @@ final class CourtVoiceCaptureTests: XCTestCase {
         XCTAssertFalse(numericColumn.isStructuredInstrument)
         XCTAssertEqual(AppleFoundationCourtVoiceService.convertValueForColumn(rawScore: 10.0, rawText: "", unit: nil, column: numericColumn).numericScore, 4.0)
     }
+
+    // MARK: - Entregas en columnas de niveles y asistencia
+
+    func testDeliveryOnLevelColumnsDoesNotInventLevel() {
+        let roster: [CourtVoiceStudentDescriptor] = [
+            .init(id: 101, firstName: "Ferran", lastName: "Abad", fullName: "Ferran Abad", isCurrentlyInjured: false),
+            .init(id: 102, firstName: "Ignacio", lastName: "Alemán", fullName: "Ignacio Alemán", isCurrentlyInjured: false),
+            .init(id: 105, firstName: "Nerea", lastName: "Cardo", fullName: "Nerea Cardo", isCurrentlyInjured: false)
+        ]
+        let levelColumns: [CourtVoiceColumnDescriptor] = [
+            .init(id: "col_ficha", title: "Ficha de autoevaluación", evaluationId: 1, scaleKind: .fourLevel),
+            .init(id: "col_ficha", title: "Ficha de autoevaluación", evaluationId: 1, scaleKind: .letterABCD),
+            .init(id: "col_ficha", title: "Ficha de autoevaluación", evaluationId: 1, columnType: "ORDINAL", inputKind: "TEXT", ordinalLevels: ["Insuficiente", "Suficiente", "Notable", "Sobresaliente"])
+        ]
+
+        for column in levelColumns {
+            let input = CourtVoiceCaptureInput(
+                transcript: "Ferran Abad ha entregado la ficha de autoevaluación. Ignacio Alemán también. Nerea Cardo no la ha entregado",
+                classId: 200,
+                className: "1º BAC A",
+                students: roster,
+                evaluableColumns: [column]
+            )
+            let draft = AppleFoundationCourtVoiceService().parseWithRulesFallback(from: input, reason: "Entrega en niveles")
+            XCTAssertEqual(draft.actions.count, 3)
+            for action in draft.actions {
+                XCTAssertEqual(action.columnId, "col_ficha")
+                XCTAssertNil(action.score, "Entregar no es un nivel (\(column.scaleKind))")
+                XCTAssertNil(action.formattedScaleValue, "No debe inventar nivel (\(column.scaleKind))")
+                XCTAssertFalse(action.isReadyToApply)
+                XCTAssertFalse(action.isSelected)
+            }
+            XCTAssertEqual(draft.actions.map(\.deliveryRawScore), [10.0, 10.0, 0.0])
+        }
+    }
+
+    func testDictatedLevelStillWorksOnLevelColumn() {
+        let column = CourtVoiceColumnDescriptor(id: "col_saque", title: "Saque", scaleKind: .fourLevel)
+        let conv = AppleFoundationCourtVoiceService.convertValueForColumn(rawScore: 3.0, rawText: "nivel 3", unit: nil, column: column)
+        XCTAssertEqual(conv.numericScore, 3.0)
+        let delivery = AppleFoundationCourtVoiceService.convertValueForColumn(rawScore: 0.0, rawText: "no la ha entregado", unit: nil, column: column, isDeliveryStatement: true)
+        XCTAssertNil(delivery.numericScore)
+        XCTAssertNil(delivery.formattedText)
+    }
+
+    func testAttendanceColumnIsNeverEvaluationTarget() {
+        let attendance = CourtVoiceColumnDescriptor(id: "col_asis", title: "Asistencia", columnType: "ATTENDANCE", inputKind: "TEXT")
+        XCTAssertFalse(attendance.isEvaluableCandidate)
+        let input = CourtVoiceCaptureInput(
+            transcript: "Sofía García un 8 en asistencia",
+            classId: 100,
+            className: "1º BAC A",
+            students: sampleStudents,
+            evaluableColumns: [attendance]
+        )
+        XCTAssertTrue(input.evaluableColumns.isEmpty)
+        let draft = AppleFoundationCourtVoiceService().parseWithRulesFallback(from: input, reason: "Asistencia")
+        XCTAssertFalse(draft.actions.contains { $0.columnId == "col_asis" })
+    }
 }

@@ -104,7 +104,12 @@ struct CourtVoiceColumnDescriptor: Hashable, Sendable, Codable, Identifiable {
     }
 
     var isEvaluableCandidate: Bool {
-        !isLocked && !isHiddenOrArchived && columnType.uppercased() != "CALCULATED"
+        !isLocked && !isHiddenOrArchived && !["CALCULATED", "ATTENDANCE"].contains(columnType.uppercased())
+    }
+
+    /// Columnas de niveles (1-4, A-D, ordinales). Un "entregado / no entregado" no equivale a ningún nivel.
+    var isLevelScale: Bool {
+        columnType.uppercased() == "ORDINAL" || !ordinalLevels.isEmpty || scaleKind == .fourLevel || scaleKind == .letterABCD
     }
 
     /// Instrumento estructurado (checklist, observación, formulario o quiz). Su nota sale de las respuestas de
@@ -287,6 +292,8 @@ struct CourtVoiceProposedAction: Identifiable, Codable, Hashable, Sendable {
     var formattedScaleValue: String?
     /// Unidad detectada si es prueba física (`s`, `m`, `rep`, `palier`).
     var rawUnit: String?
+    /// 10 = entregado, 0 = no entregado. Solo cuando el dictado habla de entrega, no de nota.
+    var deliveryRawScore: Double?
     /// Para `.quickEvaluation`: identificador de columna del cuaderno (`nil` si no se reconoció instrumento).
     var columnId: String?
     var columnTitle: String?
@@ -314,6 +321,7 @@ struct CourtVoiceProposedAction: Identifiable, Codable, Hashable, Sendable {
         score: Double? = nil,
         formattedScaleValue: String? = nil,
         rawUnit: String? = nil,
+        deliveryRawScore: Double? = nil,
         columnId: String? = nil,
         columnTitle: String? = nil,
         columnMention: String? = nil,
@@ -336,6 +344,7 @@ struct CourtVoiceProposedAction: Identifiable, Codable, Hashable, Sendable {
         self.score = score.map { (($0 * 100).rounded() / 100) }
         self.formattedScaleValue = formattedScaleValue
         self.rawUnit = rawUnit
+        self.deliveryRawScore = deliveryRawScore
         self.columnId = columnId
         self.columnTitle = columnTitle
         self.columnMention = columnMention?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -518,6 +527,7 @@ final class AppleFoundationCourtVoiceService {
         var lastRememberedStudent: CourtVoiceStudentDescriptor?
         var lastRememberedKind: CourtVoiceActionKind?
         var lastRememberedScore: Double?
+        var lastRememberedIsDelivery = false
         var lastRememberedNote: String?
 
         return generated.map { item in
@@ -606,21 +616,25 @@ final class AppleFoundationCourtVoiceService {
                 rawScore = nil
             }
 
+            let isDelivery = isEllipticalNegated
+                || (item.score == nil && extractedVal == nil && (completionScore != nil || (isEllipticalSame && lastRememberedIsDelivery)))
             let converted = Self.convertValueForColumn(
                 rawScore: rawScore,
                 rawText: "\(item.note) \(item.sourceExcerpt)",
                 unit: extractedVal?.unit,
-                column: targetColumn
+                column: targetColumn,
+                isDeliveryStatement: isDelivery
             )
             if resolvedKind == .quickEvaluation && converted.numericScore == nil && converted.formattedText == nil {
-                reasons.append("Sin calificación detectada: indica nota")
+                reasons.append(isDelivery && targetColumn?.isLevelScale == true ? "Entregar no es un nivel: elige nivel" : "Sin calificación detectada: indica nota")
             }
 
             if resolvedKind != .observation {
                 lastRememberedKind = resolvedKind
             }
-            if let validScore = converted.numericScore ?? rawScore {
+            if let validScore = isDelivery ? rawScore : (converted.numericScore ?? rawScore) {
                 lastRememberedScore = validScore
+                lastRememberedIsDelivery = isDelivery
             }
             if !item.note.isEmpty && !isEllipticalSame {
                 lastRememberedNote = item.note
@@ -712,6 +726,7 @@ final class AppleFoundationCourtVoiceService {
         var lastRememberedStudent: CourtVoiceStudentDescriptor? = nil
         var lastRememberedKind: CourtVoiceActionKind? = nil
         var lastRememberedScore: Double? = nil
+        var lastRememberedIsDelivery = false
         var lastRememberedAttendanceStatus: String? = nil
         var lastRememberedNote: String? = nil
 
@@ -768,12 +783,13 @@ final class AppleFoundationCourtVoiceService {
                         columnCandidates: colResolution.candidates,
                         columnReason: colReason,
                         inheritedScore: isSameEllipsis ? lastRememberedScore : (isNegatedEllipsis ? 0.0 : nil),
+                        inheritedIsDelivery: isNegatedEllipsis || (isSameEllipsis && lastRememberedIsDelivery),
                         inheritedAttendance: isSameEllipsis ? lastRememberedAttendanceStatus : nil,
                         inheritedNote: isSameEllipsis ? lastRememberedNote : nil,
                         defaultSelect: true
                     )
                     actions.append(action)
-                    updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
+                    updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 } else if let candidateName = Self.extractCapitalizedNameCandidate(from: trimmedSegment) {
                     let fuzzyRes = Self.resolveStudents(mention: candidateName, in: input.students, classId: input.classId)
                     if let matched = fuzzyRes.matched {
@@ -792,12 +808,13 @@ final class AppleFoundationCourtVoiceService {
                         columnCandidates: colResolution.candidates,
                         columnReason: colReason,
                         inheritedScore: isSameEllipsis ? lastRememberedScore : (isNegatedEllipsis ? 0.0 : nil),
+                        inheritedIsDelivery: isNegatedEllipsis || (isSameEllipsis && lastRememberedIsDelivery),
                         inheritedAttendance: isSameEllipsis ? lastRememberedAttendanceStatus : nil,
                         inheritedNote: isSameEllipsis ? lastRememberedNote : nil,
                         defaultSelect: fuzzyRes.matched != nil && fuzzyRes.confidence >= 0.75
                     )
                     actions.append(action)
-                    updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
+                    updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 } else {
                     unmatched.append(trimmedSegment)
                 }
@@ -819,12 +836,13 @@ final class AppleFoundationCourtVoiceService {
                         columnCandidates: colResolution.candidates,
                         columnReason: colReason,
                         inheritedScore: isSameEllipsis ? lastRememberedScore : (isNegatedEllipsis ? 0.0 : nil),
+                        inheritedIsDelivery: isNegatedEllipsis || (isSameEllipsis && lastRememberedIsDelivery),
                         inheritedAttendance: isSameEllipsis ? lastRememberedAttendanceStatus : nil,
                         inheritedNote: isSameEllipsis ? lastRememberedNote : nil,
                         defaultSelect: match.matched != nil && match.confidence >= 0.75
                     )
                     actions.append(action)
-                    updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
+                    updateRememberedActionState(from: action, kind: &lastRememberedKind, score: &lastRememberedScore, isDelivery: &lastRememberedIsDelivery, attendance: &lastRememberedAttendanceStatus, note: &lastRememberedNote, isElliptical: isSameEllipsis)
                 }
             }
         }
@@ -843,13 +861,18 @@ final class AppleFoundationCourtVoiceService {
         from action: CourtVoiceProposedAction,
         kind: inout CourtVoiceActionKind?,
         score: inout Double?,
+        isDelivery: inout Bool,
         attendance: inout String?,
         note: inout String?,
         isElliptical: Bool
     ) {
         kind = action.kind
-        if let s = action.score {
+        if let delivered = action.deliveryRawScore {
+            score = delivered
+            isDelivery = true
+        } else if let s = action.score {
             score = s
+            isDelivery = false
         } else if let status = CourtVoiceDeliveryStatus.from(action.formattedScaleValue) {
             // Estado de entrega (columna estructurada): se recuerda como 10/0 para que "también"/"tampoco" lo hereden.
             score = status == .completed ? 10.0 : 0.0
@@ -875,6 +898,7 @@ final class AppleFoundationCourtVoiceService {
         columnCandidates: [CourtVoiceColumnCandidate],
         columnReason: String?,
         inheritedScore: Double? = nil,
+        inheritedIsDelivery: Bool = false,
         inheritedAttendance: String? = nil,
         inheritedNote: String? = nil,
         defaultSelect: Bool
@@ -928,11 +952,13 @@ final class AppleFoundationCourtVoiceService {
             let extracted = Self.extractValueAndUnit(from: segment, column: column)
             let completionScore = Self.extractCompletionScore(from: segment)
             let effectiveRawScore = extracted?.numericValue ?? completionScore ?? inheritedScore
+            let isDelivery = extracted == nil && (completionScore != nil || (inheritedScore != nil && inheritedIsDelivery))
             let converted = Self.convertValueForColumn(
                 rawScore: effectiveRawScore,
                 rawText: segment,
                 unit: extracted?.unit,
-                column: column
+                column: column,
+                isDeliveryStatement: isDelivery
             )
             if let columnReason, !columnReason.isEmpty {
                 reasons.append(columnReason)
@@ -940,7 +966,7 @@ final class AppleFoundationCourtVoiceService {
                 reasons.append("Sin instrumento especificado: elige columna")
             }
             if converted.numericScore == nil && converted.formattedText == nil {
-                reasons.append("Sin calificación detectada: indica valor")
+                reasons.append(isDelivery && column?.isLevelScale == true ? "Entregar no es un nivel: elige nivel" : "Sin calificación detectada: indica valor")
             }
             let hasValue = converted.numericScore != nil || converted.formattedText != nil
             let canPreselect = defaultSelect && student != nil && column != nil && hasValue
@@ -956,6 +982,7 @@ final class AppleFoundationCourtVoiceService {
                 score: converted.numericScore,
                 formattedScaleValue: converted.formattedText,
                 rawUnit: converted.unit ?? extracted?.unit,
+                deliveryRawScore: isDelivery ? effectiveRawScore : nil,
                 columnId: column?.id,
                 columnTitle: column?.title,
                 columnCandidates: columnCandidates,
@@ -2021,7 +2048,8 @@ final class AppleFoundationCourtVoiceService {
         rawScore: Double?,
         rawText: String,
         unit: String?,
-        column: CourtVoiceColumnDescriptor?
+        column: CourtVoiceColumnDescriptor?,
+        isDeliveryStatement: Bool = false
     ) -> (numericScore: Double?, formattedText: String?, unit: String?) {
         guard let column else {
             return (rawScore, nil, unit)
@@ -2030,6 +2058,11 @@ final class AppleFoundationCourtVoiceService {
         // Instrumento estructurado: solo estado de entrega. Nunca se convierte a escala ni se inventa nota.
         if column.isStructuredInstrument {
             return (nil, deliveryStatus(rawScore: rawScore, rawText: rawText)?.rawValue, nil)
+        }
+
+        // Columna de niveles: "ha entregado" no es un 4 ni "no ha entregado" un 1. Queda sin valor para revisión.
+        if isDeliveryStatement && column.isLevelScale {
+            return (nil, nil, nil)
         }
 
         let normText = normalized(rawText)

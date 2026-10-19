@@ -122,6 +122,7 @@ struct CourtVoiceCaptureSheet: View {
     private var evaluableColumns: [NotebookColumnDefinition] {
         loadedColumns.filter { col in
             col.type != .calculated &&
+            col.type != .attendance &&
             !col.isLocked &&
             !col.isHidden &&
             col.visibility == .visible
@@ -1307,6 +1308,10 @@ struct CourtVoiceCaptureSheet: View {
         }
 
         switch column.type {
+        case .attendance:
+            // La asistencia tiene su propia acción; una nota nunca se escribe en una columna de asistencia.
+            throw NSError(domain: "CourtVoice", code: 422, userInfo: [NSLocalizedDescriptionKey: "\(column.title) es de asistencia: usa la acción Asistencia."])
+
         case .numeric, .rubric:
             guard let numericVal = converted.numericScore ?? action.score else {
                 throw NSError(domain: "CourtVoice", code: 422, userInfo: [NSLocalizedDescriptionKey: "Falta calificación numérica."])
@@ -1534,6 +1539,7 @@ struct CourtVoiceCaptureSheet: View {
             let maxAllowed = (colDesc?.scaleKind.isRawPhysicalMark == true || colDesc?.scaleKind == .percentage) ? 1000.0 : 10.0
             let clamped = min(maxAllowed, max(0.0, score))
             draft?.actions[index].score = clamped
+            draft?.actions[index].deliveryRawScore = nil
             if let colDesc {
                 let conv = AppleFoundationCourtVoiceService.convertValueForColumn(rawScore: clamped, rawText: "", unit: draft?.actions[index].rawUnit, column: colDesc)
                 draft?.actions[index].formattedScaleValue = conv.formattedText
@@ -1556,6 +1562,7 @@ struct CourtVoiceCaptureSheet: View {
         guard draft?.actions.indices.contains(index) == true else { return }
         draft?.actions[index].score = nil
         draft?.actions[index].formattedScaleValue = status?.rawValue
+        draft?.actions[index].deliveryRawScore = status.map { $0 == .completed ? 10.0 : 0.0 }
         if let updated = draft?.actions[index] {
             draft?.actions[index].isSelected = updated.isReadyToApply
         }
@@ -1573,25 +1580,20 @@ struct CourtVoiceCaptureSheet: View {
             CourtVoiceAliasStore.learnColumnAlias(mention: mention, columnId: columnId, classId: classId)
         }
         if let colDesc = buildColumnDescriptors().first(where: { $0.id == columnId }),
-           let currentScore = draft?.actions[index].score {
-            let conv = AppleFoundationCourtVoiceService.convertValueForColumn(
-                rawScore: currentScore,
-                rawText: draft?.actions[index].note ?? "",
-                unit: draft?.actions[index].rawUnit,
-                column: colDesc
-            )
-            draft?.actions[index].score = conv.numericScore
-            draft?.actions[index].formattedScaleValue = conv.formattedText
-        } else if let colDesc = buildColumnDescriptors().first(where: { $0.id == columnId }) {
-            // Sin nota previa: un estado de entrega solo vale en columnas estructuradas.
-            let currentText = draft?.actions[index].formattedScaleValue
-            if colDesc.isStructuredInstrument {
-                if CourtVoiceDeliveryStatus.from(currentText) == nil {
-                    draft?.actions[index].formattedScaleValue = AppleFoundationCourtVoiceService
-                        .deliveryStatus(rawScore: nil, rawText: draft?.actions[index].sourceExcerpt ?? "")?.rawValue
-                }
-            } else if CourtVoiceDeliveryStatus.from(currentText) != nil {
-                draft?.actions[index].formattedScaleValue = nil
+           let action = draft?.actions[index] {
+            // Si lo dictado fue una entrega, se reconvierte desde ella (no desde una nota) al cambiar de columna.
+            let isDelivery = action.deliveryRawScore != nil
+            let rawScore = isDelivery ? action.deliveryRawScore : action.score
+            if rawScore != nil || CourtVoiceDeliveryStatus.from(action.formattedScaleValue) != nil {
+                let conv = AppleFoundationCourtVoiceService.convertValueForColumn(
+                    rawScore: rawScore,
+                    rawText: isDelivery ? action.sourceExcerpt : action.note,
+                    unit: action.rawUnit,
+                    column: colDesc,
+                    isDeliveryStatement: isDelivery
+                )
+                draft?.actions[index].score = conv.numericScore
+                draft?.actions[index].formattedScaleValue = conv.formattedText
             }
         }
         if let updated = draft?.actions[index] {

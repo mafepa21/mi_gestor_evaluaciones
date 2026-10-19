@@ -1488,7 +1488,8 @@ struct NotebookModuleView: View {
                     NotebookAverageEditorSheet(
                         classTitle: activeClassLabel,
                         columns: data.sheet.columns,
-                        rows: data.sheet.rows
+                        rows: data.sheet.rows,
+                        visibleColumnIds: Set(visibleNotebookSourceColumns(data: data).map(\.id))
                     ) { updates in
                         saveAverageConfiguration(updates)
                     }

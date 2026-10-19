@@ -16,6 +16,8 @@ struct NotebookAverageEditorSheet: View {
     let classTitle: String
     let columns: [NotebookColumnDefinition]
     let rows: [NotebookRow]
+    /// Ids de las columnas que se ven en la pestaña activa. `nil` = todas.
+    let visibleColumnIds: Set<String>?
     let onSave: ([NotebookAverageColumnUpdate]) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -25,11 +27,13 @@ struct NotebookAverageEditorSheet: View {
         classTitle: String,
         columns: [NotebookColumnDefinition],
         rows: [NotebookRow],
+        visibleColumnIds: Set<String>? = nil,
         onSave: @escaping ([NotebookAverageColumnUpdate]) -> Void
     ) {
         self.classTitle = classTitle
         self.columns = columns
         self.rows = rows
+        self.visibleColumnIds = visibleColumnIds
         self.onSave = onSave
         _draftsByColumnId = State(initialValue: Dictionary(
             uniqueKeysWithValues: columns.map {
@@ -44,7 +48,8 @@ struct NotebookAverageEditorSheet: View {
     private var configurableColumns: [NotebookColumnDefinition] {
         columns
             .filter { averageEligibility(for: $0) != .notEvaluable }
-            .filter { !$0.isArchived }
+            .filter { !$0.isArchived && !$0.isHidden && $0.visibility == .visible }
+            .filter { visibleColumnIds?.contains($0.id) ?? true }
             .sorted {
                 if $0.order != $1.order { return $0.order < $1.order }
                 return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending

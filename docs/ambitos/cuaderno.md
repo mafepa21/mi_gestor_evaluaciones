@@ -32,3 +32,4 @@
 - El grid tiene tope de Dynamic Type en AX2 (`NotebookDynamicType.gridRange`). La altura de fila escala con `notebookRowScale` y lleva el mismo tope a mano (1.95): si cambia uno, cambiar el otro.
 - El deslizamiento de asistencia en la celda Nombre no llega a VoiceOver: sus acciones están duplicadas como `accessibilityAction(named:)`. Toda acción nueva del deslizamiento debe añadirse también ahí.
 - Las cabeceras de columna usan `onTapGesture`; su lectura y su acción de VoiceOver están en `columnHeaderAccessibilityLabel` y en la `accessibilityAction` del mismo bloque.
+- El editor de media recibe todas las columnas pero filtra por `visibleColumnIds` (pestaña activa) y descarta ocultas; `buildUpdates` preserva las demás. Si cambia el filtro del grid, el editor lo sigue solo.

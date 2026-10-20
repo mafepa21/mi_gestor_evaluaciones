@@ -724,6 +724,22 @@ final class PlannerGanttProjectionTests: XCTestCase {
         XCTAssertEqual(projection.warnings, ["La sesión 1 no cabe en las horas libres del primer día. Empieza el lunes 30 de marzo."])
     }
 
+    func testFirstDayStartTimesListsDayHoursWithoutDuplicatesAndSkipsHolidays() {
+        let calendar = Calendar(identifier: .iso8601)
+        let (monday, slots) = doubleMondaySchedule()
+        let duplicated = slots + [slots[1]]
+        let tuesday = calendar.date(byAdding: .day, value: 1, to: monday)!
+        let friday = calendar.date(byAdding: .day, value: 4, to: monday)!
+
+        XCTAssertEqual(LearningSituationScheduleProjection.firstDayStartTimes(startDate: monday, template: duplicated), ["09:00", "10:10"])
+        XCTAssertEqual(LearningSituationScheduleProjection.firstDayStartTimes(startDate: friday, template: duplicated), ["12:00"])
+        XCTAssertEqual(LearningSituationScheduleProjection.firstDayStartTimes(startDate: tuesday, template: duplicated), [])
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.firstDayStartTimes(startDate: monday, template: duplicated, excludedDates: [monday]),
+            []
+        )
+    }
+
     func testLinearSequenceStartsAtChosenHour() {
         let calendar = Calendar(identifier: .iso8601)
         let (monday, slots) = doubleMondaySchedule()

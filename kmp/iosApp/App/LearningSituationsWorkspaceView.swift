@@ -379,6 +379,23 @@ enum LearningSituationScheduleProjection {
         return sameStart || isChronologicallyBefore(firstLong, firstShort) ? .longFirst : .shortFirst
     }
 
+    /// Horas de inicio (sin repetir, en orden) que el grupo tiene el día `startDate`. Vacío si ese
+    /// día no hay clase o es no lectivo. Alimenta el menú «Empieza en» de la hoja de programar.
+    static func firstDayStartTimes(
+        startDate: Date,
+        template: [TeacherScheduleSlot],
+        excludedDates: Set<Date> = []
+    ) -> [String] {
+        let calendar = Calendar(identifier: .iso8601)
+        let day = calendar.startOfDay(for: startDate)
+        guard !excludedDates.contains(where: { calendar.startOfDay(for: $0) == day }) else { return [] }
+        var seen = Set<String>()
+        return daySlots(on: day, sortedTemplate: template, firstDay: day, firstDayStartTime: nil)
+            .map(\.startTime)
+            .filter { minutes($0) != nil && seen.insert($0).inserted }
+            .sorted { (minutes($0) ?? 0) < (minutes($1) ?? 0) }
+    }
+
     private struct ScheduledDestination: Hashable {
         let date: Date
         let period: Int

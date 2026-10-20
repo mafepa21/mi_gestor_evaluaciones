@@ -16,7 +16,7 @@ Imágenes diseñadas con datos inventados: no son capturas de un cuaderno real.
 
 <img src="docs/imagenes/readme/rubrica.svg" alt="Evaluación con rúbrica en Mac: cada estudiante en una fila, niveles del 1 al 4 por criterio y nota calculada" width="100%">
 
-**Planificación.** La semana por franjas, con las sesiones de cada grupo, las ya impartidas y la que toca ahora.
+**Planificación.** La semana por franjas horarias: cada grupo con su color, lo que falta por planificar, los hitos del curso y la franja en curso resaltada.
 
 <img src="docs/imagenes/readme/planificacion.svg" alt="Planificación semanal en Mac con sesiones de varios grupos" width="100%">
 

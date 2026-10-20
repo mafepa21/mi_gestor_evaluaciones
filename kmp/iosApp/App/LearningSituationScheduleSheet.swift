@@ -358,7 +358,7 @@ struct LearningSituationScheduleSheet: View {
                 set: { newDate in
                     if let idx = groupStates.firstIndex(where: { $0.classId == group.classId }) {
                         groupStates[idx].startDate = newDate
-                        resetStartTime(at: idx)
+                        if resetStartTime(at: idx) { announceStartTimeReset() }
                         Task { await loadAndProject() }
                     }
                 }
@@ -407,10 +407,17 @@ struct LearningSituationScheduleSheet: View {
         }
     }
 
-    /// Vuelve a «1.ª hora» (al cambiar la fecha) y lo anuncia a VoiceOver si había otra elegida.
-    private func resetStartTime(at index: Int) {
-        guard groupStates[index].startTime != nil else { return }
+    /// Al cambiar la fecha: vuelve a «1.ª hora» y oculta el menú hasta que la recarga traiga las
+    /// horas del nuevo día. Devuelve `true` si había otra hora elegida.
+    @discardableResult
+    private func resetStartTime(at index: Int) -> Bool {
+        groupStates[index].firstDayStartTimes = []
+        guard groupStates[index].startTime != nil else { return false }
         groupStates[index].startTime = nil
+        return true
+    }
+
+    private func announceStartTimeReset() {
         AccessibilityNotification.Announcement("Empieza en la 1.ª hora").post()
     }
 
@@ -712,10 +719,12 @@ struct LearningSituationScheduleSheet: View {
 
     /// Aplica el «Inicio común» a todos los grupos incluidos (tras el aviso visible).
     private func applyCommonStartDate() {
+        var didResetStartTime = false
         for index in groupStates.indices where groupStates[index].isIncluded {
             groupStates[index].startDate = situationStartDate
-            resetStartTime(at: index)
+            if resetStartTime(at: index) { didResetStartTime = true }
         }
+        if didResetStartTime { announceStartTimeReset() }
         Task { await loadAndProject() }
     }
 

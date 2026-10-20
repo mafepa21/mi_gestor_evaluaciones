@@ -555,7 +555,9 @@ private enum NotebookFormulaEditorEvaluator {
                 return value
             case "REDONDEAR":
                 guard args.count == 1 || args.count == 2 else { throw NotebookFormulaEditorEvaluatorError.invalidArguments("\(rawName) requiere 1 o 2 argumentos") }
-                let digits = args.count == 2 ? Int(args[1]) : 0
+                let rawDigits = args.count == 2 ? args[1] : 0
+                guard rawDigits.isFinite, abs(rawDigits) <= 15 else { throw NotebookFormulaEditorEvaluatorError.invalidArguments("\(rawName): los decimales deben estar entre -15 y 15") }
+                let digits = Int(rawDigits)
                 let factor = pow(10.0, Double(digits))
                 return (args[0] * factor).rounded() / factor
             case "SI":

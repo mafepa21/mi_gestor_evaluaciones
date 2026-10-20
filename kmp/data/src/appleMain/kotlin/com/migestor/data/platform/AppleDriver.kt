@@ -8,6 +8,8 @@ import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import co.touchlab.sqliter.DatabaseConfiguration
 import com.migestor.data.db.AppDatabase
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSUserDomainMask
@@ -70,8 +72,25 @@ internal fun createAppleDriver(
             openAndValidate()
         } catch (secondError: Throwable) {
             println("[AppleDriver] Error initializing NativeSqliteDriver (intento 2/2): ${secondError.message}")
-            rescueUnreadableDatabase(databasePath, secondError)
-            openAndValidate()
+            val rescuedBackupPath = rescueUnreadableDatabase(databasePath, secondError)
+            try {
+                openAndValidate()
+            } catch (thirdError: Throwable) {
+                // Ni siquiera se puede crear una base nueva (disco lleno, permisos rotos en
+                // Application Support...). Lanzar aquí cierra la app en cada arranque sin
+                // explicación, porque Swift no puede capturar excepciones de Kotlin. Se
+                // arranca con una base en memoria y se deja el marcador para que la docente
+                // vea el aviso de rescate.
+                println("[AppleDriver] Error initializing NativeSqliteDriver (intento 3/3): ${thirdError.message}")
+                writeRescueMarker(
+                    markerPath = "$databasePath.rescue_marker",
+                    backupPath = rescuedBackupPath ?: databasePath,
+                    timestampEpochSeconds = platform.posix.time(null),
+                    reason = "No se pudo crear una base nueva (${thirdError.message ?: thirdError.toString()}). " +
+                        "La app funciona con una base temporal: los cambios de esta sesión no se guardarán.",
+                )
+                openInMemoryFallback(databaseName)
+            }
         }
     }
 
@@ -97,6 +116,13 @@ internal fun createAppleDriver(
 
     return driver
 }
+
+private fun openInMemoryFallback(databaseName: String): NativeSqliteDriver =
+    NativeSqliteDriver(
+        schema = AppleAppDatabaseSchema,
+        name = "fallback_$databaseName",
+        onConfiguration = { config -> config.copy(inMemory = true) },
+    )
 
 private fun configureAppleSqlite(driver: SqlDriver) {
     // Algunos PRAGMA de asignación devuelven una fila (mmap_size, por ejemplo) y
@@ -124,9 +150,9 @@ private fun configureAppleSqlite(driver: SqlDriver) {
  * o restaurar, en lugar de seguir en silencio con una base vacia (ver docs/QUALITY_NORTH_STAR.md, I3).
  */
 @OptIn(ExperimentalForeignApi::class)
-private fun rescueUnreadableDatabase(databasePath: String, error: Throwable) {
+private fun rescueUnreadableDatabase(databasePath: String, error: Throwable): String? {
     val fileManager = NSFileManager.defaultManager
-    if (!fileManager.fileExistsAtPath(databasePath)) return
+    if (!fileManager.fileExistsAtPath(databasePath)) return null
 
     val timestamp = platform.posix.time(null)
     val backupPath = "$databasePath.backup_$timestamp"
@@ -150,6 +176,7 @@ private fun rescueUnreadableDatabase(databasePath: String, error: Throwable) {
         timestampEpochSeconds = timestamp,
         reason = error.message ?: error.toString(),
     )
+    return backupPath
 }
 
 @OptIn(ExperimentalForeignApi::class)
@@ -249,7 +276,21 @@ internal fun migrateAppleDatabaseIfNeeded(
         candidate.isNotBlank() && fileManager.fileExistsAtPath(candidate)
     } ?: return
 
-    fileManager.copyItemAtPath(sourcePath, targetDatabasePath, null)
+    // Se copian también -wal y -shm: el WAL guarda transacciones confirmadas que aún
+    // no están en el .db. Si la copia falla, se borra lo copiado a medias para que el
+    // siguiente arranque lo reintente en vez de quedarse con una base vacía.
+    val copied = fileManager.copyItemAtPath(sourcePath, targetDatabasePath, null)
+    val sidecarsCopied = copied && listOf("-wal", "-shm").all { suffix ->
+        val sidecar = "$sourcePath$suffix"
+        !fileManager.fileExistsAtPath(sidecar) ||
+            fileManager.copyItemAtPath(sidecar, "$targetDatabasePath$suffix", null)
+    }
+    if (!sidecarsCopied) {
+        println("[AppleDriver] No se pudo copiar la base antigua $sourcePath; se reintentará en el próximo arranque")
+        for (path in listOf(targetDatabasePath, "$targetDatabasePath-wal", "$targetDatabasePath-shm")) {
+            if (fileManager.fileExistsAtPath(path)) fileManager.removeItemAtPath(path, null)
+        }
+    }
 }
 
 private fun getVersion(driver: SqlDriver): Long {
@@ -288,10 +329,27 @@ internal fun applyPendingAdoptionIfNeeded(
         return
     }
 
+    val epoch = platform.posix.time(null)
+
+    // Se valida antes de tocar la base activa: un cuerpo vacío, una página de error o
+    // una base de una versión más nueva de la app dejarían a la docente con la app vacía.
+    val invalidReason = adoptionCandidateProblem(pendingDbPath)
+    if (invalidReason != null) {
+        println("[AppleDriver] Adopción rechazada: $invalidReason")
+        val rejectJson = """{"status":"failed","error":"${jsonEscape(invalidReason)}","failedAtEpochMs":${epoch * 1000L}}"""
+        val f = platform.posix.fopen("$basePath/last_adoption.json", "w")
+        if (f != null) {
+            platform.posix.fputs(rejectJson, f)
+            platform.posix.fclose(f)
+        }
+        fileManager.removeItemAtPath(pendingDbPath, null)
+        fileManager.removeItemAtPath(pendingMarkerPath, null)
+        return
+    }
+
     val backupsDir = "$basePath/backups"
     fileManager.createDirectoryAtPath(backupsDir, true, null, null)
 
-    val epoch = platform.posix.time(null)
     val backupPath = "$backupsDir/${epoch}_pre_adopt_$databaseName"
     val dbExists = fileManager.fileExistsAtPath(databasePath)
 
@@ -360,6 +418,31 @@ internal fun applyPendingAdoptionIfNeeded(
         }
         fileManager.removeItemAtPath(pendingMarkerPath, null)
     }
+}
+
+/**
+ * Devuelve el motivo por el que [path] no es una base adoptable, o `null` si lo es.
+ * Lee la cabecera SQLite (100 bytes): la firma y `user_version` (offset 60, big endian).
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal fun adoptionCandidateProblem(path: String): String? {
+    val header = ByteArray(100)
+    val file = platform.posix.fopen(path, "rb") ?: return "no se pudo leer la base recibida"
+    val read = try {
+        header.usePinned { pinned -> platform.posix.fread(pinned.addressOf(0), 1u, 100u, file).toInt() }
+    } finally {
+        platform.posix.fclose(file)
+    }
+    if (read < 100) return "la base recibida está vacía o incompleta"
+    val signature = "SQLite format 3\u0000".encodeToByteArray()
+    if (!header.copyOfRange(0, 16).contentEquals(signature)) {
+        return "el archivo recibido no es una base de datos"
+    }
+    val userVersion = (60 until 64).fold(0L) { acc, i -> (acc shl 8) or (header[i].toLong() and 0xFF) }
+    if (userVersion > AppDatabase.Schema.version) {
+        return "la base recibida es de una versión más nueva de la app ($userVersion > ${AppDatabase.Schema.version}); actualiza la app en este dispositivo"
+    }
+    return null
 }
 
 @OptIn(ExperimentalForeignApi::class)

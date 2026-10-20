@@ -637,6 +637,125 @@ final class PlannerGanttProjectionTests: XCTestCase {
         XCTAssertEqual(projection.slots.last?.blockKind, "LONG_PART_1")
     }
 
+    // MARK: - Hora de inicio del primer día
+
+    /// Lunes doble (09:00 y 10:10) y viernes corto (12:00), desde el lunes 23 de marzo de 2026.
+    private func doubleMondaySchedule() -> (monday: Date, slots: [TeacherScheduleSlot]) {
+        let monday = Calendar(identifier: .iso8601).date(from: DateComponents(year: 2026, month: 3, day: 23))!
+        let slots = [
+            TeacherScheduleSlot(id: 1, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 1, startTime: "09:00", endTime: "09:55", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 2, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 1, startTime: "10:10", endTime: "11:05", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 3, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "PE", unitLabel: nil, dayOfWeek: 5, startTime: "12:00", endTime: "12:30", weeklyTemplateId: nil)
+        ]
+        return (monday, slots)
+    }
+
+    func testStartingAtSecondHourOfDoublePlacesShortFirstAndLeavesFirstHourFree() {
+        let calendar = Calendar(identifier: .iso8601)
+        let (monday, slots) = doubleMondaySchedule()
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: [weeklyPlan(1, role: .long), weeklyPlan(2, role: .short)],
+            startDate: monday,
+            template: slots,
+            periodForSlot: { Int($0.id) },
+            firstDayStartTime: "10:10"
+        )
+
+        XCTAssertTrue(projection.warnings.isEmpty)
+        XCTAssertEqual(projection.route, .shortFirst)
+        XCTAssertEqual(projection.slots.map { $0.planSessionNumber }, [2, 1])
+        XCTAssertEqual(projection.slots.map { calendar.component(.day, from: $0.date) }, [23, 30])
+        XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[2], [1, 2]])
+        XCTAssertFalse(LearningSituationScheduleProjection.hasDuplicateDestinations(projection.slots))
+    }
+
+    func testFirstHourAsStartTimeKeepsTodaysProjection() {
+        let (monday, slots) = doubleMondaySchedule()
+        let plans = [weeklyPlan(1, role: .long), weeklyPlan(2, role: .short)]
+
+        let withoutStartTime = LearningSituationScheduleProjection.planAwareSlots(
+            plans: plans, startDate: monday, template: slots, periodForSlot: { Int($0.id) }
+        )
+        let withFirstHour = LearningSituationScheduleProjection.planAwareSlots(
+            plans: plans, startDate: monday, template: slots, periodForSlot: { Int($0.id) },
+            firstDayStartTime: "09:00"
+        )
+
+        XCTAssertEqual(withoutStartTime.route, .longFirst)
+        XCTAssertEqual(withFirstHour.route, withoutStartTime.route)
+        XCTAssertEqual(withFirstHour.slots.map(\.occupiedPeriods), withoutStartTime.slots.map(\.occupiedPeriods))
+        XCTAssertEqual(withFirstHour.slots.map(\.date), withoutStartTime.slots.map(\.date))
+        XCTAssertTrue(withFirstHour.warnings.isEmpty)
+    }
+
+    func testRouteInferenceFollowsFirstDayStartTime() {
+        let (monday, slots) = doubleMondaySchedule()
+
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.inferRouteForFirstBlock(
+                startDate: monday, template: slots, periodForSlot: { Int($0.id) }
+            ),
+            .longFirst
+        )
+        XCTAssertEqual(
+            LearningSituationScheduleProjection.inferRouteForFirstBlock(
+                startDate: monday, template: slots, periodForSlot: { Int($0.id) },
+                firstDayStartTime: "10:10"
+            ),
+            .shortFirst
+        )
+    }
+
+    func testLongOnlyStartAtSecondHourWarnsAndMovesToNextDouble() {
+        let calendar = Calendar(identifier: .iso8601)
+        let (monday, slots) = doubleMondaySchedule()
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: [weeklyPlan(1, role: .long)],
+            startDate: monday,
+            template: slots,
+            periodForSlot: { Int($0.id) },
+            firstDayStartTime: "10:10"
+        )
+
+        XCTAssertEqual(projection.slots.map { calendar.component(.day, from: $0.date) }, [30])
+        XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[1, 2]])
+        XCTAssertEqual(projection.warnings, ["La sesión 1 no cabe en las horas libres del primer día. Empieza el lunes 30 de marzo."])
+    }
+
+    func testLinearSequenceStartsAtChosenHour() {
+        let calendar = Calendar(identifier: .iso8601)
+        let (monday, slots) = doubleMondaySchedule()
+        let plans = (1...3).map { number in
+            LearningSituationSessionPlanDraft(
+                sessionNumber: number,
+                sourceLabel: "Sesión \(number)",
+                title: "Sesión \(number)",
+                sessionType: "Sesión",
+                effectiveMinutes: 55,
+                objective: "Objective",
+                criteria: [],
+                material: "",
+                development: [],
+                adaptations: []
+            )
+        }
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: plans,
+            startDate: monday,
+            template: slots,
+            periodForSlot: { Int($0.id) },
+            firstDayStartTime: "10:10"
+        )
+
+        XCTAssertTrue(projection.warnings.isEmpty)
+        XCTAssertEqual(projection.slots.map { $0.planSessionNumber }, [1, 2, 3])
+        XCTAssertEqual(projection.slots.map { calendar.component(.day, from: $0.date) }, [23, 27, 30])
+        XCTAssertEqual(projection.slots.map(\.period), [2, 3, 1])
+    }
+
     private func weeklyPlan(
         _ sessionNumber: Int,
         role: LearningSituationWeeklyBlockRole,

@@ -429,6 +429,11 @@ private struct PlannerWeekMiniatureCell: View {
             }
             .disabled(session.status == .completed)
             Button {
+                vm.copyDialogSessionId = session.id
+            } label: {
+                Label("Copiar a…", systemImage: "doc.on.doc")
+            }
+            Button {
                 Task { await vm.copySessionToNextWeek(session) }
             } label: {
                 Label("Copiar a la semana siguiente", systemImage: "doc.on.doc")

@@ -20,6 +20,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     /// Nombre visible de cada grupo: distingue los que se llaman igual
     /// («4º ESO A · Tavernes» / «4º ESO A · Mislata»). Solo para pantalla.
     @Published var groupLabelById: [Int64: String] = [:]
+    /// Sesión con la hoja «Copiar a…» abierta (menú contextual de la Semana).
+    @Published var copyDialogSessionId: Int64?
     @Published var selectedGroupId: Int64?
     @Published var classColorHexById: [Int64: String] = [:]
     @Published var sessions: [PlanningSession] = []

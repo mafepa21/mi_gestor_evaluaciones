@@ -197,6 +197,25 @@ struct PlannerWorkspaceIOS: View {
         } message: {
             Text("Si pulsas Sustituir, la sesión que hay ahora se borra y se pone la copia en su lugar.")
         }
+        .sheet(
+            isPresented: Binding(
+                get: { vm.copyDialogSessionId != nil },
+                set: { if !$0 { vm.copyDialogSessionId = nil } }
+            )
+        ) {
+            if let sessionId = vm.copyDialogSessionId,
+               let session = vm.sessions.first(where: { $0.id == sessionId }) {
+                PlannerCopySessionSheet(
+                    vm: vm,
+                    session: session,
+                    onCopy: { groupId, date, period in
+                        vm.copyDialogSessionId = nil
+                        cascadeCoordinator.copyChosen(sessionId: sessionId, groupId: groupId, date: date, period: period, vm: vm)
+                    },
+                    onCancel: { vm.copyDialogSessionId = nil }
+                )
+            }
+        }
         .appOnChange(of: cascadeCoordinator.transientMessage) { message in
             guard message != nil else { return }
             bannerDismissTask?.cancel()
@@ -251,7 +270,7 @@ struct PlannerWorkspaceIOS: View {
                 )
                 .safeAreaInset(edge: .top) {
                     if let message = cascadeCoordinator.transientMessage {
-                        PlannerInlineBanner(message: message)
+                        PlannerInlineBanner(message: message, isError: cascadeCoordinator.transientIsError)
                             .padding(.horizontal, EvaluationDesign.screenPadding)
                             .padding(.top, 8)
                             .transition(uiFeatureFlags.bannerTransition)

@@ -466,9 +466,33 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     /// Pasa todas las franjas de ese día (de cualquier grupo con el mismo
     /// nombre) al grupo elegido. Usa el mismo guardado que editar una franja.
     func reassignSameNameSlots(in family: SameNameGroupScheduleDays.Family, day: Int, to groupId: Int64) async {
-        guard let bridge, let schedule = teacherSchedule else { return }
         let ids = Set(SameNameGroupScheduleDays.slotsToReassign(in: family, day: day, to: groupId, slots: sameNameSlots).map(\.id))
-        let slots = teacherScheduleSlots.filter { ids.contains($0.id) }
+        await reassignSlots(teacherScheduleSlots.filter { ids.contains($0.id) }, to: groupId, label: dayLabel(for: day))
+    }
+
+    /// Franjas cuyo grupo ya no existe (en el Planner salen como «Grupo 21»),
+    /// agrupadas por ese id perdido.
+    var orphanScheduleSlotGroups: [(groupId: Int64, slots: [TeacherScheduleSlot])] {
+        let orphanIds = SameNameGroupScheduleDays.orphanGroupIds(
+            knownGroupIds: Set(groups.map(\.id)),
+            slots: sameNameSlots
+        )
+        return orphanIds.map { orphanId in
+            (orphanId, effectiveScheduleSlots.filter { $0.schoolClassId == orphanId })
+        }
+    }
+
+    /// Pasa todas las franjas de un grupo que ya no existe a un grupo real.
+    func reassignOrphanSlots(from orphanGroupId: Int64, to groupId: Int64) async {
+        await reassignSlots(
+            teacherScheduleSlots.filter { $0.schoolClassId == orphanGroupId },
+            to: groupId,
+            label: "Grupo \(orphanGroupId)"
+        )
+    }
+
+    private func reassignSlots(_ slots: [TeacherScheduleSlot], to groupId: Int64, label: String) async {
+        guard let bridge, let schedule = teacherSchedule else { return }
         guard !slots.isEmpty else { return }
         scheduleSaveState = .saving
         var moved = 0
@@ -488,7 +512,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
                 moved += 1
             }
             await reload()
-            scheduleImportStatusMessage = "\(dayLabel(for: day)): \(moved) franja(s) pasadas a \(groupName(groupId))."
+            scheduleImportStatusMessage = "\(label): \(moved) franja(s) pasadas a \(groupName(groupId))."
             scheduleError = ""
             scheduleSaveState = .saved(Date())
         } catch {

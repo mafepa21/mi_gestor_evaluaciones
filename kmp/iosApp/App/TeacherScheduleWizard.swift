@@ -633,6 +633,10 @@ struct TeacherScheduleWizard: View {
                         sameNameGroupDaysCallout(family)
                     }
 
+                    if !vm.groups.isEmpty, !vm.orphanScheduleSlotGroups.isEmpty {
+                        orphanSlotsCallout
+                    }
+
                     if vm.groups.isEmpty {
                         noGroupsCallout
                     }
@@ -723,6 +727,44 @@ struct TeacherScheduleWizard: View {
         }
         .padding(16)
         .background((isMixed ? Color.orange : Color.secondary).opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// Franjas de grupos borrados: en el Planner salen como «Grupo 21» y nada
+    /// de lo que se planifica allí se ve. Se pasan a un grupo real de una vez.
+    private var orphanSlotsCallout: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Franjas de grupos que ya no existen", systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.orange)
+            Text("En el Planner salen como «Grupo» y un número. Elige a qué grupo pertenecen y se pasan todas sus franjas.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(vm.orphanScheduleSlotGroups, id: \.groupId) { orphan in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Grupo \(orphan.groupId)")
+                            .font(.subheadline.weight(.semibold))
+                        Text(orphan.slots.map { "\(vm.dayLabel(for: Int($0.dayOfWeek))) \($0.startTime)" }.joined(separator: " · "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Menu("Pasar a…") {
+                        ForEach(vm.groups, id: \.id) { group in
+                            Button(vm.groupName(group.id)) {
+                                Task { await vm.reassignOrphanSlots(from: orphan.groupId, to: group.id) }
+                            }
+                        }
+                    }
+                    .fixedSize()
+                    .disabled(vm.scheduleSaveState == .saving)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     /// Estado de salida del camino manual: sin grupos, el formulario de franjas

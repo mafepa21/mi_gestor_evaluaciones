@@ -169,4 +169,17 @@ final class ScheduleImportTests: XCTestCase {
         )
         XCTAssertTrue(families.isEmpty)
     }
+
+    func testOrphanGroupIdsListsSlotsOfDeletedGroups() {
+        let orphans = SameNameGroupScheduleDays.orphanGroupIds(
+            knownGroupIds: [1, 2],
+            slots: [
+                .init(id: 10, groupId: 1, day: 1),
+                .init(id: 11, groupId: 21, day: 4),
+                .init(id: 12, groupId: 19, day: 2),
+                .init(id: 13, groupId: 21, day: 4)
+            ]
+        )
+        XCTAssertEqual(orphans, [19, 21])
+    }
 }

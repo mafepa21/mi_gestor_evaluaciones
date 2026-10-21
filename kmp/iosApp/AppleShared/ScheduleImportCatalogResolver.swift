@@ -116,6 +116,11 @@ enum SameNameGroupScheduleDays {
             .sorted { $0.groupIds.first ?? 0 < $1.groupIds.first ?? 0 }
     }
 
+    /// Ids de grupo que tienen franjas pero ya no existen, ordenados.
+    static func orphanGroupIds(knownGroupIds: Set<Int64>, slots: [Slot]) -> [Int64] {
+        Set(slots.map(\.groupId)).subtracting(knownGroupIds).sorted()
+    }
+
     /// Franjas de la familia en `day` que no son ya de `targetGroupId`.
     static func slotsToReassign(in family: Family, day: Int, to targetGroupId: Int64, slots: [Slot]) -> [Slot] {
         let idSet = Set(family.groupIds)

@@ -54,3 +54,7 @@
 - En el Planner, el nombre visible es `vm.groupLabel(for:)` (`groupLabelById`, se rellena en `reloadPlannerGroups`). Una subvista privada sin `vm` debe recibir la etiqueta como parámetro (p. ej. `PlannerMonthSessionPill.groupLabel`). No usar la etiqueta para agrupar ni guardar: el informe PDF y el diario siguen con `groupName`.
 - ⌘/⌥ al soltar: `PlannerDragModifiers.isCopyModifierPressed`. En iPad depende de `startMonitoring()` (lo llama el `init` del coordinador); sin esa escucha, `GCKeyboard.coalesced` es nil y la copia se convierte en movimiento.
 - Grupos repetidos con franjas en días cruzados: tarjeta del horario (`sameNameGroupDaysCallout`, lógica en `SameNameGroupScheduleDays`). Solo mueve franjas; las sesiones ya planificadas se quedan en su grupo.
+- `copySessions`/`shiftSelectedSessions` con `CANCEL` aplican todo si no hay choques; con choques no tocan nada y devuelven `failed`. Antes devolvían siempre «0 copiadas».
+- El repositorio copia la sesión tal cual (estado, `startTime`/`endTime`, `teacherScheduleSlotId`). `copySession` en Swift la reescribe con la hora y la franja del grupo de destino; si no, `rebuildVisiblePlannerStructure` la pinta con la hora del original.
+- «Grupo N» en la Semana = franja cuyo grupo no está en `bridge.classes` (grupo borrado). Se arregla en el horario («Pasar a…»); al copiar arrastrando ahí, se usa el grupo de origen.
+- Copiar a otra semana: `plannerCopySessions(dayOffset:)` sin `targetDayOfWeek`. Las copias fuera de la semana visible no están en `vm.sessions`: leerlas con `plannerGetSession`.

@@ -451,6 +451,77 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         }
     }
 
+    private var sameNameSlots: [SameNameGroupScheduleDays.Slot] {
+        teacherScheduleSlots.map { .init(id: $0.id, groupId: $0.schoolClassId, day: Int($0.dayOfWeek)) }
+    }
+
+    /// Grupos repetidos («4º ESO A» de dos centros) con el reparto de días.
+    var sameNameGroupFamilies: [SameNameGroupScheduleDays.Family] {
+        SameNameGroupScheduleDays.families(
+            groups: groups.map { .init(id: $0.id, name: $0.name) },
+            slots: sameNameSlots
+        )
+    }
+
+    /// Pasa todas las franjas de ese día (de cualquier grupo con el mismo
+    /// nombre) al grupo elegido. Usa el mismo guardado que editar una franja.
+    func reassignSameNameSlots(in family: SameNameGroupScheduleDays.Family, day: Int, to groupId: Int64) async {
+        let ids = Set(SameNameGroupScheduleDays.slotsToReassign(in: family, day: day, to: groupId, slots: sameNameSlots).map(\.id))
+        await reassignSlots(teacherScheduleSlots.filter { ids.contains($0.id) }, to: groupId, label: dayLabel(for: day))
+    }
+
+    /// Franjas cuyo grupo ya no existe (en el Planner salen como «Grupo 21»),
+    /// agrupadas por ese id perdido.
+    var orphanScheduleSlotGroups: [(groupId: Int64, slots: [TeacherScheduleSlot])] {
+        let orphanIds = SameNameGroupScheduleDays.orphanGroupIds(
+            knownGroupIds: Set(groups.map(\.id)),
+            slots: sameNameSlots
+        )
+        return orphanIds.map { orphanId in
+            (orphanId, effectiveScheduleSlots.filter { $0.schoolClassId == orphanId })
+        }
+    }
+
+    /// Pasa todas las franjas de un grupo que ya no existe a un grupo real.
+    func reassignOrphanSlots(from orphanGroupId: Int64, to groupId: Int64) async {
+        await reassignSlots(
+            teacherScheduleSlots.filter { $0.schoolClassId == orphanGroupId },
+            to: groupId,
+            label: "Grupo \(orphanGroupId)"
+        )
+    }
+
+    private func reassignSlots(_ slots: [TeacherScheduleSlot], to groupId: Int64, label: String) async {
+        guard let bridge, let schedule = teacherSchedule else { return }
+        guard !slots.isEmpty else { return }
+        scheduleSaveState = .saving
+        var moved = 0
+        do {
+            for slot in slots {
+                _ = try await bridge.plannerSaveTeacherScheduleSlot(
+                    scheduleId: schedule.id,
+                    classId: groupId,
+                    subjectLabel: slot.subjectLabel,
+                    unitLabel: slot.unitLabel,
+                    dayOfWeek: Int(slot.dayOfWeek),
+                    startTime: slot.startTime,
+                    endTime: slot.endTime,
+                    editingSlotId: slot.id,
+                    existingWeeklyTemplateId: slot.weeklyTemplateId?.int64Value
+                )
+                moved += 1
+            }
+            await reload()
+            scheduleImportStatusMessage = "\(label): \(moved) franja(s) pasadas a \(groupName(groupId))."
+            scheduleError = ""
+            scheduleSaveState = .saved(Date())
+        } catch {
+            await reload()
+            scheduleError = "Se pasaron \(moved) de \(slots.count) franjas. \(error.localizedDescription)"
+            scheduleSaveState = .failed(scheduleError)
+        }
+    }
+
     private func resolvedSubjectLabel(for slot: ImportedScheduleSlot, groupCode: String, subjectNameByCode: [String: String]) -> String {
         if let code = slot.subjectCode(forGroup: groupCode), let name = subjectNameByCode[code] {
             return name

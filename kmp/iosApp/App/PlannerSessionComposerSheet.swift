@@ -122,7 +122,7 @@ struct PlannerSessionComposerSheet: View {
                         Picker("Curso", selection: $vm.composerDraft.groupId) {
                             Text("Selecciona curso").tag(Optional<Int64>.none)
                             ForEach(vm.groups, id: \.id) { group in
-                                Text(group.name).tag(Optional(group.id))
+                                Text(vm.groupLabel(for: group)).tag(Optional(group.id))
                             }
                         }
                         .pickerStyle(.menu)

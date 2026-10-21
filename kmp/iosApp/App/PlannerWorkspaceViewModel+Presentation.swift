@@ -132,6 +132,19 @@ extension PlannerWorkspaceViewModel {
         return .secondary
     }
 
+    /// Nombre de grupo para pantalla. Lo guardado (`groupName`) no cambia.
+    func groupLabel(_ classId: Int64, fallback: String) -> String {
+        groupLabelById[classId] ?? fallback
+    }
+
+    func groupLabel(for group: SchoolClass) -> String {
+        groupLabel(group.id, fallback: group.name)
+    }
+
+    func groupLabel(for session: PlanningSession) -> String {
+        groupLabel(session.groupId, fallback: session.groupName)
+    }
+
     func classColorHex(for classId: Int64) -> String {
         classColorHexById[classId] ?? bridge?.plannerCourseColor(for: classId) ?? EvaluationDesign.plannerCoursePalette[0]
     }

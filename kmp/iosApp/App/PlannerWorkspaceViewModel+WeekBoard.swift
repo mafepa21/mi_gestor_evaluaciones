@@ -176,7 +176,7 @@ extension PlannerWorkspaceViewModel {
                     id: "session-\(session.id)",
                     kind: .session,
                     classId: session.groupId,
-                    className: session.groupName,
+                    className: groupLabel(for: session),
                     classColorHex: classColorHex(for: session.groupId),
                     dayOfWeek: Int(session.dayOfWeek),
                     period: Int(session.period),
@@ -213,7 +213,7 @@ extension PlannerWorkspaceViewModel {
                 }
 
                 if let blocking = blockingMilestone {
-                    let groupName = groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)"
+                    let groupName = (groupLabelById[slot.schoolClassId] ?? groups.first(where: { $0.id == slot.schoolClassId })?.name) ?? "Grupo \(slot.schoolClassId)"
                     return PlannerWeekCellEntry(
                         id: "blocked-\(slot.id)",
                         kind: .blockedSlot,
@@ -242,7 +242,7 @@ extension PlannerWorkspaceViewModel {
                     id: "slot-\(slot.id)",
                     kind: .scheduledSlot,
                     classId: slot.schoolClassId,
-                    className: groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)",
+                    className: (groupLabelById[slot.schoolClassId] ?? groups.first(where: { $0.id == slot.schoolClassId })?.name) ?? "Grupo \(slot.schoolClassId)",
                     classColorHex: classColorHex(for: slot.schoolClassId),
                     dayOfWeek: Int(slot.dayOfWeek),
                     period: period,
@@ -250,7 +250,7 @@ extension PlannerWorkspaceViewModel {
                     preview: slot.subjectLabel.nilIfBlank ?? "Pendiente de concretar",
                     sessionGlance: nil,
                     sectionPreviews: [
-                        PlannerSectionPreview(title: "Curso", value: groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)"),
+                        PlannerSectionPreview(title: "Curso", value: (groupLabelById[slot.schoolClassId] ?? groups.first(where: { $0.id == slot.schoolClassId })?.name) ?? "Grupo \(slot.schoolClassId)"),
                         PlannerSectionPreview(title: "Bloque", value: slot.unitLabel?.nilIfBlank ?? slot.subjectLabel.nilIfBlank ?? "Pendiente")
                     ],
                     sessionId: nil,

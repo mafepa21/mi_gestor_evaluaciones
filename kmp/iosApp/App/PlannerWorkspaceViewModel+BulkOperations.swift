@@ -115,38 +115,43 @@ extension PlannerWorkspaceViewModel {
         await reloadSessionsOnly()
     }
 
-    /// Copia una sesión a otra franja de la semana visible (⌘ + arrastrar).
+    /// Copia una sesión a otra franja de la semana visible (⌘/⌥ + arrastrar).
     /// La copia toma el grupo con clase en la franja de destino; si la franja no
-    /// tiene clase, conserva el grupo de origen. Sin `overwrite`, un destino
-    /// ocupado devuelve `.occupied` sin tocar nada para que la vista confirme.
+    /// tiene clase o su grupo ya no existe, conserva el grupo de origen. Sin
+    /// `overwrite`, un destino ocupado devuelve `.occupied` sin tocar nada para
+    /// que la vista confirme.
     func copySession(sessionId: Int64, day: Int, period: Int, overwrite: Bool) async throws -> PlannerSessionCopyOutcome {
-        guard let bridge else { throw PlannerSessionCopyError.bridgeUnavailable }
-        guard let source = sessions.first(where: { $0.id == sessionId }) else {
-            throw PlannerSessionCopyError.sessionNotFound
-        }
-        let targetGroupId = copyTargetGroupId(day: day, period: period) ?? source.groupId
-        if targetGroupId == source.groupId, Int(source.dayOfWeek) == day, Int(source.period) == period {
-            return .sameSlot
-        }
-        let result = try await bridge.plannerCopySessions(
-            sourceSessionIds: [sessionId],
-            targetGroupId: targetGroupId,
-            targetDayOfWeek: day,
-            targetPeriod: period,
-            resolution: overwrite ? .overwrite : .cancel
+        let source = try await copySource(sessionId)
+        let slotGroupId = copyTargetGroupId(day: day, period: period)
+        let knownSlotGroupId = slotGroupId.flatMap { id in groups.contains(where: { $0.id == id }) ? id : nil }
+        let target = PlannerSessionCopyTarget(
+            groupId: knownSlotGroupId ?? source.groupId,
+            dayOffset: day - Int(source.dayOfWeek),
+            period: period
         )
-        if result.movedOrCopied == 0 {
-            return result.failed > 0 ? .occupied : .failed
+        let outcome = try await copySession(source, to: target, overwrite: overwrite)
+        if case .copied(let summary) = outcome, slotGroupId != nil, knownSlotGroupId == nil {
+            return .copied(summary: "\(summary) La franja es de un grupo que ya no existe: se ha copiado en el grupo de origen. Revisa el horario.")
         }
-        await reloadSessionsOnly()
-        // El repositorio copia también el estado: una copia de una sesión
-        // impartida no está impartida en el grupo de destino.
-        let copiedIds = Set(result.affectedSessionIds.map { $0.int64Value })
-        for copy in sessions where copiedIds.contains(copy.id) && copy.status != .planned {
-            await setSessionStatus(copy, status: .planned)
-        }
-        let groupName = groups.first(where: { $0.id == targetGroupId })?.name ?? source.groupName
-        return .copied(groupName: groupName)
+        return outcome
+    }
+
+    /// Copia una sesión al grupo, día (de cualquier semana) y franja elegidos
+    /// en «Copiar a…».
+    func copySession(sessionId: Int64, toGroupId groupId: Int64, date: Date, period: Int, overwrite: Bool) async throws -> PlannerSessionCopyOutcome {
+        let source = try await copySource(sessionId)
+        guard let sourceDate = calendarDate(of: source) else { throw PlannerSessionCopyError.sessionNotFound }
+        let calendar = Calendar.current
+        let dayOffset = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: sourceDate),
+            to: calendar.startOfDay(for: date)
+        ).day ?? 0
+        return try await copySession(
+            source,
+            to: PlannerSessionCopyTarget(groupId: groupId, dayOffset: dayOffset, period: period),
+            overwrite: overwrite
+        )
     }
 
     /// Grupo con clase en la franja según la proyección semanal (nil si no hay).
@@ -155,6 +160,109 @@ extension PlannerWorkspaceViewModel {
             .first(where: { $0.classId > 0 })?
             .classId
     }
+
+    /// Franjas del horario de un grupo en un día de la semana (1 = lunes), con
+    /// el número de franja visible del Planner. Vacío si ese día no tiene clase.
+    func copyCandidateSlots(groupId: Int64, weekday: Int) -> [PlannerVisibleSlot] {
+        let ranges = teacherScheduleSlots
+            .filter { $0.schoolClassId == groupId && Int($0.dayOfWeek) == weekday }
+            .map { ($0.startTime, $0.endTime) }
+        return visibleSlots.filter { slot in
+            ranges.contains { $0.0 == slot.startTime && $0.1 == slot.endTime }
+        }
+    }
+
+    /// Fecha real de una sesión (semana ISO + día).
+    func calendarDate(of session: PlanningSession) -> Date? {
+        let days = IsoWeekHelper.shared.daysOf(isoWeek: session.weekNumber, year: session.year)
+        let index = Int(session.dayOfWeek) - 1
+        guard days.indices.contains(index) else { return nil }
+        let day = days[index]
+        return Calendar.current.date(from: DateComponents(
+            year: Int(day.year),
+            month: Int(day.monthNumber),
+            day: Int(day.dayOfMonth)
+        ))
+    }
+
+    private func copySource(_ sessionId: Int64) async throws -> PlanningSession {
+        if let source = sessions.first(where: { $0.id == sessionId }) { return source }
+        guard let bridge else { throw PlannerSessionCopyError.bridgeUnavailable }
+        return try await bridge.plannerGetSession(id: sessionId)
+    }
+
+    private func copySession(_ source: PlanningSession, to target: PlannerSessionCopyTarget, overwrite: Bool) async throws -> PlannerSessionCopyOutcome {
+        guard let bridge else { throw PlannerSessionCopyError.bridgeUnavailable }
+        if target.groupId == source.groupId, target.dayOffset == 0, target.period == Int(source.period) {
+            return .sameSlot
+        }
+        let result = try await bridge.plannerCopySessions(
+            sourceSessionIds: [source.id],
+            targetGroupId: target.groupId,
+            targetPeriod: target.period,
+            dayOffset: target.dayOffset,
+            resolution: overwrite ? .overwrite : .cancel
+        )
+        if result.movedOrCopied == 0 {
+            return result.failed > 0 ? .occupied : .failed
+        }
+        var copies: [PlanningSession] = []
+        for id in result.affectedSessionIds.map({ $0.int64Value }) {
+            let copy = try await bridge.plannerGetSession(id: id)
+            try await adjustCopiedSession(copy, target: target)
+            copies.append(copy)
+        }
+        await reloadSessionsOnly()
+        let groupText = groupLabel(target.groupId, fallback: copies.first?.groupName ?? source.groupName)
+        let dateText = copies.first.flatMap(calendarDate(of:)).map { " (\(Self.copyDateFormatter.string(from: $0)))" } ?? ""
+        return .copied(summary: overwrite
+            ? "Sesión sustituida por la copia en \(groupText)\(dateText)."
+            : "Sesión copiada a \(groupText)\(dateText).")
+    }
+
+    /// El repositorio copia la sesión tal cual: estado, horas y franja del
+    /// horario del original. La copia queda planificada y con la hora y la
+    /// franja del grupo de destino (si no, la rejilla la pinta en otra fila).
+    private func adjustCopiedSession(_ copy: PlanningSession, target: PlannerSessionCopyTarget) async throws {
+        guard let bridge else { return }
+        let slot = visibleSlots.first { $0.period == target.period }
+        let scheduleSlot = slot.flatMap { visible in
+            teacherScheduleSlots.first {
+                $0.schoolClassId == target.groupId
+                    && Int($0.dayOfWeek) == Int(copy.dayOfWeek)
+                    && $0.startTime == visible.startTime
+                    && $0.endTime == visible.endTime
+            }
+        }
+        _ = try await bridge.plannerUpsertSession(
+            id: copy.id,
+            teachingUnitId: copy.teachingUnitId,
+            teachingUnitName: copy.teachingUnitName,
+            teachingUnitColor: copy.teachingUnitColor,
+            groupId: copy.groupId,
+            groupName: copy.groupName,
+            dayOfWeek: Int(copy.dayOfWeek),
+            period: Int(copy.period),
+            weekNumber: Int(copy.weekNumber),
+            year: Int(copy.year),
+            objectives: copy.objectives,
+            activities: copy.activities,
+            evaluation: copy.evaluation,
+            linkedAssessmentIdsCsv: copy.linkedAssessmentIdsCsv,
+            teacherScheduleSlotId: scheduleSlot?.id,
+            startTime: slot?.startTime ?? copy.startTime,
+            endTime: slot?.endTime ?? copy.endTime,
+            learningSituationSessionPlanId: copy.learningSituationSessionPlanId?.int64Value,
+            status: .planned
+        )
+    }
+
+    private static let copyDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.dateFormat = "EEE d/M"
+        return formatter
+    }()
 
     func markCompleted(_ session: PlanningSession) async {
         await setSessionStatus(session, status: .completed)
@@ -195,8 +303,15 @@ extension PlannerWorkspaceViewModel {
 
 }
 
+/// Destino de una copia: grupo, días desde la fecha del original y franja visible.
+struct PlannerSessionCopyTarget: Equatable {
+    let groupId: Int64
+    let dayOffset: Int
+    let period: Int
+}
+
 enum PlannerSessionCopyOutcome: Equatable {
-    case copied(groupName: String)
+    case copied(summary: String)
     case occupied
     case sameSlot
     case failed

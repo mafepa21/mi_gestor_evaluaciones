@@ -72,7 +72,7 @@ struct MacPlannerView: View {
             )
 
             if let transientMessage, !transientMessage.isEmpty {
-                MacPlannerBanner(message: transientMessage)
+                MacPlannerBanner(message: transientMessage, isError: cascadeCoordinator.transientIsError)
                     .padding(.horizontal, EvaluationDesign.screenPadding)
                     .padding(.bottom, 8)
                     .transition(uiFeatureFlags.bannerTransition)
@@ -181,6 +181,25 @@ struct MacPlannerView: View {
             }
         } message: {
             Text("Si pulsas Sustituir, la sesión que hay ahora se borra y se pone la copia en su lugar.")
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { vm.copyDialogSessionId != nil },
+                set: { if !$0 { vm.copyDialogSessionId = nil } }
+            )
+        ) {
+            if let sessionId = vm.copyDialogSessionId,
+               let session = vm.sessions.first(where: { $0.id == sessionId }) {
+                PlannerCopySessionSheet(
+                    vm: vm,
+                    session: session,
+                    onCopy: { groupId, date, period in
+                        vm.copyDialogSessionId = nil
+                        cascadeCoordinator.copyChosen(sessionId: sessionId, groupId: groupId, date: date, period: period, vm: vm)
+                    },
+                    onCancel: { vm.copyDialogSessionId = nil }
+                )
+            }
         }
         .task {
             publishToolbarActions()
@@ -356,18 +375,21 @@ struct MacPlannerView: View {
 
 private struct MacPlannerBanner: View {
     let message: String
+    var isError = false
+
+    private var tint: Color { isError ? .orange : MacAppStyle.successTint }
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(MacAppStyle.successTint)
+            Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(tint)
             Text(message)
                 .font(.callout.weight(.medium))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MacAppStyle.successTint.opacity(0.1))
+        .background(tint.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
     }
 }

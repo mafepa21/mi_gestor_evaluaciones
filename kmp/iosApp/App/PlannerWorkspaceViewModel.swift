@@ -17,6 +17,11 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var activeSection: PlannerWorkspaceSection = .week
     @Published var density: PlannerDensity = .standard
     @Published var groups: [SchoolClass] = []
+    /// Nombre visible de cada grupo: distingue los que se llaman igual
+    /// («4º ESO A · Tavernes» / «4º ESO A · Mislata»). Solo para pantalla.
+    @Published var groupLabelById: [Int64: String] = [:]
+    /// Sesión con la hoja «Copiar a…» abierta (menú contextual de la Semana).
+    @Published var copyDialogSessionId: Int64?
     @Published var selectedGroupId: Int64?
     @Published var classColorHexById: [Int64: String] = [:]
     @Published var sessions: [PlanningSession] = []
@@ -327,6 +332,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         guard let bridge else { return }
         scheduleFormGroupId = await calendarStore.reloadBootstrap(bridge: bridge, scheduleFormGroupId: scheduleFormGroupId)
         groups = calendarStore.groups
+        groupLabelById = bridge.classDisplayNames(for: groups)
         classColorHexById = calendarStore.classColorHexById
     }
 

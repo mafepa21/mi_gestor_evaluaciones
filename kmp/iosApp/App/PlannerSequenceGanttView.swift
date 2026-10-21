@@ -102,7 +102,7 @@ struct PlannerSequenceGanttView: View {
                     ) {
                         Text("Todos").tag(Optional<Int64>.none)
                         ForEach(vm.groups, id: \.id) { group in
-                            Text(group.name).tag(Optional(group.id))
+                            Text(vm.groupLabel(for: group)).tag(Optional(group.id))
                         }
                     }
                     .pickerStyle(.menu)

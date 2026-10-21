@@ -448,7 +448,7 @@ struct PlannerDayView: View {
 
     private var daySubtitle: String {
         if let nextSession {
-            return "Próxima: \(nextSession.groupName) · \(nextSession.startTime ?? vm.timeLabel(for: Int(nextSession.period)))"
+            return "Próxima: \(vm.groupLabel(for: nextSession)) · \(nextSession.startTime ?? vm.timeLabel(for: Int(nextSession.period)))"
         }
         return "\(sessions.count) sesiones planificadas"
     }
@@ -627,7 +627,7 @@ private struct PlannerDaySessionRow: View {
                         Circle()
                             .fill(tint)
                             .frame(width: 8, height: 8)
-                        Text(session.groupName)
+                        Text(vm.groupLabel(for: session))
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.primary)
                     }

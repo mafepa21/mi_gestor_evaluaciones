@@ -629,6 +629,14 @@ struct TeacherScheduleWizard: View {
                         duplicateScheduleRepairCallout
                     }
 
+                    ForEach(vm.sameNameGroupFamilies) { family in
+                        sameNameGroupDaysCallout(family)
+                    }
+
+                    if !vm.groups.isEmpty, !vm.orphanScheduleSlotGroups.isEmpty {
+                        orphanSlotsCallout
+                    }
+
                     if vm.groups.isEmpty {
                         noGroupsCallout
                     }
@@ -679,6 +687,84 @@ struct TeacherScheduleWizard: View {
         }
         .padding(16)
         .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// Dos grupos con el mismo nombre (uno por centro): qué días tiene cada uno.
+    /// Elegir el grupo de un día pasa allí todas las franjas de ese día.
+    private func sameNameGroupDaysCallout(_ family: SameNameGroupScheduleDays.Family) -> some View {
+        let isMixed = family.groupIdsByDay.values.contains { $0.count > 1 }
+        return VStack(alignment: .leading, spacing: 10) {
+            Label(
+                "\(vm.groups.first(where: { $0.id == family.groupIds.first })?.name ?? "Grupo") está en \(family.groupIds.count) grupos",
+                systemImage: isMixed ? "exclamationmark.triangle.fill" : "person.2"
+            )
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(isMixed ? .orange : .primary)
+            Text("Revisa de qué grupo es cada día. Si un día está en el grupo equivocado, elige el bueno y se pasan todas sus franjas.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(family.days, id: \.self) { day in
+                let owners = family.groupIdsByDay[day] ?? []
+                HStack(spacing: 12) {
+                    Text(vm.dayLabel(for: day))
+                        .font(.subheadline.weight(.semibold))
+                        .frame(width: 96, alignment: .leading)
+                    Menu {
+                        ForEach(family.groupIds, id: \.self) { groupId in
+                            Button(vm.groupName(groupId)) {
+                                Task { await vm.reassignSameNameSlots(in: family, day: day, to: groupId) }
+                            }
+                        }
+                    } label: {
+                        Text(owners.count == 1 ? vm.groupName(owners[0]) : "Mezclado: elige grupo")
+                            .foregroundStyle(owners.count == 1 ? Color.primary : Color.orange)
+                    }
+                    .disabled(vm.scheduleSaveState == .saving)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(16)
+        .background((isMixed ? Color.orange : Color.secondary).opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// Franjas de grupos borrados: en el Planner salen como «Grupo 21» y nada
+    /// de lo que se planifica allí se ve. Se pasan a un grupo real de una vez.
+    private var orphanSlotsCallout: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Franjas de grupos que ya no existen", systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.orange)
+            Text("En el Planner salen como «Grupo» y un número. Elige a qué grupo pertenecen y se pasan todas sus franjas.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(vm.orphanScheduleSlotGroups, id: \.groupId) { orphan in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Grupo \(orphan.groupId)")
+                            .font(.subheadline.weight(.semibold))
+                        Text(orphan.slots.map { "\(vm.dayLabel(for: Int($0.dayOfWeek))) \($0.startTime)" }.joined(separator: " · "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Menu("Pasar a…") {
+                        ForEach(vm.groups, id: \.id) { group in
+                            Button(vm.groupName(group.id)) {
+                                Task { await vm.reassignOrphanSlots(from: orphan.groupId, to: group.id) }
+                            }
+                        }
+                    }
+                    .fixedSize()
+                    .disabled(vm.scheduleSaveState == .saving)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     /// Estado de salida del camino manual: sin grupos, el formulario de franjas

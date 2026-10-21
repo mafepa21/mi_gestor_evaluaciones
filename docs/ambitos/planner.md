@@ -58,3 +58,6 @@
 - El repositorio copia la sesión tal cual (estado, `startTime`/`endTime`, `teacherScheduleSlotId`). `copySession` en Swift la reescribe con la hora y la franja del grupo de destino; si no, `rebuildVisiblePlannerStructure` la pinta con la hora del original.
 - «Grupo N» en la Semana = franja cuyo grupo no está en `bridge.classes` (grupo borrado). Se arregla en el horario («Pasar a…»); al copiar arrastrando ahí, se usa el grupo de origen.
 - Copiar a otra semana: `plannerCopySessions(dayOffset:)` sin `targetDayOfWeek`. Las copias fuera de la semana visible no están en `vm.sessions`: leerlas con `plannerGetSession`.
+- «Programar sesiones» numera las horas con `LearningSituationScheduleProjection.visibleSlots` (centro + horas propias P10, P11…, igual que la Semana). No volver a `plannerTimeSlots()` solo: las horas propias caían en el periodo 1 y las dos horas de una doble se pisaban (también al guardar, que empareja por periodo).
+- Secuencia lineal: una sesión «Doble» (`sessionType` con doble/double, sin «simple», o `blockRole == .long`) ocupa la hora siguiente si va seguida (≤20′). Se decide por el tipo, no por minutos: en Tavernes una doble da 60′ útiles.
+- El importador marca «Doble» si el encabezado no dice el tipo y una línea empieza por «Duración…» y dice doble (`isDoubleDurationLine`), en el lector de párrafos (`parsePlanLegacy`) y en el de tablas.

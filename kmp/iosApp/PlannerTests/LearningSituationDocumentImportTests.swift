@@ -232,6 +232,45 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(plan.activities.first?.consolidates, "Record the evidence in the passport.")
     }
 
+    func testDurationLineMarksSessionAsDoubleWhenHeaderHasNoType() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Sesión S01 · Gimnasia · Equilibrios y giros"),
+            .paragraph("Objetivo de hoy: mantener 4 equilibrios estáticos."),
+            .paragraph("1. Explicación inicial · 4 minutos"),
+            .paragraph("Presentamos los roles de ayuda."),
+            .paragraph("Duración útil: 60 minutos (sesión doble · turno de mañana)"),
+            .paragraph("Sesión S02 · Acrosport de pie · Figuras en parejas"),
+            .paragraph("Objetivo de hoy: construir 3 figuras de pareja."),
+            .paragraph("1. Explicación inicial · 4 minutos"),
+            .paragraph("Recordamos la señal de desmontaje.")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks, data: Data("duration-double".utf8), url: URL(fileURLWithPath: "/tmp/duration-double.docx")
+        )
+
+        XCTAssertEqual(draft.plans.map(\.sessionType), ["Doble", "Simple"])
+        XCTAssertEqual(draft.plans.first?.effectiveMinutes, 60)
+    }
+
+    func testDurationLineMarksTableSessionAsDouble() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Sesión S01 · Gimnasia · Equilibrios y giros"),
+            .table([
+                ["Fase", "Descripción"],
+                ["Calentamiento", "Juego de estatuas"]
+            ]),
+            .paragraph("Duración útil: 60 minutos (sesión doble · turno de mañana)")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks, data: Data("duration-double-table".utf8), url: URL(fileURLWithPath: "/tmp/duration-double-table.docx")
+        )
+
+        XCTAssertEqual(draft.plans.first?.sessionType, "Doble")
+        XCTAssertEqual(draft.plans.first?.effectiveMinutes, 60)
+    }
+
     func testFormatCDuplicateSessionNumberKeepsFirstPlanAndWarns() throws {
         let blocks: [WordDocumentBlock] = [
             .paragraph("Session 1 - Double (90 minutes) — First session"),

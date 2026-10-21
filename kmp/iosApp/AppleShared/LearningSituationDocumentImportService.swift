@@ -3251,7 +3251,10 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let criteria = criterionCodes(in: criteriaRawValue)
         let material = value(afterLabels: ["Material", "Materials", "Materiales"], in: body)
         let evidence = value(afterLabels: ["Evidencia", "Evidencias", "Evidence"], in: body)
-        let type = headerParts.type
+        // «Duración útil: 60 minutos (sesión doble …)» marca la sesión como doble si el
+        // encabezado no dice el tipo (SA de Tavernes).
+        let durationSaysDouble = body.contains(where: isDoubleDurationLine) && !normalized(header).contains("simple")
+        let type = durationSaysDouble ? "Doble" : headerParts.type
         let adaptationFromBody = value(afterLabels: ["Atención especial", "Atencion especial", "Atención a la diversidad", "Atencion a la diversidad"], in: body)
         let adaptationIndex = body.firstIndex(where: {
             let norm = normalized($0)
@@ -3358,6 +3361,16 @@ struct LearningSituationSessionSequenceDocumentImportService {
     /// B5: marcador de que arranca una versión "Simple"/"Doble" de la sesión ("SIMPLE version
     /// (30' effective)...", "Timed development — 90' version (Double session...)"). No se
     /// duplica la sesión: cada versión se vuelca como una sección de desarrollo separada.
+    /// Línea de duración que declara la sesión como doble: «Duración útil: 60 minutos (sesión
+    /// doble · turno de mañana)», «Duration: 60' (double session)».
+    private func isDoubleDurationLine(_ paragraph: String) -> Bool {
+        guard paragraph.count < 200 else { return false }
+        let value = normalized(paragraph)
+        let isDurationLine = value.hasPrefix("duracion") || value.hasPrefix("duration") || value.hasPrefix("temporalizacion")
+        guard isDurationLine else { return false }
+        return value.contains("doble") || value.contains("double")
+    }
+
     private func isVersionHeading(_ paragraph: String) -> Bool {
         guard paragraph.count < 200 else { return false }
         let value = normalized(paragraph)
@@ -3617,6 +3630,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
         var pendingLabel: FichaField?
         var sawSimple = false
         var sawDouble = false
+        // «Duración útil: 60 minutos (sesión doble · turno de mañana)»: el tipo va en la línea de
+        // duración y no en el encabezado (SA de Tavernes).
+        var durationLineDoubleMinutes: Int?
 
         func assign(_ field: FichaField, _ value: String) {
             let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3661,6 +3677,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
             case .paragraph(let rawText):
                 let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { continue }
+                if durationLineDoubleMinutes == nil, isDoubleDurationLine(text) {
+                    durationLineDoubleMinutes = integerMatch(in: text, pattern: #"([0-9]+)\s*(?:minutos|minutes|min|')"#) ?? 0
+                }
                 if let labelWaitingForValue = pendingLabel {
                     assign(labelWaitingForValue, text)
                     pendingLabel = nil
@@ -3747,6 +3766,8 @@ struct LearningSituationSessionSequenceDocumentImportService {
             sessionType = "Doble"
         } else if sawSimple {
             sessionType = "Simple"
+        } else if durationLineDoubleMinutes != nil, !normalized(header).contains("simple") {
+            sessionType = "Doble"
         } else {
             sessionType = headerParts.type
         }
@@ -3754,7 +3775,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
         // B5: si hay versión simple y doble, se toma la duración de la simple como referencia
         // (con aviso explícito) en vez de sumar los minutos de ambas.
         let minutesKey = sawSimple ? "Simple" : (sawDouble ? "Doble" : sessionType)
+        let durationLineMinutes = durationLineDoubleMinutes.flatMap { $0 > 0 ? $0 : nil }
         var minutes = integerMatch(in: header, pattern: #"([0-9]+)\s*(?:minutos|minutes|min|')"#)
+            ?? durationLineMinutes
             ?? defaultMinutes[normalized(minutesKey)]
             ?? 0
         if minutes == 0 {

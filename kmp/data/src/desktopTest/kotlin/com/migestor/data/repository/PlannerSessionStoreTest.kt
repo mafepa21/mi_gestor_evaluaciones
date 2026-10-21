@@ -3,7 +3,9 @@ package com.migestor.data.repository
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.migestor.data.db.AppDatabase
 import com.migestor.data.platform.runRescueMigrations
+import com.migestor.shared.domain.CollisionResolution
 import com.migestor.shared.domain.PlannedSession
+import com.migestor.shared.domain.SessionRelocationRequest
 import com.migestor.shared.domain.PlanningSession
 import com.migestor.shared.domain.SessionCascadeMoveRequest
 import com.migestor.shared.domain.SessionStatus
@@ -186,6 +188,70 @@ class PlannerSessionStoreTest {
         val loaded = planner.repo.getSession(nearId)
         assertEquals("Cerca", loaded?.objectives)
         assertNull(planner.repo.getSession(9_999))
+    }
+
+    @Test
+    fun `copiar una sesion a otro grupo y dia deja el original y crea la copia`() = runTest {
+        val planner = planner()
+        val origin = planner.classes.saveClass(name = "4 ESO A", course = 4, description = "Mislata")
+        val target = planner.classes.saveClass(name = "4 ESO A", course = 4, description = "Tavernes")
+        val sourceId = planner.repo.upsertSession(session(origin, period = 1, objectives = "Original"))
+
+        val result = planner.repo.copySessions(
+            SessionRelocationRequest(
+                sourceSessionIds = listOf(sourceId),
+                targetGroupId = target,
+                targetDayOfWeek = 4,
+                targetPeriod = 5,
+            ),
+            CollisionResolution.CANCEL,
+        )
+
+        assertEquals(1, result.movedOrCopied, "resultado: $result")
+        val saved = planner.repo.listSessions(weekNumber = 12, year = 2026)
+        assertEquals(2, saved.size)
+        assertEquals(origin, saved.single { it.id == sourceId }.groupId)
+        val copy = saved.single { it.id != sourceId }
+        assertEquals(target, copy.groupId)
+        assertEquals(4, copy.dayOfWeek)
+        assertEquals(5, copy.period)
+        assertEquals("Original", copy.objectives)
+    }
+
+    @Test
+    fun `copiar sin sustituir a un hueco ocupado no toca nada`() = runTest {
+        val planner = planner()
+        val classId = planner.classes.saveClass(name = "4 ESO B", course = 4, description = null)
+        val sourceId = planner.repo.upsertSession(session(classId, period = 1, objectives = "Original"))
+        val busyId = planner.repo.upsertSession(session(classId, period = 3, objectives = "Ocupada"))
+
+        val result = planner.repo.copySessions(
+            SessionRelocationRequest(sourceSessionIds = listOf(sourceId), targetPeriod = 3),
+            CollisionResolution.CANCEL,
+        )
+
+        assertEquals(0, result.movedOrCopied)
+        assertEquals(1, result.failed)
+        val saved = planner.repo.listSessions(weekNumber = 12, year = 2026).associateBy { it.id }
+        assertEquals(2, saved.size)
+        assertEquals("Ocupada", saved.getValue(busyId).objectives)
+    }
+
+    @Test
+    fun `desplazar sin choques mueve la sesion`() = runTest {
+        val planner = planner()
+        val classId = planner.classes.saveClass(name = "4 ESO C", course = 4, description = null)
+        val sourceId = planner.repo.upsertSession(session(classId, period = 1, objectives = "Mover"))
+
+        val result = planner.repo.shiftSelectedSessions(
+            SessionRelocationRequest(sourceSessionIds = listOf(sourceId), dayOffset = 1),
+            CollisionResolution.CANCEL,
+        )
+
+        assertEquals(1, result.movedOrCopied)
+        val moved = planner.repo.listSessions(weekNumber = 12, year = 2026).single()
+        assertEquals(3, moved.dayOfWeek)
+        assertEquals("Mover", moved.objectives)
     }
 
     private fun planner(): OpenPlanner {

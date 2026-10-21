@@ -111,7 +111,7 @@ struct PlannerTermBoardView: View {
                     }
                 )) {
                     ForEach(vm.groups, id: \.id) { group in
-                        Text(group.name).tag(Optional(group.id))
+                        Text(vm.groupLabel(for: group)).tag(Optional(group.id))
                     }
                 }
                 .pickerStyle(.menu)

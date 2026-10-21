@@ -79,6 +79,51 @@ enum SchoolClassDisplayNames {
     }
 }
 
+/// Reparto por días de las franjas de grupos que se llaman igual (p. ej. dos
+/// «4º ESO A», uno por centro). Sirve para ver de un vistazo si un día quedó
+/// en el grupo equivocado y pasar todas sus franjas al otro de una vez.
+enum SameNameGroupScheduleDays {
+    struct Slot {
+        let id: Int64
+        let groupId: Int64
+        let day: Int
+    }
+
+    struct Family: Identifiable, Equatable {
+        /// Ids de los grupos con el mismo nombre, ordenados.
+        let groupIds: [Int64]
+        /// Día (1 = lunes) → grupos que tienen franjas ese día.
+        let groupIdsByDay: [Int: [Int64]]
+
+        var id: String { groupIds.map(String.init).joined(separator: "-") }
+        var days: [Int] { groupIdsByDay.keys.sorted() }
+    }
+
+    static func families(groups: [SchoolClassDisplayNames.Group], slots: [Slot]) -> [Family] {
+        let byName = Dictionary(grouping: groups) { ScheduleImportCatalogResolver.normalizedKey($0.name) }
+        return byName.values
+            .filter { $0.count > 1 }
+            .compactMap { sameName -> Family? in
+                let ids = sameName.map(\.id).sorted()
+                let idSet = Set(ids)
+                var byDay: [Int: Set<Int64>] = [:]
+                for slot in slots where idSet.contains(slot.groupId) {
+                    byDay[slot.day, default: []].insert(slot.groupId)
+                }
+                guard !byDay.isEmpty else { return nil }
+                return Family(groupIds: ids, groupIdsByDay: byDay.mapValues { $0.sorted() })
+            }
+            .sorted { $0.groupIds.first ?? 0 < $1.groupIds.first ?? 0 }
+    }
+
+    /// Franjas de la familia en `day` que no son ya de `targetGroupId`.
+    static func slotsToReassign(in family: Family, day: Int, to targetGroupId: Int64, slots: [Slot]) -> [Slot] {
+        let idSet = Set(family.groupIds)
+        guard idSet.contains(targetGroupId) else { return [] }
+        return slots.filter { $0.day == day && idSet.contains($0.groupId) && $0.groupId != targetGroupId }
+    }
+}
+
 /// Resuelve, contra el catálogo actual de la app, qué grupos y asignaturas
 /// detectados en un Excel de horario ya existen y cuáles hay que crear.
 /// No depende de `KmpBridge` para poder probarse con datos planos.

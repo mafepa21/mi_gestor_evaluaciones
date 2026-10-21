@@ -390,7 +390,7 @@ struct PlannerToolbar: View {
             )) {
                 Text("Todos los grupos").tag(Optional<Int64>.none)
                 ForEach(vm.groups, id: \.id) { group in
-                    Text(group.name).tag(Optional(group.id))
+                    Text(vm.groupLabel(for: group)).tag(Optional(group.id))
                 }
             }
             .pickerStyle(.menu)
@@ -713,7 +713,7 @@ struct PlannerToolbar: View {
 
     private var toolbarSubtitle: String {
         if let session = vm.selectedSession {
-            return "\(vm.weekLabel) · \(vm.dateRangeLabel) · \(session.groupName)"
+            return "\(vm.weekLabel) · \(vm.dateRangeLabel) · \(vm.groupLabel(for: session))"
         }
         return vm.dateRangeLabel
     }
@@ -1049,7 +1049,7 @@ private struct PlannerAgendaSessionRow: View {
                         .labelStyle(.titleAndIcon)
                 }
 
-                Text(session.groupName)
+                Text(vm.groupLabel(for: session))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
 

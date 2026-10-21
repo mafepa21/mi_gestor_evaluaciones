@@ -132,4 +132,41 @@ final class ScheduleImportTests: XCTestCase {
         XCTAssertEqual(labels[6], "2º ESO C · 1")
         XCTAssertEqual(labels[7], "2º ESO C · 2")
     }
+
+    func testSameNameGroupsShowWhichGroupOwnsEachDay() throws {
+        let groups: [SchoolClassDisplayNames.Group] = [
+            .init(id: 1, name: "4º ESO A", description: "Mislata"),
+            .init(id: 2, name: "4º ESO A ", description: "Tavernes"),
+            .init(id: 3, name: "1º BAC B")
+        ]
+        // Martes mal asignado a Mislata; jueves mezclado.
+        let slots: [SameNameGroupScheduleDays.Slot] = [
+            .init(id: 10, groupId: 1, day: 1),
+            .init(id: 11, groupId: 1, day: 2),
+            .init(id: 12, groupId: 1, day: 4),
+            .init(id: 13, groupId: 2, day: 4),
+            .init(id: 14, groupId: 3, day: 2)
+        ]
+        let families = SameNameGroupScheduleDays.families(groups: groups, slots: slots)
+        XCTAssertEqual(families.count, 1)
+        let family = try XCTUnwrap(families.first)
+        XCTAssertEqual(family.groupIds, [1, 2])
+        XCTAssertEqual(family.days, [1, 2, 4])
+        XCTAssertEqual(family.groupIdsByDay[2], [1])
+        XCTAssertEqual(family.groupIdsByDay[4], [1, 2])
+
+        let tuesday = SameNameGroupScheduleDays.slotsToReassign(in: family, day: 2, to: 2, slots: slots)
+        XCTAssertEqual(tuesday.map(\.id), [11])
+        let thursday = SameNameGroupScheduleDays.slotsToReassign(in: family, day: 4, to: 2, slots: slots)
+        XCTAssertEqual(thursday.map(\.id), [12])
+        XCTAssertTrue(SameNameGroupScheduleDays.slotsToReassign(in: family, day: 2, to: 3, slots: slots).isEmpty)
+    }
+
+    func testNoFamilyWhenNamesAreUnique() {
+        let families = SameNameGroupScheduleDays.families(
+            groups: [.init(id: 1, name: "4º ESO A"), .init(id: 2, name: "4º ESO B")],
+            slots: [.init(id: 10, groupId: 1, day: 1), .init(id: 11, groupId: 2, day: 2)]
+        )
+        XCTAssertTrue(families.isEmpty)
+    }
 }

@@ -232,6 +232,93 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(plan.activities.first?.consolidates, "Record the evidence in the passport.")
     }
 
+    func testDurationLineMarksSessionAsDoubleWhenHeaderHasNoType() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Sesión S01 · Gimnasia · Equilibrios y giros"),
+            .paragraph("Objetivo de hoy: mantener 4 equilibrios estáticos."),
+            .paragraph("1. Explicación inicial · 4 minutos"),
+            .paragraph("Presentamos los roles de ayuda."),
+            .paragraph("Duración útil: 60 minutos (sesión doble · turno de mañana)"),
+            .paragraph("Sesión S02 · Acrosport de pie · Figuras en parejas"),
+            .paragraph("Objetivo de hoy: construir 3 figuras de pareja."),
+            .paragraph("1. Explicación inicial · 4 minutos"),
+            .paragraph("Recordamos la señal de desmontaje.")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks, data: Data("duration-double".utf8), url: URL(fileURLWithPath: "/tmp/duration-double.docx")
+        )
+
+        XCTAssertEqual(draft.plans.map(\.sessionType), ["Doble", "Simple"])
+        XCTAssertEqual(draft.plans.first?.effectiveMinutes, 60)
+    }
+
+    func testParagraphSessionSplitsFichaAndTurnsNumberedPhasesIntoActivities() throws {
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: Self.tavernesSessionBlocks, data: Data("tavernes-phases".utf8), url: URL(fileURLWithPath: "/tmp/tavernes-phases.docx")
+        )
+
+        let plan = try XCTUnwrap(draft.plans.first)
+        XCTAssertEqual(plan.objective, "al terminar, el alumnado será capaz de mantener 4 equilibrios estáticos.")
+        XCTAssertEqual(plan.material, "pabellón; 2 bancos suecos, conos y aros; 10 tríos.")
+        XCTAssertEqual(plan.adaptations.first, "quien tenga poco equilibrio usa la mano del ayudante.")
+        XCTAssertEqual(plan.activities.map(\.activity), ["Explicación inicial", "Calentamiento mediante juego", "Actividad principal", "Vuelta a la calma, registro y recogida"])
+        XCTAssertEqual(plan.activities.map(\.plannedMinutes), [4, 8, 40, 8])
+        XCTAssertEqual(plan.activities[2].clilFocus, "«Eyes on a point — Hold the balance!»")
+        XCTAssertTrue(plan.activities[2].teacherActions.contains("Ajuste docente y DUA"))
+        XCTAssertFalse(plan.activities.contains { $0.teacherActions.contains("Tight tummy") })
+        XCTAssertFalse(plan.activities.contains { $0.teacherActions.contains("Unidad curricular") })
+        XCTAssertFalse(plan.activities.contains { $0.teacherActions.contains("Esquema de organización") })
+        let chunks = try XCTUnwrap(plan.development.first { $0.title.hasPrefix("Chunks") })
+        let parsed = try XCTUnwrap(LearningSituationSessionDevelopmentPayload.parseCLILChunks(from: chunks.lines.joined(separator: "\n")))
+        XCTAssertEqual(parsed.teacherCues, ["Tight tummy", "Soft knees on landing"])
+        XCTAssertEqual(parsed.studentInteraction, ["Ready?", "I’ve got you!"])
+        XCTAssertEqual(parsed.debrief, ["What helps you keep your balance?"])
+    }
+
+    static let tavernesSessionBlocks: [WordDocumentBlock] = [
+        .paragraph("Sesión S01 · Gimnasia · Equilibrios, giros y saltos con recepción"),
+        .paragraph("Objetivo de hoy: al terminar, el alumnado será capaz de mantener 4 equilibrios estáticos. Material, espacio y agrupamiento: pabellón; 2 bancos suecos, conos y aros; 10 tríos. Atención especial: quien tenga poco equilibrio usa la mano del ayudante."),
+        .paragraph("1. Explicación inicial · 4 minutos"),
+        .paragraph("Presentación del reto de la SA y de los roles del trío."),
+        .paragraph("2. Calentamiento mediante juego · 8 minutos"),
+        .paragraph("«Espejos rítmicos» por parejas."),
+        .paragraph("3. Actividad principal · 40 minutos"),
+        .paragraph("Bloque 1 · Circuito de 5 estaciones (30’)."),
+        .paragraph("Bloque 2 · Mini-reto de enlace (10’)."),
+        .paragraph("Consigna CLIL: 🗣️ «Eyes on a point — Hold the balance!»"),
+        .paragraph("Chunks lingüísticos (CLIL)"),
+        .paragraph("Docente: «Tight tummy», «Soft knees on landing»"),
+        .paragraph("Alumnado: «Ready?», «I’ve got you!»"),
+        .paragraph("Reflexión: «What helps you keep your balance?»"),
+        .paragraph("Ajuste docente y DUA: el docente se sitúa entre las estaciones 2 y 4."),
+        .paragraph("Esquema de organización: circuito de equilibrios, giros y saltos"),
+        .paragraph("4. Vuelta a la calma, registro y recogida · 8 minutos"),
+        .paragraph("Respiración y estiramiento suave de pie (2’)."),
+        .paragraph("Trazabilidad curricular"),
+        .paragraph("Unidad curricular: SA02 · U01"),
+        .paragraph("Duración útil: 60 minutos (sesión doble · turno de mañana)"),
+        .paragraph("Evidencia: rúbrica CE 3.1, indicador «Equilibrios, giros y recepciones».")
+    ]
+
+    func testDurationLineMarksTableSessionAsDouble() throws {
+        let blocks: [WordDocumentBlock] = [
+            .paragraph("Sesión S01 · Gimnasia · Equilibrios y giros"),
+            .table([
+                ["Fase", "Descripción"],
+                ["Calentamiento", "Juego de estatuas"]
+            ]),
+            .paragraph("Duración útil: 60 minutos (sesión doble · turno de mañana)")
+        ]
+
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: blocks, data: Data("duration-double-table".utf8), url: URL(fileURLWithPath: "/tmp/duration-double-table.docx")
+        )
+
+        XCTAssertEqual(draft.plans.first?.sessionType, "Doble")
+        XCTAssertEqual(draft.plans.first?.effectiveMinutes, 60)
+    }
+
     func testFormatCDuplicateSessionNumberKeepsFirstPlanAndWarns() throws {
         let blocks: [WordDocumentBlock] = [
             .paragraph("Session 1 - Double (90 minutes) — First session"),

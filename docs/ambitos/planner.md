@@ -11,6 +11,7 @@
 
 ## Trampas
 
+- Documentos de sesiones en párrafos (Tavernes) van por `parsePlanLegacy`: el guion sale de `legacyPhaseActivities` (fases «N. … · M minutos»). Esas actividades usan el tipo por defecto, no «narrative»: con «narrative», `PlannerSessionPlanPayloadNormalizer` rehace las secciones y pierde la de chunks CLIL.
 - El texto del paso pasa por `PlannerSessionReviewBuilder.reviewDetail` (quita «U01 · », el título «…»: repetido y parte listas en línea). «Alumnado» en extras compara con el texto sin limpiar (`rawDetail`).
 - «Ahora» usa `PlannerSessionLiveProgress.state`: minutos de reloj desde `startTime`, sumando 15 min de descanso al llegar al bloque `precededByBreak`. La hora de la franja (55 min) puede no coincidir con los minutos del plan (80): se sigue el plan.
 - La barra de tiempos lleva al paso con `proxy.scrollTo(activityKey)`: cada `PlannerReviewStepRow` lleva `.id(step.id)`; si cambia el id del paso, cambiar ambos.
@@ -58,3 +59,6 @@
 - El repositorio copia la sesión tal cual (estado, `startTime`/`endTime`, `teacherScheduleSlotId`). `copySession` en Swift la reescribe con la hora y la franja del grupo de destino; si no, `rebuildVisiblePlannerStructure` la pinta con la hora del original.
 - «Grupo N» en la Semana = franja cuyo grupo no está en `bridge.classes` (grupo borrado). Se arregla en el horario («Pasar a…»); al copiar arrastrando ahí, se usa el grupo de origen.
 - Copiar a otra semana: `plannerCopySessions(dayOffset:)` sin `targetDayOfWeek`. Las copias fuera de la semana visible no están en `vm.sessions`: leerlas con `plannerGetSession`.
+- «Programar sesiones» numera las horas con `LearningSituationScheduleProjection.visibleSlots` (centro + horas propias P10, P11…, igual que la Semana). No volver a `plannerTimeSlots()` solo: las horas propias caían en el periodo 1 y las dos horas de una doble se pisaban (también al guardar, que empareja por periodo).
+- Secuencia lineal: una sesión «Doble» (`sessionType` con doble/double, sin «simple», o `blockRole == .long`) ocupa la hora siguiente si va seguida (≤20′). Se decide por el tipo, no por minutos: en Tavernes una doble da 60′ útiles.
+- El importador marca «Doble» si el encabezado no dice el tipo y una línea empieza por «Duración…» y dice doble (`isDoubleDurationLine`), en el lector de párrafos (`parsePlanLegacy`) y en el de tablas.

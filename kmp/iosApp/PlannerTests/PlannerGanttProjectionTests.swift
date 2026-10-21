@@ -707,21 +707,169 @@ final class PlannerGanttProjectionTests: XCTestCase {
         )
     }
 
-    func testLongOnlyStartAtSecondHourWarnsAndMovesToNextDouble() {
+    func testLongOnlyStartAtSecondHourUsesThatSingleHourAndThenFullDoubles() {
         let calendar = Calendar(identifier: .iso8601)
         let (monday, slots) = doubleMondaySchedule()
 
         let projection = LearningSituationScheduleProjection.planAwareSlots(
-            plans: [weeklyPlan(1, role: .long)],
+            plans: [weeklyPlan(1, role: .long), weeklyPlan(2, role: .long), weeklyPlan(3, role: .long)],
             startDate: monday,
             template: slots,
             periodForSlot: { Int($0.id) },
             firstDayStartTime: "10:10"
         )
 
+        XCTAssertEqual(projection.slots.map(\.planSessionNumber), [1, 2, 3])
+        XCTAssertEqual(projection.slots.map { calendar.component(.day, from: $0.date) }, [23, 30, 6])
+        XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[2], [1, 2], [1, 2]])
+        XCTAssertFalse(LearningSituationScheduleProjection.hasDuplicateDestinations(projection.slots))
+        XCTAssertEqual(projection.warnings, ["La sesión 1 ocupa solo una hora el primer día. Las siguientes ocupan la doble entera."])
+    }
+
+    func testLongOnlyWithoutStartTimeStillSkipsSingleHours() {
+        let calendar = Calendar(identifier: .iso8601)
+        let (monday, slots) = doubleMondaySchedule()
+        let tuesday = calendar.date(byAdding: .day, value: 1, to: monday)!
+
+        // Sin «Empieza en», una doble nunca se mete en una hora suelta (el viernes corto).
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: [weeklyPlan(1, role: .long)],
+            startDate: tuesday,
+            template: slots,
+            periodForSlot: { Int($0.id) }
+        )
+
         XCTAssertEqual(projection.slots.map { calendar.component(.day, from: $0.date) }, [30])
         XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[1, 2]])
-        XCTAssertEqual(projection.warnings, ["La sesión 1 no cabe en las horas libres del primer día. Empieza el lunes 30 de marzo."])
+        XCTAssertTrue(projection.warnings.isEmpty)
+    }
+
+    // MARK: - Sesiones dobles en secuencia lineal (Tavernes)
+
+    private func tavernesThursday() -> (thursday: Date, slots: [TeacherScheduleSlot], periodForSlot: (TeacherScheduleSlot) -> Int) {
+        let thursday = Calendar(identifier: .iso8601).date(from: DateComponents(year: 2026, month: 10, day: 15))!
+        let slots = [
+            TeacherScheduleSlot(id: 7, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 4, startTime: "12:01", endTime: "13:00", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 8, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 4, startTime: "11:00", endTime: "12:00", weeklyTemplateId: nil)
+        ]
+        let visible = LearningSituationScheduleProjection.visibleSlots(
+            centreSlots: [PlannerVisibleSlot(period: 1, startTime: "08:00", endTime: "08:55")],
+            scheduleSlots: slots
+        )
+        return (thursday, slots, { slot in
+            visible.first(where: { $0.startTime == slot.startTime && $0.endTime == slot.endTime })?.period ?? 1
+        })
+    }
+
+    private func linearPlan(_ number: Int, type: String) -> LearningSituationSessionPlanDraft {
+        LearningSituationSessionPlanDraft(
+            sessionNumber: number,
+            sourceLabel: "Sesión S0\(number) · Gimnasia",
+            title: "Sesión \(number)",
+            sessionType: type,
+            effectiveMinutes: 60,
+            objective: "Objetivo",
+            criteria: [],
+            material: "",
+            development: [],
+            adaptations: []
+        )
+    }
+
+    func testLinearDoubleSessionsFillBothHoursAndFirstUsesOnlySecondHour() {
+        let calendar = Calendar(identifier: .iso8601)
+        let (thursday, slots, periodForSlot) = tavernesThursday()
+        let plans = (1...4).map { linearPlan($0, type: "Doble") }
+
+        XCTAssertEqual(LearningSituationScheduleProjection.sequenceKind(for: plans), .linear)
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: plans,
+            startDate: thursday,
+            template: slots,
+            periodForSlot: periodForSlot,
+            firstDayStartTime: "12:01"
+        )
+
+        XCTAssertTrue(projection.warnings.isEmpty)
+        XCTAssertEqual(projection.slots.map(\.planSessionNumber), [1, 2, 3, 4])
+        XCTAssertEqual(projection.slots.map { calendar.component(.day, from: $0.date) }, [15, 22, 29, 5])
+        XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[3], [2, 3], [2, 3], [2, 3]])
+        XCTAssertEqual(projection.slots.map(\.startTime), ["12:01", "11:00", "11:00", "11:00"])
+        XCTAssertEqual(projection.slots.map(\.endTime), ["13:00", "13:00", "13:00", "13:00"])
+        XCTAssertFalse(LearningSituationScheduleProjection.hasDuplicateDestinations(projection.slots))
+    }
+
+    func testLinearDoubleWithoutStartTimeTakesBothHoursFromFirstDay() {
+        let (thursday, slots, periodForSlot) = tavernesThursday()
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: [linearPlan(1, type: "Doble"), linearPlan(2, type: "Doble")],
+            startDate: thursday,
+            template: slots,
+            periodForSlot: periodForSlot
+        )
+
+        XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[2, 3], [2, 3]])
+    }
+
+    func testLinearSimpleSessionsStillUseOneHourEach() {
+        let (thursday, slots, periodForSlot) = tavernesThursday()
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: [linearPlan(1, type: "Simple"), linearPlan(2, type: "Simple y Doble")],
+            startDate: thursday,
+            template: slots,
+            periodForSlot: periodForSlot
+        )
+
+        XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[2], [3]])
+    }
+
+    // MARK: - Horas propias del horario (Tavernes)
+
+    func testVisibleSlotsNumbersOwnHoursAfterCentreHours() {
+        let centre = [
+            PlannerVisibleSlot(period: 1, startTime: "08:00", endTime: "08:55"),
+            PlannerVisibleSlot(period: 2, startTime: "09:00", endTime: "09:55")
+        ]
+        let schedule = [
+            TeacherScheduleSlot(id: 1, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 4, startTime: "12:01", endTime: "13:00", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 2, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 4, startTime: "11:00", endTime: "12:00", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 3, teacherScheduleId: 10, schoolClassId: 21, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 2, startTime: "11:00", endTime: "12:00", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 4, teacherScheduleId: 10, schoolClassId: 21, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 2, startTime: "09:00", endTime: "09:55", weeklyTemplateId: nil)
+        ]
+
+        let slots = LearningSituationScheduleProjection.visibleSlots(centreSlots: centre, scheduleSlots: schedule)
+
+        XCTAssertEqual(slots.map(\.period), [1, 2, 3, 4])
+        XCTAssertEqual(slots.map(\.startTime), ["08:00", "09:00", "11:00", "12:01"])
+    }
+
+    func testOwnDoubleHoursGetTwoDistinctPeriodsSoEachDoubleFillsBothHours() {
+        let calendar = Calendar(identifier: .iso8601)
+        let thursday = calendar.date(from: DateComponents(year: 2026, month: 10, day: 15))!
+        let centre = [PlannerVisibleSlot(period: 1, startTime: "08:00", endTime: "08:55")]
+        let schedule = [
+            TeacherScheduleSlot(id: 7, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 4, startTime: "12:01", endTime: "13:00", weeklyTemplateId: nil),
+            TeacherScheduleSlot(id: 8, teacherScheduleId: 10, schoolClassId: 20, subjectLabel: "EF", unitLabel: nil, dayOfWeek: 4, startTime: "11:00", endTime: "12:00", weeklyTemplateId: nil)
+        ]
+        let visible = LearningSituationScheduleProjection.visibleSlots(centreSlots: centre, scheduleSlots: schedule)
+        let periodForSlot: (TeacherScheduleSlot) -> Int = { slot in
+            visible.first(where: { $0.startTime == slot.startTime && $0.endTime == slot.endTime })?.period ?? 1
+        }
+
+        let projection = LearningSituationScheduleProjection.planAwareSlots(
+            plans: (1...4).map { weeklyPlan($0, role: .long) },
+            startDate: thursday,
+            template: schedule,
+            periodForSlot: periodForSlot,
+            firstDayStartTime: "12:01"
+        )
+
+        XCTAssertEqual(projection.slots.map { calendar.component(.day, from: $0.date) }, [15, 22, 29, 5])
+        XCTAssertEqual(projection.slots.map(\.occupiedPeriods), [[3], [2, 3], [2, 3], [2, 3]])
+        XCTAssertEqual(projection.slots.map(\.startTime), ["12:01", "11:00", "11:00", "11:00"])
+        XCTAssertFalse(LearningSituationScheduleProjection.hasDuplicateDestinations(projection.slots))
     }
 
     func testFirstDayStartTimesListsDayHoursWithoutDuplicatesAndSkipsHolidays() {

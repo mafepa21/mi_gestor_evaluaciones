@@ -825,9 +825,12 @@ struct LearningSituationScheduleSheet: View {
                 toIso: resolvedPeriod.endDateIso,
                 classId: nil
             )
-            let visibleSlots = bridge.plannerTimeSlots().map {
-                PlannerVisibleSlot(period: Int($0.period), startTime: $0.startTime, endTime: $0.endTime)
-            }
+            let visibleSlots = LearningSituationScheduleProjection.visibleSlots(
+                centreSlots: bridge.plannerTimeSlots().map {
+                    PlannerVisibleSlot(period: Int($0.period), startTime: $0.startTime, endTime: $0.endTime)
+                },
+                scheduleSlots: allScheduleSlots
+            )
 
             // Simulation plans: from sequenceDraft or from persisted plans / sessionCount
             let simPlans: [TermSimulationPlanItem]

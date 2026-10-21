@@ -3237,25 +3237,26 @@ struct LearningSituationSessionSequenceDocumentImportService {
     /// Formato A (solo SA 1, párrafos con etiquetas "Objetivo:", "Criterios:", "Material:",
     /// "Evidencia:", "Bloque N (45'):"). Sin cambios de comportamiento respecto al parser
     /// original: el soporte de tablas del bloque B no debe degradarlo.
-    private func parsePlanLegacy(header: String, body: [String], defaultMinutes: [String: Int]) -> ParsedSessionPlan {
+    private func parsePlanLegacy(header: String, body rawBody: [String], defaultMinutes: [String: Int]) -> ParsedSessionPlan {
+        let body = splitLegacyFichaParagraphs(rawBody)
         let headerParts = sessionTypeAndTitle(from: header)
         let titleFromBody = value(afterLabels: ["Título", "Title"], in: body)
             .trimmingCharacters(in: CharacterSet(charactersIn: "“”\""))
         let title = titleFromBody.isEmpty ? headerParts.title : titleFromBody
-        let objective = value(afterLabels: ["Objetivo", "Objetivos", "Objective", "Objectives"], in: body)
+        let objective = legacyFichaValue(["Objetivo", "Objetivos", "Objective", "Objectives"], in: body)
         // B4: "Criterios: Criteri 1.1, Criteri 1.2, Criteri 3.2 (se trabajan, no se corrigen
         // todavía)." (SA 1) se partía por comas y producía criterios falsos ("Criteri 3.2 (se
         // trabajan", "no se corrigen todavía)"). Se extraen los códigos con una expresión
         // regular y se descarta el texto entre paréntesis y cualquier separador.
         let criteriaRawValue = value(afterLabels: ["Criterio de evaluación", "Criterios de evaluación", "Criterio", "Criterios", "Criterion", "Criteria"], in: body)
         let criteria = criterionCodes(in: criteriaRawValue)
-        let material = value(afterLabels: ["Material", "Materials", "Materiales"], in: body)
+        let material = legacyFichaValue(["Material", "Materials", "Materiales"], in: body)
         let evidence = value(afterLabels: ["Evidencia", "Evidencias", "Evidence"], in: body)
         // «Duración útil: 60 minutos (sesión doble …)» marca la sesión como doble si el
         // encabezado no dice el tipo (SA de Tavernes).
         let durationSaysDouble = body.contains(where: isDoubleDurationLine) && !normalized(header).contains("simple")
         let type = durationSaysDouble ? "Doble" : headerParts.type
-        let adaptationFromBody = value(afterLabels: ["Atención especial", "Atencion especial", "Atención a la diversidad", "Atencion a la diversidad"], in: body)
+        let adaptationFromBody = legacyFichaValue(["Atención especial", "Atencion especial", "Atención a la diversidad", "Atencion a la diversidad"], in: body)
         let adaptationIndex = body.firstIndex(where: {
             let norm = normalized($0)
             return norm.hasPrefix("adaptacion al contexto") || norm.hasPrefix("adaptación al contexto") || norm.hasPrefix("context adaptation")
@@ -3287,12 +3288,154 @@ struct LearningSituationSessionSequenceDocumentImportService {
             ?? integerMatch(in: body.joined(separator: " "), pattern: #"(?:duraci[oó]n\s+[úu]til|tiempo\s+[úu]til)[^0-9]{0,20}([0-9]+)"#)
             ?? defaultMinutes[normalized(type)]
             ?? (inferredMinutes(from: development) > 0 ? inferredMinutes(from: development) : 30)
+        let phases = legacyPhaseActivities(
+            body: Array(body[..<contentEnd]), objective: objective, material: material,
+            attention: adaptationFromBody, evidence: evidence
+        )
+        if !phases.chunkLines.isEmpty {
+            development.append(.init(title: "Chunks lingüísticos (CLIL)", lines: phases.chunkLines))
+        }
         return ParsedSessionPlan(
             title: title, sessionType: type, effectiveMinutes: minutes, objective: objective,
-            criteria: criteria, material: material, development: development, activities: [],
+            criteria: criteria, material: material, development: development, activities: phases.activities,
             adaptations: adaptations, organisation: "", coreKnowledge: "", assessment: evidence,
             guidingQuestions: [], closure: ""
         )
+    }
+
+    /// La SA de Tavernes junta «Objetivo de hoy: … Material, espacio y agrupamiento: … Atención
+    /// especial: …» en un solo párrafo. Se parte antes de cada etiqueta para que cada campo lea
+    /// solo lo suyo y no copie el párrafo entero en objetivo, material y atención.
+    private func splitLegacyFichaParagraphs(_ paragraphs: [String]) -> [String] {
+        let labelPattern = #"(?<=[.;])\s+(?=(?:Materiales?|Materials?|Atenci[oó]n\s+especial|Atenci[oó]n\s+a\s+la\s+diversidad|Special\s+attention|Criterios?|Evidencias?|Evidence)\b[^:.]{0,40}:)"#
+        let separator = "\u{1E}"
+        return paragraphs.flatMap { paragraph -> [String] in
+            let norm = normalized(paragraph)
+            guard norm.hasPrefix("objetivo") || norm.hasPrefix("objective") else { return [paragraph] }
+            return paragraph
+                .replacingOccurrences(of: labelPattern, with: separator, options: .regularExpression)
+                .components(separatedBy: separator)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+    }
+
+    /// Prefiere el párrafo que empieza por la etiqueta; `value(afterLabels:)` acepta la etiqueta en
+    /// cualquier punto y podía quedarse con un párrafo que solo la menciona.
+    private func legacyFichaValue(_ labels: [String], in paragraphs: [String]) -> String {
+        let normalizedLabels = labels.map { normalized($0) }
+        for paragraph in paragraphs {
+            let norm = normalized(paragraph)
+            guard normalizedLabels.contains(where: { norm.hasPrefix($0) }),
+                  let colon = paragraph.firstIndex(of: ":") else { continue }
+            return String(paragraph[paragraph.index(after: colon)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return value(afterLabels: labels, in: paragraphs)
+    }
+
+    /// «1. Explicación inicial · 4 minutos»: fase numerada con su duración.
+    private func isLegacyPhaseHeading(_ paragraph: String) -> Bool {
+        paragraph.range(
+            of: #"^\s*[0-9]+\.\s+.{2,80}?[·(\-–—]\s*[0-9]+\s*(?:minutos?|minutes?|min|['’′])\)?\s*$"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+    }
+
+    /// Las fases numeradas de un documento de párrafos (SA de Tavernes) pasan a ser actividades, como
+    /// en el formato narrativo de 1º BAC, para que la sesión tenga guion con tiempos. Van con el tipo
+    /// por defecto, no «narrative»: el normalizador rehace las secciones de las narrativas y perdería
+    /// la sección de chunks. Los chunks CLIL
+    /// («Docente:», «Alumnado:», «Reflexión:») se devuelven aparte con las etiquetas que entiende
+    /// `parseCLILChunks`, y la trazabilidad curricular queda fuera de las fases.
+    private func legacyPhaseActivities(
+        body: [String],
+        objective: String,
+        material: String,
+        attention: String,
+        evidence: String
+    ) -> (activities: [LearningSituationSessionActivityDraft], chunkLines: [String]) {
+        var phases: [(title: String, lines: [String])] = []
+        var chunkLines: [String] = []
+        var isCollecting = false
+        var isInChunks = false
+        for paragraph in body {
+            let text = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            if isLegacyPhaseHeading(text) {
+                phases.append((text, []))
+                isCollecting = true
+                isInChunks = false
+                continue
+            }
+            guard isCollecting else { continue }
+            let norm = normalized(text)
+            if norm.hasPrefix("trazabilidad curricular") || norm.hasPrefix("curriculum trace") {
+                isCollecting = false
+                continue
+            }
+            if norm.range(of: #"^(?:chunks?\s+linguisticos?|language\s+chunks)"#, options: .regularExpression) != nil {
+                isInChunks = true
+                continue
+            }
+            if isInChunks, let chunk = legacyChunkLine(text) {
+                chunkLines.append(chunk)
+                continue
+            }
+            isInChunks = false
+            if norm.hasPrefix("esquema de organizacion") { continue }
+            phases[phases.count - 1].lines.append(text)
+        }
+
+        let activities = phases.enumerated().map { index, phase -> LearningSituationSessionActivityDraft in
+            let minutes = integerMatch(in: phase.title, pattern: #"([0-9]+)\s*(?:['’′]|minutos?|minutes?|min)"#)
+            let cleanTitle = phase.title
+                .replacingOccurrences(of: #"^\s*[0-9]+\.\s*"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: #"\s*[·(\-–—]\s*[0-9]+\s*(?:minutos?|minutes?|min|['’′]).*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = phase.lines.joined(separator: "\n")
+            let clil = extractCLILConsigna(from: text)
+                .replacingOccurrences(of: "🗣️", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return LearningSituationSessionActivityDraft(
+                activityKey: "FASE-\(String(format: "%02d", index + 1))",
+                plannedMinutes: minutes,
+                timeLabel: phase.title,
+                phase: cleanTitle,
+                activity: cleanTitle.isEmpty ? "Fase \(index + 1)" : cleanTitle,
+                purpose: objective,
+                organisation: material,
+                setup: material,
+                teacherActions: text,
+                timingBreakdown: phase.title,
+                clilFocus: clil,
+                evidence: evidence,
+                materials: material,
+                adaptations: attention,
+                sourceOrder: index
+            )
+        }
+        return (activities, chunkLines)
+    }
+
+    /// «Docente: «Tight tummy», …» → «Teacher Cues: “Tight tummy”, …».
+    private func legacyChunkLine(_ text: String) -> String? {
+        guard let colon = text.firstIndex(of: ":") else { return nil }
+        let label = normalized(String(text[..<colon])).trimmingCharacters(in: .whitespacesAndNewlines)
+        let englishLabel: String
+        if label.hasPrefix("docente") || label.hasPrefix("teacher") {
+            englishLabel = "Teacher Cues"
+        } else if label.hasPrefix("alumnado") || label.hasPrefix("student") {
+            englishLabel = "Student Interaction"
+        } else if label.hasPrefix("reflexion") || label.hasPrefix("debrief") {
+            englishLabel = "Debrief"
+        } else {
+            return nil
+        }
+        let content = String(text[text.index(after: colon)...])
+            .replacingOccurrences(of: "«", with: "“")
+            .replacingOccurrences(of: "»", with: "”")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(englishLabel): \(content)"
     }
 
     // MARK: - B1/B5/B6: formato de tabla (resto de carpetas)

@@ -484,6 +484,30 @@ final class PlannerSessionDetailProjectionTests: XCTestCase {
         XCTAssertEqual(PlannerSessionReviewBuilder.withoutUnitPrefix("Pistas: 12 parejas"), "Pistas: 12 parejas")
     }
 
+    func testTavernesParagraphSessionHasGuideTimelineAndCLILCard() throws {
+        let draft = try LearningSituationSessionSequenceDocumentImportService().preview(
+            blocks: LearningSituationDocumentImportTests.tavernesSessionBlocks,
+            data: Data("tavernes-review".utf8),
+            url: URL(fileURLWithPath: "/tmp/tavernes-review.docx")
+        )
+        let imported = try XCTUnwrap(draft.plans.first)
+        let payload = LearningSituationSessionDevelopmentPayload(sections: imported.development, activities: imported.activities)
+        let json = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        let plan = try makePlan(material: imported.material, criteria: [], sections: [])
+            .withDevelopment(json)
+            .withObjective(imported.objective)
+
+        let projection = PlannerSessionDetailProjection(plan: plan)
+
+        XCTAssertEqual(projection.guideBlocks.count, 1)
+        XCTAssertEqual(projection.guideBlocks[0].steps.map(\.minutes), [4, 8, 40, 8])
+        XCTAssertEqual(projection.guideBlocks[0].totalMinutes, 60)
+        XCTAssertEqual(projection.reviewObjective, imported.objective)
+        XCTAssertTrue(projection.attentionAll.contains("quien tenga poco equilibrio usa la mano del ayudante"))
+        XCTAssertFalse(projection.attentionAll.contains { $0.contains("Material") || $0.contains("Objetivo") })
+        XCTAssertEqual(projection.clilChunks?.teacherCues, ["Tight tummy", "Soft knees on landing"])
+    }
+
     func testReviewObjectiveFallsBackToFirstActivityPurpose() throws {
         let activity = reviewActivity(
             "W01-L-01", segment: "U01", minutes: 4, phase: "Explicación", title: "A",

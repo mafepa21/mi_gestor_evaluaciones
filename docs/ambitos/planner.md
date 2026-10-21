@@ -11,6 +11,7 @@
 
 ## Trampas
 
+- Documentos de sesiones en párrafos (Tavernes) van por `parsePlanLegacy`: el guion sale de `legacyPhaseActivities` (fases «N. … · M minutos»). Esas actividades usan el tipo por defecto, no «narrative»: con «narrative», `PlannerSessionPlanPayloadNormalizer` rehace las secciones y pierde la de chunks CLIL.
 - El texto del paso pasa por `PlannerSessionReviewBuilder.reviewDetail` (quita «U01 · », el título «…»: repetido y parte listas en línea). «Alumnado» en extras compara con el texto sin limpiar (`rawDetail`).
 - «Ahora» usa `PlannerSessionLiveProgress.state`: minutos de reloj desde `startTime`, sumando 15 min de descanso al llegar al bloque `precededByBreak`. La hora de la franja (55 min) puede no coincidir con los minutos del plan (80): se sigue el plan.
 - La barra de tiempos lleva al paso con `proxy.scrollTo(activityKey)`: cada `PlannerReviewStepRow` lleva `.id(step.id)`; si cambia el id del paso, cambiar ambos.

@@ -13,6 +13,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- **Planner: copiar una sesión a otra franja con ⌘ + arrastrar** (vista Semana, iPad y Mac): arrastrar sin ⌘ sigue moviendo en cascada; con ⌘ se crea una copia en la franja de destino con el grupo que tiene clase ahí (si no hay clase, el mismo grupo). Si la franja ya tiene sesión, pide confirmar antes de sustituirla. La copia queda como planificada aunque el original estuviera impartido. Reutiliza `plannerCopySessions`, sin cambios en KMP ni SQLDelight. En iPad, ⌘ solo se detecta con teclado físico. Verificación: `./scripts/verify_apple_builds.sh` OK (`MiGestorKMPMac` y `MiGestorKMPiOS` simulador). No verificado: QA manual del gesto con datos de prueba.
+
 ### Fixed
 
 - **Arranque y paso de datos Mac → iPad más seguros** (`AppleDriver.kt`): la base que llega del Mac se valida (firma SQLite, tamaño y versión no más nueva que la app) antes de sustituir la activa, y si no vale se descarta y se registra en `last_adoption.json`; si la base no se puede abrir ni crear tras el rescate, la app arranca con una base temporal en memoria y muestra el aviso de rescate en vez de cerrarse en cada arranque; la migración desde la base antigua copia también `-wal`/`-shm` y, si falla, borra la copia a medias para reintentarla. Verificación: `:data:macosArm64Test` (5 tests nuevos de `AdoptionCandidateTest`) y `:data:desktopTest` OK; builds `MiGestorKMPMac` Release y `MiGestorKMPiOS` (simulador) OK.

@@ -181,6 +181,22 @@ struct PlannerWorkspaceIOS: View {
         } message: {
             Text("La cascada incluye sesiones ya impartidas o canceladas. Si pulsas Mover, también se recolocan. Si cancelas, se quedan donde están.")
         }
+        .alert(
+            "La franja ya tiene una sesión",
+            isPresented: Binding(
+                get: { cascadeCoordinator.pendingCopy != nil },
+                set: { if !$0 { cascadeCoordinator.pendingCopy = nil } }
+            )
+        ) {
+            Button("Cancelar", role: .cancel) {
+                cascadeCoordinator.cancelPendingCopy()
+            }
+            Button("Sustituir", role: .destructive) {
+                cascadeCoordinator.confirmPendingCopy(vm: vm)
+            }
+        } message: {
+            Text("Si pulsas Sustituir, la sesión que hay ahora se borra y se pone la copia en su lugar.")
+        }
         .appOnChange(of: cascadeCoordinator.transientMessage) { message in
             guard message != nil else { return }
             bannerDismissTask?.cancel()

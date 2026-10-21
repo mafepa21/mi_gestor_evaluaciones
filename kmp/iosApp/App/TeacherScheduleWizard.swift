@@ -147,6 +147,9 @@ struct TeacherScheduleWizard: View {
                 preview: preview,
                 plan: vm.scheduleImportPlan ?? .empty,
                 knownGroupNames: vm.knownGroupNamesByCode(),
+                groupChoices: vm.scheduleImportGroupChoices,
+                choiceConflicts: vm.scheduleImportChoiceConflicts,
+                onChooseGroup: { code, choice in vm.chooseImportGroup(choice, forCode: code) },
                 isImporting: vm.isImportingSchedule
             ) { mode, createSubjects in
                 Task { await vm.importSchedulePreview(preview, emptySlotMode: mode, createSubjects: createSubjects) }
@@ -353,7 +356,7 @@ struct TeacherScheduleWizard: View {
                         ) {
                             Text("Todos").tag(Int64(-1))
                             ForEach(vm.groups, id: \.id) { group in
-                                Text(group.name).tag(group.id)
+                                Text(vm.groupName(group.id)).tag(group.id)
                             }
                         }
                         .pickerStyle(.menu)
@@ -769,7 +772,7 @@ struct TeacherScheduleWizard: View {
                     )
                 ) {
                     ForEach(vm.groups, id: \.id) { group in
-                        Text(group.name).tag(group.id)
+                        Text(vm.groupName(group.id)).tag(group.id)
                     }
                 }
                 .pickerStyle(.menu)
@@ -829,7 +832,7 @@ struct TeacherScheduleWizard: View {
                     .font(.body.weight(.semibold))
                     .monospacedDigit()
                 let slotLines: [String] = [
-                    vm.groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)",
+                    vm.groupName(slot.schoolClassId),
                     slot.subjectLabel,
                     slot.unitLabel
                 ]
@@ -869,7 +872,7 @@ struct TeacherScheduleWizard: View {
                 startTime: slot.startTime,
                 endTime: slot.endTime,
                 subject: slot.subjectLabel,
-                groupName: vm.groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)",
+                groupName: vm.groupName(slot.schoolClassId),
                 unit: slot.unitLabel
             )
         }
@@ -879,7 +882,7 @@ struct TeacherScheduleWizard: View {
         ScheduleWeekGridPage(
             title: vm.scheduleName.isEmpty ? "Horario" : vm.scheduleName,
             subtitle: selectedClassId
-                .flatMap { id in vm.groups.first(where: { $0.id == id })?.name }
+                .map { vm.groupName($0) }
                 .map { "Grupo: \($0)" } ?? "Todos los grupos",
             entries: scheduleGridEntries,
             activeWeekdays: Array(vm.activeWeekdays),
@@ -1244,7 +1247,7 @@ struct TeacherScheduleWizard: View {
                         Circle()
                             .fill(Color(hex: vm.colorHex(for: group.id)))
                             .frame(width: 10, height: 10)
-                        Text(group.name)
+                        Text(vm.groupName(group.id))
                             .font(.callout.weight(.semibold))
                             .lineLimit(1)
                     }
@@ -1297,8 +1300,8 @@ struct TeacherScheduleWizard: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         if let classId = event.classId?.int64Value,
-                           let group = vm.groups.first(where: { $0.id == classId }) {
-                            Text(group.name)
+                           vm.groups.contains(where: { $0.id == classId }) {
+                            Text(vm.groupName(classId))
                                 .font(.caption.weight(.bold))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)

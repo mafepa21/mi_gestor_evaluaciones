@@ -13,6 +13,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+### Added
+
+- **Planner: copiar una sesión a otra franja con ⌘ + arrastrar** (vista Semana, iPad y Mac): arrastrar sin ⌘ sigue moviendo en cascada; con ⌘ se crea una copia en la franja de destino con el grupo que tiene clase ahí (si no hay clase, el mismo grupo). Si la franja ya tiene sesión, pide confirmar antes de sustituirla. La copia queda como planificada aunque el original estuviera impartido. Reutiliza `plannerCopySessions`, sin cambios en KMP ni SQLDelight. En iPad, ⌘ solo se detecta con teclado físico. Verificación: `./scripts/verify_apple_builds.sh` OK (`MiGestorKMPMac` y `MiGestorKMPiOS` simulador). No verificado: QA manual del gesto con datos de prueba.
+
 ### Fixed
 
 - **Horario: dos grupos con el mismo nombre ya no se mezclan** (p. ej. «4º ESO A» de Mislata y de Tavernes): al importar el horario desde Excel, el código del grupo se emparejaba solo por nombre y, si había dos grupos que encajaban, se cogía el primero; las franjas de un centro acababan en el grupo del otro y Programar SA usaba el horario equivocado. Ahora, si un código encaja con varios grupos (mismo nombre o nombre con sufijo como «4º ESO A - Tavernes»), la hoja de importación pide elegir el grupo o crear uno nuevo y no deja importar hasta elegir; los solapes se recalculan con el grupo elegido. Los menús de grupo de Programar SA y del editor de horario distinguen los nombres repetidos con la descripción, el curso escolar o la asignatura (`SchoolClassDisplayNames`, `KmpBridge.classDisplayNames`); el nombre guardado no cambia. Las franjas ya mal asignadas se corrigen editando la franja y cambiando el grupo. Verificación: `xcodebuild test` de `ScheduleImportTests` (9 tests, 6 nuevos) OK en macOS (incluye build de `MiGestorKMPMac`); build `MiGestorKMPiOS` para dispositivo genérico OK. El build de simulador iOS no enlaza porque el framework KMP local está compilado para dispositivo (el Swift compila). No verificado: QA manual con datos de prueba.

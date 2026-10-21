@@ -115,6 +115,47 @@ extension PlannerWorkspaceViewModel {
         await reloadSessionsOnly()
     }
 
+    /// Copia una sesión a otra franja de la semana visible (⌘ + arrastrar).
+    /// La copia toma el grupo con clase en la franja de destino; si la franja no
+    /// tiene clase, conserva el grupo de origen. Sin `overwrite`, un destino
+    /// ocupado devuelve `.occupied` sin tocar nada para que la vista confirme.
+    func copySession(sessionId: Int64, day: Int, period: Int, overwrite: Bool) async throws -> PlannerSessionCopyOutcome {
+        guard let bridge else { throw PlannerSessionCopyError.bridgeUnavailable }
+        guard let source = sessions.first(where: { $0.id == sessionId }) else {
+            throw PlannerSessionCopyError.sessionNotFound
+        }
+        let targetGroupId = copyTargetGroupId(day: day, period: period) ?? source.groupId
+        if targetGroupId == source.groupId, Int(source.dayOfWeek) == day, Int(source.period) == period {
+            return .sameSlot
+        }
+        let result = try await bridge.plannerCopySessions(
+            sourceSessionIds: [sessionId],
+            targetGroupId: targetGroupId,
+            targetDayOfWeek: day,
+            targetPeriod: period,
+            resolution: overwrite ? .overwrite : .cancel
+        )
+        if result.movedOrCopied == 0 {
+            return result.failed > 0 ? .occupied : .failed
+        }
+        await reloadSessionsOnly()
+        // El repositorio copia también el estado: una copia de una sesión
+        // impartida no está impartida en el grupo de destino.
+        let copiedIds = Set(result.affectedSessionIds.map { $0.int64Value })
+        for copy in sessions where copiedIds.contains(copy.id) && copy.status != .planned {
+            await setSessionStatus(copy, status: .planned)
+        }
+        let groupName = groups.first(where: { $0.id == targetGroupId })?.name ?? source.groupName
+        return .copied(groupName: groupName)
+    }
+
+    /// Grupo con clase en la franja según la proyección semanal (nil si no hay).
+    func copyTargetGroupId(day: Int, period: Int) -> Int64? {
+        weekRenderModel.entriesByCell[PlannerCellKey(day: day, period: period)]?
+            .first(where: { $0.classId > 0 })?
+            .classId
+    }
+
     func markCompleted(_ session: PlanningSession) async {
         await setSessionStatus(session, status: .completed)
     }
@@ -152,4 +193,23 @@ extension PlannerWorkspaceViewModel {
         await reloadJournalSummaries()
     }
 
+}
+
+enum PlannerSessionCopyOutcome: Equatable {
+    case copied(groupName: String)
+    case occupied
+    case sameSlot
+    case failed
+}
+
+private enum PlannerSessionCopyError: LocalizedError {
+    case bridgeUnavailable
+    case sessionNotFound
+
+    var errorDescription: String? {
+        switch self {
+        case .bridgeUnavailable: "El Planner todavía no está preparado."
+        case .sessionNotFound: "La sesión ya no está en la semana visible."
+        }
+    }
 }

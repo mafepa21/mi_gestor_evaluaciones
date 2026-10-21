@@ -326,10 +326,12 @@ struct LearningSituationScheduleSheet: View {
 
                 let unaddedClasses = bridge.classes.filter { c in !groupStates.contains(where: { $0.classId == c.id }) }
                 if !unaddedClasses.isEmpty {
+                    let classLabels = bridge.classDisplayNames()
                     Menu {
                         ForEach(unaddedClasses, id: \.id) { sc in
-                            Button(sc.name) {
-                                addGroup(classId: sc.id, className: sc.name)
+                            let label = classLabels[sc.id] ?? sc.name
+                            Button(label) {
+                                addGroup(classId: sc.id, className: label)
                             }
                         }
                     } label: {
@@ -687,9 +689,10 @@ struct LearningSituationScheduleSheet: View {
                 initialGroupIds = [first]
             }
 
+            let classLabels = bridge.classDisplayNames()
             self.groupStates = initialGroupIds.compactMap { cid in
                 guard let schoolClass = bridge.classes.first(where: { $0.id == cid }) else { return nil }
-                return GroupScheduleState(classId: cid, className: schoolClass.name, isIncluded: true, startDate: situationStartDate)
+                return GroupScheduleState(classId: cid, className: classLabels[cid] ?? schoolClass.name, isIncluded: true, startDate: situationStartDate)
             }
             if selectedCompactClassId == nil {
                 selectedCompactClassId = groupStates.first?.classId

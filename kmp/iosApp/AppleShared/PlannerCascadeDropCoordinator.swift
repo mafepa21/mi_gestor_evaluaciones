@@ -6,18 +6,62 @@ import AppKit
 import GameController
 #endif
 
-/// Lee si ⌘ está pulsado en el momento de soltar. En iPad solo funciona con
-/// teclado físico (GameController expone su estado; el drop de SwiftUI no).
+/// Lee si la tecla de copiar (⌘, o ⌥ como en el Finder) está pulsada al soltar.
+/// En iPad solo funciona con teclado físico: GameController expone su estado
+/// (el drop de SwiftUI no), pero no publica `GCKeyboard.coalesced` hasta que
+/// alguien escucha `GCKeyboardDidConnect`. Por eso hay que llamar a
+/// `startMonitoring()` antes del primer arrastre; sin eso, ⌘ nunca se ve
+/// y la sesión se mueve en vez de copiarse.
+@MainActor
 enum PlannerDragModifiers {
-    static var isCommandPressed: Bool {
-        #if os(macOS)
-        return NSEvent.modifierFlags.contains(.command)
-        #else
-        guard let keyboard = GCKeyboard.coalesced?.keyboardInput else { return false }
-        return keyboard.button(forKeyCode: .leftGUI)?.isPressed == true
-            || keyboard.button(forKeyCode: .rightGUI)?.isPressed == true
+    #if !os(macOS)
+    private static var isMonitoring = false
+    private static var pressedCopyKeys: Set<GCKeyCode> = []
+    private static let copyKeyCodes: Set<GCKeyCode> = [.leftGUI, .rightGUI, .leftAlt, .rightAlt]
+    #endif
+
+    static func startMonitoring() {
+        #if !os(macOS)
+        guard !isMonitoring else { return }
+        isMonitoring = true
+        NotificationCenter.default.addObserver(
+            forName: .GCKeyboardDidConnect,
+            object: nil,
+            queue: .main
+        ) { notification in
+            let keyboard = notification.object as? GCKeyboard
+            MainActor.assumeIsolated { attach(keyboard ?? GCKeyboard.coalesced) }
+        }
+        attach(GCKeyboard.coalesced)
         #endif
     }
+
+    static var isCopyModifierPressed: Bool {
+        #if os(macOS)
+        let flags = NSEvent.modifierFlags.union(NSApp.currentEvent?.modifierFlags ?? [])
+        return flags.contains(.command) || flags.contains(.option)
+        #else
+        if !pressedCopyKeys.isEmpty { return true }
+        guard let input = GCKeyboard.coalesced?.keyboardInput else { return false }
+        return copyKeyCodes.contains { input.button(forKeyCode: $0)?.isPressed == true }
+        #endif
+    }
+
+    #if !os(macOS)
+    private static func attach(_ keyboard: GCKeyboard?) {
+        guard let input = keyboard?.keyboardInput else { return }
+        input.keyChangedHandler = { _, _, keyCode, pressed in
+            guard copyKeyCodes.contains(keyCode) else { return }
+            Task { @MainActor in
+                if pressed {
+                    pressedCopyKeys.insert(keyCode)
+                } else {
+                    pressedCopyKeys.remove(keyCode)
+                }
+            }
+        }
+    }
+    #endif
 }
 
 enum CascadeUndoCopy {
@@ -72,8 +116,12 @@ final class PlannerCascadeDropCoordinator: ObservableObject {
     @Published var pendingCopy: PendingCopy?
     @Published var transientMessage: String?
 
+    init() {
+        PlannerDragModifiers.startMonitoring()
+    }
+
     func handleDrop(sessionId: Int64, day: Int, period: Int, vm: PlannerWorkspaceViewModel) {
-        if PlannerDragModifiers.isCommandPressed {
+        if PlannerDragModifiers.isCopyModifierPressed {
             handleCopy(sessionId: sessionId, day: day, period: period, vm: vm)
             return
         }

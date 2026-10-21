@@ -11,6 +11,11 @@ struct GroupScheduleState: Identifiable {
     var metrics: TermCapacityMetrics?
     var scheduledSlots: [LearningSituationScheduledSlot] = []
     var inferredRoute: LearningSituationWeeklySequenceRoute?
+    /// Hora elegida en «Empieza en» para el primer día; `nil` = la primera hora.
+    var startTime: String?
+    /// Horas de inicio del grupo el día de inicio (el menú solo sale con dos o más).
+    var firstDayStartTimes: [String] = []
+    var projectionWarnings: [String] = []
 
     var id: Int64 { classId }
 
@@ -355,6 +360,7 @@ struct LearningSituationScheduleSheet: View {
                 set: { newDate in
                     if let idx = groupStates.firstIndex(where: { $0.classId == group.classId }) {
                         groupStates[idx].startDate = newDate
+                        if resetStartTime(at: idx) { announceStartTimeReset() }
                         Task { await loadAndProject() }
                     }
                 }
@@ -365,6 +371,58 @@ struct LearningSituationScheduleSheet: View {
         .frame(minHeight: minimumTapSize)
     }
 
+    /// «Empieza en»: solo si el grupo tiene dos o más horas el día de inicio.
+    @ViewBuilder
+    private func groupStartTimePicker(for group: GroupScheduleState) -> some View {
+        let times = group.firstDayStartTimes
+        if times.count > 1 {
+            Picker(
+                "Empieza en",
+                selection: Binding(
+                    get: { group.startTime ?? times[0] },
+                    set: { newTime in
+                        guard let idx = groupStates.firstIndex(where: { $0.classId == group.classId }) else { return }
+                        groupStates[idx].startTime = newTime == times.first ? nil : newTime
+                        Task { await loadAndProject() }
+                    }
+                )
+            ) {
+                ForEach(Array(times.enumerated()), id: \.element) { index, time in
+                    Text(Self.startHourLabel(index: index, time: time)).tag(time)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(minHeight: minimumTapSize)
+            .accessibilityHint("Las horas anteriores de ese día quedarán libres")
+        }
+    }
+
+    private static func startHourLabel(index: Int, time: String) -> String {
+        "\(index + 1).ª hora · \(time)"
+    }
+
+    /// Fecha y hora de inicio juntas, para no duplicar estado entre las ramas de `ViewThatFits`.
+    private func groupStartControls(for group: GroupScheduleState, alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 8) {
+            groupStartDatePicker(for: group)
+            groupStartTimePicker(for: group)
+        }
+    }
+
+    /// Al cambiar la fecha: vuelve a «1.ª hora» y oculta el menú hasta que la recarga traiga las
+    /// horas del nuevo día. Devuelve `true` si había otra hora elegida.
+    @discardableResult
+    private func resetStartTime(at index: Int) -> Bool {
+        groupStates[index].firstDayStartTimes = []
+        guard groupStates[index].startTime != nil else { return false }
+        groupStates[index].startTime = nil
+        return true
+    }
+
+    private func announceStartTimeReset() {
+        AccessibilityNotification.Announcement("Empieza en la 1.ª hora").post()
+    }
+
     private func groupCard(_ group: GroupScheduleState) -> some View {
         LearningSituationCard {
             VStack(alignment: .leading, spacing: 16) {
@@ -372,13 +430,24 @@ struct LearningSituationScheduleSheet: View {
                     HStack(alignment: .center, spacing: 16) {
                         groupTitle(group)
                         Spacer(minLength: 8)
-                        groupStartDatePicker(for: group)
+                        groupStartControls(for: group, alignment: .trailing)
                             .fixedSize()
                     }
                     VStack(alignment: .leading, spacing: 8) {
                         groupTitle(group)
-                        groupStartDatePicker(for: group)
+                        groupStartControls(for: group, alignment: .leading)
                     }
+                }
+
+                if group.startTime != nil {
+                    Text("Las horas anteriores de ese día quedarán libres.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                ForEach(group.projectionWarnings, id: \.self) { warning in
+                    LearningSituationInlineNotice(kind: .warning, message: warning)
                 }
 
                 if group.slots.isEmpty {
@@ -652,9 +721,12 @@ struct LearningSituationScheduleSheet: View {
 
     /// Aplica el «Inicio común» a todos los grupos incluidos (tras el aviso visible).
     private func applyCommonStartDate() {
+        var didResetStartTime = false
         for index in groupStates.indices where groupStates[index].isIncluded {
             groupStates[index].startDate = situationStartDate
+            if resetStartTime(at: index) { didResetStartTime = true }
         }
+        if didResetStartTime { announceStartTimeReset() }
         Task { await loadAndProject() }
     }
 
@@ -856,13 +928,25 @@ struct LearningSituationScheduleSheet: View {
                 }
 
                 if let draft = sequenceDraft {
+                    let firstDayStartTimes = LearningSituationScheduleProjection.firstDayStartTimes(
+                        startDate: groupStates[index].startDate,
+                        template: classSlots,
+                        excludedDates: nonTeachingDates
+                    )
+                    groupStates[index].firstDayStartTimes = firstDayStartTimes
+                    if let chosen = groupStates[index].startTime, !firstDayStartTimes.dropFirst().contains(chosen) {
+                        groupStates[index].startTime = nil
+                    }
+                    let firstDayStartTime = groupStates[index].startTime
+
                     let inferred = LearningSituationScheduleProjection.inferRouteForFirstBlock(
                         startDate: groupStates[index].startDate,
                         template: classSlots,
                         periodForSlot: { slot in
                             visibleSlots.first(where: { $0.startTime == slot.startTime && $0.endTime == slot.endTime })?.period ?? 1
                         },
-                        excludedDates: nonTeachingDates
+                        excludedDates: nonTeachingDates,
+                        firstDayStartTime: firstDayStartTime
                     )
                     groupStates[index].inferredRoute = inferred
 
@@ -891,9 +975,11 @@ struct LearningSituationScheduleSheet: View {
                             visibleSlots.first(where: { $0.startTime == slot.startTime && $0.endTime == slot.endTime })?.period ?? 1
                         },
                         targetSessionCount: targetCount,
-                        excludedDates: nonTeachingDates
+                        excludedDates: nonTeachingDates,
+                        firstDayStartTime: firstDayStartTime
                     )
                     groupStates[index].scheduledSlots = projectionResult.slots
+                    groupStates[index].projectionWarnings = projectionResult.warnings
 
                     // Base timeline from TermBoardProjectionEngine (holidays, existing sessions, free slots)
                     let baseProjection = TermBoardProjectionEngine.project(
@@ -968,6 +1054,10 @@ struct LearningSituationScheduleSheet: View {
                     groupStates[index].slots = updatedSlots
                     groupStates[index].metrics = updatedMetrics
                 } else {
+                    // Sin documento de secuencia no hay «Empieza en» (fuera de alcance).
+                    groupStates[index].firstDayStartTimes = []
+                    groupStates[index].startTime = nil
+                    groupStates[index].projectionWarnings = []
                     let projection = TermBoardProjectionEngine.project(
                         periodName: resolvedPeriod.name,
                         startDateIso: resolvedPeriod.startDateIso,

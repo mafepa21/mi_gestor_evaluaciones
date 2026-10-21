@@ -162,7 +162,8 @@ enum LearningSituationScheduleProjection {
         template: [TeacherScheduleSlot],
         periodForSlot: (TeacherScheduleSlot) -> Int,
         targetSessionCount: Int? = nil,
-        excludedDates: Set<Date> = []
+        excludedDates: Set<Date> = [],
+        firstDayStartTime: String? = nil
     ) -> LearningSituationScheduleProjectionResult {
         let orderedPlans = plans.sorted {
             if $0.sessionNumber != $1.sessionNumber { return $0.sessionNumber < $1.sessionNumber }
@@ -190,8 +191,12 @@ enum LearningSituationScheduleProjection {
                     date = nextDate
                     continue
                 }
-                let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
-                for slot in sortedTemplate where Int(slot.dayOfWeek) == weekday {
+                for slot in daySlots(
+                    on: date,
+                    sortedTemplate: sortedTemplate,
+                    firstDay: normalizedStart,
+                    firstDayStartTime: firstDayStartTime
+                ) {
                     let period = periodForSlot(slot)
                     sequential.append(LearningSituationScheduledSlot(
                         date: date,
@@ -237,7 +242,8 @@ enum LearningSituationScheduleProjection {
                     periodForSlot: periodForSlot,
                     usedDestinations: usedDestinations,
                     searchDays: max(orderedPlans.count * 14 + 14, 84),
-                    excludedDates: normalizedExcludedDates
+                    excludedDates: normalizedExcludedDates,
+                    firstDayStartTime: firstDayStartTime
                 ) else {
                     let requirement = requirementLabel(for: role)
                     warnings.append("La sesión \(plan.sessionNumber) requiere un \(requirement), pero no hay una franja compatible desde la fecha de inicio.")
@@ -249,6 +255,13 @@ enum LearningSituationScheduleProjection {
                 previousAssignment = assigned
                 route = plan.sequenceRoute
             }
+            warnings += firstDayGapWarnings(
+                assignments: assignments,
+                sortedTemplate: sortedTemplate,
+                firstDay: normalizedStart,
+                firstDayStartTime: firstDayStartTime,
+                excludedDates: normalizedExcludedDates
+            )
             return LearningSituationScheduleProjectionResult(slots: assignments, warnings: warnings, route: route)
         }
         let searchDays = max(orderedPlans.count * 14 + 14, 84)
@@ -273,7 +286,8 @@ enum LearningSituationScheduleProjection {
                         periodForSlot: periodForSlot,
                         usedDestinations: usedDestinations,
                         searchDays: searchDays,
-                        excludedDates: normalizedExcludedDates
+                        excludedDates: normalizedExcludedDates,
+                        firstDayStartTime: firstDayStartTime
                     ) else { return nil }
                     return WeeklyCandidate(pendingPlan: pendingPlan, slot: candidate)
                 }
@@ -300,6 +314,13 @@ enum LearningSituationScheduleProjection {
         }
 
         let orderedAssignments = assignments.sorted(by: isChronologicallyBefore)
+        warnings += firstDayGapWarnings(
+            assignments: orderedAssignments,
+            sortedTemplate: sortedTemplate,
+            firstDay: normalizedStart,
+            firstDayStartTime: firstDayStartTime,
+            excludedDates: normalizedExcludedDates
+        )
         return LearningSituationScheduleProjectionResult(slots: orderedAssignments, warnings: warnings, route: route)
     }
 
@@ -317,7 +338,8 @@ enum LearningSituationScheduleProjection {
         startDate: Date,
         template: [TeacherScheduleSlot],
         periodForSlot: (TeacherScheduleSlot) -> Int,
-        excludedDates: Set<Date> = []
+        excludedDates: Set<Date> = [],
+        firstDayStartTime: String? = nil
     ) -> LearningSituationWeeklySequenceRoute? {
         let calendar = Calendar(identifier: .iso8601)
         let normalizedStart = calendar.startOfDay(for: startDate)
@@ -330,8 +352,12 @@ enum LearningSituationScheduleProjection {
         for dayOffset in 0...84 {
             guard let date = calendar.date(byAdding: .day, value: dayOffset, to: normalizedStart),
                   !normalizedExcludedDates.contains(calendar.startOfDay(for: date)) else { continue }
-            let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
-            let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
+            let daySlots = daySlots(
+                on: date,
+                sortedTemplate: sortedTemplate,
+                firstDay: normalizedStart,
+                firstDayStartTime: firstDayStartTime
+            )
             if firstLong == nil {
                 firstLong = longCandidates(on: date, slots: daySlots, periodForSlot: periodForSlot).first
             }
@@ -353,6 +379,23 @@ enum LearningSituationScheduleProjection {
         return sameStart || isChronologicallyBefore(firstLong, firstShort) ? .longFirst : .shortFirst
     }
 
+    /// Horas de inicio (sin repetir, en orden) que el grupo tiene el día `startDate`. Vacío si ese
+    /// día no hay clase o es no lectivo. Alimenta el menú «Empieza en» de la hoja de programar.
+    static func firstDayStartTimes(
+        startDate: Date,
+        template: [TeacherScheduleSlot],
+        excludedDates: Set<Date> = []
+    ) -> [String] {
+        let calendar = Calendar(identifier: .iso8601)
+        let day = calendar.startOfDay(for: startDate)
+        guard !excludedDates.contains(where: { calendar.startOfDay(for: $0) == day }) else { return [] }
+        var seen = Set<String>()
+        return daySlots(on: day, sortedTemplate: template, firstDay: day, firstDayStartTime: nil)
+            .map(\.startTime)
+            .filter { minutes($0) != nil && seen.insert($0).inserted }
+            .sorted { (minutes($0) ?? 0) < (minutes($1) ?? 0) }
+    }
+
     private struct ScheduledDestination: Hashable {
         let date: Date
         let period: Int
@@ -366,15 +409,20 @@ enum LearningSituationScheduleProjection {
         periodForSlot: (TeacherScheduleSlot) -> Int,
         usedDestinations: Set<ScheduledDestination>,
         searchDays: Int,
-        excludedDates: Set<Date>
+        excludedDates: Set<Date>,
+        firstDayStartTime: String?
     ) -> LearningSituationScheduledSlot? {
         let calendar = Calendar(identifier: .iso8601)
         let normalizedStart = calendar.startOfDay(for: startDate)
         for dayOffset in 0...searchDays {
             guard let date = calendar.date(byAdding: .day, value: dayOffset, to: normalizedStart) else { continue }
             guard !excludedDates.contains(calendar.startOfDay(for: date)) else { continue }
-            let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
-            let daySlots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
+            let daySlots = daySlots(
+                on: date,
+                sortedTemplate: sortedTemplate,
+                firstDay: normalizedStart,
+                firstDayStartTime: firstDayStartTime
+            )
             let candidates: [LearningSituationScheduledSlot]
             switch role {
             case .long:
@@ -453,6 +501,45 @@ enum LearningSituationScheduleProjection {
         if plan.blockRole == .long { return false }
         let value = plan.sessionType.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
         return value.contains("short") || value.contains("corto") || value.contains("simple") || plan.effectiveMinutes > 0 && plan.effectiveMinutes < 75
+    }
+
+    /// Franjas del horario para `date`, por hora de inicio. El primer día se descartan las que
+    /// empiezan antes de `firstDayStartTime` (p. ej. empezar en la 2.ª hora de una doble).
+    private static func daySlots(
+        on date: Date,
+        sortedTemplate: [TeacherScheduleSlot],
+        firstDay: Date,
+        firstDayStartTime: String?
+    ) -> [TeacherScheduleSlot] {
+        let calendar = Calendar(identifier: .iso8601)
+        let weekday = ((calendar.component(.weekday, from: date) + 5) % 7) + 1
+        let slots = sortedTemplate.filter { Int($0.dayOfWeek) == weekday }
+        guard let firstDayStartTime,
+              let minimumStart = minutes(firstDayStartTime),
+              calendar.startOfDay(for: date) == firstDay else { return slots }
+        return slots.filter { (minutes($0.startTime) ?? .min) >= minimumStart }
+    }
+
+    /// Aviso cuando se ha elegido hora de inicio, el primer día aún tenía horas libres desde esa
+    /// hora y aun así la primera sesión no cabe en ellas (p. ej. una LONG en una sola hora).
+    private static func firstDayGapWarnings(
+        assignments: [LearningSituationScheduledSlot],
+        sortedTemplate: [TeacherScheduleSlot],
+        firstDay: Date,
+        firstDayStartTime: String?,
+        excludedDates: Set<Date>
+    ) -> [String] {
+        guard firstDayStartTime != nil,
+              !excludedDates.contains(firstDay),
+              !daySlots(on: firstDay, sortedTemplate: sortedTemplate, firstDay: firstDay, firstDayStartTime: firstDayStartTime).isEmpty,
+              let first = assignments.min(by: isChronologicallyBefore) else { return [] }
+        let calendar = Calendar(identifier: .iso8601)
+        guard calendar.startOfDay(for: first.date) > firstDay else { return [] }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.dateFormat = "EEEE d 'de' MMMM"
+        let sessionLabel = first.planSessionNumber.map { "La sesión \($0)" } ?? "La primera sesión"
+        return ["\(sessionLabel) no cabe en las horas libres del primer día. Empieza el \(formatter.string(from: first.date))."]
     }
 
     private static func minutes(_ value: String) -> Int? {

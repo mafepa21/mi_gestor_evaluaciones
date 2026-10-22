@@ -1644,7 +1644,8 @@ struct AppWorkspaceShell: View {
                 syncStatusMessage: dashboardStore.syncStatusMessage,
                 syncPendingChanges: dashboardStore.syncPendingChanges,
                 syncLastRunAt: dashboardStore.syncLastRunAt,
-                pairedSyncHost: dashboardStore.pairedSyncHost
+                pairedSyncHost: dashboardStore.pairedSyncHost,
+                hasSyncDivergence: dashboardStore.syncDivergence != nil
             )
         }
 

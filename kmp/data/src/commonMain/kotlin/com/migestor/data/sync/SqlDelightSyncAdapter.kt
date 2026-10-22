@@ -64,6 +64,7 @@ class SqlDelightSyncAdapter(
     private val liveIdsByEntityThisCollect = mutableMapOf<String, MutableSet<String>>()
     private var outgoingDeletesSeeded = false
     private val rosterSnapshotByClass = mutableMapOf<Long, Set<Long>>()
+    private val schoolRecords = SchoolRecordsSync(container, localDeviceId)
 
     /**
      * `total_changes()` cuenta las escrituras de esta conexión y `data_version`
@@ -365,6 +366,39 @@ class SqlDelightSyncAdapter(
                     put("tabId", JsonPrimitive(parts.getOrNull(1) ?: ""))
                     put("groupId", JsonPrimitive(parts.getOrNull(2)?.toLongOrNull() ?: 0L))
                     put("studentId", JsonPrimitive(parts.getOrNull(3)?.toLongOrNull() ?: 0L))
+                }
+            }
+
+            // Categorías de columnas. Antes no salían del Mac ni se aplicaban al llegar del
+            // iPad: las columnas viajaban apuntando a una categoría que el otro no tenía.
+            val categories = container.notebookRepository.listColumnCategories(schoolClass.id)
+            categories.forEach { category ->
+                val categoryUpdatedAt = category.trace.updatedAt.toEpochMilliseconds()
+                if (categoryUpdatedAt > sinceEpochMs) {
+                    changes += SyncChange(
+                        entity = "notebook_column_category",
+                        id = category.id,
+                        updatedAtEpochMs = categoryUpdatedAt,
+                        deviceId = category.trace.deviceId ?: localDeviceId,
+                        payload = buildJsonObject {
+                            put("id", JsonPrimitive(category.id))
+                            put("classId", JsonPrimitive(schoolClass.id))
+                            put("tabId", JsonPrimitive(category.tabId))
+                            put("name", JsonPrimitive(category.name))
+                            put("order", JsonPrimitive(category.order))
+                            put("isCollapsed", JsonPrimitive(category.isCollapsed))
+                        }.toString(),
+                    )
+                }
+            }
+            appendDeletesByScope(
+                scope = "class:${schoolClass.id}:notebook_column_category",
+                entity = "notebook_column_category",
+                currentIds = categories.map { it.id }.toSet(),
+            ) { deletedId ->
+                buildJsonObject {
+                    put("id", JsonPrimitive(deletedId))
+                    put("classId", JsonPrimitive(schoolClass.id))
                 }
             }
 
@@ -1180,6 +1214,15 @@ class SqlDelightSyncAdapter(
             buildJsonObject { put("id", JsonPrimitive(deletedId)) }
         }
 
+        // Actas e Inclusión (reuniones, acuerdos, medidas, tutorías) y asignaturas.
+        val records = schoolRecords.collect(sinceEpochMs)
+        changes += records.changes
+        records.liveIdsByEntity.forEach { (entity, ids) ->
+            appendDeletesByScope(scope = "global:$entity", entity = entity, currentIds = ids) { deletedId ->
+                buildJsonObject { put("id", JsonPrimitive(deletedId.toLongOrNull() ?: 0L)) }
+            }
+        }
+
         emitOutgoingDeletes(changes, sinceEpochMs)
         return changes
     }
@@ -1286,12 +1329,16 @@ class SqlDelightSyncAdapter(
     // ---------------------------------------------------------------------------
 
     override suspend fun applyIncomingChangesLww(changes: List<SyncChange>): SyncAck {
-        var applied = 0
-        var conflicts = 0
-        var ignored = 0
-        var failed = 0
+        // Antes estas entidades caían en `else -> ignored++` y el iPad soltaba su cola
+        // creyendo que el Mac las tenía. Las aplica `SchoolRecordsSync`, igual que en Apple.
+        val (recordChanges, otherChanges) = changes.partition { SchoolRecordsSync.handles(it.entity) }
+        val recordsAck = schoolRecords.applyAll(recordChanges)
+        var applied = recordsAck.applied
+        var conflicts = recordsAck.conflictsResolvedByLww
+        var ignored = recordsAck.ignored
+        var failed = recordsAck.failed
 
-        changes.forEach { change ->
+        otherChanges.forEach { change ->
             val payload = runCatching { json.parseToJsonElement(change.payload).jsonObject }.getOrNull()
             if (payload == null) { failed++; return@forEach }
 
@@ -1578,6 +1625,28 @@ class SqlDelightSyncAdapter(
                             tabId = tabId,
                             groupId = groupId,
                             studentIds = listOf(studentId),
+                        )
+                        applied++
+                    }
+
+                    "notebook_column_category" -> {
+                        // Mismo criterio que el apply de Apple (KmpBridge+SyncLAN.swift).
+                        val classId = payload.long("classId") ?: return@forEach
+                        val id = payload.string("id") ?: change.id.takeIf { it.isNotBlank() } ?: return@forEach
+                        val tabId = payload.string("tabId") ?: return@forEach
+                        val name = payload.rawString("name") ?: return@forEach
+                        val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        container.notebookRepository.saveColumnCategory(
+                            classId = classId,
+                            category = com.migestor.shared.domain.NotebookColumnCategory(
+                                id = id,
+                                classId = classId,
+                                tabId = tabId,
+                                name = name,
+                                order = payload.int("order") ?: 0,
+                                isCollapsed = payload.bool("isCollapsed") ?: payload.bool("is_collapsed") ?: false,
+                                trace = AuditTrace(createdAt = updatedAt, updatedAt = updatedAt, deviceId = change.deviceId, syncVersion = 1),
+                            ),
                         )
                         applied++
                     }
@@ -2324,6 +2393,16 @@ class SqlDelightSyncAdapter(
                     container.notebookRepository.deleteColumn(it)
                     true
                 } ?: false
+            }
+            "notebook_column_category" -> {
+                val categoryId = (payload.string("id") ?: change.id).takeIf { it.isNotBlank() } ?: return false
+                val classId = payload.long("classId")?.takeIf { it > 0L } ?: return false
+                container.notebookRepository.deleteColumnCategory(
+                    classId = classId,
+                    categoryId = categoryId,
+                    preserveColumns = payload.bool("preserveColumns") ?: true,
+                )
+                true
             }
             "notebook_instrument_template" -> {
                 (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {

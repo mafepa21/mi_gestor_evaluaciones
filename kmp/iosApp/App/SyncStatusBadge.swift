@@ -33,6 +33,8 @@ enum SyncStatusBadgeState: Equatable {
     case poniendoseAlDia
     /// No se llega al otro dispositivo; lo editado queda en cola.
     case sinConexion(pendientes: Int)
+    /// La huella de los dos dispositivos no coincide: hay que igualarlos.
+    case datosDistintos
     /// Hay cambios pendientes de sincronizar.
     case pendiente(count: Int)
     /// El último mensaje de estado indica un fallo de sincronización.
@@ -48,6 +50,8 @@ enum SyncStatusBadgeState: Equatable {
             return "arrow.triangle.2.circlepath"
         case .sinConexion:
             return "wifi.exclamationmark"
+        case .datosDistintos:
+            return "exclamationmark.arrow.circlepath"
         case .pendiente:
             return "clock.badge"
         case .error:
@@ -65,6 +69,8 @@ enum SyncStatusBadgeState: Equatable {
             return .secondary
         case .sinConexion:
             return IOSAppStyle.warning
+        case .datosDistintos:
+            return IOSAppStyle.danger
         case .pendiente:
             return IOSAppStyle.warning
         case .error:
@@ -76,7 +82,7 @@ enum SyncStatusBadgeState: Equatable {
 
     var shortText: String? {
         switch self {
-        case .inactivo, .poniendoseAlDia:
+        case .inactivo, .poniendoseAlDia, .datosDistintos:
             return nil
         case .sinConexion(let pendientes):
             return pendientes > 0 ? "\(pendientes)" : nil
@@ -98,6 +104,8 @@ enum SyncStatusBadgeState: Equatable {
         case .sinConexion(let pendientes):
             let cola = pendientes > 0 ? ", \(pendientes) cambio\(pendientes == 1 ? "" : "s") en cola" : ""
             return "Sincronización: sin conexión\(cola)"
+        case .datosDistintos:
+            return "Sincronización: los datos de los dos dispositivos no coinciden. Abre Sincronización e iguala los dispositivos"
         case .pendiente(let count):
             return "Sincronización: \(count) cambio\(count == 1 ? "" : "s") pendiente\(count == 1 ? "" : "s")"
         case .error(let mensaje):
@@ -114,7 +122,8 @@ enum SyncStatusBadgeState: Equatable {
 func resolvedSyncStatusBadgeState(
     syncStatusMessage: String,
     syncPendingChanges: Int,
-    pairedSyncHost: String?
+    pairedSyncHost: String?,
+    hasSyncDivergence: Bool = false
 ) -> SyncStatusBadgeState {
     guard pairedSyncHost != nil else {
         return .inactivo
@@ -128,6 +137,11 @@ func resolvedSyncStatusBadgeState(
 
     if syncStatusMessage == SyncCatchUpCopy.catchingUp {
         return .poniendoseAlDia
+    }
+
+    // Antes de «pendiente»: una cola que sale no arregla lo que ya está distinto.
+    if hasSyncDivergence {
+        return .datosDistintos
     }
 
     if syncPendingChanges > 0 {
@@ -150,12 +164,14 @@ struct SyncStatusBadge: View {
     let syncPendingChanges: Int
     let syncLastRunAt: Date?
     let pairedSyncHost: String?
+    var hasSyncDivergence: Bool = false
 
     private var state: SyncStatusBadgeState {
         resolvedSyncStatusBadgeState(
             syncStatusMessage: syncStatusMessage,
             syncPendingChanges: syncPendingChanges,
-            pairedSyncHost: pairedSyncHost
+            pairedSyncHost: pairedSyncHost,
+            hasSyncDivergence: hasSyncDivergence
         )
     }
 

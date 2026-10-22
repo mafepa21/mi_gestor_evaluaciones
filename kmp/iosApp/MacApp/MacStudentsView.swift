@@ -154,6 +154,10 @@ struct MacStudentsView: View {
                 guard reloadToken > 0 else { return }
                 await reloadRows()
             }
+            .reloadOnLanSync(.students) {
+                guard ownsStudentSideEffects else { return }
+                await reloadRows()
+            }
             .appOnChange(of: selectedClassId) { _, newClassId in
                 handleClassIdChange(newClassId)
             }

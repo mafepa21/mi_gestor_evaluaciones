@@ -320,6 +320,37 @@ final class PlannerMonthGridTests: XCTestCase {
         XCTAssertTrue(LanSyncRefreshPlan.affects(.planner, entities: ["planner_week_plan"]))
     }
 
+    func testSseLinesAreHandledWithoutWaitingForABlankLine() {
+        // `AsyncBytes.lines` no entrega las líneas vacías que cierran cada aviso SSE.
+        XCTAssertEqual(SyncEventLineParser.eventData(from: "data: {\"a\":1}"), "{\"a\":1}")
+        XCTAssertEqual(SyncEventLineParser.eventData(from: "data:{\"a\":1}"), "{\"a\":1}")
+        XCTAssertNil(SyncEventLineParser.eventData(from: ": keep-alive"))
+        XCTAssertNil(SyncEventLineParser.eventData(from: ": ok"))
+        XCTAssertNil(SyncEventLineParser.eventData(from: ""))
+        XCTAssertNil(SyncEventLineParser.eventData(from: "data: "))
+        XCTAssertNil(SyncEventLineParser.eventData(from: "event: sync"))
+    }
+
+    func testAppleLineReaderDeliversEverySseEvent() async throws {
+        // Mismo lector que usa el listener (`AsyncLineSequence`), con el flujo tal
+        // cual lo escribe el helper: aviso, comentario de vida y otro aviso.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("sse-\(UUID().uuidString).txt")
+        try Data("data: {\"a\":1}\n\n: keep-alive\n\ndata: {\"b\":2}\n\n".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var events: [String] = []
+        for try await line in url.lines {
+            if let data = SyncEventLineParser.eventData(from: line) { events.append(data) }
+        }
+        XCTAssertEqual(events, ["{\"a\":1}", "{\"b\":2}"])
+    }
+
+    func testMacScreensReloadWithRemoteChanges() {
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.students, entities: ["student_support_measures"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.rubrics, entities: ["rubric_assessment"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.dashboard, entities: ["grade"]))
+        XCTAssertFalse(LanSyncRefreshPlan.affects(.students, entities: ["planning_session"]))
+    }
+
     func testRemoteChangesDoNotReloadUnrelatedScreens() {
         XCTAssertFalse(LanSyncRefreshPlan.affects(.meetings, entities: ["attendance", "grade"]))
         XCTAssertFalse(LanSyncRefreshPlan.affects(.planner, entities: ["attendance"]))

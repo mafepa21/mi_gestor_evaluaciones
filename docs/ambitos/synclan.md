@@ -32,4 +32,8 @@
 - El agente (`RunAtLoad`) arranca al registrarse: solo se registra al cerrar la app con el helper vivo, para no tener dos helpers peleando por el puerto 8765.
 - El handler de `willTerminateNotification` tiene que ser síncrono: una `Task` lanzada ahí puede no ejecutarse nunca.
 - iPad: el bridge vive en `AppleAppRootView`; `LanSyncBackgroundRefresh.bridge` es débil y es nil en un arranque en frío para la tarea de fondo. Las claves `UIBackgroundModes` y `BGTaskSchedulerPermittedIdentifiers` viven en `Config/iOS-Info.plist` (generado por xcodegen desde `project.yml`).
+- `URLSession.AsyncBytes.lines` (y cualquier `AsyncLineSequence`) **se salta las líneas vacías**: no usar la línea vacía como fin de aviso SSE. El helper manda cada aviso en una línea `data:`; `SyncEventLineParser` la procesa al llegar. Si algún día un aviso ocupa varias líneas `data:`, hay que leer los bytes a mano.
+- El helper reemite su estado `running` cada vez que caduca el PIN (10 min). El coordinador solo avisa al bridge si cambia `host:port` (`lastAnnouncedEndpoint`); cualquier otra cosa cortaba el canal y recargaba la base.
+- En el Mac nunca hay descarga completa (`shouldForceFullPull = false`): la app y el helper comparten la base.
+- Diagnóstico rápido: `/usr/bin/log show --last 2h --predicate 'subsystem == "com.migestor.app"'` (líneas «Sync LAN … ms») y `lsof -nP -iTCP:8765` (conexiones del iPad y del Mac al helper).
 - El POST `/sync/local-changes` solo se acepta desde loopback (decisión de seguridad, no tocar).

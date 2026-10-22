@@ -158,18 +158,17 @@ final class SyncEventListener: @unchecked Sendable {
             setConnected(true)
             defer { setConnected(false) }
 
-            var frameLines: [String] = []
+            // Con el canal cortado se pierden avisos: al (re)conectar se sincroniza
+            // ya. Así el Mac recién abierto se iguala con el iPad sin esperar.
+            await onEvent(nil)
+
             for try await line in bytes.lines {
                 try Task.checkCancellation()
-                if line.isEmpty {
-                    if let event = parseSyncEvent(from: frameLines) {
-                        await onEvent(event)
-                    } else if frameLines.contains(where: { $0.hasPrefix("data:") }) {
-                        await onEvent(nil)
-                    }
-                    frameLines.removeAll(keepingCapacity: true)
+                guard let data = SyncEventLineParser.eventData(from: line) else { continue }
+                if let event = decodeSyncEvent(data) {
+                    await onEvent(event)
                 } else {
-                    frameLines.append(line)
+                    await onEvent(nil)
                 }
             }
         } catch is CancellationError {
@@ -184,18 +183,7 @@ final class SyncEventListener: @unchecked Sendable {
         }
     }
 
-    private func parseSyncEvent(from lines: [String]) -> LanSyncEvent? {
-        let dataLines = lines.compactMap { line -> String? in
-            guard line.hasPrefix("data:") else { return nil }
-            var data = String(line.dropFirst("data:".count))
-            if data.first == " " {
-                data.removeFirst()
-            }
-            return data
-        }
-
-        guard !dataLines.isEmpty else { return nil }
-        let data = dataLines.joined(separator: "\n")
+    private func decodeSyncEvent(_ data: String) -> LanSyncEvent? {
         guard let payload = data.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(LanSyncEvent.self, from: payload)
     }
@@ -231,6 +219,24 @@ final class SyncEventListener: @unchecked Sendable {
             NSURLErrorTimedOut
         ]
         return transientCodes.contains(nsError.code)
+    }
+}
+
+/// Lee el flujo SSE línea a línea.
+///
+/// `URLSession.AsyncBytes.lines` se salta las líneas vacías, que en SSE marcan el
+/// final de cada aviso: esperar esa línea dejaba los avisos sin procesar nunca, y
+/// como el canal figuraba conectado, la app solo sincronizaba cada 5 minutos. El
+/// helper manda cada aviso en una sola línea `data: {json}`, así que se procesa en
+/// cuanto llega. Los comentarios (`: keep-alive`) y demás campos se ignoran.
+enum SyncEventLineParser {
+    static func eventData(from line: String) -> String? {
+        guard line.hasPrefix("data:") else { return nil }
+        var data = String(line.dropFirst("data:".count))
+        if data.first == " " {
+            data.removeFirst()
+        }
+        return data.isEmpty ? nil : data
     }
 }
 

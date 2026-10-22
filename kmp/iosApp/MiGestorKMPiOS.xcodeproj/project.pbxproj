@@ -378,6 +378,7 @@
 		75DAA59B8CF537FD4469E859 /* NotebookGridContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD759479FF5E71467F7276D /* NotebookGridContent.swift */; };
 		7671B0EBE83289E3F6AE366A /* TournamentPlanJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D70F1EA93941E3B53716B65 /* TournamentPlanJSON.swift */; };
 		76B4DA5D3E5AEEB47114209D /* MeetingActaPDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ED32EAFF51BE275270F5F2A /* MeetingActaPDF.swift */; };
+		76C2D7885178D7049DC196E6 /* MacSyncBackgroundService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 374B4723E592274CCA820100 /* MacSyncBackgroundService.swift */; };
 		774C8481CFDCFE2829E7ACA5 /* NotebookSeatingPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5BB221D33601136CB3F7F0F /* NotebookSeatingPlanView.swift */; };
 		77AF49A0B09280E3F68E4B73 /* CooperativeGroupGeneratorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17DC815694CD18046E1FE41A /* CooperativeGroupGeneratorSheet.swift */; };
 		77F4C6489C8C8B4B4A1A3EF9 /* MeetingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DFC26768A94C315D01AF726 /* MeetingsShared.swift */; };
@@ -733,6 +734,7 @@
 		E491CBE20486EA0E556C3F9B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 574A36D51DB905768D1450DF /* ContentView.swift */; };
 		E4E286CB567B34AA28030F21 /* PerfLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3A6585B3DD2F80359E49B7B /* PerfLog.swift */; };
 		E512B6A18881C1132BD538D7 /* PhysicalTestsImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61F9E44A4A39D3D69D2B12DF /* PhysicalTestsImportService.swift */; };
+		E548BE56FD11A2E45F3DEF7E /* LanSyncBackgroundRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E0F6E7AC85EFEED1C59841C /* LanSyncBackgroundRefresh.swift */; };
 		E56F70ACB6807D63E39D71C9 /* CourtVoiceCriteria.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1582C59BD2AA58F1B790A9F1 /* CourtVoiceCriteria.swift */; };
 		E57E3C904B9CDBC822B90397 /* IOSPremiumComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED9DC6173D7A4938D83F2BB /* IOSPremiumComponents.swift */; };
 		E5D12A9785905B9A20C2E37E /* KmpBridge+AppleCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85FC0478FB157350F9771A58 /* KmpBridge+AppleCalendar.swift */; };
@@ -809,6 +811,7 @@
 		F812D370A189E21F84E08454 /* BackupStatusHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78E88B21BBD0EF622338678A /* BackupStatusHero.swift */; };
 		F87C4CB8E1252A911F0BEFA7 /* ScheduleImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2383FA2AFCB17CB773F8D8C /* ScheduleImportPreviewSheet.swift */; };
 		F8870EF71ED0F19930062E05 /* AppleFoundationStudentInsightService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C7735C70A8D47952837D52A /* AppleFoundationStudentInsightService.swift */; };
+		F8CE5F376C4B583A65A61A90 /* LanSyncBackgroundRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E0F6E7AC85EFEED1C59841C /* LanSyncBackgroundRefresh.swift */; };
 		F8DDB81600029B10D82D9189 /* AssessmentCriteriaDisclosureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0807C62AFA54EB7276D768B /* AssessmentCriteriaDisclosureView.swift */; };
 		F8E257A5666B11DB4B5671AF /* SupportMeasureShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7EEE397867C9AB1B682637 /* SupportMeasureShared.swift */; };
 		F94056FF4937226611623FB6 /* SettingsRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4309F19FDFC6A480E12806A8 /* SettingsRow.swift */; };
@@ -980,6 +983,7 @@
 		368016D041EDBFDB4E2A7D0E /* RubricsStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricsStyle.swift; sourceTree = "<group>"; };
 		36FD8823E354BF50CAD0B9E3 /* MacBackupSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBackupSupport.swift; sourceTree = "<group>"; };
 		3716454133E66DF1346826BF /* NotebookFormulaDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookFormulaDisplay.swift; sourceTree = "<group>"; };
+		374B4723E592274CCA820100 /* MacSyncBackgroundService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSyncBackgroundService.swift; sourceTree = "<group>"; };
 		37624513CD8C7591A642B103 /* PageNumberLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageNumberLabel.swift; sourceTree = "<group>"; };
 		379959F6774F930B1BDBD791 /* DiaryTimelineProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryTimelineProjectionTests.swift; sourceTree = "<group>"; };
 		3897F0E0488B450850EE5216 /* NotebookSpineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookSpineView.swift; sourceTree = "<group>"; };
@@ -1049,6 +1053,7 @@
 		5B761B79B2DAC362C89D5A8A /* EducamosSMTemplateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EducamosSMTemplateService.swift; sourceTree = "<group>"; };
 		5BA1F288BF073BB3431CF16E /* NotebookModuleSupportActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleSupportActions.swift; sourceTree = "<group>"; };
 		5D56DE443EAEED31903DC305 /* PlannerSequenceGanttView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSequenceGanttView.swift; sourceTree = "<group>"; };
+		5E0F6E7AC85EFEED1C59841C /* LanSyncBackgroundRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanSyncBackgroundRefresh.swift; sourceTree = "<group>"; };
 		5EA2D2AD055252AE33611496 /* BackupHistoryList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupHistoryList.swift; sourceTree = "<group>"; };
 		5FB163477150A620CBC0CAC7 /* OnboardingHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingHost.swift; sourceTree = "<group>"; };
 		609332B0F28D26560986C39E /* PilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PilesView.swift; sourceTree = "<group>"; };
@@ -1408,6 +1413,7 @@
 				98A9F35D6CEDD07FCA45EBA5 /* MacSettingsView.swift */,
 				B45DCEB32A99C22B048911B0 /* MacSqliteCompat.c */,
 				9EA0ED7ACCCC1D3A0A73D045 /* MacStudentsView.swift */,
+				374B4723E592274CCA820100 /* MacSyncBackgroundService.swift */,
 				926C38D687AB3B3B857DA79A /* MacSyncView.swift */,
 				D7F324EED74CBC624894170D /* MiGestorKMPMacApp.swift */,
 				D2E833F8E8281D5E3F4BFB0F /* NotebookMacLayout.swift */,
@@ -1585,6 +1591,7 @@
 				9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */,
 				00EB8CDFD29E04C0A6E6FBBF /* InclusionTrackerComponents.swift */,
 				854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */,
+				5E0F6E7AC85EFEED1C59841C /* LanSyncBackgroundRefresh.swift */,
 				E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */,
 				61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */,
 				84291C9A4DCC028D0F46ACA1 /* LibretaBackupSupport.swift */,
@@ -2025,6 +2032,7 @@
 				677677B0B4FCCBAD19F73642 /* Frameworks */,
 				784B08E4A7373DB7893260F9 /* Embed Frameworks */,
 				FE75F6163DC74DD01E88F555 /* Embed Command Center Helper */,
+				356960F6177A7C7A75F12FBE /* Embed Sync Helper Launch Agent */,
 			);
 			buildRules = (
 			);
@@ -2155,6 +2163,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_apple_framework.sh\n";
+		};
+		356960F6177A7C7A75F12FBE /* Embed Sync Helper Launch Agent */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Sync Helper Launch Agent";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchAgents/com.migestor.mac.sync-helper.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n# SMAppService.agent busca el plist en Contents/Library/LaunchAgents.\nDESTINATION=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents\"\nmkdir -p \"${DESTINATION}\"\n/usr/bin/ditto \"${SRCROOT}/LaunchAgents/com.migestor.mac.sync-helper.plist\" \"${DESTINATION}/com.migestor.mac.sync-helper.plist\"\n";
 		};
 		D0A09C945CF2CB5541E2243F /* Build KMP Framework */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -2386,6 +2414,7 @@
 				AB88F80EC5E3DE56E20B96A3 /* KnockoutBracketResolver.swift in Sources */,
 				9C7878931AE0C38FB12E4FE5 /* KnockoutMatchResult.swift in Sources */,
 				126DCAAB8E78546673FFC543 /* KnockoutScheduleGenerator.swift in Sources */,
+				F8CE5F376C4B583A65A61A90 /* LanSyncBackgroundRefresh.swift in Sources */,
 				7D7930532D7E69853456609C /* LanSyncClient.swift in Sources */,
 				09F8FF2F1C0C6AF0075371AD /* LanSyncDiscovery.swift in Sources */,
 				EA9818838B677599835AC4FB /* LanSyncModels.swift in Sources */,
@@ -2429,6 +2458,7 @@
 				BD47B7FB84E4AAC46BCF34DD /* MacSettingsView.swift in Sources */,
 				0D1BC8425E85592907678393 /* MacSqliteCompat.c in Sources */,
 				66F98BF4EEB8D773D5E4C999 /* MacStudentsView.swift in Sources */,
+				76C2D7885178D7049DC196E6 /* MacSyncBackgroundService.swift in Sources */,
 				9546F37A775EA87B30F4F374 /* MacSyncView.swift in Sources */,
 				F6B4E75C853D144083E2E482 /* MacTrackpadSwipeHelper.swift in Sources */,
 				76B4DA5D3E5AEEB47114209D /* MeetingActaPDF.swift in Sources */,
@@ -2784,6 +2814,7 @@
 				85F084D4F3CFD8C65129C953 /* KnockoutBracketResolver.swift in Sources */,
 				39F3A2702DC71FDF2C366E10 /* KnockoutMatchResult.swift in Sources */,
 				D405DE0B7F0CC1DA78AFDD8A /* KnockoutScheduleGenerator.swift in Sources */,
+				E548BE56FD11A2E45F3DEF7E /* LanSyncBackgroundRefresh.swift in Sources */,
 				4F996DA2299BA16B86CA7612 /* LanSyncClient.swift in Sources */,
 				A753B63FE06EBD3905A9133B /* LanSyncDiscovery.swift in Sources */,
 				4148DA502A11374295FF10CB /* LanSyncModels.swift in Sources */,
@@ -3140,6 +3171,7 @@
 					"\"Frameworks/ios\"",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/iOS-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = MiGestorKMPiOS;
 				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
 				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
@@ -3251,6 +3283,7 @@
 					"\"Frameworks/ios\"",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/iOS-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = MiGestorKMPiOS;
 				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
 				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";

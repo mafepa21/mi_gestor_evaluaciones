@@ -20,6 +20,9 @@ struct MiGestorKMPMacApp: App {
 
     init() {
         MacWritingToolsMenuSanitizer.install()
+        // Antes de que `MacAppSessionController` abra la base: el helper que siguió vivo
+        // con la app cerrada no puede tenerla abierta si el arranque la sustituye.
+        MacCommandCenterCoordinator.terminateLeftoverHelpersBeforeOpeningDatabase()
     }
 
     var body: some Scene {

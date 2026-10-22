@@ -56,6 +56,7 @@ struct AppleAppRootView: View {
             .task {
                 MainThreadHangWatchdog.startIfDebug()
                 rescueService.checkForPendingRescue()
+                LanSyncBackgroundRefresh.bridge = bridge
                 await bridge.bootstrap()
                 await bridge.migrateLegacyTournamentsIfNeeded()
                 bridge.onAppDidBecomeActive()

@@ -19,6 +19,17 @@ targets:
     sources:
       - App
       - AppleShared
+    # Claves que no admiten INFOPLIST_KEY_*: se mezclan con el Info.plist generado.
+    info:
+      path: Config/iOS-Info.plist
+      properties:
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.migestor.ios.sync-refresh
+        # Sin esto xcodegen escribe 1.0/1 y taparían MARKETING_VERSION.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.migestor.ios
@@ -155,6 +166,16 @@ targets:
           /usr/bin/ditto "${HELPER_APP}" "${DESTINATION}"
         outputFiles:
           - "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter"
+      - name: Embed Sync Helper Launch Agent
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          # SMAppService.agent busca el plist en Contents/Library/LaunchAgents.
+          DESTINATION="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents"
+          mkdir -p "${DESTINATION}"
+          /usr/bin/ditto "${SRCROOT}/LaunchAgents/com.migestor.mac.sync-helper.plist" "${DESTINATION}/com.migestor.mac.sync-helper.plist"
+        outputFiles:
+          - "$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchAgents/com.migestor.mac.sync-helper.plist"
   MiGestorPlannerTests:
     type: bundle.unit-test
     platform: macOS

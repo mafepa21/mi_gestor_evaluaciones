@@ -19,6 +19,9 @@ struct MiGestorKMPiOSApp: App {
         .commands {
             AppleAppCommands()
         }
+        .backgroundTask(.appRefresh(LanSyncBackgroundRefresh.identifier)) {
+            await LanSyncBackgroundRefresh.run()
+        }
     }
 
     private func handleScenePhase(_ newPhase: ScenePhase) {
@@ -29,6 +32,7 @@ struct MiGestorKMPiOSApp: App {
         case .background:
             NotificationCenter.default.post(name: .appleAppDidEnterBackground, object: nil)
             AppleBackupService.shared.handleScenePhaseForAutomaticBackup(isActive: false)
+            LanSyncBackgroundRefresh.schedule()
         case .inactive:
             break
         @unknown default:

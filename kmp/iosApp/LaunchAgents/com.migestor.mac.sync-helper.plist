@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Arranca el helper de Sync LAN al iniciar sesión en el Mac, sin abrir la app.
+  Lo registra MacSyncBackgroundService (SMAppService) solo si hay un iPad enlazado.
+  Sin KeepAlive: al abrir la app, esta lo cierra y arranca el suyo, y launchd no debe
+  relanzarlo. Sin --db-path el helper usa la misma base que la app
+  (~/Library/Application Support/MiGestor/desktop_mi_gestor_kmp.db).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.migestor.mac.sync-helper</string>
+    <key>BundleProgram</key>
+    <string>Contents/Resources/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>MiGestorCommandCenter</string>
+        <string>--sync-server-only</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>com.migestor.mac</string>
+    </array>
+</dict>
+</plist>

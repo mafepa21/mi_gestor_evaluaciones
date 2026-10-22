@@ -384,6 +384,32 @@ final class PlannerMonthGridTests: XCTestCase {
         )
     }
 
+    func testMacHelperKeepsServingTheIPadAfterQuittingOnlyWhenItIsSafe() {
+        func keeps(
+            enabled: Bool = true,
+            running: Bool = true,
+            paired: Bool = true,
+            needsRestart: Bool = false,
+            staged: Bool = false
+        ) -> Bool {
+            MacSyncBackgroundService.keepsHelperRunningAfterQuit(
+                isEnabled: enabled,
+                isHelperRunning: running,
+                hasPairedDevice: paired,
+                needsRestart: needsRestart,
+                hasStagedAdoption: staged
+            )
+        }
+        XCTAssertTrue(keeps())
+        XCTAssertFalse(keeps(enabled: false))
+        XCTAssertFalse(keeps(running: false))
+        XCTAssertFalse(keeps(paired: false))
+        // Restauración o borrado pendiente: la base va a cambiar al reiniciar.
+        XCTAssertFalse(keeps(needsRestart: true))
+        // Con una adopción preparada, lo que llegue del iPad se perdería al sustituir la base.
+        XCTAssertFalse(keeps(staged: true))
+    }
+
     func testOnlyTransientSyncMessagesAreClearedAfterASuccessfulSync() {
         XCTAssertTrue(SyncCatchUpCopy.isTransient(SyncCatchUpCopy.catchingUp))
         XCTAssertTrue(SyncCatchUpCopy.isTransient(SyncCatchUpCopy.offline))

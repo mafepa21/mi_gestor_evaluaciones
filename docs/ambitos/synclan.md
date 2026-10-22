@@ -4,7 +4,8 @@
 
 - Fase 1 de «siempre al día» (`codex/synclan-inmediato-f1`): envío garantizado al pasar a segundo plano en iPad, aviso «Poniéndose al día…» / «Sin conexión» en el indicador y recarga automática de las pantallas que cargan sus propios datos.
 - Fase 2 (`codex/synclan-inmediato-f2`): reuniones, acuerdos, medidas, tutorías y asignaturas viajan con `SchoolRecordsSync`; categorías del Cuaderno en el Mac; mover/copiar sesiones del Planner encola; aviso «Datos distintos» en el icono.
-- Pendiente Fase 2b: plan semanal, tareas/ajustes de Inclusión y pruebas físicas de EF. Pendiente Fase 3: helper vivo con la app del Mac cerrada y refresco en segundo plano en iPad.
+- Fase 3 (`codex/synclan-inmediato-f3`): helper del Mac vivo con la app cerrada y al iniciar sesión (`MacSyncBackgroundService`, agente `SMAppService`); `BGAppRefreshTask` en iPad (`LanSyncBackgroundRefresh`).
+- Pendiente Fase 2b: plan semanal, tareas/ajustes de Inclusión y pruebas físicas de EF.
 
 ## Terreno de juego
 
@@ -25,5 +26,8 @@
 - `syncNow` vuelve al instante si ya hay una sync en vuelo (marca otra pasada); quien necesite el resultado debe usar `waitForSyncToFinish`.
 - El indicador interpreta `syncStatusMessage` por texto (`SyncCatchUpCopy`): un mensaje nuevo de fallo silencioso debe contener «sin conexión» o se verá como «al día». La divergencia llega aparte (`DashboardBridgeStore.syncDivergence`).
 - `syncNow` tiene varias salidas tempranas sin publicar nada: no dejar mensajes de estado que solo se limpien desde dentro de `syncNow`.
-- El helper del Mac se para con `willTerminateNotification`: con la app del Mac cerrada no se recibe nada del iPad.
+- El helper puede estar vivo sin la app (soltado al cerrar o arrancado por el agente al iniciar sesión). Cualquier cosa que sustituya la base en el arranque debe ir después de `terminateLeftoverHelpersBeforeOpeningDatabase()` en `MiGestorKMPMacApp.init`. Un flujo nuevo que sustituya la base con la app abierta debe parar el helper antes (`commandCenter.stop()`), o al cerrar seguirá vivo.
+- El agente (`RunAtLoad`) arranca al registrarse: solo se registra al cerrar la app con el helper vivo, para no tener dos helpers peleando por el puerto 8765.
+- El handler de `willTerminateNotification` tiene que ser síncrono: una `Task` lanzada ahí puede no ejecutarse nunca.
+- iPad: el bridge vive en `AppleAppRootView`; `LanSyncBackgroundRefresh.bridge` es débil y es nil en un arranque en frío para la tarea de fondo. Las claves `UIBackgroundModes` y `BGTaskSchedulerPermittedIdentifiers` viven en `Config/iOS-Info.plist` (generado por xcodegen desde `project.yml`).
 - El POST `/sync/local-changes` solo se acepta desde loopback (decisión de seguridad, no tocar).

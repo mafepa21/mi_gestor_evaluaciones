@@ -1,5 +1,6 @@
 package com.migestor.desktop.sync
 
+import com.migestor.data.sync.ModuleRecordsSync
 import com.migestor.data.sync.SchoolRecordsSync
 import java.io.File
 import kotlin.test.Test
@@ -17,8 +18,8 @@ class SyncEntityCoverageTest {
     private val kmpRoot: File = generateSequence(File("").absoluteFile) { it.parentFile }
         .first { File(it, "iosApp/App").isDirectory && File(it, "data/src").isDirectory }
 
-    /** Entidades que aún no viajan a propósito (pendientes de la Fase 2b de Sync LAN). */
-    private val pendingEntities = setOf("planner_week_plan")
+    /** Entidades que aún no viajan a propósito. */
+    private val pendingEntities = emptySet<String>()
 
     private fun enqueuedByApple(): Set<String> {
         val pattern = Regex("""enqueueLocalChange\(\s*entity:\s*"([a-z_]+)"""")
@@ -34,7 +35,7 @@ class SyncEntityCoverageTest {
         val literal = Regex(""""([a-z_]+)"""")
         return caseLine.findAll(source)
             .flatMap { match -> literal.findAll(match.groupValues[1]).map { it.groupValues[1] } }
-            .toSet() + SchoolRecordsSync.ENTITIES
+            .toSet() + SchoolRecordsSync.ENTITIES + ModuleRecordsSync.ENTITIES
     }
 
     private fun appliedByMac(): Set<String> {
@@ -43,7 +44,7 @@ class SyncEntityCoverageTest {
         val literal = Regex(""""([a-z_]+)"""")
         return branch.findAll(source)
             .flatMap { match -> literal.findAll(match.groupValues[1]).map { it.groupValues[1] } }
-            .toSet() + SchoolRecordsSync.ENTITIES
+            .toSet() + SchoolRecordsSync.ENTITIES + ModuleRecordsSync.ENTITIES
     }
 
     @Test

@@ -61,6 +61,8 @@ extension KmpBridge {
     }
 
     func savePhysicalDefinition(_ definition: PhysicalTestDefinition) async throws {
+        // Sync LAN recoge estos cambios de la base (ModuleRecordsSync): solo hay que avisar.
+        defer { triggerAutoSyncSoon() }
         try await container.physicalTestsRepository.saveDefinition(definition: definition)
     }
 
@@ -69,10 +71,12 @@ extension KmpBridge {
     }
 
     func savePhysicalBattery(_ battery: PhysicalTestBattery) async throws {
+        defer { triggerAutoSyncSoon() }
         try await container.physicalTestsRepository.saveBattery(battery: battery)
     }
 
     func assignPhysicalBatteryToClass(_ assignment: PhysicalTestAssignment) async throws {
+        defer { triggerAutoSyncSoon() }
         try await container.physicalTestsRepository.assignBatteryToClass(assignment: assignment)
     }
 
@@ -85,6 +89,7 @@ extension KmpBridge {
     }
 
     func savePhysicalScale(_ scale: PhysicalTestScale) async throws {
+        defer { triggerAutoSyncSoon() }
         try await container.physicalTestsRepository.saveScale(scale: scale)
     }
 
@@ -105,6 +110,7 @@ extension KmpBridge {
     }
 
     func savePhysicalNotebookLink(_ link: PhysicalTestNotebookLink) async throws {
+        defer { triggerAutoSyncSoon() }
         try await container.physicalTestsRepository.saveNotebookLink(link: link)
     }
 
@@ -148,6 +154,7 @@ extension KmpBridge {
     }
 
     func savePhysicalResult(_ result: PhysicalTestResult, attempts: [PhysicalTestAttempt]) async throws {
+        defer { triggerAutoSyncSoon() }
         try await container.physicalTestsRepository.saveResult(result: result, attempts: attempts)
     }
 

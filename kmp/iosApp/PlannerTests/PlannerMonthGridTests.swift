@@ -315,6 +315,9 @@ final class PlannerMonthGridTests: XCTestCase {
         XCTAssertTrue(LanSyncRefreshPlan.affects(.inclusion, entities: ["student_support_measures"]))
         XCTAssertTrue(LanSyncRefreshPlan.affects(.learningSituations, entities: ["learning_situation_tournament"]))
         XCTAssertTrue(LanSyncRefreshPlan.affects(.physicalEducation, entities: ["incident"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.physicalEducation, entities: ["physical_test_result"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.inclusion, entities: ["inclusion_task"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.planner, entities: ["planner_week_plan"]))
     }
 
     func testRemoteChangesDoNotReloadUnrelatedScreens() {

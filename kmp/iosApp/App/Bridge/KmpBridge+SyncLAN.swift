@@ -1569,16 +1569,28 @@ extension KmpBridge {
         let schoolRecordChanges = changes.filter {
             SchoolRecordsSync.companion.handles(entity: $0.entity) && $0.deviceId != localDeviceId
         }
+        // Plan semanal, Manual de Inclusión y pruebas físicas: igual, con `ModuleRecordsSync`.
+        let moduleRecordChanges = changes.filter {
+            ModuleRecordsSync.companion.handles(entity: $0.entity) && $0.deviceId != localDeviceId
+        }
         var failedCount = 0
         if !schoolRecordChanges.isEmpty {
             let ack = try await SchoolRecordsSync(container: container, localDeviceId: localDeviceId)
                 .applyAll(changes: schoolRecordChanges.map(\.kotlinSyncChange))
             failedCount += Int(ack.failed)
         }
+        if !moduleRecordChanges.isEmpty {
+            let ack = try await ModuleRecordsSync(container: container, localDeviceId: localDeviceId)
+                .applyAll(changes: moduleRecordChanges.map(\.kotlinSyncChange))
+            failedCount += Int(ack.failed)
+        }
         let orderedChanges = orderedPulledChanges(
-            changes.filter { !SchoolRecordsSync.companion.handles(entity: $0.entity) }
+            changes.filter {
+                !SchoolRecordsSync.companion.handles(entity: $0.entity)
+                    && !ModuleRecordsSync.companion.handles(entity: $0.entity)
+            }
         )
-        let applyTotal = orderedChanges.count + schoolRecordChanges.count
+        let applyTotal = orderedChanges.count + schoolRecordChanges.count + moduleRecordChanges.count
         // Parseo JSON fuera de MainActor; las suspend de KMP siguen en MainActor.
         let payloadStrings = orderedChanges.map(\.payload)
         let parsedPayloads = await Task.detached(priority: .utility) {
@@ -4386,6 +4398,65 @@ extension KmpBridge {
         persistPendingChangesNow()
     }
 
+    #if os(iOS)
+    /// Plan semanal, Manual de Inclusión y pruebas físicas de EF. En el iPad casi
+    /// ninguna de estas escrituras pasa por `enqueueLocalChange` (las tareas del manual
+    /// las genera Kotlin solo), así que se recogen de la base antes de cada envío, como
+    /// hace el helper en el Mac. Los borrados de planes y tareas se detectan por
+    /// diferencia con las claves de la vez anterior.
+    private func enqueueModuleRecordChanges(force: Bool) async {
+        let now = Date()
+        // Recorre varias tablas: no más de una vez cada 3 s salvo al irse o al despertar.
+        guard force || now.timeIntervalSince(ModuleRecordsOutbound.lastScanAt) >= 3 else {
+            triggerAutoSyncSoon(delayNanoseconds: 3_000_000_000)
+            return
+        }
+        ModuleRecordsOutbound.lastScanAt = now
+        let defaults = UserDefaults.standard
+        let since = (defaults.object(forKey: ModuleRecordsOutbound.cursorKey) as? NSNumber)?.int64Value ?? 0
+        let startedAtMs = Int64(now.timeIntervalSince1970 * 1000)
+        let sync = ModuleRecordsSync(container: container, localDeviceId: localDeviceId)
+        guard let collected = try? await sync.collect(sinceEpochMs: since) else { return }
+
+        // Lo que llegó del otro dispositivo trae su deviceId: no se devuelve.
+        for change in collected.changes where change.deviceId == localDeviceId {
+            let payload = LanSyncPayloadParser.dictionary(from: change.payload)
+            guard !payload.isEmpty else { continue }
+            enqueueLocalChange(
+                entity: change.entity,
+                id: change.id,
+                updatedAtEpochMs: change.updatedAtEpochMs,
+                payload: payload,
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
+            )
+        }
+
+        var previousKeys = defaults.dictionary(forKey: ModuleRecordsOutbound.liveKeysKey) as? [String: [String]] ?? [:]
+        for (entity, keys) in collected.liveKeysByEntity {
+            let current = Set(keys)
+            if let previous = previousKeys[entity] {
+                for removedKey in Set(previous).subtracting(current) {
+                    enqueueLocalChange(
+                        entity: entity,
+                        id: removedKey,
+                        updatedAtEpochMs: startedAtMs,
+                        payload: ["id": removedKey],
+                        op: "delete",
+                        shouldPersist: false,
+                        shouldScheduleAutoSync: false
+                    )
+                }
+            }
+            previousKeys[entity] = Array(current)
+        }
+        defaults.set(previousKeys, forKey: ModuleRecordsOutbound.liveKeysKey)
+        // Margen de 2 s: lo escrito mientras se recorría la base sale en la próxima vuelta.
+        defaults.set(NSNumber(value: startedAtMs - 2_000), forKey: ModuleRecordsOutbound.cursorKey)
+        persistPendingChanges()
+    }
+    #endif
+
     /// Espera a que termine la sync en curso (si la hay). `syncNow` vuelve al
     /// instante cuando ya hay una en vuelo, y quien necesita saber el resultado
     /// (volver a primer plano, el último envío al irse) tiene que esperarla.
@@ -4495,6 +4566,9 @@ extension KmpBridge {
         repeat {
             syncNeedsAnotherPass = false
             do {
+                #if os(iOS)
+                await enqueueModuleRecordChanges(force: reason == "background_flush" || reason == "background_refresh")
+                #endif
                 if !pendingOutboundChanges.isEmpty {
                     try await performPushSync(silent: true)
                 }
@@ -4665,7 +4739,8 @@ enum LanSyncRefreshPlan {
             return !entities.isDisjoint(with: ["meetings", "meeting_agreements"])
         case .inclusion:
             return !entities.isDisjoint(with: [
-                "student_support_measures", "student_tutoring_sessions", "incident", "student", "class_roster"
+                "student_support_measures", "student_tutoring_sessions", "incident", "student", "class_roster",
+                "inclusion_task", "inclusion_group_setting"
             ])
         case .learningSituations:
             return entities.contains { $0.hasPrefix("learning_situation") }
@@ -4674,10 +4749,19 @@ enum LanSyncRefreshPlan {
             return !entities.isDisjoint(with: [
                 "incident", "planning_session", "session_journal", "evaluation", "grade", "attendance",
                 "notebook_instrument_template", "notebook_instrument_item", "notebook_instrument_response"
-            ])
+            ]) || entities.contains { $0.hasPrefix("physical_test_") }
         }
     }
 }
+
+#if os(iOS)
+@MainActor
+private enum ModuleRecordsOutbound {
+    static let cursorKey = "sync.module-records.outbound-cursor"
+    static let liveKeysKey = "sync.module-records.live-keys"
+    static var lastScanAt: Date = .distantPast
+}
+#endif
 
 extension LanSyncChange {
     /// El mismo cambio en el tipo de Kotlin, para pasárselo a `SchoolRecordsSync`.

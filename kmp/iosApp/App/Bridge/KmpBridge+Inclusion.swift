@@ -182,7 +182,9 @@ extension KmpBridge {
     /// Marca o desmarca. Devuelve `true` si ha quedado hecha.
     @discardableResult
     func toggleInclusionTask(id: Int64, today: Date = Date()) async throws -> Bool {
-        try await container.inclusionTasks.toggleDone(
+        // Sync LAN recoge estos cambios de la base (ModuleRecordsSync): solo hay que avisar.
+        defer { triggerAutoSyncSoon() }
+        return try await container.inclusionTasks.toggleDone(
             taskId: id,
             today: inclusionLocalDate(today),
             nowEpochMs: inclusionNowMs()
@@ -191,6 +193,7 @@ extension KmpBridge {
 
     /// Fecha elegida por el docente. `classId` decide qué evaluación inicial se usa.
     func setInclusionTaskDue(id: Int64, classId: Int64, to date: Date) async throws {
+        defer { triggerAutoSyncSoon() }
         try await container.inclusionTasks.setDueDate(
             taskId: id,
             classId: classId,
@@ -202,7 +205,8 @@ extension KmpBridge {
     /// Vuelve a la fecha del manual. Devuelve `false` en tareas libres.
     @discardableResult
     func resetInclusionTaskDue(id: Int64, classId: Int64) async throws -> Bool {
-        try await container.inclusionTasks.resetDueDate(
+        defer { triggerAutoSyncSoon() }
+        return try await container.inclusionTasks.resetDueDate(
             taskId: id,
             classId: classId,
             nowEpochMs: inclusionNowMs()
@@ -212,6 +216,7 @@ extension KmpBridge {
     /// Guarda la evaluación inicial del grupo. Devuelve cuántas fechas se movieron.
     @discardableResult
     func setInclusionInitialEvaluation(classId: Int64, date: Date, today: Date = Date()) async throws -> Int {
+        defer { triggerAutoSyncSoon() }
         let moved = try await container.inclusionTasks.setInitialEvaluationDate(
             classId: classId,
             schoolYear: inclusionSchoolYear(for: today),
@@ -230,7 +235,8 @@ extension KmpBridge {
         notes: String = "",
         today: Date = Date()
     ) async throws -> Int64 {
-        try await container.inclusionTasks.addFreeTask(
+        defer { triggerAutoSyncSoon() }
+        return try await container.inclusionTasks.addFreeTask(
             studentId: studentId,
             title: title,
             phase: phase.kotlin,
@@ -252,7 +258,8 @@ extension KmpBridge {
         notes: String = "",
         today: Date = Date()
     ) async throws -> [Int64] {
-        try await container.inclusionTasks.addFreeTasks(
+        defer { triggerAutoSyncSoon() }
+        return try await container.inclusionTasks.addFreeTasks(
             studentIds: studentIds.map { KotlinLong(value: $0) },
             title: title,
             phase: phase.kotlin,

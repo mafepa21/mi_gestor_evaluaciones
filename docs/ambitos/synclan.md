@@ -5,7 +5,7 @@
 - Fase 1 de «siempre al día» (`codex/synclan-inmediato-f1`): envío garantizado al pasar a segundo plano en iPad, aviso «Poniéndose al día…» / «Sin conexión» en el indicador y recarga automática de las pantallas que cargan sus propios datos.
 - Fase 2 (`codex/synclan-inmediato-f2`): reuniones, acuerdos, medidas, tutorías y asignaturas viajan con `SchoolRecordsSync`; categorías del Cuaderno en el Mac; mover/copiar sesiones del Planner encola; aviso «Datos distintos» en el icono.
 - Fase 3 (`codex/synclan-inmediato-f3`): helper del Mac vivo con la app cerrada y al iniciar sesión (`MacSyncBackgroundService`, agente `SMAppService`); `BGAppRefreshTask` en iPad (`LanSyncBackgroundRefresh`).
-- Pendiente Fase 2b: plan semanal, tareas/ajustes de Inclusión y pruebas físicas de EF.
+- Fase 2b (`codex/synclan-inmediato-f2b`): plan semanal, Manual de Inclusión y pruebas físicas de EF con `ModuleRecordsSync` (claves naturales; el iPad los recoge de la base antes de cada envío).
 
 ## Terreno de juego
 
@@ -20,6 +20,8 @@
 - `SqlDelightSyncAdapter` cuenta como `ignored` (no `failed`) cualquier entidad que no conoce, y el iPad suelta la cola si `failed == 0`: una entidad nueva sin apply se pierde en silencio. `SyncEntityCoverageTest` lo vigila leyendo el código; `planner_week_plan` está en su lista de pendientes.
 - Entidades nuevas de actas/Inclusión: añadirlas solo en `SchoolRecordsSync` (lo usan el Mac y Apple). Nada de `REPLACE` en tablas con hijas en cascada (reuniones).
 - Operaciones en bloque de Kotlin (`doCopySessions`, `shiftSelectedSessions`, `commitCascadeMove`, `restoreCascadeMove`) no pasan por el encolado: el wrapper Swift debe llamar a `enqueueRelocatedPlanningSessions`. Desplazar y sustituir borran sesiones y crean otras con id nuevo.
+- `ModuleRecordsSync` identifica plan semanal, tareas y ajustes de Inclusión por clave natural, no por id: no cambiar las claves (`weekPlanKey`, `inclusionTaskKey`, `groupSettingKey`) sin migrar las claves vivas guardadas en `UserDefaults` (`sync.module-records.live-keys`).
+- En el iPad, Inclusión y EF no encolan: se recogen de la base en `enqueueModuleRecordChanges` (`#if os(iOS)`). Una escritura nueva en esos módulos solo necesita `triggerAutoSyncSoon()`.
 - `:shared:test` pide el SDK de Android; si no está, usar `:shared:desktopTest`.
 - No enlazar `kmp/iosApp/Frameworks` con un symlink al checkout principal: Xcode regenera el framework KMP en el pre-build y escribiría en el otro checkout.
 - Las pantallas que cargan en `.task` no observan el bridge: para que se recarguen con la sync hay que añadir `.reloadOnLanSync(.pantalla) { … }` y, si muestran entidades nuevas, ampliar `LanSyncRefreshPlan.affects`.

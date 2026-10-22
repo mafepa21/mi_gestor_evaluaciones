@@ -65,6 +65,7 @@ class SqlDelightSyncAdapter(
     private var outgoingDeletesSeeded = false
     private val rosterSnapshotByClass = mutableMapOf<Long, Set<Long>>()
     private val schoolRecords = SchoolRecordsSync(container, localDeviceId)
+    private val moduleRecords = ModuleRecordsSync(container, localDeviceId)
 
     /**
      * `total_changes()` cuenta las escrituras de esta conexión y `data_version`
@@ -1223,6 +1224,15 @@ class SqlDelightSyncAdapter(
             }
         }
 
+        // Plan semanal, Manual de Inclusión y pruebas físicas de EF.
+        val modules = moduleRecords.collect(sinceEpochMs)
+        changes += modules.changes
+        modules.liveKeysByEntity.forEach { (entity, keys) ->
+            appendDeletesByScope(scope = "global:$entity", entity = entity, currentIds = keys) { deletedKey ->
+                buildJsonObject { put("id", JsonPrimitive(deletedKey)) }
+            }
+        }
+
         emitOutgoingDeletes(changes, sinceEpochMs)
         return changes
     }
@@ -1331,12 +1341,14 @@ class SqlDelightSyncAdapter(
     override suspend fun applyIncomingChangesLww(changes: List<SyncChange>): SyncAck {
         // Antes estas entidades caían en `else -> ignored++` y el iPad soltaba su cola
         // creyendo que el Mac las tenía. Las aplica `SchoolRecordsSync`, igual que en Apple.
-        val (recordChanges, otherChanges) = changes.partition { SchoolRecordsSync.handles(it.entity) }
+        val (recordChanges, nonRecordChanges) = changes.partition { SchoolRecordsSync.handles(it.entity) }
+        val (moduleChanges, otherChanges) = nonRecordChanges.partition { ModuleRecordsSync.handles(it.entity) }
         val recordsAck = schoolRecords.applyAll(recordChanges)
-        var applied = recordsAck.applied
-        var conflicts = recordsAck.conflictsResolvedByLww
-        var ignored = recordsAck.ignored
-        var failed = recordsAck.failed
+        val modulesAck = moduleRecords.applyAll(moduleChanges)
+        var applied = recordsAck.applied + modulesAck.applied
+        var conflicts = recordsAck.conflictsResolvedByLww + modulesAck.conflictsResolvedByLww
+        var ignored = recordsAck.ignored + modulesAck.ignored
+        var failed = recordsAck.failed + modulesAck.failed
 
         otherChanges.forEach { change ->
             val payload = runCatching { json.parseToJsonElement(change.payload).jsonObject }.getOrNull()

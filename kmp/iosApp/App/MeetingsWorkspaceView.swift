@@ -48,6 +48,7 @@ struct MeetingsWorkspaceView: View {
             }
         }
         .task { await reload() }
+        .reloadOnLanSync(.meetings) { await reload() }
         .sheet(isPresented: $showMeetingSheet) {
             MeetingFormSheet(existingMeeting: nil) { _ in Task { await reload() } }
                 .environmentObject(bridge)
@@ -263,6 +264,7 @@ private struct MeetingDetailScreen: View {
             }
         }
         .task { await reload() }
+        .reloadOnLanSync(.meetings) { await reload() }
         .sheet(isPresented: $showAgreementSheet) {
             MeetingAgreementFormSheet(meetingId: meetingId, existingAgreement: nil) {
                 Task { await reload() }

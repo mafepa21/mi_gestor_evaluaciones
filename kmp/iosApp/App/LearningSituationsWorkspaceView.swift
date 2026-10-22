@@ -914,6 +914,10 @@ struct LearningSituationsWorkspaceView: View {
         }
         .onAppear(perform: restoreRememberedList)
         .task { await reload() }
+        .reloadOnLanSync(.learningSituations) {
+            await reload()
+            await reloadDetail()
+        }
         .appOnChange(of: selectedSituationId) { _ in
             Task { await reloadDetail() }
         }

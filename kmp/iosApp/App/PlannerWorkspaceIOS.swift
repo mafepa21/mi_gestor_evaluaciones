@@ -64,6 +64,7 @@ struct PlannerWorkspaceIOS: View {
             configurePlannerToolbar()
             Task { await vm.refreshOnReappear() }
         }
+        .reloadOnLanSync(.planner) { await vm.refreshOnReappear() }
 
         .appOnChange(of: context) { newValue in
             Task {

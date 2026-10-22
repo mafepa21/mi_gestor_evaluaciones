@@ -59,6 +59,7 @@ struct MacMeetingsView: View {
         }
         .padding(MacAppStyle.pagePadding)
         .task { await reload() }
+        .reloadOnLanSync(.meetings) { await reload() }
         .sheet(isPresented: $showMeetingSheet) {
             MeetingFormSheet(existingMeeting: nil) { newId in
                 Task {

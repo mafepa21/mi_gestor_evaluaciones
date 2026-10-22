@@ -249,6 +249,10 @@ struct AttendanceWorkspaceView: View {
                     }
             }
         }
+        .reloadOnLanSync(.attendance) {
+            await reloadClassOverviews()
+            await reloadAttendance()
+        }
         .task {
                 await bridge.ensureClassesLoaded()
                 if selectedClassId == nil {

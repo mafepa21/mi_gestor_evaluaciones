@@ -131,6 +131,7 @@ struct DiaryWorkspaceView: View {
                 diaryWorkspaceContent
             }
         }
+        .reloadOnLanSync(.planner) { await vm.refreshOnReappear() }
         .task {
             await vm.bind(bridge: bridge)
             await vm.applyExternalContext(

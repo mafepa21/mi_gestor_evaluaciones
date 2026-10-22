@@ -362,6 +362,28 @@ final class PlannerMonthGridTests: XCTestCase {
         )
     }
 
+    func testSyncBadgeWarnsWhenBothDevicesHaveDifferentData() {
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: SyncCatchUpCopy.upToDate,
+                syncPendingChanges: 2,
+                pairedSyncHost: "127.0.0.1",
+                hasSyncDivergence: true
+            ),
+            .datosDistintos
+        )
+        // Sin conexión manda: la huella guardada puede estar vieja.
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: SyncCatchUpCopy.offline,
+                syncPendingChanges: 0,
+                pairedSyncHost: "127.0.0.1",
+                hasSyncDivergence: true
+            ),
+            .sinConexion(pendientes: 0)
+        )
+    }
+
     func testOnlyTransientSyncMessagesAreClearedAfterASuccessfulSync() {
         XCTAssertTrue(SyncCatchUpCopy.isTransient(SyncCatchUpCopy.catchingUp))
         XCTAssertTrue(SyncCatchUpCopy.isTransient(SyncCatchUpCopy.offline))

@@ -146,6 +146,7 @@ final class DashboardBridgeStore: ObservableObject {
     @Published private(set) var syncPendingChanges = 0
     @Published private(set) var syncLastRunAt: Date?
     @Published private(set) var pairedSyncHost: String?
+    @Published private(set) var syncDivergence: SyncDivergenceReport?
 
     private weak var bridge: KmpBridge?
     private var cancellables = Set<AnyCancellable>()
@@ -162,6 +163,7 @@ final class DashboardBridgeStore: ObservableObject {
         syncPendingChanges = bridge.syncPendingChanges
         syncLastRunAt = bridge.syncLastRunAt
         pairedSyncHost = bridge.pairedSyncHost
+        syncDivergence = bridge.syncDivergence
 
         bridgeSink(bridge.$classes, \.classes, into: &cancellables)
         bridgeSink(bridge.$studentsInClass, \.studentsInClass, into: &cancellables)
@@ -170,6 +172,7 @@ final class DashboardBridgeStore: ObservableObject {
         bridgeSink(bridge.$syncPendingChanges, \.syncPendingChanges, into: &cancellables)
         bridgeSink(bridge.$syncLastRunAt, \.syncLastRunAt, into: &cancellables)
         bridgeSink(bridge.$pairedSyncHost, \.pairedSyncHost, into: &cancellables)
+        bridgeSink(bridge.$syncDivergence, \.syncDivergence, into: &cancellables)
     }
 }
 

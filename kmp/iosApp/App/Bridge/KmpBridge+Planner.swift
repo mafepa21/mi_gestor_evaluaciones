@@ -891,6 +891,22 @@ extension KmpBridge {
             deviceId: localDeviceId,
             syncVersion: 1
         )
+        // Mismo payload que `saveIncident` en KmpBridge+Students: sin esto la incidencia
+        // apuntada desde el diario se quedaba solo en este dispositivo.
+        enqueueLocalChange(
+            entity: "incident",
+            id: "\(incidentId.int64Value)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": incidentId.int64Value,
+                "classId": session.groupId,
+                "studentId": NSNull(),
+                "title": title,
+                "detail": detail,
+                "severity": "medium",
+                "dateEpochMs": nowMs
+            ]
+        )
         return SessionJournalLink(
             id: 0,
             journalId: 0,
@@ -936,7 +952,18 @@ extension KmpBridge {
             dayOffset: Int32(dayOffset),
             periodOffset: Int32(periodOffset)
         )
-        return try await container.plannerRepository.doCopySessions(request: request, resolution: resolution)
+        // Con OVERWRITE se borran las sesiones que ocupaban el destino: hay que saber cuáles antes.
+        let overwrittenIds = resolution == .overwrite
+            ? try await container.plannerRepository.previewSessionRelocation(request: request)
+                .compactMap { $0.existingSessionId?.int64Value }
+            : []
+        let result = try await container.plannerRepository.doCopySessions(request: request, resolution: resolution)
+        guard result.movedOrCopied > 0 else { return result }
+        await enqueueRelocatedPlanningSessions(
+            upserted: result.affectedSessionIds.map(\.int64Value),
+            deleted: overwrittenIds
+        )
+        return result
     }
 
     func plannerShiftSessions(
@@ -953,7 +980,18 @@ extension KmpBridge {
             dayOffset: Int32(dayOffset),
             periodOffset: Int32(periodOffset)
         )
-        return try await container.plannerRepository.shiftSelectedSessions(request: request, resolution: resolution)
+        let overwrittenIds = resolution == .overwrite
+            ? try await container.plannerRepository.previewSessionRelocation(request: request)
+                .compactMap { $0.existingSessionId?.int64Value }
+            : []
+        let result = try await container.plannerRepository.shiftSelectedSessions(request: request, resolution: resolution)
+        guard result.movedOrCopied > 0 else { return result }
+        // Desplazar borra las sesiones de origen y crea otras con id nuevo.
+        await enqueueRelocatedPlanningSessions(
+            upserted: result.affectedSessionIds.map(\.int64Value),
+            deleted: sourceSessionIds + overwrittenIds
+        )
+        return result
     }
 
     func plannerPreviewCascadeMove(
@@ -990,11 +1028,82 @@ extension KmpBridge {
             targetPeriod: Int32(targetPeriod),
             forceTerminalSessions: forceTerminalSessions
         )
-        return try await container.plannerRepository.commitCascadeMove(request: request)
+        let result = try await container.plannerRepository.commitCascadeMove(request: request)
+        await enqueueRelocatedPlanningSessions(upserted: result.nextPlacements.map(\.sessionId), deleted: [])
+        return result
     }
 
     func plannerRestoreCascadeMove(_ previousPlacements: [SessionPlacement]) async throws -> SessionCascadeMoveResult {
-        try await container.plannerRepository.restoreCascadeMove(previousPlacements: previousPlacements)
+        let result = try await container.plannerRepository.restoreCascadeMove(previousPlacements: previousPlacements)
+        await enqueueRelocatedPlanningSessions(upserted: result.nextPlacements.map(\.sessionId), deleted: [])
+        return result
+    }
+
+    /// Avisa a Sync LAN de lo que dejaron mover, copiar o desplazar sesiones. Estas
+    /// operaciones escriben en bloque desde Kotlin y no pasaban por
+    /// `plannerUpsertSession`: en el iPad, arrastrar una sesión nunca llegaba al Mac.
+    func enqueueRelocatedPlanningSessions(upserted: [Int64], deleted: [Int64]) async {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let upsertedIds = Set(upserted)
+        for sessionId in Set(deleted).subtracting(upsertedIds) {
+            enqueueLocalChange(
+                entity: "planning_session",
+                id: "\(sessionId)",
+                updatedAtEpochMs: nowMs,
+                payload: ["id": sessionId],
+                op: "delete",
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
+            )
+        }
+        for sessionId in upsertedIds {
+            guard let session = try? await container.plannerRepository.getSession(id: sessionId) else { continue }
+            enqueueLocalChange(
+                entity: "planning_session",
+                id: "\(sessionId)",
+                updatedAtEpochMs: nowMs,
+                payload: Self.planningSessionSyncPayload(session),
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
+            )
+        }
+        guard !upsertedIds.isEmpty || !deleted.isEmpty else { return }
+        persistPendingChanges()
+        triggerAutoSyncSoon()
+    }
+
+    /// Mismo payload que manda `plannerUpsertSession`.
+    static func planningSessionSyncPayload(_ session: PlanningSession) -> [String: Any] {
+        var payload: [String: Any] = [
+            "id": session.id,
+            "teachingUnitId": session.teachingUnitId,
+            "teachingUnitName": session.teachingUnitName,
+            "teachingUnitColor": session.teachingUnitColor,
+            "groupId": session.groupId,
+            "groupName": session.groupName,
+            "dayOfWeek": Int(session.dayOfWeek),
+            "period": Int(session.period),
+            "weekNumber": Int(session.weekNumber),
+            "year": Int(session.year),
+            "objectives": session.objectives,
+            "activities": session.activities,
+            "evaluation": session.evaluation,
+            "linkedAssessmentIdsCsv": session.linkedAssessmentIdsCsv,
+            "status": session.status.name
+        ]
+        if let teacherScheduleSlotId = session.teacherScheduleSlotId {
+            payload["teacherScheduleSlotId"] = teacherScheduleSlotId.int64Value
+        }
+        if let startTime = session.startTime {
+            payload["startTime"] = startTime
+        }
+        if let endTime = session.endTime {
+            payload["endTime"] = endTime
+        }
+        if let learningSituationSessionPlanId = session.learningSituationSessionPlanId {
+            payload["learningSituationSessionPlanId"] = learningSituationSessionPlanId.int64Value
+        }
+        return payload
     }
 
     private func rangesOverlap(startA: String, endA: String, startB: String, endB: String) -> Bool {
@@ -1052,7 +1161,20 @@ extension KmpBridge {
             startDate: unit.startDate,
             endDate: unit.endDate
         )
-        _ = try await container.plannerRepository.upsertTeachingUnit(unit: renamed)
+        let savedId = try await container.plannerRepository.upsertTeachingUnit(unit: renamed).int64Value
+        enqueueLocalChange(
+            entity: "teaching_unit",
+            id: "\(savedId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": savedId,
+                "name": renamed.name,
+                "description": renamed.description,
+                "colorHex": renamed.colorHex,
+                "groupId": renamed.groupId?.int64Value ?? NSNull(),
+                "schoolClassId": renamed.schoolClassId?.int64Value ?? NSNull()
+            ]
+        )
     }
 
     func plannerDeleteTeachingUnit(_ unitId: Int64) async throws {
@@ -1066,6 +1188,13 @@ extension KmpBridge {
             )
         }
         _ = try await container.plannerRepository.deleteTeachingUnit(unitId: unitId)
+        enqueueLocalChange(
+            entity: "teaching_unit",
+            id: "\(unitId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: ["id": unitId],
+            op: "delete"
+        )
     }
 
     func plannerAvailableAssessmentInstruments(classId: Int64, teachingUnitId: Int64?) async throws -> [PlannerAssessmentInstrument] {

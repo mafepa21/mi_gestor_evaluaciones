@@ -40,7 +40,8 @@ extension NotebookModuleView {
         resolvedSyncStatusBadgeState(
             syncStatusMessage: dashboardStore.syncStatusMessage,
             syncPendingChanges: dashboardStore.syncPendingChanges,
-            pairedSyncHost: dashboardStore.pairedSyncHost
+            pairedSyncHost: dashboardStore.pairedSyncHost,
+            hasSyncDivergence: dashboardStore.syncDivergence != nil
         )
     }
 
@@ -52,6 +53,8 @@ extension NotebookModuleView {
             return "Poniéndose al día"
         case .sinConexion:
             return "Sin conexión"
+        case .datosDistintos:
+            return "Datos distintos"
         case .pendiente(let count):
             return "\(count) pnd."
         case .error:

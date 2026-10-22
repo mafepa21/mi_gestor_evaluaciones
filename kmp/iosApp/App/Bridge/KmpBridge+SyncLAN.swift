@@ -588,6 +588,9 @@ extension KmpBridge {
     }
 
     static let divergenceCheckInterval: TimeInterval = 15 * 60
+    /// Al volver a la app la huella se adelanta, pero no más de una vez cada 5 min:
+    /// en el Mac la app «vuelve» cada vez que la ventana recupera el foco.
+    static let foregroundDivergenceCheckInterval: TimeInterval = 5 * 60
 
     func checkSyncDivergence(force: Bool = false) async {
         guard pairedSyncHost != nil, syncToken != nil else { return }
@@ -866,6 +869,10 @@ extension KmpBridge {
                 }
                 if plan.students {
                     try await self.refreshStudentsDirectory()
+                    guard !Task.isCancelled else { return }
+                }
+                if entities.contains(SchoolRecordsSync.companion.SUBJECT) {
+                    try await self.refreshSubjects()
                     guard !Task.isCancelled else { return }
                 }
                 if plan.rubrics {
@@ -1556,9 +1563,22 @@ extension KmpBridge {
     }
 
     private func applyPulledChanges(_ changes: [LanSyncChange]) async throws {
-        let orderedChanges = orderedPulledChanges(changes)
-        let applyTotal = orderedChanges.count
+        // Reuniones, acuerdos, medidas de apoyo, tutorías y asignaturas las aplica el
+        // mismo código Kotlin que el Mac (`SchoolRecordsSync`). Antes caían en el
+        // `default: continue` de abajo y nunca llegaban a este dispositivo.
+        let schoolRecordChanges = changes.filter {
+            SchoolRecordsSync.companion.handles(entity: $0.entity) && $0.deviceId != localDeviceId
+        }
         var failedCount = 0
+        if !schoolRecordChanges.isEmpty {
+            let ack = try await SchoolRecordsSync(container: container, localDeviceId: localDeviceId)
+                .applyAll(changes: schoolRecordChanges.map(\.kotlinSyncChange))
+            failedCount += Int(ack.failed)
+        }
+        let orderedChanges = orderedPulledChanges(
+            changes.filter { !SchoolRecordsSync.companion.handles(entity: $0.entity) }
+        )
+        let applyTotal = orderedChanges.count + schoolRecordChanges.count
         // Parseo JSON fuera de MainActor; las suspend de KMP siguen en MainActor.
         let payloadStrings = orderedChanges.map(\.payload)
         let parsedPayloads = await Task.detached(priority: .utility) {
@@ -4340,14 +4360,17 @@ extension KmpBridge {
             }
             guard isPaired else { return }
             await self.waitForSyncToFinish(timeoutSeconds: 30)
+            let caughtUp = self.lastSuccessfulSyncAt >= startedAt.addingTimeInterval(-1.5)
+            // Al volver se mira ya si los dos dispositivos coinciden: antes solo cada
+            // 15 min y el aviso solo se veía dentro de la pantalla de Sincronización.
+            if caughtUp, self.pendingOutboundChanges.isEmpty,
+               Date().timeIntervalSince(self.lastDivergenceCheckAt) > Self.foregroundDivergenceCheckInterval {
+                Task { await self.checkSyncDivergence(force: true) }
+            }
             // `syncNow` tiene varias salidas tempranas que no publican nada; el
             // aviso «Poniéndose al día…» no puede quedarse colgado.
             guard self.syncStatusMessage == SyncCatchUpCopy.catchingUp else { return }
-            self.setSyncStatusMessage(
-                self.lastSuccessfulSyncAt >= startedAt.addingTimeInterval(-1.5)
-                    ? SyncCatchUpCopy.upToDate
-                    : SyncCatchUpCopy.offline
-            )
+            self.setSyncStatusMessage(caughtUp ? SyncCatchUpCopy.upToDate : SyncCatchUpCopy.offline)
         }
     }
 
@@ -4640,6 +4663,21 @@ enum LanSyncRefreshPlan {
                 "notebook_instrument_template", "notebook_instrument_item", "notebook_instrument_response"
             ])
         }
+    }
+}
+
+extension LanSyncChange {
+    /// El mismo cambio en el tipo de Kotlin, para pasárselo a `SchoolRecordsSync`.
+    var kotlinSyncChange: SyncChange {
+        SyncChange(
+            entity: entity,
+            id: id,
+            updatedAtEpochMs: updatedAtEpochMs,
+            deviceId: deviceId,
+            payload: payload,
+            op: op,
+            schemaVersion: Int32(schemaVersion)
+        )
     }
 }
 

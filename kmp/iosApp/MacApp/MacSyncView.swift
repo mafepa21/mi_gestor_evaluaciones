@@ -8,6 +8,8 @@ struct MacSyncView: View {
     @State private var showsAdvancedDiagnostics = false
     @State private var showingAdoptionSheet = false
     @State private var showingStagedAdoptionAlert = false
+    @AppStorage(MacSyncBackgroundService.keepRunningDefaultsKey) private var keepsSyncRunningWhenClosed = true
+    @State private var loginItemStatus = MacSyncBackgroundService.loginItemStatus
 
     private var connectionSummary: SyncConnectionSummary {
         SyncConnectionSummary(serviceState: commandCenter.serviceState)
@@ -97,6 +99,7 @@ struct MacSyncView: View {
                     }
                     observabilitySection
                     quickActionsSection
+                    backgroundSyncSection
                     if let diagnosticFeedback, !diagnosticFeedback.contains("Error") {
                         Text(diagnosticFeedback)
                             .font(.caption)
@@ -278,6 +281,41 @@ struct MacSyncView: View {
                 .buttonStyle(.bordered)
                 .disabled(commandCenter.serviceState == .stopped || commandCenter.serviceState == .starting)
             }
+        }
+    }
+
+    private var backgroundSyncSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $keepsSyncRunningWhenClosed) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Seguir sincronizando con la app cerrada")
+                    Text("El iPad envía y recibe cambios aunque cierres Cuaderno Vivo, y también al iniciar sesión en el Mac.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .appOnChange(of: keepsSyncRunningWhenClosed) { _ in
+                loginItemStatus = MacSyncBackgroundService.syncLoginItem(allowRegister: false)
+            }
+
+            switch loginItemStatus {
+            case .requiresApproval:
+                Button("Permitir el arranque al iniciar sesión en Ajustes del Sistema") {
+                    MacSyncBackgroundService.openLoginItemsSettings()
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            case .failed(let message):
+                Text("No se pudo activar el arranque al iniciar sesión: \(message)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .enabled, .disabled:
+                EmptyView()
+            }
+        }
+        .onAppear {
+            loginItemStatus = MacSyncBackgroundService.loginItemStatus
         }
     }
 

@@ -4374,6 +4374,18 @@ extension KmpBridge {
         }
     }
 
+    /// Despertar en segundo plano del iPad (`LanSyncBackgroundRefresh`): un envío y una
+    /// descarga, sin listener ni bucle. iOS da unos 30 s; se deja margen.
+    func runBackgroundRefreshSync() async {
+        guard pairedSyncHost != nil, syncToken != nil else { return }
+        guard !AppleBackupService.shared.needsRestart else { return }
+        if !isSyncInFlight {
+            await syncNow(reason: "background_refresh", forceFullPull: false, silent: true)
+        }
+        await waitForSyncToFinish(timeoutSeconds: 20)
+        persistPendingChangesNow()
+    }
+
     /// Espera a que termine la sync en curso (si la hay). `syncNow` vuelve al
     /// instante cuando ya hay una en vuelo, y quien necesita saber el resultado
     /// (volver a primer plano, el último envío al irse) tiene que esperarla.
@@ -4455,7 +4467,8 @@ extension KmpBridge {
         guard pairedSyncHost != nil, syncToken != nil else { return }
         guard !isPairingInFlight else { return }
         let now = Date()
-        let latencyCriticalReason = reason == "sse_event" || reason == "debounced_local_change" || reason == "background_flush"
+        let latencyCriticalReason = reason == "sse_event" || reason == "debounced_local_change"
+            || reason == "background_flush" || reason == "background_refresh"
 
         if silent,
            !forceFullPull,

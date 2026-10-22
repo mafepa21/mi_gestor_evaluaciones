@@ -2,6 +2,9 @@ import Foundation
 import MiGestorKit
 import Security
 import CryptoKit
+#if os(iOS)
+import UIKit
+#endif
 
 enum PlanningSessionSyncMerge {
     static func placement(previous: Int32, incoming: Int64?, keyPresent: Bool) -> Int32 {
@@ -832,6 +835,18 @@ extension KmpBridge {
 
         guard refreshAfterApply else { return }
 
+        // Las pantallas que cargan sus propios datos (Planner, Asistencia,
+        // Reuniones, SdA, EF…) no observan el bridge: sin este aviso seguían
+        // enseñando lo de antes y el docente editaba sobre datos viejos.
+        let remoteEntities = Set(changes.filter { $0.deviceId != localDeviceId }.map(\.entity))
+        if !remoteEntities.isEmpty {
+            NotificationCenter.default.post(
+                name: .lanSyncRemoteChangesApplied,
+                object: nil,
+                userInfo: [LanSyncRefreshPlan.entitiesUserInfoKey: remoteEntities]
+            )
+        }
+
         // Ejecutamos los refreshes en una Task de utilidad para no bloquear el
         // MainActor run loop durante las queries encadenadas. Esto evita que la UI
         // se congele cuando el servidor LAN tarda o no está disponible.
@@ -989,6 +1004,16 @@ extension KmpBridge {
                 UserDefaults.standard.set(encoded, forKey: "sync.pending.changes.v2")
             }.value
         }
+    }
+
+    /// Guarda la cola en el acto. Al pasar a segundo plano no se puede esperar
+    /// a la tanda de `persistPendingChanges()`: iOS puede congelar la app antes
+    /// y los cambios aún no enviados se perderían si el sistema la cierra.
+    func persistPendingChangesNow() {
+        pendingChangesPersistenceTask?.cancel()
+        pendingChangesPersistenceTask = nil
+        guard let encoded = try? JSONEncoder().encode(pendingOutboundChanges) else { return }
+        UserDefaults.standard.set(encoded, forKey: "sync.pending.changes.v2")
     }
 
     func invalidateNotebookCellValueIndexCache() {
@@ -4285,9 +4310,12 @@ extension KmpBridge {
             do {
                 try await Task.sleep(nanoseconds: delayNanoseconds)
                 await self.syncNow(reason: "debounced_local_change", forceFullPull: false, silent: true)
+            } catch is CancellationError {
+                // Otra edición reprogramó el envío: no es un fallo de red.
+                return
             } catch {
                 self.publishSyncState {
-                    $0.syncStatusMessage = "Auto-sync pendiente (reconectando...)"
+                    $0.syncStatusMessage = SyncCatchUpCopy.offline
                 }
             }
         }
@@ -4297,11 +4325,39 @@ extension KmpBridge {
         isAppInForeground = true
         restartAutoSyncLoopIfPaired()
         reconcileAppleCalendarIfEnabled()
+        let isPaired = pairedSyncHost != nil && syncToken != nil
+        if isPaired {
+            // Al volver, lo primero es ponerse al día: si el docente edita antes,
+            // lo hace sobre datos que el otro dispositivo ya cambió.
+            setSyncStatusMessage(SyncCatchUpCopy.catchingUp)
+        }
         Task { @MainActor [weak self] in
             guard let self else { return }
+            let startedAt = Date()
             // Al abrir la app, `bootstrap()` ya está sincronizando: no encadenar otro pase.
-            guard !self.isSyncInFlight else { return }
-            await self.syncNow(reason: "foreground", forceFullPull: false, silent: true)
+            if !self.isSyncInFlight {
+                await self.syncNow(reason: "foreground", forceFullPull: false, silent: true)
+            }
+            guard isPaired else { return }
+            await self.waitForSyncToFinish(timeoutSeconds: 30)
+            // `syncNow` tiene varias salidas tempranas que no publican nada; el
+            // aviso «Poniéndose al día…» no puede quedarse colgado.
+            guard self.syncStatusMessage == SyncCatchUpCopy.catchingUp else { return }
+            self.setSyncStatusMessage(
+                self.lastSuccessfulSyncAt >= startedAt.addingTimeInterval(-1.5)
+                    ? SyncCatchUpCopy.upToDate
+                    : SyncCatchUpCopy.offline
+            )
+        }
+    }
+
+    /// Espera a que termine la sync en curso (si la hay). `syncNow` vuelve al
+    /// instante cuando ya hay una en vuelo, y quien necesita saber el resultado
+    /// (volver a primer plano, el último envío al irse) tiene que esperarla.
+    private func waitForSyncToFinish(timeoutSeconds: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while isSyncInFlight, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
     }
 
@@ -4323,9 +4379,35 @@ extension KmpBridge {
         // fondo: `syncNow` toca repositorios Kotlin no declarados `@Throws`
         // sobre un fichero de base de datos que acaba de desaparecer.
         guard !AppleBackupService.shared.needsRestart else { return }
+        persistPendingChangesNow()
+        // Sin pedir tiempo a iOS, el último envío se cortaba al congelar la app:
+        // lo editado justo antes de bloquear el iPad no llegaba al Mac.
+        #if os(iOS)
+        var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "Envío Sync LAN") {
+            UIApplication.shared.endBackgroundTask(backgroundTaskID)
+            backgroundTaskID = .invalid
+        }
+        #endif
         Task { @MainActor [weak self] in
+            defer {
+                #if os(iOS)
+                if backgroundTaskID != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                    backgroundTaskID = .invalid
+                }
+                #endif
+            }
             guard let self else { return }
             await self.syncNow(reason: "background_flush", forceFullPull: false, silent: true)
+            await self.waitForSyncToFinish(timeoutSeconds: 20)
+            // Guardar una nota al salir encola su cambio un instante después;
+            // ese también tiene que salir antes de que iOS congele la app.
+            if !self.pendingOutboundChanges.isEmpty {
+                await self.syncNow(reason: "background_flush", forceFullPull: false, silent: true)
+                await self.waitForSyncToFinish(timeoutSeconds: 10)
+            }
+            self.persistPendingChangesNow()
         }
     }
 
@@ -4407,6 +4489,12 @@ extension KmpBridge {
                     publishSyncState {
                         $0.syncStatusMessage = "Sincronizado (\(reason))"
                     }
+                } else if SyncCatchUpCopy.isTransient(syncStatusMessage) {
+                    // Sin esto, «reconectando» o «poniéndose al día» se quedaban
+                    // fijos aunque la sync ya hubiera vuelto a funcionar.
+                    publishSyncState {
+                        $0.syncStatusMessage = SyncCatchUpCopy.upToDate
+                    }
                 }
             } catch {
                 if !silent {
@@ -4416,7 +4504,7 @@ extension KmpBridge {
                     }
                 } else {
                     publishSyncState {
-                        $0.syncStatusMessage = "Auto-sync pendiente (reconectando...)"
+                        $0.syncStatusMessage = SyncCatchUpCopy.offline
                     }
                 }
             }
@@ -4514,6 +4602,52 @@ enum LanSyncRefreshPlan {
             notebookEntities: notebookEntities
         )
     }
+
+    /// Clave del `userInfo` de `.lanSyncRemoteChangesApplied` (un `Set<String>`).
+    static let entitiesUserInfoKey = "entities"
+
+    /// Pantallas que cargan sus datos por su cuenta y deben recargarse cuando
+    /// llegan cambios del otro dispositivo.
+    enum Screen: CaseIterable {
+        case planner
+        case attendance
+        case meetings
+        case inclusion
+        case learningSituations
+        case physicalEducation
+    }
+
+    static func affects(_ screen: Screen, entities: Set<String>) -> Bool {
+        switch screen {
+        case .planner:
+            return steps(entities: entities).planning
+                || entities.contains("planner_week_plan")
+                || entities.contains { $0.hasPrefix("learning_situation") }
+        case .attendance:
+            return !entities.isDisjoint(with: ["attendance", "incident", "class_roster", "student", "class"])
+        case .meetings:
+            return !entities.isDisjoint(with: ["meetings", "meeting_agreements"])
+        case .inclusion:
+            return !entities.isDisjoint(with: [
+                "student_support_measures", "student_tutoring_sessions", "incident", "student", "class_roster"
+            ])
+        case .learningSituations:
+            return entities.contains { $0.hasPrefix("learning_situation") }
+                || !entities.isDisjoint(with: ["teaching_unit", "planning_session"])
+        case .physicalEducation:
+            return !entities.isDisjoint(with: [
+                "incident", "planning_session", "session_journal", "evaluation", "grade", "attendance",
+                "notebook_instrument_template", "notebook_instrument_item", "notebook_instrument_response"
+            ])
+        }
+    }
+}
+
+extension Notification.Name {
+    /// Se publica en el hilo principal tras aplicar cambios llegados del otro
+    /// dispositivo. `userInfo[LanSyncRefreshPlan.entitiesUserInfoKey]` lleva las
+    /// entidades. Las vistas se apuntan con `.reloadOnLanSync(_:perform:)`.
+    static let lanSyncRemoteChangesApplied = Notification.Name("lanSyncRemoteChangesApplied")
 }
 
 fileprivate extension Array {

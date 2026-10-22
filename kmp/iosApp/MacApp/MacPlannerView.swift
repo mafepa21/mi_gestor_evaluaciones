@@ -93,6 +93,7 @@ struct MacPlannerView: View {
         .onAppear {
             Task { await vm.refreshOnReappear() }
         }
+        .reloadOnLanSync(.planner) { await vm.refreshOnReappear() }
 
         .task {
             await vm.bind(bridge: bridge)

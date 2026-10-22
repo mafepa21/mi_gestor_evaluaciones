@@ -341,6 +341,7 @@ struct MacPhysicalTestsView: View {
         }
         .background(MacAppStyle.pageBackground)
         .task { await reload() }
+        .reloadOnLanSync(.physicalEducation) { await reload() }
         .appOnChange(of: selectedClassId) { _ in Task { await reload() } }
         .appOnChange(of: selectedTestId) { _ in
             syncSelectedStudent()

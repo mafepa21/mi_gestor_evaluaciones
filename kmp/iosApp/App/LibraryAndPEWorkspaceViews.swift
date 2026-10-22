@@ -382,6 +382,7 @@ struct EFIncidentsWorkspaceView: View {
             }
         }
         .task { await reload() }
+        .reloadOnLanSync(.physicalEducation) { await reload() }
         .sheet(isPresented: $showingCreateSheet) {
             CreatePEIncidentSheet(defaultClassId: selectedClassId) { incidentId, category, workflowState, sessionId, note in
                 let entry = PEIncidentMetadata(
@@ -824,6 +825,7 @@ struct PESessionsWorkspaceView: View {
             }
         }
         .task { await reload() }
+        .reloadOnLanSync(.physicalEducation) { await reload() }
         .sheet(isPresented: $showingCreateSheet) {
             CreatePESessionSheet(defaultClassId: selectedClassId) {
                 Task { await reload() }
@@ -1083,6 +1085,7 @@ struct PEMaterialWorkspaceView: View {
             }
         }
         .task { await reload() }
+        .reloadOnLanSync(.physicalEducation) { await reload() }
         .sheet(isPresented: $showingCreateSheet) {
             CreatePEMaterialRecordSheet(defaultClassId: selectedClassId, sessions: sessions) { record in
                 records.removeAll { $0.id == record.id }

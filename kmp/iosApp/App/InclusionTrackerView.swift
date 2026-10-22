@@ -182,6 +182,9 @@ struct InclusionTrackerView: View {
                 await store.load(bridge: bridge, classId: selectedClassId)
                 selectFirstIfWide()
             }
+            .reloadOnLanSync(.inclusion) {
+                await store.load(bridge: bridge, classId: selectedClassId)
+            }
             .sheet(isPresented: $showingAddTask) {
                 if let board = currentBoard, let classId = selectedClassId {
                     InclusionAddTaskSheet(

@@ -307,6 +307,68 @@ final class PlannerMonthGridTests: XCTestCase {
         XCTAssertFalse(planner.students)
     }
 
+    func testRemoteChangesReloadTheScreensThatShowThem() {
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.planner, entities: ["session_journal"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.planner, entities: ["learning_situation_session_plan"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.attendance, entities: ["attendance"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.meetings, entities: ["meeting_agreements"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.inclusion, entities: ["student_support_measures"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.learningSituations, entities: ["learning_situation_tournament"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.physicalEducation, entities: ["incident"]))
+    }
+
+    func testRemoteChangesDoNotReloadUnrelatedScreens() {
+        XCTAssertFalse(LanSyncRefreshPlan.affects(.meetings, entities: ["attendance", "grade"]))
+        XCTAssertFalse(LanSyncRefreshPlan.affects(.planner, entities: ["attendance"]))
+        XCTAssertFalse(LanSyncRefreshPlan.affects(.attendance, entities: ["planning_session"]))
+        for screen in LanSyncRefreshPlan.Screen.allCases {
+            XCTAssertFalse(LanSyncRefreshPlan.affects(screen, entities: []))
+        }
+    }
+
+    func testSyncBadgeSaysWhenItCannotReachTheOtherDevice() {
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: SyncCatchUpCopy.offline,
+                syncPendingChanges: 3,
+                pairedSyncHost: "127.0.0.1"
+            ),
+            .sinConexion(pendientes: 3)
+        )
+        // El mensaje antiguo también cuenta como «sin conexión», no como «al día».
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: "Auto-sync pendiente (reconectando...)",
+                syncPendingChanges: 0,
+                pairedSyncHost: "127.0.0.1"
+            ),
+            .sinConexion(pendientes: 0)
+        )
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: SyncCatchUpCopy.catchingUp,
+                syncPendingChanges: 0,
+                pairedSyncHost: "127.0.0.1"
+            ),
+            .poniendoseAlDia
+        )
+        XCTAssertEqual(
+            resolvedSyncStatusBadgeState(
+                syncStatusMessage: SyncCatchUpCopy.upToDate,
+                syncPendingChanges: 0,
+                pairedSyncHost: "127.0.0.1"
+            ),
+            .sincronizado
+        )
+    }
+
+    func testOnlyTransientSyncMessagesAreClearedAfterASuccessfulSync() {
+        XCTAssertTrue(SyncCatchUpCopy.isTransient(SyncCatchUpCopy.catchingUp))
+        XCTAssertTrue(SyncCatchUpCopy.isTransient(SyncCatchUpCopy.offline))
+        XCTAssertFalse(SyncCatchUpCopy.isTransient("Error al refrescar datos tras sincronizar: x"))
+        XCTAssertFalse(SyncCatchUpCopy.isTransient(SyncCatchUpCopy.upToDate))
+    }
+
     func testFailedReloadKeepsThePreviousList() {
         let previous = ["diario-a"]
         XCTAssertEqual(

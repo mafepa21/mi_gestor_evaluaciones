@@ -48,6 +48,10 @@ extension NotebookModuleView {
         switch notebookSyncStatusState {
         case .inactivo:
             return "Sync inactiva"
+        case .poniendoseAlDia:
+            return "Poniéndose al día"
+        case .sinConexion:
+            return "Sin conexión"
         case .pendiente(let count):
             return "\(count) pnd."
         case .error:

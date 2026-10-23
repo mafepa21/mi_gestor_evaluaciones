@@ -344,6 +344,34 @@ final class PlannerMonthGridTests: XCTestCase {
         XCTAssertEqual(events, ["{\"a\":1}", "{\"b\":2}"])
     }
 
+    func testNetworkChangeReconnectsOnlyWhenTheNetworkComesBackDifferent() {
+        let wifiA = LanNetworkChange.signature(isSatisfied: true, interfaces: ["en0"], gateways: ["192.168.86.1:0"])
+        let wifiB = LanNetworkChange.signature(isSatisfied: true, interfaces: ["en0"], gateways: ["10.12.0.1:0"])
+        let down = LanNetworkChange.signature(isSatisfied: false, interfaces: [], gateways: [])
+        // Primera lectura al arrancar: el arranque ya sincroniza.
+        XCTAssertFalse(LanNetworkChange.shouldReconnect(previous: nil, current: wifiA, isSatisfied: true))
+        XCTAssertFalse(LanNetworkChange.shouldReconnect(previous: wifiA, current: wifiA, isSatisfied: true))
+        // Sin red no hay a quién conectarse.
+        XCTAssertFalse(LanNetworkChange.shouldReconnect(previous: wifiA, current: down, isSatisfied: false))
+        // Vuelve el Wi-Fi, o la misma interfaz en otra red.
+        XCTAssertTrue(LanNetworkChange.shouldReconnect(previous: down, current: wifiA, isSatisfied: true))
+        XCTAssertTrue(LanNetworkChange.shouldReconnect(previous: wifiA, current: wifiB, isSatisfied: true))
+    }
+
+    func testSyncHeroSaysOfflineInsteadOfSynced() {
+        let hero = SyncLanHeroCopy.snapshot(isPaired: true, pendingChanges: 2, statusMessage: SyncCatchUpCopy.offline)
+        XCTAssertEqual(hero.kind, .offline)
+        XCTAssertEqual(hero.title, "Sin conexión")
+        XCTAssertTrue(hero.isAttention)
+        XCTAssertTrue(hero.detail.contains("2 cambios"))
+    }
+
+    func testDeadSyncChannelIsDetectedBeforeAMinute() {
+        // El helper manda «sigo vivo» cada 15 s.
+        XCTAssertGreaterThan(SyncEventListener.idleTimeout, 2 * 15)
+        XCTAssertLessThan(SyncEventListener.idleTimeout, 60)
+    }
+
     func testMacScreensReloadWithRemoteChanges() {
         XCTAssertTrue(LanSyncRefreshPlan.affects(.students, entities: ["student_support_measures"]))
         XCTAssertTrue(LanSyncRefreshPlan.affects(.rubrics, entities: ["rubric_assessment"]))

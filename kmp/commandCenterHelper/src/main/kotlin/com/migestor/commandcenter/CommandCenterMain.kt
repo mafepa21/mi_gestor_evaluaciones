@@ -78,6 +78,8 @@ private fun emitSnapshotState(snapshot: CommandCenterSnapshot) {
         val device = snapshot.pairedDeviceId ?: ""
         println("[command-center] State: connected|device=$device")
     }
+    // Si el iPad tiene abierto el canal de avisos ahora mismo (la app del Mac lo muestra).
+    println("[command-center] State: peer|online=${if (snapshot.peerOnline) 1 else 0}")
 }
 
 private data class CommandCenterOptions(

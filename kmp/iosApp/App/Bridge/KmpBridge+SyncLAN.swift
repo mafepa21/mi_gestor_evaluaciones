@@ -4774,6 +4774,8 @@ enum LanSyncRefreshPlan {
         case physicalEducation
         case students
         case rubrics
+        /// Notas, evaluaciones e informes (Centro de evaluación, Informes).
+        case evaluation
         /// Resumen de todo: cualquier cambio le afecta.
         case dashboard
     }
@@ -4807,6 +4809,12 @@ enum LanSyncRefreshPlan {
             ])
         case .rubrics:
             return !entities.isDisjoint(with: ["rubric_bundle", "rubric_assessment", "evaluation", "teaching_unit"])
+        case .evaluation:
+            return !entities.isDisjoint(with: [
+                "grade", "evaluation", "rubric_assessment", "rubric_bundle", "notebook_cell", "notebook_column",
+                "notebook_tab", "notebook_column_category", "notebook_instrument_response", "attendance",
+                "class_roster", "student"
+            ])
         case .dashboard:
             return !entities.isEmpty
         }

@@ -40,4 +40,5 @@
 - La app iOS necesita `NSLocalNetworkUsageDescription` y `NSBonjourServices` (`_migestor-sync._tcp`) en `Config/iOS-Info.plist` (desde `project.yml`): sin ellas iOS bloquea Bonjour en silencio y el iPad no reencuentra al Mac.
 - En macOS el helper se anuncia con `dns-sd -R` (`NativeDnsSdAdvertiser`), que resuelve como `<nombre-del-Mac>.local`. Un helper matado con `-9` deja su `dns-sd` vivo: se limpia con `pkill` antes de registrar. JmDNS queda solo como respaldo fuera de macOS.
 - Estado «iPad conectado» en el Mac: el helper emite `State: peer|online=0/1` según haya una conexión SSE no-loopback.
+- **Regla para pantallas nuevas**: si una vista carga sus datos en `.task`/`.task(id:)` y los guarda en `@State` o en un store propio, tiene que llevar `.reloadOnLanSync(.pantalla) { … }` con la misma carga. Si no, lo llegado del otro dispositivo no se ve hasta tocar la sección. Las hojas de edición abiertas no deben recargarse solas.
 - El POST `/sync/local-changes` solo se acepta desde loopback (decisión de seguridad, no tocar).

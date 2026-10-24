@@ -82,7 +82,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
-- Buzón para entregas web y medias de coevaluación: `xcodebuild test` de `MiGestorPlannerTests` (492 tests, 5 nuevos, 4 omitidos, 0 fallos) OK en macOS; build `MiGestorKMPiOS` para simulador OK. Circuito real del buzón probado con la inscripción de un torneo (alumnado ficticio). No verificado: circuito real de una autoevaluación y de una coevaluación publicadas desde «Entregas web».
+- Buzón para entregas web y medias de coevaluación: `xcodebuild test` de `MiGestorPlannerTests` (492 tests, 5 nuevos, 4 omitidos, 0 fallos) OK en macOS; build `MiGestorKMPiOS` para simulador OK. Circuito real del buzón probado con la inscripción de un torneo (alumnado ficticio). QA manual: una autoevaluación de prueba publicada desde «Entregas web», enviada desde el móvil, llegó sola a su columna. No verificado: circuito real de una coevaluación. Decisión en `ADR-2026-10-24-buzon-entregas-web.md`.
 
 - Voz de Pista: `xcodegen generate` y `swiftc -parse` sobre los 11 archivos Swift creados/modificados sin errores sintácticos. `xcodebuild` completo no ejecutado en el sandbox porque `Xcode-beta.app` está en `/Users/mariofernandez/Downloads` fuera del acceso del contenedor y CommandLineTools tiene desfase de compilador Swift (`6.4.0.34.1` vs SDK `6.4.0.31.4`).
 - Retención de copias: `./scripts/verify_apple_builds.sh` compila macOS e iOS Simulator; `xcodebuild test` (MiGestorPlannerTests, macOS) pasa `AppleBackupRetentionTests` (10) y `AppleAutomaticBackupScheduleTests` (6). Sin prueba manual en la app.

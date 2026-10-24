@@ -372,6 +372,14 @@ final class PlannerMonthGridTests: XCTestCase {
         XCTAssertLessThan(SyncEventListener.idleTimeout, 60)
     }
 
+    func testEvaluationScreensReloadWithGradesButNotWithThePlanner() {
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.evaluation, entities: ["grade"]))
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.evaluation, entities: ["rubric_assessment"]))
+        XCTAssertFalse(LanSyncRefreshPlan.affects(.evaluation, entities: ["planning_session"]))
+        // El diario de sesiones vive en el Planner.
+        XCTAssertTrue(LanSyncRefreshPlan.affects(.planner, entities: ["session_journal"]))
+    }
+
     func testMacScreensReloadWithRemoteChanges() {
         XCTAssertTrue(LanSyncRefreshPlan.affects(.students, entities: ["student_support_measures"]))
         XCTAssertTrue(LanSyncRefreshPlan.affects(.rubrics, entities: ["rubric_assessment"]))

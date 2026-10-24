@@ -140,6 +140,7 @@ struct AttendanceMatrixGridView: View {
             }
         }
         .animation(uiFeatureFlags.animation(.easeInOut(duration: 0.2)), value: pendingUndo?.id)
+        .reloadOnLanSync(.attendance) { await reloadMatrixData() }
         .task(id: "\(selectedClassId)_\(selectedRange.rawValue)") {
             await reloadMatrixData()
         }

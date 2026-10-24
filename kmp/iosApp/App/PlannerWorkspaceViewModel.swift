@@ -14,6 +14,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     @Published var isLoaded = false
     private var isBinding = false
+    /// Sync LAN pidió refrescar durante la primera carga (ver `refreshOnReappear`).
+    private var refreshRequestedWhileBinding = false
     @Published var activeSection: PlannerWorkspaceSection = .week
     @Published var density: PlannerDensity = .standard
     @Published var groups: [SchoolClass] = []
@@ -233,6 +235,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         await reloadWeekSessions(keepSelection: false)
         isLoaded = true
         lastReappearRefreshAt = Date()
+        if refreshRequestedWhileBinding {
+            refreshRequestedWhileBinding = false
+            await reloadWeekSessions(keepSelection: true)
+        }
         PerfLog.finish("Planner: semana visible", start: perfStart)
 
         await PerfLog.measure("Planner: paso exámenes 1º Bach", thresholdMs: 100) {
@@ -248,7 +254,12 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     /// Al volver al Planner se ve al instante lo que ya había; después se refresca
     /// la semana por detrás (recoge lo guardado en el Diario o llegado por Sync LAN).
     func refreshOnReappear() async {
-        guard isLoaded else { return }
+        guard isLoaded else {
+            // Llegó algo por Sync LAN mientras se hacía la primera carga: esa carga pudo
+            // leer la base antes y quedarse con lo viejo. Se repite al terminar.
+            if isBinding { refreshRequestedWhileBinding = true }
+            return
+        }
         // Fuera del Planner se pudo editar el calendario o una SA (o llegar por Sync LAN).
         invalidateReadCaches()
         if Date().timeIntervalSince(lastReappearRefreshAt) > Self.reappearRefreshInterval {

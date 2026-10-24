@@ -97,6 +97,9 @@ struct CoursesWorkspaceView: View {
             } message: { year in
                 Text("Se eliminarán \(year.classCount) grupos y \(year.enrollmentCount) matrículas archivadas de \(year.name).")
             }
+            .reloadOnLanSync(.students) {
+                if let selectedClassId { await loadSummary(for: selectedClassId) }
+            }
             .task {
                 await bridge.ensureClassesLoaded()
                 if selectedClassId == nil {

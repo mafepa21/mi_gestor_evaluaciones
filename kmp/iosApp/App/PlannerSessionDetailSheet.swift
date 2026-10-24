@@ -173,6 +173,7 @@ struct PlannerSessionDetailSheet: View {
                 try? await Task.sleep(for: .seconds(30))
             }
         }
+        .reloadOnLanSync(.planner) { await loadDetailedPlan() }
         .task(id: session.id) {
             isAnnexesExpanded = false
             didScrollToCurrentStep = false

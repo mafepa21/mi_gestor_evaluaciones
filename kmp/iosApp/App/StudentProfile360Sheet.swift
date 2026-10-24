@@ -157,6 +157,7 @@ struct StudentProfile360Sheet: View {
                 }
             }
         }
+        .reloadOnLanSync(.dashboard) { await loadProfileData() }
         .task(id: studentId) {
             educationalInsight = nil
             await loadProfileData()

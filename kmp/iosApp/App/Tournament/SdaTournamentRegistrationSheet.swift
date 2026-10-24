@@ -24,6 +24,8 @@ struct SdaTournamentRegistrationSheet: View {
     @State private var importMessage: String?
     @State private var errorMessage: String?
     @State private var pairing: TournamentPairingResult?
+    @State private var isCollecting = false
+    @State private var inboxFingerprint: String? = WebSubmissionInbox.accountKey.map(WebSubmissionInbox.fingerprint)
     @State private var isConfirmingCreate = false
 
     private var registration: TournamentRegistration? { store.plan.registration }
@@ -54,7 +56,10 @@ struct SdaTournamentRegistrationSheet: View {
                 }
             }
         }
-        .task { await loadStudents() }
+        .task {
+            await loadStudents()
+            await collectFromInbox()
+        }
         .sheet(isPresented: $showingMail) {
             if let registration {
                 WebSubmissionLinkEmailSheet(task: taskInfo(registration), links: links(registration))
@@ -82,6 +87,7 @@ struct SdaTournamentRegistrationSheet: View {
 
     // MARK: Crear el formulario
 
+    @ViewBuilder
     private var publishSection: some View {
         Section {
             Text("Cada alumno de \(className) recibe un enlace. Elige si participa y con quién, de una lista con los nombres de su curso.")
@@ -103,6 +109,34 @@ struct SdaTournamentRegistrationSheet: View {
             Text("Formulario de inscripción")
         } footer: {
             Text("La lista muestra nombre y primer apellido. Solo la ven quienes tienen un enlace de este curso.")
+        }
+        inboxSection
+    }
+
+    /// Envío directo: la web deja las respuestas en el buzón y la app las recoge sola.
+    private var inboxSection: some View {
+        Section {
+            if let inboxFingerprint {
+                Label("Activado en este dispositivo", systemImage: "checkmark.circle")
+                    .foregroundStyle(.green)
+                DisclosureGroup("Huella para el servidor") {
+                    Text(inboxFingerprint)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                }
+            } else {
+                Button {
+                    inboxFingerprint = WebSubmissionInbox.ensureAccountKey()
+                    if inboxFingerprint == nil { errorMessage = "No se pudo guardar la clave del buzón en el llavero." }
+                } label: {
+                    Label("Activar envío directo", systemImage: "tray.and.arrow.down")
+                        .frame(minHeight: 44)
+                }
+            }
+        } header: {
+            Text("Envío directo")
+        } footer: {
+            Text("Con el envío directo, las respuestas llegan solas a la app. Sin él, el alumnado las manda por correo y tú importas los ficheros. La huella no es secreta: es lo que se instala en el servidor.")
         }
     }
 
@@ -133,10 +167,19 @@ struct SdaTournamentRegistrationSheet: View {
         let result = currentPairing(registration)
         let participants = registration.entries.values.filter(\.participates).count
         return Section {
+            if registration.inboxURL != nil {
+                Button {
+                    Task { await collectFromInbox() }
+                } label: {
+                    Label(isCollecting ? "Comprobando…" : "Comprobar respuestas nuevas", systemImage: "arrow.clockwise")
+                        .frame(minHeight: 44)
+                }
+                .disabled(isCollecting)
+            }
             Button {
                 showingPicker = true
             } label: {
-                Label("Importar respuestas", systemImage: "tray.and.arrow.down")
+                Label(registration.inboxURL != nil ? "Importar ficheros del correo" : "Importar respuestas", systemImage: "tray.and.arrow.down")
                     .frame(minHeight: 44)
             }
             if let importMessage {
@@ -301,7 +344,7 @@ struct SdaTournamentRegistrationSheet: View {
         isPublishing = true
         defer { isPublishing = false }
         do {
-            let published = try TournamentRegistration.publish(
+            let published = try await TournamentRegistration.publish(
                 tournamentName: store.plan.name,
                 students: students.map { (id: $0.id, firstName: $0.firstName, lastName: $0.lastName) },
                 baseURL: baseURL,
@@ -324,6 +367,15 @@ struct SdaTournamentRegistrationSheet: View {
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
             if let data = try? Data(contentsOf: url) { files.append((name: url.lastPathComponent, data: data)) }
         }
+        _ = importData(files, into: &form, manifest: manifest)
+    }
+
+    /// Valida y guarda unas entregas. Devuelve la vista previa para saber qué se aceptó.
+    private func importData(
+        _ files: [(name: String, data: Data)],
+        into form: inout TournamentRegistration,
+        manifest: WebFormManifest
+    ) -> WebSubmissionImportPreview {
         let names = Dictionary(
             students.map { ($0.id, "\($0.firstName) \($0.lastName)") },
             uniquingKeysWith: { first, _ in first }
@@ -339,6 +391,43 @@ struct SdaTournamentRegistrationSheet: View {
         if !preview.alreadyImported.isEmpty { parts.append("\(preview.alreadyImported.count) ya estaban") }
         if !preview.rejections.isEmpty { parts.append("\(preview.rejections.count) no son de este torneo o no se pueden leer") }
         importMessage = parts.joined(separator: " · ") + "."
+        return preview
+    }
+
+    /// Recoge del buzón, importa y borra del servidor lo ya importado.
+    private func collectFromInbox() async {
+        guard !isCollecting, var form = registration, let url = form.inboxURL, let manifest = form.manifest,
+              !students.isEmpty else { return }
+        guard let readToken = WebSubmissionInbox.loadToken(
+            name: WebSubmissionInbox.readTokenName(formInstanceId: form.formInstanceId)
+        ) else {
+            importMessage = "Las respuestas directas solo se recogen en el dispositivo que creó el formulario."
+            return
+        }
+        isCollecting = true
+        defer { isCollecting = false }
+        let client = WebSubmissionInboxClient(url: url)
+        do {
+            let collected = try await client.collect(formInstanceId: form.formInstanceId, readToken: readToken)
+            guard !collected.isEmpty else {
+                importMessage = "No hay respuestas nuevas."
+                return
+            }
+            let preview = importData(
+                collected.map { (name: "buzón \($0.alias.prefix(6))", data: $0.data) },
+                into: &form,
+                manifest: manifest
+            )
+            // Se borra lo que ya está en la app (nuevo o repetido). Lo rechazado se queda para revisarlo.
+            let kept = Set(preview.drafts.map(\.submissionId) + preview.alreadyImported.map(\.submissionId))
+            try await client.delete(
+                formInstanceId: form.formInstanceId,
+                readToken: readToken,
+                entries: collected.filter { kept.contains($0.submissionId) }.map { ($0.alias, $0.submissionId) }
+            )
+        } catch {
+            importMessage = (error as? LocalizedError)?.errorDescription ?? "No se pudo comprobar el buzón."
+        }
     }
 
     private func createTeams() {

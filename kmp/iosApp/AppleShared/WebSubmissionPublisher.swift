@@ -121,7 +121,11 @@ enum WebSubmissionPublisher {
         expiresAtEpochMs: Int64,
         formInstanceId: String = UUID().uuidString,
         mode: String = "self",
-        peerTargets: [PeerTargetToPublish] = []
+        peerTargets: [PeerTargetToPublish] = [],
+        /// Buzón de entregas (`WebSubmissionInbox.path`) y su clave de depósito. Con los
+        /// dos, la web envía la entrega directa; sin ellos, solo por correo.
+        inboxPath: String? = nil,
+        depositToken: String? = nil
     ) throws -> PublishedForm {
         guard !items.isEmpty else { throw PublishError.noItems }
         guard !students.isEmpty else { throw PublishError.noStudents }
@@ -185,6 +189,8 @@ enum WebSubmissionPublisher {
         if let deliveryEmail, !deliveryEmail.isEmpty {
             manifiesto["deliveryEmail"] = deliveryEmail
         }
+        let usaBuzon = inboxPath != nil && depositToken != nil
+        if usaBuzon, let inboxPath { manifiesto["inbox"] = inboxPath }
         if !sections.isEmpty {
             manifiesto["sections"] = sections.map { seccion -> [String: Any] in
                 var json: [String: Any] = ["sectionId": seccion.sectionId, "title": seccion.title]
@@ -269,7 +275,7 @@ enum WebSubmissionPublisher {
             links.append((
                 studentId: alumno.id,
                 studentName: alumno.name,
-                url: "\(base)/#f=\(formInstanceId)&a=\(alias)\(targetParam)"
+                url: "\(base)/#f=\(formInstanceId)&a=\(alias)\(usaBuzon ? "&b=\(depositToken ?? "")" : "")\(targetParam)"
             ))
         }
 

@@ -408,6 +408,7 @@ extension KmpBridge {
             }
         }
 
+        let buzon = WebSubmissionInbox.prepareRegistration(baseURL: baseURL)
         let publicado = try WebSubmissionPublisher.publish(
             title: detalle.template_.title,
             subtitle: nil,
@@ -424,7 +425,17 @@ extension KmpBridge {
             deliveryEmail: deliveryEmail,
             expiresAtEpochMs: Int64(expiresAt.timeIntervalSince1970 * 1000),
             mode: mode,
-            peerTargets: peerTargetsToPublish
+            peerTargets: peerTargetsToPublish,
+            inboxPath: buzon == nil ? nil : WebSubmissionInbox.path,
+            depositToken: buzon?.depositToken
+        )
+
+        // Con buzón, el registro va antes que nada: si falla no se publica, porque
+        // los enlaces apuntarían a un buzón que no conoce el formulario.
+        try await buzon?.register(
+            formInstanceId: publicado.formInstanceId,
+            expiresAt: expiresAt,
+            aliases: publicado.aliases.map(\.alias)
         )
 
         // La clave primero: un formulario registrado sin clave en el llavero no se
@@ -652,6 +663,7 @@ extension KmpBridge {
         }
 
         var decisionsByCell: [TargetCellKey: [WebSubmissionImportDecision]] = [:]
+        var peerStores: [String: WebPeerEvaluationStore] = [:]
         for decision in decisions {
             let key = TargetCellKey(
                 classId: decision.draft.classId,
@@ -665,51 +677,36 @@ extension KmpBridge {
             let primerBorrador = cellDecisions[0].draft
             let nombre = primerBorrador.studentName ?? "código \(primerBorrador.alias.prefix(6))"
 
-            // Recolectar todas las respuestas agrupadas por itemId
-            var answersByItemId: [String: [(answer: WebResolvedAnswer, draft: WebSubmissionDraft)]] = [:]
-            for dec in cellDecisions {
-                for ans in dec.draft.answers {
-                    answersByItemId[ans.itemId, default: []].append((ans, dec.draft))
+            // Coevaluación: se guarda cada evaluación y la celda se recalcula con
+            // todas las recibidas hasta ahora, no solo con las de esta importación.
+            var answerSets: [[WebResolvedAnswer]] = cellDecisions.map(\.draft.answers)
+            if primerBorrador.isPeerEvaluation,
+               var almacen = peerStores[primerBorrador.formInstanceId] ?? WebPeerEvaluationStore.forForm(primerBorrador.formInstanceId) {
+                for dec in cellDecisions {
+                    almacen.record(
+                        evaluatorAlias: dec.draft.alias,
+                        targetStudentId: cellKey.studentId,
+                        clientSubmittedAt: dec.draft.clientSubmittedAt,
+                        answers: dec.draft.answers
+                    )
+                }
+                peerStores[primerBorrador.formInstanceId] = almacen
+                answerSets = almacen.evaluations(for: cellKey.studentId).map(\.answers)
+            }
+
+            var answersByItemId: [String: [WebResolvedAnswer]] = [:]
+            for set in answerSets {
+                for ans in set {
+                    answersByItemId[ans.itemId, default: []].append(ans)
                 }
             }
 
             var responses: [NotebookInstrumentResponse] = []
-            for (itemId, answerPairs) in answersByItemId {
-                guard !answerPairs.isEmpty else { continue }
-                let itemType = answerPairs[0].answer.type
-
-                var finalNumber: KotlinDouble?
-                var finalText: String = ""
-                var finalBool: KotlinBoolean?
-
-                switch itemType {
-                case .scale1To4, .number:
-                    let numbers = answerPairs.compactMap { $0.answer.numberValue }
-                    if !numbers.isEmpty {
-                        let media = numbers.reduce(0.0, +) / Double(numbers.count)
-                        finalNumber = KotlinDouble(value: media)
-                        if media.truncatingRemainder(dividingBy: 1) == 0 {
-                            finalText = String(Int(media))
-                        } else {
-                            finalText = String(format: "%.2f", media)
-                        }
-                    }
-                case .check:
-                    let bools = answerPairs.compactMap { $0.answer.boolValue }
-                    if !bools.isEmpty {
-                        let trues = bools.filter { $0 }.count
-                        let majority = trues > (bools.count / 2)
-                        finalBool = KotlinBoolean(value: majority)
-                        finalText = majority ? "Sí" : "No"
-                    }
-                case .text, .choice:
-                    let texts = answerPairs.compactMap { $0.answer.textValue?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-                    if texts.count == 1 {
-                        finalText = texts[0]
-                    } else if texts.count > 1 {
-                        finalText = texts.joined(separator: "\n")
-                    }
-                }
+            for (itemId, answers) in answersByItemId {
+                guard let combinada = WebAnswerCombiner.combine(answers) else { continue }
+                let finalText = combinada.text
+                let finalBool = combinada.bool.map { KotlinBoolean(value: $0) }
+                let finalNumber = combinada.number.map { KotlinDouble(value: $0) }
 
                 responses.append(
                     NotebookInstrumentResponse(
@@ -768,6 +765,10 @@ extension KmpBridge {
                     (studentName: nombre, reason: error.localizedDescription)
                 )
             }
+        }
+
+        for almacen in peerStores.values {
+            try? almacen.save()
         }
 
         if resultado.imported > 0 {

@@ -287,6 +287,8 @@ enum SyncLanHeroCopy {
         case error
         case syncing
         case cancelled
+        /// Enlazado, pero ahora no se llega al otro dispositivo.
+        case offline
         case pending
         case synced
     }
@@ -298,7 +300,7 @@ enum SyncLanHeroCopy {
 
         var isAttention: Bool {
             switch kind {
-            case .error, .pending, .cancelled:
+            case .error, .pending, .cancelled, .offline:
                 return true
             case .unpaired, .syncing, .synced:
                 return false
@@ -353,6 +355,14 @@ enum SyncLanHeroCopy {
                 detail: trimmed.isEmpty ? unpairedIdleDetail : trimmed,
                 kind: .unpaired
             )
+        }
+
+        // Antes salía «Sincronizado» en verde con el aviso «Sin conexión» debajo.
+        if SyncCatchUpCopy.isOffline(trimmed) {
+            let queued = pendingChanges == 0
+                ? "Se reconectará solo en cuanto los dos estéis en la misma Wi-Fi."
+                : "\(pendingChanges) cambio\(pendingChanges == 1 ? "" : "s") se enviará\(pendingChanges == 1 ? "" : "n") al reconectar. Se reconectará solo en cuanto los dos estéis en la misma Wi-Fi."
+            return Snapshot(title: "Sin conexión", detail: queued, kind: .offline)
         }
 
         if pendingChanges > 0 {
@@ -854,6 +864,8 @@ struct SyncLanView: View {
             return "arrow.triangle.2.circlepath"
         case .cancelled:
             return "xmark.circle"
+        case .offline:
+            return "wifi.exclamationmark"
         case .pending:
             return "arrow.triangle.2.circlepath"
         case .synced:
@@ -867,7 +879,7 @@ struct SyncLanView: View {
             return .secondary
         case .error, .cancelled:
             return IOSAppStyle.danger
-        case .syncing, .pending:
+        case .syncing, .pending, .offline:
             return IOSAppStyle.warning
         case .synced:
             return IOSAppStyle.success

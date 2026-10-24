@@ -147,6 +147,7 @@ struct DashboardView: View {
                 .presentationDragIndicator(.visible)
                 #endif
             }
+            .reloadOnLanSync(.dashboard) { await reloadDashboard() }
             .task {
                 await bridge.ensureClassesLoaded()
                 if selectedClassId == nil {

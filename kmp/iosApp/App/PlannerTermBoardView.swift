@@ -59,6 +59,7 @@ struct PlannerTermBoardView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .reloadOnLanSync(.planner) { await reloadData() }
         .task(id: vm.selectedGroupId) {
             await reloadData()
         }

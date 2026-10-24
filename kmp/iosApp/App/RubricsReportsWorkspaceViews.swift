@@ -337,6 +337,10 @@ struct RubricsWorkspaceView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(appPageBackground(for: colorScheme))
         }
+        .reloadOnLanSync(.rubrics) {
+            await reloadUsageSummary()
+            await reloadTeachingUnits()
+        }
         .task {
             if selectedRubricId == nil {
                 selectedRubricId = filteredRubrics.first?.rubric.id
@@ -839,6 +843,7 @@ struct ReportsWorkspaceView: View {
             }
         }
         .background(appPageBackground(for: colorScheme))
+        .reloadOnLanSync(.evaluation) { await refreshWorkspaceContext() }
         .task {
             refreshAvailability()
             await refreshWorkspaceContext()

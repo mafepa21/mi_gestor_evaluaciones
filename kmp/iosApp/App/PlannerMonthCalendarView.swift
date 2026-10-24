@@ -38,6 +38,10 @@ struct PlannerMonthCalendarView: View {
                 .padding(.horizontal, EvaluationDesign.screenPadding)
                 .padding(.bottom, EvaluationDesign.screenPadding)
         }
+        .reloadOnLanSync(.planner) {
+            vm.invalidateReadCaches()
+            await vm.reloadMonthData()
+        }
         .task(id: monthReloadKey) {
             await vm.reloadMonthData()
         }

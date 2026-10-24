@@ -22,6 +22,12 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_migestor-sync._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>MiGestor busca tu Mac en la misma red Wi-Fi para sincronizar los datos entre los dos.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

@@ -27,6 +27,11 @@ targets:
           - fetch
         BGTaskSchedulerPermittedIdentifiers:
           - com.migestor.ios.sync-refresh
+        # Sin estas dos claves iOS bloquea la búsqueda Bonjour del Mac: el iPad no lo
+        # reencontraba cuando cambiaba de IP o de Wi-Fi.
+        NSLocalNetworkUsageDescription: "MiGestor busca tu Mac en la misma red Wi-Fi para sincronizar los datos entre los dos."
+        NSBonjourServices:
+          - _migestor-sync._tcp
         # Sin esto xcodegen escribe 1.0/1 y taparían MARKETING_VERSION.
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"

@@ -377,6 +377,7 @@ struct PhysicalTestsWorkspaceView: View {
                     }
                 }
             }
+            .reloadOnLanSync(.physicalEducation) { await reload() }
             .task { await reload() }
             .appOnChange(of: selectedClassId) { _ in Task { await reload() } }
             .appOnChange(of: selectedClassId) { _ in syncSelectedClassDefaults() }

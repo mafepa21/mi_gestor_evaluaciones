@@ -40,6 +40,7 @@ struct PlannerSummaryDashboard: View {
             }
             .padding(EvaluationDesign.screenPadding)
         }
+        .reloadOnLanSync(.planner) { await reloadRangeData() }
         .task(id: rangeTaskKey) {
             await reloadRangeData()
         }

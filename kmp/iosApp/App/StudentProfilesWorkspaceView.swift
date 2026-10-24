@@ -119,6 +119,7 @@ struct StudentProfilesWorkspaceView: View {
 
     var body: some View {
         studentWorkspaceContent
+            .reloadOnLanSync(.dashboard) { await reloadProfile() }
             .task {
                 await bridge.ensureClassesLoaded()
                 await bridge.selectStudentsClass(classId: selectedClassId)

@@ -11,6 +11,8 @@ final class MacCommandCenterCoordinator: ObservableObject {
 
     @Published private(set) var statusMessage: String = "La sincronización LAN no está activa en este Mac."
     @Published private(set) var serviceState: ApplePairingServiceState = .stopped
+    /// El iPad tiene abierto ahora mismo el canal de avisos con el helper.
+    @Published private(set) var isPairedDeviceOnline = false
 
     private let defaultPort = MacCommandCenterCoordinator.helperPort
     private static let helperPort = 8765
@@ -30,6 +32,9 @@ final class MacCommandCenterCoordinator: ObservableObject {
     private var lastFailureMessage: String?
     private var lastRunningSnapshot: RunningSnapshot?
     private var lastPublishedPairingPayload: String?
+    /// Dirección del helper ya anunciada al bridge. El PIN caduca cada 10 min y el
+    /// helper vuelve a publicar su estado: eso no es un helper nuevo.
+    private var lastAnnouncedEndpoint: String?
     private var stateUpdateGeneration = 0
     private var lastUnauthorizedRecoveryAt: Date = .distantPast
 
@@ -106,6 +111,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
         lastFailureMessage = nil
         lastRunningSnapshot = nil
         lastPublishedPairingPayload = nil
+        lastAnnouncedEndpoint = nil
         lastLifecycleState = .starting
         clearHelperBuffers()
         updateState(.starting, message: "Arrancando servicio de enlace en este Mac.")
@@ -185,6 +191,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 guard let self, self.process === terminatedProcess else { return }
                 print("[Pairing] helper terminated: \(terminatedProcess.terminationStatus)")
                 self.isProcessRunning = false
+                self.isPairedDeviceOnline = false
                 self.stdoutPipe?.fileHandleForReading.readabilityHandler = nil
                 self.stderrPipe?.fileHandleForReading.readabilityHandler = nil
                 self.stdoutPipe = nil
@@ -278,6 +285,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
 
     func stop() {
         shouldRestartAfterStop = false
+        isPairedDeviceOnline = false
         isProcessRunning = false
         lastFailureMessage = nil
         lastLifecycleState = .stopped
@@ -674,6 +682,11 @@ final class MacCommandCenterCoordinator: ObservableObject {
             // KmpBridge subscribes to this notification to start the SSE listener
             // and the periodic sync loop, ensuring no requests go out to 127.0.0.1
             // before the helper process is ready.
+            // Solo si cambia la dirección: antes, cada caducidad del PIN cortaba el
+            // canal de avisos y recargaba la base entera (~60 s) cada 10 minutos.
+            let endpoint = "\(snapshot.host):\(snapshot.port)"
+            guard endpoint != lastAnnouncedEndpoint else { return }
+            lastAnnouncedEndpoint = endpoint
             NotificationCenter.default.post(
                 name: .syncHelperBecameReady,
                 object: nil,
@@ -695,6 +708,11 @@ final class MacCommandCenterCoordinator: ObservableObject {
             lastFailureMessage = friendlyMessage
             print("[Pairing] failed: \(message)")
             updateState(.failed(message: friendlyMessage), message: friendlyMessage)
+
+        case let .peer(online):
+            if isPairedDeviceOnline != online {
+                isPairedDeviceOnline = online
+            }
 
         case let .adoptStaged(source, digest):
             print("[Pairing] adopt staged received: source=\(source ?? "unknown"), digest=\(digest ?? "none")")
@@ -792,6 +810,7 @@ private enum HelperEvent {
     case connected(deviceName: String?)
     case failed(message: String)
     case adoptStaged(source: String?, digest: String?)
+    case peer(online: Bool)
 
     static func parse(from text: String) -> HelperEvent? {
         let prefix = "[command-center] State: "
@@ -839,6 +858,9 @@ private enum HelperEvent {
                 return (pair[0].lowercased(), pair[1])
             })
             return .connected(deviceName: values["device"])
+
+        case "peer":
+            return .peer(online: parts.dropFirst().contains("online=1"))
 
         case "adopt_staged":
             let values = Dictionary(uniqueKeysWithValues: parts.dropFirst().compactMap { segment -> (String, String)? in

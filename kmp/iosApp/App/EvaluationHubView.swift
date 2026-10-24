@@ -85,6 +85,7 @@ struct EvaluationHubView: View {
             }
         }
         .background(appPageBackground(for: colorScheme))
+        .reloadOnLanSync(.evaluation) { await reload() }
         .task { await reload() }
         .appOnChange(of: selectedClassId) { _ in
             Task { await reload() }

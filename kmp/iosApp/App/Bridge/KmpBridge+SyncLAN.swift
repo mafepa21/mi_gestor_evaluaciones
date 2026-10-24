@@ -762,6 +762,10 @@ extension KmpBridge {
             )
         } catch {
             guard recoverHostAfterNetworkChange(previousHost: host), let reboundHost = pairedSyncHost else {
+                #if os(iOS)
+                // El Mac no responde en la dirección guardada: buscarlo otra vez.
+                restartDiscoveryIfDisconnected()
+                #endif
                 throw error
             }
             pull = try await lanSyncClient.pull(
@@ -4142,6 +4146,9 @@ extension KmpBridge {
                     try await Task.sleep(nanoseconds: self.nextAutoSyncIntervalNanoseconds())
                     guard self.isAppInForeground else { continue }
                     guard self.pairedSyncHost != nil, self.syncToken != nil else { continue }
+                    #if os(iOS)
+                    self.restartDiscoveryIfDisconnected()
+                    #endif
                     guard !AppleBackupService.shared.needsRestart else { continue }
                     #if os(macOS)
                     await self.checkLocalDbFileModification()
@@ -4216,7 +4223,8 @@ extension KmpBridge {
         startAutoSyncLoop()
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.syncNow(reason: "helper_ready", forceFullPull: true, silent: true)
+            // Sin descarga completa: la app y el helper comparten la misma base.
+            await self.syncNow(reason: "helper_ready", forceFullPull: false, silent: true)
         }
         #endif
     }
@@ -4355,6 +4363,11 @@ extension KmpBridge {
 
     func onAppDidBecomeActive() {
         isAppInForeground = true
+        #if os(iOS)
+        // Al volver de segundo plano el navegador Bonjour puede tener resultados viejos.
+        lanSyncDiscovery.restart()
+        startNetworkMonitoring()
+        #endif
         restartAutoSyncLoopIfPaired()
         reconcileAppleCalendarIfEnabled()
         let isPaired = pairedSyncHost != nil && syncToken != nil
@@ -4454,6 +4467,34 @@ extension KmpBridge {
         // Margen de 2 s: lo escrito mientras se recorría la base sale en la próxima vuelta.
         defaults.set(NSNumber(value: startedAtMs - 2_000), forKey: ModuleRecordsOutbound.cursorKey)
         persistPendingChanges()
+    }
+    #endif
+
+    #if os(iOS)
+    /// El iPad siempre es quien se conecta al Mac: por esa conexión viajan los cambios
+    /// en los dos sentidos. Al cambiar de red, se reencuentra al Mac (Bonjour), se
+    /// reabre el canal de avisos y se sincroniza ya, en vez de esperar a los reintentos.
+    private func startNetworkMonitoring() {
+        LanNetworkMonitor.shared.start { [weak self] in
+            self?.handleNetworkChange()
+        }
+    }
+
+    private func handleNetworkChange() {
+        print("[Sync] cambio de red: se busca al Mac y se reabre el canal")
+        lanSyncDiscovery.restart()
+        guard pairedSyncHost != nil, syncToken != nil, isAppInForeground else { return }
+        syncEventListener.stop()
+        startSyncEventListenerIfPaired()
+        // Un momento para que Bonjour encuentre al Mac si cambió de IP.
+        triggerAutoSyncSoon(delayNanoseconds: 1_500_000_000)
+    }
+
+    /// Mientras no hay canal con el Mac, la búsqueda Bonjour se reinicia cada 30 s.
+    private func restartDiscoveryIfDisconnected() {
+        guard !syncEventListener.isConnected,
+              Date().timeIntervalSince(lanSyncDiscovery.lastRestartAt) >= 30 else { return }
+        lanSyncDiscovery.restart()
     }
     #endif
 
@@ -4578,8 +4619,14 @@ extension KmpBridge {
                 // recordada entre arranques). Antes se repetía cada 3 minutos,
                 // al volver a primer plano y dos veces al abrir: cada vez se
                 // reaplicaba toda la base y se recargaban todas las pantallas.
+                // En el Mac nunca: el helper escribe en la misma base que la app, así
+                // que bajarla entera solo era reaplicarla sobre sí misma (~60 s).
+                #if os(macOS)
+                let shouldForceFullPull = false
+                #else
                 let shouldForceFullPull = forceFullPull
                     || now.timeIntervalSince(persistedLastFullPullAt) > Self.fullPullSafetyInterval
+                #endif
                 try await performPullSync(
                     silent: true,
                     sinceEpochMsOverride: shouldForceFullPull ? 0 : nil
@@ -4725,6 +4772,12 @@ enum LanSyncRefreshPlan {
         case inclusion
         case learningSituations
         case physicalEducation
+        case students
+        case rubrics
+        /// Notas, evaluaciones e informes (Centro de evaluación, Informes).
+        case evaluation
+        /// Resumen de todo: cualquier cambio le afecta.
+        case dashboard
     }
 
     static func affects(_ screen: Screen, entities: Set<String>) -> Bool {
@@ -4750,6 +4803,20 @@ enum LanSyncRefreshPlan {
                 "incident", "planning_session", "session_journal", "evaluation", "grade", "attendance",
                 "notebook_instrument_template", "notebook_instrument_item", "notebook_instrument_response"
             ]) || entities.contains { $0.hasPrefix("physical_test_") }
+        case .students:
+            return !entities.isDisjoint(with: [
+                "student", "student_deleted", "class_roster", "class", "student_support_measures", "student_tutoring_sessions"
+            ])
+        case .rubrics:
+            return !entities.isDisjoint(with: ["rubric_bundle", "rubric_assessment", "evaluation", "teaching_unit"])
+        case .evaluation:
+            return !entities.isDisjoint(with: [
+                "grade", "evaluation", "rubric_assessment", "rubric_bundle", "notebook_cell", "notebook_column",
+                "notebook_tab", "notebook_column_category", "notebook_instrument_response", "attendance",
+                "class_roster", "student"
+            ])
+        case .dashboard:
+            return !entities.isEmpty
         }
     }
 }

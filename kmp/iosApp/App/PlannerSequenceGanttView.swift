@@ -38,6 +38,10 @@ struct PlannerSequenceGanttView: View {
             }
         }
         .padding(EvaluationDesign.screenPadding)
+        .reloadOnLanSync(.planner) {
+            await vm.loadEnrichedSequences()
+            reconcileExpandedSituations()
+        }
         .task(id: vm.selectedGroupId) {
             selectInitialRangeIfNeeded()
             await vm.loadEnrichedSequences()

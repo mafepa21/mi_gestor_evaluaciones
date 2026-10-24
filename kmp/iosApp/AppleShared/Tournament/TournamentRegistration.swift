@@ -274,10 +274,7 @@ extension TournamentRegistration {
         )
         let options = labels.values.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
 
-        let inbox: (url: String, accountKey: String, depositToken: String, readToken: String)? =
-            WebSubmissionInbox.accountKey.map {
-                (WebSubmissionInbox.url(baseURL: baseURL), $0, WebSubmissionInbox.randomToken(), WebSubmissionInbox.randomToken())
-            }
+        let inbox = WebSubmissionInbox.prepareRegistration(baseURL: baseURL)
 
         let form = try WebSubmissionPublisher.publish(
             title: "Inscripción: \(tournamentName)",
@@ -304,24 +301,12 @@ extension TournamentRegistration {
         )
 
         if let inbox {
-            try await WebSubmissionInboxClient(url: inbox.url, session: session).register(
+            try await inbox.register(
                 formInstanceId: form.formInstanceId,
-                accountKey: inbox.accountKey,
-                depositToken: inbox.depositToken,
-                readToken: inbox.readToken,
                 expiresAt: expiresAt,
-                aliases: form.aliases.map(\.alias)
+                aliases: form.aliases.map(\.alias),
+                session: session
             )
-            guard WebSubmissionInbox.saveToken(
-                inbox.readToken,
-                name: WebSubmissionInbox.readTokenName(formInstanceId: form.formInstanceId)
-            ) else {
-                throw NSError(
-                    domain: "TournamentRegistration",
-                    code: 500,
-                    userInfo: [NSLocalizedDescriptionKey: "No se pudo guardar la clave del buzón en el llavero."]
-                )
-            }
         }
 
         let reference = WebSubmissionKeychain.reference(for: form.formInstanceId)

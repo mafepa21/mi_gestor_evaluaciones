@@ -123,6 +123,8 @@ struct PlannerSessionDocxRenderer {
         let sectionStartIndex = blocks[routeRange].firstIndex { block in
             guard block.localName == "p" else { return false }
             let text = normalize(block.textContent)
+            // Un párrafo vacío (o solo con imagen) no puede ser la cabecera de la sesión.
+            guard !text.isEmpty else { return false }
             if !wanted.isEmpty, text == wanted || text.hasPrefix(wanted) || wanted.hasPrefix(text) {
                 return true
             }
@@ -191,14 +193,15 @@ struct PlannerSessionDocxRenderer {
     }
 
     private func isSectionHeader(_ text: String, number: Int) -> Bool {
-        let pattern = #"^(?:sesion|sesiones|session|sessions)\s+#?"# + String(number) + #"\b"#
+        // «Sesión S01 …» (Tavernes) cuenta como sesión 1.
+        let pattern = #"^(?:sesion|sesiones|session|sessions)\s+#?(?:s0*)?"# + String(number) + #"\b"#
         let weekPattern = #"^(?:semana|setmana|week)\s+#?"# + String(number) + #"\b"#
         return text.range(of: pattern, options: .regularExpression) != nil
             || text.range(of: weekPattern, options: .regularExpression) != nil
     }
 
     private func isAnySectionHeader(_ text: String) -> Bool {
-        text.range(of: #"^(?:sesion|sesiones|session|sessions)\s+[0-9]+"#, options: .regularExpression) != nil
+        text.range(of: #"^(?:sesion|sesiones|session|sessions)\s+#?s?[0-9]+"#, options: .regularExpression) != nil
             || text.range(of: #"^(?:semana|setmana|week)\s+[0-9]+"#, options: .regularExpression) != nil
             || routeFromHeader(text) != nil
     }

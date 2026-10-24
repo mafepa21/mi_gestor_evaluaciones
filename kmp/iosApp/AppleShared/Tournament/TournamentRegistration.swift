@@ -30,6 +30,9 @@ struct TournamentRegistration: Equatable, Codable, Sendable {
     var entries: [String: TournamentRegistrationEntry] = [:]
     /// `submissionId` ya vistos, para no importar dos veces el mismo fichero.
     var importedSubmissionIds: [String] = []
+    /// Buzón donde la web deposita las respuestas, si se publicó con él. La clave de
+    /// lectura no va aquí: está en el llavero (`WebSubmissionInbox.readTokenName`).
+    var inboxURL: String?
 
     static let yesOption = "Sí, me apunto"
     static let noOption = "No"
@@ -253,17 +256,28 @@ extension TournamentRegistration {
     }
 
     /// Crea el formulario para el curso del torneo y guarda la clave en el llavero.
+    ///
+    /// Si este dispositivo tiene activado el buzón (`WebSubmissionInbox.accountKey`), el
+    /// formulario se registra en él y la web envía las respuestas directas. Si el registro
+    /// falla, no se publica nada: un enlace que apunta a un buzón que no lo conoce dejaría
+    /// al alumnado con un error al entregar.
     static func publish(
         tournamentName: String,
         students: [(id: Int64, firstName: String, lastName: String)],
         baseURL: String,
         deliveryEmail: String?,
-        expiresAt: Date
-    ) throws -> Published {
+        expiresAt: Date,
+        session: URLSession = .shared
+    ) async throws -> Published {
         let labels = TournamentRegistrationNames.optionLabels(
             for: students.map { (id: String($0.id), firstName: $0.firstName, lastName: $0.lastName) }
         )
         let options = labels.values.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+
+        let inbox: (url: String, accountKey: String, depositToken: String, readToken: String)? =
+            WebSubmissionInbox.accountKey.map {
+                (WebSubmissionInbox.url(baseURL: baseURL), $0, WebSubmissionInbox.randomToken(), WebSubmissionInbox.randomToken())
+            }
 
         let form = try WebSubmissionPublisher.publish(
             title: "Inscripción: \(tournamentName)",
@@ -284,8 +298,31 @@ extension TournamentRegistration {
             },
             baseURL: baseURL,
             deliveryEmail: deliveryEmail,
-            expiresAtEpochMs: Int64(expiresAt.timeIntervalSince1970 * 1000)
+            expiresAtEpochMs: Int64(expiresAt.timeIntervalSince1970 * 1000),
+            inboxPath: inbox == nil ? nil : WebSubmissionInbox.path,
+            depositToken: inbox?.depositToken
         )
+
+        if let inbox {
+            try await WebSubmissionInboxClient(url: inbox.url, session: session).register(
+                formInstanceId: form.formInstanceId,
+                accountKey: inbox.accountKey,
+                depositToken: inbox.depositToken,
+                readToken: inbox.readToken,
+                expiresAt: expiresAt,
+                aliases: form.aliases.map(\.alias)
+            )
+            guard WebSubmissionInbox.saveToken(
+                inbox.readToken,
+                name: WebSubmissionInbox.readTokenName(formInstanceId: form.formInstanceId)
+            ) else {
+                throw NSError(
+                    domain: "TournamentRegistration",
+                    code: 500,
+                    userInfo: [NSLocalizedDescriptionKey: "No se pudo guardar la clave del buzón en el llavero."]
+                )
+            }
+        }
 
         let reference = WebSubmissionKeychain.reference(for: form.formInstanceId)
         guard WebSubmissionKeychain.save(privateKey: form.recipientPrivateKey, reference: reference) else {
@@ -310,7 +347,7 @@ extension TournamentRegistration {
         var optionToStudent: [String: String] = [:]
         for (studentId, label) in labels { optionToStudent[label] = studentId }
 
-        let registration = TournamentRegistration(
+        var registration = TournamentRegistration(
             formInstanceId: form.formInstanceId,
             privateKeyRef: reference,
             expiresAtEpochMs: form.expiresAtEpochMs,
@@ -329,6 +366,7 @@ extension TournamentRegistration {
             ),
             studentIdByPartnerOption: optionToStudent
         )
+        registration.inboxURL = inbox?.url
         return Published(registration: registration, manifestPath: manifestPath, isSelfContained: form.isSelfContained)
     }
 

@@ -114,6 +114,8 @@ struct PlannerSessionDetailSheet: View {
     @State private var renderedDocument: PlannerDocxRenderResult?
     @State private var renderedActivityVisuals: [String: String] = [:]
     @State private var isLoadingRenderedDocument = false
+    /// Vista elegida por el docente: el trozo del Word original o el guion editable.
+    @AppStorage("planner.sessionDetail.viewMode") private var viewModeRaw = PlannerSessionViewMode.document.rawValue
     @State private var isDeleteConfirmationPresented = false
     @State private var enlargedVisual: PlannerEnlargedVisual?
     @State private var isAnnexesExpanded = false
@@ -211,7 +213,12 @@ struct PlannerSessionDetailSheet: View {
     private func sheetContent(layout: PlannerSessionDetailLayout, width: CGFloat) -> some View {
         VStack(spacing: 0) {
             sessionHeader(layout: layout)
-            if presentation == .sheet,
+            if hasSessionDocument {
+                viewModePicker
+            }
+            if showsDocumentMode {
+                documentModeContent
+            } else if presentation == .sheet,
                PlannerSessionDetailLayoutPolicy.usesWideReview(for: width),
                loadState == .loaded,
                let projection = reviewProjection {
@@ -224,6 +231,50 @@ struct PlannerSessionDetailSheet: View {
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
         .sheet(item: $enlargedVisual) { visual in
             PlannerEnlargedVisualSheet(visual: visual)
+        }
+    }
+
+    // MARK: Documento original
+
+    /// Hay Word de sesiones (cargándose o ya recortado a esta sesión).
+    private var hasSessionDocument: Bool {
+        isLoadingRenderedDocument || renderedDocument != nil
+    }
+
+    private var showsDocumentMode: Bool {
+        hasSessionDocument && PlannerSessionViewMode(rawValue: viewModeRaw) != .guide
+    }
+
+    private var viewModePicker: some View {
+        Picker("Vista de la sesión", selection: $viewModeRaw) {
+            ForEach(PlannerSessionViewMode.allCases) { mode in
+                Text(mode.title).tag(mode.rawValue)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 320)
+        .padding(.horizontal, presentation == .inspector ? 16 : 24)
+        .padding(.top, 12)
+    }
+
+    /// El trozo del Word de esta sesión, tal cual: tablas e imágenes del original.
+    @ViewBuilder
+    private var documentModeContent: some View {
+        if let renderedDocument {
+            PlannerDocxWebView(html: renderedDocument.html, minHeight: 320, idealHeight: 900, maxHeight: .infinity)
+                .frame(maxWidth: 900, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, presentation == .inspector ? 8 : 24)
+                .padding(.vertical, 12)
+        } else {
+            VStack(spacing: 12) {
+                ProgressView()
+                Text("Preparando el documento de sesión")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -947,6 +998,21 @@ struct PlannerSessionDetailSheet: View {
             linkedInstruments = allInstruments.filter { linkedIds.contains($0.id) }
         } catch {
             print("Error loading linked instruments: \(error)")
+        }
+    }
+}
+
+/// Vista del visor de sesión. Se guarda en preferencias: no cambiar los `rawValue`.
+enum PlannerSessionViewMode: String, CaseIterable, Identifiable {
+    case document
+    case guide
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .document: return "Documento"
+        case .guide: return "Guion"
         }
     }
 }

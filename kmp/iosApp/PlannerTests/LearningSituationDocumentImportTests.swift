@@ -839,6 +839,29 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertFalse(shortResult.html.contains("Long-only activity"))
     }
 
+    func testSessionDocxRendererSelectsTavernesSessionWithSPrefix() throws {
+        let docxURL = try makeDocx(named: "planner-tavernes-docx", body: """
+          <w:p/>
+          <w:p><w:r><w:t>Mapa general de la secuencia</w:t></w:r></w:p>
+          <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Map row</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+          <w:p><w:r><w:t>Sesión S01 (Mar 27/10) · Basketball · Bote</w:t></w:r></w:p>
+          <w:p/>
+          <w:p><w:r><w:t>First-session activity</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Sesión S02 (Mar 03/11) · Basketball · Parada</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Second-session activity</w:t></w:r></w:p>
+        """)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let first = try PlannerSessionDocxRenderer().render(from: docxURL, sourceLabel: "", sessionNumber: 1)
+        let second = try PlannerSessionDocxRenderer().render(from: docxURL, sourceLabel: "", sessionNumber: 2)
+
+        XCTAssertTrue(first.html.contains("First-session activity"))
+        XCTAssertFalse(first.html.contains("Map row"))
+        XCTAssertFalse(first.html.contains("Second-session activity"))
+        XCTAssertTrue(second.html.contains("Second-session activity"))
+        XCTAssertFalse(second.html.contains("First-session activity"))
+    }
+
     func testNarrativeRouteLedgerImportsBothRoutesAndPartialLong() throws {
         func unit(_ key: String, _ objective: String) -> [WordDocumentBlock] {
             [
@@ -1472,6 +1495,28 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         try Data(relationships.utf8).write(to: relationshipsDirectory.appendingPathComponent("document.xml.rels"))
         try Data([0x89, 0x50, 0x4E, 0x47]).write(to: mediaDirectory.appendingPathComponent("image1.png"))
 
+        let archiveURL = root.appendingPathComponent("session.docx")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.currentDirectoryURL = root
+        process.arguments = ["-q", "-r", archiveURL.path, "word"]
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+        return archiveURL
+    }
+
+    private func makeDocx(named prefix: String, body: String) throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
+        let wordDirectory = root.appendingPathComponent("word", isDirectory: true)
+        try FileManager.default.createDirectory(at: wordDirectory, withIntermediateDirectories: true)
+        let document = """
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+        \(body)
+        </w:body></w:document>
+        """
+        try Data(document.utf8).write(to: wordDirectory.appendingPathComponent("document.xml"))
         let archiveURL = root.appendingPathComponent("session.docx")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")

@@ -107,6 +107,11 @@ struct SdaTournamentDetailView: View {
         }
     }
 
+    /// Torneo creado desde cero para inscribirse por formulario: sin situación ni equipos todavía.
+    private var isFromScratch: Bool {
+        store.record.learningSituationId == nil && plan.teams.isEmpty
+    }
+
     private var groupsChanged: Bool {
         // Los torneos migrados (sin SdA) no tienen grupos de trabajo que releer, y los de
         // inscripción por formulario forman sus equipos con las respuestas, no con los grupos.
@@ -181,7 +186,11 @@ struct SdaTournamentDetailView: View {
             if isLive { onLiveModeChange(false) }
         }
         .modifier(SdaSheetChrome(isSheet: !isEmbedded))
-        .task { await loadRoster() }
+        .task {
+            // Recién creado desde cero: lo primero es la inscripción.
+            if isFromScratch, plan.registration == nil { showingRegistration = true }
+            await loadRoster()
+        }
         .onChange(of: tabs) { _, newTabs in
             if !newTabs.contains(selectedTab) { selectedTab = .calendar }
         }
@@ -194,7 +203,7 @@ struct SdaTournamentDetailView: View {
                 summaryCard
                 notices
                 if plan.savedSchedule.isEmpty {
-                    if plan.registration != nil {
+                    if plan.registration != nil || isFromScratch {
                         LearningSituationInlineNotice(
                             kind: .info,
                             message: "Este torneo no tiene calendario. Forma las parejas desde la inscripción.",

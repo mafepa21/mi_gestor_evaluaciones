@@ -28,6 +28,7 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var errorMessage: String?
     @State private var importSummary: String?
     @State private var importing = false
+    @State private var collecting = false
     @State private var revoking = false
 
     @State private var selectedGroupFilter = "all"
@@ -69,6 +70,7 @@ struct WebSubmissionsWorkspaceView: View {
                 creationClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
             }
             await reload()
+            await collectFromInbox()
         }
         // Revisar las columnas publicables es una consulta por columna: solo se hace
         // al abrir la hoja de publicar, no al entrar en la pantalla.
@@ -230,6 +232,16 @@ struct WebSubmissionsWorkspaceView: View {
                 )
                 .buttonStyle(.bordered)
                 .disabled(importing || detailsLoading || manifests.isEmpty)
+            }
+
+            if hasInboxTasks {
+                Button {
+                    Task { await collectFromInbox() }
+                } label: {
+                    Label(collecting ? "Comprobando…" : "Comprobar respuestas nuevas", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(collecting || importing || detailsLoading)
             }
 
             Button {
@@ -656,6 +668,70 @@ struct WebSubmissionsWorkspaceView: View {
         let result = await bridge.importWebSubmissions(decisions)
         importSummary = result.summary
         await reload()
+    }
+
+    /// Tareas activas publicadas con buzón en este dispositivo.
+    private var inboxTasks: [(task: WebSubmissionTaskInfo, readToken: String)] {
+        tasks.compactMap { task in
+            guard task.status == .active,
+                  let token = WebSubmissionInbox.readToken(formInstanceId: task.formInstanceId) else { return nil }
+            return (task, token)
+        }
+    }
+
+    private var hasInboxTasks: Bool { !inboxTasks.isEmpty }
+
+    /// Recoge del buzón, importa lo que tiene dueño claro y borra del servidor lo importado.
+    private func collectFromInbox() async {
+        let pendientes = inboxTasks
+        guard !collecting, !pendientes.isEmpty, !baseURL.isEmpty else { return }
+        collecting = true
+        defer { collecting = false }
+        let client = WebSubmissionInboxClient(url: WebSubmissionInbox.url(baseURL: baseURL))
+        var importadas = 0
+        var porRevisar = 0
+        var fallo: String?
+        for (task, token) in pendientes {
+            guard manifests[task.formInstanceId] != nil else { continue }
+            do {
+                let recogidas = try await client.collect(formInstanceId: task.formInstanceId, readToken: token)
+                guard !recogidas.isEmpty else { continue }
+                let vista = WebSubmissionImportService(resolver: WebSubmissionSnapshotResolver(snapshots: snapshots))
+                    .preview(
+                        files: recogidas.map { (name: "buzón \($0.alias.prefix(6))", data: $0.data) },
+                        manifests: manifests,
+                        manifestJSONByFormInstanceId: manifestJSONByFormInstanceId
+                    )
+                let reparto = WebSubmissionInboxTriage.triage(vista)
+                if !reparto.decisions.isEmpty {
+                    let resultado = await bridge.importWebSubmissions(reparto.decisions)
+                    importadas += resultado.imported
+                    // Si alguna celda no se pudo guardar, no se borra nada de esta tarea.
+                    guard resultado.failures.isEmpty else {
+                        porRevisar += recogidas.count
+                        continue
+                    }
+                }
+                porRevisar += reparto.pending
+                try await client.delete(
+                    formInstanceId: task.formInstanceId,
+                    readToken: token,
+                    entries: recogidas.filter { reparto.deletable.contains($0.submissionId) }.map { ($0.alias, $0.submissionId) }
+                )
+            } catch {
+                fallo = (error as? LocalizedError)?.errorDescription ?? "No se pudo comprobar el buzón."
+            }
+        }
+        if let fallo, importadas == 0 {
+            errorMessage = fallo
+            return
+        }
+        guard importadas > 0 || porRevisar > 0 else { return }
+        var partes: [String] = []
+        if importadas > 0 { partes.append("\(importadas) \(importadas == 1 ? "entrega recibida" : "entregas recibidas") del buzón") }
+        if porRevisar > 0 { partes.append("\(porRevisar) sin importar: revisa que el alumno siga en el grupo") }
+        importSummary = partes.joined(separator: " · ")
+        if importadas > 0 { await reload() }
     }
 
     private func revoke(_ task: WebSubmissionTaskInfo) async {

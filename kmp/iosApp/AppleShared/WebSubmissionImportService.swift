@@ -383,7 +383,7 @@ extension Data {
 // MARK: - Borrador de importación
 
 /// Una respuesta ya traducida a lo que entiende la app.
-struct WebResolvedAnswer {
+struct WebResolvedAnswer: Codable, Equatable {
     let itemId: String
     let webItemId: String
     let title: String

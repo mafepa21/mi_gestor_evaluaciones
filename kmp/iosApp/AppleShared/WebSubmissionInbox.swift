@@ -74,6 +74,44 @@ enum WebSubmissionInbox {
         return saveToken(token, name: accountKeyName) ? fingerprint(token) : nil
     }
 
+    // MARK: - Registro de un formulario
+
+    /// Claves de un formulario nuevo con buzón. `nil` si este dispositivo no lo tiene activado.
+    struct Registration {
+        let url: String
+        let accountKey: String
+        let depositToken: String
+        let readToken: String
+
+        /// Registra el formulario en el buzón y guarda en el llavero la clave de lectura.
+        /// Si falla, quien llama no debe publicar: los enlaces apuntarían a un buzón que
+        /// no conoce el formulario.
+        func register(formInstanceId: String, expiresAt: Date, aliases: [String], session: URLSession = .shared) async throws {
+            try await WebSubmissionInboxClient(url: url, session: session).register(
+                formInstanceId: formInstanceId,
+                accountKey: accountKey,
+                depositToken: depositToken,
+                readToken: readToken,
+                expiresAt: expiresAt,
+                aliases: aliases
+            )
+            guard WebSubmissionInbox.saveToken(readToken, name: WebSubmissionInbox.readTokenName(formInstanceId: formInstanceId)) else {
+                throw InboxError.keychain
+            }
+        }
+    }
+
+    static func prepareRegistration(baseURL: String) -> Registration? {
+        accountKey.map {
+            Registration(url: url(baseURL: baseURL), accountKey: $0, depositToken: randomToken(), readToken: randomToken())
+        }
+    }
+
+    /// Clave de lectura de un formulario, si se publicó con buzón.
+    static func readToken(formInstanceId: String) -> String? {
+        loadToken(name: readTokenName(formInstanceId: formInstanceId))
+    }
+
     // MARK: - Errores
 
     enum InboxError: LocalizedError, Equatable {
@@ -81,6 +119,7 @@ enum WebSubmissionInbox {
         case unauthorized
         case server(Int)
         case network
+        case keychain
 
         var errorDescription: String? {
             switch self {
@@ -88,6 +127,7 @@ enum WebSubmissionInbox {
             case .unauthorized: return "El buzón no reconoce la clave de este dispositivo."
             case .server(let code): return "El buzón respondió con un error (\(code))."
             case .network: return "No se pudo conectar con el buzón."
+            case .keychain: return "No se pudo guardar la clave del buzón en el llavero."
             }
         }
     }
@@ -174,5 +214,41 @@ struct WebSubmissionInboxClient {
         if code == 401 { throw WebSubmissionInbox.InboxError.unauthorized }
         guard (200..<300).contains(code) else { throw WebSubmissionInbox.InboxError.server(code) }
         return data
+    }
+}
+
+/// Qué hacer con lo recogido del buzón, sin pantalla de revisión.
+///
+/// Se importa solo lo que la app sabe a quién pertenece. Se borra del servidor lo que
+/// ya está en la app (nuevo o repetido). Lo demás se queda en el buzón para revisarlo.
+enum WebSubmissionInboxTriage {
+    struct Result {
+        var decisions: [WebSubmissionImportDecision] = []
+        /// `submissionId` tal como los guarda el buzón.
+        var deletable: Set<String> = []
+        var pending = 0
+    }
+
+    /// Una coevaluación se parte en un borrador por compañero (`envío#compañero`);
+    /// el buzón la guarda entera con el `submissionId` de antes del `#`.
+    static func serverId(_ submissionId: String) -> String {
+        String(submissionId.split(separator: "#", maxSplits: 1).first ?? Substring(submissionId))
+    }
+
+    static func triage(_ preview: WebSubmissionImportPreview) -> Result {
+        var result = Result()
+        var incompletos = Set<String>()
+        for draft in preview.drafts {
+            if let studentId = draft.studentId {
+                result.decisions.append(WebSubmissionImportDecision(draft: draft, studentId: studentId))
+            } else {
+                incompletos.insert(serverId(draft.submissionId))
+            }
+        }
+        // Un envío se borra solo si TODOS sus borradores se han podido importar.
+        let completos = Set(result.decisions.map { serverId($0.draft.submissionId) }).subtracting(incompletos)
+        result.deletable = completos.union(preview.alreadyImported.map { serverId($0.submissionId) })
+        result.pending = incompletos.count + preview.rejections.count
+        return result
     }
 }

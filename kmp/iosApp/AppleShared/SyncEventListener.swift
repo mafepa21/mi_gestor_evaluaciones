@@ -1,6 +1,9 @@
 import Foundation
 
 final class SyncEventListener: @unchecked Sendable {
+    /// Silencio máximo del canal antes de darlo por muerto (el helper avisa cada 15 s).
+    static let idleTimeout: TimeInterval = 35
+
     private var eventTask: Task<Void, Never>?
     private var currentConnectionKey: String?
     private let stateLock = NSLock()
@@ -130,11 +133,13 @@ final class SyncEventListener: @unchecked Sendable {
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 60
+        // El helper manda «sigo vivo» cada 15 s: 35 s sin nada es una conexión muerta
+        // (Wi-Fi caído, Mac dormido) y se reconecta, en vez de esperar un minuto.
+        request.timeoutInterval = Self.idleTimeout
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForRequest = Self.idleTimeout
         configuration.timeoutIntervalForResource = 7 * 24 * 60 * 60
         configuration.waitsForConnectivity = false
 

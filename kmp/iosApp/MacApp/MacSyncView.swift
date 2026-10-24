@@ -184,6 +184,12 @@ struct MacSyncView: View {
                 statusMetric("Cambios pendientes", "\(bridge.syncPendingChanges)", "arrow.up.circle")
                 statusMetric("Host emparejado", bridge.pairedSyncHost ?? "Ninguno", "network")
                 statusMetric("Dispositivo", connectionSummary.deviceName ?? "No conectado", "ipad")
+                // Lo mismo que ve el iPad del Mac: si ahora mismo hay canal abierto.
+                statusMetric(
+                    "iPad ahora",
+                    commandCenter.isPairedDeviceOnline ? "Conectado" : "Sin conexión",
+                    commandCenter.isPairedDeviceOnline ? "checkmark.circle" : "wifi.exclamationmark"
+                )
             }
             
             if let activeError {
@@ -804,7 +810,7 @@ private struct SyncHealthSummary {
                 tint = MacAppStyle.dangerTint
                 visualStateLabel = "Rojo"
                 isAttentionState = true
-            case .pending, .syncing:
+            case .pending, .syncing, .offline:
                 detail = syncHero.detail
                 tint = MacAppStyle.warningTint
                 visualStateLabel = "Ámbar"

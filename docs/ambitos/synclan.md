@@ -36,4 +36,8 @@
 - El helper reemite su estado `running` cada vez que caduca el PIN (10 min). El coordinador solo avisa al bridge si cambia `host:port` (`lastAnnouncedEndpoint`); cualquier otra cosa cortaba el canal y recargaba la base.
 - En el Mac nunca hay descarga completa (`shouldForceFullPull = false`): la app y el helper comparten la base.
 - Diagnóstico rápido: `/usr/bin/log show --last 2h --predicate 'subsystem == "com.migestor.app"'` (líneas «Sync LAN … ms») y `lsof -nP -iTCP:8765` (conexiones del iPad y del Mac al helper).
+- Topología: el iPad siempre se conecta al Mac (helper); el Mac nunca llama al iPad. Por esa conexión (push/pull + SSE) viajan los cambios en los dos sentidos: robustecer la conexión del iPad robustece ambos sentidos.
+- La app iOS necesita `NSLocalNetworkUsageDescription` y `NSBonjourServices` (`_migestor-sync._tcp`) en `Config/iOS-Info.plist` (desde `project.yml`): sin ellas iOS bloquea Bonjour en silencio y el iPad no reencuentra al Mac.
+- En macOS el helper se anuncia con `dns-sd -R` (`NativeDnsSdAdvertiser`), que resuelve como `<nombre-del-Mac>.local`. Un helper matado con `-9` deja su `dns-sd` vivo: se limpia con `pkill` antes de registrar. JmDNS queda solo como respaldo fuera de macOS.
+- Estado «iPad conectado» en el Mac: el helper emite `State: peer|online=0/1` según haya una conexión SSE no-loopback.
 - El POST `/sync/local-changes` solo se acepta desde loopback (decisión de seguridad, no tocar).

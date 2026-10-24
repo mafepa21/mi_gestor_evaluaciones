@@ -60,6 +60,7 @@
 		100355CB4C2E62ED6B0401CD /* PlannerWorkspaceViewModel+DayBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8BFCF99CED1D1B0B14F406F /* PlannerWorkspaceViewModel+DayBoard.swift */; };
 		103D73A7136D60C1D86AA9E1 /* InclusionTrackerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22A843B7836ADC09ABE07A6E /* InclusionTrackerView.swift */; };
 		107B33FECB5C4C30230B96D1 /* StudentImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964764E602D3B6EF684BD755 /* StudentImportSheet.swift */; };
+		107E74D071C77F8AE1F6BB19 /* LanNetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A86684657F29348E4A6E3FC1 /* LanNetworkMonitor.swift */; };
 		10903EA37C81F9D07DAF6554 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 9B69D966969756BADBA6CAE9 /* ZIPFoundation */; };
 		11284216DC1FBF43634C4B86 /* PlannerCascadeDropCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11CB4D803900F53375043197 /* PlannerCascadeDropCoordinator.swift */; };
 		126DCAAB8E78546673FFC543 /* KnockoutScheduleGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFEEB9E4788C83CF6A77718 /* KnockoutScheduleGenerator.swift */; };
@@ -731,6 +732,7 @@
 		E3382835C791036E28705CDB /* LearningSituationsListColumn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FB20616C38E5F1488ADA90 /* LearningSituationsListColumn.swift */; };
 		E3952B068254BF2F2208EA1C /* LanSyncReloadModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC14E144FF01D23C7868AA22 /* LanSyncReloadModifier.swift */; };
 		E3EB46932F37E7CB1075D606 /* LearningSituationScheduleSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B8D363A220F5D3C5382A60A /* LearningSituationScheduleSheet.swift */; };
+		E4009A87AE79D9B728FE8061 /* LanNetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A86684657F29348E4A6E3FC1 /* LanNetworkMonitor.swift */; };
 		E491CBE20486EA0E556C3F9B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 574A36D51DB905768D1450DF /* ContentView.swift */; };
 		E4E286CB567B34AA28030F21 /* PerfLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3A6585B3DD2F80359E49B7B /* PerfLog.swift */; };
 		E512B6A18881C1132BD538D7 /* PhysicalTestsImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61F9E44A4A39D3D69D2B12DF /* PhysicalTestsImportService.swift */; };
@@ -1195,6 +1197,7 @@
 		A708FA79C628B9F04661BFC6 /* SyncStatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusBadge.swift; sourceTree = "<group>"; };
 		A723B93313D3C43F0E9D8A12 /* SupportMeasureBulkImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportMeasureBulkImport.swift; sourceTree = "<group>"; };
 		A792A5460048557CD8302A4F /* PlannerReportPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerReportPDFRenderer.swift; sourceTree = "<group>"; };
+		A86684657F29348E4A6E3FC1 /* LanNetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanNetworkMonitor.swift; sourceTree = "<group>"; };
 		A866C1384FDBACD5D7ED109B /* RubricEvaluationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricEvaluationView.swift; sourceTree = "<group>"; };
 		A8B3BE9F44CA518C26426C79 /* NotebookGridStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookGridStyle.swift; sourceTree = "<group>"; };
 		A92D241217A257758C98B290 /* OnboardingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingModels.swift; sourceTree = "<group>"; };
@@ -1591,6 +1594,7 @@
 				9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */,
 				00EB8CDFD29E04C0A6E6FBBF /* InclusionTrackerComponents.swift */,
 				854AFEAE091E5E97F7AFC0B0 /* InclusionTrackerMockView.swift */,
+				A86684657F29348E4A6E3FC1 /* LanNetworkMonitor.swift */,
 				5E0F6E7AC85EFEED1C59841C /* LanSyncBackgroundRefresh.swift */,
 				E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */,
 				61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */,
@@ -2414,6 +2418,7 @@
 				AB88F80EC5E3DE56E20B96A3 /* KnockoutBracketResolver.swift in Sources */,
 				9C7878931AE0C38FB12E4FE5 /* KnockoutMatchResult.swift in Sources */,
 				126DCAAB8E78546673FFC543 /* KnockoutScheduleGenerator.swift in Sources */,
+				107E74D071C77F8AE1F6BB19 /* LanNetworkMonitor.swift in Sources */,
 				F8CE5F376C4B583A65A61A90 /* LanSyncBackgroundRefresh.swift in Sources */,
 				7D7930532D7E69853456609C /* LanSyncClient.swift in Sources */,
 				09F8FF2F1C0C6AF0075371AD /* LanSyncDiscovery.swift in Sources */,
@@ -2814,6 +2819,7 @@
 				85F084D4F3CFD8C65129C953 /* KnockoutBracketResolver.swift in Sources */,
 				39F3A2702DC71FDF2C366E10 /* KnockoutMatchResult.swift in Sources */,
 				D405DE0B7F0CC1DA78AFDD8A /* KnockoutScheduleGenerator.swift in Sources */,
+				E4009A87AE79D9B728FE8061 /* LanNetworkMonitor.swift in Sources */,
 				E548BE56FD11A2E45F3DEF7E /* LanSyncBackgroundRefresh.swift in Sources */,
 				4F996DA2299BA16B86CA7612 /* LanSyncClient.swift in Sources */,
 				A753B63FE06EBD3905A9133B /* LanSyncDiscovery.swift in Sources */,

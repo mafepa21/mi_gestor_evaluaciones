@@ -158,6 +158,9 @@ struct MacDashboardView: View {
         .task {
             await reloadDashboard()
         }
+        .reloadOnLanSync(.dashboard) {
+            await reloadDashboard()
+        }
         .onAppear { scheduleToolbarActionsSync() }
         .onDisappear {
             reloadTask?.cancel()

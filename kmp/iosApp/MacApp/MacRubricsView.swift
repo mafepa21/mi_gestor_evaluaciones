@@ -143,6 +143,10 @@ struct MacRubricsView: View {
             await reloadTeachingUnits()
             ensureExpandedGroups()
         }
+        .reloadOnLanSync(.rubrics) {
+            await reloadUsageSummary()
+            await reloadTeachingUnits()
+        }
         .appOnChange(of: selectedFilterClassId) { newValue in
             bridge.setRubricFilterClass(newValue)
             if selectedRubric == nil {

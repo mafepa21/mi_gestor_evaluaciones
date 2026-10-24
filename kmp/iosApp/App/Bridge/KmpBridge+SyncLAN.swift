@@ -4216,7 +4216,8 @@ extension KmpBridge {
         startAutoSyncLoop()
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.syncNow(reason: "helper_ready", forceFullPull: true, silent: true)
+            // Sin descarga completa: la app y el helper comparten la misma base.
+            await self.syncNow(reason: "helper_ready", forceFullPull: false, silent: true)
         }
         #endif
     }
@@ -4578,8 +4579,14 @@ extension KmpBridge {
                 // recordada entre arranques). Antes se repetía cada 3 minutos,
                 // al volver a primer plano y dos veces al abrir: cada vez se
                 // reaplicaba toda la base y se recargaban todas las pantallas.
+                // En el Mac nunca: el helper escribe en la misma base que la app, así
+                // que bajarla entera solo era reaplicarla sobre sí misma (~60 s).
+                #if os(macOS)
+                let shouldForceFullPull = false
+                #else
                 let shouldForceFullPull = forceFullPull
                     || now.timeIntervalSince(persistedLastFullPullAt) > Self.fullPullSafetyInterval
+                #endif
                 try await performPullSync(
                     silent: true,
                     sinceEpochMsOverride: shouldForceFullPull ? 0 : nil
@@ -4725,6 +4732,10 @@ enum LanSyncRefreshPlan {
         case inclusion
         case learningSituations
         case physicalEducation
+        case students
+        case rubrics
+        /// Resumen de todo: cualquier cambio le afecta.
+        case dashboard
     }
 
     static func affects(_ screen: Screen, entities: Set<String>) -> Bool {
@@ -4750,6 +4761,14 @@ enum LanSyncRefreshPlan {
                 "incident", "planning_session", "session_journal", "evaluation", "grade", "attendance",
                 "notebook_instrument_template", "notebook_instrument_item", "notebook_instrument_response"
             ]) || entities.contains { $0.hasPrefix("physical_test_") }
+        case .students:
+            return !entities.isDisjoint(with: [
+                "student", "student_deleted", "class_roster", "class", "student_support_measures", "student_tutoring_sessions"
+            ])
+        case .rubrics:
+            return !entities.isDisjoint(with: ["rubric_bundle", "rubric_assessment", "evaluation", "teaching_unit"])
+        case .dashboard:
+            return !entities.isEmpty
         }
     }
 }

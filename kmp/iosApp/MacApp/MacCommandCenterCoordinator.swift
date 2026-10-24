@@ -30,6 +30,9 @@ final class MacCommandCenterCoordinator: ObservableObject {
     private var lastFailureMessage: String?
     private var lastRunningSnapshot: RunningSnapshot?
     private var lastPublishedPairingPayload: String?
+    /// Dirección del helper ya anunciada al bridge. El PIN caduca cada 10 min y el
+    /// helper vuelve a publicar su estado: eso no es un helper nuevo.
+    private var lastAnnouncedEndpoint: String?
     private var stateUpdateGeneration = 0
     private var lastUnauthorizedRecoveryAt: Date = .distantPast
 
@@ -106,6 +109,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
         lastFailureMessage = nil
         lastRunningSnapshot = nil
         lastPublishedPairingPayload = nil
+        lastAnnouncedEndpoint = nil
         lastLifecycleState = .starting
         clearHelperBuffers()
         updateState(.starting, message: "Arrancando servicio de enlace en este Mac.")
@@ -674,6 +678,11 @@ final class MacCommandCenterCoordinator: ObservableObject {
             // KmpBridge subscribes to this notification to start the SSE listener
             // and the periodic sync loop, ensuring no requests go out to 127.0.0.1
             // before the helper process is ready.
+            // Solo si cambia la dirección: antes, cada caducidad del PIN cortaba el
+            // canal de avisos y recargaba la base entera (~60 s) cada 10 minutos.
+            let endpoint = "\(snapshot.host):\(snapshot.port)"
+            guard endpoint != lastAnnouncedEndpoint else { return }
+            lastAnnouncedEndpoint = endpoint
             NotificationCenter.default.post(
                 name: .syncHelperBecameReady,
                 object: nil,

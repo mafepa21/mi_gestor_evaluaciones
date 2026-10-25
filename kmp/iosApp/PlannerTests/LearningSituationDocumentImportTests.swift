@@ -24,6 +24,117 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertEqual(draft.instruments.count, 1)
     }
 
+    // MARK: - Pasaporte por paradas
+
+    private func paragraph(_ text: String, style: String? = nil) -> String {
+        let estilo = style.map { "<w:pPr><w:pStyle w:val=\"\($0)\"/></w:pPr>" } ?? ""
+        return "<w:p>\(estilo)<w:r><w:t xml:space=\"preserve\">\(text)</w:t></w:r></w:p>"
+    }
+
+    func testPassportDocumentImportsEveryStopAndQuestion() throws {
+        let body = [
+            paragraph("Mi Pasaporte de progreso — SA 9: Prueba", style: "Heading1"),
+            paragraph("Educación Física — 1.º de Bachillerato · Curso 2026–2027", style: "Heading2"),
+            paragraph("Technical Passport · Es tuyo: no se entrega ni se califica."),
+            paragraph("Nombre y apellidos: ______________ Grupo: _____"),
+            paragraph("¿Para qué sirve?", style: "Heading3"),
+            paragraph("Cuatro paradas cortas en clase (2–4 minutos): escribe poco y en concreto."),
+            paragraph("Parada 1 · U01 — Mi punto de partida", style: "Heading3"),
+            paragraph("Mi mejor reto de hoy: ☐ 10 con mi mano buena ☐ 20 seguidos"),
+            paragraph("Lo que más me cuesta: ☐ agarre de derecha ☐ agarre de revés ☐ otro: __________"),
+            paragraph("Una cosa que quiero mejorar: ______________________"),
+            paragraph("Parada 2 · U03 — Nuestro mejor rally", style: "Heading3"),
+            paragraph("Nuestro mejor Rally Length: _____ golpes (reto: 16)"),
+            paragraph("Parada 3 · U07 — A mitad de camino", style: "Heading3"),
+            paragraph("Un error que he corregido: antes __________ → ahora __________"),
+            paragraph("Mi semáforo de hoy:"),
+            paragraph("Técnica: ☐ rojo ☐ ámbar ☐ verde"),
+            paragraph("Fair play: ☐ rojo ☐ ámbar ☐ verde"),
+            paragraph("Parada 4 · U12 — Mi balance", style: "Heading3"),
+            paragraph("Mi siguiente paso en bádminton: ______________"),
+            paragraph("Después de la última sesión: tienes 48 horas para rellenar la autoevaluación."),
+        ].joined(separator: "\n")
+        let docxURL = try makeDocx(named: "pasaporte", body: body)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+
+        XCTAssertEqual(draft.instruments.count, 1)
+        let pasaporte = try XCTUnwrap(draft.instruments.first)
+        XCTAssertEqual(pasaporte.title, "Mi Pasaporte de progreso — SA 9: Prueba")
+        XCTAssertEqual(pasaporte.kind, .quizQuestions)
+        XCTAssertEqual(pasaporte.scoreStrategy, AssessmentInstrumentScoreStrategy.none)
+        XCTAssertFalse(pasaporte.countsTowardAverage)
+        XCTAssertTrue(pasaporte.isSelected)
+        XCTAssertEqual(pasaporte.quizQuestions.map(\.questionText), [
+            "Parada 1: U01 — Mi punto de partida · Mi mejor reto de hoy",
+            "Parada 1: U01 — Mi punto de partida · Lo que más me cuesta",
+            "Parada 1: U01 — Mi punto de partida · Lo que más me cuesta (otro)",
+            "Parada 1: U01 — Mi punto de partida · Una cosa que quiero mejorar",
+            "Parada 2: U03 — Nuestro mejor rally · Nuestro mejor Rally Length: … golpes (reto: 16)",
+            "Parada 3: U07 — A mitad de camino · Un error que he corregido: antes … → ahora",
+            "Parada 3: U07 — A mitad de camino · Mi semáforo de hoy: Técnica",
+            "Parada 3: U07 — A mitad de camino · Mi semáforo de hoy: Fair play",
+            "Parada 4: U12 — Mi balance · Mi siguiente paso en bádminton",
+        ])
+        XCTAssertEqual(pasaporte.quizQuestions[1].options, ["agarre de derecha", "agarre de revés", "Otro"])
+        XCTAssertEqual(pasaporte.quizQuestions[6].options, ["rojo", "ámbar", "verde"])
+        XCTAssertTrue(pasaporte.quizQuestions[3].options.isEmpty)
+
+        // Al publicarlo en modo Pasaporte salen las cuatro paradas.
+        let reparto = WebPassportSections.split(
+            titles: pasaporte.quizQuestions.map(\.questionText),
+            fallbackTitle: pasaporte.title
+        )
+        XCTAssertEqual(reparto.stops.map(\.title), [
+            "Parada 1: U01 — Mi punto de partida",
+            "Parada 2: U03 — Nuestro mejor rally",
+            "Parada 3: U07 — A mitad de camino",
+            "Parada 4: U12 — Mi balance",
+        ])
+    }
+
+    func testPassportSectionWithoutStopsWarnsInsteadOfCreatingOneCheckbox() throws {
+        let body = [
+            paragraph("1. Rúbrica de juego - CE 2.2 - 100%"),
+            "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Indicador</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>3</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>4</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>Decisiones</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>c</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>d</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
+            paragraph("2. El Pasaporte técnico: material del alumnado, sin peso"),
+            paragraph("El Pasaporte acompaña al alumnado en cuatro paradas breves para que reflexione sobre su progreso."),
+        ].joined(separator: "\n")
+        let docxURL = try makeDocx(named: "instrumentos-con-pasaporte", body: body)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+
+        XCTAssertEqual(draft.instruments.map(\.title), ["Rúbrica de juego"])
+        XCTAssertTrue(draft.warnings.contains { $0.contains("no trae paradas") })
+        XCTAssertFalse(draft.warnings.contains { $0.contains("No se ha podido interpretar") })
+    }
+
+    func testPassportChecklistWithCheckboxesStaysAChecklist() throws {
+        let body = [
+            paragraph("1. Pasaporte saludable - checklist"),
+            paragraph("☐ Me hidrato antes de clase ☐ Caliento 10 minutos"),
+        ].joined(separator: "\n")
+        let docxURL = try makeDocx(named: "pasaporte-checklist", body: body)
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+
+        let instrumento = try XCTUnwrap(draft.instruments.first)
+        XCTAssertEqual(instrumento.kind, .checklist)
+        XCTAssertEqual(instrumento.checklistItems.map(\.title), ["Me hidrato antes de clase", "Caliento 10 minutos"])
+    }
+
     func testStudentSelfAssessmentWithoutOpenQuestionsDoesNotGenerateOpenQuestions() throws {
         let docxURL = try makeStudentAssessmentDocx(includeOpenQuestions: false)
         defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }

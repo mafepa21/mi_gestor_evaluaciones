@@ -211,9 +211,35 @@ struct LearningSituationAssessmentInstrumentsImportService {
         // documento: sin esta bandera, párrafos posteriores como una explicación de la
         // fórmula seguían evaluándose y podían machacar `gradingFormula` con una nota interna.
         var reachedImporterNotes = false
+        // Pasaporte del alumnado: si el documento trae paradas («Parada 1 · …»), lo que sigue a
+        // un encabezado de pasaporte es suyo hasta el siguiente instrumento numerado. Sin esto,
+        // frases como «Technical Passport · Es tuyo: no se entrega» abrían un instrumento nuevo.
+        let documentHasPassportStops = blocks.contains { block in
+            if case .paragraph(let text) = block { return passportStopHeading(clean(text)) != nil }
+            return false
+        }
 
         func flushCurrent() {
             guard let heading = currentHeading else { return }
+            if isPassportTitle(heading.title) {
+                let (passport, passportWarning) = makePassportInstrument(
+                    from: heading,
+                    tables: pendingTables,
+                    paragraphs: pendingParagraphs
+                )
+                if let passport {
+                    instruments.append(passport)
+                }
+                if let passportWarning {
+                    warnings.append(passportWarning)
+                }
+                if passport != nil || passportWarning != nil {
+                    pendingTables = []
+                    pendingParagraphs = []
+                    firstTableParagraphIndex = nil
+                    return
+                }
+            }
             let (instrument, extraWarnings) = makeInstrument(
                 from: heading,
                 tables: pendingTables,
@@ -245,6 +271,12 @@ struct LearningSituationAssessmentInstrumentsImportService {
                     reachedImporterNotes = true
                 } else if isGradingLine(cleanText) {
                     gradingFormula = cleanText
+                } else if documentHasPassportStops,
+                          let heading = currentHeading,
+                          isPassportTitle(heading.title),
+                          !isNumberedInstrumentHeading(cleanText),
+                          parseHeading(cleanText).map({ $0.weightPercent == nil && $0.criterionLabel == nil }) ?? true {
+                    pendingParagraphs.append(cleanText)
                 } else if let heading = parseHeading(cleanText) {
                     flushCurrent()
                     currentHeading = heading
@@ -411,6 +443,142 @@ struct LearningSituationAssessmentInstrumentsImportService {
             quizQuestions: quizQuestions,
             note: noteText
         ), extraWarnings)
+    }
+
+    // MARK: - Pasaporte por paradas
+
+    /// Pasaporte del alumnado («Parada 1 · …»): cada línea con huecos `___` es una pregunta de
+    /// texto y cada línea con ☐ una de elegir. El título de cada pregunta lleva delante su
+    /// parada separada por " · ", que es lo que `WebPassportSections` usa al publicar en modo
+    /// Pasaporte. Devuelve `(nil, nil)` cuando no es un pasaporte por paradas y debe seguir el
+    /// camino normal (`makeInstrument`).
+    private func makePassportInstrument(
+        from heading: ParsedInstrumentHeading,
+        tables: [[[String]]],
+        paragraphs: [String]
+    ) -> (AssessmentInstrumentDraft?, String?) {
+        guard paragraphs.contains(where: { passportStopHeading($0) != nil }) else {
+            // Un apartado «Pasaporte» que solo explica qué es (sin paradas, tablas ni casillas)
+            // antes se convertía en una casilla con todo el párrafo dentro.
+            let hasCheckMarkers = paragraphs.contains { $0.range(of: #"☐|□|\[\s?\]"#, options: .regularExpression) != nil }
+            guard tables.isEmpty, !hasCheckMarkers, !normalized(heading.title).contains("quiz") else {
+                return (nil, nil)
+            }
+            return (nil, "«\(heading.title)» no trae paradas («Parada 1 · …»). Importa el documento del pasaporte que rellena el alumnado.")
+        }
+
+        var questions: [QuizQuestionDraft] = []
+        var stopCount = 0
+        var currentStop: String?
+        var groupLabel: String?
+        for paragraph in paragraphs {
+            if let stop = passportStopHeading(paragraph) {
+                currentStop = stop
+                stopCount += 1
+                groupLabel = nil
+                continue
+            }
+            guard let stop = currentStop else { continue }
+            if let choice = passportChoice(from: paragraph) {
+                let title = [groupLabel, choice.label].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ": ")
+                guard !title.isEmpty else { continue }
+                // Elegir exige al menos dos opciones (el formulario web rechaza menos).
+                let options = choice.options.count >= 2 ? choice.options : []
+                questions.append(QuizQuestionDraft(questionText: "\(stop) · \(title)", options: options))
+                if choice.hasOther, !options.isEmpty {
+                    questions.append(QuizQuestionDraft(questionText: "\(stop) · \(title) (otro)", options: []))
+                }
+            } else if paragraph.contains("___") {
+                groupLabel = nil
+                let title = passportTextQuestionTitle(paragraph)
+                guard !title.isEmpty else { continue }
+                questions.append(QuizQuestionDraft(questionText: "\(stop) · \(title)", options: []))
+            } else if paragraph.hasSuffix(":") {
+                // «Mi semáforo de hoy:» agrupa las líneas de casillas que lo siguen.
+                groupLabel = String(paragraph.dropLast()).trimmingCharacters(in: .whitespaces)
+            } else {
+                groupLabel = nil
+            }
+        }
+
+        guard !questions.isEmpty else {
+            return (nil, "«\(heading.title)» tiene paradas pero ninguna pregunta con huecos (___) o casillas (☐).")
+        }
+        return (AssessmentInstrumentDraft(
+            title: heading.title,
+            kind: .quizQuestions,
+            criterionLabel: heading.criterionLabel,
+            weightPercent: nil,
+            isSelected: true,
+            countsTowardAverage: false,
+            scoreStrategy: .none,
+            rubric: nil,
+            quizQuestions: questions,
+            note: "Pasaporte por paradas (\(stopCount) paradas, \(questions.count) preguntas). No puntúa: publícalo en Entregas web en modo Pasaporte."
+        ), nil)
+    }
+
+    private func isPassportTitle(_ title: String) -> Bool {
+        let value = normalized(title)
+        return value.contains("pasaporte") || value.contains("passport")
+    }
+
+    /// «Parada 1 · U01 — Mi punto de partida» → «Parada 1: U01 — Mi punto de partida». El
+    /// resultado no lleva " · " porque ese es el separador entre parada y pregunta.
+    private func passportStopHeading(_ paragraph: String) -> String? {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"^\s*(parada|stop)\s+(\d+)\s*(?:[·:.\-–—]\s*(.*))?$"#,
+            options: [.caseInsensitive]
+        ),
+            let match = regex.firstMatch(in: paragraph, range: NSRange(paragraph.startIndex..., in: paragraph)),
+            let wordRange = Range(match.range(at: 1), in: paragraph),
+            let numberRange = Range(match.range(at: 2), in: paragraph) else { return nil }
+        let name = "\(paragraph[wordRange].prefix(1).uppercased())\(paragraph[wordRange].dropFirst().lowercased()) \(paragraph[numberRange])"
+        let subtitle = Range(match.range(at: 3), in: paragraph)
+            .map { String(paragraph[$0]) }?
+            .replacingOccurrences(of: " · ", with: " — ")
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Una frase larga que empieza por «Parada 2.» no es un encabezado de parada.
+        guard subtitle.split(separator: " ").count <= 12, !subtitle.contains("___"), !subtitle.contains("☐") else { return nil }
+        return subtitle.isEmpty ? name : "\(name): \(subtitle)"
+    }
+
+    /// «Lo que más me cuesta: ☐ derecha ☐ revés ☐ otro: ____» → etiqueta, opciones y si hay «otro».
+    private func passportChoice(from paragraph: String) -> (label: String, options: [String], hasOther: Bool)? {
+        let parts = paragraph
+            .replacingOccurrences(of: #"(?:☐|□|\[\s?\])\s*"#, with: "|||OPCION|||", options: .regularExpression)
+            .components(separatedBy: "|||OPCION|||")
+        guard parts.count > 1 else { return nil }
+        let label = clean(parts[0])
+            .trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+            .trimmingCharacters(in: .whitespaces)
+        var hasOther = false
+        var options: [String] = []
+        for raw in parts.dropFirst() {
+            let option = clean(raw.replacingOccurrences(of: #"_{3,}"#, with: "", options: .regularExpression))
+                .trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+                .trimmingCharacters(in: .whitespaces)
+            guard !option.isEmpty else { continue }
+            let value = normalized(option)
+            // «otro», «otra (cuál)», «other»…
+            if option.count <= 16, ["otro", "otra", "other"].contains(where: { value.hasPrefix($0) }) {
+                hasOther = true
+                options.append("Otro")
+            } else {
+                options.append(option)
+            }
+        }
+        return (label, options, hasOther)
+    }
+
+    /// «Un error que he corregido: antes ____ → ahora ____» → «Un error que he corregido: antes … → ahora».
+    private func passportTextQuestionTitle(_ paragraph: String) -> String {
+        var title = clean(paragraph.replacingOccurrences(of: #"_{3,}"#, with: " … ", options: .regularExpression))
+            .replacingOccurrences(of: #"\s+([,.)])"#, with: "$1", options: .regularExpression)
+        while title.hasSuffix("…") || title.hasSuffix(":") {
+            title = String(title.dropLast()).trimmingCharacters(in: .whitespaces)
+        }
+        return title
     }
 
     private func lastHeaderLooksLikeNoteColumn(_ tables: [[[String]]]) -> Bool {

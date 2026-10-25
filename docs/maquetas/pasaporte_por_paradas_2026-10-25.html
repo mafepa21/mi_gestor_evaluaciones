@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pasaporte por paradas</title>
+<style>
+/* Página de la maqueta: tokens de la app (macOS) */
+:root{--bg:#f2f2f7;--card:#fff;--fg:#1c1c1e;--mut:#6e6e73;--line:#e5e5ea;--acc:#0071e3;--ok:#1f7a35;--warn:#8a4d00;--err:#d70015;--chip:#eef4ff;--okbg:#e3f7e8;--warnbg:#fff3dc}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--chip:#0a2a4d;--acc:#0a84ff;--ok:#30d158;--okbg:#0f2e17;--warn:#ffb340;--warnbg:#3a2c00}}
+:root[data-theme="dark"]{--bg:#000;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--chip:#0a2a4d;--acc:#0a84ff;--ok:#30d158;--okbg:#0f2e17;--warn:#ffb340;--warnbg:#3a2c00}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.top{padding:32px 16px 8px;max-width:1200px;margin:auto}
+header.top h1{margin:0;font-size:28px}header.top p{margin:8px 0 0;color:var(--mut);max-width:720px}
+h2.part{max-width:1200px;margin:40px auto 0;padding:0 16px;font-size:20px}
+p.partnote{max-width:1200px;margin:4px auto 0;padding:0 16px;color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:24px;padding:16px;max-width:1200px;margin:auto}
+.grid.wide{grid-template-columns:repeat(auto-fill,minmax(min(560px,100%),1fr))}
+.state>h3{margin:0 0 4px;font-size:12px;letter-spacing:.06em;color:var(--mut);text-transform:uppercase}
+.state>.note{margin:0 0 8px;font-size:13px;color:var(--mut)}
+
+/* ===== Móvil del alumnado: lenguaje visual real de la PWA (papel, tinta, sellos) =====
+   Tipografía en rem (respeta el tamaño de letra del sistema). Nada de texto por debajo de 0.9375rem. */
+.phone{--papel:#f2eee1;--papel-alto:#fbf9f2;--papel-hueco:#e7e2d1;--tinta:#10231a;--tinta-suave:#3d5348;--lanza:#c9341a;--lanza-texto:#a82b14;--pista:#0f3d2e;--pista-viva:#1a6349;--pista-clara:#dfeae3;
+  width:100%;max-width:360px;height:680px;border-radius:36px;border:8px solid #1c1c1e;overflow:hidden;position:relative;
+  background:var(--papel) repeating-linear-gradient(to bottom,transparent 0 47px,rgba(16,35,26,.045) 47px 48px);color:var(--tinta);
+  font-family:Charter,"Iowan Old Style",Georgia,serif;font-size:1.0625rem;line-height:1.5;display:flex;flex-direction:column}
+.phone .scroll{flex:1;overflow:auto;padding:24px 16px 16px}
+.phone .eyebrow{font-family:Futura,"Avenir Next Condensed",sans-serif;font-size:.9375rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tinta-suave);margin:0}
+.phone h4{margin:8px 0 0;font-family:Futura,"Avenir Next Condensed",sans-serif;font-size:1.625rem;line-height:1.15}
+.phone .lead{margin:8px 0 24px;color:var(--tinta-suave);font-size:1rem}
+.parada{display:flex;gap:16px;align-items:center;background:var(--papel-alto);border:2px solid var(--tinta);border-radius:6px;padding:16px;margin-bottom:16px;min-height:48px;color:inherit;text-decoration:none}
+.parada:focus-visible{outline:3px solid var(--pista);outline-offset:3px}
+.parada .sello{width:48px;height:48px;border-radius:50%;border:2px dashed var(--tinta-suave);display:grid;place-items:center;font-family:Futura,sans-serif;font-weight:700;font-size:1.125rem;flex:none;color:var(--tinta-suave)}
+.parada[data-e="enviada"] .sello{border:3px solid var(--pista-viva);color:var(--pista-viva);background:var(--pista-clara)}
+.parada[data-e="pendiente"] .sello{border:2px solid var(--lanza);color:var(--lanza-texto)}
+.parada .t{font-family:Futura,sans-serif;font-weight:600;font-size:1.0625rem;line-height:1.2;overflow-wrap:anywhere}
+.parada .s{font-size:.9375rem;color:var(--tinta-suave);margin-top:4px}
+.parada[data-e="pendiente"] .s{color:var(--lanza-texto);font-weight:600}
+.parada .chev{margin-left:auto;font-size:1.375rem;color:var(--tinta-suave)}
+.pie{border-top:2px solid var(--tinta);background:var(--papel-alto);padding:16px}
+.pie .estado{font-size:.9375rem;color:var(--tinta-suave);margin:0 0 8px;text-align:center}
+.boton{display:block;width:100%;min-height:48px;border-radius:6px;border:2px solid var(--tinta);background:var(--pista);color:#fff;font:600 1.0625rem Futura,"Avenir Next Condensed",sans-serif;letter-spacing:.04em}
+.boton.callado{background:transparent;color:var(--tinta);margin-top:8px}
+.boton[disabled]{background:var(--papel-hueco);color:var(--tinta-suave);border:2px dashed var(--tinta-suave)}
+.barra{display:flex;align-items:center;gap:8px;padding:16px;border-bottom:2px solid var(--tinta);background:var(--papel-alto);font-family:Futura,sans-serif;font-weight:600}
+.barra .atras{font-size:1.375rem;line-height:1;min-width:48px;min-height:48px;display:grid;place-items:center;margin:-12px 0 -12px -12px}
+.guardado{display:flex;align-items:center;gap:8px;font-size:.9375rem;color:var(--pista-viva);font-weight:600;margin:0 0 24px}
+.preg{margin:0 0 24px;border:0;padding:0}
+.preg .q,.preg legend{font-weight:600;margin:0 0 8px;padding:0;display:block}
+.campo{width:100%;border:2px solid var(--tinta);border-radius:6px;background:var(--papel-alto);min-height:48px;padding:12px;font:1.0625rem/1.4 Charter,Georgia,serif;color:var(--tinta);resize:vertical}
+.campo:placeholder-shown{border-style:dashed}
+.campo::placeholder{color:var(--tinta-suave);font-style:italic}
+.semaforo{display:grid;grid-template-columns:1fr;gap:8px}
+.semaforo .fila{margin-bottom:8px}
+.semaforo .et{font-size:1rem;margin-bottom:8px}
+.luces{display:flex;gap:8px}
+.luz{flex:1;min-height:48px;border-radius:6px;border:2px solid var(--tinta);display:flex;align-items:center;justify-content:center;gap:4px;font:600 .9375rem Futura,sans-serif;color:var(--tinta)}
+.luz.r{background:#f6d5cf}.luz.a{background:#f3e3b5}.luz.v{background:#d3e8dc}
+.luz[aria-checked="true"]{border-width:4px}
+.luz[aria-checked="true"]::before{content:"✓";font-size:1.125rem}
+.hueso{height:16px;border-radius:4px;background:var(--papel-hueco);margin:8px 0;animation:p 1.2s infinite alternate}
+.hueso.card{height:80px;margin-bottom:16px}
+@keyframes p{to{opacity:.45}}
+.aviso{border:2px solid var(--tinta);background:var(--papel-alto);border-radius:6px;padding:16px;margin-bottom:24px;font-size:1rem}
+.centro{text-align:center;padding-top:48px}
+.gran-sello{width:136px;height:136px;margin:0 auto 24px;border-radius:50%;border:4px solid var(--pista-viva);color:var(--pista-viva);background:var(--pista-clara);display:grid;place-items:center;font-size:3.5rem;line-height:1}
+.gran-sello.roto{border-color:var(--lanza);color:var(--lanza-texto);background:#f6e3df;border-style:dashed}
+@media(prefers-reduced-motion:reduce){.hueso,.sk{animation:none}}
+
+/* ===== Mac: ventana de la app ===== */
+.mac{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.mac .tb{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.dots{display:flex;gap:8px}.dots i{width:12px;height:12px;border-radius:50%;background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
+.mac .tb .ttl{font-weight:600;margin-left:8px}
+.mac .tb .r{margin-left:auto;display:flex;gap:8px;align-items:center}
+.mac .body{padding:16px 24px 24px}
+.btn{min-height:32px;padding:0 12px;border-radius:8px;border:0;background:var(--line);color:var(--fg);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.btn.p{background:var(--acc);color:#fff}
+.mut{color:var(--mut);font-size:13px}
+.sym{font-size:12px;color:var(--mut);font-family:ui-monospace,monospace}
+.task{display:flex;align-items:center;gap:16px;padding:12px 0;border-top:1px solid var(--line)}
+.task:first-child{border-top:0}
+.task .ico{width:40px;height:40px;border-radius:10px;background:var(--chip);display:grid;place-items:center;font-size:20px;flex:none}
+.task .grow{flex:1;min-width:0}.task .t{font-weight:600}
+.tag{font-size:13px;padding:2px 8px;border-radius:99px;background:var(--chip);color:var(--acc);font-weight:600;white-space:nowrap}
+.meter{display:flex;gap:4px;margin-top:8px}
+.meter span{height:4px;flex:1;border-radius:2px;background:var(--line)}
+.meter span b{display:block;height:100%;border-radius:2px;background:var(--acc)}
+.resumen{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0 24px}
+.resumen div{background:var(--bg);border-radius:10px;padding:12px}
+.resumen .n{font-size:22px;font-weight:700}.resumen .l{font-size:13px;color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:13px;color:var(--mut);font-weight:600;padding:8px;border-bottom:1px solid var(--line)}
+td{padding:8px;border-bottom:1px solid var(--line);height:40px}
+th.c,td.c{text-align:center;width:56px}
+tr[aria-selected="true"] td{background:var(--chip)}
+tr[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
+.pt{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:2px solid var(--mut);font-size:12px;font-weight:700;color:#fff;vertical-align:middle}
+.pt.on{background:var(--ok);border-color:var(--ok)}
+.pt.on::before{content:"✓"}
+.pt.upd{background:var(--card);border-color:var(--ok);color:var(--ok)}
+.pt.upd::before{content:"●"}
+.nueva{display:block;font-size:12px;font-weight:700;color:var(--ok);margin-top:2px}
+.leyenda{display:flex;gap:16px;margin-top:16px;font-size:13px;color:var(--mut);flex-wrap:wrap;align-items:center}
+.leyenda span{display:inline-flex;gap:8px;align-items:center}
+.banner{display:flex;gap:12px;align-items:center;background:var(--warnbg);color:var(--warn);border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;font-weight:600}
+.banner .btn{margin-left:auto}
+.sk{height:14px;margin:12px 0;border-radius:6px;background:var(--line);animation:p 1.2s infinite alternate}
+.vacio{text-align:center;padding:48px 16px}.vacio .big{font-size:40px}.vacio p{color:var(--mut);margin:8px auto 16px;max-width:360px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0 8px}
+.seg label{border:1px solid var(--line);border-radius:10px;padding:12px;font-size:13px}
+.seg label.on{border:2px solid var(--acc);background:var(--chip)}
+.seg b{display:block;font-size:14px;margin-bottom:4px}
+.ficha h5{margin:24px 0 8px;font-size:14px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.ficha h5:first-child{margin-top:0}
+.ficha h5 .mut{font-weight:400}
+.ficha dl{margin:0;display:grid;grid-template-columns:minmax(160px,auto) 1fr;gap:8px 16px;font-size:14px}
+.ficha dt{color:var(--mut)}.ficha dd{margin:0}
+.ficha .nada{margin:0;font-size:14px;color:var(--mut);font-style:italic}
+.nuevo{font-size:12px;font-weight:700;color:var(--ok);background:var(--okbg);padding:2px 8px;border-radius:99px}
+@media(max-width:560px){.resumen{grid-template-columns:repeat(2,1fr)}.seg{grid-template-columns:1fr}.ficha dl{grid-template-columns:1fr}.mac .body{padding:16px}}
+.scrollx{overflow-x:auto}
+</style></head>
+<body>
+<header class="top">
+  <h1>Pasaporte por paradas</h1>
+  <p>Maqueta viva. Un solo enlace por alumno. Las 4 paradas están abiertas desde el primer día. Cada envío llega solo a la app y se suma a lo anterior. Datos de prueba.</p>
+</header>
+
+<h2 class="part">1 · Alumnado (móvil)</h2>
+<p class="partnote">Misma estética que la web actual: papel, tinta verde y sellos. Nada es obligatorio. Cada estado se distingue por texto y por forma, no solo por color.</p>
+<div class="grid">
+
+  <section class="state"><h3>A · Cargando</h3><p class="note">Mientras se comprueba el pasaporte.</p>
+    <div class="phone" aria-busy="true" aria-label="Cargando tu pasaporte"><div class="scroll">
+      <div class="hueso" style="width:40%"></div><div class="hueso" style="width:80%;height:28px"></div><div class="hueso" style="width:60%;margin-bottom:24px"></div>
+      <div class="hueso card"></div><div class="hueso card"></div><div class="hueso card"></div><div class="hueso card"></div>
+    </div></div>
+  </section>
+
+  <section class="state"><h3>B · Primera vez</h3><p class="note">Las 4 paradas abiertas. Ninguna empezada.</p>
+    <div class="phone"><div class="scroll">
+      <p class="eyebrow">SA 2 · Smash Together</p>
+      <h4>Mi pasaporte de progreso</h4>
+      <p class="lead">Cuatro paradas cortas. Rellena cada una cuando toque y envíala. Puedes cambiarla después.</p>
+      <a href="#" class="parada" data-e="vacia" aria-label="Parada 1, Mi punto de partida, sin empezar"><span class="sello" aria-hidden="true">1</span><span><span class="t">Mi punto de partida</span><span class="s" style="display:block">Sin empezar</span></span><span class="chev" aria-hidden="true">›</span></a>
+      <a href="#" class="parada" data-e="vacia" aria-label="Parada 2, Nuestro mejor rally, sin empezar"><span class="sello" aria-hidden="true">2</span><span><span class="t">Nuestro mejor rally</span><span class="s" style="display:block">Sin empezar</span></span><span class="chev" aria-hidden="true">›</span></a>
+      <a href="#" class="parada" data-e="vacia" aria-label="Parada 3, A mitad de camino, sin empezar"><span class="sello" aria-hidden="true">3</span><span><span class="t">A mitad de camino</span><span class="s" style="display:block">Sin empezar</span></span><span class="chev" aria-hidden="true">›</span></a>
+      <a href="#" class="parada" data-e="vacia" aria-label="Parada 4, Mi balance, sin empezar"><span class="sello" aria-hidden="true">4</span><span><span class="t">Mi balance</span><span class="s" style="display:block">Sin empezar</span></span><span class="chev" aria-hidden="true">›</span></a>
+    </div></div>
+  </section>
+
+  <section class="state"><h3>C · En marcha</h3><p class="note">Tres formas de sello: número punteado (sin empezar), flecha (sin enviar), check (enviada).</p>
+    <div class="phone"><div class="scroll">
+      <p class="eyebrow">SA 2 · Smash Together</p>
+      <h4>Mi pasaporte de progreso</h4>
+      <p class="lead">2 de 4 enviadas. 1 con cambios sin enviar.</p>
+      <a href="#" class="parada" data-e="enviada" aria-label="Parada 1, Mi punto de partida, enviada el 28 de octubre"><span class="sello" aria-hidden="true">✓</span><span><span class="t">1 · Mi punto de partida</span><span class="s" style="display:block">Enviada el 28 oct</span></span><span class="chev" aria-hidden="true">›</span></a>
+      <a href="#" class="parada" data-e="pendiente" aria-label="Parada 2, Nuestro mejor rally, cambios sin enviar"><span class="sello" aria-hidden="true">↑</span><span><span class="t">2 · Nuestro mejor rally</span><span class="s" style="display:block">Cambios sin enviar</span></span><span class="chev" aria-hidden="true">›</span></a>
+      <a href="#" class="parada" data-e="enviada" aria-label="Parada 3, A mitad de camino, enviada el 18 de noviembre"><span class="sello" aria-hidden="true">✓</span><span><span class="t">3 · A mitad de camino</span><span class="s" style="display:block">Enviada el 18 nov</span></span><span class="chev" aria-hidden="true">›</span></a>
+      <a href="#" class="parada" data-e="vacia" aria-label="Parada 4, Mi balance, sin empezar"><span class="sello" aria-hidden="true">4</span><span><span class="t">4 · Mi balance</span><span class="s" style="display:block">Sin empezar</span></span><span class="chev" aria-hidden="true">›</span></a>
+    </div></div>
+  </section>
+
+  <section class="state"><h3>D · Dentro de una parada</h3><p class="note">Se guarda en el móvil al escribir. Un solo botón principal.</p>
+    <div class="phone">
+      <div class="barra"><a href="#" class="atras" aria-label="Volver al pasaporte" style="color:inherit;text-decoration:none">‹</a> Parada 3 · A mitad de camino</div>
+      <div class="scroll">
+        <p class="guardado" role="status"><span aria-hidden="true">✓</span> Guardado en este móvil</p>
+        <div class="preg"><label class="q" for="d1">Un error que he corregido</label><textarea class="campo" id="d1" rows="2" placeholder="Antes… ahora…">Antes golpeaba bajo, ahora espero el volante arriba</textarea></div>
+        <div class="preg"><label class="q" for="d2">El consejo más útil a mi pareja</label><textarea class="campo" id="d2" rows="2" placeholder="Escribe aquí…"></textarea></div>
+        <fieldset class="preg"><legend>Mi semáforo de hoy</legend>
+          <div class="semaforo">
+            <div class="fila"><div class="et" id="s1">Técnica</div><div class="luces" role="radiogroup" aria-labelledby="s1"><span class="luz r" role="radio" aria-checked="false">Rojo</span><span class="luz a" role="radio" aria-checked="true">Ámbar</span><span class="luz v" role="radio" aria-checked="false">Verde</span></div></div>
+            <div class="fila"><div class="et" id="s2">Juego en dobles</div><div class="luces" role="radiogroup" aria-labelledby="s2"><span class="luz r" role="radio" aria-checked="false">Rojo</span><span class="luz a" role="radio" aria-checked="false">Ámbar</span><span class="luz v" role="radio" aria-checked="true">Verde</span></div></div>
+            <div class="fila"><div class="et" id="s3">Fair play</div><div class="luces" role="radiogroup" aria-labelledby="s3"><span class="luz r" role="radio" aria-checked="false">Rojo</span><span class="luz a" role="radio" aria-checked="false">Ámbar</span><span class="luz v" role="radio" aria-checked="false">Verde</span></div></div>
+          </div>
+        </fieldset>
+      </div>
+      <div class="pie"><p class="estado">Puedes enviarla aunque falte algo.</p><button class="boton">Enviar parada 3</button></div>
+    </div>
+  </section>
+
+  <section class="state"><h3>E · Parada sin nada</h3><p class="note">El botón espera a que haya al menos una respuesta. Campo vacío con borde punteado.</p>
+    <div class="phone">
+      <div class="barra"><a href="#" class="atras" aria-label="Volver al pasaporte" style="color:inherit;text-decoration:none">‹</a> Parada 4 · Mi balance</div>
+      <div class="scroll">
+        <div class="preg"><label class="q" for="e1">El golpe que más he mejorado y cómo lo sé</label><textarea class="campo" id="e1" rows="2" placeholder="Escribe aquí…"></textarea></div>
+        <div class="preg"><label class="q" for="e2">Un momento del torneo del que me siento orgulloso/a</label><textarea class="campo" id="e2" rows="2" placeholder="Escribe aquí…"></textarea></div>
+        <div class="preg"><label class="q" for="e3">Mi siguiente paso en bádminton</label><textarea class="campo" id="e3" rows="2" placeholder="Escribe aquí…"></textarea></div>
+      </div>
+      <div class="pie"><p class="estado" id="e-est">Responde algo para poder enviarla.</p><button class="boton" disabled aria-describedby="e-est">Enviar parada 4</button></div>
+    </div>
+  </section>
+
+  <section class="state"><h3>F · Enviada</h3><p class="note">Confirmación clara. Se puede volver a cambiar.</p>
+    <div class="phone"><div class="scroll centro">
+      <div class="gran-sello" aria-hidden="true">✓</div>
+      <div role="status"><h4 style="font-size:1.375rem">Parada 3 enviada. Tu profe ya la tiene</h4>
+      <p class="lead">18 nov, 10:42. Si cambias algo, vuelve a enviarla y se guarda lo nuevo.</p></div>
+    </div><div class="pie"><button class="boton">Volver al pasaporte</button></div></div>
+  </section>
+
+  <section class="state"><h3>G · Sin red</h3><p class="note">No se pierde nada. Reintentar es lo principal.</p>
+    <div class="phone"><div class="scroll centro">
+      <div class="gran-sello roto" aria-hidden="true">↻</div>
+      <div role="alert"><h4 style="font-size:1.375rem">No se ha podido enviar</h4>
+      <p class="lead">No hay conexión. Tu parada sigue guardada en este móvil. Prueba otra vez cuando tengas red.</p></div>
+    </div><div class="pie"><button class="boton">Reintentar</button><button class="boton callado">Enviar por correo</button></div></div>
+  </section>
+
+  <section class="state"><h3>H · Otro móvil</h3><p class="note">El servidor no puede leer lo enviado, así que este móvil no lo ve. Lo dice claro.</p>
+    <div class="phone"><div class="scroll">
+      <p class="eyebrow">SA 2 · Smash Together</p>
+      <h4>Mi pasaporte de progreso</h4>
+      <div class="aviso" style="margin-top:16px" role="note">En este móvil no hay nada guardado. Lo que ya enviaste desde otro está a salvo con tu profe. Rellena solo lo que te falte.</div>
+      <a href="#" class="parada" data-e="vacia" aria-label="Parada 1, Mi punto de partida, nada guardado en este móvil"><span class="sello" aria-hidden="true">1</span><span><span class="t">Mi punto de partida</span><span class="s" style="display:block">Nada en este móvil</span></span><span class="chev" aria-hidden="true">›</span></a>
+      <a href="#" class="parada" data-e="vacia" aria-label="Parada 2, Nuestro mejor rally, nada guardado en este móvil"><span class="sello" aria-hidden="true">2</span><span><span class="t">Nuestro mejor rally</span><span class="s" style="display:block">Nada en este móvil</span></span><span class="chev" aria-hidden="true">›</span></a>
+      <a href="#" class="parada" data-e="vacia" aria-label="Parada 3, A mitad de camino, nada guardado en este móvil"><span class="sello" aria-hidden="true">3</span><span><span class="t">A mitad de camino</span><span class="s" style="display:block">Nada en este móvil</span></span><span class="chev" aria-hidden="true">›</span></a>
+    </div></div>
+  </section>
+
+  <section class="state"><h3>I · Pasaporte cerrado</h3><p class="note">Pasada la fecha límite o enlace revocado.</p>
+    <div class="phone"><div class="scroll centro">
+      <div class="gran-sello roto" aria-hidden="true">✕</div>
+      <div role="status"><h4 style="font-size:1.375rem">Este pasaporte ya no acepta envíos</h4>
+      <p class="lead">Si te falta algo, habla con tu profe.</p></div>
+    </div></div>
+  </section>
+</div>
+
+<h2 class="part">2 · Profe (app en el Mac)</h2>
+<p class="partnote">Dentro de Entregas web. Las respuestas siguen yendo a la columna del instrumento en el Cuaderno. Los iconos de la maqueta serán SF Symbols en la app (nombre indicado al lado).</p>
+<div class="grid wide">
+
+  <section class="state"><h3>J · Publicar: nuevo modo</h3><p class="note">Tercera opción en «Modo de formulario».</p>
+    <div class="mac"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><span class="ttl">Publicar formulario</span></div>
+      <div class="body">
+        <p class="mut" style="margin:0">Modo de formulario</p>
+        <div class="seg" role="radiogroup" aria-label="Modo de formulario">
+          <label role="radio" aria-checked="false"><b>Autoevaluación</b>Se envía una vez.</label>
+          <label role="radio" aria-checked="false"><b>Auto + Coevaluación</b>Se envía una vez.</label>
+          <label class="on" role="radio" aria-checked="true"><b>Pasaporte</b>Se rellena por partes. Cada parte se envía cuando quieran.</label>
+        </div>
+        <p class="mut">Cada apartado del instrumento será una parada. Todas abiertas desde el primer día.</p>
+      </div></div>
+  </section>
+
+  <section class="state"><h3>K · Lista de tareas web</h3><p class="note">El pasaporte se distingue y muestra su avance por parada.</p>
+    <div class="mac"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><span class="ttl">Entregas web</span><div class="r"><span class="mut">Recogido hace 2 min</span><button class="btn p">Nueva tarea web</button></div></div>
+      <div class="body">
+        <div class="task"><div class="ico" aria-hidden="true">📘</div><div class="grow"><div class="t">Pasaporte de progreso <span class="tag">Pasaporte</span></div><div class="mut">1º BAC B · SA 2 Smash Together · 19 de 24 han empezado</div>
+          <div class="meter" aria-label="Parada 1: 22 de 24. Parada 2: 15. Parada 3: 4. Parada 4: 0."><span><b style="width:92%"></b></span><span><b style="width:62%"></b></span><span><b style="width:17%"></b></span><span><b style="width:0"></b></span></div></div><span class="sym">book</span></div>
+        <div class="task"><div class="ico" aria-hidden="true">📝</div><div class="grow"><div class="t">Autoevaluación final</div><div class="mut">1º BAC A · SA 1 · 22 importadas</div></div><span class="sym">square.and.pencil</span></div>
+      </div></div>
+  </section>
+
+  <section class="state"><h3>L · Detalle con datos</h3><p class="note">Un símbolo por parada, con forma distinta. Clic en una fila abre la ficha (M).</p>
+    <div class="mac"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><span class="ttl">Pasaporte de progreso · 1º BAC B</span><div class="r"><button class="btn">Copiar enlaces</button><button class="btn">Recoger ahora</button></div></div>
+      <div class="body">
+        <div class="resumen">
+          <div><div class="n">22<span class="mut">/24</span></div><div class="l">P1 · Punto de partida</div></div>
+          <div><div class="n">15<span class="mut">/24</span></div><div class="l">P2 · Mejor rally</div></div>
+          <div><div class="n">4<span class="mut">/24</span></div><div class="l">P3 · Mitad de camino</div></div>
+          <div><div class="n">0<span class="mut">/24</span></div><div class="l">P4 · Balance</div></div>
+        </div>
+        <div class="scrollx"><table role="grid">
+          <tr><th>Alumno/a</th><th class="c" title="Mi punto de partida">P1</th><th class="c" title="Nuestro mejor rally">P2</th><th class="c" title="A mitad de camino">P3</th><th class="c" title="Mi balance">P4</th><th>Último envío</th></tr>
+          <tr aria-selected="true"><td>Prueba, Alba</td><td class="c"><span class="pt on" aria-label="Enviada"></span></td><td class="c"><span class="pt upd" aria-label="Cambiada, nueva"></span><span class="nueva">Nueva</span></td><td class="c"><span class="pt on" aria-label="Enviada"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="mut">hoy, 10:42</td></tr>
+          <tr><td>Prueba, Bruno</td><td class="c"><span class="pt on" aria-label="Enviada"></span></td><td class="c"><span class="pt on" aria-label="Enviada"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="mut">4 nov</td></tr>
+          <tr><td>Prueba, Carla</td><td class="c"><span class="pt on" aria-label="Enviada"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="mut">28 oct</td></tr>
+          <tr><td>Prueba, Darío</td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="mut">Sin envíos</td></tr>
+        </table></div>
+        <div class="leyenda"><span><span class="pt on" aria-hidden="true"></span> Enviada</span><span><span class="pt upd" aria-hidden="true"></span> Nueva: cambiada desde que la miraste</span><span><span class="pt" aria-hidden="true"></span> Sin enviar</span></div>
+      </div></div>
+  </section>
+
+  <section class="state"><h3>M · Ficha de un alumno</h3><p class="note">Solo lectura. Respuestas por parada, con fecha.</p>
+    <div class="mac"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><span class="ttl">Alba Prueba · Pasaporte</span><div class="r"><button class="btn">Cerrar</button></div></div>
+      <div class="body ficha">
+        <h5>Parada 1 · Mi punto de partida <span class="mut">28 oct</span></h5>
+        <dl><dt>Mi mejor reto</dt><dd>20 seguidos</dd><dt>Lo que más me cuesta</dt><dd>Agarre de revés</dd><dt>Quiero mejorar</dt><dd>Mandar el volante al fondo</dd></dl>
+        <h5>Parada 2 · Nuestro mejor rally <span class="mut">hoy, 10:42</span> <span class="nuevo">Nueva</span></h5>
+        <dl><dt>Mejor Rally Length</dt><dd>18 golpes <span class="mut">(antes 12)</span></dd><dt>Error que más cortaba</dt><dd>No volver al centro</dd><dt>Probaré la próxima vez</dt><dd>Volver al centro después de cada golpe</dd></dl>
+        <h5>Parada 3 · A mitad de camino <span class="mut">18 nov</span></h5>
+        <dl><dt>Semáforo</dt><dd>Técnica ámbar · Dobles verde · Fair play sin marcar</dd></dl>
+        <h5>Parada 4 · Mi balance</h5>
+        <p class="nada">Aún no ha enviado esta parada.</p>
+      </div></div>
+  </section>
+
+  <section class="state"><h3>N · Recogiendo</h3><p class="note">Al abrir la tarea, mientras lee el buzón.</p>
+    <div class="mac" aria-busy="true"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><span class="ttl">Pasaporte de progreso · 1º BAC B</span><div class="r"><span class="mut" role="status">Recogiendo del buzón…</span></div></div>
+      <div class="body"><div class="sk" style="width:100%;height:56px"></div><div class="sk"></div><div class="sk"></div><div class="sk" style="width:70%"></div></div></div>
+  </section>
+
+  <section class="state"><h3>O · Vacío</h3><p class="note">Recién publicado.</p>
+    <div class="mac"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><span class="ttl">Pasaporte de progreso · 1º BAC B</span></div>
+      <div class="body"><div class="vacio"><div class="big" aria-hidden="true">📘</div><b>Nadie ha enviado nada todavía</b><p>Los envíos aparecen aquí solos cada vez que abres esta pantalla.</p><button class="btn p">Copiar enlaces</button></div></div></div>
+  </section>
+
+  <section class="state"><h3>P · Error de red</h3><p class="note">Lo ya recogido se sigue viendo.</p>
+    <div class="mac"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><span class="ttl">Pasaporte de progreso · 1º BAC B</span></div>
+      <div class="body">
+        <div class="banner" role="alert"><span aria-hidden="true">⚠︎</span> No se pudo abrir el buzón. Lo que ya tenías sigue aquí.<button class="btn">Reintentar</button></div>
+        <div class="scrollx"><table role="grid">
+          <tr><th>Alumno/a</th><th class="c">P1</th><th class="c">P2</th><th class="c">P3</th><th class="c">P4</th><th>Último envío</th></tr>
+          <tr><td>Prueba, Alba</td><td class="c"><span class="pt on" aria-label="Enviada"></span></td><td class="c"><span class="pt on" aria-label="Enviada"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="mut">4 nov</td></tr>
+          <tr><td>Prueba, Bruno</td><td class="c"><span class="pt on" aria-label="Enviada"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="c"><span class="pt" aria-label="Sin enviar"></span></td><td class="mut">28 oct</td></tr>
+        </table></div>
+      </div></div>
+  </section>
+</div>
+<div style="height:48px"></div>
+</body></html>

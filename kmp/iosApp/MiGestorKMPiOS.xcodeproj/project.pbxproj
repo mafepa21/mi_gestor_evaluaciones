@@ -293,6 +293,7 @@
 		5A9063DA832956EE6857D824 /* LearningSituationDuplicateSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8A3EB787578787FEDF5F12B /* LearningSituationDuplicateSheet.swift */; };
 		5AA56A1A703EDF8406F8B991 /* AttendanceWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 284EFC5D21CE71AE69E43094 /* AttendanceWorkspaceView.swift */; };
 		5AB3FE7CC733C2337A6B0624 /* LearningSituationAssessmentInstrumentsImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */; };
+		5AB8F1E5194D393A426BFA80 /* WebPassportProgressSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2AB4196DBEAD5BB81AB5A13 /* WebPassportProgressSheet.swift */; };
 		5AEB04567FC583959C901083 /* MacBackupInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C68F4452792ADF072EDE900 /* MacBackupInspectorView.swift */; };
 		5B6B1EAFC967383C3D39C47F /* DashboardRecommendations.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDE22B7BADFF6EE757E8A93 /* DashboardRecommendations.swift */; };
 		5B9348B77A6D1C04F05951B4 /* KmpBridge+Students.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09DCB06FB06AE15B6622B367 /* KmpBridge+Students.swift */; };
@@ -433,6 +434,7 @@
 		830479F2E8118437B8115C2F /* NotebookWorkGroupImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D74476D5561462609506B631 /* NotebookWorkGroupImportService.swift */; };
 		830837B69A6A3773AF05B011 /* LearningSituationDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16E3DD63D6D3D2C2C4A53366 /* LearningSituationDetailView.swift */; };
 		83DB805DBC12FA13994AB6DC /* DataManagementSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */; };
+		848F92D2B41519F8D28627AF /* WebPassportProgressSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2AB4196DBEAD5BB81AB5A13 /* WebPassportProgressSheet.swift */; };
 		850A15F127EFFF7AEBA9E583 /* PlannerGanttProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583959F23A0D26CC96A6ADDD /* PlannerGanttProjectionTests.swift */; };
 		85C14A3146CE690A098DA35F /* AppleBackupRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6792DA4E9E06E76D097D1A9A /* AppleBackupRetentionTests.swift */; };
 		85F084D4F3CFD8C65129C953 /* KnockoutBracketResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E96A35C644DC30CB778C7EE /* KnockoutBracketResolver.swift */; };
@@ -513,6 +515,7 @@
 		9AFEF1D8CE80DFB68F1D38FB /* AppleAISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F8916B5C4C8F6DBC133D2B /* AppleAISettingsView.swift */; };
 		9B35E3F2A1902328316396AA /* ScheduleImportModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85AD42D18AFCD452127D549 /* ScheduleImportModels.swift */; };
 		9B9E77209733E8409CF0EA12 /* PhysicalTestScaleEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEAFA7B950CAE267617F3C4 /* PhysicalTestScaleEditor.swift */; };
+		9BCE4579B0A956314F8636A2 /* WebPassport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC406D4E45C94D4821FE151 /* WebPassport.swift */; };
 		9C0A4239D7D82AD24E2E476C /* PlannerWorkspaceViewModel+Report.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16469D20A02679E669EF5AFE /* PlannerWorkspaceViewModel+Report.swift */; };
 		9C7673B2979FFCA1859AE289 /* LibretaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74A032241176234889A5279C /* LibretaStore.swift */; };
 		9C7878931AE0C38FB12E4FE5 /* KnockoutMatchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630945C2C91E334840CDFB86 /* KnockoutMatchResult.swift */; };
@@ -623,6 +626,7 @@
 		BD47B7FB84E4AAC46BCF34DD /* MacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A9F35D6CEDD07FCA45EBA5 /* MacSettingsView.swift */; };
 		BD6559CB7AFB7B36DE2D7BC5 /* DiaryContinuousTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E09B3820CF091595567D36EC /* DiaryContinuousTimelineView.swift */; };
 		BD77C5642785F0039E37C2E7 /* WeightEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CAE8A67112E3157FC3FFECE /* WeightEditorSheet.swift */; };
+		BDD03E3476CDCA392CB1B783 /* WebPassportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742D8199B6AE6C7EF3AAD69E /* WebPassportTests.swift */; };
 		BEE09F01DFABE9A8498C8B0E /* AppleViewCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */; };
 		BEE5A4B10ED6EF26DC223E17 /* AppleViewCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */; };
 		BFBDC32C751D734F2D2072F1 /* TeacherRadarDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5D2A61B5FA1C890A91EB2D9 /* TeacherRadarDetailView.swift */; };
@@ -792,6 +796,7 @@
 		EE35672DB0633D9E207D6E90 /* RubricTemplateCatalogSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542F962EB91CBB9EBA611DAA /* RubricTemplateCatalogSheet.swift */; };
 		EE585AABD4D49886E85298C0 /* SelectiveWipeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F49432D42F3A8BBD54876B /* SelectiveWipeSheet.swift */; };
 		EE76EADE438B22F17CB7A803 /* FloatingControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40C600BD43D0E0F04718338A /* FloatingControls.swift */; };
+		EE870EC044A75164FC564DEE /* WebPassport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC406D4E45C94D4821FE151 /* WebPassport.swift */; };
 		EF68CA636463C34D058454ED /* EducamosSMXlsxWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9935CD7725DE77C880BB96A /* EducamosSMXlsxWriter.swift */; };
 		EFDFB4479447A7246D91ABCA /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7AB4FB2753F16568E54891 /* DashboardView.swift */; };
 		F04314B826EF0638F9799A0B /* StudentSexInferenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39AE32F30CE1BFF301340B83 /* StudentSexInferenceService.swift */; };
@@ -1103,6 +1108,7 @@
 		6E872368F9FF913D1CF75FFC /* SdaTournamentLiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SdaTournamentLiveView.swift; sourceTree = "<group>"; };
 		6ED32EAFF51BE275270F5F2A /* MeetingActaPDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingActaPDF.swift; sourceTree = "<group>"; };
 		6F08CE3BCBD53B85A89136EF /* PlannerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerModels.swift; sourceTree = "<group>"; };
+		6FC406D4E45C94D4821FE151 /* WebPassport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPassport.swift; sourceTree = "<group>"; };
 		704B902594B5C72A796944D4 /* InstrumentEvaluationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstrumentEvaluationModels.swift; sourceTree = "<group>"; };
 		70F49432D42F3A8BBD54876B /* SelectiveWipeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectiveWipeSheet.swift; sourceTree = "<group>"; };
 		7174DB4F7438C1CFA8F42BC0 /* PedagogicalMLCalibrationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PedagogicalMLCalibrationService.swift; sourceTree = "<group>"; };
@@ -1110,6 +1116,7 @@
 		72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingEvaluationPickerSheet.swift; sourceTree = "<group>"; };
 		731B64EEED706F209FBB0774 /* NotebookCellStampPickerPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookCellStampPickerPopover.swift; sourceTree = "<group>"; };
 		73E80A05F8F203CF9F01667C /* PlannerFloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerFloatingTabBar.swift; sourceTree = "<group>"; };
+		742D8199B6AE6C7EF3AAD69E /* WebPassportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPassportTests.swift; sourceTree = "<group>"; };
 		74A032241176234889A5279C /* LibretaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibretaStore.swift; sourceTree = "<group>"; };
 		74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadWorkspaceShell.swift; sourceTree = "<group>"; };
 		7584348C117723D12BC316D2 /* DashboardHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHeaderView.swift; sourceTree = "<group>"; };
@@ -1291,6 +1298,7 @@
 		CD2E6198F8A34293A814CE88 /* StudentProfile360Sheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentProfile360Sheet.swift; sourceTree = "<group>"; };
 		CEAAF5669D2AF30F91887B74 /* PlannerWorkspaceViewModel+Schedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Schedule.swift"; sourceTree = "<group>"; };
 		D0B03581E247976F1D0F9535 /* PlannerWorkspaceViewModel+BulkOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+BulkOperations.swift"; sourceTree = "<group>"; };
+		D2AB4196DBEAD5BB81AB5A13 /* WebPassportProgressSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPassportProgressSheet.swift; sourceTree = "<group>"; };
 		D2E833F8E8281D5E3F4BFB0F /* NotebookMacLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookMacLayout.swift; sourceTree = "<group>"; };
 		D332467A125C50215481D20B /* TutoringShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutoringShared.swift; sourceTree = "<group>"; };
 		D462464740198AE442A0E5E2 /* WebPeerEvaluationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPeerEvaluationStore.swift; sourceTree = "<group>"; };
@@ -1493,6 +1501,7 @@
 				A0774A7DE7911EED2EC152DD /* TournamentEngineTests.swift */,
 				D519FB48543599E5BCF1E317 /* TournamentPlanEstimatorTests.swift */,
 				8876B438DCEBEAA8FA4D2DCE /* TournamentRegistrationTests.swift */,
+				742D8199B6AE6C7EF3AAD69E /* WebPassportTests.swift */,
 				E53CEADFB7F475E69F408CDF /* WebPeerEvaluationStoreTests.swift */,
 				6B358AD8E728169AC1F3BAC4 /* WebSubmissionBulkMailTests.swift */,
 				AF82345E1A34DF613A018608 /* WebSubmissionImportTests.swift */,
@@ -1673,6 +1682,8 @@
 				92E4753F5750444721BF2027 /* SyncPairingViews.swift */,
 				FAB655B4792B2C5FBB76245E /* SyncSettingsView.swift */,
 				D332467A125C50215481D20B /* TutoringShared.swift */,
+				6FC406D4E45C94D4821FE151 /* WebPassport.swift */,
+				D2AB4196DBEAD5BB81AB5A13 /* WebPassportProgressSheet.swift */,
 				D462464740198AE442A0E5E2 /* WebPeerEvaluationStore.swift */,
 				1C2007F7621C210CCA9762CF /* WebSubmissionBulkMailer.swift */,
 				C18473DBCC65D84DAB60649B /* WebSubmissionFixtureConstants.swift */,
@@ -2314,6 +2325,7 @@
 				94F00CA3BF7BD2D188CA7630 /* TournamentEngineTests.swift in Sources */,
 				56B948961FB1B6041C2051DE /* TournamentPlanEstimatorTests.swift in Sources */,
 				784EA4B87172C9AB896017AD /* TournamentRegistrationTests.swift in Sources */,
+				BDD03E3476CDCA392CB1B783 /* WebPassportTests.swift in Sources */,
 				4CA8A74167E037973D7FC3A8 /* WebPeerEvaluationStoreTests.swift in Sources */,
 				BCBB3510BB55A0F1F8DAE90C /* WebSubmissionBulkMailTests.swift in Sources */,
 				1BB5B1294E60AD563A8AB901 /* WebSubmissionImportTests.swift in Sources */,
@@ -2700,6 +2712,8 @@
 				67BBDCDA410E648994B4A77C /* TournamentScheduleGenerator.swift in Sources */,
 				66193EC5E5B7B88E8E6A1500 /* TournamentsWorkspaceView.swift in Sources */,
 				EB0DA30115D7B0863E94E1D1 /* TutoringShared.swift in Sources */,
+				9BCE4579B0A956314F8636A2 /* WebPassport.swift in Sources */,
+				848F92D2B41519F8D28627AF /* WebPassportProgressSheet.swift in Sources */,
 				319C274D4D2551BBA3662EBF /* WebPeerEvaluationStore.swift in Sources */,
 				7A8AEA68ECB8F7DA671506F4 /* WebSubmissionBulkMailer.swift in Sources */,
 				653E907AB58B1C68DBB62638 /* WebSubmissionFixtureConstants.swift in Sources */,
@@ -3108,6 +3122,8 @@
 				8C03F7F17A2A423D60495D43 /* TournamentsWorkspaceView.swift in Sources */,
 				1DD64E29F1E15C07CF123EA7 /* TutoringShared.swift in Sources */,
 				650D226A799D30DACF95886B /* WeaveTexture.swift in Sources */,
+				EE870EC044A75164FC564DEE /* WebPassport.swift in Sources */,
+				5AB8F1E5194D393A426BFA80 /* WebPassportProgressSheet.swift in Sources */,
 				06C567009F92FA66B72544E7 /* WebPeerEvaluationStore.swift in Sources */,
 				A10C466E3F7F0E54DCFA2ADA /* WebSubmissionBulkMailer.swift in Sources */,
 				04FB8CBA0284913CF5515464 /* WebSubmissionFixtureConstants.swift in Sources */,

@@ -41,6 +41,7 @@ struct WebSubmissionsWorkspaceView: View {
     @State private var publishing = false
     @State private var publishResult: WebPublishResult?
     @State private var emailTask: WebSubmissionTaskInfo?
+    @State private var passportTask: WebSubmissionTaskInfo?
     @State private var taskToRevoke: WebSubmissionTaskInfo?
     @State private var selectionMode = false
     @State private var selectedTaskIDs: Set<String> = []
@@ -107,6 +108,21 @@ struct WebSubmissionsWorkspaceView: View {
             WebSubmissionLinkEmailSheet(
                 task: task,
                 links: linksByFormInstanceId[task.formInstanceId] ?? []
+            )
+        }
+        .sheet(item: $passportTask) { task in
+            WebPassportProgressSheet(
+                task: task,
+                load: { await bridge.loadWebPassportProgress(formInstanceId: task.formInstanceId) },
+                collect: { await collectFromInbox(reportErrors: false) },
+                copyLinks: {
+                    #if os(macOS)
+                    copyLinks(for: task)
+                    #endif
+                },
+                markSeen: { studentId in
+                    bridge.markWebPassportSeen(formInstanceId: task.formInstanceId, studentId: studentId)
+                }
             )
         }
         .alert(
@@ -445,8 +461,18 @@ struct WebSubmissionsWorkspaceView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(task.title)
-                        .font(.headline)
+                    HStack(spacing: 8) {
+                        Text(task.title)
+                            .font(.headline)
+                        if task.isPassport {
+                            Text("Pasaporte")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.indigo)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(.indigo.opacity(0.12), in: Capsule())
+                        }
+                    }
                     Text("\(task.groupName) · \(task.columnTitle)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -490,6 +516,16 @@ struct WebSubmissionsWorkspaceView: View {
     private func taskActions(_ task: WebSubmissionTaskInfo) -> some View {
         #if os(macOS)
         HStack(spacing: 8) {
+            if task.isPassport {
+                Button {
+                    passportTask = task
+                } label: {
+                    Label("Ver pasaporte", systemImage: "book.closed")
+                }
+                .buttonStyle(.borderless)
+                .disabled(revoking || bulkProcessing)
+            }
+
             if task.status == .active && !task.isArchived {
                 Button {
                     Task {
@@ -682,9 +718,11 @@ struct WebSubmissionsWorkspaceView: View {
     private var hasInboxTasks: Bool { !inboxTasks.isEmpty }
 
     /// Recoge del buzón, importa lo que tiene dueño claro y borra del servidor lo importado.
-    private func collectFromInbox() async {
+    /// Devuelve el motivo si no se pudo; con `reportErrors` también lo enseña en un aviso.
+    @discardableResult
+    private func collectFromInbox(reportErrors: Bool = true) async -> String? {
         let pendientes = inboxTasks
-        guard !collecting, !pendientes.isEmpty, !baseURL.isEmpty else { return }
+        guard !collecting, !pendientes.isEmpty, !baseURL.isEmpty else { return nil }
         collecting = true
         defer { collecting = false }
         let client = WebSubmissionInboxClient(url: WebSubmissionInbox.url(baseURL: baseURL))
@@ -723,15 +761,16 @@ struct WebSubmissionsWorkspaceView: View {
             }
         }
         if let fallo, importadas == 0 {
-            errorMessage = fallo
-            return
+            if reportErrors { errorMessage = fallo }
+            return fallo
         }
-        guard importadas > 0 || porRevisar > 0 else { return }
+        guard importadas > 0 || porRevisar > 0 else { return nil }
         var partes: [String] = []
         if importadas > 0 { partes.append("\(importadas) \(importadas == 1 ? "entrega recibida" : "entregas recibidas") del buzón") }
         if porRevisar > 0 { partes.append("\(porRevisar) sin importar: revisa que el alumno siga en el grupo") }
         importSummary = partes.joined(separator: " · ")
         if importadas > 0 { await reload() }
+        return nil
     }
 
     private func revoke(_ task: WebSubmissionTaskInfo) async {

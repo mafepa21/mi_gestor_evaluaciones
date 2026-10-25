@@ -143,6 +143,7 @@ struct WebSubmissionPublishSheet: View {
             Picker("Modo", selection: $selectedMode) {
                 Text("Autoevaluación").tag("self")
                 Text("Auto + Coevaluación").tag("peer")
+                Text("Pasaporte").tag("passport")
             }
             .pickerStyle(.segmented)
             .onChange(of: selectedMode) { _, newMode in
@@ -151,12 +152,15 @@ struct WebSubmissionPublishSheet: View {
                 }
             }
 
-            if selectedMode == "self" {
+            switch selectedMode {
+            case "peer":
+                coevaluationDetailsView
+            case "passport":
+                passportDetailsView
+            default:
                 Text("Cada alumno/a evaluará únicamente su propio trabajo.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else {
-                coevaluationDetailsView
             }
         }
         .padding(16)
@@ -242,6 +246,44 @@ struct WebSubmissionPublishSheet: View {
             Text("Selecciona una columna para detectar automáticamente los grupos de la Situación de Aprendizaje.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Pasaporte: se rellena por partes. Enseña las paradas que saldrán del
+    /// instrumento elegido para que no haya sorpresas al publicar.
+    @ViewBuilder
+    private var passportDetailsView: some View {
+        let paradas = instruments.first(where: { $0.columnId == selectedColumnId })?.passportStops ?? []
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Se rellena por partes. Todas las paradas abiertas desde el primer día; cada una se envía cuando quieran.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if paradas.count > 1 {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(paradas, id: \.self) { parada in
+                        Label(parada, systemImage: "seal")
+                            .font(.caption)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else if selectedColumnId != nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Saldrá una sola parada", systemImage: "info.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                    Text("Para separar paradas, empieza el título de cada apartado con su parada: «Parada 1 · Mi mejor reto».")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
         }
     }
 

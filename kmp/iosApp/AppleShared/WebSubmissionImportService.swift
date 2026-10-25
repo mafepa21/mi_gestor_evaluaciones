@@ -69,7 +69,7 @@ struct WebFormManifest: Codable {
     let expiresAt: String
     /// Correo al que el alumnado manda su entrega. Solo lo usa la web.
     let deliveryEmail: String?
-    /// Modo del formulario: "self" o "peer"
+    /// Modo del formulario: "self", "peer" o "passport"
     let mode: String?
 }
 
@@ -411,6 +411,8 @@ struct WebSubmissionDraft: Identifiable {
     let missingRequiredTitles: [String]
     let targetAlias: String?
     let isPeerEvaluation: Bool
+    /// Pasaporte por paradas: el mismo alumno envía varias veces y todo se junta.
+    let isPassport: Bool
 
     init(
         submissionId: String,
@@ -426,7 +428,8 @@ struct WebSubmissionDraft: Identifiable {
         requiredAnswered: Int,
         missingRequiredTitles: [String],
         targetAlias: String? = nil,
-        isPeerEvaluation: Bool = false
+        isPeerEvaluation: Bool = false,
+        isPassport: Bool = false
     ) {
         self.submissionId = submissionId
         self.formInstanceId = formInstanceId
@@ -442,6 +445,7 @@ struct WebSubmissionDraft: Identifiable {
         self.missingRequiredTitles = missingRequiredTitles
         self.targetAlias = targetAlias
         self.isPeerEvaluation = isPeerEvaluation
+        self.isPassport = isPassport
     }
 
     /// Si no se ha podido resolver a quién pertenece, el docente tiene que
@@ -567,7 +571,9 @@ struct WebSubmissionImportService {
                     // En autoevaluación, no se permiten dos entregas para el mismo alumno.
                     // En coevaluación, se permiten varias evaluaciones de distintos evaluadores para el mismo alumno evaluado,
                     // pero no dos entregas del mismo evaluador para el mismo alumno evaluado.
-                    if let alumno = borrador.studentId {
+                    // En pasaporte, varios envíos del mismo alumno son lo normal: se
+                    // juntan al importar (ver `WebPassportStore`).
+                    if let alumno = borrador.studentId, !borrador.isPassport {
                         if borrador.isPeerEvaluation {
                             if resultado.drafts.contains(where: {
                                 $0.formInstanceId == borrador.formInstanceId &&
@@ -728,7 +734,8 @@ struct WebSubmissionImportService {
                 requiredAnswered: evaluacion.obligatoriosRespondidos,
                 missingRequiredTitles: evaluacion.sinResponderTitulos,
                 targetAlias: nil,
-                isPeerEvaluation: false
+                isPeerEvaluation: false,
+                isPassport: contexto.mode == "passport"
             )
             return [borrador]
         } else {

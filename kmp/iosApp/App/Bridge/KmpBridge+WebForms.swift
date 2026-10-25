@@ -33,6 +33,10 @@ extension KmpBridge {
             let problema = sinOpciones.map {
                 "«\($0.title)» es de elección y no tiene opciones. Edita el instrumento y añádelas."
             }
+            let paradas = WebPassportSections.split(
+                titles: detalle.items.sorted { $0.order < $1.order }.map(\.title),
+                fallbackTitle: detalle.template_.title
+            ).stops.map { "\($0.title) · \($0.itemIndexes.count) \($0.itemIndexes.count == 1 ? "pregunta" : "preguntas")" }
 
             salida.append(
                 WebPublishableInstrument(
@@ -43,7 +47,8 @@ extension KmpBridge {
                     alreadyPublished: publicados.contains {
                         $0.columnId == columna.id && !$0.revoked
                     },
-                    blockingIssue: problema
+                    blockingIssue: problema,
+                    passportStops: paradas
                 )
             )
         }
@@ -353,22 +358,34 @@ extension KmpBridge {
             )
         }
 
-        let items: [WebSubmissionPublisher.ItemToPublish] = detalle.items
-            .sorted { $0.order < $1.order }
-            .map { item in
-                WebSubmissionPublisher.ItemToPublish(
-                    itemId: item.id,
-                    title: item.title,
-                    type: Self.webItemType(from: item.type),
-                    required: item.required,
-                    options: item.options,
-                    helpText: item.helpText,
-                    // La plantilla del Cuaderno no guarda etiquetas por nivel; la
-                    // PWA cae a 1-2-3-4, que es lo que se ve en el instrumento.
-                    scaleLabels: nil,
-                    sectionId: nil
-                )
-            }
+        let ordenados = detalle.items.sorted { $0.order < $1.order }
+        // Pasaporte: cada parada es una sección, sale del prefijo del título y nada
+        // es obligatorio (se envía por partes).
+        let pasaporte = mode == "passport"
+        let paradas = pasaporte
+            ? WebPassportSections.split(titles: ordenados.map(\.title), fallbackTitle: detalle.template_.title)
+            : nil
+        var seccionPorIndice: [Int: String] = [:]
+        for parada in paradas?.stops ?? [] {
+            for indice in parada.itemIndexes { seccionPorIndice[indice] = parada.sectionId }
+        }
+        let items: [WebSubmissionPublisher.ItemToPublish] = ordenados.enumerated().map { indice, item in
+            WebSubmissionPublisher.ItemToPublish(
+                itemId: item.id,
+                title: paradas?.itemTitles[indice] ?? item.title,
+                type: Self.webItemType(from: item.type),
+                required: pasaporte ? false : item.required,
+                options: item.options,
+                helpText: item.helpText,
+                // La plantilla del Cuaderno no guarda etiquetas por nivel; la
+                // PWA cae a 1-2-3-4, que es lo que se ve en el instrumento.
+                scaleLabels: nil,
+                sectionId: seccionPorIndice[indice]
+            )
+        }
+        let secciones = (paradas?.stops ?? []).map {
+            WebSubmissionPublisher.SectionToPublish(sectionId: $0.sectionId, title: $0.title, help: nil)
+        }
 
         var peerTargetsToPublish: [WebSubmissionPublisher.PeerTargetToPublish] = []
         if mode == "peer" {
@@ -413,7 +430,7 @@ extension KmpBridge {
             title: detalle.template_.title,
             subtitle: nil,
             locale: "es",
-            sections: [],
+            sections: secciones,
             items: items,
             students: alumnado.map {
                 WebSubmissionPublisher.StudentToPublish(
@@ -664,6 +681,8 @@ extension KmpBridge {
 
         var decisionsByCell: [TargetCellKey: [WebSubmissionImportDecision]] = [:]
         var peerStores: [String: WebPeerEvaluationStore] = [:]
+        var passportStores: [String: WebPassportStore] = [:]
+        var passportSections: [String: [String: String]] = [:]
         for decision in decisions {
             let key = TargetCellKey(
                 classId: decision.draft.classId,
@@ -692,6 +711,33 @@ extension KmpBridge {
                 }
                 peerStores[primerBorrador.formInstanceId] = almacen
                 answerSets = almacen.evaluations(for: cellKey.studentId).map(\.answers)
+            }
+
+            // Pasaporte: cada envío se junta con lo ya recibido y la celda se guarda
+            // con TODO, para que su resumen cuente todas las paradas, no solo la última.
+            if primerBorrador.isPassport {
+                let formId = primerBorrador.formInstanceId
+                if passportStores[formId] == nil {
+                    passportStores[formId] = WebPassportStore.forForm(formId)
+                    passportSections[formId] = await passportSectionMap(formInstanceId: formId)
+                }
+                if var almacen = passportStores[formId] {
+                    for dec in cellDecisions.sorted(by: { $0.draft.clientSubmittedAt < $1.draft.clientSubmittedAt }) {
+                        almacen.merge(
+                            studentId: cellKey.studentId,
+                            clientSubmittedAt: dec.draft.clientSubmittedAt,
+                            answers: dec.draft.answers,
+                            sectionIdByWebItemId: passportSections[formId] ?? [:]
+                        )
+                    }
+                    passportStores[formId] = almacen
+                    answerSets = [almacen.mergedAnswers(for: cellKey.studentId)]
+                } else {
+                    // Sin carpeta privada no se puede juntar: se guarda solo el envío más reciente.
+                    answerSets = cellDecisions
+                        .max(by: { $0.draft.clientSubmittedAt < $1.draft.clientSubmittedAt })
+                        .map { [$0.draft.answers] } ?? []
+                }
             }
 
             var answersByItemId: [String: [WebResolvedAnswer]] = [:]
@@ -770,12 +816,62 @@ extension KmpBridge {
         for almacen in peerStores.values {
             try? almacen.save()
         }
+        for almacen in passportStores.values {
+            try? almacen.save()
+        }
 
         if resultado.imported > 0 {
             refreshCurrentNotebook()
         }
 
         return resultado
+    }
+
+    // MARK: - Pasaporte por paradas
+
+    /// `webItemId` -> parada, sacado del manifiesto publicado.
+    private func passportSectionMap(formInstanceId: String) async -> [String: String] {
+        guard let manifiesto = await publishedManifest(formInstanceId: formInstanceId) else { return [:] }
+        var mapa: [String: String] = [:]
+        for item in manifiesto.items {
+            if let seccion = item.sectionId { mapa[item.webItemId] = seccion }
+        }
+        return mapa
+    }
+
+    private func publishedManifest(formInstanceId: String) async -> WebFormManifest? {
+        guard let instancia = try? await container.webSubmissionsRepository
+            .getFormInstance(formInstanceId: formInstanceId) else { return nil }
+        return try? JSONDecoder().decode(WebFormManifest.self, from: Data(instancia.manifestJson.utf8))
+    }
+
+    /// Progreso de un pasaporte: qué paradas ha enviado cada alumno y sus respuestas.
+    /// Lee lo recibido de `pasaporte.json` (local, como la hoja de enlaces).
+    func loadWebPassportProgress(formInstanceId: String) async -> WebPassportProgress? {
+        guard let instancia = try? await container.webSubmissionsRepository
+            .getFormInstance(formInstanceId: formInstanceId),
+              let manifiesto = try? JSONDecoder().decode(WebFormManifest.self, from: Data(instancia.manifestJson.utf8))
+        else { return nil }
+        let alumnado = (try? await container.classesRepository.listStudentsInClass(classId: instancia.classId)) ?? []
+        let roster = alumnado
+            .map { WebRosterEntry(id: $0.id, name: "\($0.lastName), \($0.firstName)".trimmingCharacters(in: CharacterSet(charactersIn: ", "))) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let grupo = classes.first(where: { $0.id == instancia.classId })?.name ?? "Grupo \(instancia.classId)"
+        return WebPassportProgress.build(
+            formInstanceId: formInstanceId,
+            title: instancia.title,
+            groupName: grupo,
+            manifest: manifiesto,
+            roster: roster,
+            store: WebPassportStore.forForm(formInstanceId)
+        )
+    }
+
+    /// El docente ha abierto la ficha: sus paradas dejan de marcarse como nuevas.
+    func markWebPassportSeen(formInstanceId: String, studentId: Int64) {
+        guard var almacen = WebPassportStore.forForm(formInstanceId) else { return }
+        almacen.markSeen(studentId: studentId)
+        try? almacen.save()
     }
 
 #if DEBUG

@@ -180,7 +180,7 @@ struct LearningSituationEvaluationSheet: View {
             .fileImporter(
                 isPresented: $showingInstrumentImporter,
                 allowedContentTypes: [.docx],
-                allowsMultipleSelection: false
+                allowsMultipleSelection: true
             ) { result in
                 Task { await handleInstrumentImport(result) }
             }
@@ -708,34 +708,56 @@ struct LearningSituationEvaluationSheet: View {
     @MainActor
     private func handleInstrumentImport(_ result: Result<[URL], Error>) async {
         do {
-            guard let url = try result.get().first else { return }
+            // Se pueden elegir varios Word a la vez (p. ej. instrumentos + pasaporte del alumnado):
+            // sus instrumentos salen juntos en la misma revisión.
+            let urls = try result.get()
+            guard !urls.isEmpty else { return }
             isImportingInstrumentDocument = true
             defer { isImportingInstrumentDocument = false }
 
-            // El acceso con alcance de seguridad y la lectura de bytes son rápidos (documento
-            // pequeño) y se hacen aquí, en el hilo que ya tiene la autorización de
-            // NSOpenPanel/.fileImporter, para no arriesgar una interacción rara entre
-            // startAccessingSecurityScopedResource() y un contexto de tarea aislado.
-            let accessing = url.startAccessingSecurityScopedResource()
-            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-            let data = try Data(contentsOf: url)
-
-            // El parseo XML en sí (CPU-bound, sin E/S) se despacha a una cola GCD normal
-            // -deliberadamente NO Task.detached, que comparte el pool cooperativo de Swift
-            // Concurrency con el resto de tareas estructuradas de la app- con un timeout
-            // defensivo para que el spinner nunca quede colgado indefinidamente.
             let service = LearningSituationAssessmentInstrumentsImportService()
-            instrumentReviewDraft = try await withTimeout(seconds: 20) {
-                try await withCheckedThrowingContinuation { continuation in
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        do {
-                            continuation.resume(returning: try service.preview(from: url, data: data))
-                        } catch {
-                            continuation.resume(throwing: error)
+            var drafts: [LearningSituationAssessmentImportDraft] = []
+            var failures: [String] = []
+            for url in urls {
+                do {
+                    // El acceso con alcance de seguridad y la lectura de bytes son rápidos
+                    // (documento pequeño) y se hacen aquí, en el hilo que ya tiene la
+                    // autorización de NSOpenPanel/.fileImporter, para no arriesgar una
+                    // interacción rara entre startAccessingSecurityScopedResource() y un
+                    // contexto de tarea aislado.
+                    let accessing = url.startAccessingSecurityScopedResource()
+                    defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                    let data = try Data(contentsOf: url)
+
+                    // El parseo XML en sí (CPU-bound, sin E/S) se despacha a una cola GCD normal
+                    // -deliberadamente NO Task.detached, que comparte el pool cooperativo de Swift
+                    // Concurrency con el resto de tareas estructuradas de la app- con un timeout
+                    // defensivo para que el spinner nunca quede colgado indefinidamente.
+                    let draft = try await withTimeout(seconds: 20) {
+                        try await withCheckedThrowingContinuation { continuation in
+                            DispatchQueue.global(qos: .userInitiated).async {
+                                do {
+                                    continuation.resume(returning: try service.preview(from: url, data: data))
+                                } catch {
+                                    continuation.resume(throwing: error)
+                                }
+                            }
                         }
                     }
+                    drafts.append(draft)
+                } catch {
+                    // Con un solo Word se mantiene el error de siempre; con varios, el que no
+                    // se puede leer se avisa y los demás siguen.
+                    if urls.count == 1 { throw error }
+                    failures.append("\(url.lastPathComponent): no se ha podido leer (\(error.localizedDescription)).")
                 }
             }
+            guard var merged = LearningSituationAssessmentImportDraft.merged(drafts) else {
+                errorMessage = failures.joined(separator: " ")
+                return
+            }
+            merged.warnings.append(contentsOf: failures)
+            instrumentReviewDraft = merged
             path = [.instrumentsReview]
         } catch {
             errorMessage = error.localizedDescription

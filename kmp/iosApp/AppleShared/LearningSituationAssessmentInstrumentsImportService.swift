@@ -30,6 +30,34 @@ struct LearningSituationAssessmentImportDraft: Identifiable, Codable {
         self.sha256 = sha256
         self.sizeBytes = sizeBytes
     }
+
+    /// Junta los borradores de varios Word (p. ej. instrumentos + pasaporte) en uno solo, en el
+    /// orden elegido. Con más de un Word, cada aviso dice de qué Word viene. Del documento solo
+    /// se usa después `sourceFileName` (texto de la columna), así que el resto sale del primero.
+    static func merged(_ drafts: [LearningSituationAssessmentImportDraft]) -> LearningSituationAssessmentImportDraft? {
+        guard let first = drafts.first else { return nil }
+        guard drafts.count > 1 else { return first }
+        let instruments = drafts.flatMap(\.instruments)
+        // Si uno de los Word ya trae el pasaporte por paradas, sobra el aviso «no trae paradas»
+        // del apartado «Pasaporte» del documento de instrumentos.
+        let includesPassport = instruments.contains { instrument in
+            instrument.quizQuestions.first.map { LearningSituationAssessmentInstrumentsImportService.isPassportStopQuestion($0.questionText) } ?? false
+        }
+        let warnings = drafts.flatMap { draft in
+            draft.warnings
+                .filter { !(includesPassport && $0.contains(LearningSituationAssessmentInstrumentsImportService.passportWithoutStopsMarker)) }
+                .map { "\(draft.sourceFileName): \($0)" }
+        }
+        return LearningSituationAssessmentImportDraft(
+            sourceFileName: drafts.map(\.sourceFileName).joined(separator: " + "),
+            instruments: instruments,
+            gradingFormula: drafts.lazy.compactMap(\.gradingFormula).first,
+            warnings: warnings,
+            sourceURL: first.sourceURL,
+            sha256: first.sha256,
+            sizeBytes: first.sizeBytes
+        )
+    }
 }
 
 struct AssessmentInstrumentDraft: Identifiable, Codable {
@@ -184,6 +212,15 @@ struct QuizQuestionDraft: Codable {
 }
 
 struct LearningSituationAssessmentInstrumentsImportService {
+    /// Texto del aviso de un apartado «Pasaporte» sin paradas; al juntar varios Word se quita
+    /// si otro Word ya trae el pasaporte.
+    static let passportWithoutStopsMarker = "no trae paradas"
+
+    /// ¿Es una pregunta de pasaporte («Parada 1: … · pregunta»)?
+    static func isPassportStopQuestion(_ title: String) -> Bool {
+        title.range(of: #"^(Parada|Stop) \d+[^·]* · "#, options: .regularExpression) != nil
+    }
+
     func preview(from url: URL) throws -> LearningSituationAssessmentImportDraft {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
@@ -464,7 +501,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
             guard tables.isEmpty, !hasCheckMarkers, !normalized(heading.title).contains("quiz") else {
                 return (nil, nil)
             }
-            return (nil, "«\(heading.title)» no trae paradas («Parada 1 · …»). Importa el documento del pasaporte que rellena el alumnado.")
+            return (nil, "«\(heading.title)» \(Self.passportWithoutStopsMarker) («Parada 1 · …»). Importa el documento del pasaporte que rellena el alumnado.")
         }
 
         var questions: [QuizQuestionDraft] = []

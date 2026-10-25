@@ -117,6 +117,38 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertFalse(draft.warnings.contains { $0.contains("No se ha podido interpretar") })
     }
 
+    func testSeveralWordDocumentsMergeIntoOneReview() throws {
+        let instrumentos = try makeDocx(named: "instrumentos", body: [
+            paragraph("1. Rúbrica de juego - CE 2.2 - 100%"),
+            "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Indicador</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>3</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>4</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>Decisiones</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>c</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>d</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
+            paragraph("2. El Pasaporte técnico: material del alumnado, sin peso"),
+            paragraph("El Pasaporte acompaña al alumnado en cuatro paradas breves para que reflexione sobre su progreso."),
+        ].joined(separator: "\n"))
+        let pasaporte = try makeDocx(named: "pasaporte", body: [
+            paragraph("Mi Pasaporte de progreso — SA 9", style: "Heading1"),
+            paragraph("Parada 1 · Inicio", style: "Heading3"),
+            paragraph("Una cosa que quiero mejorar: ______________"),
+        ].joined(separator: "\n"))
+        defer {
+            try? FileManager.default.removeItem(at: instrumentos.deletingLastPathComponent())
+            try? FileManager.default.removeItem(at: pasaporte.deletingLastPathComponent())
+        }
+        let servicio = LearningSituationAssessmentInstrumentsImportService()
+        let borradorInstrumentos = try servicio.preview(from: instrumentos, data: Data(contentsOf: instrumentos))
+        let borradorPasaporte = try servicio.preview(from: pasaporte, data: Data(contentsOf: pasaporte))
+
+        // Un solo Word: igual que antes.
+        let solo = try XCTUnwrap(LearningSituationAssessmentImportDraft.merged([borradorInstrumentos]))
+        XCTAssertEqual(solo.id, borradorInstrumentos.id)
+        XCTAssertTrue(solo.warnings.contains { $0.contains("no trae paradas") })
+
+        let junto = try XCTUnwrap(LearningSituationAssessmentImportDraft.merged([borradorInstrumentos, borradorPasaporte]))
+        XCTAssertEqual(junto.instruments.map(\.title), ["Rúbrica de juego", "Mi Pasaporte de progreso — SA 9"])
+        XCTAssertEqual(junto.sourceFileName, "\(instrumentos.lastPathComponent) + \(pasaporte.lastPathComponent)")
+        XCTAssertFalse(junto.warnings.contains { $0.contains("no trae paradas") })
+        XCTAssertNil(LearningSituationAssessmentImportDraft.merged([]))
+    }
+
     func testPassportChecklistWithCheckboxesStaysAChecklist() throws {
         let body = [
             paragraph("1. Pasaporte saludable - checklist"),

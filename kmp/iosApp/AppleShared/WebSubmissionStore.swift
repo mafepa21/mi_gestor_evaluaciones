@@ -214,6 +214,9 @@ struct WebPublishableInstrument: Identifiable, Hashable {
     /// para poder avisar en la lista: descubrirlo al pulsar Publicar, después de
     /// haber elegido fecha y dirección, es la peor forma de enterarse.
     let blockingIssue: String?
+    /// Paradas que tendría como pasaporte («Parada 1 · 3 preguntas»). Se calculan
+    /// con los títulos de los apartados: ver `WebPassportSections`.
+    var passportStops: [String] = []
 
     var canPublish: Bool { blockingIssue == nil }
 }
@@ -294,6 +297,7 @@ struct WebSubmissionTaskInfo: Identifiable, Hashable {
     }
 
     var isPeerEvaluation: Bool { mode == "peer" }
+    var isPassport: Bool { mode == "passport" }
 
     var statusLabel: String { status.label }
     var displayTitle: String {

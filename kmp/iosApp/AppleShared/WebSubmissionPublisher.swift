@@ -36,7 +36,7 @@ enum WebSubmissionPublisher {
         let aliases: [(alias: String, studentId: Int64)]
         /// Enlaces personales, en el orden del alumnado que se pasó.
         let links: [(studentId: Int64, studentName: String, url: String)]
-        /// Modo del formulario: "self" o "peer"
+        /// Modo del formulario: "self", "peer" o "passport"
         let mode: String
         /// Coevaluación: asignaciones (evaluatorAlias, targetAlias, targetStudentId, targetName)
         let peerTargets: [(evaluatorAlias: String, targetAlias: String, targetStudentId: Int64, targetName: String)]
@@ -182,8 +182,8 @@ enum WebSubmissionPublisher {
             "publisherKey": publisherKey,
             "expiresAt": iso8601(expiresAtEpochMs),
         ]
-        if mode == "peer" {
-            manifiesto["mode"] = "peer"
+        if mode == "peer" || mode == "passport" {
+            manifiesto["mode"] = mode
         }
         if let subtitle, !subtitle.isEmpty { manifiesto["subtitle"] = subtitle }
         if let deliveryEmail, !deliveryEmail.isEmpty {

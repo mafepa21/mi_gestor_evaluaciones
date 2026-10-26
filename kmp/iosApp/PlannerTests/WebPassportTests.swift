@@ -148,7 +148,7 @@ final class WebPassportTests: XCTestCase {
         let publicado = try WebSubmissionPublisher.publish(
             title: "Pasaporte",
             subtitle: nil,
-            locale: "es",
+            locale: "en",
             sections: [WebSubmissionPublisher.SectionToPublish(sectionId: "p1", title: "Parada 1", help: nil)],
             items: [
                 WebSubmissionPublisher.ItemToPublish(
@@ -164,8 +164,36 @@ final class WebPassportTests: XCTestCase {
         )
         let manifiesto = try JSONDecoder().decode(WebFormManifest.self, from: Data(publicado.manifestJSON.utf8))
         XCTAssertEqual(manifiesto.mode, "passport")
+        XCTAssertEqual(manifiesto.locale, "en")
         XCTAssertEqual(manifiesto.sections?.map(\.sectionId), ["p1"])
         XCTAssertEqual(manifiesto.items.first?.sectionId, "p1")
         XCTAssertEqual(manifiesto.items.first?.required, false)
+    }
+
+    // MARK: - Columna que ya no tiene el instrumento publicado
+
+    func testUnaColumnaSinInstrumentoNoAdmiteEnvios() {
+        XCTAssertFalse(WebSubmissionTaskInfo.instrumentStillMatches(publishedItemIds: ["a"], currentItemIds: nil))
+        XCTAssertFalse(WebSubmissionTaskInfo.instrumentStillMatches(publishedItemIds: ["a"], currentItemIds: []))
+    }
+
+    func testUnInstrumentoReimportadoConOtrosApartadosNoAdmiteEnvios() {
+        XCTAssertFalse(WebSubmissionTaskInfo.instrumentStillMatches(
+            publishedItemIds: ["viejo_1", "viejo_2"],
+            currentItemIds: ["nuevo_1", "nuevo_2"]
+        ))
+    }
+
+    func testElTituloDeParadaEnLaWebNoRepiteElNumero() {
+        XCTAssertEqual(WebPassportSections.webTitle("Stop 1: U01 — My starting point"), "U01 — My starting point")
+        XCTAssertEqual(WebPassportSections.webTitle("Parada 2: U03 — Nuestro mejor rally"), "U03 — Nuestro mejor rally")
+        XCTAssertEqual(WebPassportSections.webTitle("Parada 3"), "Parada 3")
+    }
+
+    func testElMismoInstrumentoSiAdmiteEnvios() {
+        XCTAssertTrue(WebSubmissionTaskInfo.instrumentStillMatches(
+            publishedItemIds: ["a", "b"],
+            currentItemIds: ["a", "b", "c"]
+        ))
     }
 }

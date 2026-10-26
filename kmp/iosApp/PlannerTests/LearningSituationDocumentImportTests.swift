@@ -149,6 +149,35 @@ final class LearningSituationDocumentImportTests: XCTestCase {
         XCTAssertNil(LearningSituationAssessmentImportDraft.merged([]))
     }
 
+    func testEnglishPassportWithStopsImports() throws {
+        let docxURL = try makeDocx(named: "passport-en", body: [
+            paragraph("My Progress Passport — SA 9", style: "Heading1"),
+            paragraph("Technical Passport · It is yours: it is not handed in or marked."),
+            paragraph("Stop 1 · U01 — My starting point", style: "Heading3"),
+            paragraph("What I find hardest: ☐ forehand grip ☐ backhand grip ☐ other: __________"),
+            paragraph("My traffic light today:"),
+            paragraph("Technique: ☐ red ☐ amber ☐ green"),
+            paragraph("Stop 2 · U03 — Our best rally", style: "Heading3"),
+            paragraph("What I will try next time: ______________"),
+        ].joined(separator: "\n"))
+        defer { try? FileManager.default.removeItem(at: docxURL.deletingLastPathComponent()) }
+
+        let draft = try LearningSituationAssessmentInstrumentsImportService().preview(
+            from: docxURL,
+            data: Data(contentsOf: docxURL)
+        )
+
+        let passport = try XCTUnwrap(draft.instruments.first)
+        XCTAssertEqual(draft.instruments.count, 1)
+        XCTAssertEqual(passport.quizQuestions.map(\.questionText), [
+            "Stop 1: U01 — My starting point · What I find hardest",
+            "Stop 1: U01 — My starting point · What I find hardest (other)",
+            "Stop 1: U01 — My starting point · My traffic light today: Technique",
+            "Stop 2: U03 — Our best rally · What I will try next time",
+        ])
+        XCTAssertEqual(passport.quizQuestions[0].options, ["forehand grip", "backhand grip", "Other"])
+    }
+
     func testPassportChecklistWithCheckboxesStaysAChecklist() throws {
         let body = [
             paragraph("1. Pasaporte saludable - checklist"),

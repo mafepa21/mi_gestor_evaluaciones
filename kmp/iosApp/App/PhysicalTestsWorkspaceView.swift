@@ -173,6 +173,9 @@ struct PhysicalTestsWorkspaceView: View {
     @State private var selectedStudentId: Int64?
     @State private var searchText = ""
     @State private var showingCreateSheet = false
+    @State private var showingSetupWizard = false
+    /// Las 7 secciones de siempre quedan detrás de «Más opciones».
+    @AppStorage("physicalTests.showsAllSections") private var showsAllSections = false
     @State private var showingCapture = false
     @State private var showingScaleEditor = false
     @State private var pendingDeleteTest: KmpBridge.PhysicalTestSnapshot?
@@ -348,18 +351,20 @@ struct PhysicalTestsWorkspaceView: View {
             VStack(spacing: 0) {
                 header
 
-                Picker("Sección", selection: $selectedTab) {
-                    ForEach(PhysicalTestsWorkspaceTab.allCases) { tab in
-                        Text(tab.rawValue).tag(tab)
+                if showsAllSections {
+                    Picker("Sección", selection: $selectedTab) {
+                        ForEach(PhysicalTestsWorkspaceTab.allCases) { tab in
+                            Text(tab.rawValue).tag(tab)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 12)
-
-                filtersBar
+                    .pickerStyle(.segmented)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
+
+                    filtersBar
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 12)
+                }
 
                 Divider()
 
@@ -371,11 +376,32 @@ struct PhysicalTestsWorkspaceView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        showingCreateSheet = true
+                        showingSetupWizard = true
                     } label: {
                         Label("Nueva prueba", systemImage: "plus")
                     }
                 }
+                ToolbarItem(placement: .secondaryAction) {
+                    Menu {
+                        Toggle("Mostrar todas las secciones", isOn: $showsAllSections)
+                        Button("Prueba desde una plantilla…") {
+                            showingCreateSheet = true
+                        }
+                    } label: {
+                        Label("Más opciones", systemImage: "ellipsis.circle")
+                    }
+                }
+            }
+            .appOnChange(of: showsAllSections) { showsAll in
+                if !showsAll { selectedTab = .bank }
+            }
+            .sheet(isPresented: $showingSetupWizard) {
+                PhysicalTestSetupWizardSheet(
+                    bridge: bridge,
+                    initialClassId: selectedClassId,
+                    onSaved: { _ in Task { await reload() } },
+                    onOpenNotebook: { classId in onOpenModule(.notebook, classId, nil) }
+                )
             }
             .reloadOnLanSync(.physicalEducation) { await reload() }
             .task { await reload() }
@@ -438,7 +464,7 @@ struct PhysicalTestsWorkspaceView: View {
     @ViewBuilder
     private var physicalContent: some View {
         if loadPhase.includes(.lists) {
-            switch selectedTab {
+            switch showsAllSections ? selectedTab : .bank {
             case .bank:
                 bankView
             case .scales:
@@ -531,16 +557,27 @@ struct PhysicalTestsWorkspaceView: View {
 
                 Spacer()
 
-                Button {
-                    resetScaleDraftForActiveTest(force: true)
-                    showingScaleEditor = true
-                } label: {
-                    Label("Baremos", systemImage: "slider.horizontal.3")
+                if showsAllSections {
+                    Button {
+                        resetScaleDraftForActiveTest(force: true)
+                        showingScaleEditor = true
+                    } label: {
+                        Label("Baremos", systemImage: "slider.horizontal.3")
+                    }
+                    .buttonStyle(.bordered)
+                } else {
+                    Button {
+                        showingSetupWizard = true
+                    } label: {
+                        Label("Nueva prueba", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.bordered)
             }
 
-            if loadPhase.includes(.metrics) {
+            if !showsAllSections {
+                EmptyView()
+            } else if loadPhase.includes(.metrics) {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                     PhysicalStatCard(title: "Pruebas", value: "\(tests.count)", tint: .blue)
                     PhysicalStatCard(title: "Registros", value: "\(recordedCount)", tint: .green)

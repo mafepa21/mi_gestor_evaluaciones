@@ -100,7 +100,7 @@ struct AppleAppCommands: Commands {
             }
             .keyboardShortcut("3", modifiers: .command)
 
-            Button("Ir a Mediciones") {
+            Button("Ir a Pruebas físicas") {
                 AppleAppCommand.post(.appleAppNavigateRequested, object: AppleAppCommandDestination.physicalTests.rawValue)
             }
             .keyboardShortcut("4", modifiers: .command)

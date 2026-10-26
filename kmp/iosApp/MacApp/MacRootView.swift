@@ -49,6 +49,7 @@ struct MacRootView: View {
     @State private var isInspectorVisible = true
     @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
     @State private var isEvaluationCreationPresented = false
+    @State private var isPhysicalTestWizardPresented = false
     @State private var banner: MacRootBanner?
     @State private var selectedPlannerSessionId: Int64? = nil
     @State private var bannerDismissTask: Task<Void, Never>?
@@ -215,6 +216,14 @@ struct MacRootView: View {
                     onDismiss: { isEvaluationCreationPresented = false }
                 )
                 .environmentObject(session.bridge)
+            }
+            .sheet(isPresented: $isPhysicalTestWizardPresented) {
+                PhysicalTestSetupWizardSheet(
+                    bridge: session.bridge,
+                    initialClassId: studentSelection.selectedClassId,
+                    onSaved: { _ in physicalTestsToolbarActions.refresh() },
+                    onOpenNotebook: { classId in open(module: .notebook, classId: classId, studentId: nil) }
+                )
             }
     }
 
@@ -1123,28 +1132,35 @@ struct MacRootView: View {
 
             if selectedFeature == .physicalTests {
                 Button {
-                    physicalTestsToolbarActions.newBattery()
+                    isPhysicalTestWizardPresented = true
                 } label: {
-                    Label("Batería", systemImage: "plus.rectangle.on.rectangle")
+                    Label("Nueva prueba", systemImage: "plus")
                 }
-                .disabled(!physicalTestsToolbarActions.canUseClassActions)
-                .help("Nueva batería de condición física")
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut("n", modifiers: .command)
+                .help("Crear una prueba con su baremo y añadirla al cuaderno (⌘N)")
 
-                Button {
-                    physicalTestsToolbarActions.capture()
+                Menu {
+                    Button {
+                        physicalTestsToolbarActions.newBattery()
+                    } label: {
+                        Label("Nueva batería", systemImage: "plus.rectangle.on.rectangle")
+                    }
+                    Button {
+                        physicalTestsToolbarActions.capture()
+                    } label: {
+                        Label("Captura de marcas", systemImage: "square.and.pencil")
+                    }
+                    Button {
+                        physicalTestsToolbarActions.createColumns()
+                    } label: {
+                        Label("Crear columnas en el cuaderno", systemImage: "tablecells")
+                    }
                 } label: {
-                    Label("Captura", systemImage: "square.and.pencil")
+                    Label("Más opciones", systemImage: "ellipsis.circle")
                 }
                 .disabled(!physicalTestsToolbarActions.canUseClassActions)
-                .help("Abrir captura de marcas")
-
-                Button {
-                    physicalTestsToolbarActions.createColumns()
-                } label: {
-                    Label("Cuaderno", systemImage: "tablecells")
-                }
-                .disabled(!physicalTestsToolbarActions.canUseClassActions)
-                .help("Crear columnas de marca y nota en el cuaderno")
+                .help("Baterías, captura y columnas")
             }
 
             if selectedFeature == .planner, let plannerToolbarActions {
@@ -1576,7 +1592,6 @@ struct MacRootView: View {
         case .planner:
             selectFeature(.planner)
         case .physicalTests:
-            // Mediciones ya no está en la barra lateral: se abre desde el menú.
             selectFeature(.physicalTests)
         }
     }

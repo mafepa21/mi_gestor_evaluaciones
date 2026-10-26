@@ -58,7 +58,7 @@ enum MacFeatureRegistry {
         .init(feature: .students, title: "Alumnado", subtitle: "Directorio y seguimiento rápido", systemImage: "person.3.sequence.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .evaluationHub, title: "Evaluación", subtitle: "Instrumentos y calendario", systemImage: "chart.bar.doc.horizontal", source: .parityIOS, enabledInV1: true),
         .init(feature: .rubrics, title: "Rúbricas", subtitle: "Banco de evaluación y edición", systemImage: "checklist.checked", source: .parityIOS, enabledInV1: true),
-        .init(feature: .physicalTests, title: "Mediciones y baremos", subtitle: "Progreso, marcas e históricos", systemImage: "stopwatch.fill", source: .parityIOS, enabledInV1: true),
+        .init(feature: .physicalTests, title: "Pruebas físicas", subtitle: "Pruebas, baremos y marcas", systemImage: "stopwatch.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .sync, title: "Sync LAN", subtitle: "Emparejado, pull y observabilidad", systemImage: "arrow.triangle.2.circlepath.circle.fill", source: .inheritedDesktop, enabledInV1: true),
         .init(feature: .backups, title: "Backups", subtitle: "Copias locales y restauración", systemImage: "externaldrive.badge.timemachine", source: .inheritedDesktop, enabledInV1: true),
         .init(feature: .reports, title: "Informes", subtitle: "Exportaciones y contexto IA", systemImage: "doc.text.image", source: .parityIOS, enabledInV1: true),
@@ -90,11 +90,10 @@ enum MacFeatureSection: String, CaseIterable, Identifiable {
             // meter evidencias en el Cuaderno, igual que Asistencia.
             // Publica el formulario, pero el trabajo es recoger para evaluar.
             //
-            // `Evaluación` y `Mediciones` tampoco están, para aligerar la barra.
-            // Evaluación se abre desde el inspector del Cuaderno, Rúbricas y la
-            // barra de herramientas. Mediciones, desde Navegación → Ir a
-            // Mediciones (⌘4).
-            return [.notebook, .attendance, .rubrics, .webSubmissions]
+            // `Evaluación` no está, para aligerar la barra: se abre desde el
+            // inspector del Cuaderno, Rúbricas y la barra de herramientas.
+            // `Pruebas físicas` volvió a la barra (2026-10-26); ⌘4 sigue valiendo.
+            return [.notebook, .attendance, .rubrics, .physicalTests, .webSubmissions]
         case .planificacion:
             return [.planner, .diary, .situations, .tournaments, .meetings, .inclusion, .students]
         case .sistema:

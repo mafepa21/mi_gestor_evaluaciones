@@ -269,6 +269,9 @@ struct WebSubmissionTaskInfo: Identifiable, Hashable {
     let importedCount: Int
     let lastImportedAtEpochMs: Int64?
     let mode: String
+    /// La columna ya no tiene el instrumento con el que se publicó (se borró o se
+    /// volvió a importar): lo que llegue no tiene dónde guardarse hasta republicar.
+    let instrumentOutdated: Bool
 
     init(
         formInstanceId: String,
@@ -281,8 +284,10 @@ struct WebSubmissionTaskInfo: Identifiable, Hashable {
         expiresAtEpochMs: Int64,
         importedCount: Int,
         lastImportedAtEpochMs: Int64?,
-        mode: String = "self"
+        mode: String = "self",
+        instrumentOutdated: Bool = false
     ) {
+        self.instrumentOutdated = instrumentOutdated
         self.formInstanceId = formInstanceId
         self.classId = classId
         self.groupName = groupName
@@ -298,6 +303,16 @@ struct WebSubmissionTaskInfo: Identifiable, Hashable {
 
     var isPeerEvaluation: Bool { mode == "peer" }
     var isPassport: Bool { mode == "passport" }
+
+    static let outdatedInstrumentMessage = "La columna de esta tarea ya no tiene el instrumento con el que se publicó. Vuelve a publicar la tarea y manda los enlaces nuevos."
+
+    /// ¿Sigue la columna teniendo los apartados con los que se publicó? `nil` =
+    /// la columna no tiene instrumento. Si falta alguno, lo recibido no tiene
+    /// dónde guardarse (`saveResponses` lo ignoraría sin avisar).
+    static func instrumentStillMatches(publishedItemIds: [String], currentItemIds: Set<String>?) -> Bool {
+        guard let currentItemIds, !currentItemIds.isEmpty else { return false }
+        return publishedItemIds.allSatisfy(currentItemIds.contains)
+    }
 
     var statusLabel: String { status.label }
     var displayTitle: String {

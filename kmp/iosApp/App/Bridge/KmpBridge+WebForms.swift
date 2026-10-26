@@ -1,12 +1,18 @@
 import Foundation
 import MiGestorKit
 import CryptoKit
+import os
 
 enum WebPeerPublishGuard {
     static let groupsFailure = "No se pudieron leer los grupos. No se ha publicado la coevaluación para no dejarla sin equipos."
 }
 
 extension KmpBridge {
+    /// Registro de diagnóstico de Entregas web: solo cuentas, estados y los 8
+    /// primeros caracteres del formulario. Nunca nombres ni respuestas.
+    /// Se lee con `log show --predicate 'subsystem == "com.migestor.entregas-web"'`.
+    static let registroEntregas = Logger(subsystem: "com.migestor.entregas-web", category: "importar")
+
     // MARK: - Publicación de formularios web
 
     /// Columnas del grupo que tienen una plantilla de instrumento y por tanto se
@@ -93,6 +99,10 @@ extension KmpBridge {
 
             let nombreGrupo = classes.first(where: { $0.id == instancia.classId })?.name
                 ?? "Grupo \(instancia.classId)"
+            // Solo se comprueba lo que aún puede recibir entregas.
+            let desfasada = estado == .active && !instancia.archived
+                ? !(await webFormInstrumentMatches(formInstanceId: instancia.formInstanceId, columnId: instancia.columnId))
+                : false
             resultado.append(
                 WebSubmissionTaskInfo(
                     formInstanceId: instancia.formInstanceId,
@@ -105,7 +115,8 @@ extension KmpBridge {
                     expiresAtEpochMs: instancia.expiresAtEpochMs,
                     importedCount: importadas.count,
                     lastImportedAtEpochMs: importadas.map(\.importedAtEpochMs).max(),
-                    mode: instancia.mode
+                    mode: instancia.mode,
+                    instrumentOutdated: desfasada
                 )
             )
         }
@@ -338,7 +349,9 @@ extension KmpBridge {
         baseURL: String,
         deliveryEmail: String?,
         expiresAt: Date,
-        mode: String = "self"
+        mode: String = "self",
+        /// Idioma de la web del alumnado («es» o «en»).
+        locale: String = "es"
     ) async throws -> WebPublishResult {
         guard let detalle = try await container.notebookInstrumentsRepository
             .getTemplateForColumn(columnId: columnId) else {
@@ -384,7 +397,7 @@ extension KmpBridge {
             )
         }
         let secciones = (paradas?.stops ?? []).map {
-            WebSubmissionPublisher.SectionToPublish(sectionId: $0.sectionId, title: $0.title, help: nil)
+            WebSubmissionPublisher.SectionToPublish(sectionId: $0.sectionId, title: WebPassportSections.webTitle($0.title), help: nil)
         }
 
         var peerTargetsToPublish: [WebSubmissionPublisher.PeerTargetToPublish] = []
@@ -429,7 +442,7 @@ extension KmpBridge {
         let publicado = try WebSubmissionPublisher.publish(
             title: detalle.template_.title,
             subtitle: nil,
-            locale: "es",
+            locale: locale,
             sections: secciones,
             items: items,
             students: alumnado.map {
@@ -692,9 +705,36 @@ extension KmpBridge {
             decisionsByCell[key, default: []].append(decision)
         }
 
+        // Apartados actuales de cada columna. Si la columna perdió el instrumento con
+        // el que se publicó (se borró o se volvió a importar), `saveResponses` no
+        // guardaría nada y aun así el envío contaría como importado y se borraría
+        // del buzón: se para antes y se avisa.
+        var apartadosPorColumna: [String: Set<String>] = [:]
+        var columnasConsultadas: Set<String> = []
+
         for (cellKey, cellDecisions) in decisionsByCell {
             let primerBorrador = cellDecisions[0].draft
             let nombre = primerBorrador.studentName ?? "código \(primerBorrador.alias.prefix(6))"
+            let formCorto = String(primerBorrador.formInstanceId.prefix(8))
+
+            if !columnasConsultadas.contains(cellKey.columnId) {
+                columnasConsultadas.insert(cellKey.columnId)
+                if let detalle = try? await container.notebookInstrumentsRepository
+                    .getTemplateForColumn(columnId: cellKey.columnId) {
+                    apartadosPorColumna[cellKey.columnId] = Set(detalle.items.map(\.id))
+                }
+            }
+            let recibidos = cellDecisions.flatMap { $0.draft.answers.map(\.itemId) }
+            guard WebSubmissionTaskInfo.instrumentStillMatches(
+                publishedItemIds: recibidos,
+                currentItemIds: apartadosPorColumna[cellKey.columnId]
+            ) else {
+                Self.registroEntregas.error(
+                    "Importar \(formCorto, privacy: .public): la columna ya no tiene el instrumento publicado (\(cellDecisions.count, privacy: .public) envíos sin guardar)"
+                )
+                resultado.failures.append((studentName: nombre, reason: WebSubmissionTaskInfo.outdatedInstrumentMessage))
+                continue
+            }
 
             // Coevaluación: se guarda cada evaluación y la celda se recalcula con
             // todas las recibidas hasta ahora, no solo con las de esta importación.
@@ -708,6 +748,15 @@ extension KmpBridge {
                         clientSubmittedAt: dec.draft.clientSubmittedAt,
                         answers: dec.draft.answers
                     )
+                }
+                // Se guarda antes que la celda: si falla, el envío no cuenta como
+                // importado y se queda en el buzón para el siguiente intento.
+                do {
+                    try almacen.save()
+                } catch {
+                    Self.registroEntregas.error("Importar \(formCorto, privacy: .public): no se pudo guardar coevaluaciones.json: \(error.localizedDescription, privacy: .public)")
+                    resultado.failures.append((studentName: nombre, reason: "No se pudo guardar la coevaluación en este Mac (\(error.localizedDescription))."))
+                    continue
                 }
                 peerStores[primerBorrador.formInstanceId] = almacen
                 answerSets = almacen.evaluations(for: cellKey.studentId).map(\.answers)
@@ -730,8 +779,19 @@ extension KmpBridge {
                             sectionIdByWebItemId: passportSections[formId] ?? [:]
                         )
                     }
+                    // Igual que la coevaluación: primero el pasaporte, después la celda.
+                    do {
+                        try almacen.save()
+                    } catch {
+                        Self.registroEntregas.error("Importar \(formCorto, privacy: .public): no se pudo guardar pasaporte.json: \(error.localizedDescription, privacy: .public)")
+                        resultado.failures.append((studentName: nombre, reason: "No se pudo guardar el pasaporte en este Mac (\(error.localizedDescription))."))
+                        continue
+                    }
                     passportStores[formId] = almacen
                     answerSets = [almacen.mergedAnswers(for: cellKey.studentId)]
+                    Self.registroEntregas.notice(
+                        "Importar \(formCorto, privacy: .public): pasaporte guardado, \(cellDecisions.count, privacy: .public) envíos, \(answerSets[0].count, privacy: .public) respuestas en la celda"
+                    )
                 } else {
                     // Sin carpeta privada no se puede juntar: se guarda solo el envío más reciente.
                     answerSets = cellDecisions
@@ -813,13 +873,6 @@ extension KmpBridge {
             }
         }
 
-        for almacen in peerStores.values {
-            try? almacen.save()
-        }
-        for almacen in passportStores.values {
-            try? almacen.save()
-        }
-
         if resultado.imported > 0 {
             refreshCurrentNotebook()
         }
@@ -837,6 +890,15 @@ extension KmpBridge {
             if let seccion = item.sectionId { mapa[item.webItemId] = seccion }
         }
         return mapa
+    }
+
+    /// ¿Tiene la columna todavía los apartados con los que se publicó el formulario?
+    func webFormInstrumentMatches(formInstanceId: String, columnId: String) async -> Bool {
+        let publicados = ((try? await container.webSubmissionsRepository
+            .listItemMap(formInstanceId: formInstanceId)) ?? []).map(\.itemId)
+        let actuales = (try? await container.notebookInstrumentsRepository
+            .getTemplateForColumn(columnId: columnId)).map { Set($0.items.map(\.id)) }
+        return WebSubmissionTaskInfo.instrumentStillMatches(publishedItemIds: publicados, currentItemIds: actuales)
     }
 
     private func publishedManifest(formInstanceId: String) async -> WebFormManifest? {

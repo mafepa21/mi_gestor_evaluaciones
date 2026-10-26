@@ -29,6 +29,18 @@ enum WebPassportSections {
 
     static let separator = " · "
 
+    /// Título de la parada para la web, que ya pone delante «Parada 1 de 4»:
+    /// «Stop 1: U01 — My starting point» → «U01 — My starting point». Sin
+    /// subtítulo («Parada 1») se queda igual.
+    static func webTitle(_ stopTitle: String) -> String {
+        let corto = stopTitle.replacingOccurrences(
+            of: #"^\s*(Parada|Stop)\s+\d+\s*:\s*"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        return corto.isEmpty ? stopTitle : corto
+    }
+
     static func split(titles: [String], fallbackTitle: String) -> Split {
         let partes = titles.map { titulo -> (prefijo: String, resto: String)? in
             guard let rango = titulo.range(of: separator) else { return nil }

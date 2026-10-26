@@ -22,7 +22,7 @@ struct WebSubmissionPublishSheet: View {
     /// Correo al que el alumnado enviará su entrega.
     @Binding var deliveryEmail: String
     let isPublishing: Bool
-    let onPublish: (_ columnId: String, _ baseURL: String, _ deliveryEmail: String, _ expiresAt: Date, _ mode: String) -> Void
+    let onPublish: (_ columnId: String, _ baseURL: String, _ deliveryEmail: String, _ expiresAt: Date, _ mode: String, _ locale: String) -> Void
     var onDetectPeerGroups: ((_ columnId: String) async -> KmpBridge.WebPeerDetectionResult)? = nil
     let result: WebPublishResult?
 
@@ -30,6 +30,8 @@ struct WebSubmissionPublishSheet: View {
     @State private var expiresAt: Date = Calendar.current.date(byAdding: .month, value: 10, to: Date()) ?? Date()
     @State private var copiedLinks = false
     @State private var selectedMode: String = "self"
+    /// Idioma de lo que ve el alumnado en la web: botones, avisos y portada.
+    @State private var selectedLocale: String = "es"
     @State private var peerDetection: KmpBridge.WebPeerDetectionResult?
     @State private var isDetectingPeers: Bool = false
 
@@ -150,7 +152,15 @@ struct WebSubmissionPublishSheet: View {
                 if newMode == "peer", let colId = selectedColumnId {
                     runPeerDetection(for: colId)
                 }
+                // Los pasaportes van en inglés (CLIL); se propone, pero se puede cambiar.
+                selectedLocale = newMode == "passport" ? "en" : "es"
             }
+
+            Picker("Idioma del formulario", selection: $selectedLocale) {
+                Text("Español").tag("es")
+                Text("English").tag("en")
+            }
+            .help("Idioma de los botones y avisos que ve el alumnado. Las preguntas salen tal cual están en el instrumento.")
 
             switch selectedMode {
             case "peer":
@@ -591,7 +601,7 @@ struct WebSubmissionPublishSheet: View {
 
                 Button {
                     if let columnId = selectedColumnId {
-                        onPublish(columnId, baseURL, deliveryEmail, expiresAt, selectedMode)
+                        onPublish(columnId, baseURL, deliveryEmail, expiresAt, selectedMode, selectedLocale)
                     }
                 } label: {
                     if isPublishing {
@@ -661,7 +671,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _, _ in },
+                onPublish: { _, _, _, _, _, _ in },
                 result: nil
             )
             .previewDisplayName("Antes de publicar")
@@ -673,7 +683,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _, _ in },
+                onPublish: { _, _, _, _, _, _ in },
                 result: WebPublishResult(
                     formInstanceId: "11111111-1111-4111-8111-111111111111",
                     title: "Rúbrica de portafolio técnico",
@@ -696,7 +706,7 @@ struct WebSubmissionPublishSheet_Previews: PreviewProvider {
                 baseURL: .constant("https://projectosef.alwaysdata.net"),
                 deliveryEmail: .constant("mario.fernandez@scorazon.hhdc.net"),
                 isPublishing: false,
-                onPublish: { _, _, _, _, _ in },
+                onPublish: { _, _, _, _, _, _ in },
                 result: nil
             )
             .previewDisplayName("Sin instrumentos")

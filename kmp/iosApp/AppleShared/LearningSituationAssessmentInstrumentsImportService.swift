@@ -522,8 +522,8 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 // Elegir exige al menos dos opciones (el formulario web rechaza menos).
                 let options = choice.options.count >= 2 ? choice.options : []
                 questions.append(QuizQuestionDraft(questionText: "\(stop) · \(title)", options: options))
-                if choice.hasOther, !options.isEmpty {
-                    questions.append(QuizQuestionDraft(questionText: "\(stop) · \(title) (otro)", options: []))
+                if let otra = choice.other, !options.isEmpty {
+                    questions.append(QuizQuestionDraft(questionText: "\(stop) · \(title) (\(otra.lowercased()))", options: []))
                 }
             } else if paragraph.contains("___") {
                 groupLabel = nil
@@ -580,8 +580,9 @@ struct LearningSituationAssessmentInstrumentsImportService {
         return subtitle.isEmpty ? name : "\(name): \(subtitle)"
     }
 
-    /// «Lo que más me cuesta: ☐ derecha ☐ revés ☐ otro: ____» → etiqueta, opciones y si hay «otro».
-    private func passportChoice(from paragraph: String) -> (label: String, options: [String], hasOther: Bool)? {
+    /// «Lo que más me cuesta: ☐ derecha ☐ revés ☐ otro: ____» → etiqueta, opciones y, si hay
+    /// «otro», la palabra tal cual en el idioma del documento («Otro», «Other»…).
+    private func passportChoice(from paragraph: String) -> (label: String, options: [String], other: String?)? {
         let parts = paragraph
             .replacingOccurrences(of: #"(?:☐|□|\[\s?\])\s*"#, with: "|||OPCION|||", options: .regularExpression)
             .components(separatedBy: "|||OPCION|||")
@@ -589,7 +590,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let label = clean(parts[0])
             .trimmingCharacters(in: CharacterSet(charactersIn: ":"))
             .trimmingCharacters(in: .whitespaces)
-        var hasOther = false
+        var other: String?
         var options: [String] = []
         for raw in parts.dropFirst() {
             let option = clean(raw.replacingOccurrences(of: #"_{3,}"#, with: "", options: .regularExpression))
@@ -598,14 +599,15 @@ struct LearningSituationAssessmentInstrumentsImportService {
             guard !option.isEmpty else { continue }
             let value = normalized(option)
             // «otro», «otra (cuál)», «other»…
-            if option.count <= 16, ["otro", "otra", "other"].contains(where: { value.hasPrefix($0) }) {
-                hasOther = true
-                options.append("Otro")
+            if option.count <= 16, let palabra = ["otro", "otra", "other"].first(where: { value.hasPrefix($0) }) {
+                let otra = palabra.prefix(1).uppercased() + palabra.dropFirst()
+                other = otra
+                options.append(otra)
             } else {
                 options.append(option)
             }
         }
-        return (label, options, hasOther)
+        return (label, options, other)
     }
 
     /// «Un error que he corregido: antes ____ → ahora ____» → «Un error que he corregido: antes … → ahora».

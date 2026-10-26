@@ -87,14 +87,15 @@ struct WebSubmissionsWorkspaceView: View {
                 baseURL: $baseURL,
                 deliveryEmail: $deliveryEmail,
                 isPublishing: publishing,
-                onPublish: { columnId, url, correo, caducidad, modo in
+                onPublish: { columnId, url, correo, caducidad, modo, idioma in
                     Task {
                         await publish(
                             columnId: columnId,
                             baseURL: url,
                             deliveryEmail: correo,
                             expiresAt: caducidad,
-                            mode: modo
+                            mode: modo,
+                            locale: idioma
                         )
                     }
                 },
@@ -476,6 +477,16 @@ struct WebSubmissionsWorkspaceView: View {
                     Text("\(task.groupName) · \(task.columnTitle)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                    if task.instrumentOutdated {
+                        Label("Sin instrumento: vuelve a publicar", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(.orange.opacity(0.12), in: Capsule())
+                            .help(WebSubmissionTaskInfo.outdatedInstrumentMessage)
+                            .accessibilityLabel(WebSubmissionTaskInfo.outdatedInstrumentMessage)
+                    }
                 }
 
                 Spacer(minLength: 8)
@@ -676,7 +687,8 @@ struct WebSubmissionsWorkspaceView: View {
         baseURL url: String,
         deliveryEmail correo: String,
         expiresAt: Date,
-        mode: String = "self"
+        mode: String = "self",
+        locale: String = "es"
     ) async {
         guard let classId = creationClassId else { return }
         publishing = true
@@ -688,7 +700,8 @@ struct WebSubmissionsWorkspaceView: View {
                 baseURL: url,
                 deliveryEmail: cleanEmail(correo),
                 expiresAt: expiresAt,
-                mode: mode
+                mode: mode,
+                locale: locale
             )
             await reload()
             await reloadCreationInstruments()
@@ -728,6 +741,7 @@ struct WebSubmissionsWorkspaceView: View {
         let client = WebSubmissionInboxClient(url: WebSubmissionInbox.url(baseURL: baseURL))
         var importadas = 0
         var porRevisar = 0
+        var motivos: [String] = []
         var fallo: String?
         for (task, token) in pendientes {
             guard manifests[task.formInstanceId] != nil else { continue }
@@ -747,6 +761,7 @@ struct WebSubmissionsWorkspaceView: View {
                     // Si alguna celda no se pudo guardar, no se borra nada de esta tarea.
                     guard resultado.failures.isEmpty else {
                         porRevisar += recogidas.count
+                        motivos.append(contentsOf: resultado.failures.map(\.reason))
                         continue
                     }
                 }
@@ -767,9 +782,14 @@ struct WebSubmissionsWorkspaceView: View {
         guard importadas > 0 || porRevisar > 0 else { return nil }
         var partes: [String] = []
         if importadas > 0 { partes.append("\(importadas) \(importadas == 1 ? "entrega recibida" : "entregas recibidas") del buzón") }
-        if porRevisar > 0 { partes.append("\(porRevisar) sin importar: revisa que el alumno siga en el grupo") }
+        if porRevisar > 0 {
+            // Con un motivo concreto (columna sin instrumento, fallo al guardar) se dice
+            // ese; si no, lo más habitual es un alumno que ya no está en el grupo.
+            let motivo = motivos.first ?? "revisa que el alumno siga en el grupo"
+            partes.append("\(porRevisar) sin importar (siguen en el buzón): \(motivo)")
+        }
         importSummary = partes.joined(separator: " · ")
-        if importadas > 0 { await reload() }
+        if importadas > 0 || !motivos.isEmpty { await reload() }
         return nil
     }
 

@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Asistente de pruebas físicas</title>
+<style>
+/* Tokens de la app (macOS / iPadOS) */
+:root{--bg:#f2f2f7;--card:#fff;--fill:#f2f2f7;--fg:#1c1c1e;--mut:#6e6e73;--line:#e5e5ea;--acc:#0071e3;--accfg:#fff;--ok:#1f7a35;--okbg:#e3f7e8;--warn:#8a4d00;--warnbg:#fff3dc;--err:#d70015;--errbg:#ffe9eb;--side:#ececf0;--sel:#dcdce2;--orange:#c75b00}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--fill:#2c2c2e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--acc:#0a84ff;--ok:#30d158;--okbg:#0f2e17;--warn:#ffb340;--warnbg:#3a2c00;--err:#ff453a;--errbg:#3b1210;--side:#161618;--sel:#2c2c2e;--orange:#ff9f0a}}
+:root[data-theme="dark"]{--bg:#000;--card:#1c1c1e;--fill:#2c2c2e;--fg:#f2f2f7;--mut:#98989d;--line:#38383a;--acc:#0a84ff;--ok:#30d158;--okbg:#0f2e17;--warn:#ffb340;--warnbg:#3a2c00;--err:#ff453a;--errbg:#3b1210;--side:#161618;--sel:#2c2c2e;--orange:#ff9f0a}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.top{padding:32px 16px 8px;max-width:1200px;margin:auto}
+header.top h1{margin:0;font-size:28px}header.top p{margin:8px 0 0;color:var(--mut);max-width:760px}
+h2.part{max-width:1200px;margin:48px auto 0;padding:0 16px;font-size:20px}
+p.partnote{max-width:1200px;margin:4px auto 0;padding:0 16px;color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr));gap:24px;padding:16px;max-width:1200px;margin:auto}
+.state>h3{margin:0 0 4px;font-size:12px;letter-spacing:.06em;color:var(--mut);text-transform:uppercase}
+.state>.note{margin:0 0 8px;font-size:13px;color:var(--mut)}
+.wrap{max-width:1200px;margin:auto;padding:16px}
+
+/* Ventana Mac con barra lateral */
+.win{display:grid;grid-template-columns:220px 1fr;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);min-height:640px;position:relative}
+@media(max-width:760px){.win{grid-template-columns:1fr}.side{display:none}}
+.side{background:var(--side);padding:16px 8px;font-size:13px}
+.side .sec{color:var(--mut);font-size:11px;font-weight:600;padding:16px 8px 4px}
+.side .it{display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:6px}
+.side .it.on{background:var(--sel);font-weight:600}
+.side .it .new{margin-left:auto;font-size:10px;color:var(--acc);font-weight:600}
+.content{padding:24px;position:relative;background:var(--bg)}
+.content h4{margin:0;font-size:22px}
+.content .sub{color:var(--mut);margin:4px 0 24px}
+.list{background:var(--card);border-radius:10px;overflow:hidden}
+.row{display:flex;align-items:center;gap:16px;padding:12px 16px;min-height:44px}
+.row+.row{border-top:1px solid var(--line)}
+.row .t{font-weight:600}.row .s{color:var(--mut);font-size:13px}
+.row .r{margin-left:auto;color:var(--mut);font-size:13px}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.28);display:grid;place-items:center;padding:16px}
+
+/* Hoja (sheet) */
+.sheet{width:min(560px,100%);background:var(--card);border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.25);display:flex;flex-direction:column;max-height:600px}
+.sheet.static{box-shadow:none;border:1px solid var(--line);max-height:none}
+.bar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px 16px 8px}
+.bar .ttl{font-weight:600;text-align:center}
+.bar .l{justify-self:start}.bar .rr{justify-self:end}
+.lnk{background:none;border:0;color:var(--acc);font:inherit;min-height:44px;padding:0 8px;cursor:pointer;border-radius:8px}
+.lnk:disabled{color:var(--mut);opacity:.5;cursor:default}
+.lnk.b{font-weight:600}
+.steps{display:flex;gap:8px;padding:0 24px 16px;justify-content:center}
+.steps span{font-size:12px;color:var(--mut);display:flex;align-items:center;gap:4px}
+.steps span i{font-style:normal;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--fill);font-size:11px;font-weight:600}
+.steps span.on{color:var(--fg);font-weight:600}.steps span.on i{background:var(--acc);color:var(--accfg)}
+.steps span.done i{background:var(--okbg);color:var(--ok)}
+.steps .sep{width:24px;height:1px;background:var(--line);align-self:center}
+.body{padding:8px 24px 24px;overflow:auto;flex:1}
+.lead{font-size:20px;font-weight:600;margin:0}
+.leadsub{color:var(--mut);margin:4px 0 24px}
+.group{background:var(--fill);border-radius:10px;overflow:hidden;margin-bottom:24px}
+.group .f{display:flex;align-items:center;gap:16px;padding:0 16px;min-height:44px}
+.group .f+.f{border-top:1px solid var(--line)}
+.group .f label{flex:none;min-width:120px}
+.group .f input,.group .f select{margin-left:auto;text-align:right;border:0;background:none;color:var(--fg);font:inherit;min-height:44px;width:100%}
+.group .f select{text-align-last:right;width:auto;color:var(--mut)}
+.glabel{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin:0 0 8px 16px}
+.seg{margin-left:auto;display:inline-flex;background:var(--line);border-radius:8px;padding:2px}
+.seg button{border:0;background:none;color:var(--fg);font:inherit;font-size:13px;padding:4px 16px;border-radius:6px;min-height:40px;cursor:pointer}
+.seg button.on{background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.15);font-weight:600}
+.foot{padding:16px 24px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.btn{min-height:44px;padding:0 20px;border-radius:10px;border:0;font:inherit;font-weight:600;cursor:pointer;background:var(--fill);color:var(--fg)}
+.btn.p{background:var(--acc);color:var(--accfg)}
+.btn.w{width:100%}
+.btn:disabled{opacity:.4;cursor:default}
+.btn:focus-visible,.lnk:focus-visible,.choice:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.choice{display:flex;gap:16px;align-items:center;width:100%;text-align:left;padding:16px;border-radius:10px;border:0;background:var(--fill);color:var(--fg);font:inherit;cursor:pointer;min-height:64px;margin-bottom:8px}
+.choice .ic{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;font-size:20px;flex:none;background:var(--card)}
+.choice.p .ic{background:var(--acc);color:var(--accfg)}
+.choice .t{font-weight:600}.choice .s{color:var(--mut);font-size:13px}
+.choice .chev{margin-left:auto;color:var(--mut)}
+.hint{color:var(--mut);font-size:13px;text-align:center;margin:16px 0 0}
+.sum{display:flex;gap:16px;align-items:center;padding:16px;border-radius:10px;background:var(--okbg);color:var(--ok);margin-bottom:24px}
+.sum.warn{background:var(--warnbg);color:var(--warn)}
+.sum.err{background:var(--errbg);color:var(--err)}
+.sum .t{font-weight:600}.sum .s{font-size:13px;opacity:.9}
+.sum .x{margin-left:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+th{font-size:12px;color:var(--mut);font-weight:600;text-align:left;padding:8px}
+td{padding:8px;border-top:1px solid var(--line)}
+td.n,th.n{text-align:right}
+tr.bad td{background:var(--errbg)}
+.tabs{display:flex;justify-content:center;margin-bottom:16px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:sp .8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.sk{height:14px;margin:12px 0;border-radius:6px;background:var(--line);animation:p 1.2s infinite alternate}
+@keyframes p{to{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.sk,.spin{animation:none}}
+.colprev{border-radius:10px;border:1px dashed var(--line);padding:16px;display:flex;gap:16px;align-items:center}
+.colprev .chip{background:var(--acc);color:var(--accfg);border-radius:6px;padding:4px 8px;font-size:12px;font-weight:600}
+.done{text-align:center;padding:32px 0}
+.done .big{width:64px;height:64px;border-radius:50%;background:var(--okbg);color:var(--ok);display:grid;place-items:center;font-size:32px;margin:0 auto 16px}
+.i{font-size:12px;color:var(--mut);cursor:help;border-bottom:1px dotted var(--mut)}
+.xl{font-size:13px;border:1px solid var(--line);border-radius:8px;overflow:auto;background:var(--card)}
+.xl table{font-size:13px}.xl th{background:#1f7a35;color:#fff}
+.xl td{border-top:1px solid var(--line);border-left:1px solid var(--line)}
+dialog{border:0;border-radius:14px;padding:24px;background:var(--card);color:var(--fg);width:min(320px,90vw);text-align:center}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+dialog .acts{display:flex;gap:8px;margin-top:24px}dialog .acts .btn{flex:1}
+.ann{max-width:1200px;margin:auto;padding:0 16px}
+.ann ul{color:var(--mut);margin:8px 0 0;padding-left:20px}
+.ann li{margin:4px 0}
+</style></head><body>
+
+<header class="top">
+  <h1>Pruebas físicas · asistente de 3 pasos</h1>
+  <p>Maqueta viva. Pulsa los botones de la hoja para recorrer el flujo: <b>Test → Baremo → Guardar y añadir al cuaderno</b>. Debajo están todos los estados sueltos. Pasa el ratón por <span class="i" title="Así se ven las notas de microinteracción">(i)</span> para leer las notas.</p>
+</header>
+
+<h2 class="part">1 · El flujo completo (interactivo)</h2>
+<p class="partnote">Mac con la barra lateral. «Pruebas físicas» vuelve a la sección Evaluación. En iPad es la misma hoja, con detents (tamaños) medio y grande.</p>
+<div class="wrap">
+  <div class="win">
+    <nav class="side" aria-label="Barra lateral">
+      <div class="sec">HOY</div>
+      <div class="it">🏠 Inicio</div>
+      <div class="sec">EVALUACIÓN</div>
+      <div class="it">📒 Cuaderno</div>
+      <div class="it">✅ Asistencia</div>
+      <div class="it">📋 Rúbricas</div>
+      <div class="it on" style="color:var(--orange)">⏱️ <span style="color:var(--fg)">Pruebas físicas</span> <span class="new" title="Vuelve a la barra lateral. ⌘4 sigue funcionando">VUELVE</span></div>
+      <div class="sec">PLANIFICACIÓN</div>
+      <div class="it">📅 Planificación</div>
+      <div class="it">🧭 Situaciones</div>
+    </nav>
+    <div class="content">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div><h4>Pruebas físicas</h4><p class="sub" style="margin-bottom:0">2º ESO B</p></div>
+        <button class="btn p" style="margin-left:auto" onclick="openFlow()">＋ Nueva prueba</button>
+        <button class="lnk" title="Las 7 pestañas de antes: Baremos, Baterías, Asignaciones, Captura, Histórico, Informes">Más opciones…</button>
+      </div>
+      <p class="sub" style="margin-top:24px">Pruebas en el cuaderno de este grupo</p>
+      <div class="list">
+        <div class="row"><span>🏃</span><div><div class="t">Course Navette</div><div class="s">Resistencia · nivel · baremo 1º-4º ESO</div></div><span class="r">En el cuaderno</span></div>
+        <div class="row"><span>🤸</span><div><div class="t">Sit and reach</div><div class="s">Movilidad · cm · baremo por sexo</div></div><span class="r">En el cuaderno</span></div>
+        <div class="row"><span>⚡</span><div><div class="t">Velocidad 30 m</div><div class="s">Velocidad · s · menos es mejor</div></div><span class="r">Sin baremo</span></div>
+      </div>
+
+      <div class="dim" id="dim" hidden>
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="flowTitle">
+          <div class="bar">
+            <span class="l" id="flowBack"></span>
+            <div class="ttl" id="flowTitle">Nueva prueba</div>
+            <button class="lnk rr" id="flowCancel" onclick="askClose()">Cancelar</button>
+          </div>
+          <div class="steps" id="steps" role="img"></div>
+          <div class="body" id="flowBody"></div>
+          <div class="foot" id="flowFoot"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="ann">
+  <ul>
+    <li>Una sola acción principal por paso, siempre abajo a la derecha (en iPhone, a todo el ancho).</li>
+    <li>«Atrás» nunca borra lo escrito. «Cancelar» con cambios pide confirmación.</li>
+    <li>Las 7 pestañas de antes no se borran: quedan en «Más opciones…».</li>
+  </ul>
+</div>
+
+<h2 class="part">2 · Paso 1 · Test</h2>
+<p class="partnote">Elegir una prueba que ya existe o crear una nueva. Solo 3 datos obligatorios.</p>
+<div class="grid">
+  <div class="state"><h3>Con datos</h3><p class="note">Prueba nueva rellena. «Siguiente» se activa.</p><div class="sheet static" id="s1a"></div></div>
+  <div class="state"><h3>Elegir existente</h3><p class="note">Buscador nativo. Al elegir una, sus datos se rellenan solos.</p><div class="sheet static" id="s1b"></div></div>
+  <div class="state"><h3>Vacío</h3><p class="note">Sin nombre, «Siguiente» queda apagado. No se muestra ningún error rojo antes de tiempo.</p><div class="sheet static" id="s1c"></div></div>
+</div>
+
+<h2 class="part">3 · Paso 2 · Baremo</h2>
+<p class="partnote">El Excel es el camino principal. Escribir a mano es la alternativa.</p>
+<div class="grid">
+  <div class="state"><h3>Vacío (primer uso)</h3><p class="note">Dos caminos y la plantilla para descargar.</p><div class="sheet static" id="s2a"></div></div>
+  <div class="state"><h3>Cargando (leyendo el Excel)</h3><p class="note">Esqueleto con la forma de la tabla.</p><div class="sheet static" id="s2b"></div></div>
+  <div class="state"><h3>Con datos</h3><p class="note">Resumen arriba y tabla filtrada por curso y sexo.</p><div class="sheet static" id="s2c"></div></div>
+  <div class="state"><h3>Excel con errores</h3><p class="note">Dice qué fila falla y por qué. No se guarda nada.</p><div class="sheet static" id="s2d"></div></div>
+  <div class="state"><h3>Avisos (se puede seguir)</h3><p class="note">Huecos pequeños entre tramos: aviso amarillo, no bloquea.</p><div class="sheet static" id="s2e"></div></div>
+  <div class="state"><h3>Archivo que no se puede leer</h3><p class="note">Equivale al «error de red»: no es un Excel o está dañado.</p><div class="sheet static" id="s2f"></div></div>
+</div>
+
+<h2 class="part">4 · Paso 3 · Guardar y añadir</h2>
+<div class="grid">
+  <div class="state"><h3>Con datos</h3><p class="note">Grupo y pestaña ya elegidos según dónde estás. Vista previa de la columna.</p><div class="sheet static" id="s3a"></div></div>
+  <div class="state"><h3>Guardando</h3><p class="note">Botón con indicador. La hoja no se puede cerrar mientras guarda.</p><div class="sheet static" id="s3b"></div></div>
+  <div class="state"><h3>Hecho</h3><p class="note">Confirmación clara y atajo al cuaderno.</p><div class="sheet static" id="s3c"></div></div>
+  <div class="state"><h3>Sin grupos</h3><p class="note">Se puede guardar la prueba igual, sin añadirla a ningún cuaderno.</p><div class="sheet static" id="s3d"></div></div>
+  <div class="state"><h3>Sin baremo (se saltó el paso 2)</h3><p class="note">Aviso claro de lo que pasará. No bloquea.</p><div class="sheet static" id="s3f"></div></div>
+  <div class="state"><h3>Error al guardar</h3><p class="note">No se pierde nada de lo escrito. Se puede reintentar.</p><div class="sheet static" id="s3e"></div></div>
+</div>
+
+<h2 class="part">5 · Plantilla Excel</h2>
+<p class="partnote">Una fila por tramo. Sexo vacío = vale para todos. Edad opcional en lugar de curso.</p>
+<div class="wrap">
+  <div class="xl"><table>
+    <thead><tr><th>Curso</th><th>Sexo</th><th>Edad desde</th><th>Edad hasta</th><th class="n">Marca desde</th><th class="n">Marca hasta</th><th class="n">Nota</th></tr></thead>
+    <tbody>
+      <tr><td>1º ESO</td><td>Chica</td><td></td><td></td><td class="n">0</td><td class="n">2,5</td><td class="n">3</td></tr>
+      <tr><td>1º ESO</td><td>Chica</td><td></td><td></td><td class="n">3</td><td class="n">4,5</td><td class="n">5</td></tr>
+      <tr><td>1º ESO</td><td>Chica</td><td></td><td></td><td class="n">5</td><td class="n">6,5</td><td class="n">7</td></tr>
+      <tr><td>1º ESO</td><td>Chico</td><td></td><td></td><td class="n">0</td><td class="n">3</td><td class="n">3</td></tr>
+      <tr><td>2º ESO</td><td></td><td></td><td></td><td class="n">0</td><td class="n">3,5</td><td class="n">3</td></tr>
+    </tbody></table></div>
+  <div class="ann"><ul>
+    <li>Acepta .xlsx y .csv. Reconoce cabeceras parecidas («Mínimo», «Desde», «Puntuación»…).</li>
+    <li>Sexo admite Chica/Chico, F/M, Mujer/Hombre.</li>
+    <li>Coma o punto decimal. Tiempos como 1:45 también valen.</li>
+  </ul></div>
+</div>
+
+<h2 class="part">6 · Confirmación al cancelar</h2>
+<p class="partnote">En SwiftUI: confirmationDialog anclado a «Cancelar» (popover en iPad). El gesto de cerrar la hoja se bloquea si hay cambios.</p>
+<div class="wrap"><button class="btn" onclick="cd.showModal()">Ver el aviso</button></div>
+<dialog id="cd" aria-labelledby="cdt">
+  <p id="cdt" style="font-weight:600;margin:0">¿Descartar la prueba nueva?</p>
+  <p style="color:var(--mut);margin:8px 0 0">Se perderá lo que has escrito.</p>
+  <div class="acts"><button class="btn" style="color:var(--err)" onclick="cd.close();closeFlow()">Descartar cambios</button></div>
+  <button class="lnk" style="margin-top:8px" onclick="cd.close()">Cancelar</button>
+</dialog>
+
+<h2 class="part">7 · Notas para pasarlo a SwiftUI</h2>
+<div class="ann"><ul>
+  <li>Hoja con NavigationStack. «‹ Paso anterior» es el botón atrás nativo. «Cancelar» va en la barra con .cancellationAction.</li>
+  <li>Campos en Form con Section. Unidad con Picker de menú. «Más alto / Más bajo» con Picker .segmented.</li>
+  <li>Colores del sistema (.secondary, .tint, systemRed). Nada de colores fijos. Contraste revisado en Xcode.</li>
+  <li>Letra con estilos (.body, .footnote). Iconos con @ScaledMetric. Con letra muy grande, los filtros de curso y sexo se apilan (ViewThatFits).</li>
+  <li>Iconos SF Symbols: magnifyingglass, tablecells, pencil, person.2. Los emojis de esta maqueta solo marcan el sitio.</li>
+  <li>VoiceOver: los filtros se llaman «Curso» y «Sexo». Cada fila se lee entera: «De 100 a 124 cm, nota 4». Cada error: «Fila 7, falta la nota».</li>
+  <li>Al guardar: ProgressView, Cancelar desactivado, .interactiveDismissDisabled y aviso hablado al terminar.</li>
+  <li>«Sin grupos» con ContentUnavailableView y una acción. El Excel se elige con fileImporter (.xlsx, .csv).</li>
+</ul></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const STEPS=['Test','Baremo','Guardar'];
+function stepper(n){return STEPS.map((s,i)=>`<span class="${i+1===n?'on':i+1<n?'done':''}"><i>${i+1<n?'✓':i+1}</i>${s}</span>`).join('<span class="sep"></span>')}
+function bar(n,opt={}){const left=n===1?'<span class="l"></span>':`<button class="lnk l">‹ ${STEPS[n-2]}</button>`;const right=opt.done?'<button class="lnk rr b">Cerrar</button>':`<button class="lnk rr" ${opt.lock?'disabled':''}>Cancelar</button>`;return `<div class="bar">${left}<div class="ttl">Nueva prueba</div>${right}</div><div class="steps" role="img" aria-label="Paso ${n} de 3, ${STEPS[n-1]}">${stepper(n)}</div>`}
+const FOOT=(label,dis,extra='')=>`<div class="foot">${extra}<span style="flex:1"></span><button class="btn p" ${dis?'disabled':''}>${label}</button></div>`;
+
+const B1=(name,unit,dir,disabled)=>`
+  <p class="lead">¿Qué prueba vas a medir?</p>
+  <p class="leadsub">Elige una que ya tengas o crea una nueva.</p>
+  <button class="choice"><span class="ic">🔎</span><div><div class="t">Elegir una prueba guardada</div><div class="s">Course Navette, Sit and reach y 6 más</div></div><span class="chev">›</span></button>
+  <p class="glabel" style="margin-top:24px">O crea una nueva</p>
+  <div class="group">
+    <div class="f"><label for="n">Nombre</label><input id="n" placeholder="Ej. Salto horizontal" value="${name}"></div>
+    <div class="f"><label>Unidad</label><select><option>${unit}</option><option>segundos</option><option>metros</option><option>repeticiones</option><option>nivel</option></select></div>
+    <div class="f"><label>Mejor resultado</label><div class="seg"><button class="${dir==='+'?'on':''}">Más alto</button><button class="${dir==='-'?'on':''}">Más bajo</button></div></div>
+  </div>
+  <details><summary style="color:var(--acc);cursor:pointer;min-height:44px;display:flex;align-items:center">Opciones</summary>
+  <p class="hint" style="text-align:left;margin:0 0 8px">Capacidad, intentos, protocolo y material. Puedes dejarlo así.</p>
+  <div class="group" style="margin-top:8px">
+    <div class="f"><label>Capacidad</label><select><option>Fuerza</option></select></div>
+    <div class="f"><label>Intentos</label><select><option>2 · cuenta el mejor</option></select></div>
+  </div></details>`;
+
+const B1pick=`
+  <p class="lead">Elegir una prueba guardada</p>
+  <p class="leadsub">Escribe para buscar.</p>
+  <div class="group"><div class="f"><span>🔎</span><input style="text-align:left" value="sal" aria-label="Buscar prueba"></div></div>
+  <div class="group">
+    <div class="f"><div><div style="font-weight:600">Salto horizontal</div><div style="font-size:13px;color:var(--mut)">Fuerza · cm · más es mejor · con baremo</div></div><span style="margin-left:auto;color:var(--acc)">✓</span></div>
+    <div class="f"><div><div style="font-weight:600">Salto vertical</div><div style="font-size:13px;color:var(--mut)">Fuerza · cm · sin baremo</div></div></div>
+  </div>
+  <p class="hint">Si la prueba ya tiene baremo, el paso 2 lo muestra para revisarlo.</p>`;
+
+const B2empty=`
+  <p class="lead">Baremo de «Salto horizontal»</p>
+  <p class="leadsub">Convierte cada marca en una nota.</p>
+  <button class="choice p" onclick="go(2,'load')"><span class="ic">📊</span><div><div class="t">Importar desde Excel</div><div class="s">.xlsx o .csv con tus tramos</div></div><span class="chev">›</span></button>
+  <button class="choice"><span class="ic">✏️</span><div><div class="t">Escribir a mano</div><div class="s">Añade los tramos uno a uno</div></div><span class="chev">›</span></button>
+  <p class="hint">¿No tienes el Excel? <button class="lnk" style="min-height:auto;padding:0">Descargar plantilla</button></p>`;
+
+const B2load=`
+  <p class="lead">Leyendo «baremo_salto.xlsx»…</p>
+  <p class="leadsub">Un momento.</p>
+  <div class="sk" style="height:56px;border-radius:10px"></div>
+  <div class="sk"></div><div class="sk" style="width:80%"></div><div class="sk"></div><div class="sk" style="width:60%"></div>`;
+
+const rows=[['0','99','2'],['100','124','4'],['125','144','5'],['145','159','7'],['160','174','8'],['175','∞','10']];
+const B2data=`
+  <div class="sum"><span style="font-size:24px">✓</span><div><div class="t">24 tramos listos</div><div class="s">1º y 2º ESO · chicas y chicos · nota de 0 a 10</div></div><button class="lnk x" title="Abre el selector de archivos otra vez">Cambiar</button></div>
+  <div class="tabs"><div class="seg" style="margin:0"><button class="on">1º ESO</button><button>2º ESO</button></div>&nbsp;&nbsp;<div class="seg" style="margin:0"><button class="on">Chica</button><button>Chico</button></div></div>
+  <table><thead><tr><th class="n">Desde (cm)</th><th class="n">Hasta (cm)</th><th class="n">Nota</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td class="n">${r[0]}</td><td class="n">${r[1]}</td><td class="n"><b>${r[2]}</b></td></tr>`).join('')}
+  </tbody></table>
+  <p class="hint">Toca una fila para corregirla aquí mismo.</p>`;
+
+const B2err=`
+  <div class="sum err"><span style="font-size:24px" aria-hidden="true">⚠︎</span><div><div class="t">El Excel tiene 2 errores</div><div class="s">Corrígelos en el Excel y vuelve a importarlo.</div></div></div>
+  <table><thead><tr><th>Fila</th><th>Qué pasa</th></tr></thead><tbody>
+    <tr class="bad"><td>7</td><td><b>Error:</b> falta la nota</td></tr>
+    <tr class="bad"><td>12</td><td><b>Error:</b> se pisa con la fila 11 (140 a 150 cm)</td></tr>
+  </tbody></table>
+  <p class="hint">¿Dudas con el formato? <button class="lnk" style="min-height:auto;padding:0">Descargar plantilla</button></p>`;
+
+const B2warn=`
+  <div class="sum warn"><span style="font-size:24px">!</span><div><div class="t">24 tramos · 1 aviso</div><div class="s">Hueco entre 159 y 161 cm en 2º ESO chicos. Esa marca no tendrá nota.</div></div><button class="lnk x">Ver</button></div>
+  <table><thead><tr><th class="n">Desde</th><th class="n">Hasta</th><th class="n">Nota</th></tr></thead><tbody>
+  ${rows.slice(0,4).map(r=>`<tr><td class="n">${r[0]}</td><td class="n">${r[1]}</td><td class="n"><b>${r[2]}</b></td></tr>`).join('')}
+  </tbody></table>`;
+
+const B2bad=`
+  <div class="sum err"><span style="font-size:24px">✕</span><div><div class="t">No se pudo abrir el archivo</div><div class="s">No es un Excel o está dañado.</div></div></div>
+  <p class="hint">También puedes <button class="lnk" style="min-height:auto;padding:0">escribirlo a mano</button>.</p>`;
+
+const B3=(state)=>`
+  <p class="lead">¿Dónde la añadimos?</p>
+  <p class="leadsub">Se crea una columna con la nota de cada alumno.</p>
+  <div class="group">
+    <div class="f"><label>Grupo</label><select><option>2º ESO B</option></select></div>
+    <div class="f"><label>Pestaña</label><select><option>Condición física</option></select></div>
+    <div class="f"><label>Fecha</label><input type="date" value="2026-10-26" aria-label="Fecha"></div>
+  </div>
+  <p class="glabel">Así aparecerá en el cuaderno</p>
+  <div class="colprev"><span class="chip">Salto horizontal</span><span style="color:var(--mut);font-size:13px">Marca en cm → nota 0-10 según el baremo</span></div>
+  ${state==='nobar'?`<div class="sum warn" style="margin:24px 0 0"><span aria-hidden="true">!</span><div><div class="t">Sin baremo</div><div class="s">La columna guardará la marca, pero no la nota. Puedes añadir el baremo después.</div></div></div>`:''}
+  ${state==='err'?`<div class="sum err" style="margin:24px 0 0"><span>⚠︎</span><div><div class="t">No se pudo guardar</div><div class="s">No se ha perdido nada. Inténtalo otra vez.</div></div></div>`:''}`;
+
+const B3none=`
+  <p class="lead">Aún no tienes grupos</p>
+  <p class="leadsub">Puedes guardar la prueba y su baremo ahora y añadirla al cuaderno después.</p>
+  <button class="choice"><span class="ic">👥</span><div><div class="t">Crear un grupo</div><div class="s">Te devuelve aquí al terminar</div></div><span class="chev">›</span></button>`;
+
+const B3done=`
+  <div class="done"><div class="big">✓</div><p class="lead">Añadida a 2º ESO B</p><p class="leadsub">«Salto horizontal» ya está en la pestaña Condición física.</p>
+  <button class="btn p">Abrir el cuaderno</button></div>`;
+
+function sheet(el,n,body,foot,opt){$(el).innerHTML=bar(n,opt)+`<div class="body">${body}</div>`+(foot||'')}
+sheet('s1a',1,B1('Salto horizontal','centímetros','+'),FOOT('Siguiente'));
+sheet('s1b',1,B1pick,FOOT('Usar esta prueba'));
+sheet('s1c',1,B1('','Elige unidad','+'),FOOT('Siguiente',true));
+sheet('s2a',2,B2empty,`<div class="foot"><span style="flex:1"></span><button class="btn">Seguir sin baremo</button></div>`);
+sheet('s2b',2,B2load,FOOT('Siguiente',true));
+sheet('s2c',2,B2data,FOOT('Siguiente'));
+sheet('s2d',2,B2err,FOOT('Elegir otro archivo'));
+sheet('s2e',2,B2warn,FOOT('Siguiente'));
+sheet('s2f',2,B2bad,FOOT('Elegir otro archivo'));
+sheet('s3a',3,B3(),FOOT('Guardar y añadir'));
+sheet('s3b',3,B3(),`<div class="foot"><span style="flex:1"></span><button class="btn p" disabled aria-busy="true"><span class="spin" aria-hidden="true"></span> Guardando…</button></div>`,{lock:true});
+sheet('s3c',3,B3done,'',{done:true});
+sheet('s3d',3,B3none,FOOT('Guardar sin añadir'));
+sheet('s3e',3,B3('err'),FOOT('Reintentar'));
+sheet('s3f',3,B3('nobar'),FOOT('Guardar y añadir'));
+
+/* Flujo interactivo */
+let step=1,sub='data',dirty=false;
+function openFlow(){step=1;sub='new';dirty=false;$('dim').hidden=false;render()}
+function closeFlow(){$('dim').hidden=true}
+function askClose(){dirty?cd.showModal():closeFlow()}
+function go(n,s){step=n;sub=s;dirty=true;render()}
+function render(){
+  $('steps').innerHTML=stepper(step);
+  $('steps').setAttribute('aria-label',`Paso ${step} de 3, ${STEPS[step-1]}`);
+  $('flowBack').innerHTML=step===1||sub==='done'?'':`<button class="lnk" onclick="go(${step-1},'${step===2?'new':'data'}')">‹ ${STEPS[step-2]}</button>`;
+  const c=$('flowCancel');c.disabled=sub==='saving';
+  c.textContent=sub==='done'?'Cerrar':'Cancelar';c.classList.toggle('b',sub==='done');c.onclick=sub==='done'?closeFlow:askClose;
+  let body='',foot='';
+  if(step===1){body=B1('Salto horizontal','centímetros','+');foot=`<span style="flex:1"></span><button class="btn p" onclick="go(2,'empty')">Siguiente</button>`}
+  if(step===2&&sub==='empty'){body=B2empty;foot=`<span style="flex:1"></span><button class="btn" onclick="go(3,'nobar')">Seguir sin baremo</button>`}
+  if(step===2&&sub==='load'){body=B2load;foot=`<span style="flex:1"></span><button class="btn p" disabled>Siguiente</button>`;setTimeout(()=>{if(step===2&&sub==='load')go(2,'data')},1200)}
+  if(step===2&&sub==='data'){body=B2data;foot=`<span style="flex:1"></span><button class="btn p" onclick="go(3,'data')">Siguiente</button>`}
+  if(step===3&&sub==='nobar'){body=B3('nobar');foot=`<span style="flex:1"></span><button class="btn p" onclick="go(3,'saving')">Guardar y añadir</button>`}
+  if(step===3&&sub==='data'){body=B3();foot=`<span style="flex:1"></span><button class="btn p" onclick="go(3,'saving')">Guardar y añadir</button>`}
+  if(step===3&&sub==='saving'){body=B3();foot=`<span style="flex:1"></span><button class="btn p" disabled aria-busy="true"><span class="spin" aria-hidden="true"></span> Guardando…</button>`;setTimeout(()=>{if(sub==='saving')go(3,'done')},900)}
+  if(step===3&&sub==='done'){body=B3done.replace('<button class="btn p">','<button class="btn p" onclick="closeFlow()">');foot='';dirty=false}
+  $('flowBody').innerHTML=body;
+  $('flowFoot').innerHTML=foot;$('flowFoot').hidden=!foot;
+}
+const cd=$('cd');
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('dim').hidden&&!cd.open&&sub!=='saving')askClose()});
+</script>
+</body></html>

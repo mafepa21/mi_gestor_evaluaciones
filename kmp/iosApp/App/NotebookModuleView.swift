@@ -102,6 +102,9 @@ struct NotebookModuleView: View {
     @State var isOrganizationMenuPresented = false
     @State var isHiddenColumnsSheetPresented = false
     @State var isClosingReviewPresented = false
+    /// Datos del Cuaderno congelados al abrir «Revisar cierre»: una recarga o sync con la
+    /// hoja abierta no debe pasarla a «Sin datos».
+    @State var closingReviewData: NotebookUiStateData? = nil
     @State var pendingClosingTarget: NotebookClosingTarget? = nil
     @State var toast: NotebookToast? = nil
     @State var isAttendanceQuickMode = false
@@ -1614,6 +1617,7 @@ struct NotebookModuleView: View {
                 .appOnChange(of: layoutState.notebookClosingReviewRequestID) { requestID in
                     guard requestID != nil else { return }
                     isOrganizationMenuPresented = false
+                    closingReviewData = data
                     isClosingReviewPresented = true
                 }
 

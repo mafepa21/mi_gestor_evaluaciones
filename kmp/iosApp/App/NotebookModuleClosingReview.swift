@@ -33,6 +33,7 @@ extension NotebookModuleView {
         guard let data = bridge.notebookState as? NotebookUiStateData else { return }
         let column = columnId.flatMap { id in data.sheet.columns.first(where: { $0.id == id }) }
         if let column, column.isTemporarilyHidden {
+            showToast("Esa columna está oculta", style: .warning)
             isHiddenColumnsSheetPresented = true
             return
         }
@@ -64,7 +65,12 @@ extension NotebookModuleView {
         guard let target else { return }
 
         // Con la virtualización de filas hay que desplazar antes de enfocar.
+        // Si el viewport aún no estaba medido el desplazamiento no hace nada: se reintenta
+        // una vez (es inocuo si la fila ya es visible).
         gridScrollProxy.scrollToRow?(rowIndex)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            gridScrollProxy.scrollToRow?(rowIndex)
+        }
 
         #if os(macOS)
         applyKeyboardSelection(studentId: studentId, columnId: target.id)

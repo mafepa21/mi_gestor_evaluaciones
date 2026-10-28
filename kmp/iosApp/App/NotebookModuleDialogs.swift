@@ -319,7 +319,7 @@ extension NotebookModuleView {
                     }
                 }
                 .sheet(isPresented: $isClosingReviewPresented, onDismiss: goToPendingClosingTarget) {
-                    if let data = bridge.notebookState as? NotebookUiStateData {
+                    if let data = closingReviewData {
                         NotebookClosingReviewSheet(
                             contextText: closingReviewContextText(data: data),
                             loadReport: {

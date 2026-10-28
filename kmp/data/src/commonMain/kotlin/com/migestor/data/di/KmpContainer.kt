@@ -183,6 +183,24 @@ class KmpContainer(val driver: SqlDriver) {
         attendanceRepository = attendanceRepository,
     )
 
+    // Juntas de evaluación (migración 47). Va después de notebookRepository: la Media
+    // es la misma que muestra el Cuaderno, leída de su hoja ya construida.
+    val evaluationSessions = com.migestor.shared.evaluationsession.EvaluationSessionUseCase(
+        sessions = evaluationSessionRepository,
+        live = com.migestor.shared.evaluationsession.DefaultEvaluationSessionLiveData(
+            studentIdsForClass = { classId -> classesRepository.listStudentsInClass(classId).map { it.id } },
+            notebookAverages = { classId ->
+                com.migestor.shared.evaluationsession.EvaluationSessionRules.averagesFromNotebook(
+                    notebookRepository.loadNotebookSnapshot(classId)
+                )
+            },
+            attendanceStats = { classId, studentId -> aiTrendsRepository.getStudentAttendanceStats(classId, studentId) },
+            incidentsForClass = { classId -> incidentsRepository.listIncidents(classId) },
+            supportMeasures = { studentId -> studentSupportMeasureRepository.listByStudent(studentId) },
+        ),
+        newId = { com.migestor.shared.evaluationsession.randomEvaluationSessionId() },
+    )
+
     /**
      * Borrado total: vacia todas las tablas por SQL, con la conexion que ya esta abierta.
      *

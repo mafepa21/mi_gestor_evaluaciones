@@ -1,0 +1,137 @@
+-- Juntas (sesiones) de evaluación por grupo (migración 47).
+-- El DDL debe coincidir letra por letra con 47.sqm: el test de ruta canónica
+-- compara instalación nueva y migrada (defaults e índices incluidos).
+-- Ojo: en producción PRAGMA foreign_keys = 0, así que las cascadas no corren.
+-- Por eso las lecturas hacen INNER JOIN con students y el borrado es explícito.
+CREATE TABLE IF NOT EXISTS evaluation_sessions (
+    id TEXT PRIMARY KEY NOT NULL,
+    class_id INTEGER NOT NULL,
+    evaluation_kind TEXT NOT NULL,
+    evaluation_label TEXT NOT NULL,
+    planner_evaluation_period_id INTEGER,
+    date_iso TEXT NOT NULL,
+    attendees TEXT NOT NULL DEFAULT '',
+    general_agreements TEXT NOT NULL DEFAULT '',
+    is_closed INTEGER NOT NULL DEFAULT 0,
+    closed_at_epoch_ms INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (planner_evaluation_period_id) REFERENCES planner_evaluation_periods(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evaluation_sessions_class_kind ON evaluation_sessions(class_id, evaluation_kind);
+CREATE TABLE IF NOT EXISTS evaluation_session_students (
+    session_id TEXT NOT NULL,
+    student_id INTEGER NOT NULL,
+    other_failed_count INTEGER NOT NULL DEFAULT 0,
+    agreement TEXT NOT NULL DEFAULT '',
+    is_reviewed INTEGER NOT NULL DEFAULT 0,
+    frozen_average REAL,
+    frozen_own_failed INTEGER,
+    frozen_absence_percent REAL,
+    frozen_absence_count INTEGER,
+    frozen_support_level TEXT,
+    frozen_incident_count INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (session_id, student_id),
+    FOREIGN KEY (session_id) REFERENCES evaluation_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_evaluation_session_students_student ON evaluation_session_students(student_id);
+
+selectSessionsByClass:
+SELECT *
+FROM evaluation_sessions
+WHERE class_id = ?
+ORDER BY is_closed ASC, date_iso DESC, created_at_epoch_ms DESC;
+
+selectSessionById:
+SELECT *
+FROM evaluation_sessions
+WHERE id = ?;
+
+insertSession:
+INSERT INTO evaluation_sessions(
+    id, class_id, evaluation_kind, evaluation_label, planner_evaluation_period_id, date_iso,
+    attendees, general_agreements, is_closed, closed_at_epoch_ms,
+    created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, 0);
+
+updateSessionHeader:
+UPDATE evaluation_sessions
+SET evaluation_label = ?,
+    planner_evaluation_period_id = ?,
+    date_iso = ?,
+    attendees = ?,
+    general_agreements = ?,
+    updated_at_epoch_ms = ?
+WHERE id = ? AND is_closed = 0;
+
+closeSession:
+UPDATE evaluation_sessions
+SET is_closed = 1,
+    closed_at_epoch_ms = :closedAt,
+    updated_at_epoch_ms = :closedAt
+WHERE id = :id AND is_closed = 0;
+
+-- Reabrir conserva los congelados: se sobrescriben al volver a cerrar.
+reopenSession:
+UPDATE evaluation_sessions
+SET is_closed = 0,
+    closed_at_epoch_ms = NULL,
+    updated_at_epoch_ms = ?
+WHERE id = ? AND is_closed = 1;
+
+deleteSession:
+DELETE FROM evaluation_sessions
+WHERE id = ?;
+
+deleteSessionStudents:
+DELETE FROM evaluation_session_students
+WHERE session_id = ?;
+
+selectSessionStudents:
+SELECT ess.*, s.first_name, s.last_name
+FROM evaluation_session_students ess
+INNER JOIN students s ON s.id = ess.student_id
+WHERE ess.session_id = ?
+ORDER BY s.last_name, s.first_name, s.id;
+
+insertSessionStudentIfMissing:
+INSERT OR IGNORE INTO evaluation_session_students(
+    session_id, student_id, created_at_epoch_ms, updated_at_epoch_ms
+)
+VALUES (?, ?, ?, ?);
+
+-- Solo en juntas abiertas: una junta cerrada no se edita sin reabrirla.
+updateSessionStudentEditable:
+UPDATE evaluation_session_students
+SET other_failed_count = ?,
+    agreement = ?,
+    is_reviewed = ?,
+    updated_at_epoch_ms = ?
+WHERE session_id = ? AND student_id = ?
+  AND EXISTS (
+      SELECT 1 FROM evaluation_sessions es
+      WHERE es.id = evaluation_session_students.session_id AND es.is_closed = 0
+  );
+
+freezeSessionStudent:
+UPDATE evaluation_session_students
+SET frozen_average = ?,
+    frozen_own_failed = ?,
+    frozen_absence_percent = ?,
+    frozen_absence_count = ?,
+    frozen_support_level = ?,
+    frozen_incident_count = ?,
+    updated_at_epoch_ms = ?
+WHERE session_id = ? AND student_id = ?;
+
+evaluationSessionChanges:
+SELECT changes();

@@ -84,6 +84,8 @@ class KmpContainer(val driver: SqlDriver) {
     val studentTutoringSessionRepository: StudentTutoringSessionRepository = StudentTutoringSessionRepositorySqlDelight(database)
     val inclusionTaskRepository: com.migestor.shared.repository.InclusionTaskRepository =
         com.migestor.data.repository.InclusionTaskRepositorySqlDelight(database)
+    val evaluationSessionRepository: com.migestor.shared.evaluationsession.EvaluationSessionRepository =
+        com.migestor.data.repository.EvaluationSessionRepositorySqlDelight(database)
     val meetingRepository: MeetingRepository = MeetingRepositorySqlDelight(database)
     val plannerWeekPlanRepository: PlannerWeekPlanRepository = PlannerWeekPlanRepositorySqlDelight(database)
 

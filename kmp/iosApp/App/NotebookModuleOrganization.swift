@@ -360,6 +360,10 @@ extension NotebookModuleView {
         withAnimation(uiFeatureFlags.animation(.spring(response: 0.28, dampingFraction: 0.88))) {
             toast = NotebookToast(message: message, style: style)
         }
+        // Los avisos de advertencia también se anuncian a VoiceOver.
+        if style == .warning {
+            AccessibilityNotification.Announcement(message).post()
+        }
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             if toast?.message == message {

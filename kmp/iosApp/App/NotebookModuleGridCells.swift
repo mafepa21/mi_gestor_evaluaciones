@@ -992,6 +992,9 @@ extension NotebookModuleView {
                     bridge.status = "No se pudo guardar la asistencia. Pulsa otra vez para reintentar."
                     return false
                 }
+            },
+            showWarning: { message in
+                showToast(message, style: .warning)
             }
         )
     }

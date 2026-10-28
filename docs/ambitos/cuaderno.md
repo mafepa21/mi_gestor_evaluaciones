@@ -35,3 +35,4 @@
 - El editor de media recibe todas las columnas pero filtra por `visibleColumnIds` (pestaña activa) y descarta ocultas; `buildUpdates` preserva las demás. Si cambia el filtro del grid, el editor lo sigue solo.
 - Todo dato de columna que pinte la cabecera (p. ej. peso de media) debe entrar en `NotebookRenderCacheKey`; si no, la cabecera sigue mostrando la columna cacheada.
 - El peso de columna es un % literal: `columnWeightBadge` no reinterpreta 1 ni valores <1.
+- Una nota NUMERIC se valida (`isValidNotebookNumericInput`) ANTES de crear el borrador optimista y de marcar "guardando"; si no, un texto como "8,5a" se queda pintado sin guardarse. En Swift se valida al confirmar (`saveNumeric`), no a cada tecla, y al pegar se saltan los inválidos.

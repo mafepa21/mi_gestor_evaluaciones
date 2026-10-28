@@ -101,6 +101,8 @@ struct NotebookModuleView: View {
     @State var deletionConfirmationText = ""
     @State var isOrganizationMenuPresented = false
     @State var isHiddenColumnsSheetPresented = false
+    @State var isClosingReviewPresented = false
+    @State var pendingClosingTarget: NotebookClosingTarget? = nil
     @State var toast: NotebookToast? = nil
     @State var isAttendanceQuickMode = false
     @State var isMarkAllPresentDialogPresented = false
@@ -1608,6 +1610,11 @@ struct NotebookModuleView: View {
                     guard requestID != nil else { return }
                     isOrganizationMenuPresented = false
                     isHiddenColumnsSheetPresented = true
+                }
+                .appOnChange(of: layoutState.notebookClosingReviewRequestID) { requestID in
+                    guard requestID != nil else { return }
+                    isOrganizationMenuPresented = false
+                    isClosingReviewPresented = true
                 }
 
                 .appOnChange(of: notebookTabsStateKey(data: data)) { _ in

@@ -318,6 +318,37 @@ extension NotebookModuleView {
 #endif
                     }
                 }
+                .sheet(isPresented: $isClosingReviewPresented, onDismiss: goToPendingClosingTarget) {
+                    if let data = bridge.notebookState as? NotebookUiStateData {
+                        NotebookClosingReviewSheet(
+                            contextText: closingReviewContextText(data: data),
+                            loadReport: {
+                                try await bridge.buildNotebookClosingReport(data: data)
+                            },
+                            onSelect: { target in
+                                pendingClosingTarget = target
+                            }
+                        )
+#if os(macOS)
+                        .frame(minWidth: 480, minHeight: 560)
+#else
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+#endif
+                    } else {
+                        NotebookContentUnavailableView(
+                            "Sin datos del cuaderno",
+                            systemImage: "checklist",
+                            description: "Carga una clase para revisar el cierre."
+                        )
+#if os(macOS)
+                        .frame(minWidth: 420, minHeight: 260)
+#else
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+#endif
+                    }
+                }
                 .task {
                     if let selectedClassId,
                        bridge.notebookViewModel.currentClassId?.int64Value != selectedClassId {

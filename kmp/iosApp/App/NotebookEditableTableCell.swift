@@ -1731,6 +1731,11 @@ private struct NotebookStatefulEditableTableCell: View {
             // Validar al confirmar (no a cada tecla): si no es nota, se conserva la anterior y se avisa.
             if !NotebookViewModelKt.isValidNotebookNumericInput(inputKind: column.inputKind, value: numericDraft) {
                 let rejected = numericDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                // En iOS un prefijo válido («8,5») pudo salir ya por el guardado debounced: se repone la anterior.
+                if let sentPrefix = pendingNumericDraft, sentPrefix != originalNumericDraft {
+                    actions.flushPendingColumnGradeSave(item.student.id, column.id)
+                    actions.saveColumnGrade(item.student.id, column, originalNumericDraft)
+                }
                 numericDraft = originalNumericDraft
                 pendingNumericDraft = nil
                 actions.showWarning("\u{201C}\(rejected)\u{201D} no es una nota. Se mantiene la anterior.")

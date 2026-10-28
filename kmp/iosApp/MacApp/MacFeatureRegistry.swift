@@ -20,6 +20,7 @@ struct MacFeatureDescriptor: Identifiable, Hashable {
         case webSubmissions
         case meetings
         case inclusion
+        case evaluationSessions
         case students
         case evaluationHub
         case rubrics
@@ -55,6 +56,7 @@ enum MacFeatureRegistry {
         .init(feature: .webSubmissions, title: "Entregas web", subtitle: "Publicar formularios y recoger respuestas", systemImage: "paperplane.circle.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .meetings, title: "Reuniones", subtitle: "Actas de centro y acuerdos", systemImage: "person.3.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .inclusion, title: "Inclusión", subtitle: "Plazos del manual", systemImage: "person.2.badge.gearshape", source: .parityIOS, enabledInV1: true),
+        .init(feature: .evaluationSessions, title: "Juntas", subtitle: "Junta de evaluación y acta", systemImage: "list.clipboard", source: .parityIOS, enabledInV1: true),
         .init(feature: .students, title: "Alumnado", subtitle: "Directorio y seguimiento rápido", systemImage: "person.3.sequence.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .evaluationHub, title: "Evaluación", subtitle: "Instrumentos y calendario", systemImage: "chart.bar.doc.horizontal", source: .parityIOS, enabledInV1: true),
         .init(feature: .rubrics, title: "Rúbricas", subtitle: "Banco de evaluación y edición", systemImage: "checklist.checked", source: .parityIOS, enabledInV1: true),
@@ -93,7 +95,7 @@ enum MacFeatureSection: String, CaseIterable, Identifiable {
             // `Evaluación` no está, para aligerar la barra: se abre desde el
             // inspector del Cuaderno, Rúbricas y la barra de herramientas.
             // `Pruebas físicas` volvió a la barra (2026-10-26); ⌘4 sigue valiendo.
-            return [.notebook, .attendance, .rubrics, .physicalTests, .webSubmissions]
+            return [.notebook, .attendance, .rubrics, .physicalTests, .evaluationSessions, .webSubmissions]
         case .planificacion:
             return [.planner, .diary, .situations, .tournaments, .meetings, .inclusion, .students]
         case .sistema:

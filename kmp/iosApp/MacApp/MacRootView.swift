@@ -655,6 +655,11 @@ struct MacRootView: View {
                 bridge: session.bridge,
                 selectedClassId: studentSelection.selectedClassBinding
             )
+        case .evaluationSessions:
+            EvaluationSessionView(
+                bridge: session.bridge,
+                selectedClassId: studentSelection.selectedClassBinding
+            )
         case .sync:
             MacSyncView(bridge: session.bridge, commandCenter: commandCenter)
         case .backups:
@@ -1343,6 +1348,7 @@ struct MacRootView: View {
         case .webSubmissions: return .mint
         case .meetings: return .brown
         case .inclusion: return .teal
+        case .evaluationSessions: return .indigo
         case .students: return .blue
         case .evaluationHub: return .orange
         case .rubrics: return .teal
@@ -1689,6 +1695,8 @@ struct MacRootView: View {
             selectFeature(.evaluationHub)
         case .inclusion:
             selectFeature(.inclusion)
+        case .evaluationSessions:
+            selectFeature(.evaluationSessions)
         default:
             showBanner(
                 "\(module.title) todavía no está disponible en la shell Mac.",

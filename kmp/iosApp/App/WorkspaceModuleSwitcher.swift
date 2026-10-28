@@ -100,6 +100,8 @@ extension AppWorkspaceShell {
                 .environmentObject(bridge)
         case .inclusion:
             InclusionTrackerView(bridge: bridge, selectedClassId: $selectedClassId)
+        case .evaluationSessions:
+            EvaluationSessionView(bridge: bridge, selectedClassId: $selectedClassId)
         case .evaluationHub:
             EvaluationHubView(
                 selectedClassId: $selectedClassId,

@@ -3,6 +3,7 @@ package com.migestor.shared
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
 import com.migestor.shared.domain.NotebookColumnVisibility
+import com.migestor.shared.domain.NotebookEmptyCellPolicy
 import com.migestor.shared.domain.NotebookRow
 import com.migestor.shared.domain.PersistedNotebookCell
 import com.migestor.shared.domain.Student
@@ -41,6 +42,7 @@ class BuildNotebookClosingReportUseCaseTest {
         student: Student,
         grades: Map<String, Double> = emptyMap(),
         texts: Map<String, String> = emptyMap(),
+        calculated: Map<String, Double> = emptyMap(),
     ): NotebookRow {
         val persisted = texts.map { (columnId, text) ->
             PersistedNotebookCell(classId = 1, studentId = student.id, columnId = columnId, textValue = text)
@@ -61,7 +63,7 @@ class BuildNotebookClosingReportUseCaseTest {
                 )
             },
         )
-        val explanation = base.computeAverageExplanation(columns)
+        val explanation = base.computeAverageExplanation(columns, calculatedValuesByColumnId = calculated)
         return base.copy(weightedAverage = explanation?.average, averageExplanation = explanation)
     }
 
@@ -150,10 +152,14 @@ class BuildNotebookClosingReportUseCaseTest {
 
     @Test
     fun `criterio sin nota en ninguno de sus instrumentos avisa con codigo`() {
-        val columns = listOf(numeric("a", criteria = listOf(21L)), numeric("b", criteria = listOf(21L)))
+        val columns = listOf(
+            numeric("a", criteria = listOf(21L)),
+            numeric("b", criteria = listOf(21L)),
+            numeric("c"),
+        )
         val rows = listOf(
             row(columns, student(1, "Ana"), grades = mapOf("a" to 7.0)),
-            row(columns, student(2, "Lucía")),
+            row(columns, student(2, "Lucía"), grades = mapOf("c" to 6.0)),
         )
         val report = useCase.build(columns, rows, criterionCodes = mapOf(21L to "CE 2.1"))
         val criteria = report.issuesOf(ClosingIssueKind.CRITERION_WITHOUT_GRADE)
@@ -165,24 +171,28 @@ class BuildNotebookClosingReportUseCaseTest {
 
     @Test
     fun `criterio sin codigo conocido usa texto de reserva`() {
-        val columns = listOf(numeric("a", criteria = listOf(5L)))
-        val rows = listOf(row(columns, student(1, "Ana")))
+        val columns = listOf(numeric("a", criteria = listOf(5L)), numeric("c"))
+        val rows = listOf(row(columns, student(1, "Ana"), grades = mapOf("c" to 6.0)))
         val issue = useCase.build(columns, rows).issuesOf(ClosingIssueKind.CRITERION_WITHOUT_GRADE).single()
         assertNull(issue.criterionCode)
         assertEquals("Criterio 5", issue.title)
     }
 
     @Test
-    fun `los avisos salen en el orden de la hoja y el total suma notas vacias por alumno`() {
-        val columns = listOf(numeric("a", criteria = listOf(1L)), numeric("h", hidden = true))
+    fun `los avisos salen en el orden de la hoja y el total no suma criterios`() {
+        val columns = listOf(
+            numeric("a", criteria = listOf(1L)),
+            numeric("h", hidden = true, criteria = listOf(2L)),
+            numeric("c"),
+        )
         val rows = listOf(
-            row(columns, student(1, "Ana"), grades = mapOf("a" to 7.0, "h" to 5.0)),
+            row(columns, student(1, "Ana"), grades = mapOf("a" to 7.0, "h" to 5.0, "c" to 6.0)),
             row(columns, student(2, "Pablo")),
+            row(columns, student(3, "Luis"), grades = mapOf("a" to 4.0, "c" to 6.0)),
         )
         val report = useCase.build(columns, rows)
         assertEquals(
             listOf(
-                ClosingIssueKind.EMPTY_GRADE,
                 ClosingIssueKind.EMPTY_GRADE,
                 ClosingIssueKind.NO_AVERAGE,
                 ClosingIssueKind.HIDDEN_COLUMN,
@@ -190,6 +200,52 @@ class BuildNotebookClosingReportUseCaseTest {
             ),
             report.issues.map { it.kind },
         )
-        assertEquals(5, report.totalCount)
+        // Luis en «h» + Pablo sin Media + columna oculta; el criterio de Luis no suma.
+        assertEquals(3, report.totalCount)
+    }
+
+    @Test
+    fun `quien no tiene Media no se repite en notas vacias ni en criterios`() {
+        val columns = listOf(numeric("a", criteria = listOf(1L)), numeric("b"))
+        val rows = listOf(
+            row(columns, student(1, "Ana"), grades = mapOf("a" to 7.0, "b" to 6.0)),
+            row(columns, student(2, "Pablo")),
+        )
+        val report = useCase.build(columns, rows)
+        assertEquals(1, report.countOf(ClosingIssueKind.NO_AVERAGE))
+        assertTrue(report.issuesOf(ClosingIssueKind.EMPTY_GRADE).isEmpty())
+        assertTrue(report.issuesOf(ClosingIssueKind.CRITERION_WITHOUT_GRADE).isEmpty())
+        assertEquals(1, report.totalCount)
+    }
+
+    @Test
+    fun `columna calculada con valor no da falso positivo de criterio`() {
+        val calc = NotebookColumnDefinition(
+            id = "calc",
+            title = "Calculada",
+            type = NotebookColumnType.CALCULATED,
+            competencyCriteriaIds = listOf(9L),
+        )
+        val columns = listOf(numeric("a"), calc)
+        val rows = listOf(
+            row(columns, student(1, "Ana"), grades = mapOf("a" to 7.0), calculated = mapOf("calc" to 6.0)),
+        )
+        val report = useCase.build(columns, rows)
+        assertTrue(report.issuesOf(ClosingIssueKind.CRITERION_WITHOUT_GRADE).isEmpty())
+        assertTrue(report.issuesOf(ClosingIssueKind.EMPTY_GRADE).isEmpty())
+    }
+
+    @Test
+    fun `vacio que cuenta como cero sigue siendo un hueco`() {
+        val zero = numeric("z").copy(emptyCellPolicy = NotebookEmptyCellPolicy.COUNT_AS_ZERO)
+        val columns = listOf(numeric("a"), zero)
+        val rows = listOf(
+            row(columns, student(1, "Ana"), grades = mapOf("a" to 7.0)),
+            row(columns, student(2, "Luis"), grades = mapOf("a" to 5.0, "z" to 0.0)),
+        )
+        val empty = useCase.build(columns, rows).issuesOf(ClosingIssueKind.EMPTY_GRADE)
+        assertEquals(1, empty.size)
+        assertEquals("z", empty[0].columnId)
+        assertEquals(listOf(1L), empty[0].students.map { it.id })
     }
 }

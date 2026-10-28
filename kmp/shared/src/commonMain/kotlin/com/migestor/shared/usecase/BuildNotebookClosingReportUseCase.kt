@@ -1,12 +1,11 @@
 package com.migestor.shared.usecase
 
-import com.migestor.shared.domain.NotebookAverageExclusionReason
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
 import com.migestor.shared.domain.NotebookColumnVisibility
+import com.migestor.shared.domain.NotebookEmptyCellPolicy
 import com.migestor.shared.domain.NotebookRow
-import com.migestor.shared.domain.computeAverageExplanation
-import com.migestor.shared.domain.gradeValueFor
+import com.migestor.shared.domain.PersistedNotebookCell
 
 /** Tipos de aviso de «Revisar cierre», en el orden en que se muestran. */
 enum class ClosingIssueKind {
@@ -60,7 +59,13 @@ data class NotebookClosingReport(
     val issues: List<ClosingIssue>,
 ) {
     val hasCountingColumns: Boolean get() = countingColumnCount > 0
-    val totalCount: Int get() = issues.sumOf { it.count }
+    /**
+     * Avisos distintos: huecos únicos (alumno + columna) más sin Media, notas que no se
+     * entienden y columnas ocultas. «Criterios sin nota» es otra vista de los mismos huecos
+     * y no suma.
+     */
+    val totalCount: Int
+        get() = issues.filter { it.kind != ClosingIssueKind.CRITERION_WITHOUT_GRADE }.sumOf { it.count }
     val isAllClear: Boolean get() = hasCountingColumns && issues.isEmpty()
 
     fun issuesOf(kind: ClosingIssueKind): List<ClosingIssue> = issues.filter { it.kind == kind }
@@ -70,8 +75,27 @@ data class NotebookClosingReport(
 /**
  * Lógica pura de «Revisar cierre»: solo lee columnas y filas ya cargadas.
  * No cambia ninguna nota ni la Media.
+ *
+ * Una celda de una columna que cuenta está «rellena» si tiene un valor real guardado
+ * (nota persistida, celda persistida con contenido) o un valor calculado que entra en la
+ * Media. Con la política «vacío cuenta como 0» la celda vacía entra en la Media como 0,
+ * pero sigue siendo un hueco.
  */
 class BuildNotebookClosingReportUseCase {
+    /** Datos de una fila indexados por columna, para no recorrer listas dentro de los bucles. */
+    private class RowIndex(row: NotebookRow) {
+        val included: Map<String, Double> =
+            row.averageExplanation?.included?.associate { it.columnId to it.value }.orEmpty()
+        val cellsByColumn: Map<String, PersistedNotebookCell> =
+            row.persistedCells.groupBy { it.columnId }.mapValues { it.value.first() }
+        val gradeColumns: Set<String> =
+            row.persistedGrades.filter { it.value != null }.map { it.columnId }.toSet()
+        val gradeEvaluations: Set<Long> =
+            row.persistedGrades.filter { it.value != null }.mapNotNull { it.evaluationId }.toSet()
+        val cellEvaluations: Set<Long> =
+            row.cells.filter { it.value != null }.map { it.evaluationId }.toSet()
+    }
+
     fun build(
         columns: List<NotebookColumnDefinition>,
         rows: List<NotebookRow>,
@@ -81,32 +105,34 @@ class BuildNotebookClosingReportUseCase {
         if (countingColumns.isEmpty()) {
             return NotebookClosingReport(studentCount = rows.size, countingColumnCount = 0, issues = emptyList())
         }
-        val countingById = countingColumns.associateBy { it.id }
         val issues = mutableListOf<ClosingIssue>()
+        val indexes = rows.associate { it.student.id to RowIndex(it) }
+        val withoutAverage = rows.filter { row ->
+            row.weightedAverage == null && row.averageExplanation?.included.isNullOrEmpty()
+        }.map { it.student.id }.toSet()
 
         // 1 y 3. Notas vacías y notas que no se entienden, por columna.
         val emptyByColumn = linkedMapOf<String, MutableList<ClosingStudent>>()
         val notUnderstood = mutableListOf<ClosingIssue>()
         rows.forEach { row ->
-            val explanation = row.averageExplanation ?: row.computeAverageExplanation(columns)
+            val index = indexes.getValue(row.student.id)
             val student = ClosingStudent(row.student.id, row.student.fullName)
-            explanation?.excluded
-                ?.filter { it.reason == NotebookAverageExclusionReason.EMPTY }
-                ?.forEach { pending ->
-                    val column = countingById[pending.columnId] ?: return@forEach
-                    val text = row.unreadableTextFor(column)
-                    if (text != null) {
-                        notUnderstood += ClosingIssue(
-                            kind = ClosingIssueKind.NOT_UNDERSTOOD,
-                            columnId = column.id,
-                            title = column.title,
-                            students = listOf(student),
-                            text = text,
-                        )
-                    } else {
-                        emptyByColumn.getOrPut(column.id) { mutableListOf() } += student
-                    }
+            countingColumns.forEach { column ->
+                if (index.isFilled(column)) return@forEach
+                val text = index.unreadableText(column)
+                if (text != null) {
+                    notUnderstood += ClosingIssue(
+                        kind = ClosingIssueKind.NOT_UNDERSTOOD,
+                        columnId = column.id,
+                        title = column.title,
+                        students = listOf(student),
+                        text = text,
+                    )
+                } else if (row.student.id !in withoutAverage) {
+                    // Quien no tiene Media sale solo en «Sin Media», no en cada columna vacía.
+                    emptyByColumn.getOrPut(column.id) { mutableListOf() } += student
                 }
+            }
         }
         countingColumns.forEach { column ->
             val students = emptyByColumn[column.id] ?: return@forEach
@@ -119,16 +145,13 @@ class BuildNotebookClosingReportUseCase {
         }
 
         // 2. Alumnado sin Media.
-        rows.forEach { row ->
-            val hasIncluded = row.averageExplanation?.included?.isNotEmpty() == true
-            if (row.weightedAverage == null && !hasIncluded) {
-                issues += ClosingIssue(
-                    kind = ClosingIssueKind.NO_AVERAGE,
-                    columnId = null,
-                    title = row.student.fullName,
-                    students = listOf(ClosingStudent(row.student.id, row.student.fullName)),
-                )
-            }
+        rows.filter { it.student.id in withoutAverage }.forEach { row ->
+            issues += ClosingIssue(
+                kind = ClosingIssueKind.NO_AVERAGE,
+                columnId = null,
+                title = row.student.fullName,
+                students = listOf(ClosingStudent(row.student.id, row.student.fullName)),
+            )
         }
 
         issues += notUnderstood
@@ -145,7 +168,7 @@ class BuildNotebookClosingReportUseCase {
                 )
             }
 
-        // 5. Criterios sin nota.
+        // 5. Criterios sin nota (vista por criterio; no suma al total).
         val columnsByCriterion = linkedMapOf<Long, MutableList<NotebookColumnDefinition>>()
         countingColumns.forEach { column ->
             column.competencyCriteriaIds.distinct().forEach { criterionId ->
@@ -155,7 +178,9 @@ class BuildNotebookClosingReportUseCase {
         columnsByCriterion.forEach { (criterionId, criterionColumns) ->
             val code = criterionCodes[criterionId]?.takeIf { it.isNotBlank() }
             rows.forEach { row ->
-                if (criterionColumns.none { row.hasAnyGradeIn(it) }) {
+                if (row.student.id in withoutAverage) return@forEach
+                val index = indexes.getValue(row.student.id)
+                if (criterionColumns.none { index.isFilled(it) || index.hasAnyContent(it) }) {
                     issues += ClosingIssue(
                         kind = ClosingIssueKind.CRITERION_WITHOUT_GRADE,
                         columnId = criterionColumns.first().id,
@@ -177,21 +202,43 @@ class BuildNotebookClosingReportUseCase {
         )
     }
 
-    /** Texto escrito en una columna numérica que no se lee como número, o null. */
-    private fun NotebookRow.unreadableTextFor(column: NotebookColumnDefinition): String? {
-        if (column.type != NotebookColumnType.NUMERIC) return null
-        val text = persistedCells.firstOrNull { it.columnId == column.id }?.textValue?.trim()
-        if (text.isNullOrEmpty()) return null
-        return if (text.replace(",", ".").toDoubleOrNull() == null) text else null
-    }
+    /** Hay un valor real guardado en la celda (nota, celda con contenido o nota de evaluación). */
+    private fun RowIndex.hasStoredValue(column: NotebookColumnDefinition): Boolean =
+        column.id in gradeColumns ||
+            (column.evaluationId?.let { it in gradeEvaluations || it in cellEvaluations } == true) ||
+            hasAnyContent(column)
 
-    private fun NotebookRow.hasAnyGradeIn(column: NotebookColumnDefinition): Boolean {
-        if (gradeValueFor(column) != null) return true
-        val cell = persistedCells.firstOrNull { it.columnId == column.id } ?: return false
+    /** La celda persistida tiene texto, ordinal, icono, casilla o valor mostrado. */
+    private fun RowIndex.hasAnyContent(column: NotebookColumnDefinition): Boolean {
+        val cell = cellsByColumn[column.id] ?: return false
         return !cell.textValue.isNullOrBlank() ||
             !cell.displayValue.isNullOrBlank() ||
             !cell.ordinalValue.isNullOrBlank() ||
             !cell.iconValue.isNullOrBlank() ||
             cell.boolValue != null
+    }
+
+    /**
+     * La celda tiene nota: valor guardado, o valor que entra en la Media (p. ej. calculado).
+     * Con «vacío cuenta como 0» el 0 de relleno no cuenta como nota.
+     */
+    private fun RowIndex.isFilled(column: NotebookColumnDefinition): Boolean {
+        if (hasStoredValue(column)) {
+            // Un texto no numérico en una columna numérica no es una nota.
+            return unreadableText(column) == null
+        }
+        val value = included[column.id] ?: return false
+        if (column.emptyCellPolicy != NotebookEmptyCellPolicy.COUNT_AS_ZERO) return true
+        return column.type == NotebookColumnType.CALCULATED && value != 0.0
+    }
+
+    /** Texto escrito en una columna numérica que no se lee como número, o null. */
+    private fun RowIndex.unreadableText(column: NotebookColumnDefinition): String? {
+        if (column.type != NotebookColumnType.NUMERIC) return null
+        if (column.id in gradeColumns) return null
+        if (column.evaluationId?.let { it in gradeEvaluations || it in cellEvaluations } == true) return null
+        val text = cellsByColumn[column.id]?.textValue?.trim()
+        if (text.isNullOrEmpty()) return null
+        return if (text.replace(",", ".").toDoubleOrNull() == null) text else null
     }
 }

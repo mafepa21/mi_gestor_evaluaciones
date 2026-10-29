@@ -16,6 +16,7 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var notebookAddColumnAvailable: Bool = false
     @Published var notebookOrganizationMenuAvailable: Bool = false
     @Published var notebookHiddenColumnsRequestID: UUID?
+    @Published var notebookClosingReviewRequestID: UUID?
     @Published var notebookSearchText: String = ""
     @Published var notebookSurfaceMode: String = "grid"
     @Published var notebookSelectedGroupId: Int64? = nil
@@ -176,6 +177,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookAddColumnAvailable = false
             self.notebookOrganizationMenuAvailable = false
             self.notebookHiddenColumnsRequestID = nil
+            self.notebookClosingReviewRequestID = nil
             self.notebookSearchText = ""
             self.notebookSurfaceMode = "grid"
             self.notebookSelectedGroupId = nil
@@ -252,6 +254,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func openNotebookHiddenColumns() {
         notebookHiddenColumnsRequestID = UUID()
+    }
+
+    func openNotebookClosingReview() {
+        notebookClosingReviewRequestID = UUID()
     }
 
     func configureDashboardToolbar(
@@ -1862,6 +1868,13 @@ struct AppWorkspaceShell: View {
                 layoutState.openNotebookHiddenColumns()
             } label: {
                 Label("Mostrar columnas ocultas", systemImage: "eye.slash")
+            }
+            .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+            Button {
+                layoutState.openNotebookClosingReview()
+            } label: {
+                Label("Revisar cierre…", systemImage: "checklist")
             }
             .disabled(!layoutState.notebookOrganizationMenuAvailable)
 

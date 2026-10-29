@@ -3,6 +3,7 @@ package com.migestor.shared.viewmodel
 import com.migestor.shared.domain.Evaluation
 import com.migestor.shared.domain.Grade
 import com.migestor.shared.domain.NotebookCell
+import com.migestor.shared.domain.NotebookCellInputKind
 import com.migestor.shared.domain.NotebookAverageColumnConfig
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnCategory
@@ -860,6 +861,58 @@ class NotebookViewModelTest {
         } finally {
             scope.cancel()
         }
+    }
+
+    @Test
+    fun `texto no numerico no deja borrador ni guarda en columna numerica`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val column = NotebookColumnDefinition(
+            id = "custom_numeric",
+            title = "Proyecto",
+            type = NotebookColumnType.NUMERIC,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(NotebookRow(student = student, cells = emptyList(), weightedAverage = null)),
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+
+            viewModel.saveColumnGrade(student.id, column, "8,5a")
+            advanceUntilIdle()
+            advanceTimeBy(500)
+            advanceUntilIdle()
+
+            val data = viewModel.state.value as NotebookUiState.Data
+            assertEquals(null, data.numericDrafts[student.id to column.id])
+            assertEquals(0, repository.saveGradeCalls.size)
+
+            viewModel.saveColumnGrade(student.id, column, "8.5")
+            advanceUntilIdle()
+            assertEquals(8.5, repository.saveGradeCalls.single().value)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `isValidNotebookNumericInput acepta numeros vacio y tiempos`() {
+        assertEquals(true, isValidNotebookNumericInput(null, "8,5"))
+        assertEquals(true, isValidNotebookNumericInput(null, "8.5"))
+        assertEquals(true, isValidNotebookNumericInput(null, ""))
+        assertEquals(true, isValidNotebookNumericInput(null, "  "))
+        assertEquals(false, isValidNotebookNumericInput(null, "8,5a"))
+        assertEquals(false, isValidNotebookNumericInput(null, "1:25"))
+        assertEquals(true, isValidNotebookNumericInput(NotebookCellInputKind.TIME, "1:25"))
+        assertEquals(false, isValidNotebookNumericInput(NotebookCellInputKind.TIME, "1:2x"))
     }
 
     @Test

@@ -999,7 +999,7 @@ private enum IOSWorkspaceSidebarSection: String, CaseIterable, Identifiable {
         case .today:
             return [.dashboard]
         case .evaluation:
-            return [.notebook, .attendance, .evaluationHub, .rubrics, .webSubmissions, .peTests, .peRubrics]
+            return [.notebook, .attendance, .evaluationHub, .evaluationSessions, .rubrics, .webSubmissions, .peTests, .peRubrics]
         case .planning:
             return [.planner, .diary, .libreta, .situations, .peTournaments, .meetings, .inclusion, .students, .peSessions]
         case .system:
@@ -1066,7 +1066,7 @@ struct IOSWorkspaceContent: View {
     private var moduleContent: some View {
         switch activeModule {
         case .dashboard, .courses, .students, .teacherRadar, .notebook,
-             .attendance, .planner, .situations, .diary, .libreta, .meetings, .inclusion, .evaluationHub:
+             .attendance, .planner, .situations, .diary, .libreta, .meetings, .inclusion, .evaluationHub, .evaluationSessions:
             academicContent
         default:
             evaluationAndPEContent
@@ -1171,6 +1171,8 @@ struct IOSWorkspaceContent: View {
                 .environmentObject(bridge)
         case .inclusion:
             InclusionTrackerView(bridge: bridge, selectedClassId: $selectionStore.selectedClassId)
+        case .evaluationSessions:
+            EvaluationSessionView(bridge: bridge, selectedClassId: $selectionStore.selectedClassId)
         default:
             EmptyView()
         }

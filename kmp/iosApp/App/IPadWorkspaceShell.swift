@@ -515,6 +515,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
     case meetings
     case inclusion
     case evaluationHub
+    case evaluationSessions
     case webSubmissions
     case rubrics
     case reports
@@ -545,6 +546,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .meetings: return "Reuniones"
         case .inclusion: return "Inclusión"
         case .evaluationHub: return "Evaluación"
+        case .evaluationSessions: return "Juntas"
         case .webSubmissions: return "Entregas web"
         case .rubrics: return "Rúbricas"
         case .reports: return "Informes"
@@ -575,6 +577,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .meetings: return "Actas de centro y acuerdos"
         case .inclusion: return "Plazos del manual"
         case .evaluationHub: return "Instrumentos y calendario"
+        case .evaluationSessions: return "Junta de evaluación y acta"
         case .webSubmissions: return "Publicar e importar desde el Mac"
         case .rubrics: return "Banco de rúbricas"
         case .reports: return "Salida docente"
@@ -605,6 +608,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .meetings: return "person.3.fill"
         case .inclusion: return "person.2.badge.gearshape"
         case .evaluationHub: return "chart.bar.doc.horizontal"
+        case .evaluationSessions: return "list.clipboard"
         case .webSubmissions: return "paperplane.circle.fill"
         case .rubrics: return "checklist"
         case .reports: return "doc.richtext.fill"
@@ -626,7 +630,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
             return .academic
         case .attendance, .planner, .situations, .peTournaments, .diary, .libreta, .meetings, .inclusion:
             return .operations
-        case .evaluationHub, .webSubmissions, .rubrics, .reports, .library:
+        case .evaluationHub, .evaluationSessions, .webSubmissions, .rubrics, .reports, .library:
             return .evaluation
         case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial:
             return .domainModules

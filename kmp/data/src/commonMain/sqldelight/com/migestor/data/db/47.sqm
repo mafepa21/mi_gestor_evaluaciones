@@ -1,0 +1,46 @@
+-- Migración 47: juntas (sesiones) de evaluación por grupo. Solo aditiva.
+
+-- Una junta por evaluación y grupo (índice único). Cuelga del grupo: se borra con él.
+-- Sin SyncLAN en la primera versión: la junta vive en el dispositivo donde se crea.
+-- Las filas por alumno guardan lo anotado a mano y, al cerrar, los datos congelados.
+-- frozen_support_level solo admite 'III', 'IV' o NULL: nunca datos clínicos.
+CREATE TABLE IF NOT EXISTS evaluation_sessions (
+    id TEXT PRIMARY KEY NOT NULL,
+    class_id INTEGER NOT NULL,
+    evaluation_kind TEXT NOT NULL,
+    evaluation_label TEXT NOT NULL,
+    planner_evaluation_period_id INTEGER,
+    date_iso TEXT NOT NULL,
+    attendees TEXT NOT NULL DEFAULT '',
+    general_agreements TEXT NOT NULL DEFAULT '',
+    is_closed INTEGER NOT NULL DEFAULT 0,
+    closed_at_epoch_ms INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (planner_evaluation_period_id) REFERENCES planner_evaluation_periods(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evaluation_sessions_class_kind ON evaluation_sessions(class_id, evaluation_kind);
+CREATE TABLE IF NOT EXISTS evaluation_session_students (
+    session_id TEXT NOT NULL,
+    student_id INTEGER NOT NULL,
+    other_failed_count INTEGER NOT NULL DEFAULT 0,
+    agreement TEXT NOT NULL DEFAULT '',
+    is_reviewed INTEGER NOT NULL DEFAULT 0,
+    frozen_average REAL,
+    frozen_own_failed INTEGER,
+    frozen_absence_percent REAL,
+    frozen_absence_count INTEGER,
+    frozen_support_level TEXT,
+    frozen_incident_count INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (session_id, student_id),
+    FOREIGN KEY (session_id) REFERENCES evaluation_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_evaluation_session_students_student ON evaluation_session_students(student_id);

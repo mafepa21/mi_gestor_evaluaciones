@@ -506,7 +506,11 @@ class StudentsRepositorySqlDelight(
     }
 
     override suspend fun deleteStudent(studentId: Long) = withContext(Dispatchers.Default) {
-        db.appDatabaseQueries.deleteStudent(studentId)
+        db.transaction {
+            // Con FK apagadas no hay cascada: se limpia a mano su fila en las juntas.
+            db.evaluationSessionQueries.deleteSessionStudentsByStudent(studentId)
+            db.appDatabaseQueries.deleteStudent(studentId)
+        }
     }
 }
 
@@ -717,7 +721,12 @@ class ClassesRepositorySqlDelight(
     }
 
     override suspend fun deleteClass(classId: Long) = withContext(Dispatchers.Default) {
-        db.appDatabaseQueries.deleteClass(classId)
+        db.transaction {
+            // Con FK apagadas no hay cascada: se borran a mano las juntas del grupo y sus filas.
+            db.evaluationSessionQueries.deleteSessionStudentsByClass(classId)
+            db.evaluationSessionQueries.deleteSessionsByClass(classId)
+            db.appDatabaseQueries.deleteClass(classId)
+        }
     }
 
     override suspend fun addStudentToClass(classId: Long, studentId: Long) = withContext(Dispatchers.Default) {

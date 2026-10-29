@@ -69,6 +69,8 @@ enum class WipeCategory(
             "notebook_column_categories", "notebook_work_groups", "notebook_cell_entries",
             "notebook_instrument_templates", "notebook_instrument_items", "notebook_instrument_responses",
             "inclusion_group_settings",
+            // Juntas de evaluación: cuelgan del grupo (migración 47).
+            "evaluation_sessions", "evaluation_session_students",
             // Los torneos cuelgan de un curso (con o sin SdA): sin esto quedarían huérfanos al borrar cursos.
             "learning_situation_tournaments"
         )
@@ -78,7 +80,9 @@ enum class WipeCategory(
         description = "Fichas de estudiantes, medidas de apoyo y tutorías",
         tableNames = listOf(
             "students", "student_support_measures", "student_tutoring_sessions",
-            "inclusion_tasks"
+            "inclusion_tasks",
+            // Filas de alumnado en las juntas: sin esto quedarían huérfanas al borrar alumnado.
+            "evaluation_session_students"
         )
     ),
     RUBRICS(

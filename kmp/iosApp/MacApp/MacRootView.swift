@@ -890,6 +890,13 @@ struct MacRootView: View {
             .disabled(!notebookToolbarActions.organizationMenuAvailable)
 
             Button {
+                layoutState.openNotebookClosingReview()
+            } label: {
+                Label("Revisar cierre…", systemImage: "checklist")
+            }
+            .disabled(!notebookToolbarActions.organizationMenuAvailable)
+
+            Button {
                 notebookToolbarActions.openOrganizationMenu()
             } label: {
                 Label("Organizar columnas", systemImage: "slider.horizontal.3")

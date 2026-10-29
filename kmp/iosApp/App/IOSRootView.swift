@@ -557,6 +557,13 @@ struct IOSRootView: View {
                 .disabled(!layoutState.notebookOrganizationMenuAvailable)
 
                 Button {
+                    layoutState.openNotebookClosingReview()
+                } label: {
+                    Label("Revisar cierre…", systemImage: "checklist")
+                }
+                .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+                Button {
                     openModule(.courses)
                 } label: {
                     Label("Gestión de grupos", systemImage: "person.2")

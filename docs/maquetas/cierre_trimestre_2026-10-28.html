@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Revisar cierre</title>
+<style>
+/* Tokens de la app (macOS / iPadOS). Contraste medido para AA en texto normal. */
+:root{--bg:#f2f2f7;--card:#fff;--fill:#f2f2f7;--fg:#1c1c1e;--mut:#5c5c61;--line:#e5e5ea;--acc:#0062c4;--accfg:#fff;--ok:#1a6b2e;--okbg:#e3f7e8;--warn:#7a4300;--warnbg:#fff3dc;--err:#b8000f;--errbg:#ffe9eb;--side:#ececf0;--sel:#dcdce2;--focus:#0062c4}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--fill:#2c2c2e;--fg:#f2f2f7;--mut:#a5a5aa;--line:#38383a;--acc:#4da3ff;--accfg:#000;--ok:#30d158;--okbg:#0f2e17;--warn:#ffb340;--warnbg:#3a2c00;--err:#ff6961;--errbg:#3b1210;--side:#161618;--sel:#3a3a3c;--focus:#4da3ff}}
+:root[data-theme="dark"]{--bg:#000;--card:#1c1c1e;--fill:#2c2c2e;--fg:#f2f2f7;--mut:#a5a5aa;--line:#38383a;--acc:#4da3ff;--accfg:#000;--ok:#30d158;--okbg:#0f2e17;--warn:#ffb340;--warnbg:#3a2c00;--err:#ff6961;--errbg:#3b1210;--side:#161618;--sel:#3a3a3c;--focus:#4da3ff}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.top{padding:32px 16px 8px;max-width:1200px;margin:auto}
+header.top h1{margin:0;font-size:28px}header.top p{margin:8px 0 0;color:var(--mut);max-width:760px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+h2.part{max-width:1200px;margin:48px auto 0;padding:0 16px;font-size:20px}
+p.partnote{max-width:1200px;margin:4px auto 0;padding:0 16px;color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(400px,100%),1fr));gap:24px;padding:16px;max-width:1200px;margin:auto}
+.state>h3{margin:0 0 4px;font-size:12px;letter-spacing:.06em;color:var(--mut);text-transform:uppercase}
+.state>.note{margin:0 0 8px;font-size:13px;color:var(--mut)}
+
+/* Hoja */
+.sheet{width:100%;background:var(--card);border-radius:16px;border:1px solid var(--line);display:flex;flex-direction:column;min-height:560px}
+.bar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px 16px 8px}
+.bar .ttl{font-weight:600;text-align:center;margin:0;font-size:1em}
+.bar .rr{justify-self:end}
+.lnk{background:none;border:0;color:var(--acc);font:inherit;min-height:44px;padding:0 8px;cursor:pointer;border-radius:8px}
+.lnk.b{font-weight:600}
+.ctx{text-align:center;color:var(--mut);font-size:13px;margin:0 0 16px}
+.body{padding:0 24px 24px;flex:1}
+.sum{display:flex;gap:16px;align-items:center;padding:16px;border-radius:12px;margin-bottom:32px}
+.sum .big{font-size:20px;font-weight:600}
+.sum .s{font-size:13px}
+.sum .ic{font-size:24px;line-height:1}
+.sum.warn{background:var(--warnbg);color:var(--warn)}
+.glabel{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin:0 16px 8px;font-weight:600}
+.group{background:var(--fill);border-radius:12px;overflow:hidden;margin-bottom:24px}
+.it{display:flex;align-items:center;gap:16px;width:100%;padding:8px 16px;min-height:56px;border:0;background:none;color:var(--fg);font:inherit;text-align:left;cursor:pointer}
+.it+.it{border-top:1px solid var(--line)}
+.it:hover{background:var(--sel)}
+.it:focus-visible,.lnk:focus-visible,.btn:focus-visible,.menu button:focus-visible{outline:3px solid var(--focus);outline-offset:-3px}
+.it .main{min-width:0;flex:1}
+.it .t{font-weight:600}
+.it .s{color:var(--mut);font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.it .r{color:var(--mut);font-size:13px}
+.it .chev{color:var(--mut)}
+.btn{min-height:44px;padding:0 24px;border-radius:12px;border:0;font:inherit;font-weight:600;cursor:pointer;background:var(--fill);color:var(--fg)}
+.btn.p{background:var(--acc);color:var(--accfg)}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 24px;gap:8px}
+.center .ic{font-size:48px;line-height:1;margin-bottom:8px}
+.center .t{font-size:20px;font-weight:600;margin:0}
+.center .s{color:var(--mut);max-width:304px;margin:0}
+.center .btn{margin-top:16px}
+
+/* Tamaño de letra grande (AX3): el contador baja bajo el título */
+.ax{font-size:23px}
+.ax .it{flex-wrap:wrap;align-items:flex-start;padding:16px}
+.ax .it .r{flex-basis:100%;order:3}
+.ax .it .chev{display:none}
+.ax .sum .big{font-size:28px}
+.ax .glabel,.ax .ctx,.ax .it .s,.ax .it .r{font-size:19px}
+
+/* Esqueleto de carga */
+.sk{background:var(--fill);border-radius:8px;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.5}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.srtext{color:var(--mut);font-size:13px;text-align:center;margin:0 0 16px}
+
+/* Cuaderno (destino al pulsar) */
+.nb{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.nbbar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--line);font-size:13px}
+.nbbar .t{font-weight:600;font-size:15px}
+.nbbar .more{margin-left:auto;position:relative}
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 16px;border-bottom:1px solid var(--line);text-align:center;height:48px}
+th{color:var(--mut);font-weight:600}
+td:first-child,th:first-child{text-align:left}
+td.empty{color:var(--mut)}
+td.focus{outline:4px solid var(--focus);outline-offset:-4px;background:var(--warnbg)}
+.menu{position:absolute;right:0;top:48px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:232px;padding:4px;z-index:2;display:flex;flex-direction:column}
+.menu button{min-height:44px;padding:0 16px;border:0;background:none;color:var(--fg);font:inherit;text-align:left;border-radius:8px}
+.menu button.on{background:var(--acc);color:var(--accfg)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
+
+/* iPhone */
+.phone{width:min(390px,100%);margin:auto;border-radius:32px;border:8px solid var(--fg);overflow:hidden;background:var(--card)}
+.phone .sheet{border:0;border-radius:0;min-height:720px}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:8px auto 0}
+
+/* Notas para la implementación */
+.spec{max-width:1200px;margin:16px auto 64px;padding:0 16px}
+.spec ul{background:var(--card);border-radius:12px;padding:16px 16px 16px 40px;margin:0}
+.spec li{margin:8px 0}
+code{font:13px ui-monospace,Menlo,monospace}
+</style></head>
+<body>
+<header class="top">
+  <h1>Revisar cierre</h1>
+  <p>Hoja que lista lo que falta en el grupo antes de poner notas. Se abre desde el menú «Más» del Cuaderno. Solo lee: no cambia ninguna nota. Cada aviso lleva a su sitio. Nombres de prueba, ningún alumno real.</p>
+  <div class="tools"><button class="btn" onclick="toggleTheme()">Cambiar claro / oscuro</button></div>
+</header>
+
+<h2 class="part">1 · Cómo se llega</h2>
+<p class="partnote">Una entrada más en el menú «Más» del Cuaderno. No añade botones a la barra.</p>
+<div class="grid">
+  <div class="state">
+    <h3>Menú «Más» del Cuaderno</h3>
+    <div class="nb" style="min-height:304px">
+      <div class="nbbar"><span class="t">2º ESO B</span><span style="color:var(--mut)">Educación Física</span>
+        <span class="more"><button class="btn" aria-haspopup="menu" aria-expanded="true">Más ▾</button>
+          <div class="menu" role="menu">
+            <button role="menuitem">Organizar columnas…</button>
+            <button role="menuitem">Columnas ocultas…</button>
+            <hr>
+            <button role="menuitem" class="on">Revisar cierre…</button>
+            <button role="menuitem">Exportar a Educamos…</button>
+          </div>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 class="part">2 · Estados de la hoja</h2>
+<p class="partnote">Mismo diseño en Mac, iPad e iPhone. «Cerrar» siempre arriba a la derecha. Pulsa un aviso para ver adónde lleva.</p>
+<div class="grid">
+
+  <!-- A. Con avisos -->
+  <div class="state">
+    <h3>A · Con avisos</h3>
+    <p class="note">Lo más importante arriba. Cada fila es un hueco que se arregla fuera de la hoja.</p>
+    <div class="sheet" role="dialog" aria-labelledby="tA">
+      <div class="bar"><span></span><h2 class="ttl" id="tA">Revisar cierre</h2><button class="lnk b rr">Cerrar</button></div>
+      <div class="ctx">2º ESO B · Educación Física · 24 alumnos</div>
+      <div class="body">
+        <div class="sum warn" role="status"><span class="ic" aria-hidden="true">⚠︎</span><div><div class="big">9 avisos</div><div class="s">5 notas vacías y 4 cosas más que revisar</div></div></div>
+
+        <h3 class="glabel"><span>Notas vacías</span><span aria-label="5 en total">5</span></h3>
+        <div class="group">
+          <button class="it" aria-label="Examen U2, 3 notas vacías: Ana López, Luis Gil, Marta Sanz. Abre la celda." onclick="go('Examen U2','Ana López')"><div class="main"><div class="t">Examen U2</div><div class="s">Ana López, Luis Gil, Marta Sanz</div></div><span class="r">3</span><span class="chev" aria-hidden="true">›</span></button>
+          <button class="it" aria-label="Rúbrica Acrosport, 2 notas vacías: Omar Ben, Lucía Mora. Abre la celda." onclick="go('Rúbrica Acrosport','Omar Ben')"><div class="main"><div class="t">Rúbrica Acrosport</div><div class="s">Omar Ben, Lucía Mora</div></div><span class="r">2</span><span class="chev" aria-hidden="true">›</span></button>
+        </div>
+
+        <h3 class="glabel"><span>Sin Media</span><span>1</span></h3>
+        <div class="group">
+          <button class="it" onclick="go('Examen U1','Pablo Ruiz')"><div class="main"><div class="t">Pablo Ruiz</div><div class="s">No tiene ninguna nota que cuente</div></div><span class="chev" aria-hidden="true">›</span></button>
+        </div>
+
+        <h3 class="glabel"><span>Notas que no se entienden</span><span>1</span></h3>
+        <div class="group">
+          <button class="it" onclick="go('Examen U1','Jorge Vidal')"><div class="main"><div class="t">Jorge Vidal · Examen U1</div><div class="s">Pone «8,5a». No cuenta en la Media.</div></div><span class="chev" aria-hidden="true">›</span></button>
+        </div>
+
+        <h3 class="glabel"><span>Criterios sin nota</span><span>1</span></h3>
+        <div class="group">
+          <button class="it" onclick="go('Rúbrica Acrosport','Lucía Mora')"><div class="main"><div class="t">CE 2.1 · Lucía Mora</div><div class="s">Ninguna nota en sus 2 instrumentos</div></div><span class="chev" aria-hidden="true">›</span></button>
+        </div>
+
+        <h3 class="glabel"><span>Columnas ocultas que cuentan en la Media</span><span>1</span></h3>
+        <div class="group">
+          <button class="it" aria-label="Cuaderno de clase: oculta, pero pesa un 10 % en la Media. Abre Columnas ocultas."><div class="main"><div class="t">Cuaderno de clase</div><div class="s">Oculta, pero pesa un 10 % en la Media. Abre «Columnas ocultas».</div></div><span class="chev" aria-hidden="true">›</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- B. Cargando -->
+  <div class="state">
+    <h3>B · Cargando</h3>
+    <p class="note">Solo si tarda más de medio segundo. Esqueleto con la forma del resultado.</p>
+    <div class="sheet" aria-busy="true" aria-labelledby="tB">
+      <div class="bar"><span></span><h2 class="ttl" id="tB">Revisar cierre</h2><button class="lnk b rr">Cerrar</button></div>
+      <div class="ctx">2º ESO B · Educación Física · 24 alumnos</div>
+      <div class="body">
+        <p class="srtext" role="status">Revisando el grupo…</p>
+        <div class="sk" style="height:72px;margin-bottom:32px"></div>
+        <div class="sk" style="height:16px;width:120px;margin:0 16px 8px"></div>
+        <div class="sk" style="height:112px;margin-bottom:24px"></div>
+        <div class="sk" style="height:16px;width:88px;margin:0 16px 8px"></div>
+        <div class="sk" style="height:56px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- C. Todo listo -->
+  <div class="state">
+    <h3>C · Todo listo</h3>
+    <p class="note">Nada que revisar. Solo un mensaje.</p>
+    <div class="sheet" aria-labelledby="tC">
+      <div class="bar"><span></span><h2 class="ttl" id="tC">Revisar cierre</h2><button class="lnk b rr">Cerrar</button></div>
+      <div class="ctx">2º ESO B · Educación Física · 24 alumnos</div>
+      <div class="center" role="status">
+        <div class="ic" style="color:var(--ok)" aria-hidden="true">✓</div>
+        <p class="t">Todo listo para cerrar</p>
+        <p class="s">Todas las notas que cuentan están puestas y se leen bien.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- D. Sin columnas -->
+  <div class="state">
+    <h3>D · Grupo sin columnas que cuenten</h3>
+    <p class="note">No hay nada que revisar todavía. Se explica por qué.</p>
+    <div class="sheet" aria-labelledby="tD">
+      <div class="bar"><span></span><h2 class="ttl" id="tD">Revisar cierre</h2><button class="lnk b rr">Cerrar</button></div>
+      <div class="ctx">1º ESO A · Educación Física · 26 alumnos</div>
+      <div class="center" role="status">
+        <div class="ic" style="color:var(--mut)" aria-hidden="true">▦</div>
+        <p class="t">Aún no hay notas que revisar</p>
+        <p class="s">Este grupo no tiene columnas que cuenten para la Media.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- E. Error -->
+  <div class="state">
+    <h3>E · Error al cargar</h3>
+    <p class="note">Una frase y una sola acción: reintentar.</p>
+    <div class="sheet" aria-labelledby="tE">
+      <div class="bar"><span></span><h2 class="ttl" id="tE">Revisar cierre</h2><button class="lnk b rr">Cerrar</button></div>
+      <div class="ctx">2º ESO B · Educación Física</div>
+      <div class="center" role="alert">
+        <div class="ic" style="color:var(--err)" aria-hidden="true">!</div>
+        <p class="t">No se pudo revisar el grupo</p>
+        <p class="s">Tus notas no han cambiado. Prueba otra vez.</p>
+        <button class="btn p">Reintentar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- F. Letra grande -->
+  <div class="state">
+    <h3>F · Letra muy grande (AX3)</h3>
+    <p class="note">El contador baja bajo el título y los nombres caben en dos líneas.</p>
+    <div class="sheet ax" aria-labelledby="tF">
+      <div class="bar"><span></span><h2 class="ttl" id="tF">Revisar cierre</h2><button class="lnk b rr">Cerrar</button></div>
+      <div class="ctx">2º ESO B · 24 alumnos</div>
+      <div class="body" style="padding:0 16px 16px">
+        <div class="sum warn" role="status"><span class="ic" aria-hidden="true">⚠︎</span><div><div class="big">9 avisos</div></div></div>
+        <h3 class="glabel"><span>Notas vacías</span><span>5</span></h3>
+        <div class="group">
+          <button class="it" onclick="go('Examen U2','Ana López')"><div class="main"><div class="t">Examen U2</div><div class="s">Ana López, Luis Gil, Marta Sanz</div></div><span class="r">3 vacías</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- iPhone -->
+  <div class="state">
+    <h3>iPhone · Con avisos</h3>
+    <p class="note">Hoja a media altura que se sube hasta arriba. Mismo contenido que A.</p>
+    <div class="phone">
+      <div class="sheet" aria-labelledby="tP">
+        <div class="grab"></div>
+        <div class="bar"><span></span><h2 class="ttl" id="tP">Revisar cierre</h2><button class="lnk b rr">Cerrar</button></div>
+        <div class="ctx">2º ESO B · 24 alumnos</div>
+        <div class="body" style="padding:0 16px 16px">
+          <div class="sum warn" role="status"><span class="ic" aria-hidden="true">⚠︎</span><div><div class="big">9 avisos</div><div class="s">5 notas vacías y 4 cosas más</div></div></div>
+          <h3 class="glabel"><span>Notas vacías</span><span>5</span></h3>
+          <div class="group">
+            <button class="it" onclick="go('Examen U2','Ana López')"><div class="main"><div class="t">Examen U2</div><div class="s">Ana L., Luis G., Marta S.</div></div><span class="r">3</span><span class="chev" aria-hidden="true">›</span></button>
+            <button class="it" onclick="go('Rúbrica Acrosport','Omar Ben')"><div class="main"><div class="t">Rúbrica Acrosport</div><div class="s">Omar B., Lucía M.</div></div><span class="r">2</span><span class="chev" aria-hidden="true">›</span></button>
+          </div>
+          <h3 class="glabel"><span>Sin Media</span><span>1</span></h3>
+          <div class="group">
+            <button class="it" onclick="go('Examen U1','Pablo Ruiz')"><div class="main"><div class="t">Pablo Ruiz</div><div class="s">Ninguna nota cuenta</div></div><span class="chev" aria-hidden="true">›</span></button>
+          </div>
+          <h3 class="glabel"><span>Notas que no se entienden</span><span>1</span></h3>
+          <div class="group">
+            <button class="it" onclick="go('Examen U1','Jorge Vidal')"><div class="main"><div class="t">Jorge Vidal · Examen U1</div><div class="s">Pone «8,5a»</div></div><span class="chev" aria-hidden="true">›</span></button>
+          </div>
+          <h3 class="glabel"><span>Criterios sin nota</span><span>1</span></h3>
+          <div class="group">
+            <button class="it" onclick="go('Rúbrica Acrosport','Lucía Mora')"><div class="main"><div class="t">CE 2.1 · Lucía Mora</div><div class="s">Ninguna nota en 2 instrumentos</div></div><span class="chev" aria-hidden="true">›</span></button>
+          </div>
+          <h3 class="glabel"><span>Ocultas que cuentan</span><span>1</span></h3>
+          <div class="group">
+            <button class="it"><div class="main"><div class="t">Cuaderno de clase</div><div class="s">Oculta, pesa un 10 %</div></div><span class="chev" aria-hidden="true">›</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 class="part">3 · Al pulsar un aviso</h2>
+<p class="partnote">La hoja se cierra y el Cuaderno se coloca en la celda, lista para escribir. Al volver a revisar, ese aviso ya no sale. La fila de columna oculta abre «Columnas ocultas» en vez de una celda.</p>
+<div class="grid">
+  <div class="state">
+    <h3 id="dest-title">Cuaderno · celda enfocada</h3>
+    <div class="nb">
+      <div class="nbbar"><span class="t">2º ESO B</span><span style="color:var(--mut)">Educación Física</span></div>
+      <div class="tblwrap"><table id="nbt"></table></div>
+    </div>
+  </div>
+</div>
+
+<h2 class="part">4 · Notas para SwiftUI</h2>
+<div class="spec"><ul>
+  <li>Hoja con <code>presentationDetents([.medium, .large])</code> en iPhone; tamaño fijo en Mac. «Cerrar» como <code>.confirmationAction</code>.</li>
+  <li>Iconos con SF Symbols (<code>exclamationmark.triangle.fill</code>, <code>checkmark.circle.fill</code>) y <code>accessibilityHidden(true)</code>; el texto hace de etiqueta.</li>
+  <li>Cada bloque es una <code>Section</code> con cabecera marcada como <code>.isHeader</code> (rotor de VoiceOver).</li>
+  <li>Resumen con <code>accessibilityElement(children: .combine)</code>. Al terminar de cargar, anuncio «9 avisos» o «Todo listo para cerrar».</li>
+  <li>Fila: etiqueta completa, por ejemplo «Examen U2, 3 notas vacías: Ana López, Luis Gil, Marta Sanz». Pista: «Abre la celda».</li>
+  <li>Texto con estilos del sistema (headline, subheadline, footnote). Con <code>dynamicTypeSize.isAccessibilitySize</code>, el contador baja bajo el título. Nombres con <code>lineLimit(2)</code> y «y N más».</li>
+  <li>Al ir a la celda, el foco de VoiceOver va a esa celda (<code>accessibilityFocused</code>).</li>
+  <li>Colores con tokens del sistema (<code>.secondary</code>, <code>.tint</code>); nada de opacidad sobre texto.</li>
+</ul></div>
+
+<script>
+const cols=['Examen U1','Examen U2','Rúbrica Acrosport'];
+const rows=[
+  ['Ana López','7,0','','6,5'],['Jorge Vidal','8,5a','7,0','8,0'],['Lucía Mora','6,0','5,5',''],
+  ['Luis Gil','5,0','','7,0'],['Marta Sanz','9,0','','9,5'],['Omar Ben','6,5','6,0',''],['Pablo Ruiz','','','']
+];
+function render(col,name){
+  const t=document.getElementById('nbt');
+  t.innerHTML='<tr><th>Alumno</th>'+cols.map(c=>'<th>'+c+'</th>').join('')+'<th>Media</th></tr>'+
+  rows.map(r=>'<tr><td>'+r[0]+'</td>'+r.slice(1).map((v,i)=>{
+    const f=(r[0]===name&&cols[i]===col)?' focus':'';
+    return '<td class="'+(v?'':'empty')+f+'">'+(v||'–')+'</td>';}).join('')+'<td>'+(r[0]==='Pablo Ruiz'?'–':'·')+'</td></tr>').join('');
+  document.getElementById('dest-title').textContent='Cuaderno · '+col+' de '+name;
+}
+function go(col,name){render(col,name);document.getElementById('nbt').scrollIntoView({behavior:'smooth',block:'center'});}
+function toggleTheme(){const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;r.dataset.theme=dark?'light':'dark';}
+render('Examen U2','Ana López');
+</script>
+</body></html>

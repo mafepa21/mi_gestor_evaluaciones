@@ -272,7 +272,7 @@ extension KmpBridge {
         return sessions.compactMap(juntaSession(from:))
     }
 
-    /// Crea la junta; si hay asistentes los guarda justo después (el caso de uso crea sin ellos).
+    /// Crea la junta con sus asistentes en una sola operación de KMP.
     func createEvaluationSession(
         classId: Int64,
         kind: EvaluationKindUI,
@@ -284,26 +284,11 @@ extension KmpBridge {
             kind: kind.kotlin,
             dateIso: JuntaFormat.isoDate(date),
             label: nil,
+            attendees: attendees,
             plannerEvaluationPeriodId: nil,
             nowEpochMs: juntaNowMs()
         )
-        let trimmed = attendees.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            try await container.evaluationSessions.updateHeader(
-                sessionId: created.id,
-                label: created.label,
-                dateIso: created.dateIso,
-                attendees: trimmed,
-                generalAgreements: created.generalAgreements,
-                plannerEvaluationPeriodId: created.plannerEvaluationPeriodId,
-                nowEpochMs: juntaNowMs()
-            )
-        }
-        return juntaSession(from: created).map { session in
-            var copy = session
-            copy.attendees = trimmed
-            return copy
-        }
+        return juntaSession(from: created)
     }
 
     /// Si `gate` llega y el grupo cambió mientras cargaba, devuelve `nil`.

@@ -685,9 +685,17 @@ struct JuntaActaSheet: View {
         .frame(minWidth: 560, minHeight: 640)
         #endif
         .task { prepare() }
+        // El PDF vive en la carpeta temporal: se borra al cerrar la hoja del acta.
+        .onDisappear { removeTemporaryPDF() }
+    }
+
+    private func removeTemporaryPDF() {
+        if let url = pdfURL { try? FileManager.default.removeItem(at: url) }
+        pdfURL = nil
     }
 
     private func prepare() {
+        removeTemporaryPDF()
         failed = false
         let content = JuntaActaContent(board: board, groupName: groupName)
         let name = "Acta \(groupName) \(board.session.label)"

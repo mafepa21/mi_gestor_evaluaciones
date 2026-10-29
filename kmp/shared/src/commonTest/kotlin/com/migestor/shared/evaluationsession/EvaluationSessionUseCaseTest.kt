@@ -171,21 +171,23 @@ class EvaluationSessionUseCaseTest {
     @Test
     fun crearJuntaCreaUnaFilaPorAlumnoYNombrePorDefecto() = runTest {
         val (useCase, repo, _) = fixture()
-        val session = useCase.createSession(CLASS_ID, EvaluationKind.INITIAL, "2026-10-28", "  ", null, 1)
+        val session = useCase.createSession(CLASS_ID, EvaluationKind.INITIAL, "2026-10-28", "  ", "  Tutora, Orientación ", null, 1)
         assertEquals("Evaluación inicial", session.label)
+        assertEquals("Tutora, Orientación", session.attendees)
+        assertEquals("Tutora, Orientación", repo.getSession(session.id)?.attendees)
         assertEquals(3, repo.listStudents(session.id).size)
         assertFailsWith<EvaluationSessionDuplicateException> {
-            useCase.createSession(CLASS_ID, EvaluationKind.INITIAL, "2026-10-29", null, null, 2)
+            useCase.createSession(CLASS_ID, EvaluationKind.INITIAL, "2026-10-29", null, "", null, 2)
         }
         assertFailsWith<EvaluationSessionException> {
-            useCase.createSession(CLASS_ID, EvaluationKind.FIRST, "28/10/2026", null, null, 3)
+            useCase.createSession(CLASS_ID, EvaluationKind.FIRST, "28/10/2026", null, "", null, 3)
         }
     }
 
     @Test
     fun resumenYTotalesPorAlumno() = runTest {
         val (useCase, _, _) = fixture()
-        val id = useCase.createSession(CLASS_ID, EvaluationKind.FIRST, "2026-12-18", null, null, 1).id
+        val id = useCase.createSession(CLASS_ID, EvaluationKind.FIRST, "2026-12-18", null, "", null, 1).id
         // Ana: Media 8 y 0 otras -> 0. Blas: Media 4,5 (suspende) + 2 otras -> 3. Celia: sin Media + 2 otras -> 2.
         useCase.updateStudent(id, 2L, otherFailedCount = 2, agreement = "Refuerzo", isReviewed = true, nowEpochMs = 2)
         useCase.updateStudent(id, 3L, otherFailedCount = 2, agreement = "", isReviewed = false, nowEpochMs = 3)
@@ -224,7 +226,7 @@ class EvaluationSessionUseCaseTest {
     @Test
     fun cerrarCongelaYLaCerradaUsaLosCongelados() = runTest {
         val (useCase, repo, mundo) = fixture()
-        val id = useCase.createSession(CLASS_ID, EvaluationKind.SECOND, "2027-03-20", null, null, 1).id
+        val id = useCase.createSession(CLASS_ID, EvaluationKind.SECOND, "2027-03-20", null, "", null, 1).id
         useCase.updateStudent(id, 1L, 1, "", false, 2)
 
         val cerrada = useCase.closeSession(id, 10)
@@ -261,7 +263,7 @@ class EvaluationSessionUseCaseTest {
     @Test
     fun alumnoNuevoEnElGrupoSeAnadeAlAbrirLaJuntaAbierta() = runTest {
         val (useCase, _, mundo) = fixture()
-        val id = useCase.createSession(CLASS_ID, EvaluationKind.THIRD, "2027-06-20", null, null, 1).id
+        val id = useCase.createSession(CLASS_ID, EvaluationKind.THIRD, "2027-06-20", null, "", null, 1).id
         mundo.roster.add(4L)
         val board = useCase.loadBoard(id, 2)
         assertEquals(listOf(1L, 2L, 3L, 4L), board.students.map { it.studentId }.sorted())
@@ -275,7 +277,7 @@ class EvaluationSessionUseCaseTest {
     @Test
     fun otrasSuspensasEntre0y15() = runTest {
         val (useCase, repo, _) = fixture()
-        val id = useCase.createSession(CLASS_ID, EvaluationKind.FINAL, "2027-06-25", null, null, 1).id
+        val id = useCase.createSession(CLASS_ID, EvaluationKind.FINAL, "2027-06-25", null, "", null, 1).id
         useCase.updateStudent(id, 1L, 0, "", false, 2)
         useCase.updateStudent(id, 1L, 15, "", false, 3)
         assertEquals(15, repo.listStudents(id).first { it.studentId == 1L }.otherFailedCount)
@@ -287,7 +289,7 @@ class EvaluationSessionUseCaseTest {
     @Test
     fun sinDatosClinicosNiEnVivoNiCongelados() = runTest {
         val (useCase, repo, _) = fixture()
-        val id = useCase.createSession(CLASS_ID, EvaluationKind.FIRST, "2026-12-18", null, null, 1).id
+        val id = useCase.createSession(CLASS_ID, EvaluationKind.FIRST, "2026-12-18", null, "", null, 1).id
         val board = useCase.closeSession(id, 2)
         val volcado = board.toString() + repo.lastSnapshots.toString() + repo.rows.values.toString()
         listOf("confidencial", "clínico", "Retirada", "ACIS", "APR_FORMATO_EXAMEN").forEach { prohibido ->
@@ -299,7 +301,7 @@ class EvaluationSessionUseCaseTest {
     @Test
     fun borrarJuntaQuitaSusFilas() = runTest {
         val (useCase, repo, _) = fixture()
-        val id = useCase.createSession(CLASS_ID, EvaluationKind.FIRST, "2026-12-18", null, null, 1).id
+        val id = useCase.createSession(CLASS_ID, EvaluationKind.FIRST, "2026-12-18", null, "", null, 1).id
         useCase.deleteSession(id)
         assertTrue(useCase.listSessions(CLASS_ID).isEmpty())
         assertTrue(repo.rows.isEmpty())

@@ -23,6 +23,7 @@ class EvaluationSessionUseCase(
 
     /**
      * Crea la junta y una fila por alumno matriculado en el grupo.
+     * Los [attendees] se guardan en la misma operación (sin segundo paso que pueda fallar).
      * Si [label] está vacío se usa el nombre de la evaluación.
      */
     @Throws(Throwable::class)
@@ -31,6 +32,7 @@ class EvaluationSessionUseCase(
         kind: EvaluationKind,
         dateIso: String,
         label: String?,
+        attendees: String,
         plannerEvaluationPeriodId: Long?,
         nowEpochMs: Long,
     ): EvaluationSession {
@@ -41,6 +43,7 @@ class EvaluationSessionUseCase(
             label = label?.trim().orEmpty().ifEmpty { kind.defaultLabel },
             plannerEvaluationPeriodId = plannerEvaluationPeriodId,
             dateIso = validDate(dateIso),
+            attendees = attendees.trim(),
             createdAtEpochMs = nowEpochMs,
             updatedAtEpochMs = nowEpochMs,
         )

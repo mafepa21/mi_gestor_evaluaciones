@@ -7,8 +7,9 @@ import MiGestorKit
 ///
 /// Las ediciones (otras suspensas, acuerdo, revisado, cabecera) se aplican al
 /// momento en local (el resumen se recalcula con `JuntaRules`) y se guardan en
-/// KMP con una espera corta. Al guardar, el tablero que devuelve KMP manda:
-/// se reconcilia salvo que el docente haya vuelto a editar mientras tanto.
+/// KMP con una espera corta. El tablero de KMP solo se vuelve a pedir al abrir,
+/// cerrar y reabrir la junta: tras cada guardado automático no se recarga (la
+/// carga reconstruye el Cuaderno y consulta alumno por alumno).
 @MainActor
 final class EvaluationSessionStore: ObservableObject {
     enum Phase: Equatable {
@@ -20,6 +21,7 @@ final class EvaluationSessionStore: ObservableObject {
 
     static let saveDelay: Duration = .milliseconds(700)
     static let loadErrorMessage = "Lo que ya apuntaste está guardado. Prueba otra vez."
+    static let closeBlockedMessage = "No se cerró la junta porque no se pudo guardar el último cambio. Prueba otra vez."
     static let saveErrorMessage = "No se pudo guardar el último cambio. Se volverá a intentar con la siguiente edición."
 
     @Published private(set) var sessions: [JuntaSessionUI] = []
@@ -30,19 +32,22 @@ final class EvaluationSessionStore: ObservableObject {
     @Published var errorMessage: String?
 
     private let bridge: KmpBridge
-    private let gate = InclusionLoadGate()
+    // Un gate por carga: si compartieran, abrir una junta anularía la carga de la lista y al revés.
+    private let listGate = InclusionLoadGate()
+    private let boardGate = InclusionLoadGate()
     private var classId: Int64?
     private var openSessionId: String?
     private var dirtyStudents = Set<Int64>()
     private var headerDirty = false
     private var saveTask: Task<Void, Never>?
-    private var isFlushing = false
+    /// Guardado en curso. `flushNow()` lo espera para no devolver antes de que termine.
+    private var flushTask: Task<Void, Never>?
 
     init(bridge: KmpBridge) {
         self.bridge = bridge
     }
 
-    var hasPendingChanges: Bool { !dirtyStudents.isEmpty || headerDirty || isFlushing }
+    var hasPendingChanges: Bool { !dirtyStudents.isEmpty || headerDirty || flushTask != nil }
 
     // MARK: Carga
 
@@ -53,6 +58,8 @@ final class EvaluationSessionStore: ObservableObject {
             board = nil
             boardPhase = .idle
             openSessionId = nil
+            dirtyStudents.removeAll()
+            headerDirty = false
         }
         self.classId = classId
         guard let classId else {
@@ -61,7 +68,7 @@ final class EvaluationSessionStore: ObservableObject {
         }
         listPhase = .loading
         do {
-            guard let loaded = try await bridge.evaluationSessionList(classId: classId, gate: gate) else { return }
+            guard let loaded = try await bridge.evaluationSessionList(classId: classId, gate: listGate) else { return }
             sessions = loaded
             listPhase = .ready
         } catch {
@@ -74,9 +81,11 @@ final class EvaluationSessionStore: ObservableObject {
         guard let classId else { return }
         openSessionId = sessionId
         board = nil
+        dirtyStudents.removeAll()
+        headerDirty = false
         boardPhase = .loading
         do {
-            guard let loaded = try await bridge.loadEvaluationBoard(sessionId: sessionId, classId: classId, gate: gate) else { return }
+            guard let loaded = try await bridge.loadEvaluationBoard(sessionId: sessionId, classId: classId, gate: boardGate) else { return }
             guard openSessionId == sessionId else { return }
             board = loaded
             boardPhase = .ready
@@ -142,7 +151,13 @@ final class EvaluationSessionStore: ObservableObject {
         guard let id = board?.session.id else { return }
         isWorking = true
         defer { isWorking = false }
-        await settle()
+        // flushNow espera al guardado en curso. Si algo no se pudo guardar, no se cierra:
+        // el acta congelaría datos viejos.
+        await flushNow()
+        if hasPendingChanges {
+            errorMessage = Self.closeBlockedMessage
+            return
+        }
         do {
             board = try await bridge.closeEvaluationSession(id: id)
         } catch {
@@ -176,7 +191,7 @@ final class EvaluationSessionStore: ObservableObject {
     }
 
     func editHeader(_ change: (inout JuntaSessionUI) -> Void) {
-        guard var current = board, !current.session.isClosed else { return }
+        guard !isWorking, var current = board, !current.session.isClosed else { return }
         change(&current.session)
         board = current
         headerDirty = true
@@ -184,7 +199,7 @@ final class EvaluationSessionStore: ObservableObject {
     }
 
     private func edit(_ studentId: Int64, _ change: (inout JuntaStudentRowUI) -> Void) {
-        guard var current = board, !current.session.isClosed,
+        guard !isWorking, var current = board, !current.session.isClosed,
               let index = current.students.firstIndex(where: { $0.studentId == studentId }) else { return }
         change(&current.students[index])
         current.summary = JuntaRules.summary(of: current.students)
@@ -205,41 +220,49 @@ final class EvaluationSessionStore: ObservableObject {
     }
 
     /// Guarda ya lo pendiente (al salir de la pantalla, cambiar de grupo o cerrar).
+    /// Si ya hay un guardado en curso, lo espera antes de volver.
     func flushNow() async {
         saveTask?.cancel()
         saveTask = nil
-        await performFlush()
+        if let running = flushTask { await running.value }
+        await startFlush()
     }
 
-    /// Espera a que no quede nada por guardar (para cerrar la junta con todo escrito).
-    private func settle() async {
-        for _ in 0..<40 {
-            await flushNow()
-            if !hasPendingChanges { return }
-            try? await Task.sleep(for: .milliseconds(50))
+    private func startFlush() async {
+        if let running = flushTask {
+            await running.value
+            return
         }
+        guard !dirtyStudents.isEmpty || headerDirty else { return }
+        let task = Task { [weak self] in
+            await self?.runFlush()
+            self?.flushTask = nil
+        }
+        flushTask = task
+        await task.value
     }
 
     private func performFlush() async {
-        guard !isFlushing else { return }
-        isFlushing = true
-        defer { isFlushing = false }
+        await startFlush()
+    }
 
+    private func runFlush() async {
         while !dirtyStudents.isEmpty || headerDirty {
             guard let current = board, !current.session.isClosed else {
                 dirtyStudents.removeAll()
                 headerDirty = false
                 return
             }
+            // Foto del tablero antes de vaciar lo pendiente: el bucle lee de ella, no de `board`
+            // (que puede quedar en nil si se sale de la junta mientras se guarda).
             let students = dirtyStudents
             let saveHeader = headerDirty
+            let rows = current.students.filter { students.contains($0.studentId) }
             dirtyStudents.removeAll()
             headerDirty = false
             do {
                 if saveHeader { try await bridge.saveEvaluationHeader(current.session) }
-                for id in students {
-                    // Se vuelve a leer la fila: puede haber cambiado mientras se guardaba la anterior.
-                    guard let row = board?.students.first(where: { $0.studentId == id }) else { continue }
+                for row in rows {
                     try await bridge.saveEvaluationStudent(sessionId: current.session.id, row: row)
                 }
             } catch {
@@ -249,15 +272,6 @@ final class EvaluationSessionStore: ObservableObject {
                 return
             }
         }
-        await reconcile()
-    }
-
-    /// Sustituye lo local por el tablero de KMP, salvo que haya ediciones nuevas.
-    private func reconcile() async {
-        guard let classId, let sessionId = openSessionId else { return }
-        guard let fresh = try? await bridge.loadEvaluationBoard(sessionId: sessionId, classId: classId, gate: gate) else { return }
-        guard dirtyStudents.isEmpty, !headerDirty, openSessionId == sessionId else { return }
-        board = fresh
     }
 
     // MARK: Errores

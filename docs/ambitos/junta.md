@@ -18,10 +18,10 @@
 - **Invariantes:** una fila por alumno y junta; «otras suspensas» ≥ 0; el acta nunca incluye datos clínicos, solo el nivel de la medida.
 
 ## 4. Trampas Encontradas (Gotchas y Lecciones Aprendidas)
-- ⚠ **Nuevo módulo de navegación:** añadir un caso a `AppWorkspaceModule` obliga a tocar switches exhaustivos (`WorkspaceLayoutState+Extensions.swift`, `WorkspaceModuleSwitcher.swift`), igual que en Inclusión.
+- ⚠ **Nuevo módulo de navegación:** añadir un caso a `AppWorkspaceModule` obliga a tocar switches exhaustivos (`WorkspaceLayoutState+Extensions.swift`, `WorkspaceModuleSwitcher.swift`) y las listas de la barra lateral (`WorkspaceSidebar.swift` es la del shell iPad/Mac, en uso; `IOSRootView.swift` la de iPhone), igual que en Inclusión.
 - ⚠ **Gradle en sandbox:** `./gradlew` falla dentro del sandbox por `~/.gradle`; ejecutarlo fuera. `:shared:test` falla por falta de Android SDK: usar `:shared:desktopTest`.
 - ⚠ **xcodebuild:** reescribe `*.xcscheme`; restaurar antes de commitear.
-- ⚠ **FK apagadas en producción:** `PRAGMA foreign_keys` = 0, las cascadas no corren. Las filas se leen con `INNER JOIN students` y `deleteSession` borra antes `evaluation_session_students`. Ambas tablas están en el borrado selectivo (Cursos; las filas también en Alumnado).
+- ⚠ **FK apagadas en producción:** `PRAGMA foreign_keys` = 0, las cascadas no corren. Las filas se leen con `INNER JOIN students` y `deleteSession` borra antes `evaluation_session_students`; `deleteClass` y `deleteStudent` (`SqlDelightRepositories.kt`) limpian a mano sus filas de juntas (queries `deleteSessionStudentsByStudent/ByClass`, `deleteSessionsByClass`), con test. Ambas tablas están en el borrado selectivo (Cursos; las filas también en Alumnado).
 - ⚠ **DDL duplicado:** `47.sqm` y `EvaluationSession.sq` deben decir lo mismo letra por letra (defaults e índices); si no, falla `UpgradePathRegressionTest`. Cualquier cambio futuro va en una migración 48 nueva.
 - ⚠ **Kotlin 1.9:** no hay `kotlin.uuid`; el id de la junta sale de `randomEvaluationSessionId()` (UUID v4 a mano).
 - ⚠ **API para Swift sin argumentos por defecto:** Swift no los ve en Kotlin 1.9; todos los métodos de `EvaluationSessionUseCase` piden todos los parámetros.
@@ -30,9 +30,12 @@
 - ⚠ **Test de torneos:** fijaba `Schema.version == 47`; ahora comprueba `>= 47`. Los tests de migración nuevos deben evitar fijar la versión exacta salvo la suya.
 - ⚠ **Frameworks KMP no se versionan:** en un worktree nuevo falta `kmp/iosApp/Frameworks/`. Se generan solos en el primer `xcodebuild` (script de preconstrucción `build_apple_framework.sh`) o a mano con `kmp/scripts/build_apple_framework.sh`.
 - ⚠ **Excepciones de Kotlin en Swift:** llegan como `NSError`; el mensaje claro está en `userInfo["KotlinException"]` (`EvaluationSessionException` y subclases). `EvaluationSessionStore.message(for:)` lo usa; cualquier otro error muestra un texto genérico.
-- ⚠ **`createSession` no recibe asistentes:** el puente los guarda con un `updateHeader` justo después. Si ese segundo paso falla, la junta existe sin asistentes.
+- ⚠ **`createSession` recibe `attendees`:** la junta y sus asistentes se guardan en una sola operación; el puente ya no llama a `updateHeader` después.
 - ⚠ **Media junto a 5:** `JuntaFormat.average` enseña dos decimales truncados entre 4,95 y 5 (4,96 y 4,999 -> «4,99») para que nunca se lea «5,0» siendo suspensa. Cualquier otra pantalla que pinte la media de la junta debe usar esa función.
-- ⚠ **Guardado automático:** edición local al instante + espera de 700 ms + `updateStudent`/`updateHeader`; después se reconcilia con `loadBoard`, salvo que haya ediciones nuevas. Antes de cerrar la junta, salir o cambiar de grupo se llama a `flushNow()`; si añades otra salida, haz lo mismo o se pierde la última edición.
+- ⚠ **Guardado automático:** edición local al instante + espera de 700 ms + `updateStudent`/`updateHeader`. El guardado en curso es una `Task` (`flushTask`) y `flushNow()` la espera; el bucle lee de una foto del tablero tomada antes de vaciar lo pendiente. NO se recarga el tablero tras guardar (reconstruye el Cuaderno): solo se pide a KMP al abrir, cerrar y reabrir. Antes de cerrar la junta, salir o cambiar de grupo se llama a `flushNow()`; si añades otra salida, haz lo mismo o se pierde la última edición.
+- ⚠ **Cerrar con guardado fallido:** si tras `flushNow()` quedan cambios pendientes, no se cierra y se muestra error. Mientras `isWorking` (cerrar, crear, borrar), `edit`/`editHeader` se ignoran.
+- ⚠ **Un gate por carga:** `listGate` (lista) y `boardGate` (tablero) en `EvaluationSessionStore`; compartirlos haría que una carga anulara la otra. Si una carga devuelve `nil` por el gate, no se toca la fase.
+- ⚠ **Acta PDF temporal:** `JuntaActaSheet` borra el PDF de la carpeta temporal al cerrarse (`onDisappear`) y al regenerarlo.
 - ⚠ **Tabla solo en ancho regular:** `Table` se usa en Mac/iPad regular y sin tamaños de accesibilidad; en iPhone y AX se usan tarjetas. En compacto `Table` solo pinta la primera columna. Las flechas ↑↓ las da la propia `Table` (no hay atajo propio).
 - ⚠ **Acta PDF:** Core Text + Core Graphics a mano (tabla con cabecera repetida), no `PlannerReportPDFRenderer.render` (solo texto corrido). Reutiliza su tamaño de página y margen. `JuntaActaContent` filtra alumnado con acuerdo o suspensas y solo lleva el nivel de medida.
 - ⚠ **Calendario del Planner sin enlazar:** la hoja «Nueva junta» no propone la evaluación desde `planner_evaluation_periods` (pasa `plannerEvaluationPeriodId = nil`).

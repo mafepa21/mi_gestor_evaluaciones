@@ -96,6 +96,19 @@ deleteSessionStudents:
 DELETE FROM evaluation_session_students
 WHERE session_id = ?;
 
+-- Limpieza explícita al borrar un grupo o un alumno (FK apagadas en producción).
+deleteSessionStudentsByStudent:
+DELETE FROM evaluation_session_students
+WHERE student_id = ?;
+
+deleteSessionStudentsByClass:
+DELETE FROM evaluation_session_students
+WHERE session_id IN (SELECT id FROM evaluation_sessions WHERE class_id = ?);
+
+deleteSessionsByClass:
+DELETE FROM evaluation_sessions
+WHERE class_id = ?;
+
 selectSessionStudents:
 SELECT ess.*, s.first_name, s.last_name
 FROM evaluation_session_students ess

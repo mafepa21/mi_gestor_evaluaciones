@@ -175,6 +175,21 @@ class EvaluationSessionRepositorySqlDelightTest {
     }
 
     @Test
+    fun `con claves ajenas apagadas los repositorios de alumnado y grupos limpian las juntas`() = runTest {
+        val e = entorno(foreignKeys = false)
+        e.repo.insertSession(junta(e.classId))
+        e.repo.ensureStudents("junta-1", listOf(e.ana, e.blas), 20)
+
+        StudentsRepositorySqlDelight(e.db).deleteStudent(e.ana)
+        assertEquals(1L, e.driver.scalarLong("SELECT COUNT(*) FROM evaluation_session_students"))
+        assertEquals(1L, e.driver.scalarLong("SELECT COUNT(*) FROM evaluation_sessions"))
+
+        ClassesRepositorySqlDelight(e.db).deleteClass(e.classId)
+        assertEquals(0L, e.driver.scalarLong("SELECT COUNT(*) FROM evaluation_sessions"))
+        assertEquals(0L, e.driver.scalarLong("SELECT COUNT(*) FROM evaluation_session_students"))
+    }
+
+    @Test
     fun `con claves ajenas activas borrar grupo o alumno borra sus filas`() = runTest {
         val e = entorno(foreignKeys = true)
         e.repo.insertSession(junta(e.classId))

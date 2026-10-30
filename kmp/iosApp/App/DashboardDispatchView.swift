@@ -136,7 +136,7 @@ struct DashboardNowCard: View {
                 .padding(.top, DashboardStyle.Spacing.s1)
             if model.classId == nil {
                 // Explica el botón apagado; la pista de VoiceOver ya lo dice.
-                Text("Elige un grupo para empezar.")
+                Text(Self.primaryDisabledReason)
                     .font(DashboardStyle.Typography.footnote)
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
@@ -207,16 +207,7 @@ struct DashboardNowCard: View {
         let layout = singleColumn
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s1))
             : AnyLayout(HStackLayout(alignment: .center, spacing: DashboardStyle.Spacing.s1))
-        return VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s1) {
-            actionButtons(model, layout: layout)
-            if model.classId == nil {
-                // Un botón apagado sin motivo parece roto: se dice por qué.
-                Label(Self.primaryDisabledReason, systemImage: "info.circle")
-                    .font(DashboardStyle.Typography.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        return actionButtons(model, layout: layout)
     }
 
     static let primaryDisabledReason = "Elige un grupo para empezar."

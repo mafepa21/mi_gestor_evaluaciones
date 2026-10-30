@@ -23,6 +23,6 @@
 - Tokens visuales en `DashboardStyle.swift`; no meter colores ni opacidades sueltas en las vistas.
 - Números grandes con `@ScaledMetric`, no `.font(.system(size:))` fijo. Mínimo 11 pt.
 - Prioridad en Atención: `DashboardAttentionItem.priority` (3 alta, 2 media) sale de `priorityRank`. Solo la alta tiene línea propia con icono; el texto va en primario (rojo pequeño no llega a 4,5:1). Todo origen nuevo de la cola debe pasar `priority`.
-- Si el botón principal de AHORA se desactiva, el motivo va escrito debajo (`DashboardNowCard.primaryDisabledReason`), no solo en VoiceOver.
+- Si el botón principal de AHORA se desactiva, el motivo va escrito debajo (`DashboardNowCard.primaryDisabledReason`, un solo texto), también como pista de VoiceOver y `.help` en Mac. No añadir un segundo aviso: ya lo pinta `content(_:state:)`.
 - Tope de Dynamic Type en `DashboardView.body`; en tamaños de accesibilidad la vista pasa a una columna.
 - `xcodebuild` reescribe `*.xcscheme`: restaurar antes de commitear.

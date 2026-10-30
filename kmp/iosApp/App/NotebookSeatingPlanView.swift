@@ -63,6 +63,7 @@ enum SeatingAttendanceKind {
 
 struct NotebookSeatingPlanView: View {
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let rows: [NotebookTableRow]
     let averageText: (NotebookTableRow) -> String
     let attendanceText: (Int64) -> String
@@ -102,73 +103,95 @@ struct NotebookSeatingPlanView: View {
 
     // MARK: - Toolbar
 
+    /// Con letra de accesibilidad la fila no cabe: el título va arriba y los
+    /// botones debajo, solo con icono (VoiceOver sigue leyendo su texto).
     private var toolbar: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 8) {
-                Text("Plano de clase")
-                    .notebookFont(size: 18, weight: .bold, design: .rounded)
-
-                attendanceStatsBadge
-            }
-
-            Spacer()
-
-            if !gradableColumns.isEmpty {
-                Menu {
-                    Button("Sin calificar (Modo asistencia)") {
-                        gradingColumnId = nil
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    toolbarTitle
+                    HStack(spacing: 12) {
+                        toolbarActions
                     }
-                    Divider()
-                    ForEach(gradableColumns, id: \.id) { column in
-                        Button {
-                            gradingColumnId = column.id
-                        } label: {
-                            Label(column.title, systemImage: gradingColumnId == column.id ? "checkmark" : "number")
-                        }
-                    }
-                } label: {
-                    Label(
-                        gradableColumns.first(where: { $0.id == gradingColumnId })?.title ?? "Calificar en el plano",
-                        systemImage: "checklist"
-                    )
+                    .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.bordered)
-            }
-
-            Menu {
-                Section("Organización del aula") {
-                    ForEach(SeatingLayoutPreset.allCases) { preset in
-                        Button {
-                            applyLayoutPreset(preset)
-                        } label: {
-                            Label(preset.rawValue, systemImage: preset.icon)
-                        }
-                    }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 12) {
+                    toolbarTitle
+                    Spacer()
+                    toolbarActions
                 }
-                Divider()
-                Button(role: .destructive) {
-                    onResetSeats()
-                } label: {
-                    Label("Restablecer por defecto", systemImage: "arrow.counterclockwise")
-                }
-            } label: {
-                Label("Disposición", systemImage: "rectangle.3.group")
             }
-            .buttonStyle(.bordered)
-
-            Button {
-                isBannerDismissed = false
-                onHighlightRandomStudent()
-            } label: {
-                Label("Alumno aleatorio", systemImage: "dice.fill")
-            }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut("r", modifiers: [.command])
-            .help("Seleccionar un alumno al azar (⌘R)")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
         .background(NotebookStyle.surface.opacity(0.92))
+    }
+
+    private var toolbarTitle: some View {
+        HStack(spacing: 8) {
+            Text("Plano de clase")
+                .notebookFont(size: 18, weight: .bold, design: .rounded)
+
+            attendanceStatsBadge
+        }
+    }
+
+    @ViewBuilder
+    private var toolbarActions: some View {
+        if !gradableColumns.isEmpty {
+            Menu {
+                Button("Sin calificar (Modo asistencia)") {
+                    gradingColumnId = nil
+                }
+                Divider()
+                ForEach(gradableColumns, id: \.id) { column in
+                    Button {
+                        gradingColumnId = column.id
+                    } label: {
+                        Label(column.title, systemImage: gradingColumnId == column.id ? "checkmark" : "number")
+                    }
+                }
+            } label: {
+                Label(
+                    gradableColumns.first(where: { $0.id == gradingColumnId })?.title ?? "Calificar en el plano",
+                    systemImage: "checklist"
+                )
+            }
+            .buttonStyle(.bordered)
+        }
+
+        Menu {
+            Section("Organización del aula") {
+                ForEach(SeatingLayoutPreset.allCases) { preset in
+                    Button {
+                        applyLayoutPreset(preset)
+                    } label: {
+                        Label(preset.rawValue, systemImage: preset.icon)
+                    }
+                }
+            }
+            Divider()
+            Button(role: .destructive) {
+                onResetSeats()
+            } label: {
+                Label("Restablecer por defecto", systemImage: "arrow.counterclockwise")
+            }
+        } label: {
+            Label("Disposición", systemImage: "rectangle.3.group")
+        }
+        .buttonStyle(.bordered)
+
+        Button {
+            isBannerDismissed = false
+            onHighlightRandomStudent()
+        } label: {
+            Label("Alumno aleatorio", systemImage: "dice.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .keyboardShortcut("r", modifiers: [.command])
+        .help("Seleccionar un alumno al azar (⌘R)")
     }
 
     private var attendanceStatsBadge: some View {
@@ -619,6 +642,20 @@ private struct NotebookSeatCard: View {
         String(student.firstName.prefix(1)) + String(student.lastName.prefix(1))
     }
 
+    private var seatStatusText: some View {
+        Text(attendanceKind.label)
+            .notebookFont(size: 11, weight: .bold, design: .rounded)
+            .foregroundStyle(attendanceKind.ringColor)
+            .lineLimit(1)
+    }
+
+    private var seatAverageText: some View {
+        Text(averageText)
+            .notebookFont(size: 11, weight: .semibold, design: .rounded)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Header: Avatar + Names + Incident Badge
@@ -644,17 +681,19 @@ private struct NotebookSeatCard: View {
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    HStack(spacing: 4) {
-                        Text(attendanceKind.label)
-                            .notebookFont(size: 11, weight: .bold, design: .rounded)
-                            .foregroundStyle(attendanceKind.ringColor)
-
-                        Text("·")
-                            .foregroundStyle(.tertiary)
-
-                        Text(averageText)
-                            .notebookFont(size: 11, weight: .semibold, design: .rounded)
-                            .foregroundStyle(.secondary)
+                    // Con 11 pt «Sin registrar · 6.70» no cabe en la tarjeta:
+                    // si no entra en una línea, estado y media van en dos.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 4) {
+                            seatStatusText
+                            Text("·")
+                                .foregroundStyle(.tertiary)
+                            seatAverageText
+                        }
+                        VStack(alignment: .leading, spacing: 0) {
+                            seatStatusText
+                            seatAverageText
+                        }
                     }
                 }
 
@@ -749,6 +788,9 @@ private struct NotebookSeatCard: View {
         }
         .padding(12)
         .frame(width: 172, height: 142)
+        // La tarjeta es una ficha del plano con tamaño fijo (posición en el
+        // aula): no crece con la letra o se corta; el resto del plano sí.
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(

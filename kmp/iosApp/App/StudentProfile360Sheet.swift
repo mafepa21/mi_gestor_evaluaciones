@@ -68,6 +68,7 @@ struct StudentProfile360Sheet: View {
     @State private var showDUACopiedAlert = false
     @State private var orchestrator = AppleAIOrchestrator()
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var currentStudentIndex: Int? {
         allStudents.firstIndex(where: { $0.id == studentId })
@@ -328,9 +329,13 @@ struct StudentProfile360Sheet: View {
     // MARK: - 1. Académico & Cuaderno
 
     private var academicSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        // Con letra de accesibilidad las dos tarjetas no caben lado a lado.
+        let metricsRow = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return VStack(alignment: .leading, spacing: 16) {
             // Tarjetas métricas superiores
-            HStack(spacing: 12) {
+            metricsRow {
                 // Media actual del alumno
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Nota media actual")
@@ -342,6 +347,8 @@ struct StudentProfile360Sheet: View {
                         Text(IosFormatting.decimal(from: score))
                             .scaledSystemFont(size: 32, weight: .bold, design: .rounded)
                             .foregroundStyle(gradeBandColor(for: score))
+                            .lineLimit(1)
+                            .fixedSize()
 
                         Text("/ 10")
                             .font(.subheadline)
@@ -351,6 +358,8 @@ struct StudentProfile360Sheet: View {
 
                         Text(lomloeGradeText(for: score))
                             .font(.caption.weight(.bold))
+                            .lineLimit(1)
+                            .fixedSize()
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(gradeBandColor(for: score).opacity(0.14))

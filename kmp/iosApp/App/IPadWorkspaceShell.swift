@@ -2178,12 +2178,20 @@ struct WorkspaceMetricCard: View {
             Label(title, systemImage: systemImage)
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
             Text(value)
                 .scaledSystemFont(size: 28, weight: .black, design: .rounded)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        // Suelen ir de 3 o 4 en fila dentro de un inspector: con letra de
+        // accesibilidad partían palabras. Crecen hasta xxxLarge y, si aun así
+        // no caben, el texto se encoge un poco en vez de cortarse.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 

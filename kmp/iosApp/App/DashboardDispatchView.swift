@@ -207,7 +207,22 @@ struct DashboardNowCard: View {
         let layout = singleColumn
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: DashboardStyle.Spacing.s1))
             : AnyLayout(HStackLayout(alignment: .center, spacing: DashboardStyle.Spacing.s1))
-        return DashboardGlassGroup(spacing: DashboardStyle.Spacing.s1) {
+        return VStack(alignment: .leading, spacing: DashboardStyle.Spacing.s1) {
+            actionButtons(model, layout: layout)
+            if model.classId == nil {
+                // Un botón apagado sin motivo parece roto: se dice por qué.
+                Label(Self.primaryDisabledReason, systemImage: "info.circle")
+                    .font(DashboardStyle.Typography.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    static let primaryDisabledReason = "Elige un grupo para empezar."
+
+    private func actionButtons(_ model: DashboardNowModel, layout: AnyLayout) -> some View {
+        DashboardGlassGroup(spacing: DashboardStyle.Spacing.s1) {
             layout {
                 Button {
                     onAction(model.primary)
@@ -219,7 +234,8 @@ struct DashboardNowCard: View {
                 }
                 .dashboardButtonStyle(prominent: true, large: true)
                 .disabled(model.classId == nil)
-                .accessibilityValue(model.classId == nil ? "No disponible: elige un grupo para empezar" : "")
+                .accessibilityHint(model.classId == nil ? Self.primaryDisabledReason : "")
+                .help(model.classId == nil ? Self.primaryDisabledReason : model.primaryTitle)
 
                 Menu {
                     ForEach(Array(model.menuGroups.enumerated()), id: \.offset) { index, group in
@@ -508,13 +524,31 @@ private struct DashboardAttentionRow: View {
                         Text(item.title)
                             .font(DashboardStyle.Typography.headline)
                             .multilineTextAlignment(.leading)
-                        // El tipo va escrito, no solo en el color del icono.
-                        // VoiceOver ya lo lee en `accessibilitySummary`.
-                        (Text(item.kind.accessibilityName).fontWeight(.semibold)
-                            + Text(item.detail.isEmpty ? "" : " · \(item.detail)"))
-                            .font(DashboardStyle.Typography.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.leading)
+                        // Tipo y prioridad van escritos, no solo en el color
+                        // del icono. VoiceOver los lee en `accessibilitySummary`.
+                        if item.isHighPriority {
+                            // Prioridad alta: línea propia con icono de color y
+                            // texto en primario (el rojo pequeño no llega a 4,5:1).
+                            Label {
+                                Text(item.severityLine)
+                            } icon: {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundStyle(item.kind.tint)
+                            }
+                            .font(DashboardStyle.Typography.footnoteStrong)
+                            if !item.detail.isEmpty {
+                                Text(item.detail)
+                                    .font(DashboardStyle.Typography.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.leading)
+                            }
+                        } else {
+                            (Text(item.severityLine).fontWeight(.semibold)
+                                + Text(item.detail.isEmpty ? "" : " · \(item.detail)"))
+                                .font(DashboardStyle.Typography.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.leading)
+                        }
                     }
                     Spacer(minLength: 0)
                 }

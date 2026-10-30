@@ -81,11 +81,29 @@ struct DashboardAttentionItem: Identifiable {
     let studentId: Int64?
     let inspector: DashboardInspectorSelection
     let action: DashboardAttentionAction
+    /// Prioridad del origen (3 alta, 2 media, 1 baja, 0 sin dato).
+    var priority: Int = 0
+
+    /// Severidad escrita: la prioridad alta no puede depender solo del orden.
+    var priorityLabel: String? {
+        switch priority {
+        case 3...: return "Prioridad alta"
+        case 2: return "Prioridad media"
+        default: return nil
+        }
+    }
+
+    var isHighPriority: Bool { priority >= 3 }
+
+    /// Tipo y prioridad, p. ej. "Riesgo · Prioridad alta".
+    var severityLine: String {
+        [kind.accessibilityName, priorityLabel].compactMap { $0 }.joined(separator: " · ")
+    }
 
     var accessibilitySummary: String {
         detail.isEmpty
-            ? "\(kind.accessibilityName): \(title)"
-            : "\(kind.accessibilityName): \(title). \(detail)"
+            ? "\(severityLine): \(title)"
+            : "\(severityLine): \(title). \(detail)"
     }
 }
 
@@ -355,7 +373,8 @@ struct DashboardPresentation {
                     classId: classId,
                     studentId: studentId,
                     inspector: .alert(alert.id),
-                    action: action
+                    action: action,
+                    priority: priorityRank(alert.priority)
                 ),
                 priorityRank(alert.priority),
                 order
@@ -384,7 +403,8 @@ struct DashboardPresentation {
                     classId: classId,
                     studentId: nil,
                     inspector: .pe(item.id),
-                    action: action
+                    action: action,
+                    priority: priorityRank(item.severity)
                 ),
                 priorityRank(item.severity),
                 order

@@ -80,6 +80,43 @@ enum DashboardStyle {
 #endif
     }
 
+    /// Borde fuerte para "Aumentar contraste" y "Reducir transparencia".
+    static var strongSeparator: Color {
+#if os(iOS)
+        Color(.secondaryLabel)
+#else
+        Color(nsColor: .secondaryLabelColor)
+#endif
+    }
+
+    /// Borde de controles sin cristal (iOS/macOS < 26): opaco para que se
+    /// vea sobre el material fino, que en claro casi no se distingue del fondo.
+    static var legacyControlBorder: Color {
+#if os(iOS)
+        Color(.opaqueSeparator)
+#else
+        Color(nsColor: .gridColor)
+#endif
+    }
+
+    /// Relleno del esqueleto de carga.
+    static var skeletonFill: Color {
+#if os(iOS)
+        Color(.systemFill)
+#else
+        Color(nsColor: .quaternaryLabelColor)
+#endif
+    }
+
+    /// Resalte de fila al pasar el puntero en Mac.
+    static var hoverFill: Color {
+#if os(iOS)
+        Color(.quaternarySystemFill)
+#else
+        Color(nsColor: .quaternaryLabelColor).opacity(0.5)
+#endif
+    }
+
     static func cardShape() -> RoundedRectangle {
         RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
     }
@@ -163,7 +200,7 @@ struct DashboardCardSurface: ViewModifier {
                 // Borde siempre: el cambio de tono entre tarjeta y fondo no basta
                 // en modo oscuro. Con contraste alto, borde fuerte.
                 DashboardStyle.cardShape().strokeBorder(
-                    contrast == .increased ? Color.primary.opacity(0.5) : DashboardStyle.separator,
+                    contrast == .increased ? DashboardStyle.strongSeparator : DashboardStyle.separator,
                     lineWidth: contrast == .increased ? 1 : 0.5
                 )
             }
@@ -194,13 +231,13 @@ struct DashboardGlassBackground<S: InsettableShape>: ViewModifier {
         if reduceTransparency || contrast == .increased {
             content
                 .background(DashboardStyle.cardFill, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.6), lineWidth: 1))
+                .overlay(shape.strokeBorder(DashboardStyle.strongSeparator, lineWidth: 1))
         } else if #available(iOS 26.0, macOS 26.0, *) {
             content.dashboardGlassEffect(in: shape, interactive: interactive)
         } else {
             content
                 .background(.ultraThinMaterial, in: shape)
-                .overlay(shape.strokeBorder(DashboardStyle.separator, lineWidth: 1))
+                .overlay(shape.strokeBorder(DashboardStyle.legacyControlBorder, lineWidth: 1))
         }
     }
 }
@@ -332,7 +369,7 @@ struct DashboardSkeletonShape: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: capsule ? height / 2 : radius, style: .continuous)
-            .fill(Color.primary.opacity(0.10))
+            .fill(DashboardStyle.skeletonFill)
             .frame(width: width, height: height)
             .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
             .opacity(dimmed ? 0.45 : 1)
@@ -359,7 +396,7 @@ private struct DashboardRowHover: ViewModifier {
 #else
         content
             .background(
-                DashboardStyle.controlShape().fill(Color.primary.opacity(hovering ? 0.06 : 0))
+                DashboardStyle.controlShape().fill(hovering ? DashboardStyle.hoverFill : .clear)
             )
             .onHover { hovering = $0 }
             .animation(.easeOut(duration: 0.15), value: hovering)

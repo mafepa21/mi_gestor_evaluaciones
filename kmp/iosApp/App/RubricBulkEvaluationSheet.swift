@@ -8,6 +8,7 @@ struct RubricBulkEvaluationSheet: View {
     @ObservedObject var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @State private var horizontalScrollOffset: CGFloat = 0
     @State private var levelHoverTask: Task<Void, Never>?
@@ -171,46 +172,44 @@ struct RubricBulkEvaluationSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             InstrumentEvaluationChromeSurface(role: .header) {
-                HStack(alignment: .center, spacing: 16) {
-                    Button {
-                        bridge.closeBulkRubricEvaluation()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .scaledSystemFont(size: 15, weight: .semibold)
-                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
-                            .foregroundStyle(.secondary)
-                            .frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .center, spacing: 16) {
+                        Button {
+                            bridge.closeBulkRubricEvaluation()
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .scaledSystemFont(size: 15, weight: .semibold)
+                                .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
+                                .foregroundStyle(.secondary)
+                                .frame(width: 36, height: 36)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Volver")
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(className)
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+
+                            Text(rubric.rubric.name)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            headerStatus(state: state, cache: cache)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Volver")
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(className)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        Text(rubric.rubric.name)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    HStack(spacing: 16) {
-                        Label(
-                            "\(cache.totalPendingCriteria) pendientes",
-                            systemImage: "clock.badge.exclamationmark"
-                        )
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(cache.totalPendingCriteria == 0 ? EvaluationDesign.success : NotebookStyle.warningTint)
-
-                        InstrumentEvaluationStatus(
-                            text: state.isSaving ? "Guardando…" : "Cambios guardados",
-                            tint: state.isSaving ? EvaluationDesign.accent : EvaluationDesign.success
-                        )
+                    // Con letra de accesibilidad el estado no cabe junto al título
+                    // ("pendi-entes"): baja a su propia línea.
+                    if dynamicTypeSize.isAccessibilitySize {
+                        headerStatus(state: state, cache: cache)
+                            .padding(.top, 8)
                     }
                 }
             }
@@ -219,6 +218,24 @@ struct RubricBulkEvaluationSheet: View {
             InstrumentEvaluationChromeSurface(role: .context, padding: 0) {
                 AssessmentCriteriaDisclosureView(rawText: criteriaText, embedded: true)
             }
+        }
+    }
+
+    private func headerStatus(state: BulkRubricEvaluationUiState, cache: BulkRubricEvaluationCache) -> some View {
+        HStack(spacing: 16) {
+            Label(
+                "\(cache.totalPendingCriteria) pendientes",
+                systemImage: "clock.badge.exclamationmark"
+            )
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(cache.totalPendingCriteria == 0 ? EvaluationDesign.success : NotebookStyle.warningTint)
+            .lineLimit(1)
+            .fixedSize()
+
+            InstrumentEvaluationStatus(
+                text: state.isSaving ? "Guardando…" : "Cambios guardados",
+                tint: state.isSaving ? EvaluationDesign.accent : EvaluationDesign.success
+            )
         }
     }
 
@@ -456,7 +473,10 @@ struct RubricBulkEvaluationSheet: View {
                 Text(student.firstName + " " + student.lastName)
                     .scaledSystemFont(size: 14, weight: .bold, design: .rounded)
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    // La columna de nombre tiene ancho fijo: con letra grande
+                    // el apellido pasa a la segunda línea en vez de cortarse.
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.leading, 16)
             .padding(.trailing, 16)

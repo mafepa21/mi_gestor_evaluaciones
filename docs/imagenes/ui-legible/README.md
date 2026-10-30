@@ -1,6 +1,6 @@
 # Evidencias: UI legible en Hoy y en las hojas del Cuaderno
 
-Rama `codex/ui-legible`, 2026-10-30. Solo datos de prueba: la clase de ejemplo que crea la app («3 ESO A», con Ana López y Pablo García). En Hoy, la clase de «Siguiente clase» y las tres filas de Atención son inventadas: las inyectó un parche temporal de capturas que **no está en la rama**.
+Rama `codex/ui-legible`, 2026-10-30. Solo datos de prueba: la clase de ejemplo (más una rúbrica del catálogo de plantillas, creada en el simulador) que crea la app («3 ESO A», con Ana López y Pablo García). En Hoy, la clase de «Siguiente clase» y las tres filas de Atención son inventadas: las inyectó un parche temporal de capturas que **no está en la rama**.
 
 Dispositivos: simulador iOS 27 (iPhone 17 Pro, iPad Air 11" M4) y la app de Mac con una carpeta de usuario temporal (sin la base real). «AX3» = tamaño de texto Accesibilidad XL.
 
@@ -26,12 +26,12 @@ Dispositivos: simulador iOS 27 (iPhone 17 Pro, iPad Air 11" M4) y la app de Mac 
 | Estadísticas de columna, iPad | `ipad-estadisticas-normal.png` | `ipad-estadisticas-ax3.png`, `ipad-estadisticas-tramos-ax3.png` |
 | Inspector de alumno, iPad | — | `ipad-inspector-ax3.png` |
 | Ficha 360, iPad | `ipad-ficha360-normal.png` | `ipad-ficha360-ax3.png` |
+| Evaluación masiva de rúbricas, iPad | `ipad-rubricas-masiva-normal.png` | `ipad-rubricas-masiva-ax3.png` |
 | Tarjetas del shell (Evaluación), iPad | `ipad-evaluacion-normal.png` | `ipad-evaluacion-ax3.png` |
 | Hoy, Mac | `mac-hoy-despues.png` (antes: `mac-hoy-antes.png`) | No aplica: macOS no tiene Dynamic Type. |
 
 ## Lo que no se pudo capturar
 
-- Evaluación masiva de rúbricas: la clase de ejemplo no tiene rúbricas.
 - Hojas del Cuaderno en iPhone: el menú contextual no se abrió con los gestos del simulador.
 - Hojas del Cuaderno en Mac: sin permiso de accesibilidad no se puede navegar la app de Mac desde la terminal.
 - Estados forzados (error, Atención inventada) en Mac: el Mac usa su propia vista de Hoy, sin el parche.

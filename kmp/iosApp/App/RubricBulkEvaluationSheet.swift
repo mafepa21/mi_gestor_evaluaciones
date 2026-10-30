@@ -29,7 +29,7 @@ struct RubricBulkEvaluationSheet: View {
 
                 if state?.isLoading ?? true {
                     ProgressView("Cargando evaluación masiva...")
-                        .font(.system(size: 14, weight: .medium))
+                        .scaledSystemFont(size: 14, weight: .medium)
                         .foregroundStyle(.secondary)
                 } else if let state, let rubric = state.rubricDetail {
                     GeometryReader { proxy in
@@ -96,19 +96,19 @@ struct RubricBulkEvaluationSheet: View {
                 } else {
                     VStack(spacing: 16) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 28, weight: .bold))
+                            .scaledSystemFont(size: 28, weight: .bold)
                             .foregroundStyle(EvaluationDesign.danger)
                         Text("No se pudo abrir la evaluación")
-                            .font(.system(size: 18, weight: .black, design: .rounded))
+                            .scaledSystemFont(size: 18, weight: .black, design: .rounded)
                         if let error = state?.error {
                             Text(error)
-                                .font(.system(size: 13, weight: .medium))
+                                .scaledSystemFont(size: 13, weight: .medium)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 24)
                         } else {
                             Text("La evaluación seleccionada no existe o no se pudo cargar.")
-                                .font(.system(size: 13, weight: .medium))
+                                .scaledSystemFont(size: 13, weight: .medium)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 24)
@@ -177,7 +177,8 @@ struct RubricBulkEvaluationSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 15, weight: .semibold))
+                            .scaledSystemFont(size: 15, weight: .semibold)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                             .foregroundStyle(.secondary)
                             .frame(width: 36, height: 36)
                     }
@@ -384,7 +385,7 @@ struct RubricBulkEvaluationSheet: View {
     ) -> some View {
         return HStack(spacing: 0) {
             Text("Estudiante")
-                .font(.system(size: 11, weight: .black, design: .rounded))
+                .scaledSystemFont(size: 11, weight: .black, design: .rounded)
                 .foregroundStyle(.secondary)
                 .padding(.leading, 16)
                 .padding(.trailing, 16)
@@ -402,7 +403,7 @@ struct RubricBulkEvaluationSheet: View {
             HStack(spacing: 16) {
                 ForEach(rubric.criteria, id: \.criterion.id) { criterion in
                     Text(criterion.criterion.description_)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .scaledSystemFont(size: 11, weight: .bold, design: .rounded)
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -412,12 +413,12 @@ struct RubricBulkEvaluationSheet: View {
                 }
 
                 Text("Nota")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .scaledSystemFont(size: 11, weight: .black, design: .rounded)
                     .foregroundStyle(.secondary)
                     .frame(width: scoreWidth, alignment: .center)
 
                 Text("Acciones")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .scaledSystemFont(size: 11, weight: .black, design: .rounded)
                     .foregroundStyle(.secondary)
                     .frame(width: actionsWidth, alignment: .center)
             }
@@ -453,7 +454,7 @@ struct RubricBulkEvaluationSheet: View {
                 }
 
                 Text(student.firstName + " " + student.lastName)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .scaledSystemFont(size: 14, weight: .bold, design: .rounded)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
             }
@@ -522,7 +523,8 @@ struct RubricBulkEvaluationSheet: View {
                     .disabled(state.copiedAssessment == nil)
                 } label: {
                     Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 18, weight: .medium))
+                        .scaledSystemFont(size: 18, weight: .medium)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                         .foregroundStyle(.secondary)
                         .frame(width: 34, height: 34)
                 }
@@ -571,7 +573,7 @@ struct RubricBulkEvaluationSheet: View {
                         HStack(spacing: 3) {
                             if isSelected {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 9, weight: .black))
+                                    .scaledSystemFont(size: 11, weight: .black)
                             }
                             Text("\(index + 1)")
                                 .font(.body.weight(.semibold))
@@ -703,7 +705,7 @@ struct RubricBulkEvaluationSheet: View {
         let tint = score.map { RubricsStyle.gradeColor(forScoreOutOfTen: $0) }
 
         return Text(scoreText)
-            .font(.system(size: 20, weight: .black, design: .rounded))
+            .scaledSystemFont(size: 20, weight: .black, design: .rounded)
             .foregroundStyle(tint ?? .secondary)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
@@ -719,7 +721,8 @@ struct RubricBulkEvaluationSheet: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .bold))
+                .scaledSystemFont(size: 13, weight: .bold)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                 .foregroundStyle(isEnabled ? tint : .secondary.opacity(0.35))
                 .frame(width: 34, height: 34)
                 .background(
@@ -834,17 +837,17 @@ struct RubricBulkEvaluationSheet: View {
                     )
                     Spacer()
                     Text("\(injuredStudents.count)")
-                        .font(.system(size: 14, weight: .black, design: .rounded))
+                        .scaledSystemFont(size: 14, weight: .black, design: .rounded)
                         .foregroundStyle(EvaluationDesign.danger)
                 }
 
                 if injuredStudents.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "person.crop.circle.badge.checkmark")
-                            .font(.system(size: 28, weight: .semibold))
+                            .scaledSystemFont(size: 28, weight: .semibold)
                             .foregroundStyle(.secondary.opacity(0.4))
                         Text("No hay alumnos lesionados")
-                            .font(.system(size: 14, weight: .medium))
+                            .scaledSystemFont(size: 14, weight: .medium)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 280)
@@ -856,10 +859,10 @@ struct RubricBulkEvaluationSheet: View {
 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(student.firstName + " " + student.lastName)
-                                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                                        .scaledSystemFont(size: 15, weight: .bold, design: .rounded)
                                         .foregroundStyle(.primary)
                                     Text("Necesita revisión")
-                                        .font(.system(size: 12, weight: .medium))
+                                        .scaledSystemFont(size: 12, weight: .medium)
                                         .foregroundStyle(.secondary)
                                 }
 
@@ -1026,18 +1029,18 @@ struct RubricLevelDescriptionPopover: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 10) {
                 Image(systemName: "info.circle.fill")
-                    .font(.system(size: 16, weight: .bold))
+                    .scaledSystemFont(size: 16, weight: .bold)
                     .foregroundStyle(EvaluationDesign.accent)
 
                 Text(level.name)
-                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .scaledSystemFont(size: 15, weight: .black, design: .rounded)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
 
                 Spacer(minLength: 12)
 
                 Text(RubricsStyle.pointsText(Double(level.points)))
-                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .scaledSystemFont(size: 12, weight: .black, design: .rounded)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -1048,17 +1051,17 @@ struct RubricLevelDescriptionPopover: View {
             }
 
             Rectangle()
-                .fill(Color.primary.opacity(0.08))
+                .fill(NotebookGridStyle.gridLine)
                 .frame(height: 1)
 
             if trimmedDescription.isEmpty {
                 Text("Sin descripción adicional para este nivel.")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .scaledSystemFont(size: 13, weight: .medium, design: .rounded)
                     .foregroundStyle(.secondary)
             } else {
                 Text(trimmedDescription)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.primary.opacity(0.8))
+                    .scaledSystemFont(size: 13, weight: .medium)
+                    .foregroundStyle(.primary)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -419,7 +419,7 @@ struct NotebookColumnStatisticsSheet: View {
                     Button("Hecho") {
                         dismiss()
                     }
-                    .font(.system(size: 15, weight: .semibold))
+                    .notebookFont(size: 15, weight: .semibold)
                 }
 
                 ToolbarItem(placement: .primaryAction) {
@@ -430,7 +430,7 @@ struct NotebookColumnStatisticsSheet: View {
                             Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
                             Text(isCopied ? "Copiado" : "Copiar informe")
                         }
-                        .font(.system(size: 14, weight: .medium))
+                        .notebookFont(size: 14, weight: .medium)
                     }
                     .disabled(report.evaluatedCount == 0)
                 }
@@ -454,23 +454,23 @@ struct NotebookColumnStatisticsSheet: View {
                     .frame(width: 54, height: 54)
 
                 Image(systemName: columnSystemIcon(for: column))
-                    .font(.system(size: 24, weight: .bold))
+                    .notebookFont(size: 24, weight: .bold)
                     .foregroundStyle(columnColor)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(column.title)
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .notebookFont(size: 20, weight: .bold, design: .rounded)
                         .foregroundStyle(Color.primary)
                         .lineLimit(1)
 
                     if column.countsTowardAverage {
                         HStack(spacing: 3) {
                             Image(systemName: "percent")
-                                .font(.system(size: 9, weight: .bold))
+                                .notebookFont(size: 11, weight: .bold)
                             Text("\(String(format: "%.0f", column.weight))%")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .notebookFont(size: 11, weight: .bold, design: .rounded)
                         }
                         .foregroundStyle(EvaluationDesign.accent)
                         .padding(.horizontal, 6)
@@ -481,34 +481,34 @@ struct NotebookColumnStatisticsSheet: View {
                         )
                     } else {
                         Text("No pondera")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .notebookFont(size: 11, weight: .medium, design: .rounded)
                             .foregroundStyle(Color.secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(
                                 Capsule()
-                                    .fill(Color.primary.opacity(0.06))
+                                    .fill(NotebookGridStyle.chipFill)
                             )
                     }
                 }
 
                 HStack(spacing: 6) {
                     Text(classTitle)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .notebookFont(size: 13, weight: .semibold, design: .rounded)
                         .foregroundStyle(Color.secondary)
 
                     Text("·")
                         .foregroundStyle(Color.secondary.opacity(0.5))
 
                     Text(Self.columnTypeTitle(for: column))
-                        .font(.system(size: 13, weight: .regular))
+                        .notebookFont(size: 13, weight: .regular)
                         .foregroundStyle(Color.secondary)
                 }
 
                 // Barra de cobertura de evaluados
                 HStack(spacing: 6) {
                     Text("\(report.evaluatedCount) de \(report.totalStudents) evaluados (\(String(format: "%.0f", report.evaluatedPercentage))%)")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .notebookFont(size: 11, weight: .medium, design: .rounded)
                         .foregroundStyle(report.evaluatedPercentage >= 80 ? EvaluationDesign.success : Color.secondary)
 
                     Spacer(minLength: 0)
@@ -529,17 +529,18 @@ struct NotebookColumnStatisticsSheet: View {
     private func driftWarningCard(warning: (title: String, detail: String, severity: Color)) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 16, weight: .bold))
+                .notebookFont(size: 16, weight: .bold)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                 .foregroundStyle(warning.severity)
                 .frame(width: 24, height: 24)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(warning.title)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .notebookFont(size: 14, weight: .bold, design: .rounded)
                         .foregroundStyle(warning.severity)
                     Text("Alerta Pedagógica")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .notebookFont(size: 11, weight: .black, design: .rounded)
                         .foregroundStyle(warning.severity)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
@@ -547,7 +548,7 @@ struct NotebookColumnStatisticsSheet: View {
                 }
 
                 Text(warning.detail)
-                    .font(.system(size: 12, weight: .medium))
+                    .notebookFont(size: 12, weight: .medium)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -571,17 +572,17 @@ struct NotebookColumnStatisticsSheet: View {
             HStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("MEDIA DEL GRUPO")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .notebookFont(size: 11, weight: .bold, design: .rounded)
                         .foregroundStyle(Color.secondary)
 
                     if let mean = report.mean {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text(String(format: "%.2f", mean))
-                                .font(.system(size: 38, weight: .black, design: .rounded))
+                                .notebookFont(size: 38, weight: .black, design: .rounded)
                                 .foregroundStyle(RubricsStyle.gradeColor(forScoreOutOfTen: mean))
 
                             Text(report.meanQualitativeLabel.uppercased())
-                                .font(.system(size: 12, weight: .black, design: .rounded))
+                                .notebookFont(size: 12, weight: .black, design: .rounded)
                                 .foregroundStyle(RubricsStyle.gradeColor(forScoreOutOfTen: mean))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
@@ -592,7 +593,7 @@ struct NotebookColumnStatisticsSheet: View {
                         }
                     } else {
                         Text("—")
-                            .font(.system(size: 38, weight: .black, design: .rounded))
+                            .notebookFont(size: 38, weight: .black, design: .rounded)
                             .foregroundStyle(Color.secondary)
                     }
                 }
@@ -606,12 +607,12 @@ struct NotebookColumnStatisticsSheet: View {
                             .fill(EvaluationDesign.success)
                             .frame(width: 8, height: 8)
                         Text("\(String(format: "%.0f", report.passedPercentage))% Aprobados")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .notebookFont(size: 13, weight: .bold, design: .rounded)
                             .foregroundStyle(Color.primary)
                     }
 
                     Text("\(report.passedCount) aptos · \(report.failedCount) no aptos")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .notebookFont(size: 11, weight: .medium, design: .rounded)
                         .foregroundStyle(Color.secondary)
 
                     // Barra visual biseccionada
@@ -665,14 +666,14 @@ struct NotebookColumnStatisticsSheet: View {
         VStack(spacing: 6) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
+                    .notebookFont(size: 11, weight: .bold)
                 Text(title)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .notebookFont(size: 11, weight: .bold, design: .rounded)
             }
             .foregroundStyle(Color.secondary)
 
             Text(value)
-                .font(.system(size: 20, weight: .heavy, design: .rounded))
+                .notebookFont(size: 20, weight: .heavy, design: .rounded)
                 .foregroundStyle(Color.primary)
                 .monospacedDigit()
         }
@@ -691,13 +692,13 @@ struct NotebookColumnStatisticsSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Distribución por Tramos LOMLOE")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .notebookFont(size: 15, weight: .bold, design: .rounded)
                     .foregroundStyle(Color.primary)
 
                 Spacer()
 
                 Text("Toca un tramo para ver alumnos")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .notebookFont(size: 11, weight: .medium, design: .rounded)
                     .foregroundStyle(Color.secondary)
             }
 
@@ -721,9 +722,9 @@ struct NotebookColumnStatisticsSheet: View {
                                 // Etiqueta del tramo con icono
                                 HStack(spacing: 5) {
                                     Image(systemName: dist.band.icon)
-                                        .font(.system(size: 10, weight: .bold))
+                                        .notebookFont(size: 11, weight: .bold)
                                     Text(dist.band.title)
-                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                        .notebookFont(size: 12, weight: .semibold, design: .rounded)
                                 }
                                 .foregroundStyle(dist.band.color)
                                 .frame(width: 125, alignment: .leading)
@@ -734,7 +735,7 @@ struct NotebookColumnStatisticsSheet: View {
 
                                     ZStack(alignment: .leading) {
                                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .fill(Color.primary.opacity(0.05))
+                                            .fill(NotebookGridStyle.chipFill)
                                             .frame(height: 20)
 
                                         if dist.count > 0 {
@@ -756,10 +757,10 @@ struct NotebookColumnStatisticsSheet: View {
                                 // Recuento y porcentaje
                                 HStack(spacing: 4) {
                                     Text("\(dist.count)")
-                                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                                        .notebookFont(size: 12, weight: .bold, design: .rounded)
                                         .monospacedDigit()
                                     Text("(\(String(format: "%.0f", dist.percentage))%)")
-                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .notebookFont(size: 11, weight: .medium, design: .rounded)
                                         .foregroundStyle(Color.secondary)
                                 }
                                 .frame(width: 75, alignment: .trailing)
@@ -778,11 +779,11 @@ struct NotebookColumnStatisticsSheet: View {
                                             .fill(dist.band.color.opacity(0.2))
                                             .frame(width: 6, height: 6)
                                         Text(item.name)
-                                            .font(.system(size: 12, weight: .medium))
+                                            .notebookFont(size: 12, weight: .medium)
                                             .foregroundStyle(Color.primary)
                                         Spacer()
                                         Text(String(format: "%.2f", item.score))
-                                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                                            .notebookFont(size: 12, weight: .bold, design: .rounded)
                                             .foregroundStyle(dist.band.color)
                                             .monospacedDigit()
                                     }
@@ -817,27 +818,27 @@ struct NotebookColumnStatisticsSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 5) {
                     Image(systemName: "crown.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .notebookFont(size: 11, weight: .bold)
                         .foregroundStyle(Color(red: 0.90, green: 0.72, blue: 0.18)) // Dorado
                     Text("NOTA MÁXIMA")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .notebookFont(size: 11, weight: .bold, design: .rounded)
                         .foregroundStyle(Color.secondary)
                 }
 
                 if let maxVal = report.maxScore {
                     Text(String(format: "%.2f", maxVal))
-                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .notebookFont(size: 24, weight: .heavy, design: .rounded)
                         .foregroundStyle(EvaluationDesign.success)
                         .monospacedDigit()
 
                     let names = report.studentsWithMaxScore.map(\.name).joined(separator: ", ")
                     Text(names)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .notebookFont(size: 11, weight: .medium, design: .rounded)
                         .foregroundStyle(Color.secondary)
                         .lineLimit(2)
                 } else {
                     Text("—")
-                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .notebookFont(size: 24, weight: .heavy, design: .rounded)
                         .foregroundStyle(Color.secondary)
                 }
             }
@@ -853,27 +854,27 @@ struct NotebookColumnStatisticsSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 5) {
                     Image(systemName: "arrow.down.circle.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .notebookFont(size: 11, weight: .bold)
                         .foregroundStyle(EvaluationDesign.danger)
                     Text("NOTA MÍNIMA")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .notebookFont(size: 11, weight: .bold, design: .rounded)
                         .foregroundStyle(Color.secondary)
                 }
 
                 if let minVal = report.minScore {
                     Text(String(format: "%.2f", minVal))
-                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .notebookFont(size: 24, weight: .heavy, design: .rounded)
                         .foregroundStyle(minVal < 5.0 ? EvaluationDesign.danger : EvaluationDesign.accent)
                         .monospacedDigit()
 
                     let names = report.studentsWithMinScore.map(\.name).joined(separator: ", ")
                     Text(names)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .notebookFont(size: 11, weight: .medium, design: .rounded)
                         .foregroundStyle(Color.secondary)
                         .lineLimit(2)
                 } else {
                     Text("—")
-                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .notebookFont(size: 24, weight: .heavy, design: .rounded)
                         .foregroundStyle(Color.secondary)
                 }
             }
@@ -891,16 +892,16 @@ struct NotebookColumnStatisticsSheet: View {
     private var emptyStateCard: some View {
         VStack(spacing: 12) {
             Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 44, weight: .light))
+                .notebookFont(size: 44, weight: .light)
                 .foregroundStyle(Color.secondary.opacity(0.6))
                 .padding(.top, 10)
 
             Text("Sin calificaciones registradas")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .notebookFont(size: 16, weight: .bold, design: .rounded)
                 .foregroundStyle(Color.primary)
 
             Text("Introduce notas en esta columna o evalúa alumnos para ver la media, la desviación y la distribución LOMLOE.")
-                .font(.system(size: 13, weight: .regular))
+                .notebookFont(size: 13, weight: .regular)
                 .foregroundStyle(Color.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)

@@ -106,7 +106,7 @@ struct NotebookSeatingPlanView: View {
         HStack(spacing: 12) {
             HStack(spacing: 8) {
                 Text("Plano de clase")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .notebookFont(size: 18, weight: .bold, design: .rounded)
 
                 attendanceStatsBadge
             }
@@ -177,20 +177,20 @@ struct NotebookSeatingPlanView: View {
             HStack(spacing: 3) {
                 Circle().fill(EvaluationDesign.success).frame(width: 6, height: 6)
                 Text("\(stats.present) P")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .notebookFont(size: 11, weight: .bold, design: .rounded)
             }
             if stats.absent > 0 {
                 HStack(spacing: 3) {
                     Circle().fill(EvaluationDesign.danger).frame(width: 6, height: 6)
                     Text("\(stats.absent) A")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .notebookFont(size: 11, weight: .bold, design: .rounded)
                 }
             }
             if stats.late > 0 {
                 HStack(spacing: 3) {
                     Circle().fill(Color.orange).frame(width: 6, height: 6)
                     Text("\(stats.late) R")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .notebookFont(size: 11, weight: .bold, design: .rounded)
                 }
             }
         }
@@ -239,9 +239,9 @@ struct NotebookSeatingPlanView: View {
                 // Chalkboard / Front of class indicator
                 HStack(spacing: 8) {
                     Image(systemName: "rectangle.inset.filled.and.person.filled")
-                        .font(.system(size: 11, weight: .bold))
+                        .notebookFont(size: 11, weight: .bold)
                     Text("PIZARRA · FRENTE DEL AULA")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .notebookFont(size: 11, weight: .black, design: .rounded)
                         .tracking(1.4)
                 }
                 .foregroundStyle(.secondary.opacity(0.75))
@@ -372,18 +372,18 @@ struct NotebookSeatingPlanView: View {
                     .fill(NotebookStyle.primaryTint.opacity(0.16))
                     .frame(width: 38, height: 38)
                 Text(initials)
-                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .notebookFont(size: 14, weight: .black, design: .rounded)
                     .foregroundStyle(NotebookStyle.primaryTint)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(student.fullName)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .notebookFont(size: 15, weight: .bold, design: .rounded)
                         .lineLimit(1)
 
                     Text("Alumno activo")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .notebookFont(size: 11, weight: .black, design: .rounded)
                         .foregroundStyle(EvaluationDesign.accent)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -392,21 +392,21 @@ struct NotebookSeatingPlanView: View {
 
                 HStack(spacing: 8) {
                     Text(attendanceKind.label)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .notebookFont(size: 11, weight: .semibold, design: .rounded)
                         .foregroundStyle(attendanceKind.ringColor)
 
                     Text("•")
                         .foregroundStyle(.tertiary)
 
                     Text("Media \(averageText(row))")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .notebookFont(size: 11, weight: .semibold, design: .rounded)
                         .foregroundStyle(.secondary)
 
                     if gradingColumnId != nil {
                         Text("•")
                             .foregroundStyle(.tertiary)
                         Text("Nota: \(gradeText(student.id))")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .notebookFont(size: 11, weight: .bold, design: .rounded)
                             .foregroundStyle(NotebookStyle.primaryTint)
                     }
                 }
@@ -418,7 +418,7 @@ struct NotebookSeatingPlanView: View {
                 onOpenStudent(student.id)
             } label: {
                 Label("Ficha 360º", systemImage: "person.text.rectangle.fill")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .notebookFont(size: 12, weight: .bold, design: .rounded)
             }
             .buttonStyle(.bordered)
 
@@ -427,7 +427,7 @@ struct NotebookSeatingPlanView: View {
                 onHighlightRandomStudent()
             } label: {
                 Label("Siguiente al azar", systemImage: "dice.fill")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .notebookFont(size: 12, weight: .bold, design: .rounded)
             }
             .buttonStyle(.borderedProminent)
 
@@ -437,7 +437,8 @@ struct NotebookSeatingPlanView: View {
                 }
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 18))
+                    .notebookFont(size: 18)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                     .foregroundStyle(.secondary)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
@@ -631,27 +632,28 @@ private struct NotebookSeatCard: View {
                         .fill(NotebookStyle.primaryTint.opacity(0.14))
                         .frame(width: 38, height: 38)
                     Text(initials)
-                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .notebookFont(size: 13, weight: .black, design: .rounded)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                         .foregroundStyle(NotebookStyle.primaryTint)
                 }
                 .frame(width: 44, height: 44)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(student.fullName)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .notebookFont(size: 13, weight: .bold, design: .rounded)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 4) {
                         Text(attendanceKind.label)
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .notebookFont(size: 11, weight: .bold, design: .rounded)
                             .foregroundStyle(attendanceKind.ringColor)
 
                         Text("·")
                             .foregroundStyle(.tertiary)
 
                         Text(averageText)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .notebookFont(size: 11, weight: .semibold, design: .rounded)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -660,7 +662,7 @@ private struct NotebookSeatCard: View {
 
                 if incidentCount > 0 {
                     Text("\(incidentCount)")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .notebookFont(size: 11, weight: .black, design: .rounded)
                         .foregroundStyle(.orange)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
@@ -678,7 +680,8 @@ private struct NotebookSeatCard: View {
                         onDecrementGrade()
                     }) {
                         Image(systemName: "minus")
-                            .font(.system(size: 13, weight: .bold))
+                            .notebookFont(size: 13, weight: .bold)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                             .foregroundStyle(NotebookStyle.warningTint)
                             .frame(width: 42, height: 38)
                             .background(
@@ -699,7 +702,8 @@ private struct NotebookSeatCard: View {
                         onIncrementGrade()
                     }) {
                         Image(systemName: "plus")
-                            .font(.system(size: 13, weight: .bold))
+                            .notebookFont(size: 13, weight: .bold)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                             .foregroundStyle(NotebookStyle.successTint)
                             .frame(width: 42, height: 38)
                             .background(
@@ -787,7 +791,7 @@ private struct NotebookSeatCard: View {
         }()
 
         return Text(text)
-            .font(.system(size: 15, weight: .bold, design: .rounded))
+            .notebookFont(size: 15, weight: .bold, design: .rounded)
             .monospacedDigit()
             .foregroundStyle(color)
             .padding(.vertical, 7)
@@ -812,9 +816,9 @@ private struct NotebookSeatCard: View {
         } label: {
             HStack(spacing: 3) {
                 Image(systemName: symbol)
-                    .font(.system(size: 10, weight: .bold))
+                    .notebookFont(size: 11, weight: .bold)
                 Text(text)
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .notebookFont(size: 11, weight: .black, design: .rounded)
             }
             .foregroundStyle(isActive ? contrastingTextColor(for: tint) : tint)
             .frame(maxWidth: .infinity)
@@ -839,7 +843,8 @@ private struct NotebookSeatCard: View {
             action()
         } label: {
             Image(systemName: "star.fill")
-                .font(.system(size: 11, weight: .bold))
+                .notebookFont(size: 11, weight: .bold)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                 .foregroundStyle(.purple)
                 .frame(width: 34, height: 38)
                 .background(

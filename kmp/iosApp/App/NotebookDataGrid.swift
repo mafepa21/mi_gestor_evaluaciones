@@ -196,7 +196,8 @@ final class NotebookGridScrollProxy {
 }
 
 final class NotebookScrollSyncCoordinator: ObservableObject {
-    @Published private(set) var visibleRange: Range<Int> = 0..<24
+    /// Vacío hasta la primera medida: las filas llegan en la vuelta siguiente (ver `install`).
+    @Published private(set) var visibleRange: Range<Int> = 0..<0
     private var metrics = NotebookRowWindowMath.Metrics.empty
     private var offsetY: CGFloat = 0
     private var viewportHeight: CGFloat = 0
@@ -212,8 +213,18 @@ final class NotebookScrollSyncCoordinator: ObservableObject {
 
     func install(metrics: NotebookRowWindowMath.Metrics) {
         guard metrics != self.metrics else { return }
+        let isFirstInstall = self.metrics.rowCount == 0
         self.metrics = metrics
-        publishRangeIfNeeded()
+        guard isFirstInstall else {
+            publishRangeIfNeeded()
+            return
+        }
+        // Al montar el Cuaderno, las filas se pintan en la vuelta siguiente del bucle
+        // principal: cabeceras y barra salen antes y el montaje no bloquea la pantalla
+        // de un tirón (la primera apertura pasaba de 400 ms en Debug).
+        DispatchQueue.main.async { [weak self] in
+            self?.publishRangeIfNeeded()
+        }
     }
 
     func noteViewport(offsetY proposedOffset: CGFloat, height: CGFloat) {

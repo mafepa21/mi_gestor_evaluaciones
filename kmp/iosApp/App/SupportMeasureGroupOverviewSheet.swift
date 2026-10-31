@@ -5,7 +5,9 @@ import MiGestorKit
 /// y cuáles son, de un vistazo. Solo lectura — para registrar o retirar medidas se usa
 /// la ficha de alumno (`StudentProfilesWorkspaceView`/`MacStudentsView`).
 struct SupportMeasureGroupOverviewSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 

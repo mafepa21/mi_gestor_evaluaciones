@@ -2,7 +2,13 @@ import SwiftUI
 import MiGestorKit
 
 struct CreateCourseSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (selectedStudentsClassId, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.selectedStudentsClassId), .init($0.studentsInClass)] }
+    }
     @Environment(\.dismiss) var dismiss
     @State var name = ""
     @State var course = "3"
@@ -61,7 +67,13 @@ struct CreateCourseSheet: View {
 }
 
 struct CreateStudentSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (selectedStudentsClassId, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.selectedStudentsClassId), .init($0.studentsInClass)] }
+    }
     @Environment(\.dismiss) var dismiss
     let defaultClassId: Int64?
     let onDismiss: () -> Void
@@ -164,7 +176,13 @@ struct CreateStudentSheet: View {
 }
 
 struct CreateEvaluationSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (selectedStudentsClassId, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.selectedStudentsClassId), .init($0.studentsInClass)] }
+    }
     @Environment(\.dismiss) var dismiss
     let defaultClassId: Int64?
     let onDismiss: () -> Void
@@ -368,7 +386,13 @@ struct WorkspaceCreateMultilineField: View {
 }
 
 struct CreatePESessionSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (selectedStudentsClassId, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.selectedStudentsClassId), .init($0.studentsInClass)] }
+    }
     @Environment(\.dismiss) var dismiss
     let defaultClassId: Int64?
     let onDismiss: () -> Void
@@ -469,7 +493,13 @@ struct CreatePESessionSheet: View {
 }
 
 struct CreatePhysicalTestSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (selectedStudentsClassId, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.selectedStudentsClassId), .init($0.studentsInClass)] }
+    }
     @Environment(\.dismiss) var dismiss
     let defaultClassId: Int64?
     let onDismiss: () -> Void
@@ -560,7 +590,13 @@ struct CreatePhysicalTestSheet: View {
 }
 
 struct CreatePEIncidentSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (selectedStudentsClassId, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.selectedStudentsClassId), .init($0.studentsInClass)] }
+    }
     @Environment(\.dismiss) var dismiss
     let defaultClassId: Int64?
     let onSaved: (Int64, String, PEIncidentWorkflowState, Int64?, String) -> Void
@@ -808,7 +844,13 @@ struct EditPEIncidentSheet: View {
 }
 
 struct CreatePEMaterialRecordSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (selectedStudentsClassId, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.selectedStudentsClassId), .init($0.studentsInClass)] }
+    }
     @Environment(\.dismiss) var dismiss
     let defaultClassId: Int64?
     let sessions: [KmpBridge.PESessionSnapshot]
@@ -916,7 +958,13 @@ struct CreatePEMaterialRecordSheet: View {
 }
 
 struct SupportMeasureFormSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (selectedStudentsClassId, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.selectedStudentsClassId), .init($0.studentsInClass)] }
+    }
     @Environment(\.dismiss) var dismiss
     let studentId: Int64
     var existingMeasure: SupportMeasureRow? = nil

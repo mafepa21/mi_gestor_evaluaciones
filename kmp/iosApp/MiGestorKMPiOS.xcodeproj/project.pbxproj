@@ -352,6 +352,7 @@
 		66C98F8CF6DC19EDDADE1412 /* TournamentRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A643A7B9ECA54FAFCB65CF6B /* TournamentRegistration.swift */; };
 		66CF6F61A89B48BE7660BA19 /* AppSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863347F9ECD4F8B4496AA0AD /* AppSettingsStore.swift */; };
 		66D1856D79472CD9836FE1C9 /* WorkspaceSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */; };
+		66D341FCED96FE9E89CE0D13 /* ScaledSystemFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = A15BAB5448398CA4382E7437 /* ScaledSystemFont.swift */; };
 		66F98BF4EEB8D773D5E4C999 /* MacStudentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EA0ED7ACCCC1D3A0A73D045 /* MacStudentsView.swift */; };
 		675F21ACF52DD1340D0F3973 /* AppleFoundationPedagogicalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3ADE259039BE56FBA5D115F /* AppleFoundationPedagogicalService.swift */; };
 		67BBDCDA410E648994B4A77C /* TournamentScheduleGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1D9AC81C126A98FF394DD1 /* TournamentScheduleGenerator.swift */; };
@@ -858,6 +859,7 @@
 		F8CE5F376C4B583A65A61A90 /* LanSyncBackgroundRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E0F6E7AC85EFEED1C59841C /* LanSyncBackgroundRefresh.swift */; };
 		F8DDB81600029B10D82D9189 /* AssessmentCriteriaDisclosureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0807C62AFA54EB7276D768B /* AssessmentCriteriaDisclosureView.swift */; };
 		F8E257A5666B11DB4B5671AF /* SupportMeasureShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7EEE397867C9AB1B682637 /* SupportMeasureShared.swift */; };
+		F8F74D4BCC9C70F28D0CBF30 /* ScaledSystemFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = A15BAB5448398CA4382E7437 /* ScaledSystemFont.swift */; };
 		F94056FF4937226611623FB6 /* SettingsRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4309F19FDFC6A480E12806A8 /* SettingsRow.swift */; };
 		F97BB1FBE7B0EE0179EAC7B9 /* WorkspaceCreationSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B295CDB0A0C9F2C1835EF56 /* WorkspaceCreationSheets.swift */; };
 		F990EE3FCD3323B9BCB3891A /* AppleSpreadsheetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E628D0904D069E276C888E /* AppleSpreadsheetReader.swift */; };
@@ -1240,6 +1242,7 @@
 		9FA4D40A51F6DA104CCFFE1E /* NotebookStructuredInstrumentSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookStructuredInstrumentSupport.swift; sourceTree = "<group>"; };
 		A000A844E2F1245DA5956673 /* NotebookViewModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookViewModifiers.swift; sourceTree = "<group>"; };
 		A0774A7DE7911EED2EC152DD /* TournamentEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TournamentEngineTests.swift; sourceTree = "<group>"; };
+		A15BAB5448398CA4382E7437 /* ScaledSystemFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaledSystemFont.swift; sourceTree = "<group>"; };
 		A16EC8B96A8491E180F8CE3D /* EvaluationSessionBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationSessionBoardView.swift; sourceTree = "<group>"; };
 		A1BA1A353C3D0548CC0C2E8A /* NotebookColumnOrganizerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookColumnOrganizerSheet.swift; sourceTree = "<group>"; };
 		A2C577C58E87983763516A38 /* DashboardClassroomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardClassroomView.swift; sourceTree = "<group>"; };
@@ -2059,6 +2062,7 @@
 				368016D041EDBFDB4E2A7D0E /* RubricsStyle.swift */,
 				9A40260BEB75E2375968B606 /* RubricTemplateCatalog.swift */,
 				542F962EB91CBB9EBA611DAA /* RubricTemplateCatalogSheet.swift */,
+				A15BAB5448398CA4382E7437 /* ScaledSystemFont.swift */,
 				7A6E850F1ED39803C5EB2E6A /* SchoolCalendarEventsOverviewSheet.swift */,
 				AC7C9F4E4DD0E148ACD0A165 /* SchoolCalendarPreset2026_2027.swift */,
 				6AD7E95B759E25696F69EE87 /* SchoolCalendarPresetSheet.swift */,
@@ -2707,6 +2711,7 @@
 				D1B9D52C2AA3D97454DC8C8B /* RubricsBuilderScreen.swift in Sources */,
 				502317102099671C9E3C0220 /* RubricsReportsWorkspaceViews.swift in Sources */,
 				B24F51E7FA5D688CC7914FCF /* RubricsStyle.swift in Sources */,
+				F8F74D4BCC9C70F28D0CBF30 /* ScaledSystemFont.swift in Sources */,
 				89A594F1D240139817250095 /* ScheduleAnalytics.swift in Sources */,
 				0EC69CAE372E1422D1EAE4C4 /* ScheduleConfiguration.swift in Sources */,
 				92F738EBFD7858DFB104C047 /* ScheduleExcelImportService.swift in Sources */,
@@ -3120,6 +3125,7 @@
 				42355FA614EB4F899CB54DBA /* RubricsBuilderScreen.swift in Sources */,
 				47A6E2AE579A58D566D63878 /* RubricsReportsWorkspaceViews.swift in Sources */,
 				60B356AED1B03C03C94B4D39 /* RubricsStyle.swift in Sources */,
+				66D341FCED96FE9E89CE0D13 /* ScaledSystemFont.swift in Sources */,
 				051FD4C20E456A9AE205CF12 /* ScheduleAnalytics.swift in Sources */,
 				2A8EFA741D0F8660FF81330D /* ScheduleConfiguration.swift in Sources */,
 				C017001FB2CDCB2BAB1AB70A /* ScheduleExcelImportService.swift in Sources */,

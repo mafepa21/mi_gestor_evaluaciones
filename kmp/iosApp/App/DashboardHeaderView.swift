@@ -12,13 +12,28 @@ struct DashboardHeaderView: View {
     let dateLine: String
     let modeHint: String?
 
+#if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+#endif
+
+    /// En iPhone el título grande empuja AHORA fuera de la primera pantalla:
+    /// cabecera compacta con `title2`. iPad y Mac mantienen el título grande.
+    private var isCompact: Bool {
+#if os(iOS)
+        horizontalSizeClass == .compact
+#else
+        false
+#endif
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: DashboardStyle.Spacing.micro) {
+        VStack(alignment: .leading, spacing: isCompact ? 0 : DashboardStyle.Spacing.micro) {
             Text(modeHint.map { "\(dateLine) · \($0)" } ?? dateLine)
                 .font(DashboardStyle.Typography.footnote)
                 .foregroundStyle(.secondary)
             Text(greeting)
-                .font(DashboardStyle.Typography.largeTitle)
+                .font(isCompact ? DashboardStyle.Typography.title : DashboardStyle.Typography.largeTitle)
+                .lineLimit(2)
                 .accessibilityAddTraits(.isHeader)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

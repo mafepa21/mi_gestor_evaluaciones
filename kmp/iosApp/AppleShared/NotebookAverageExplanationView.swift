@@ -222,22 +222,11 @@ struct NotebookAverageCompactSummaryView: View {
             }
 
             if let explanation {
-                HStack(spacing: 8) {
-                    metricChip(
-                        title: "Entran",
-                        value: "\(explanation.includedColumns.count)",
-                        tint: NotebookStyle.successTint
-                    )
-                    metricChip(
-                        title: "Pendientes",
-                        value: "\(explanation.pendingCells.count)",
-                        tint: NotebookStyle.warningTint
-                    )
-                    metricChip(
-                        title: "Fuera",
-                        value: "\(explanation.excludedColumns.count)",
-                        tint: .secondary
-                    )
+                // Con letra grande las tres fichas no caben en la columna del
+                // inspector y partían palabras ("EN-TRAN"): pasan a columna.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { metricChips(explanation) }
+                    VStack(alignment: .leading, spacing: 8) { metricChips(explanation) }
                 }
 
                 if let topContribution = explanation.weightedContributions.max(by: { abs($0.weightedValue) < abs($1.weightedValue) }) {
@@ -258,10 +247,31 @@ struct NotebookAverageCompactSummaryView: View {
         return "Media provisional"
     }
 
+    @ViewBuilder
+    private func metricChips(_ explanation: NotebookAverageExplanation) -> some View {
+        metricChip(
+            title: "Entran",
+            value: "\(explanation.includedColumns.count)",
+            tint: NotebookStyle.successTint
+        )
+        metricChip(
+            title: "Pendientes",
+            value: "\(explanation.pendingCells.count)",
+            tint: NotebookStyle.warningTint
+        )
+        metricChip(
+            title: "Fuera",
+            value: "\(explanation.excludedColumns.count)",
+            tint: .secondary
+        )
+    }
+
     private func metricChip(title: String, value: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title.uppercased())
                 .font(.caption2.weight(.bold))
+                .lineLimit(1)
+                .fixedSize()
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.headline.weight(.bold))

@@ -263,9 +263,9 @@ struct DashboardView: View {
                 .id("modo-despacho")
             }
         }
-        // Error de red: el contenido anterior sigue a la vista con su contraste
-        // normal (el aviso de error ya avisa); solo pierde algo de color.
-        .saturation(loadFailed ? 0.7 : 1)
+        // Error de red: el contenido anterior sigue a la vista con su color y
+        // contraste normales; el aviso de error ya avisa. No se atenúa: la
+        // severidad de Atención (rojo/naranja) debe seguir leyéndose.
         .animation(
             reduceMotion ? .linear(duration: 0.2) : .easeInOut(duration: 0.35),
             value: isClassroomMode

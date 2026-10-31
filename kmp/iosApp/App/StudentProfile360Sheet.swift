@@ -68,6 +68,7 @@ struct StudentProfile360Sheet: View {
     @State private var showDUACopiedAlert = false
     @State private var orchestrator = AppleAIOrchestrator()
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var currentStudentIndex: Int? {
         allStudents.firstIndex(where: { $0.id == studentId })
@@ -151,7 +152,11 @@ struct StudentProfile360Sheet: View {
                         copy360Summary()
                     } label: {
                         Label("Copiar resumen", systemImage: showCopiedAlert ? "checkmark.circle.fill" : "doc.on.doc")
+                            // En Mac la acción principal se pinta como botón azul:
+                            // texto azul encima quedaba invisible. El sistema elige.
+                            #if os(iOS)
                             .foregroundStyle(showCopiedAlert ? Color.green : Color.accentColor)
+                            #endif
                     }
                     .help("Copiar informe estructurado al portapapeles")
                 }
@@ -179,7 +184,12 @@ struct StudentProfile360Sheet: View {
     // MARK: - Header Identity Bar
 
     private var headerIdentityBar: some View {
-        HStack(spacing: 14) {
+        // Con letra de accesibilidad avatar, datos y flechas no caben en una
+        // fila de iPhone ("3 ES O A"): se apilan.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 14))
+        return layout {
             // Avatar con iniciales y anillo de estado
             ZStack {
                 let isInjured = currentStudent?.isInjured ?? false
@@ -194,7 +204,7 @@ struct StudentProfile360Sheet: View {
                     )
 
                 Text(studentInitials)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .scaledSystemFont(size: 18, weight: .bold, design: .rounded)
                     .foregroundStyle(statusColor)
             }
 
@@ -204,14 +214,14 @@ struct StudentProfile360Sheet: View {
                     Text(currentStudent?.fullName ?? "Alumno")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
                     if currentStudent?.isInjured == true {
                         HStack(spacing: 3) {
                             Image(systemName: "bandage.fill")
                             Text("Lesionado")
                         }
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .scaledSystemFont(size: 11, weight: .bold, design: .rounded)
                         .foregroundStyle(Color.red)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
@@ -219,14 +229,19 @@ struct StudentProfile360Sheet: View {
                     }
                 }
 
-                HStack(spacing: 8) {
+                let detailLayout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                    : AnyLayout(HStackLayout(spacing: 8))
+                detailLayout {
                     Text(profile?.schoolClass?.name ?? "Grupo activo")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
 
                     if let index = currentStudentIndex {
-                        Text("•")
-                            .foregroundStyle(.tertiary)
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            Text("•")
+                                .foregroundStyle(.tertiary)
+                        }
                         Text("Alumno \(index + 1) de \(allStudents.count)")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -235,8 +250,10 @@ struct StudentProfile360Sheet: View {
                     if let cleanEmail = currentStudent?.email?.trimmingCharacters(in: .whitespacesAndNewlines),
                        !cleanEmail.isEmpty,
                        let emailUrl = URL(string: "mailto:\(cleanEmail)") ?? URL(string: "mailto:\(cleanEmail.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
-                        Text("•")
-                            .foregroundStyle(.tertiary)
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            Text("•")
+                                .foregroundStyle(.tertiary)
+                        }
                         Link(destination: emailUrl) {
                             HStack(spacing: 3) {
                                 Image(systemName: "envelope.fill")
@@ -248,7 +265,9 @@ struct StudentProfile360Sheet: View {
                 }
             }
 
-            Spacer(minLength: 8)
+            if !dynamicTypeSize.isAccessibilitySize {
+                Spacer(minLength: 8)
+            }
 
             // Controles de Carrusel (‹ Alumno anterior | Alumno siguiente ›)
             HStack(spacing: 8) {
@@ -256,7 +275,8 @@ struct StudentProfile360Sheet: View {
                     navigatePrevious()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 15, weight: .bold))
+                        .scaledSystemFont(size: 15, weight: .bold)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                         .frame(width: 44, height: 44)
                         .background(cardBackground)
                         .clipShape(Circle())
@@ -273,7 +293,8 @@ struct StudentProfile360Sheet: View {
                     navigateNext()
                 } label: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 15, weight: .bold))
+                        .scaledSystemFont(size: 15, weight: .bold)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                         .frame(width: 44, height: 44)
                         .background(cardBackground)
                         .clipShape(Circle())
@@ -287,6 +308,7 @@ struct StudentProfile360Sheet: View {
                 .help("Alumno siguiente (⌘→)")
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var tabPickerBar: some View {
@@ -299,9 +321,9 @@ struct StudentProfile360Sheet: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: tab.systemIcon)
-                                .font(.system(size: 13, weight: .semibold))
+                                .scaledSystemFont(size: 13, weight: .semibold)
                             Text(tab.title)
-                                .font(.system(size: 13, weight: isSelected ? .bold : .medium, design: .rounded))
+                                .scaledSystemFont(size: 13, weight: isSelected ? .bold : .medium, design: .rounded)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
@@ -326,9 +348,13 @@ struct StudentProfile360Sheet: View {
     // MARK: - 1. Académico & Cuaderno
 
     private var academicSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        // Con letra de accesibilidad las dos tarjetas no caben lado a lado.
+        let metricsRow = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return VStack(alignment: .leading, spacing: 16) {
             // Tarjetas métricas superiores
-            HStack(spacing: 12) {
+            metricsRow {
                 // Media actual del alumno
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Nota media actual")
@@ -336,28 +362,22 @@ struct StudentProfile360Sheet: View {
                         .foregroundStyle(.secondary)
 
                     let score = resolvedAverageScore
-                    HStack(alignment: .lastTextBaseline, spacing: 6) {
-                        Text(IosFormatting.decimal(from: score))
-                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .foregroundStyle(gradeBandColor(for: score))
-
-                        Text("/ 10")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-
-                        Spacer()
-
-                        Text(lomloeGradeText(for: score))
-                            .font(.caption.weight(.bold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(gradeBandColor(for: score).opacity(0.14))
-                            .foregroundStyle(gradeBandColor(for: score))
-                            .clipShape(Capsule())
+                    // Si la tarjeta es estrecha (iPhone, dos tarjetas en fila) la
+                    // etiqueta baja bajo la nota; antes "/ 10" se partía en vertical.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .lastTextBaseline, spacing: 6) {
+                            averageScoreValue(score)
+                            Spacer(minLength: 6)
+                            averageGradeBadge(score)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            averageScoreValue(score)
+                            averageGradeBadge(score)
+                        }
                     }
                 }
                 .padding(14)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(NotebookGridStyle.gridLine, lineWidth: 1))
@@ -371,7 +391,7 @@ struct StudentProfile360Sheet: View {
 
                         HStack(alignment: .lastTextBaseline, spacing: 6) {
                             Text(IosFormatting.decimal(from: classAvg))
-                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .scaledSystemFont(size: 24, weight: .bold, design: .rounded)
                                 .foregroundStyle(.primary)
 
                             let diff = resolvedAverageScore - classAvg
@@ -434,7 +454,7 @@ struct StudentProfile360Sheet: View {
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.columnTitle)
-                                        .font(.system(size: 12, weight: .bold))
+                                        .scaledSystemFont(size: 12, weight: .bold)
                                         .foregroundStyle(.primary)
                                         .lineLimit(1)
 
@@ -477,7 +497,8 @@ struct StudentProfile360Sheet: View {
                         ForEach(academicColumns, id: \.column.id) { colItem in
                             HStack(spacing: 12) {
                                 Image(systemName: columnSystemIcon(colItem.column))
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .scaledSystemFont(size: 13, weight: .semibold)
+                                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // marco fijo: crece hasta donde cabe
                                     .foregroundStyle(Color.accentColor)
                                     .frame(width: 26, height: 26)
                                     .background(Color.accentColor.opacity(0.1))
@@ -485,7 +506,7 @@ struct StudentProfile360Sheet: View {
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(colItem.column.title)
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .scaledSystemFont(size: 13, weight: .semibold)
                                         .foregroundStyle(.primary)
 
                                     Text(columnTypeBadge(colItem.column))
@@ -506,7 +527,7 @@ struct StudentProfile360Sheet: View {
                                 }
 
                                 Text(colItem.valueText.isEmpty ? "—" : colItem.valueText)
-                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .scaledSystemFont(size: 16, weight: .bold, design: .rounded)
                                     .foregroundStyle(colItem.valueText.isEmpty ? Color.secondary : gradeColor(for: colItem.valueText))
                                     .monospacedDigit()
                                     .frame(minWidth: 42, alignment: .trailing)
@@ -526,6 +547,31 @@ struct StudentProfile360Sheet: View {
         }
     }
 
+    private func averageScoreValue(_ score: Double) -> some View {
+        HStack(alignment: .lastTextBaseline, spacing: 6) {
+            Text(IosFormatting.decimal(from: score))
+                .scaledSystemFont(size: 32, weight: .bold, design: .rounded)
+                .foregroundStyle(gradeBandColor(for: score))
+            Text("/ 10")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .lineLimit(1)
+        .fixedSize()
+    }
+
+    private func averageGradeBadge(_ score: Double) -> some View {
+        Text(lomloeGradeText(for: score))
+            .font(.caption.weight(.bold))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(gradeBandColor(for: score).opacity(0.14))
+            .foregroundStyle(gradeBandColor(for: score))
+            .clipShape(Capsule())
+    }
+
     // MARK: - 2. Asistencia & Puntualidad
 
     private var attendanceSection: some View {
@@ -540,7 +586,7 @@ struct StudentProfile360Sheet: View {
                     HStack(alignment: .lastTextBaseline, spacing: 6) {
                         let rate = profile?.attendanceRate ?? 100
                         Text("\(rate)%")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .scaledSystemFont(size: 34, weight: .bold, design: .rounded)
                             .foregroundStyle(rate >= 90 ? Color.green : (rate >= 80 ? Color.orange : Color.red))
 
                         Text(rate >= 90 ? "Regular" : (rate >= 80 ? "Atención" : "Alerta absentismo"))
@@ -580,13 +626,13 @@ struct StudentProfile360Sheet: View {
                                     .frame(width: 32, height: 32)
                                     .overlay(
                                         Image(systemName: attendanceSystemIcon(for: att.status))
-                                            .font(.system(size: 12, weight: .bold))
+                                            .scaledSystemFont(size: 12, weight: .bold)
                                             .foregroundStyle(attendanceColor(for: att.status))
                                     )
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(att.status)
-                                        .font(.system(size: 13, weight: .bold))
+                                        .scaledSystemFont(size: 13, weight: .bold)
                                         .foregroundStyle(.primary)
 
                                     if !att.note.isEmpty {
@@ -920,7 +966,7 @@ struct StudentProfile360Sheet: View {
                                             .font(.caption.weight(.bold))
                                             .foregroundStyle(.primary)
                                         Text("CORE ML")
-                                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                                            .scaledSystemFont(size: 11, weight: .bold, design: .rounded)
                                             .foregroundStyle(Color.purple)
                                             .padding(.horizontal, 4)
                                             .padding(.vertical, 1)
@@ -931,7 +977,7 @@ struct StudentProfile360Sheet: View {
                                         .foregroundStyle(.secondary)
                                     if !mlSignal.keyFactors.isEmpty {
                                         Text("Factores: " + mlSignal.keyFactors.joined(separator: " • "))
-                                            .font(.system(size: 10))
+                                            .scaledSystemFont(size: 11)
                                             .foregroundStyle(Color.purple.opacity(0.9))
                                     }
                                 }

@@ -138,7 +138,7 @@ struct NotebookStudentInspector: View {
                     Image(systemName: groupComparison.systemImage)
                         .font(.caption.weight(.bold))
                     Text(groupComparison.label)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .notebookFont(size: 12, weight: .semibold, design: .rounded)
                 }
                 .foregroundStyle(groupComparison.tint)
             }
@@ -261,11 +261,11 @@ struct NotebookStudentInspector: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(event.action.name.uppercased())
-                    .font(.system(size: 9, weight: .black))
+                    .notebookFont(size: 11, weight: .black)
                     .foregroundStyle(event.action == .created ? .green : .blue)
                 Spacer()
                 Text(formatTimestamp(event.changedAtEpochMs))
-                    .font(.system(size: 9))
+                    .notebookFont(size: 11)
                     .foregroundStyle(.secondary)
             }
             
@@ -397,7 +397,7 @@ struct NotebookStudentInspector: View {
     private var quickObservationChips: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Incidencia rápida")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .notebookFont(size: 12, weight: .bold, design: .rounded)
                 .foregroundStyle(.secondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -406,7 +406,7 @@ struct NotebookStudentInspector: View {
                             appendQuickObservation(preset)
                         } label: {
                             Text(preset)
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .notebookFont(size: 12, weight: .semibold, design: .rounded)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 7)
                                 .background(
@@ -438,7 +438,7 @@ struct NotebookStudentInspector: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Icono semántico")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .notebookFont(size: 12, weight: .bold, design: .rounded)
                     .foregroundStyle(.secondary)
                 FlexibleTagRow(items: semanticIcons, selected: iconDraft) { icon in
                     iconDraft = icon == iconDraft ? "" : icon
@@ -460,7 +460,7 @@ struct NotebookStudentInspector: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Adjuntos")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .notebookFont(size: 12, weight: .bold, design: .rounded)
                     .foregroundStyle(.secondary)
                 Spacer()
                 PhotosPicker(selection: $selectedAttachmentPhoto, matching: .images) {
@@ -471,7 +471,7 @@ struct NotebookStudentInspector: View {
 
             if attachmentUris.isEmpty {
                 Text("Sin adjuntos todavía")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .notebookFont(size: 13, weight: .medium, design: .rounded)
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(attachmentUris, id: \.self) { uri in
@@ -479,7 +479,7 @@ struct NotebookStudentInspector: View {
                         Image(systemName: "paperclip")
                             .foregroundStyle(NotebookStyle.primaryTint)
                         Text(URL(fileURLWithPath: uri).lastPathComponent)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .notebookFont(size: 13, weight: .medium, design: .rounded)
                             .lineLimit(1)
                         Spacer()
                         Button {
@@ -520,7 +520,7 @@ struct NotebookStudentInspector: View {
                         Image(systemName: directionInfo.icon)
                             .foregroundStyle(directionInfo.color)
                         Text(directionInfo.label)
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .notebookFont(size: 13, weight: .bold, design: .rounded)
                             .foregroundStyle(directionInfo.color)
                         
                         Spacer()
@@ -541,7 +541,7 @@ struct NotebookStudentInspector: View {
                             Spacer()
                             ForEach(trends.recentGrades.prefix(5), id: \.self) { grade in
                                 Text(IosFormatting.decimal(from: grade))
-                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .notebookFont(size: 11, weight: .semibold, design: .rounded)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 6))
@@ -551,14 +551,14 @@ struct NotebookStudentInspector: View {
                     
                     if !trends.attendanceCorrelationNote.isEmpty {
                         Text(trends.attendanceCorrelationNote)
-                            .font(.system(size: 12))
+                            .notebookFont(size: 12)
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
                     }
                     
                     if !trends.behaviorIncidentSummary.isEmpty {
                         Text(trends.behaviorIncidentSummary)
-                            .font(.system(size: 12))
+                            .notebookFont(size: 12)
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
                     }
@@ -569,11 +569,11 @@ struct NotebookStudentInspector: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text("Cobertura Curricular LOMLOE")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .notebookFont(size: 11, weight: .bold, design: .rounded)
                                 .foregroundStyle(.secondary)
                             Spacer()
                             Text("\(IosFormatting.decimal(from: trends.curriculumCoveragePct))%")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .notebookFont(size: 13, weight: .bold, design: .rounded)
                                 .foregroundStyle(NotebookStyle.primaryTint)
                         }
                         
@@ -593,7 +593,7 @@ struct NotebookStudentInspector: View {
                     if !trends.missingCompetencyLabels.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Falta evaluar en cuaderno:")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .notebookFont(size: 11, weight: .bold, design: .rounded)
                                 .foregroundStyle(.secondary)
                             
                             FlexibleTagRow(
@@ -759,10 +759,10 @@ private struct NotebookInspectorInfoRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .black, design: .rounded))
+                .notebookFont(size: 11, weight: .black, design: .rounded)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .notebookFont(size: 14, weight: .semibold, design: .rounded)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1133,7 +1133,7 @@ private struct NotebookInsightSignalRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title.uppercased())
-                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .notebookFont(size: 11, weight: .black, design: .rounded)
                     .foregroundStyle(.secondary)
                 Text(value)
                     .font(.caption)
@@ -1249,7 +1249,7 @@ private struct NotebookMLPatternCard: View {
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.primary)
                         Text("Core ML")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .notebookFont(size: 11, weight: .bold, design: .rounded)
                             .foregroundStyle(Color.purple)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
@@ -1263,7 +1263,7 @@ private struct NotebookMLPatternCard: View {
 
                 if let record, record.status != .active {
                     Text(record.reason?.shortBadge ?? record.status.title)
-                        .font(.system(size: 9, weight: .bold))
+                        .notebookFont(size: 11, weight: .bold)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)

@@ -62,6 +62,9 @@ struct IOSRootView: View {
                 onSelectModule: selectModule(_:)
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
+            // Columna estrecha (máx. 280): con letra de accesibilidad partía
+            // los nombres de módulo ("Cuader-no"). Crece hasta xxxLarge.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         } detail: {
             VStack(spacing: 0) {
                 if activeModule != .notebook && activeModule != .planner && activeModule != .libreta && !(activeModule == .attendance && horizontalSizeClass == .regular) {

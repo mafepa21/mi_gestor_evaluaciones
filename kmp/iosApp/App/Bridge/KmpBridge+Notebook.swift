@@ -23,7 +23,11 @@ extension KmpBridge {
         // estado nuevo y la medida quedaría abierta.
         if currentNotebookClassId != id {
             PerfLog.begin("Cuaderno: cambio de grupo")
-            publishNotebookDataWhenReady(classId: id)
+            // Solo al pasar de un grupo a otro. En la carga inicial (al arrancar) se deja
+            // el camino de siempre: adelantarla competía con el primer pintado de Hoy.
+            if notebookState is NotebookUiStateData {
+                publishNotebookDataWhenReady(classId: id)
+            }
         }
         notebookViewModel.selectClass(classId: id, force: true)
     }

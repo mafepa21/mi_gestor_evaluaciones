@@ -21,6 +21,8 @@ Dispositivos: simulador iOS 27 (iPhone 17 Pro, iPad Air 11" M4) y la app de Mac 
 |---|---|---|
 | Hoy, iPhone | `iphone-hoy-despues.png` | `iphone-hoy-ax3-despues.png` (antes: `iphone-hoy-ax3-antes.png`) |
 | Cuaderno, iPhone | — | `iphone-cuaderno-ax3.png` |
+| Plano de clase, iPhone | `iphone-plano-normal.png` | `iphone-plano-ax3.png` |
+| Ficha 360, iPhone | `iphone-ficha360-normal.png` | `iphone-ficha360-ax3.png` |
 | Hoy, iPad | `ipad-hoy-despues.png` | `ipad-hoy-ax3-despues.png` (antes: `ipad-hoy-ax3-antes.png`) |
 | Plano de clase, iPad | `ipad-plano-normal.png` | `ipad-plano-ax3.png` |
 | Estadísticas de columna, iPad | `ipad-estadisticas-normal.png` | `ipad-estadisticas-ax3.png`, `ipad-estadisticas-tramos-ax3.png` |
@@ -32,6 +34,6 @@ Dispositivos: simulador iOS 27 (iPhone 17 Pro, iPad Air 11" M4) y la app de Mac 
 
 ## Lo que no se pudo capturar
 
-- Hojas del Cuaderno en iPhone: el menú contextual no se abrió con los gestos del simulador.
-- Hojas del Cuaderno en Mac: sin permiso de accesibilidad no se puede navegar la app de Mac desde la terminal.
+- Resto de hojas del Cuaderno en iPhone (estadísticas, inspector, evaluación masiva): se dejó el iPhone a petición del usuario, que no usa la app en iPhone.
+- Hojas del Cuaderno en Mac: la app de Mac aislada arranca en el Cuaderno, pero abrir una clase y sus hojas exige clics, y sin el permiso de Accesibilidad de macOS no se puede desde la terminal.
 - Estados forzados (error, Atención inventada) en Mac: el Mac usa su propia vista de Hoy, sin el parche.

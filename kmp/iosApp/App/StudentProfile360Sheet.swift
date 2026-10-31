@@ -180,7 +180,12 @@ struct StudentProfile360Sheet: View {
     // MARK: - Header Identity Bar
 
     private var headerIdentityBar: some View {
-        HStack(spacing: 14) {
+        // Con letra de accesibilidad avatar, datos y flechas no caben en una
+        // fila de iPhone ("3 ES O A"): se apilan.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 14))
+        return layout {
             // Avatar con iniciales y anillo de estado
             ZStack {
                 let isInjured = currentStudent?.isInjured ?? false
@@ -205,7 +210,7 @@ struct StudentProfile360Sheet: View {
                     Text(currentStudent?.fullName ?? "Alumno")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
                     if currentStudent?.isInjured == true {
                         HStack(spacing: 3) {
@@ -220,14 +225,19 @@ struct StudentProfile360Sheet: View {
                     }
                 }
 
-                HStack(spacing: 8) {
+                let detailLayout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                    : AnyLayout(HStackLayout(spacing: 8))
+                detailLayout {
                     Text(profile?.schoolClass?.name ?? "Grupo activo")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
 
                     if let index = currentStudentIndex {
-                        Text("•")
-                            .foregroundStyle(.tertiary)
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            Text("•")
+                                .foregroundStyle(.tertiary)
+                        }
                         Text("Alumno \(index + 1) de \(allStudents.count)")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -236,8 +246,10 @@ struct StudentProfile360Sheet: View {
                     if let cleanEmail = currentStudent?.email?.trimmingCharacters(in: .whitespacesAndNewlines),
                        !cleanEmail.isEmpty,
                        let emailUrl = URL(string: "mailto:\(cleanEmail)") ?? URL(string: "mailto:\(cleanEmail.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
-                        Text("•")
-                            .foregroundStyle(.tertiary)
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            Text("•")
+                                .foregroundStyle(.tertiary)
+                        }
                         Link(destination: emailUrl) {
                             HStack(spacing: 3) {
                                 Image(systemName: "envelope.fill")
@@ -249,7 +261,9 @@ struct StudentProfile360Sheet: View {
                 }
             }
 
-            Spacer(minLength: 8)
+            if !dynamicTypeSize.isAccessibilitySize {
+                Spacer(minLength: 8)
+            }
 
             // Controles de Carrusel (‹ Alumno anterior | Alumno siguiente ›)
             HStack(spacing: 8) {
@@ -290,6 +304,7 @@ struct StudentProfile360Sheet: View {
                 .help("Alumno siguiente (⌘→)")
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var tabPickerBar: some View {
@@ -343,32 +358,22 @@ struct StudentProfile360Sheet: View {
                         .foregroundStyle(.secondary)
 
                     let score = resolvedAverageScore
-                    HStack(alignment: .lastTextBaseline, spacing: 6) {
-                        Text(IosFormatting.decimal(from: score))
-                            .scaledSystemFont(size: 32, weight: .bold, design: .rounded)
-                            .foregroundStyle(gradeBandColor(for: score))
-                            .lineLimit(1)
-                            .fixedSize()
-
-                        Text("/ 10")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-
-                        Spacer()
-
-                        Text(lomloeGradeText(for: score))
-                            .font(.caption.weight(.bold))
-                            .lineLimit(1)
-                            .fixedSize()
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(gradeBandColor(for: score).opacity(0.14))
-                            .foregroundStyle(gradeBandColor(for: score))
-                            .clipShape(Capsule())
+                    // Si la tarjeta es estrecha (iPhone, dos tarjetas en fila) la
+                    // etiqueta baja bajo la nota; antes "/ 10" se partía en vertical.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .lastTextBaseline, spacing: 6) {
+                            averageScoreValue(score)
+                            Spacer(minLength: 6)
+                            averageGradeBadge(score)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            averageScoreValue(score)
+                            averageGradeBadge(score)
+                        }
                     }
                 }
                 .padding(14)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(NotebookGridStyle.gridLine, lineWidth: 1))
@@ -536,6 +541,31 @@ struct StudentProfile360Sheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(NotebookGridStyle.gridLine, lineWidth: 1))
         }
+    }
+
+    private func averageScoreValue(_ score: Double) -> some View {
+        HStack(alignment: .lastTextBaseline, spacing: 6) {
+            Text(IosFormatting.decimal(from: score))
+                .scaledSystemFont(size: 32, weight: .bold, design: .rounded)
+                .foregroundStyle(gradeBandColor(for: score))
+            Text("/ 10")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .lineLimit(1)
+        .fixedSize()
+    }
+
+    private func averageGradeBadge(_ score: Double) -> some View {
+        Text(lomloeGradeText(for: score))
+            .font(.caption.weight(.bold))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(gradeBandColor(for: score).opacity(0.14))
+            .foregroundStyle(gradeBandColor(for: score))
+            .clipShape(Capsule())
     }
 
     // MARK: - 2. Asistencia & Puntualidad

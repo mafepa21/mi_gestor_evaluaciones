@@ -33,6 +33,7 @@
 - Iconos o iniciales dentro de un `.frame(width:height:)` fijo llevan `.dynamicTypeSize(...DynamicTypeSize.xxxLarge)`: si se quita el tope, en AX3 se salen del marco.
 - Topes de Dynamic Type fuera del grid: la ficha de pupitre del plano (`.frame(width: 172, height: 142)`) no crece (`...large`); el panel del inspector (`NotebookInspectorPanel`) crece hasta `xxxLarge`. Si se quitan, en AX3 se parten palabras ("EN-TRAN", "Sin regis-").
 - Hojas con filas de tarjetas (estadísticas de columna, Ficha 360, plano de clase): con `dynamicTypeSize.isAccessibilitySize` pasan de fila a columna. Toda fila nueva de tarjetas debe hacer lo mismo.
+- Plano de clase: el lienzo nunca baja de `minimumCanvasWidth` (columnas × 188 + 120) y en pantallas estrechas se desplaza en horizontal. Si cambia el ancho de la ficha (172) o el reparto de `defaultSeatPositions`, ajustar ese mínimo. Las fichas no suben de y = 132 para no tapar la pizarra.
 - El grid tiene tope de Dynamic Type en AX2 (`NotebookDynamicType.gridRange`). La altura de fila escala con `notebookRowScale` y lleva el mismo tope a mano (1.95): si cambia uno, cambiar el otro.
 - El deslizamiento de asistencia en la celda Nombre no llega a VoiceOver: sus acciones están duplicadas como `accessibilityAction(named:)`. Toda acción nueva del deslizamiento debe añadirse también ahí.
 - Las cabeceras de columna usan `onTapGesture`; su lectura y su acción de VoiceOver están en `columnHeaderAccessibilityLabel` y en la `accessibilityAction` del mismo bloque.

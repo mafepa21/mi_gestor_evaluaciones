@@ -93,7 +93,18 @@ struct NotebookSeatingPlanView: View {
     var body: some View {
         VStack(spacing: 0) {
             toolbar
-            seatingCanvas
+            GeometryReader { proxy in
+                // Las fichas miden 172 pt y van en posiciones relativas: en un
+                // lienzo estrecho (iPhone) se montaban unas sobre otras. El
+                // lienzo nunca baja de lo que necesitan sus columnas y, si no
+                // cabe, se desplaza en horizontal.
+                let width = max(proxy.size.width, minimumCanvasWidth)
+                ScrollView(.horizontal, showsIndicators: width > proxy.size.width) {
+                    seatingCanvas
+                        .frame(width: width, height: proxy.size.height)
+                }
+                .scrollDisabled(width <= proxy.size.width)
+            }
         }
         .appOnChange(of: highlightedStudentId) { _ in
             isBannerDismissed = false
@@ -103,30 +114,39 @@ struct NotebookSeatingPlanView: View {
 
     // MARK: - Toolbar
 
-    /// Con letra de accesibilidad la fila no cabe: el título va arriba y los
-    /// botones debajo, solo con icono (VoiceOver sigue leyendo su texto).
+    /// Si la fila no cabe (iPhone, o letra de accesibilidad) el título va
+    /// arriba y los botones debajo, solo con icono (VoiceOver sigue leyendo su
+    /// texto). Antes, en iPhone, cada botón partía su texto letra a letra.
     private var toolbar: some View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 12) {
-                    toolbarTitle
+                stackedToolbar
+            } else {
+                ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) {
+                        toolbarTitle
+                        Spacer()
                         toolbarActions
                     }
-                    .labelStyle(.iconOnly)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                HStack(spacing: 12) {
-                    toolbarTitle
-                    Spacer()
-                    toolbarActions
+                    .fixedSize(horizontal: true, vertical: false)
+                    stackedToolbar
                 }
             }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
         .background(NotebookStyle.surface.opacity(0.92))
+    }
+
+    private var stackedToolbar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            toolbarTitle
+            HStack(spacing: 12) {
+                toolbarActions
+            }
+            .labelStyle(.iconOnly)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var toolbarTitle: some View {
@@ -239,6 +259,13 @@ struct NotebookSeatingPlanView: View {
 
     // MARK: - Seating Canvas
 
+    /// Columnas del reparto por defecto (`defaultSeatPositions`): al menos 3.
+    /// Cada ficha necesita su ancho (172) más aire; 120 de márgenes del lienzo.
+    private var minimumCanvasWidth: CGFloat {
+        let columns = max(3, Int(ceil(sqrt(Double(max(rows.count, 1))))))
+        return CGFloat(columns) * 188 + 120
+    }
+
     private var seatingCanvas: some View {
         GeometryReader { proxy in
             ZStack(alignment: .top) {
@@ -279,6 +306,9 @@ struct NotebookSeatingPlanView: View {
                         .stroke(Color.secondary.opacity(0.14), lineWidth: 1)
                 )
                 .padding(.top, 24)
+                // Es parte del lienzo, como las fichas: no crece con la letra
+                // o queda tapada por la primera fila de pupitres.
+                .dynamicTypeSize(...DynamicTypeSize.large)
 
                 // Dragging guide overlay
                 if draggingStudentId != nil {
@@ -327,7 +357,9 @@ struct NotebookSeatingPlanView: View {
                     )
                     .position(
                         x: max(96, min(proxy.size.width - 96, CGFloat(position.x) * proxy.size.width)),
-                        y: max(96, min(proxy.size.height - 96, CGFloat(position.y) * proxy.size.height))
+                        // 132: la primera fila queda bajo la etiqueta de la pizarra
+                        // (24 de margen + ~32 de etiqueta + media ficha de 71).
+                        y: max(132, min(proxy.size.height - 96, CGFloat(position.y) * proxy.size.height))
                     )
                     .zIndex(isDragging ? 2 : (highlightedStudentId == item.student.id ? 1 : 0))
                     #if os(macOS)

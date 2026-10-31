@@ -2,7 +2,7 @@
 
 Rama `codex/ui-legible`, 2026-10-30. Solo datos de prueba: la clase de ejemplo (más una rúbrica del catálogo de plantillas, creada en el simulador) que crea la app («3 ESO A», con Ana López y Pablo García). En Hoy, la clase de «Siguiente clase» y las tres filas de Atención son inventadas: las inyectó un parche temporal de capturas que **no está en la rama**.
 
-Dispositivos: simulador iOS 27 (iPhone 17 Pro, iPad Air 11" M4) y la app de Mac con una carpeta de usuario temporal (sin la base real). «AX3» = tamaño de texto Accesibilidad XL.
+Dispositivos: simulador iOS 27 (iPhone 17 Pro, iPad Air 11" M4) y la app de Mac con una carpeta de usuario temporal (sin la base real), manejada con el permiso de Accesibilidad. «AX3» = tamaño de texto Accesibilidad XL.
 
 ## Las 6 mejoras HIG del Dashboard
 
@@ -32,9 +32,14 @@ Dispositivos: simulador iOS 27 (iPhone 17 Pro, iPad Air 11" M4) y la app de Mac 
 | Tarjetas del shell (Evaluación), iPad | `ipad-evaluacion-normal.png` | `ipad-evaluacion-ax3.png` |
 | Menú lateral, iPad | — | `ipad-menu-lateral-ax3.png` |
 | Hoy, Mac | `mac-hoy-despues.png` (antes: `mac-hoy-antes.png`) | No aplica: macOS no tiene Dynamic Type. |
+| Cuaderno, Mac | `mac-cuaderno.png` | No aplica |
+| Estadísticas de columna, Mac | `mac-estadisticas.png` | No aplica |
+| Plano de clase, Mac | `mac-plano.png` | No aplica |
+| Inspector de alumno, Mac | `mac-inspector.png` | No aplica |
+| Ficha 360, Mac | `mac-ficha360.png` | No aplica |
+| Evaluación masiva de rúbricas, Mac | `mac-rubricas-masiva.png` | No aplica |
 
 ## Lo que no se pudo capturar
 
-- Resto de hojas del Cuaderno en iPhone (estadísticas, inspector, evaluación masiva): se dejó el iPhone a petición del usuario, que no usa la app en iPhone.
-- Hojas del Cuaderno en Mac: la app de Mac aislada arranca en el Cuaderno, pero abrir una clase y sus hojas exige clics, y sin el permiso de Accesibilidad de macOS no se puede desde la terminal.
+- Resto de hojas del Cuaderno en iPhone (estadísticas, inspector, evaluación masiva): el usuario pidió centrarse en iPad y Mac, porque no usa la app en iPhone; el simulador de iPhone se borró.
 - Estados forzados (error, Atención inventada) en Mac: el Mac usa su propia vista de Hoy, sin el parche.

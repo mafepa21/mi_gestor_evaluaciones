@@ -152,7 +152,11 @@ struct StudentProfile360Sheet: View {
                         copy360Summary()
                     } label: {
                         Label("Copiar resumen", systemImage: showCopiedAlert ? "checkmark.circle.fill" : "doc.on.doc")
+                            // En Mac la acción principal se pinta como botón azul:
+                            // texto azul encima quedaba invisible. El sistema elige.
+                            #if os(iOS)
                             .foregroundStyle(showCopiedAlert ? Color.green : Color.accentColor)
+                            #endif
                     }
                     .help("Copiar informe estructurado al portapapeles")
                 }

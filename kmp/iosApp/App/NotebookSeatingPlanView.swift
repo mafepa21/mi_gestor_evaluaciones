@@ -128,7 +128,6 @@ struct NotebookSeatingPlanView: View {
                         Spacer()
                         toolbarActions
                     }
-                    .fixedSize(horizontal: true, vertical: false)
                     stackedToolbar
                 }
             }

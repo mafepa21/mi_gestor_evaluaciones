@@ -80,7 +80,7 @@ struct LearningSituationTournamentsSection: View {
             ) { created in
                 model.upsert(created)
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .confirmationDialog(
             "¿Borrar «\(deleteTarget.flatMap { model.record(id: $0.id)?.name } ?? "este torneo")»?",

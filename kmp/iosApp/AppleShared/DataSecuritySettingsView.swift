@@ -51,7 +51,7 @@ struct DataSecuritySettingsView: View {
             Section {
                 NavigationLink {
                     SettingsDangerZoneView(settings: settings)
-                        .environmentObject(bridge)
+                        .kmpBridgeEnvironment(bridge)
                 } label: {
                     Text("Zona de riesgo")
                         .foregroundStyle(.red)

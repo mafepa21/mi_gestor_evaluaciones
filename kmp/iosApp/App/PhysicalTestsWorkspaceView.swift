@@ -419,7 +419,7 @@ struct PhysicalTestsWorkspaceView: View {
                 PhysicalTestCreationSheet(defaultClassId: selectedClassId, templates: PhysicalTestTemplate.defaults) {
                     Task { await reload() }
                 }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
             .sheet(isPresented: $showingCapture) {
                 if let selectedClassId, let selectedTest, let activeAssignment {

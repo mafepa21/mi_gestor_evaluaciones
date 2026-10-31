@@ -253,7 +253,7 @@ struct MacRubricsView: View {
         }
         .sheet(isPresented: $showingBuilder) {
             RubricsBuilderScreen()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
                 .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
         }
         .fileImporter(
@@ -289,7 +289,7 @@ struct MacRubricsView: View {
             )
         ) {
             AssignRubricToTabView()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
         .sheet(
             isPresented: Binding(
@@ -302,12 +302,12 @@ struct MacRubricsView: View {
             )
         ) {
             RubricBulkEvaluationSheet(bridge: bridge)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
                 .frame(minWidth: 900, idealWidth: 1180, minHeight: 600, idealHeight: 760)
         }
         .sheet(isPresented: $showingTemplateCatalog) {
             RubricTemplateCatalogSheet(targetClassId: selectedFilterClassId)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
     }
 

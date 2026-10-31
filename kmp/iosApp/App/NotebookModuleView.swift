@@ -1593,7 +1593,7 @@ struct NotebookModuleView: View {
                     }
                 )) {
                     RubricEvaluationView()
-                        .environmentObject(bridge)
+                        .kmpBridgeEnvironment(bridge)
                         #if os(macOS)
                         .frame(minWidth: 1180, minHeight: 700)
                         #endif

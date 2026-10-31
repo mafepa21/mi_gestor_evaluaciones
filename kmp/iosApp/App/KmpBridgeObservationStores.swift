@@ -325,6 +325,65 @@ extension EnvironmentValues {
     }
 }
 
+extension View {
+    /// Pone el bridge en el entorno de las dos formas: como objeto observado (vistas
+    /// que aún usan `@EnvironmentObject`) y como referencia sin suscripción
+    /// (`kmpBridgeReference`). Las ventanas y hojas de Mac solo recibían la primera.
+    func kmpBridgeEnvironment(_ bridge: KmpBridge) -> some View {
+        environmentObject(bridge)
+            .environment(\.kmpBridgeReference, bridge)
+    }
+}
+
+/// Redibuja una vista solo cuando cambian los valores del bridge que ella lee.
+/// Uso: `@StateObject private var bridgeWatch = KmpBridgeWatch()` y
+/// `var bridge: KmpBridge { bridgeWatch.bridge(bridgeReference) { [.init($0.classes)] } }`.
+/// Con `@EnvironmentObject` la vista se recalculaba con cualquier cambio del bridge
+/// (una nota guardándose, el estado de SyncLAN cada pocos segundos).
+@MainActor
+final class KmpBridgeWatch: ObservableObject {
+    /// Valor vigilado: cualquier `Equatable` (los tipos Kotlin comparan con `isEqual`).
+    struct Value: Equatable {
+        private let base: Any
+        private let isEqualTo: (Any) -> Bool
+
+        init<T: Equatable>(_ value: T) {
+            base = value
+            isEqualTo = { ($0 as? T) == value }
+        }
+
+        static func == (lhs: Value, rhs: Value) -> Bool {
+            lhs.isEqualTo(rhs.base)
+        }
+    }
+
+    private var cancellable: AnyCancellable?
+    private var lastValues: [Value] = []
+
+    /// Devuelve el bridge y, la primera vez, empieza a vigilar `select`.
+    /// No publica nada al suscribirse: se puede llamar dentro de `body`.
+    func bridge(_ bridge: KmpBridge?, watching select: @escaping (KmpBridge) -> [Value]) -> KmpBridge {
+        guard let bridge else {
+            preconditionFailure("Falta kmpBridgeReference en el entorno (usa kmpBridgeEnvironment)")
+        }
+        if cancellable == nil {
+            lastValues = select(bridge)
+            cancellable = bridge.objectWillChange
+                // `objectWillChange` llega antes del cambio: se lee en la vuelta siguiente,
+                // y varios cambios seguidos cuentan como uno.
+                .debounce(for: .zero, scheduler: DispatchQueue.main)
+                .sink { [weak self, weak bridge] _ in
+                    guard let self, let bridge else { return }
+                    let values = select(bridge)
+                    guard values != self.lastValues else { return }
+                    self.lastValues = values
+                    self.objectWillChange.send()
+                }
+        }
+        return bridge
+    }
+}
+
 /// Lo último que enseñó cada pantalla que guarda sus datos en `@State`. Al cambiar
 /// de pantalla, la vista se destruye (`.id(activeModule)`); al volver arranca con
 /// esto y refresca por detrás, sin pantalla vacía ni ruedita. Va ligada a una

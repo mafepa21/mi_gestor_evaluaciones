@@ -29,7 +29,7 @@ struct CoursesWorkspaceView: View {
                         Task { await saveClassDraft(draft) }
                     }
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
             .sheet(isPresented: $showingSubjectCatalog) {
                 SubjectCatalogSheet(
@@ -40,7 +40,7 @@ struct CoursesWorkspaceView: View {
                         Task { await deleteSubject(subject) }
                     }
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
             .sheet(item: $archivedYearDetail) { year in
                 ArchivedAcademicYearDetailSheet(
@@ -49,7 +49,7 @@ struct CoursesWorkspaceView: View {
                         pendingDeleteAcademicYear = year
                     }
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
             .sheet(isPresented: $showingAcademicYearWizard) {
                 AcademicYearWizardSheet(

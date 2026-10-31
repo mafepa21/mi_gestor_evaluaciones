@@ -44,7 +44,7 @@ struct SettingsDangerZoneView: View {
         }
         .sheet(isPresented: $showingSelectiveWipeSheet) {
             SelectiveWipeSheet()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
         .navigationTitle("Zona de Riesgo")
         .confirmationDialog(

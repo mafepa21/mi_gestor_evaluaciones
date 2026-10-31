@@ -397,7 +397,7 @@ struct EFIncidentsWorkspaceView: View {
                 persistItems(metadata, forKey: peIncidentMetadataStorageKey)
                 Task { await reload() }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .sheet(
             isPresented: Binding(
@@ -830,14 +830,14 @@ struct PESessionsWorkspaceView: View {
             CreatePESessionSheet(defaultClassId: selectedClassId) {
                 Task { await reload() }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .sheet(isPresented: $showingOperationalSheet) {
             if let selectedSession {
                 EditPESessionOperationalSheet(snapshot: selectedSession) {
                     Task { await reload() }
                 }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .appOnChange(of: selectedClassId) { _ in
@@ -1094,7 +1094,7 @@ struct PEMaterialWorkspaceView: View {
                 selectedRecordId = record.id
                 Task { await reload() }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .sheet(
             isPresented: Binding(
@@ -1110,7 +1110,7 @@ struct PEMaterialWorkspaceView: View {
                     selectedRecordId = record.id
                     Task { await reload() }
                 }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .appOnChange(of: selectedClassId) { _ in

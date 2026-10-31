@@ -136,7 +136,7 @@ struct TournamentsWorkspaceView: View {
                     onPick: { pendingTarget = $0 },
                     onOpenSituations: { onOpenModule(.situations, classId, nil) }
                 )
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .confirmationDialog("Nuevo torneo", isPresented: $isChoosingNewKind, titleVisibility: .visible) {
@@ -151,7 +151,7 @@ struct TournamentsWorkspaceView: View {
                 SdaNewRegistrationTournamentSheet(classId: classId, className: className ?? "este curso") { created in
                     handleCreated(created)
                 }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .sheet(item: $newTournament) { target in
@@ -163,7 +163,7 @@ struct TournamentsWorkspaceView: View {
             ) { created in
                 handleCreated(created)
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
     }
 
@@ -452,7 +452,7 @@ struct TournamentsWorkspaceView: View {
                     deleteRequest: detailDeleteRequest
                 )
                 .id(record.id)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             } else if selectedClassId != nil, model.phase == .ready, model.records.isEmpty {
                 emptyState
             } else if selectedClassId == nil {

@@ -78,7 +78,7 @@ struct OnboardingHostModifier: ViewModifier {
                 startWithImport: startWithImport,
                 onFinished: { returnToChecklist() }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
     }
 

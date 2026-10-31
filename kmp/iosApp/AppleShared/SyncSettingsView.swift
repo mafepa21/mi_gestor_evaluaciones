@@ -28,7 +28,7 @@ struct SyncSettingsView: View {
         #else
         // iOS: nueva vista estructurada por secciones
         SyncLanView(settings: settings)
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         #endif
     }
 }

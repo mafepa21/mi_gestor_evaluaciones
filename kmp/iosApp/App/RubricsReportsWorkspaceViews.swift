@@ -399,7 +399,7 @@ struct RubricsWorkspaceView: View {
             )
         ) {
             AssignRubricToTabView()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
     }
 
@@ -887,7 +887,7 @@ struct ReportsWorkspaceView: View {
         }
         .sheet(isPresented: $isWeeklyEmailSheetPresented) {
             WeeklyStudentEmailWorkspaceView(classId: selectedClassId)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
         .sheet(isPresented: $isReportPreviewPresented) {
             AppleAIPreviewSheet(

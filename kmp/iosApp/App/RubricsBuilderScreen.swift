@@ -24,7 +24,7 @@ struct RubricsBuilderScreen: View {
                             selectedClassId: selectedClassBinding,
                             selectedTeachingUnitId: selectedTeachingUnitBinding
                         )
-                        .environmentObject(bridge)
+                        .kmpBridgeEnvironment(bridge)
 
                         NotebookSurface(cornerRadius: RubricsStyle.cardRadius, fill: NotebookStyle.surfaceMuted, padding: 16) {
                             VStack(alignment: .leading, spacing: 8) {
@@ -55,7 +55,7 @@ struct RubricsBuilderScreen: View {
                                 }
 
                                 RubricBuilderGridView(state: state)
-                                    .environmentObject(bridge)
+                                    .kmpBridgeEnvironment(bridge)
                                     .frame(maxHeight: .infinity)
                             }
                         }

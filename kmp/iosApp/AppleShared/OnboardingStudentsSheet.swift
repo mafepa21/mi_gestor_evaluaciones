@@ -58,7 +58,7 @@ struct OnboardingStudentsSheet: View {
         }
         .sheet(item: $preview) { preview in
             StudentImportSheet(preview: preview)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
                 #if os(macOS)
                 .frame(minWidth: 720, minHeight: 620)
                 #endif

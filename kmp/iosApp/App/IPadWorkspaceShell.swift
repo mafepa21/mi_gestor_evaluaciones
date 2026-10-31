@@ -2443,7 +2443,9 @@ struct WorkspaceEmptyState: View {
 
 
 struct EditPESessionOperationalSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) var dismiss
     let snapshot: KmpBridge.PESessionSnapshot
     let onDismiss: () -> Void

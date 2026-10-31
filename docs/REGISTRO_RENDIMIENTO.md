@@ -60,22 +60,22 @@ menú del Cuaderno. Medianas en ms.
 | Medida | Antes | Después | Muestras |
 |---|---|---|---|
 | Arranque hasta Hoy visible | 315 (rango 288-473) | 311 (rango 280-329, más un caso de 3 s) | 20 + 20 arranques alternos |
-| Cambio de módulo: Hoy | 160 | 160 | 12 + 12 |
-| Cambio de módulo: Asistencia | 219 | 214 | 12 + 12 |
-| Cambio de módulo: Cuaderno | 245 (máx. 461) | 112 (máx. 280) | 12 + 12 |
-| Cambio de módulo: Pruebas físicas | 98 | 98 | 12 + 12 |
+| Cambio de módulo: Hoy | 162 | 161 | 24 + 24, dos tandas alternas |
+| Cambio de módulo: Asistencia | 230 | 228 | 24 + 24 |
+| Cambio de módulo: Cuaderno | 249 | 112 | 24 + 24 |
+| Cambio de módulo: Pruebas físicas | 100 | 100 | 24 + 24 |
 | Cambio de grupo del Cuaderno (a mano) | 240 | 97 | 19 + 19 (recorrido) |
-| Abrir EF (primera carga) | 122 (media 121,7) | 124 (media 118,9) | 36 + 35 (tres tandas); sin diferencia (Mann-Whitney p = 0,74) |
+| Abrir EF (primera carga) | 128 | 126 | 23 + 24 |
 | «Pantalla congelada» en 5 min por Hoy, Cuaderno, Asistencia, Planner y EF | 1 (413 ms) | 0 | 1 recorrido antes, 3 después (cada uno: 47 cambios de pantalla y 19 de grupo) |
 
 - El arranque y Hoy quedan igual o algo mejor. En una primera versión el arranque salía 6 ms peor
   (276 → 282): la señal de «datos listos» del Cuaderno también adelantaba la carga inicial y
   competía con el primer pintado de Hoy. Ahora solo actúa al pasar de un grupo a otro.
-- EF: juntando tres tandas no hay diferencia medible (mediana +2 ms, media −2,8 ms, p = 0,74).
-  El cambio de pantalla a EF pasa de 100 a 99 ms (p = 0,28). Lo que sí cambia: las consultas van
-  en `Dispatchers.Default` y la pantalla ya no se bloquea mientras carga.
-- Asistencia (213 frente a 221 ms, p < 0,01) y Cuaderno (112 frente a 245 ms, p < 0,01) mejoran
-  de forma clara; Hoy queda igual (159 y 159, p = 1,0).
+- EF: en Mac la pantalla se abre sin grupo elegido, así que «primera carga» mide sobre todo
+  el pintado de la pantalla. Mejora al dejar de observar el bridge entero en
+  `MacPhysicalTestsView`. Con grupo, las consultas van en `Dispatchers.Default` y ya no bloquean.
+- Solo el Cuaderno cambia de forma clara (p < 0,001). En el resto, las diferencias de 1-2 ms
+  cambian de signo de una tanda a otra: son ruido entre ejecuciones.
 - Los casos sueltos de unos 3 s al arrancar salen en las dos versiones (primer arranque tras
   copiar la base).
 - La congelación de antes era siempre la primera apertura del Cuaderno (unos 470 ms

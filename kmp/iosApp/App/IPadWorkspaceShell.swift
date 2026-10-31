@@ -901,17 +901,17 @@ struct AppWorkspaceShell: View {
                     CreateCourseSheet {
                         activeWorkspaceSheet = nil
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 case .student:
                     CreateStudentSheet(defaultClassId: selectedClassId) {
                         activeWorkspaceSheet = nil
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 case .evaluation:
                     CreateEvaluationSheet(defaultClassId: selectedClassId) {
                         activeWorkspaceSheet = nil
                     }
-                    .environmentObject(bridge)
+                    .kmpBridgeEnvironment(bridge)
                 }
             case .contextualAI(let state):
                 contextualAISheet(state)
@@ -928,7 +928,7 @@ struct AppWorkspaceShell: View {
         }
         .appFullScreenCover(isPresented: $showingRubricBuilder) {
             RubricsBuilderScreen()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
 #if os(macOS)
                 .frame(minWidth: 1_120, idealWidth: 1_280, maxWidth: 1_600, minHeight: 720, idealHeight: 900)
 #endif
@@ -2443,7 +2443,9 @@ struct WorkspaceEmptyState: View {
 
 
 struct EditPESessionOperationalSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) var dismiss
     let snapshot: KmpBridge.PESessionSnapshot
     let onDismiss: () -> Void

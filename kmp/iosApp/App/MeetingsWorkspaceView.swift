@@ -51,11 +51,11 @@ struct MeetingsWorkspaceView: View {
         .reloadOnLanSync(.meetings) { await reload() }
         .sheet(isPresented: $showMeetingSheet) {
             MeetingFormSheet(existingMeeting: nil) { _ in Task { await reload() } }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
         .sheet(item: $editingMeeting) { meeting in
             MeetingFormSheet(existingMeeting: meeting) { _ in Task { await reload() } }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
         .confirmationDialog(
             "¿Borrar esta reunión?",
@@ -269,13 +269,13 @@ private struct MeetingDetailScreen: View {
             MeetingAgreementFormSheet(meetingId: meetingId, existingAgreement: nil) {
                 Task { await reload() }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .sheet(item: $editingAgreement) { agreement in
             MeetingAgreementFormSheet(meetingId: meetingId, existingAgreement: agreement) {
                 Task { await reload() }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .confirmationDialog(
             "¿Borrar este acuerdo?",

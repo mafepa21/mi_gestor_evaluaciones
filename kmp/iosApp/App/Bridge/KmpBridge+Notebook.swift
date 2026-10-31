@@ -23,8 +23,44 @@ extension KmpBridge {
         // estado nuevo y la medida quedaría abierta.
         if currentNotebookClassId != id {
             PerfLog.begin("Cuaderno: cambio de grupo")
+            // Solo al pasar de un grupo a otro. En la carga inicial (al arrancar) se deja
+            // el camino de siempre: adelantarla competía con el primer pintado de Hoy.
+            if notebookState is NotebookUiStateData {
+                publishNotebookDataWhenReady(classId: id)
+            }
         }
         notebookViewModel.selectClass(classId: id, force: true)
+    }
+
+    /// Una sola espera a la vez: un cambio de grupo nuevo descarta la anterior.
+    private static var notebookReadySubscription: AnyCancellable?
+
+    /// Señal real de «datos listos» al cambiar de grupo: en cuanto llegan las filas
+    /// del grupo nuevo, se publica su estado sin esperar los 150 ms del debounce de
+    /// `notebookStateSubject` (pensado para no redibujar mientras se escribe en una celda).
+    /// El debounce sigue igual para el resto de cambios; cuando llegue, publica el mismo estado.
+    private func publishNotebookDataWhenReady(classId: Int64) {
+        Self.notebookReadySubscription = $notebookRowsState
+            // `$` avisa antes de guardar el valor: se lee en la vuelta siguiente.
+            .receive(on: RunLoop.main)
+            .first { [weak self] rows in
+                (rows.classId?.int64Value == classId && !rows.isLoading)
+                    || self?.currentNotebookClassId != classId
+            }
+            .timeout(.seconds(5), scheduler: RunLoop.main)
+            .sink(
+                receiveCompletion: { _ in Self.notebookReadySubscription = nil },
+                receiveValue: { [weak self] _ in
+                    guard let self,
+                          self.currentNotebookClassId == classId,
+                          let data = self.notebookViewModel.state.value as? NotebookUiStateData,
+                          data.sheet.classId == classId,
+                          (self.notebookState as? NotebookUiStateData)?.sheet.classId != classId
+                    else { return }
+                    self.notebookState = data
+                    self.invalidateNotebookCellValueIndexCache()
+                }
+            )
     }
 
     var currentNotebookClassId: Int64? {

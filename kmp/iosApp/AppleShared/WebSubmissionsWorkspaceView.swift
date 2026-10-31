@@ -11,7 +11,13 @@ import AppKit
 /// conservan las correspondencias privadas y se importan lotes. La pantalla ya
 /// no depende de un único grupo ni del formulario más reciente.
 struct WebSubmissionsWorkspaceView: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (allStudents, classes, selectedStudentsClassId),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    private var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.allStudents), .init($0.classes), .init($0.selectedStudentsClassId)] }
+    }
 
     @AppStorage("webSubmissions.baseURL") private var baseURL = "https://projectosef.alwaysdata.net"
     @AppStorage("webSubmissions.deliveryEmail") private var deliveryEmail = ""

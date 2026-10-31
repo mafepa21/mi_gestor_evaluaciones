@@ -19,14 +19,16 @@ import com.migestor.shared.domain.StudentSex
 import com.migestor.shared.domain.normalizedStudentSex
 import com.migestor.shared.repository.PhysicalTestHistoryPoint
 import com.migestor.shared.repository.PhysicalTestsRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 
 class PhysicalTestsRepositorySqlDelight(
     private val db: AppDatabase,
 ) : PhysicalTestsRepository {
-    override suspend fun listDefinitions(): List<PhysicalTestDefinition> {
-        return db.appDatabaseQueries.selectPhysicalDefinitions().executeAsList().map { row ->
+    override suspend fun listDefinitions(): List<PhysicalTestDefinition> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPhysicalDefinitions().executeAsList().map { row ->
             PhysicalTestDefinition(
                 id = row.id,
                 name = row.name,
@@ -43,7 +45,7 @@ class PhysicalTestsRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveDefinition(definition: PhysicalTestDefinition) {
+    override suspend fun saveDefinition(definition: PhysicalTestDefinition): Unit = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.upsertPhysicalDefinition(
             id = definition.id,
             name = definition.name,
@@ -62,8 +64,8 @@ class PhysicalTestsRepositorySqlDelight(
         )
     }
 
-    override suspend fun listBatteries(): List<PhysicalTestBattery> {
-        return db.appDatabaseQueries.selectPhysicalBatteries().executeAsList().map { row ->
+    override suspend fun listBatteries(): List<PhysicalTestBattery> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPhysicalBatteries().executeAsList().map { row ->
             val items = db.appDatabaseQueries.selectPhysicalBatteryItems(row.id).executeAsList()
             PhysicalTestBattery(
                 id = row.id,
@@ -78,7 +80,7 @@ class PhysicalTestsRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveBattery(battery: PhysicalTestBattery) {
+    override suspend fun saveBattery(battery: PhysicalTestBattery): Unit = withContext(Dispatchers.Default) {
         db.transaction {
             db.appDatabaseQueries.upsertPhysicalBattery(
                 id = battery.id,
@@ -106,7 +108,7 @@ class PhysicalTestsRepositorySqlDelight(
         }
     }
 
-    override suspend fun assignBatteryToClass(assignment: PhysicalTestAssignment) {
+    override suspend fun assignBatteryToClass(assignment: PhysicalTestAssignment): Unit = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.upsertPhysicalAssignment(
             id = assignment.id,
             battery_id = assignment.batteryId,
@@ -125,8 +127,8 @@ class PhysicalTestsRepositorySqlDelight(
         )
     }
 
-    override suspend fun listAssignmentsForClass(classId: Long): List<PhysicalTestAssignment> {
-        return db.appDatabaseQueries.selectPhysicalAssignmentsForClass(classId).executeAsList().map { row ->
+    override suspend fun listAssignmentsForClass(classId: Long): List<PhysicalTestAssignment> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPhysicalAssignmentsForClass(classId).executeAsList().map { row ->
             PhysicalTestAssignment(
                 id = row.id,
                 batteryId = row.battery_id,
@@ -143,8 +145,8 @@ class PhysicalTestsRepositorySqlDelight(
         }
     }
 
-    override suspend fun listScalesForTest(testId: String): List<PhysicalTestScale> {
-        return db.appDatabaseQueries.selectPhysicalScalesForTest(testId).executeAsList().map { row ->
+    override suspend fun listScalesForTest(testId: String): List<PhysicalTestScale> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPhysicalScalesForTest(testId).executeAsList().map { row ->
             PhysicalTestScale(
                 id = row.id,
                 testId = row.test_id,
@@ -173,7 +175,7 @@ class PhysicalTestsRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveScale(scale: PhysicalTestScale) {
+    override suspend fun saveScale(scale: PhysicalTestScale): Unit = withContext(Dispatchers.Default) {
         db.transaction {
             db.appDatabaseQueries.upsertPhysicalScale(
                 id = scale.id,
@@ -216,7 +218,7 @@ class PhysicalTestsRepositorySqlDelight(
         age: Int?,
         sex: String?,
         batteryId: String?,
-    ): PhysicalTestScale? {
+    ): PhysicalTestScale? = withContext(Dispatchers.Default) {
         val scales = listScalesForTest(testId)
         val requestedSex = normalizedStudentSex(sex)
         val sexMatches: (PhysicalTestScale) -> Boolean = { scale ->
@@ -236,7 +238,7 @@ class PhysicalTestsRepositorySqlDelight(
             }
                 ?: firstOrNull()
         }
-        return scales.filter { scale ->
+        scales.filter { scale ->
             scale.testId == testId &&
                 scale.batteryId == batteryId &&
                 scale.course == course &&
@@ -270,7 +272,7 @@ class PhysicalTestsRepositorySqlDelight(
         }.bestSexMatch()
     }
 
-    override suspend fun saveNotebookLink(link: PhysicalTestNotebookLink) {
+    override suspend fun saveNotebookLink(link: PhysicalTestNotebookLink): Unit = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.upsertPhysicalNotebookLink(
             assignment_id = link.assignmentId,
             test_id = link.testId,
@@ -282,8 +284,8 @@ class PhysicalTestsRepositorySqlDelight(
         )
     }
 
-    override suspend fun listNotebookLinksForAssignment(assignmentId: String): List<PhysicalTestNotebookLink> {
-        return db.appDatabaseQueries.selectPhysicalNotebookLinksForAssignment(assignmentId).executeAsList().map { row ->
+    override suspend fun listNotebookLinksForAssignment(assignmentId: String): List<PhysicalTestNotebookLink> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPhysicalNotebookLinksForAssignment(assignmentId).executeAsList().map { row ->
             PhysicalTestNotebookLink(
                 assignmentId = row.assignment_id,
                 testId = row.test_id,
@@ -298,7 +300,7 @@ class PhysicalTestsRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveResult(result: PhysicalTestResult, attempts: List<PhysicalTestAttempt>) {
+    override suspend fun saveResult(result: PhysicalTestResult, attempts: List<PhysicalTestAttempt>): Unit = withContext(Dispatchers.Default) {
         db.transaction {
             db.appDatabaseQueries.upsertPhysicalResult(
                 id = result.id,
@@ -334,8 +336,8 @@ class PhysicalTestsRepositorySqlDelight(
         }
     }
 
-    override suspend fun listResultsForAssignment(assignmentId: String): List<PhysicalTestResult> {
-        return db.appDatabaseQueries.selectPhysicalResultsForAssignment(assignmentId).executeAsList().map { row ->
+    override suspend fun listResultsForAssignment(assignmentId: String): List<PhysicalTestResult> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPhysicalResultsForAssignment(assignmentId).executeAsList().map { row ->
             PhysicalTestResult(
                 id = row.id,
                 assignmentId = row.assignment_id,
@@ -354,8 +356,8 @@ class PhysicalTestsRepositorySqlDelight(
         }
     }
 
-    override suspend fun listResultsForStudent(studentId: Long, testId: String): List<PhysicalTestResult> {
-        return db.appDatabaseQueries.selectPhysicalResultsForStudentAndTest(studentId, testId).executeAsList().map { row ->
+    override suspend fun listResultsForStudent(studentId: Long, testId: String): List<PhysicalTestResult> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPhysicalResultsForStudentAndTest(studentId, testId).executeAsList().map { row ->
             PhysicalTestResult(
                 id = row.id,
                 assignmentId = row.assignment_id,
@@ -374,8 +376,8 @@ class PhysicalTestsRepositorySqlDelight(
         }
     }
 
-    override suspend fun listPhysicalTestHistoryForStudent(studentId: Long): List<PhysicalTestHistoryPoint> {
-        return db.appDatabaseQueries.selectPhysicalTestHistoryForStudent(studentId).executeAsList().map { row ->
+    override suspend fun listPhysicalTestHistoryForStudent(studentId: Long): List<PhysicalTestHistoryPoint> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPhysicalTestHistoryForStudent(studentId).executeAsList().map { row ->
             PhysicalTestHistoryPoint(
                 resultId = row.result_id,
                 testId = row.test_id,

@@ -2,7 +2,9 @@ import SwiftUI
 
 struct DataSecuritySettingsView: View {
     @ObservedObject var settings: AppSettingsStore
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @StateObject private var backupService = AppleBackupService.shared
 
     @State private var showingCreateSheet = false
@@ -51,7 +53,7 @@ struct DataSecuritySettingsView: View {
             Section {
                 NavigationLink {
                     SettingsDangerZoneView(settings: settings)
-                        .environmentObject(bridge)
+                        .kmpBridgeEnvironment(bridge)
                 } label: {
                     Text("Zona de riesgo")
                         .foregroundStyle(.red)

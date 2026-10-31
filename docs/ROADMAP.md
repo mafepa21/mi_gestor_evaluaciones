@@ -36,6 +36,7 @@ Prioridad: alta.
   Avance: las notas sueltas ya no se pintan de rojo, ámbar o verde. El color de banda, si se enciende, queda solo en la Media.
   Avance: «Revisar cierre» lista los huecos del grupo antes de poner notas y lleva a cada celda. Siguiente paso: enlazarlo con la exportación a Educamos.
   Avance: en columnas numéricas, un texto que no es nota («8,5a») ya no se queda pintado sin guardarse: la celda vuelve a la nota anterior y avisa; al pegar se saltan los inválidos.
+  Avance (2026-10-31): el cambio de grupo publica los datos en cuanto llegan (226 → 108 ms en Mac Debug) y la primera apertura ya no congela la pantalla (montaje en tres vueltas). Ninguna vista observa ya el bridge entero (62 → 0). Pendiente: recortar los repintados de `MacRootView` al cambiar de módulo (la primera vuelta del Cuaderno ronda 270 ms en Debug) y medir en iPad.
 - Rubricas: evaluacion fiable, integracion con cuaderno e informes.
   Pendiente: los quizzes no se autocorrigen. `QuizQuestionDraft` importa pregunta y opciones pero no la respuesta correcta, y `saveResponses` solo deriva nota para la rejilla de observacion 1-4 y la checklist proporcional. Faltan clave de respuestas, contrato de autoria en el DOCX, puntuacion por pregunta, versionado de la clave y derivacion local verificable. Detalle en `docs/importacion_documentos_sa.md`.
 - Asistencia: flujo diario rapido y consistente.

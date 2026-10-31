@@ -146,6 +146,10 @@ struct NotebookModuleView: View {
     @State var isPrecomputingRiskLevels = false
     @AppStorage("notebook.fixedZoneWidth") var fixedZoneWidthStored = 240.0
     @State var isDraggingFixedZoneDivider = false
+    /// La tabla se monta en la vuelta siguiente a la del resto del Cuaderno: así la
+    /// primera apertura no bloquea la pantalla de un tirón (y las filas, otra vuelta
+    /// después, ver `NotebookScrollSyncCoordinator.install`).
+    @State var isGridMounted = false
     @State var fixedZoneDragStartWidth: CGFloat = 0
     @State var fixedZoneLiveWidth: CGFloat? = nil
     @State var formulaEditRequest: NotebookFormulaEditRequest? = nil
@@ -506,7 +510,18 @@ struct NotebookModuleView: View {
                         }
                     )
                 }
-                spreadsheetContent(data: data, rows: rows)
+                Group {
+                    if isGridMounted {
+                        spreadsheetContent(data: data, rows: rows)
+                    } else {
+                        Color.clear
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .onAppear {
+                                // `.task` arrancaría en la misma vuelta: hace falta la cola principal.
+                                DispatchQueue.main.async { isGridMounted = true }
+                            }
+                    }
+                }
                     // Tarjeta elevada: el grid flota como superficie redondeada
                     // sobre el lienzo neutro del módulo (margen a los lados y
                     // abajo), en vez de ir a sangre completa. Es lo que da el aire
@@ -1593,7 +1608,7 @@ struct NotebookModuleView: View {
                     }
                 )) {
                     RubricEvaluationView()
-                        .environmentObject(bridge)
+                        .kmpBridgeEnvironment(bridge)
                         #if os(macOS)
                         .frame(minWidth: 1180, minHeight: 700)
                         #endif

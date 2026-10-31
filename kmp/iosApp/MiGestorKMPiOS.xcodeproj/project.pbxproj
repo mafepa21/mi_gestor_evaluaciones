@@ -45,6 +45,7 @@
 		0B321F473C8EBDDB290ED548 /* PhysicalScaleSpreadsheetImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22447905F7FB345D13F85D52 /* PhysicalScaleSpreadsheetImport.swift */; };
 		0B33E01BA1D995654A80EA9C /* SettingsDangerZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0998A4D4BC5E85BB92250336 /* SettingsDangerZoneView.swift */; };
 		0B3B32F606E1E6961B27FFB9 /* AppleBackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E44007C231E03029435B056F /* AppleBackupService.swift */; };
+		0B76889311EC1A92AA95496C /* KmpBridgeWatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19F8CDBBBF2E11474BA08A78 /* KmpBridgeWatchTests.swift */; };
 		0BC22D63E601A057D766AC00 /* NotebookGridStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B3BE9F44CA518C26426C79 /* NotebookGridStyle.swift */; };
 		0C50A236D283D0BC9C3E712F /* TeacherRadarCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DB5D8A7B19B0874750549A0 /* TeacherRadarCard.swift */; };
 		0C6049F67B350372D4B74708 /* AppleEncryptedBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 587E2F96ED1EDE5BB288D186 /* AppleEncryptedBackup.swift */; };
@@ -970,6 +971,7 @@
 		17DC815694CD18046E1FE41A /* CooperativeGroupGeneratorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CooperativeGroupGeneratorSheet.swift; sourceTree = "<group>"; };
 		184F5F99594B70E287DD11F3 /* LibretaModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibretaModuleView.swift; sourceTree = "<group>"; };
 		1867CC94618A27E645618888 /* PlannerSummaryDashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSummaryDashboard.swift; sourceTree = "<group>"; };
+		19F8CDBBBF2E11474BA08A78 /* KmpBridgeWatchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KmpBridgeWatchTests.swift; sourceTree = "<group>"; };
 		19FA9C3E34A9BAD4C5C9A446 /* WebSubmissionImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSubmissionImportSheet.swift; sourceTree = "<group>"; };
 		1AD45ACA95D963773FDADD4C /* TeacherRadarStudentInsightRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherRadarStudentInsightRow.swift; sourceTree = "<group>"; };
 		1B21089C9E75FAA31F54E8B3 /* BalancedScheduleGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalancedScheduleGenerator.swift; sourceTree = "<group>"; };
@@ -1522,6 +1524,7 @@
 				C7555A56587822C96BF3303A /* CourtVoiceRealDictationTests.swift */,
 				379959F6774F930B1BDBD791 /* DiaryTimelineProjectionTests.swift */,
 				F1B78B0B2F01205E9FD1158F /* JuntaProjectionTests.swift */,
+				19F8CDBBBF2E11474BA08A78 /* KmpBridgeWatchTests.swift */,
 				880A34E6ED9FC0F10FE40AC2 /* LearningSituationDocumentImportTests.swift */,
 				968077A1B396C10078A51773 /* LegacyTournamentMigratorTests.swift */,
 				20EE80FA20BE8E0C4C732321 /* NotebookWorkGroupImportTests.swift */,
@@ -2093,6 +2096,13 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		"TEMP_2ED5C0C0-BE0D-47AB-A77D-0FBE6DA5EE92" /* .claude */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = .claude;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -2360,6 +2370,7 @@
 				FC44FC4E6D4E107241F3E841 /* CourtVoiceRealDictationTests.swift in Sources */,
 				6669D2E57DFF465030F853CB /* DiaryTimelineProjectionTests.swift in Sources */,
 				D8CD80C744205E4451971AA0 /* JuntaProjectionTests.swift in Sources */,
+				0B76889311EC1A92AA95496C /* KmpBridgeWatchTests.swift in Sources */,
 				BBC3ED3DFE1B028A9D42695B /* LearningSituationDocumentImportTests.swift in Sources */,
 				EB9EF09DBFD79A64E04FDBBC /* LegacyTournamentMigratorTests.swift in Sources */,
 				291FB5143C0E35F49D108703 /* NotebookWorkGroupImportTests.swift in Sources */,

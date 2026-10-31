@@ -22,7 +22,9 @@ import MiGestorKit
 ///
 /// Cuando exista la publicación de formularios, este fichero se borra.
 struct WebSubmissionTestBenchView: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
 
     @State private var log: [String] = []
     @State private var preparing = false

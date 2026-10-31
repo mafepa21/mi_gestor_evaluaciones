@@ -129,7 +129,7 @@ struct MacReportsView: View {
         .background(MacAppStyle.pageBackground)
         .sheet(isPresented: $isWeeklyEmailSheetPresented) {
             WeeklyStudentEmailWorkspaceView(classId: selectedClassId)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
         .task {
             refreshAIAvailability()

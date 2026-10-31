@@ -91,7 +91,7 @@ struct NotebookStudentInspector: View {
         .sheet(isPresented: $showWeeklyEmailSheet) {
             let student = bridge.studentsInClass.first(where: { $0.id == studentId }) ?? bridge.allStudents.first(where: { $0.id == studentId })
             WeeklyStudentEmailWorkspaceView(student: student, classId: classId)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         }
     }
 

@@ -125,7 +125,9 @@ extension KmpBridge.MeetingSnapshot {
 /// Alta y edición de la cabecera de una reunión (título, fecha, tipo, lugar,
 /// asistentes y cuerpo del acta). Los acuerdos se gestionan aparte, en el detalle.
 struct MeetingFormSheet: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
 
     var existingMeeting: MeetingRow?
@@ -235,7 +237,9 @@ struct MeetingFormSheet: View {
 
 /// Alta y edición de un acuerdo: descripción, responsable, fecha límite y estado.
 struct MeetingAgreementFormSheet: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
 
     let meetingId: Int64

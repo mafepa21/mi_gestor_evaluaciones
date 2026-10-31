@@ -784,7 +784,13 @@ struct NotebookColumnsBulkDeleteSection: View {
 /// Ajustes → Gestión de datos: borrado rápido y en lote organizado por áreas
 /// (Estructura, Cuadernos, Planificación e Instrumentos) con secciones colapsables.
 struct DataManagementSettingsView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (classes, subjects, rubrics, rubricClassLinks),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.classes), .init($0.subjects), .init($0.rubrics), .init($0.rubricClassLinks)] }
+    }
 
     @State private var learningSituations: [LearningSituation] = []
     @State private var notebookSummaries: [NotebookSummaryItem] = []

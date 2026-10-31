@@ -35,7 +35,9 @@ extension SettingsSectionDescriptor {
 struct SettingsWorkspaceView: View {
     @StateObject private var settings = AppSettingsStore()
     @ObservedObject private var settingsNavigation = SettingsNavigationStore.shared
-    @EnvironmentObject var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -163,10 +165,10 @@ struct SettingsWorkspaceView: View {
                     onOpenModule(.students, classId, nil)
                 }
             )
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         case "appleCalendar":
             AppleCalendarSettingsView()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case "schedule":
             TeacherScheduleWizard(
                 bridge: bridge,
@@ -178,22 +180,22 @@ struct SettingsWorkspaceView: View {
             EvaluationSettingsView(settings: settings)
         case "datasec":
             DataSecuritySettingsView(settings: settings)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case "datamgmt":
             DataManagementSettingsView()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case "synclan":
             SyncSettingsView(settings: settings)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case "ai":
             AppleAISettingsView(settings: settings)
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         case "diagnostics":
             // El puente hace falta desde que Diagnóstico aloja el banco de pruebas
             // de las entregas web. Las demás pestañas ya lo pasaban; esta era la
             // única que no, y por eso reventaba al entrar.
             SettingsDiagnosticsView()
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
         default:
             settingsEmptyDetail
         }

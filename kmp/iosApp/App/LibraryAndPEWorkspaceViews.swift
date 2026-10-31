@@ -2,7 +2,13 @@ import SwiftUI
 import MiGestorKit
 
 struct LibraryWorkspaceView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (allStudents, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.allStudents), .init($0.studentsInClass)] }
+    }
     @Environment(\.colorScheme) var colorScheme
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -300,7 +306,13 @@ struct LibraryWorkspaceView: View {
 }
 
 struct EFIncidentsWorkspaceView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (allStudents, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.allStudents), .init($0.studentsInClass)] }
+    }
     @Environment(\.colorScheme) var colorScheme
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -397,7 +409,7 @@ struct EFIncidentsWorkspaceView: View {
                 persistItems(metadata, forKey: peIncidentMetadataStorageKey)
                 Task { await reload() }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .sheet(
             isPresented: Binding(
@@ -792,7 +804,13 @@ struct EFIncidentsWorkspaceView: View {
 }
 
 struct PESessionsWorkspaceView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (allStudents, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.allStudents), .init($0.studentsInClass)] }
+    }
     @Environment(\.colorScheme) var colorScheme
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -830,14 +848,14 @@ struct PESessionsWorkspaceView: View {
             CreatePESessionSheet(defaultClassId: selectedClassId) {
                 Task { await reload() }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .sheet(isPresented: $showingOperationalSheet) {
             if let selectedSession {
                 EditPESessionOperationalSheet(snapshot: selectedSession) {
                     Task { await reload() }
                 }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .appOnChange(of: selectedClassId) { _ in
@@ -1039,7 +1057,13 @@ private struct PEActiveDurationMetric: View {
 }
 
 struct PEMaterialWorkspaceView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (allStudents, studentsInClass),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.allStudents), .init($0.studentsInClass)] }
+    }
     @Environment(\.colorScheme) var colorScheme
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -1094,7 +1118,7 @@ struct PEMaterialWorkspaceView: View {
                 selectedRecordId = record.id
                 Task { await reload() }
             }
-            .environmentObject(bridge)
+            .kmpBridgeEnvironment(bridge)
         }
         .sheet(
             isPresented: Binding(
@@ -1110,7 +1134,7 @@ struct PEMaterialWorkspaceView: View {
                     selectedRecordId = record.id
                     Task { await reload() }
                 }
-                .environmentObject(bridge)
+                .kmpBridgeEnvironment(bridge)
             }
         }
         .appOnChange(of: selectedClassId) { _ in

@@ -1,5 +1,6 @@
 package com.migestor.data.platform
 
+import app.cash.sqldelight.TransacterImpl
 import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
@@ -11,6 +12,9 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSString
+import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.stringWithContentsOfFile
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSUserDomainMask
 
@@ -31,7 +35,7 @@ internal fun createAppleDriver(
         legacySourcePaths = legacySourcePaths,
     )
 
-    applyPendingAdoptionIfNeeded(
+    val adoptionBackupPath = applyPendingAdoptionIfNeeded(
         basePath = basePath,
         databasePath = databasePath,
         databaseName = databaseName,
@@ -113,6 +117,11 @@ internal fun createAppleDriver(
     runRescueMigrations(driver)
 
     configureAppleSqlite(driver)
+
+    removeCarryOverLeftovers(basePath)
+    if (adoptionBackupPath != null) {
+        carryOverWebFormsAfterAdoption(driver = driver, backupPath = adoptionBackupPath, basePath = basePath)
+    }
 
     return driver
 }
@@ -310,23 +319,27 @@ private fun setVersion(driver: SqlDriver, version: Long) {
 }
 
 @OptIn(ExperimentalForeignApi::class)
+/**
+ * Aplica la base que dejó preparada «Igualar dispositivos». Devuelve la ruta de la copia
+ * previa si la adopción se aplicó y había base anterior; `null` en cualquier otro caso.
+ */
 internal fun applyPendingAdoptionIfNeeded(
     basePath: String,
     databasePath: String,
     databaseName: String,
-) {
+): String? {
     val fileManager = NSFileManager.defaultManager
     val pendingMarkerPath = "$basePath/pending_adopt.json"
     val pendingDbPath = "$basePath/pending_adopt.db"
 
     if (!fileManager.fileExistsAtPath(pendingMarkerPath)) {
-        return
+        return null
     }
 
     if (!fileManager.fileExistsAtPath(pendingDbPath)) {
         println("[AppleDriver] Encontrado pending_adopt.json pero falta pending_adopt.db. Limpiando marcador huérfano.")
         fileManager.removeItemAtPath(pendingMarkerPath, null)
-        return
+        return null
     }
 
     val epoch = platform.posix.time(null)
@@ -344,7 +357,7 @@ internal fun applyPendingAdoptionIfNeeded(
         }
         fileManager.removeItemAtPath(pendingDbPath, null)
         fileManager.removeItemAtPath(pendingMarkerPath, null)
-        return
+        return null
     }
 
     val backupsDir = "$basePath/backups"
@@ -395,6 +408,7 @@ internal fun applyPendingAdoptionIfNeeded(
         }
         println("[AppleDriver] Adopción de dataset aplicada correctamente. Backup guardado en $backupPath")
         pruneOldPreAdoptBackups(backupsDir = backupsDir, databaseName = databaseName, maxBackups = 5)
+        return if (dbExists) backupPath else null
     } catch (e: Throwable) {
         println("[AppleDriver] Error al aplicar adopción: ${e.message}. Ejecutando restauración de emergencia...")
         if (dbExists && fileManager.fileExistsAtPath(backupPath)) {
@@ -417,7 +431,87 @@ internal fun applyPendingAdoptionIfNeeded(
             platform.posix.fclose(f)
         }
         fileManager.removeItemAtPath(pendingMarkerPath, null)
+        return null
     }
+}
+
+/**
+ * Tras igualar, devuelve a la base nueva las entregas web que este equipo tenía
+ * (ver [carryOverLocalOnlyWebForms]). Se lee de una copia temporal de la copia previa
+ * para no tocar esta, que sigue siendo la red de seguridad de la docente. Un fallo
+ * aquí no deshace la adopción: se anota en `last_adoption.json` y la app arranca.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun carryOverWebFormsAfterAdoption(driver: SqlDriver, backupPath: String, basePath: String) {
+    val fileManager = NSFileManager.defaultManager
+    val backupsDir = backupPath.substringBeforeLast('/')
+    val sourceName = "carry_over_source.db"
+    val sourcePath = "$backupsDir/$sourceName"
+    val suffixes = listOf("", "-wal", "-shm")
+    fun removeSource() = suffixes.forEach { fileManager.removeItemAtPath("$sourcePath$it", null) }
+
+    val note = try {
+        removeSource()
+        for (suffix in suffixes) {
+            if (fileManager.fileExistsAtPath("$backupPath$suffix")) {
+                fileManager.copyItemAtPath("$backupPath$suffix", "$sourcePath$suffix", null)
+            }
+        }
+        val source = NativeSqliteDriver(
+            schema = ExistingDatabaseSchema,
+            name = sourceName,
+            onConfiguration = { config ->
+                config.copy(extendedConfig = DatabaseConfiguration.Extended(basePath = backupsDir))
+            },
+        )
+        val result = try {
+            carryOverLocalOnlyWebForms(source = source, target = driver, transacter = object : TransacterImpl(driver) {})
+        } finally {
+            source.close()
+        }
+        println("[AppleDriver] Entregas web conservadas tras igualar: ${result.restoredForms}, saltadas: ${result.skippedForms}")
+        "\"webFormsRestored\":${result.restoredForms},\"webFormsSkipped\":${result.skippedForms}"
+    } catch (e: Throwable) {
+        println("[AppleDriver] No se pudieron conservar las entregas web tras igualar: ${e.message}")
+        "\"webFormsError\":\"${jsonEscape(e.message ?: e.toString())}\""
+    } finally {
+        removeSource()
+    }
+
+    val lastAdoptionPath = "$basePath/last_adoption.json"
+    val previous = NSString.stringWithContentsOfFile(lastAdoptionPath, NSUTF8StringEncoding, null)?.trim()
+    if (previous != null && previous.endsWith("}")) {
+        val updated = previous.dropLast(1) + ",$note}"
+        val f = platform.posix.fopen(lastAdoptionPath, "w")
+        if (f != null) {
+            platform.posix.fputs(updated, f)
+            platform.posix.fclose(f)
+        }
+    }
+}
+
+/** Si la app se cerró a mitad de un traspaso, la copia temporal se queda en `backups/`. */
+@OptIn(ExperimentalForeignApi::class)
+private fun removeCarryOverLeftovers(basePath: String) {
+    val fileManager = NSFileManager.defaultManager
+    for (suffix in listOf("", "-wal", "-shm")) {
+        val path = "$basePath/backups/carry_over_source.db$suffix"
+        if (fileManager.fileExistsAtPath(path)) fileManager.removeItemAtPath(path, null)
+    }
+}
+
+/** Abre una base que ya existe tal cual está: ni la crea ni la migra. */
+private object ExistingDatabaseSchema : SqlSchema<QueryResult.Value<Unit>> {
+    override val version: Long = AppDatabase.Schema.version
+
+    override fun create(driver: SqlDriver): QueryResult.Value<Unit> = QueryResult.Value(Unit)
+
+    override fun migrate(
+        driver: SqlDriver,
+        oldVersion: Long,
+        newVersion: Long,
+        vararg callbacks: AfterVersion,
+    ): QueryResult.Value<Unit> = QueryResult.Value(Unit)
 }
 
 /**

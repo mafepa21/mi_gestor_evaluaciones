@@ -30,6 +30,7 @@ Dispositivos: simulador iOS 27 (iPhone 17 Pro, iPad Air 11" M4) y la app de Mac 
 | Ficha 360, iPad | `ipad-ficha360-normal.png` | `ipad-ficha360-ax3.png` |
 | Evaluación masiva de rúbricas, iPad | `ipad-rubricas-masiva-normal.png` | `ipad-rubricas-masiva-ax3.png` |
 | Tarjetas del shell (Evaluación), iPad | `ipad-evaluacion-normal.png` | `ipad-evaluacion-ax3.png` |
+| Menú lateral, iPad | — | `ipad-menu-lateral-ax3.png` |
 | Hoy, Mac | `mac-hoy-despues.png` (antes: `mac-hoy-antes.png`) | No aplica: macOS no tiene Dynamic Type. |
 
 ## Lo que no se pudo capturar

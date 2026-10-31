@@ -340,7 +340,7 @@ struct MacPhysicalTestsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(MacAppStyle.pageBackground)
-        .task { await reload() }
+        .task { await PerfLog.measure("EF: primera carga") { await reload() } }
         .reloadOnLanSync(.physicalEducation) { await reload() }
         .appOnChange(of: selectedClassId) { _ in Task { await reload() } }
         .appOnChange(of: selectedTestId) { _ in

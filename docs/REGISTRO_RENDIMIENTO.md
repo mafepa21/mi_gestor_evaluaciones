@@ -66,7 +66,7 @@ menú del Cuaderno. Medianas en ms.
 | Cambio de módulo: Pruebas físicas | 101 | 98 | 12 + 11 |
 | Cambio de grupo del Cuaderno | 226 | 108 | 6 + 6 |
 | Abrir EF (primera carga) | 120 | 120 | 12 + 11 |
-| «Pantalla congelada» en 5 min por Hoy, Cuaderno, Asistencia, Planner y EF | 1 (413 ms) | 0 | 1 recorrido de 5 min cada uno |
+| «Pantalla congelada» en 5 min por Hoy, Cuaderno, Asistencia, Planner y EF | 1 (413 ms) | 0 y 0 | 1 recorrido antes, 2 después (cada uno: 47 cambios de pantalla y 19 de grupo) |
 
 - El arranque y Hoy quedan igual: la diferencia está dentro del ruido entre arranques.
 - La congelación de antes era siempre la primera apertura del Cuaderno (unos 470 ms

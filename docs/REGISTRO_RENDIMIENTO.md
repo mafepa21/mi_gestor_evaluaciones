@@ -59,16 +59,22 @@ menú del Cuaderno. Medianas en ms.
 
 | Medida | Antes | Después | Muestras |
 |---|---|---|---|
-| Arranque hasta Hoy visible | 294 (media 318) | 298 (media 306) | 10 + 10 arranques alternos |
-| Cambio de módulo: Hoy | 158 | 157 | 12 + 12 |
-| Cambio de módulo: Asistencia | 221 | 212 | 12 + 10 |
-| Cambio de módulo: Cuaderno | 244 (máx. 459) | 112 (máx. 275) | 12 + 11 |
-| Cambio de módulo: Pruebas físicas | 101 | 98 | 12 + 11 |
-| Cambio de grupo del Cuaderno | 226 | 108 | 6 + 6 |
-| Abrir EF (primera carga) | 120 | 120 | 12 + 11 |
-| «Pantalla congelada» en 5 min por Hoy, Cuaderno, Asistencia, Planner y EF | 1 (413 ms) | 0 y 0 | 1 recorrido antes, 2 después (cada uno: 47 cambios de pantalla y 19 de grupo) |
+| Arranque hasta Hoy visible | 315 (rango 288-473) | 311 (rango 280-329, más un caso de 3 s) | 20 + 20 arranques alternos |
+| Cambio de módulo: Hoy | 160 | 160 | 12 + 12 |
+| Cambio de módulo: Asistencia | 219 | 214 | 12 + 12 |
+| Cambio de módulo: Cuaderno | 245 (máx. 461) | 112 (máx. 280) | 12 + 12 |
+| Cambio de módulo: Pruebas físicas | 98 | 98 | 12 + 12 |
+| Cambio de grupo del Cuaderno (a mano) | 240 | 97 | 19 + 19 (recorrido) |
+| Abrir EF (primera carga) | 123 (máx. 149) | 124 (máx. 129) | 12 + 12 |
+| «Pantalla congelada» en 5 min por Hoy, Cuaderno, Asistencia, Planner y EF | 1 (413 ms) | 0 | 1 recorrido antes, 3 después (cada uno: 47 cambios de pantalla y 19 de grupo) |
 
-- El arranque y Hoy quedan igual: la diferencia está dentro del ruido entre arranques.
+- El arranque y Hoy quedan igual o algo mejor. En una primera versión el arranque salía 6 ms peor
+  (276 → 282): la señal de «datos listos» del Cuaderno también adelantaba la carga inicial y
+  competía con el primer pintado de Hoy. Ahora solo actúa al pasar de un grupo a otro.
+- EF: la mediana sube 1 ms y el máximo baja 20 ms. Es el salto de hilo de cada consulta
+  (`Dispatchers.Default`); a cambio, la pantalla ya no se bloquea mientras carga.
+- Los casos sueltos de unos 3 s al arrancar salen en las dos versiones (primer arranque tras
+  copiar la base).
 - La congelación de antes era siempre la primera apertura del Cuaderno (unos 470 ms
   en una sola vuelta del bucle principal). Ahora se reparte en tres vueltas (estructura,
   tabla, filas); la primera ronda los 270 ms en Debug.

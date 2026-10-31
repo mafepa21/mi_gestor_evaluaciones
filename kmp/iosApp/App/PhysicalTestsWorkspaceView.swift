@@ -404,7 +404,7 @@ struct PhysicalTestsWorkspaceView: View {
                 )
             }
             .reloadOnLanSync(.physicalEducation) { await reload() }
-            .task { await reload() }
+            .task { await PerfLog.measure("EF: primera carga") { await reload() } }
             .appOnChange(of: selectedClassId) { _ in Task { await reload() } }
             .appOnChange(of: selectedClassId) { _ in syncSelectedClassDefaults() }
             .appOnChange(of: selectedTestId) { _ in resetScaleDraftForActiveTest() }

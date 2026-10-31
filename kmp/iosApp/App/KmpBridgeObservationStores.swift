@@ -168,6 +168,12 @@ final class DashboardBridgeStore: ObservableObject {
         bridgeSink(bridge.$classes, \.classes, into: &cancellables)
         bridgeSink(bridge.$studentsInClass, \.studentsInClass, into: &cancellables)
         bridgeSink(bridge.$dashboardSnapshot, \.dashboardSnapshot, into: &cancellables)
+        // Fin de la medida "arranque hasta Hoy visible": primer resumen con datos.
+        bridge.$dashboardSnapshot
+            .compactMap { $0 }
+            .first()
+            .sink { _ in PerfLog.markLaunchCompleted() }
+            .store(in: &cancellables)
         bridgeSink(bridge.$syncStatusMessage, \.syncStatusMessage, into: &cancellables)
         bridgeSink(bridge.$syncPendingChanges, \.syncPendingChanges, into: &cancellables)
         bridgeSink(bridge.$syncLastRunAt, \.syncLastRunAt, into: &cancellables)

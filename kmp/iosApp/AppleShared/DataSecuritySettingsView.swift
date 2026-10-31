@@ -2,7 +2,9 @@ import SwiftUI
 
 struct DataSecuritySettingsView: View {
     @ObservedObject var settings: AppSettingsStore
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @StateObject private var backupService = AppleBackupService.shared
 
     @State private var showingCreateSheet = false

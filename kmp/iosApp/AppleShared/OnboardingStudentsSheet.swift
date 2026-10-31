@@ -9,7 +9,9 @@ import UniformTypeIdentifiers
 /// llegar a `StudentImportSheet`. Ambos caminos terminan en esa misma hoja de
 /// revisión, así que duplicidad de lógica: ninguna.
 struct OnboardingStudentsSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
     @Environment(\.colorScheme) private var colorScheme
 
     /// `true` abre directamente el selector de archivos; `false` deja el foco

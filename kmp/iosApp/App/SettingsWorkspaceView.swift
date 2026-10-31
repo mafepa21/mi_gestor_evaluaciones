@@ -35,7 +35,9 @@ extension SettingsSectionDescriptor {
 struct SettingsWorkspaceView: View {
     @StateObject private var settings = AppSettingsStore()
     @ObservedObject private var settingsNavigation = SettingsNavigationStore.shared
-    @EnvironmentObject var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var sizeClass
 

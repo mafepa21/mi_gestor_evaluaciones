@@ -83,7 +83,9 @@ public struct SyncDivergenceBanner: View {
 
 public struct SyncAdoptionSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
 
     let divergence: SyncDivergenceReport?
 

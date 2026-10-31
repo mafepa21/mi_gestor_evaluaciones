@@ -5,7 +5,9 @@ import AppKit
 
 struct SettingsDangerZoneView: View {
     @ObservedObject var settings: AppSettingsStore
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    private var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
 
     @State private var showingWipeConfirmation = false

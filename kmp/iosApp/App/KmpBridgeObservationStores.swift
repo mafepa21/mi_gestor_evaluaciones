@@ -120,7 +120,8 @@ final class NotebookBridgeStore: ObservableObject {
         // Fin de la medida "Cuaderno: cambio de grupo" (empieza en `selectClass`).
         bridge.$notebookState
             .filter { $0 is NotebookUiStateData }
-            // 400 ms: el estado llega tras un debounce fijo de 150 ms en el bridge.
+            // 400 ms. El estado del grupo nuevo se publica en cuanto llegan sus filas
+            // (`publishNotebookDataWhenReady`), sin el debounce de 150 ms del bridge.
             .sink { _ in PerfLog.end("Cuaderno: cambio de grupo", thresholdMs: 400) }
             .store(in: &cancellables)
         bridgeSink(bridge.$notebookStructureState, \.notebookStructureState, into: &cancellables)

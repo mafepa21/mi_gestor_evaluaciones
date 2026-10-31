@@ -122,6 +122,40 @@ class WebFormsCarryOverTest {
     }
 
     @Test
+    fun siLaEntregaYaEstabaSeCompletaSuRegistroDeEnviosImportados() {
+        val previous = newDb().also { seedSharedNotebook(it); seedWebForm(it, "F1") }
+        val adopted = newDb().also { seedSharedNotebook(it); seedWebForm(it, "F1") }
+        adopted.execute(null, "DELETE FROM web_submission_ledger", 0)
+
+        carryOver(previous, adopted)
+
+        assertEquals(1, count(adopted, "SELECT count(*) FROM web_submission_ledger WHERE submission_id = 'sub-F1'"))
+    }
+
+    @Test
+    fun unaEntregaSinSusApartadosEnLaBaseNuevaSeSaltaEntera() {
+        val previous = newDb().also {
+            seedSharedNotebook(it)
+            seedWebForm(it, "F1")
+            it.execute(
+                null,
+                "INSERT INTO notebook_instrument_items(id, template_id, item_key, title, item_type) VALUES ('item_viejo', 'tpl', 'k2', 'Viejo', 'SCALE')",
+                0,
+            )
+            it.execute(null, "INSERT INTO web_item_map(form_instance_id, web_item_id, item_id, item_type) VALUES ('F1', 'w2', 'item_viejo', 'SCALE')", 0)
+        }
+        val adopted = newDb().also(::seedSharedNotebook)
+
+        val result = carryOver(previous, adopted)
+
+        assertEquals(0, result.restoredForms)
+        assertEquals(1, result.skippedForms)
+        assertEquals(0, count(adopted, "SELECT count(*) FROM web_form_instances"))
+        assertEquals(0, count(adopted, "SELECT count(*) FROM web_participant_aliases"))
+        assertEquals(0, count(adopted, "SELECT count(*) FROM web_item_map"))
+    }
+
+    @Test
     fun sinEntregasLocalesNoHaceNada() {
         val previous = newDb().also(::seedSharedNotebook)
         val adopted = newDb().also(::seedSharedNotebook)

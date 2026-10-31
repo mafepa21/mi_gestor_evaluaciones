@@ -20,6 +20,10 @@ import app.cash.sqldelight.db.SqlDriver
  *    apartado sin su ítem no se traen.
  *  - Solo se copian las columnas que existen en las dos bases: la copia previa puede
  *    ser de un esquema anterior.
+ *  - Un formulario cuyos apartados no se pueden traer no sirve para importar: se deja
+ *    fuera entero y cuenta como saltado.
+ *  - El registro de envíos ya importados se completa también para los formularios que
+ *    ya estaban en la base nueva, para no importar dos veces la misma entrega.
  *
  * [source] es la copia previa a la adopción; [target], la base ya abierta y migrada.
  */
@@ -41,12 +45,13 @@ internal fun carryOverLocalOnlyWebForms(
     val missingFormIds = sourceFormIds.filter { formId ->
         queryLong(target, "SELECT count(*) FROM web_form_instances WHERE form_instance_id = ${sqlText(formId)}") == 0L
     }
-    if (missingFormIds.isEmpty()) {
-        return WebFormsCarryOverResult(restoredForms = 0, skippedForms = 0)
-    }
+    val presentFormIds = sourceFormIds - missingFormIds.toSet()
 
     val restored = mutableListOf<String>()
     transacter.transaction {
+        for (formId in presentFormIds) {
+            copyRows(source, target, "web_submission_ledger", "form_instance_id = ${sqlText(formId)}", emptyList())
+        }
         for (formId in missingFormIds) {
             copyRows(
                 source = source,
@@ -61,6 +66,15 @@ internal fun carryOverLocalOnlyWebForms(
             val byForm = "form_instance_id = ${sqlText(formId)}"
             copyRows(source, target, "web_participant_aliases", byForm, listOf("students" to "student_id"))
             copyRows(source, target, "web_item_map", byForm, listOf("notebook_instrument_items" to "item_id"))
+            val sourceItems = queryLong(source, "SELECT count(*) FROM web_item_map WHERE $byForm")
+            val targetItems = queryLong(target, "SELECT count(*) FROM web_item_map WHERE $byForm")
+            if (targetItems < sourceItems) {
+                for (table in listOf("web_participant_aliases", "web_item_map", "web_form_instances")) {
+                    target.execute(null, "DELETE FROM \"$table\" WHERE $byForm", 0)
+                }
+                restored -= formId
+                continue
+            }
             copyRows(source, target, "web_peer_targets", byForm, listOf("students" to "target_student_id"))
             copyRows(source, target, "web_submission_ledger", byForm, emptyList())
         }

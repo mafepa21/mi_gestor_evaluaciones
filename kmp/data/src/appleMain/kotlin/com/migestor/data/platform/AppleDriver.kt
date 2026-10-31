@@ -118,6 +118,7 @@ internal fun createAppleDriver(
 
     configureAppleSqlite(driver)
 
+    removeCarryOverLeftovers(basePath)
     if (adoptionBackupPath != null) {
         carryOverWebFormsAfterAdoption(driver = driver, backupPath = adoptionBackupPath, basePath = basePath)
     }
@@ -486,6 +487,16 @@ private fun carryOverWebFormsAfterAdoption(driver: SqlDriver, backupPath: String
             platform.posix.fputs(updated, f)
             platform.posix.fclose(f)
         }
+    }
+}
+
+/** Si la app se cerró a mitad de un traspaso, la copia temporal se queda en `backups/`. */
+@OptIn(ExperimentalForeignApi::class)
+private fun removeCarryOverLeftovers(basePath: String) {
+    val fileManager = NSFileManager.defaultManager
+    for (suffix in listOf("", "-wal", "-shm")) {
+        val path = "$basePath/backups/carry_over_source.db$suffix"
+        if (fileManager.fileExistsAtPath(path)) fileManager.removeItemAtPath(path, null)
     }
 }
 

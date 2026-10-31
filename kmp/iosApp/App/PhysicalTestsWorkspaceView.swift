@@ -163,7 +163,13 @@ private struct PhysicalNotebookLink: Identifiable {
 }
 
 struct PhysicalTestsWorkspaceView: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (classes, notebookState),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    private var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.classes), .init(ObjectIdentifier($0.notebookState as AnyObject))] }
+    }
     @Binding var selectedClassId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
 
@@ -2241,7 +2247,13 @@ private struct PhysicalTestEditSheet: View {
 }
 
 private struct PhysicalTestCreationSheet: View {
-    @EnvironmentObject private var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (classes, notebookState),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    private var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.classes), .init(ObjectIdentifier($0.notebookState as AnyObject))] }
+    }
     @Environment(\.dismiss) private var dismiss
     let defaultClassId: Int64?
     let templates: [PhysicalTestTemplate]

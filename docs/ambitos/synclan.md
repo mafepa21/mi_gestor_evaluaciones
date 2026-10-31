@@ -16,6 +16,7 @@
 
 ## Trampas
 
+- Igualar dispositivos sustituye la base entera. Las tablas `web_*` no viajan por la sync (su llave vive en el llavero de cada equipo): `carryOverLocalOnlyWebForms` (llamada en `createAppleDriver` tras migrar) las devuelve desde la copia `*_pre_adopt_*`. Una tabla nueva que tampoco viaje y deba sobrevivir a igualar hay que añadirla ahí.
 - La cola del iPad (`pendingOutboundChanges`) solo se llena con `enqueueLocalChange`: una escritura nueva que no lo llame nunca viaja.
 - `SqlDelightSyncAdapter` cuenta como `ignored` (no `failed`) cualquier entidad que no conoce, y el iPad suelta la cola si `failed == 0`: una entidad nueva sin apply se pierde en silencio. `SyncEntityCoverageTest` lo vigila leyendo el código; `planner_week_plan` está en su lista de pendientes.
 - Entidades nuevas de actas/Inclusión: añadirlas solo en `SchoolRecordsSync` (lo usan el Mac y Apple). Nada de `REPLACE` en tablas con hijas en cascada (reuniones).

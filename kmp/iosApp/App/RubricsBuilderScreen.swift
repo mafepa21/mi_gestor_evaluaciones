@@ -2,7 +2,13 @@ import SwiftUI
 import MiGestorKit
 
 struct RubricsBuilderScreen: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (rubricBuilderTeachingUnits, rubricsUiState, selectedRubricTeachingUnitId),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.rubricBuilderTeachingUnits), .init($0.rubricsUiState), .init($0.selectedRubricTeachingUnitId)] }
+    }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     var onSaved: ((Int64) -> Void)? = nil
@@ -221,7 +227,13 @@ struct RubricsBuilderScreen: View {
 }
 
 private struct RubricBuilderHeader: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (rubricBuilderTeachingUnits, rubricsUiState, selectedRubricTeachingUnitId),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.rubricBuilderTeachingUnits), .init($0.rubricsUiState), .init($0.selectedRubricTeachingUnitId)] }
+    }
     @Environment(\.colorScheme) private var colorScheme
     let state: RubricUiState
     let rubricName: Binding<String>
@@ -320,7 +332,13 @@ private enum RubricBuilderField: Hashable {
 }
 
 private struct RubricBuilderGridView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (rubricBuilderTeachingUnits, rubricsUiState, selectedRubricTeachingUnitId),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init($0.rubricBuilderTeachingUnits), .init($0.rubricsUiState), .init($0.selectedRubricTeachingUnitId)] }
+    }
     @Environment(\.colorScheme) private var colorScheme
     let state: RubricUiState
     @FocusState private var focusedField: RubricBuilderField?

@@ -3,7 +3,13 @@ import MiGestorKit
 
 // MARK: - Column Editor
 struct WeightEditorSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Solo se redibuja cuando cambia lo que lee del bridge (notebookState),
+    /// no con cada cambio del Cuaderno o de la sincronización.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    @StateObject private var bridgeWatch = KmpBridgeWatch()
+    var bridge: KmpBridge {
+        bridgeWatch.bridge(bridgeReference) { [.init(ObjectIdentifier($0.notebookState as AnyObject))] }
+    }
     @Environment(\.dismiss) var dismiss
     let column: NotebookColumnDefinition
     @State private var weight: String

@@ -3,7 +3,9 @@ import MiGestorKit
 
 /// Hoja modal para explorar, previsualizar e importar plantillas oficiales de rúbricas LOMLOE / EF.
 struct RubricTemplateCatalogSheet: View {
-    @EnvironmentObject var bridge: KmpBridge
+    /// Referencia sin suscripción: esta vista solo llama acciones del bridge.
+    @Environment(\.kmpBridgeReference) private var bridgeReference
+    var bridge: KmpBridge { bridgeReference! }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 

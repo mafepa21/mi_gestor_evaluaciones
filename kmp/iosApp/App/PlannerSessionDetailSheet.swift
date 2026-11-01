@@ -117,6 +117,7 @@ struct PlannerSessionDetailSheet: View {
     /// Vista elegida por el docente: el trozo del Word original o el guion editable.
     @AppStorage("planner.sessionDetail.viewMode") private var viewModeRaw = PlannerSessionViewMode.document.rawValue
     @State private var isDeleteConfirmationPresented = false
+    @State private var isClassKitPresented = false
     @State private var enlargedVisual: PlannerEnlargedVisual?
     @State private var isAnnexesExpanded = false
     /// Proyección de repaso rápido: se calcula una sola vez al cargar el plan.
@@ -181,6 +182,15 @@ struct PlannerSessionDetailSheet: View {
             await loadLinkedInstruments()
         }
         .quickLookPreview($sourceDocumentURL)
+        .sheet(isPresented: $isClassKitPresented) {
+            if let reviewProjection {
+                PlannerSessionClassKitSheet(input: PlannerClassKitInput(
+                    projection: reviewProjection,
+                    title: classKitTitle,
+                    meta: headerMetaLine
+                ))
+            }
+        }
         .confirmationDialog(
             "Eliminar sesión",
             isPresented: $isDeleteConfirmationPresented,
@@ -546,6 +556,13 @@ struct PlannerSessionDetailSheet: View {
         return parts.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
+    private var classKitTitle: String {
+        let planTitle = detailedPlan?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !planTitle.isEmpty { return planTitle }
+        let unit = session.teachingUnitName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return unit.isEmpty ? "Sesión" : unit
+    }
+
     private var sessionAccessibilityMetadata: String {
         var values = [session.groupName, dateAndTimeLabel]
         if let badge = sessionStatusBadge { values.insert(badge.label, at: 1) }
@@ -588,6 +605,9 @@ struct PlannerSessionDetailSheet: View {
 
     private var sessionActionsMenu: some View {
         Menu {
+            if reviewProjection != nil {
+                Button { isClassKitPresented = true } label: { Label("Kit de clase", systemImage: "list.clipboard") }
+            }
             Button(action: onEdit) { Label("Editar", systemImage: "pencil") }
             if onCopyToNextWeek != nil {
                 Button { onCopyToNextWeek?() } label: { Label("Duplicar", systemImage: "doc.on.doc") }

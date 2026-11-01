@@ -21,8 +21,6 @@ struct MacRootView: View {
     private var dashboardStore: DashboardBridgeStore { workspaceStores.dashboard }
     private var studentsBridgeStore: StudentsBridgeStore { workspaceStores.students }
     private var attendanceStore: AttendanceBridgeStore { workspaceStores.attendance }
-    @StateObject private var physicalTestsToolbarActions = MacPhysicalTestsToolbarActions()
-    @StateObject private var physicalTestsInspectorState = PhysicalTestsMacInspectorState()
     @StateObject private var studentsStore = MacStudentsStore()
     @StateObject private var studentSelection = StudentSelectionStore()
     @SceneStorage("mac.root.columnVisibility") private var storedColumnVisibility = MacRootColumnVisibilityValue.all
@@ -221,7 +219,7 @@ struct MacRootView: View {
                 PhysicalTestSetupWizardSheet(
                     bridge: session.bridge,
                     initialClassId: studentSelection.selectedClassId,
-                    onSaved: { _ in physicalTestsToolbarActions.refresh() },
+                    onSaved: { _ in },
                     onOpenNotebook: { classId in open(module: .notebook, classId: classId, studentId: nil) }
                 )
             }
@@ -273,7 +271,7 @@ struct MacRootView: View {
 
     private func usesShellInspector(_ feature: MacFeatureDescriptor.Feature) -> Bool {
         switch feature {
-        case .students, .backups, .physicalTests:
+        case .students, .backups:
             return true
         default:
             return false
@@ -587,14 +585,11 @@ struct MacRootView: View {
         case .rubrics:
             MacRubricsView(bridge: session.bridge)
         case .physicalTests:
-            MacPhysicalTestsView(
-                bridge: session.bridge,
+            PhysicalTestsHomeView(
                 selectedClassId: studentSelection.selectedClassBinding,
-                selectedStudentId: studentSelection.selectedStudentBinding,
-                onOpenModule: open(module:classId:studentId:),
-                toolbarActions: physicalTestsToolbarActions,
-                inspectorState: physicalTestsInspectorState
+                onOpenNotebook: { open(module: .notebook, classId: $0, studentId: nil) }
             )
+            .kmpBridgeEnvironment(session.bridge)
         case .reports:
             MacReportsView(
                 bridge: session.bridge,
@@ -692,14 +687,6 @@ struct MacRootView: View {
             )
         case .backups:
             MacBackupInspectorView(store: backupStore)
-        case .physicalTests:
-            MacPhysicalTestsInspectorView(
-                bridge: session.bridge,
-                inspectorState: physicalTestsInspectorState,
-                selectedClassId: studentSelection.selectedClassBinding,
-                selectedStudentId: studentSelection.selectedStudentBinding,
-                onOpenModule: open(module:classId:studentId:)
-            )
         case .planner:
             if let plannerSession = plannerInspectorSession {
                 PlannerSessionDetailSheet(
@@ -1142,39 +1129,6 @@ struct MacRootView: View {
                 .help("Crear una evaluación para la clase activa (⌘N)")
             }
 
-            if selectedFeature == .physicalTests {
-                Button {
-                    isPhysicalTestWizardPresented = true
-                } label: {
-                    Label("Nueva prueba", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut("n", modifiers: .command)
-                .help("Crear una prueba con su baremo y añadirla al cuaderno (⌘N)")
-
-                Menu {
-                    Button {
-                        physicalTestsToolbarActions.newBattery()
-                    } label: {
-                        Label("Nueva batería", systemImage: "plus.rectangle.on.rectangle")
-                    }
-                    Button {
-                        physicalTestsToolbarActions.capture()
-                    } label: {
-                        Label("Captura de marcas", systemImage: "square.and.pencil")
-                    }
-                    Button {
-                        physicalTestsToolbarActions.createColumns()
-                    } label: {
-                        Label("Crear columnas en el cuaderno", systemImage: "tablecells")
-                    }
-                } label: {
-                    Label("Más opciones", systemImage: "ellipsis.circle")
-                }
-                .disabled(!physicalTestsToolbarActions.canUseClassActions)
-                .help("Baterías, captura y columnas")
-            }
-
             if selectedFeature == .planner, let plannerToolbarActions {
                 // Toolbar fija: los mismos controles, en el mismo orden y con el
                 // mismo ancho en todas las secciones. Lo que no aplica se
@@ -1547,7 +1501,7 @@ struct MacRootView: View {
                 showBanner("Selecciona un grupo para añadir columnas", systemImage: "plus.rectangle", tint: MacAppStyle.warningTint)
             }
         case .physicalTests:
-            physicalTestsToolbarActions.newBattery()
+            isPhysicalTestWizardPresented = true
         case .backups:
             performBackup()
         case .students:
@@ -1642,8 +1596,6 @@ struct MacRootView: View {
             attendanceToolbarActions.refresh()
         } else if selectedFeature == .notebook {
             notebookToolbarActions.refresh()
-        } else if selectedFeature == .physicalTests {
-            physicalTestsToolbarActions.refresh()
         } else {
             Task { await session.bridge.refreshDashboard(mode: .office) }
         }

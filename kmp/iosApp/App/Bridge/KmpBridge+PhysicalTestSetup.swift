@@ -187,7 +187,12 @@ extension KmpBridge {
 
         let rawTitle = "\(name) · \(draft.measurement == .level ? "Nivel" : "Marca")"
         let rawColumnId: String
-        if let id = existingLink?.rawColumnId ?? existingColumnId(rawTitle) {
+        // Un enlace puede apuntar a columnas ya borradas del cuaderno: solo se reutilizan las vivas.
+        let liveColumnIds = Set(existingColumns.map(\.id))
+        func liveLinkedId(_ id: String?) -> String? {
+            id.flatMap { liveColumnIds.contains($0) ? $0 : nil }
+        }
+        if let id = liveLinkedId(existingLink?.rawColumnId) ?? existingColumnId(rawTitle) {
             rawColumnId = id
         } else {
             rawColumnId = try await createNotebookPhysicalColumnForClass(
@@ -211,7 +216,7 @@ extension KmpBridge {
         var scoreColumnId: String?
         if hasScale {
             let scoreTitle = "\(name) · Nota"
-            if let id = existingLink?.scoreColumnId ?? existingColumnId(scoreTitle) {
+            if let id = liveLinkedId(existingLink?.scoreColumnId) ?? existingColumnId(scoreTitle) {
                 scoreColumnId = id
             } else {
                 scoreColumnId = try await createNotebookPhysicalColumnForClass(

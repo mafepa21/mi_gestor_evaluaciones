@@ -125,6 +125,7 @@ struct NotebookModuleView: View {
     @State var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
     @State var columnStatisticsRequest: NotebookColumnStatisticsRequest? = nil
+    @State var physicalGroupTimerRequest: NotebookPhysicalGroupTimerRequest? = nil
     @State var cellStampRequest: NotebookCellStampRequest? = nil
     @State var studentProfile360Request: StudentProfile360Request? = nil
     @State var isAverageConfigurationPresented = false
@@ -603,6 +604,7 @@ struct NotebookModuleView: View {
                     data.sheet.columnCategories.map { ($0.id, tint(for: $0)) },
                     uniquingKeysWith: { first, _ in first }
                 ),
+                physicalPairsByScoreId: NotebookPhysicalColumns.pairsByScoreId(in: data.sheet.columns),
                 selectedCellRange: selectedCellRange
             )
         }
@@ -1519,6 +1521,12 @@ struct NotebookModuleView: View {
                         bridge: bridge,
                         classTitle: activeClassLabel
                     )
+                }
+                .sheet(item: $physicalGroupTimerRequest) { request in
+                    physicalGroupTimerSheet(request: request, data: data)
+                }
+                .task(id: physicalColumnRepairKey(data: data)) {
+                    await repairPhysicalColumnsIfNeeded(data: data)
                 }
                 .sheet(item: $cellStampRequest) { request in
                     cellStampSheet(request: request, data: data)

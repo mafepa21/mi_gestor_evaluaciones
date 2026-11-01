@@ -430,16 +430,20 @@ final class NotebookGridNavigationContext {
     private(set) var categoryTintById: [String: Color] = [:]
     /// Límites del rango seleccionado precalculados una vez por render (evita 3x firstIndex en cada celda).
     private(set) var selectedRangeBounds: (columnId: String, lower: Int, upper: Int)?
+    /// Pruebas físicas: columna de nota visible -> pareja marca/nota (una vez por render).
+    private(set) var physicalPairsByScoreId: [String: NotebookPhysicalColumnPair] = [:]
 
     func update(
         rows: [NotebookTableRow],
         segments: [NotebookDisplaySegment],
         categoryTintById: [String: Color],
+        physicalPairsByScoreId: [String: NotebookPhysicalColumnPair] = [:],
         selectedCellRange: NotebookCellRange? = nil
     ) {
         self.rows = rows
         self.segments = segments
         self.categoryTintById = categoryTintById
+        self.physicalPairsByScoreId = physicalPairsByScoreId
         if let range = selectedCellRange,
            let start = rows.firstIndex(where: { $0.student.id == range.anchorStudentId }),
            let end = rows.firstIndex(where: { $0.student.id == range.endStudentId }) {
